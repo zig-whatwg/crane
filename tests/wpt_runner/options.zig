@@ -109,6 +109,32 @@ pub const Options = struct {
     /// retried. One flag, not a second one beside it: a baseline without a
     /// retry means nothing, so the option that asks for retries carries it.
     retry_baseline: ?[]const u8 = null,
+    /// `--queue=<queue.txt>` (a child of a supervised run): claim each file
+    /// from the supervisor's shared queue (work_queue.zig) instead of running
+    /// the worklist in order. The worklist is `--from-file`'s; the queue names
+    /// positions in it.
+    queue_path: ?[]const u8 = null,
+    /// `--runner=N`: which of the supervisor's runners this child is.
+    queue_runner: u32 = 0,
+    /// `--spawn=N`: which child of its runner this is; with the runner, what
+    /// its claims are known by.
+    queue_spawn: u32 = 0,
+    /// `--stop-file=<path>`: stop before the next file once it exists. A
+    /// supervisor passes it to its children, which check it before each
+    /// claim, so the run ends within one file's time with the rest unclaimed
+    /// (exit status `stopped_exit_code`); `--resume` runs the rest.
+    stop_file: ?[]const u8 = null,
+    /// `--resume`: a supervised run over the worklist an earlier run in the
+    /// same `--output` was given keeps that run's journalled files and runs
+    /// the rest (work_queue.Plan.resume_run). Another worklist starts afresh.
+    resume_run: bool = false,
+    /// `--files-per-runner=N`: a child ends after N files and its runner starts
+    /// a fresh one; 0, the default, is no limit (a child runs until the queue
+    /// is drained or it dies).
+    files_per_runner: usize = 0,
+    /// `--capabilities`: print what this runner supports and exit, so a script
+    /// can tell a runner with the shared queue from a frozen one without it.
+    capabilities: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) Options {
         return Options{
@@ -192,7 +218,11 @@ pub const Options = struct {
     /// shards of one `--parallel` run overwrote a single wptreport-0.json.
     pub fn reportPath(self: Options, allocator: std.mem.Allocator) ![]const u8 {
         if (self.isChild()) {
-            const name = if (self.journal_path) |j|
+            // A queue child starts at no index: its runner's children are
+            // told apart by their spawn number.
+            const name = if (self.queue_path != null and self.journal_path != null)
+                try std.fmt.allocPrint(allocator, "wptreport-{s}-s{d}.json", .{ journalStem(self.journal_path.?), self.queue_spawn })
+            else if (self.journal_path) |j|
                 try std.fmt.allocPrint(allocator, "wptreport-{s}-{d}.json", .{ journalStem(j), self.start_index })
             else
                 try std.fmt.allocPrint(allocator, "wptreport-{d}.json", .{self.start_index});
@@ -259,13 +289,21 @@ pub const ChildRun = struct {
     journal: []const u8,
     output_dir: []const u8,
     heartbeat: []const u8,
+    /// A child of the shared queue; null for a static child (a repeat
+    /// series, whose runner may be a frozen one that knows no queue).
+    queue: ?Queue = null,
+
+    pub const Queue = struct { path: []const u8, runner: u32, spawn: u32 };
 };
 
-/// The command line of a supervised child. Only the options every runner's
-/// child has always taken (a frozen runner from before `--repeat` runs as a
-/// repeat child), and none of the supervisor's own: no `--parallel`,
-/// `--repeat*`, `--load`, `--retry-failures`, and never the supervisor's `--journal=` -
-/// the child's journal is `run.journal`. Strings are allocated in `arena`.
+/// The command line of a supervised child. A static child gets only the
+/// options every runner's child has always taken (a frozen runner from before
+/// `--repeat` runs as a repeat child); a child of the shared queue adds its
+/// queue, runner and spawn, and the run's `--stop-file` and
+/// `--files-per-runner`. Neither gets the supervisor's own: no `--parallel`,
+/// `--repeat*`, `--load`, `--retry-failures`, `--resume`, and never the
+/// supervisor's `--journal=` - the child's journal is `run.journal`. Strings
+/// are allocated in `arena`.
 pub fn childArgv(arena: std.mem.Allocator, options: Options, run: ChildRun) ![]const []const u8 {
     var argv: std.ArrayList([]const u8) = .empty;
     try argv.appendSlice(arena, &.{
@@ -278,6 +316,15 @@ pub fn childArgv(arena: std.mem.Allocator, options: Options, run: ChildRun) ![]c
         try std.fmt.allocPrint(arena, "--heartbeat={s}", .{run.heartbeat}),
     });
     if (!options.verbose) try argv.append(arena, "--quiet");
+    if (run.queue) |q| {
+        try argv.appendSlice(arena, &.{
+            try std.fmt.allocPrint(arena, "--queue={s}", .{q.path}),
+            try std.fmt.allocPrint(arena, "--runner={d}", .{q.runner}),
+            try std.fmt.allocPrint(arena, "--spawn={d}", .{q.spawn}),
+        });
+        if (options.stop_file) |p| try argv.append(arena, try std.fmt.allocPrint(arena, "--stop-file={s}", .{p}));
+        if (options.files_per_runner > 0) try argv.append(arena, try std.fmt.allocPrint(arena, "--files-per-runner={d}", .{options.files_per_runner}));
+    }
     return argv.toOwnedSlice(arena);
 }
 
@@ -376,6 +423,20 @@ pub fn parseArgsDiagnosed(allocator: std.mem.Allocator, args: []const []const u8
         } else if (std.mem.startsWith(u8, arg, "--retry-failures=")) {
             options.retry_failures = true;
             options.retry_baseline = arg["--retry-failures=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--queue=")) {
+            options.queue_path = arg["--queue=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--runner=")) {
+            options.queue_runner = std.fmt.parseInt(u32, arg["--runner=".len..], 10) catch 0;
+        } else if (std.mem.startsWith(u8, arg, "--spawn=")) {
+            options.queue_spawn = std.fmt.parseInt(u32, arg["--spawn=".len..], 10) catch 0;
+        } else if (std.mem.startsWith(u8, arg, "--stop-file=")) {
+            options.stop_file = arg["--stop-file=".len..];
+        } else if (std.mem.eql(u8, arg, "--resume")) {
+            options.resume_run = true;
+        } else if (std.mem.startsWith(u8, arg, "--files-per-runner=")) {
+            options.files_per_runner = std.fmt.parseInt(usize, arg["--files-per-runner=".len..], 10) catch 0;
+        } else if (std.mem.eql(u8, arg, "--capabilities")) {
+            options.capabilities = true;
         } else if (std.mem.startsWith(u8, arg, "-")) {
             diag.unknown_option = arg;
             return error.UnknownOption;
@@ -922,4 +983,77 @@ test "--retry-failures takes an optional baseline journal" {
     defer arena.deinit();
     const argv = try childArgv(arena.allocator(), based, .{ .exe = "r", .worklist = "w", .start_index = 0, .journal = "j", .output_dir = "o", .heartbeat = "h" });
     for (argv) |arg| try testing.expect(!std.mem.startsWith(u8, arg, "--retry"));
+}
+
+test "the shared queue's options: a child's queue, runner and spawn; the stop file, the resume and the file limit; --capabilities" {
+    const testing = std.testing;
+    var child = try parseArgs(testing.allocator, &.{ "--from-file=o/worklist.txt", "--queue=o/queue.txt", "--runner=3", "--spawn=12", "--stop-file=o/STOP", "--files-per-runner=40", "--journal=o/journal.shard3.jsonl" });
+    defer child.deinit();
+    try testing.expectEqualStrings("o/queue.txt", child.queue_path.?);
+    try testing.expectEqual(@as(u32, 3), child.queue_runner);
+    try testing.expectEqual(@as(u32, 12), child.queue_spawn);
+    try testing.expectEqualStrings("o/STOP", child.stop_file.?);
+    try testing.expectEqual(@as(usize, 40), child.files_per_runner);
+    try testing.expect(child.isChild());
+
+    var sup = try parseArgs(testing.allocator, &.{ "--from-file=list.txt", "--parallel=5", "--resume", "--stop-file=STOP" });
+    defer sup.deinit();
+    try testing.expect(sup.resume_run);
+    try testing.expect(sup.queue_path == null);
+
+    var caps = try parseArgs(testing.allocator, &.{"--capabilities"});
+    defer caps.deinit();
+    try testing.expect(caps.capabilities);
+
+    var plain = try parseArgs(testing.allocator, &.{"dom/"});
+    defer plain.deinit();
+    try testing.expect(plain.stop_file == null);
+    try testing.expect(!plain.resume_run);
+    try testing.expectEqual(@as(usize, 0), plain.files_per_runner);
+}
+
+test "a queue child's command line names its queue, runner, spawn, stop file and file limit; a static child's (a frozen runner's) does not" {
+    const testing = std.testing;
+    var options = try parseArgs(testing.allocator, &.{ "--parallel=5", "--resume", "--stop-file=o/STOP", "--files-per-runner=40", "--quiet" });
+    defer options.deinit();
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+
+    const queued = try childArgv(arena.allocator(), options, .{
+        .exe = "wpt_runner",
+        .worklist = "o/worklist.txt",
+        .start_index = 0,
+        .journal = "o/journal.shard2.jsonl",
+        .output_dir = "o",
+        .heartbeat = "o/journal.shard2.jsonl.heartbeat",
+        .queue = .{ .path = "o/queue.txt", .runner = 2, .spawn = 7 },
+    });
+    const want = [_][]const u8{ "--queue=o/queue.txt", "--runner=2", "--spawn=7", "--stop-file=o/STOP", "--files-per-runner=40" };
+    for (want) |w| {
+        const found = for (queued) |arg| {
+            if (std.mem.eql(u8, arg, w)) break true;
+        } else false;
+        try testing.expect(found);
+    }
+    // The supervisor's own options never reach a child.
+    for (queued) |arg| try testing.expect(!std.mem.eql(u8, arg, "--resume"));
+
+    // A static child - a repeat series, which may run a frozen runner that
+    // knows none of the queue's options - gets the old command line exactly.
+    const static = try childArgv(arena.allocator(), options, .{ .exe = "r", .worklist = "w", .start_index = 0, .journal = "j", .output_dir = "o", .heartbeat = "h" });
+    try testing.expectEqual(@as(usize, 8), static.len);
+}
+
+test "a queue child names its report after its runner's journal and its spawn: a runner's children do not overwrite each other's" {
+    const allocator = std.testing.allocator;
+    var a = try parseArgs(allocator, &.{ "--from-file=o/worklist.txt", "--queue=o/queue.txt", "--runner=1", "--spawn=1", "--journal=o/journal.shard1.jsonl", "--output=o" });
+    defer a.deinit();
+    var b = try parseArgs(allocator, &.{ "--from-file=o/worklist.txt", "--queue=o/queue.txt", "--runner=1", "--spawn=2", "--journal=o/journal.shard1.jsonl", "--output=o" });
+    defer b.deinit();
+    const pa = try a.reportPath(allocator);
+    defer allocator.free(pa);
+    const pb = try b.reportPath(allocator);
+    defer allocator.free(pb);
+    try std.testing.expectEqualStrings("o/wptreport-journal.shard1-s1.json", pa);
+    try std.testing.expectEqualStrings("o/wptreport-journal.shard1-s2.json", pb);
 }

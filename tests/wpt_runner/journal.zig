@@ -407,7 +407,19 @@ pub const Journal = struct {
         // A throwaway streaming writer moves the shared fd offset, which is what
         // the later `writeStreamingAll` calls append from.
         var seeker = file.writerStreaming(io, &.{});
-        try seeker.seekToUnbuffered(try file.length(io));
+        const len = try file.length(io);
+        try seeker.seekToUnbuffered(len);
+        // A process killed partway through a record left a line with no end.
+        // End it, so the next record starts a line of its own instead of
+        // being parsed as the rest of the broken one and lost with it - the
+        // supervisor's CRASH record for that very file, or the next child's
+        // first.
+        if (len > 0) {
+            const reader = try host.cwd().openFile(io, path, .{});
+            defer reader.close(io);
+            var last: [1]u8 = undefined;
+            if (try reader.readPositionalAll(io, &last, len - 1) == 1 and last[0] != '\n') try file.writeStreamingAll(io, "\n");
+        }
         return .{
             .allocator = allocator,
             .file = file,
@@ -813,6 +825,33 @@ test "parse skips a line truncated by a crash" {
 
     try std.testing.expectEqual(@as(usize, 2), log.records.len);
     try std.testing.expectEqualStrings("b.html", log.records[1].path);
+}
+
+test "a record appended after a line a crash cut off starts a line of its own" {
+    // A child killed partway through a record leaves a line with no end; the
+    // supervisor's CRASH record, or the next child's first, was appended to
+    // it and lost with it - and with it the file's only record.
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(dir_path);
+    const path = try std.fs.path.join(allocator, &.{ dir_path, "run.jsonl" });
+    defer allocator.free(path);
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "run.jsonl",
+        .data = "{\"index\":0,\"path\":\"a.html\",\"status\":\"OK\"}\n{\"index\":1,\"path\":\"b.ht",
+    });
+    {
+        var j = try Journal.append(allocator, path);
+        defer j.deinit();
+        try j.record(.{ .index = 1, .path = "b.html", .status = .crash });
+    }
+    var log = try read(allocator, path);
+    defer log.deinit();
+    try std.testing.expectEqual(@as(usize, 2), log.records.len);
+    try std.testing.expectEqualStrings("b.html", log.records[1].path);
+    try std.testing.expectEqual(Status.crash, log.records[1].status);
 }
 
 test "parse ignores blank lines and unrecognised statuses" {

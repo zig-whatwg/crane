@@ -38,6 +38,22 @@
 //! - `--supervise` - Discover, then respawn this binary past any test that
 //!   kills the process, until the worklist is exhausted. Writes
 //!   `<output>/worklist.txt` and `<output>/journal.jsonl`.
+//! - `--parallel=N` (and `--supervise`, which is one runner) - Every runner
+//!   claims its next file from one shared queue (`<output>/queue.txt`,
+//!   work_queue.zig), so a runner is idle only when the queue is empty; each
+//!   journals to `<output>/journal.shard<i>.jsonl` and the run's journal is
+//!   their merge, in worklist order.
+//! - `--stop-file=path` - Stop before the next file once `path` exists: every
+//!   child checks it before each claim, so the run ends within one file's
+//!   time, journals what finished and exits 3 (`stopped_exit_code`).
+//! - `--resume` - Rerun a stopped (or killed) run: over the worklist the
+//!   earlier run in the same `--output` had, keep its journalled files and run
+//!   the rest; over another worklist, start afresh.
+//! - `--files-per-runner=N` - A child ends after N files and its runner starts
+//!   a fresh one (default 0: no limit).
+//! - `--capabilities` - Print what this runner supports (`shared-queue
+//!   stop-file resume files-per-runner`) and exit: how a sweep script tells it
+//!   from a frozen runner without them.
 //!
 //! Flakiness (repeat.zig):
 //! - `--repeat=N` - Run the worklist (normally one file: name it as an
@@ -89,6 +105,8 @@
 //! - `--journal=path` - Append a JSONL record per completed test file
 //! - `--heartbeat=path` - Append a byte as each run starts; the supervisor's
 //!   stall watchdog counts it with the journal (stall_watchdog.Heartbeat)
+//! - `--queue=path --runner=N --spawn=K` - Claim each file from the
+//!   supervisor's shared queue as runner N's child K (work_queue.Claimer)
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -109,6 +127,7 @@ const discovery_mod = @import("discovery.zig");
 const output = @import("output.zig");
 const stall_watchdog = @import("stall_watchdog.zig");
 const file_lock = @import("file_lock.zig");
+const work_queue = @import("work_queue.zig");
 const runner_allocator = @import("runner_allocator.zig");
 const wpt_options = @import("wpt_options");
 const clock = @import("clock");
@@ -753,9 +772,13 @@ pub fn executeTests(
     // This requires parsing all files upfront, but gives accurate progress
     // tracking - and it is what makes this number comparable to the "Scope:"
     // line printed above it, which counts manifest URLs.
-    const total = try calculateTotalTests(allocator, discovery, options);
     const file_count = discovery.test_files.items.len;
-    print("\nRunning {d} test files ({d} total test runs)...\n\n", .{ file_count, total });
+    // A child of the shared queue runs only what it claims: counting every
+    // file's runs up front would parse the whole worklist in every child.
+    const total = if (options.queue_path != null) file_count else try calculateTotalTests(allocator, discovery, options);
+    if (options.queue_path) |q| {
+        print("\nRunner {d}, child {d}: claiming from {s} ({d} files in the worklist)...\n\n", .{ options.queue_runner, options.queue_spawn, q, file_count });
+    } else print("\nRunning {d} test files ({d} total test runs)...\n\n", .{ file_count, total });
 
     // The process first (crane.Process): the engine and every hook, once,
     // before any Browser. It ends after the browser (defers run in reverse).
@@ -820,7 +843,21 @@ pub fn executeTests(
     const lock_notes: ?std.Io.Dir = openLockNotes(io);
     defer if (lock_notes) |d| d.close(io);
 
-    for (discovery.test_files.items, 0..) |test_file, file_offset| {
+    // The files this process runs, one at a time: its worklist in order, or,
+    // under a supervisor's shared queue, whatever it claims next. Either way
+    // it stops before the next file once `--stop-file` exists.
+    var claimer: ?work_queue.Claimer = if (options.queue_path) |q| try work_queue.Claimer.open(q, options.queue_runner, options.queue_spawn) else null;
+    defer if (claimer) |*c| c.close();
+    var source: work_queue.FileSource = .{
+        .count = file_count,
+        .base_index = discovery.base_index,
+        .claimer = if (claimer) |*c| c else null,
+        .stop_file = options.stop_file,
+        .max_files = if (options.queue_path != null) options.files_per_runner else 0,
+    };
+
+    while (try source.next()) |file_offset| {
+        const test_file = discovery.test_files.items[file_offset];
         var tally: FileTally = FileTally.start();
         tally.index = discovery.base_index + file_offset;
         deadline.mark(tally.index, test_file.path);
@@ -1055,6 +1092,12 @@ pub fn executeTests(
             browser = try browser_adapter.BrowserAdapter.init(allocator, options.wpt_root);
         }
     }
+    if (source.end) |end| switch (end) {
+        .done => {},
+        .stop_file => print("wpt_runner: {s} exists: stopping before the next file\n", .{options.stop_file.?}),
+        .limit => print("wpt_runner: ran {d} files, this child's limit (--files-per-runner); its runner starts a fresh one\n", .{source.taken}),
+        .orphaned => print("wpt_runner: the supervisor is gone; claiming nothing more\n", .{}),
+    };
 
     // Every file has finished; what follows is the report and the teardown,
     // which the deadline keeps bounding under a label of its own.
@@ -1546,6 +1589,13 @@ fn run(init: std.process.Init) !u8 {
     };
     defer options.deinit();
 
+    // What a sweep script asks before it relies on the shared queue: a frozen
+    // runner from before it rejects the option (exit 2) and is run the old way.
+    if (options.capabilities) {
+        print("wpt_runner capabilities: {s}\n", .{capabilities});
+        return 0;
+    }
+
     // Which build produced this run, once per run (not per supervised child):
     // the runner is ReleaseSafe by default and Debug on request
     // (`-Dwpt-runner-optimize=Debug`), timeouts differ between the two, and a
@@ -1843,40 +1893,13 @@ fn writeWorklistFile(
     try file_writer.interface.flush();
 }
 
-/// Write the subset of `all` named by `indices` as its own worklist.
-///
-/// A shard gets a private worklist rather than a stride over the shared one so
-/// that its indices stay contiguous from zero. The resume-past-a-crash loop is
-/// built on "the first index nobody journalled", which only means anything if
-/// the indices a process runs are the indices it counts.
-fn writeShardWorklist(
-    allocator: std.mem.Allocator,
-    path: []const u8,
-    all: []const []const u8,
-    indices: []const usize,
-) !void {
-    const io = host.io();
-    if (std.fs.path.dirname(path)) |dir| {
-        host.cwd().createDirPath(io, dir) catch |err| switch (err) {
-            error.PathAlreadyExists => {},
-            else => return err,
-        };
-    }
-
-    var paths = try allocator.alloc([]const u8, indices.len);
-    defer allocator.free(paths);
-    for (indices, 0..) |global, local| paths[local] = all[global];
-
-    var file = try host.cwd().createFile(io, path, .{});
-    defer file.close(io);
-    var buf: [4096]u8 = undefined;
-    var file_writer = file.writer(io, &buf);
-    try selection.writeWorklist(&file_writer.interface, paths);
-    try file_writer.interface.flush();
-}
-
 /// Everything one shard's restart loop needs. A shard is a worklist file, a
 /// journal to write, and the paths in that worklist so a crash can be named.
+///
+/// The static loop: one child after another over a private worklist, resumed
+/// at the first index nobody journalled. Only a repeat series runs it now -
+/// its other runner may be a frozen one that knows no queue; a supervised run
+/// claims from the shared queue instead (`runQueue`, work_queue.zig).
 const Shard = struct {
     allocator: std.mem.Allocator,
     /// The process Io. Carried on the shard rather than reached for globally so
@@ -2054,115 +2077,115 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
     }
 }
 
-/// A shard whose loop runs on its own thread, plus what it needs to be merged
-/// back into the run afterwards.
-const ShardRun = struct {
-    shard: Shard,
-    /// Shard-local index -> global worklist index.
-    indices: []usize,
-    thread: std.Thread = undefined,
-    /// Set by the thread. Threads cannot propagate errors, so the failure is
-    /// carried here and re-raised on the joining side.
-    failure: ?anyerror = null,
+/// What `--capabilities` prints: the options a sweep script may rely on.
+const capabilities = "shared-queue stop-file resume files-per-runner";
 
-    fn entry(self: *ShardRun) void {
-        runShard(self.shard.allocator, self.shard) catch |err| {
-            self.failure = err;
+/// The exit status of a run its `--stop-file` stopped with files left: what
+/// finished is journalled, and `--resume` runs the rest.
+const stopped_exit_code: u8 = 3;
+
+/// Starts one child of the shared queue (work_queue.Launcher) and waits for
+/// it, under the stall watchdog: this same binary over the run's worklist,
+/// claiming from the queue as the runner and spawn work_queue names.
+const QueueLauncher = struct {
+    allocator: std.mem.Allocator,
+    /// The process Io; 0.16 needs one to spawn and wait on the child.
+    io: std.Io,
+    /// The run's options: the child's `--output`, `--stop-file`,
+    /// `--files-per-runner` and the watchdog's limit.
+    options: *const Options,
+    self_exe: []const u8,
+
+    fn run(context: ?*anyopaque, child: work_queue.Child) anyerror!work_queue.Exit {
+        const self: *QueueLauncher = @ptrCast(@alignCast(context.?));
+        const options = self.options;
+        // The child's per-run heartbeat, which the watchdog counts with the
+        // journal.
+        const heartbeat_path = try stall_watchdog.heartbeatPath(self.allocator, child.journal_path);
+        defer self.allocator.free(heartbeat_path);
+        var argv_arena: std.heap.ArenaAllocator = .init(self.allocator);
+        defer argv_arena.deinit();
+        const argv = try options_mod.childArgv(argv_arena.allocator(), options.*, .{
+            .exe = self.self_exe,
+            .worklist = child.worklist_path,
+            .start_index = 0,
+            .journal = child.journal_path,
+            .output_dir = options.output_dir,
+            .heartbeat = heartbeat_path,
+            .queue = .{ .path = child.queue_path, .runner = child.runner, .spawn = child.spawn },
+        });
+
+        print("[runner {d}] child {d} claims from {s}\n", .{ child.runner, child.spawn, child.queue_path });
+        // The child writes to this same stderr. Anything still sitting in our
+        // buffer has to go out first or it would surface after the child's
+        // output and misreport the order of the run.
+        flushOutput();
+
+        var proc = try std.process.spawn(self.io, .{ .argv = argv });
+
+        // The per-file ceiling only bounds the wait for `__wpt_complete`. The
+        // navigation, the parse and every script the parser runs are unbounded,
+        // and `fetch()` is synchronous down to `curl_easy_perform`, so a page
+        // that polls in a loop never returns to the ceiling at all. This wait
+        // is the only place left that can end it. See stall_watchdog.zig.
+        var watchdog: stall_watchdog.Watchdog = .{
+            .journal_path = child.journal_path,
+            .heartbeat_path = heartbeat_path,
+            // A spawned child always has an id; a null one means there is
+            // nothing to watch, and a zero pid would name our own group.
+            .child_id = proc.id orelse 0,
+            .stall_limit_ms = if (proc.id == null) 0 else options.stall_limit_ms,
         };
+        try watchdog.start();
+        const term = try proc.wait(self.io);
+        watchdog.stop();
+
+        if (watchdog.killedChild()) return .{ .how = .hung };
+        switch (term) {
+            .exited => |code| if (code == 0) return .{ .how = .clean },
+            else => {},
+        }
+        // Abnormal exit - a signal, or a nonzero status (an error that
+        // unwound out of the runner): a crash, as the static loop had it.
+        return work_queue.Exit.crashed("{any}", .{term});
     }
 };
 
-/// Run `shard_count` shards concurrently, then fold their journals into one.
-///
-/// Sharding at the process level rather than inside the browser is deliberate.
-/// A test file costs about 4s of overhead beyond its own runtime - roughly
-/// 1.7s to tear down the previous V8 context and build a new one, 1.6s to fetch
-/// and parse the page - and that cost is per file no matter how fast the test
-/// is. It is not going away by making any one step cheaper, but it does divide.
-fn runShardsInParallel(
+fn printText(_: ?*anyopaque, text: []const u8) void {
+    print("{s}", .{text});
+}
+
+/// Run `paths` through the shared queue on `runners` children of this binary
+/// (work_queue.run), then fold the runners' journals into `journal_path`, in
+/// worklist order. The queue, the worklist and the runners' journals are in
+/// `options.output_dir`.
+fn runQueue(
     allocator: std.mem.Allocator,
     io: std.Io,
-    options: Options,
-    /// The worklist, in order.
-    all: []const []const u8,
+    options: *const Options,
+    paths: []const []const u8,
     self_exe: []const u8,
     journal_path: []const u8,
-    shard_count: usize,
-) !void {
-    const total = all.len;
-
-    const runs = try allocator.alloc(ShardRun, shard_count);
-    defer allocator.free(runs);
-
-    // Allocated up front so the cleanup below can free unconditionally.
-    var built: usize = 0;
-    defer {
-        for (runs[0..built]) |*r| {
-            allocator.free(r.indices);
-            allocator.free(r.shard.paths);
-            allocator.free(r.shard.worklist_path);
-            allocator.free(r.shard.journal_path);
-            allocator.free(r.shard.label.?);
-        }
-    }
-
-    while (built < shard_count) : (built += 1) {
-        const i = built;
-        const indices = try selection.shardIndices(allocator, total, shard_count, i);
-        const paths = try allocator.alloc([]const u8, indices.len);
-        for (indices, 0..) |global, local| paths[local] = all[global];
-
-        const wl = try std.fmt.allocPrint(allocator, "{s}/worklist.shard{d}.txt", .{ options.output_dir, i });
-        const jl = try std.fmt.allocPrint(allocator, "{s}/journal.shard{d}.jsonl", .{ options.output_dir, i });
-        const label = try std.fmt.allocPrint(allocator, "[shard {d}] ", .{i});
-
-        try writeShardWorklist(allocator, wl, all, indices);
-        // Start each shard from an empty ledger, for the same reason the whole
-        // run does: a stale journal resumes at indices that mean nothing now.
-        {
-            var fresh = try journal.Journal.create(allocator, jl);
-            fresh.deinit();
-        }
-
-        runs[i] = .{
-            .shard = .{
-                .allocator = allocator,
-                .io = io,
-                .options = &options,
-                .self_exe = self_exe,
-                .worklist_path = wl,
-                .journal_path = jl,
-                .paths = paths,
-                .label = label,
-            },
-            .indices = indices,
-        };
-    }
-
-    print("Sharding {d} files across {d} parallel runners\n\n", .{ total, shard_count });
-
-    for (runs) |*r| r.thread = try std.Thread.spawn(.{}, ShardRun.entry, .{r});
-    for (runs) |*r| r.thread.join();
-
-    // Fold the shards back into the run's journal, translating each record's
-    // shard-local index to its global worklist position. Without that the
-    // report and the baseline would see a dozen index 0s.
-    var merged = try journal.Journal.append(allocator, journal_path);
-    defer merged.deinit();
-
-    for (runs) |*r| {
-        var log = try journal.read(allocator, r.shard.journal_path);
-        defer log.deinit();
-        for (log.records) |rec| {
-            var out = rec;
-            out.index = if (rec.index < r.indices.len) r.indices[rec.index] else rec.index;
-            try merged.record(out);
-        }
-    }
-
-    for (runs) |*r| {
-        if (r.failure) |err| return err;
-    }
+    runners: usize,
+    resume_run: bool,
+) !work_queue.Outcome {
+    var launcher: QueueLauncher = .{ .allocator = allocator, .io = io, .options = options, .self_exe = self_exe };
+    print("Running {d} files on {d} runner(s), each claiming its next file from one queue (work_queue.zig)\n\n", .{ paths.len, runners });
+    const outcome = try work_queue.run(.{
+        .allocator = allocator,
+        .paths = paths,
+        .output_dir = options.output_dir,
+        .runners = runners,
+        .stop_file = options.stop_file,
+        .resume_run = resume_run,
+        .stall_limit_ms = options.stall_limit_ms,
+        .launcher = .{ .context = &launcher, .run = QueueLauncher.run },
+        .reporter = .{ .write = printText },
+    });
+    const counts = try work_queue.writeMerged(allocator, options.output_dir, paths.len, journal_path);
+    if (counts.duplicates > 0) print("\nSupervisor: WARNING: {d} record(s) of files already journalled; the first record of each file stands\n", .{counts.duplicates});
+    if (outcome == .finished and counts.missing > 0) print("\nSupervisor: WARNING: {d} file(s) of the worklist have no record\n", .{counts.missing});
+    return outcome;
 }
 
 /// Run the whole worklist, restarting past anything that kills the process.
@@ -2172,11 +2195,12 @@ fn runShardsInParallel(
 /// full-corpus number impossible to obtain - not "hard to obtain", impossible,
 /// because the process never reaches the point where it writes a report.
 ///
-/// Each iteration spawns this same binary over a slice of the worklist. When a
-/// child dies abnormally, the journal's `nextIndex()` is by construction the
-/// index of the test that never reported: every earlier test wrote a record
-/// before the next one started. That index gets a CRASH record and the next
-/// child starts one past it, so the loop always advances.
+/// Every runner keeps a child of this same binary going while the shared
+/// queue has files (work_queue.zig): each child claims its next file, runs
+/// it and journals it, so when one dies the file it claimed and did not
+/// journal is the one it died on. That file gets a CRASH record (TIMEOUT when
+/// the stall watchdog killed it) and the runner's next child claims the next
+/// unclaimed file, so the run always advances.
 fn supervise(
     allocator: std.mem.Allocator,
     io: std.Io,
@@ -2196,9 +2220,10 @@ fn supervise(
     // <output>/repeat/<k>/, and the series' result is repeat-tally.txt.
     if (options.repeat > 0) return superviseRepeat(allocator, io, options, discovery);
 
+    // work_queue writes it, once it knows whether an earlier run of the same
+    // worklist is being resumed.
     const worklist_path = try std.fs.path.join(allocator, &.{ options.output_dir, "worklist.txt" });
     defer allocator.free(worklist_path);
-    try writeWorklistFile(allocator, worklist_path, discovery);
 
     // Same path settleBaseline will read afterwards, so a `--journal=` override
     // does not leave the comparison reading a file nobody wrote.
@@ -2206,8 +2231,9 @@ fn supervise(
         try std.fs.path.join(allocator, &.{ options.output_dir, "journal.jsonl" });
     defer allocator.free(journal_path);
 
-    // Start from an empty ledger. Resuming an old journal against a worklist
-    // that may have been regenerated would resume at meaningless indices.
+    // Start from an empty ledger: the run's journal is the merge of the
+    // runners' journals, written when the queue ends (a resumed run's
+    // included), never an old run's.
     {
         var fresh = try journal.Journal.create(allocator, journal_path);
         fresh.deinit();
@@ -2235,7 +2261,7 @@ fn supervise(
     print("  worklist: {s}\n", .{worklist_path});
     print("  journal:  {s}\n\n", .{journal_path});
 
-    const shard_count = selection.resolveShardCount(
+    const runners = selection.resolveShardCount(
         options.shardRequest(),
         total,
         std.Thread.getCpuCount() catch 1,
@@ -2245,25 +2271,26 @@ fn supervise(
     defer allocator.free(worklist_paths);
     for (discovery.test_files.items, 0..) |f, i| worklist_paths[i] = f.path;
 
-    if (shard_count > 1) {
-        try runShardsInParallel(allocator, io, options, worklist_paths, self_exe, journal_path, shard_count);
-    } else {
-        try runShard(allocator, .{
-            .allocator = allocator,
-            .io = io,
-            .options = &options,
-            .self_exe = self_exe,
-            .worklist_path = worklist_path,
-            .journal_path = journal_path,
-            .paths = worklist_paths,
-            .label = null,
-        });
+    const outcome = try runQueue(allocator, io, &options, worklist_paths, self_exe, journal_path, runners, options.resume_run);
+    if (outcome == .finished and options.retry_failures) {
+        if (try retryFailures(allocator, io, options, self_exe, journal_path, runners) == .stopped) {
+            var partial = try journal.read(allocator, journal_path);
+            defer partial.deinit();
+            print("\n=== Run stopped during its retries: {s} exists ===\nFiles: {d} of {d} journalled, not yet retried; rerun with --resume to retry them\nJournal: {s}\n", .{ options.stop_file.?, partial.records.len, total, journal_path });
+            return stopped_exit_code;
+        }
     }
-
-    if (options.retry_failures) try retryFailures(allocator, io, options, self_exe, journal_path, shard_count);
 
     var log = try journal.read(allocator, journal_path);
     defer log.deinit();
+
+    if (outcome == .stopped) {
+        print("\n=== Run stopped: {s} exists ===\n", .{options.stop_file.?});
+        print("Files:    {d} of {d} journalled; rerun with --resume to run the rest\n", .{ log.records.len, total });
+        print("\nJournal: {s}\n", .{journal_path});
+        return stopped_exit_code;
+    }
+
     const s = log.summarize();
 
     print("\n=== Run complete ===\n", .{});
@@ -2310,19 +2337,20 @@ fn supervise(
 /// the result - a retry's pass never counts as a pass.
 ///
 /// The retry is a supervised run of its own under `<output>/retry/` - its
-/// worklist, shard journals and result streams - so nothing of it lands where
-/// a sweep's journals and streams are collected (crane-measure.sh takes
-/// `<output>/journal.jsonl`; the site's streams are `<output>/journal*.wptreport.jsonl`).
-/// Only the run's own journal changes: it is rewritten with the retries
-/// attached, in one rename.
+/// worklist, queue, runner journals and result streams - so nothing of it
+/// lands where a sweep's journals and streams are collected (crane-measure.sh
+/// takes `<output>/journal.jsonl`; the site's streams are
+/// `<output>/journal*.wptreport.jsonl`). Only the run's own journal changes:
+/// it is rewritten with the retries attached, in one rename. A retry the
+/// stop file stops changes nothing, and a resumed run retries afresh.
 fn retryFailures(
     allocator: std.mem.Allocator,
     io: std.Io,
     options: Options,
     self_exe: []const u8,
     journal_path: []const u8,
-    shard_request: usize,
-) !void {
+    runners: usize,
+) !work_queue.Outcome {
     var log = try journal.read(allocator, journal_path);
     defer log.deinit();
 
@@ -2364,7 +2392,7 @@ fn retryFailures(
     if (skipped > 0) print("\nSkipping the retry of {d} files whose result matches the baseline journal\n", .{skipped});
     if (paths.items.len == 0) {
         if (skipped > 0) try rewriteJournal(allocator, journal_path, log.records);
-        return;
+        return .finished;
     }
 
     const retry_dir = try std.fs.path.join(allocator, &.{ options.output_dir, "retry" });
@@ -2384,33 +2412,14 @@ fn retryFailures(
     retry_options.output_dir = retry_dir;
 
     print("\nRetrying {d} files that did not fully pass (results under {s})\n\n", .{ paths.items.len, retry_dir });
-    const shards = @min(shard_request, paths.items.len);
-    if (shards > 1) {
-        try runShardsInParallel(allocator, io, retry_options, paths.items, self_exe, retry_journal, shards);
-    } else {
-        const wl = try std.fs.path.join(allocator, &.{ retry_dir, "worklist.txt" });
-        defer allocator.free(wl);
-        const all = try allocator.alloc(usize, paths.items.len);
-        defer allocator.free(all);
-        for (all, 0..) |*x, i| x.* = i;
-        try writeShardWorklist(allocator, wl, paths.items, all);
-        try runShard(allocator, .{
-            .allocator = allocator,
-            .io = io,
-            .options = &retry_options,
-            .self_exe = self_exe,
-            .worklist_path = wl,
-            .journal_path = retry_journal,
-            .paths = paths.items,
-            .label = null,
-        });
-    }
+    if (try runQueue(allocator, io, &retry_options, paths.items, self_exe, retry_journal, @min(runners, paths.items.len), false) == .stopped) return .stopped;
 
     var retried = try journal.read(allocator, retry_journal);
     defer retried.deinit();
     try journal.annotateRetries(allocator, log.records, retried.records);
 
     try rewriteJournal(allocator, journal_path, log.records);
+    return .finished;
 }
 
 /// Rewrite the run's journal with the retries (and skip markers) attached:
