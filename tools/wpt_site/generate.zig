@@ -555,6 +555,10 @@ fn searchPaths(arena: Allocator, dir_keys: []const []const u8, files: []const pa
 // ============================================================================
 
 const CompareLists = struct {
+    /// Both engines' totals over the files both have a result for, and how many.
+    crane: model.Totals = .{},
+    ref: model.Totals = .{},
+    both: usize = 0,
     /// Files both ran where the reference passes more subtests, most first.
     ahead_ref: []const usize,
     /// Files both ran where Crane passes more, most first.
@@ -573,6 +577,9 @@ fn compareLists(arena: Allocator, files: []const pages_mod.FileView) !CompareLis
     var ahead_crane: std.ArrayList(usize) = .empty;
     var only_ref: std.ArrayList(usize) = .empty;
     var only_crane: std.ArrayList(usize) = .empty;
+    var crane: model.Totals = .{};
+    var ref: model.Totals = .{};
+    var both: usize = 0;
     for (files, 0..) |f, i| {
         const rv = f.ref orelse {
             if (f.status != null) try only_crane.append(arena, i);
@@ -582,6 +589,9 @@ fn compareLists(arena: Allocator, files: []const pages_mod.FileView) !CompareLis
             try only_ref.append(arena, i);
             continue;
         }
+        crane.add(f.gate, f.counts);
+        ref.add(rv.gate, rv.counts);
+        both += 1;
         if (rv.counts.passed > f.counts.passed) try ahead_ref.append(arena, i);
         if (f.counts.passed > rv.counts.passed) try ahead_crane.append(arena, i);
     }
@@ -605,7 +615,7 @@ fn compareLists(arena: Allocator, files: []const pages_mod.FileView) !CompareLis
     };
     std.mem.sort(usize, ahead_ref.items, ByRef{ .files = files }, ByRef.lt);
     std.mem.sort(usize, ahead_crane.items, ByCrane{ .files = files }, ByCrane.lt);
-    return .{ .ahead_ref = ahead_ref.items, .ahead_crane = ahead_crane.items, .only_ref = only_ref.items, .only_crane = only_crane.items };
+    return .{ .crane = crane, .ref = ref, .both = both, .ahead_ref = ahead_ref.items, .ahead_crane = ahead_crane.items, .only_ref = only_ref.items, .only_crane = only_crane.items };
 }
 
 // ============================================================================
@@ -798,6 +808,9 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         .card_ref = card_ref,
         .exemptions = exemptions,
         .reference = ref_ptr,
+        .both_crane = cmp.crane,
+        .both_ref = cmp.ref,
+        .both = cmp.both,
         .ahead_ref = cmp.ahead_ref,
         .ahead_crane = cmp.ahead_crane,
         .only_ref = cmp.only_ref,

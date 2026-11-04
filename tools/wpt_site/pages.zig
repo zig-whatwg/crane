@@ -114,6 +114,10 @@ pub const Site = struct {
     /// Another engine's run on the same worklist (reference.zig), shown beside
     /// Crane's and never counted as Crane's; null: no comparison.
     reference: ?*const reference_mod.Reference = null,
+    /// Both engines' totals over the files both have a result for, and how many.
+    both_crane: model.Totals = .{},
+    both_ref: model.Totals = .{},
+    both: usize = 0,
     /// Indices into `files`: both ran and the reference passes more subtests
     /// (most first); both ran and Crane passes more; only the reference ran;
     /// only Crane did.
@@ -744,7 +748,7 @@ pub fn writeIndex(w: W, site: *const Site) Error!void {
 
     try writeStatus(w, site, tot);
     try writeExempt(w, site);
-    try writeVersus(w, site, tot);
+    try writeVersus(w, site);
     try writeContents(w, site);
     for (site.suites, 1..) |s, i| try writeSuite(w, site, s, i);
     try writeHistory(w, site, tot);
@@ -1432,7 +1436,7 @@ fn writeTimeRow(w: W, label: []const u8, crane: ?f64, ref: ?f64) Error!void {
 
 /// The run's identity, in a sentence: the engine, its version and driver,
 /// the runner, when and where, and the WPT tree.
-fn writeRunIdentity(w: W, site: *const Site, r: *const reference_mod.Reference) Error!void {
+fn writeRunIdentity(w: W, r: *const reference_mod.Reference) Error!void {
     const run = r.run;
     try w.print("{s} <code>", .{r.label()});
     try html.text(w, run.browser_version);
@@ -1442,8 +1446,17 @@ fn writeRunIdentity(w: W, site: *const Site, r: *const reference_mod.Reference) 
         try html.text(w, run.channel);
         try w.writeAll(")");
     }
-    try w.writeAll(" ran the same ");
-    try html.plural(w, site.root().totals.files, "test file", "test files");
+    const cov = r.coverage;
+    if (cov.sources_reported < cov.sources) {
+        try w.writeAll(" has a result for ");
+        try html.num(w, cov.sources_reported);
+        try w.writeAll(" of the worklist&rsquo;s ");
+        try html.plural(w, cov.sources, "test file", "test files");
+        try w.writeAll(", run");
+    } else {
+        try w.writeAll(" ran the worklist&rsquo;s ");
+        try html.plural(w, cov.sources, "test file", "test files");
+    }
     try w.writeAll(" on <span class=\"nowrap\">");
     try html.shortDateY(w, run.date);
     try w.writeAll("</span> with WPT&rsquo;s own runner (<code>wpt run</code>, headless");
@@ -1468,12 +1481,14 @@ fn writeRunIdentity(w: W, site: *const Site, r: *const reference_mod.Reference) 
 
 /// The index's comparison with the reference run: both engines' numbers on
 /// the same files, where they differ, and what the runs cost.
-fn writeVersus(w: W, site: *const Site, tot: model.Totals) Error!void {
+fn writeVersus(w: W, site: *const Site) Error!void {
     const r = site.reference orelse return;
-    const rt = site.root().ref_totals;
+    // Over the files both have a result for: the same files, so the numbers compare.
+    const tot = site.both_crane;
+    const rt = site.both_ref;
     const name = r.label();
     try w.print("<section class=\"front\" id=\"versus\" aria-labelledby=\"versus-h\">\n<h2 id=\"versus-h\">Crane and {s}</h2>\n<div class=\"front-prose\">\n<p>", .{name});
-    try writeRunIdentity(w, site, r);
+    try writeRunIdentity(w, r);
     try w.print(" Its results are a reference: they are read only from <code>wpt-results/reference/</code>, never counted as Crane&rsquo;s, and every number here says whose it is.</p>\n<p>", .{});
     try w.print("<a href=\"{s}.html#ahead-ref\">", .{r.engine});
     try html.plural(w, site.ahead_ref.len, "file", "files");
@@ -1483,12 +1498,16 @@ fn writeVersus(w: W, site: *const Site, tot: model.Totals) Error!void {
     try html.plural(w, site.ahead_crane.len, "file", "files");
     try w.print("</a> where Crane passes subtests {s} does not (", .{name});
     try html.plural(w, sumPassDiff(site, site.ahead_crane, false), "subtest", "subtests");
-    try w.writeAll(").</p>\n</div>\n<div class=\"versus-boxes\">\n");
+    try w.print("). Not compared: <a href=\"{s}.html#only-one\">", .{r.engine});
+    try html.plural(w, site.only_ref.len, "file", "files");
+    try w.print("</a> with a result from {s} alone, ", .{name});
+    try html.num(w, site.only_crane.len);
+    try w.writeAll(" from Crane alone.</p>\n</div>\n<div class=\"versus-boxes\">\n");
 
     // The numbers, side by side.
     try w.print("<div class=\"box versus-box\">\n<div class=\"box-head\"><h3 class=\"box-title\">The same files</h3><span class=\"box-sub\">", .{});
-    try html.plural(w, tot.files, "test file", "test files");
-    try w.print("</span></div>\n<table class=\"versus\">\n<thead><tr><td></td><th scope=\"col\" class=\"n\">Crane</th><th scope=\"col\" class=\"n\">{s}</th></tr></thead>\n<tbody>\n", .{name});
+    try html.plural(w, site.both, "test file", "test files");
+    try w.print(" both ran</span></div>\n<table class=\"versus\">\n<thead><tr><td></td><th scope=\"col\" class=\"n\">Crane</th><th scope=\"col\" class=\"n\">{s}</th></tr></thead>\n<tbody>\n", .{name});
     try w.writeAll("<tr><th scope=\"row\">WPT subtests passing</th>");
     for ([_]model.Totals{ tot, rt }) |t| {
         try w.print("<td class=\"n\" data-v=\"{d}\" data-of=\"{d}\">", .{ t.sub_pass, t.subReported() });
@@ -1501,7 +1520,6 @@ fn writeVersus(w: W, site: *const Site, tot: model.Totals) Error!void {
     try writeVersusRow(w, "Not run", tot.sub_notrun, rt.sub_notrun, "");
     try writeVersusRow(w, "Blocking files", tot.blocking(), rt.blocking(), "blk");
     try writeVersusRow(w, "Clean files", tot.clean, rt.clean, "");
-    try writeVersusRow(w, "Files with a result", tot.files - tot.unrun, rt.files - rt.unrun, "");
     try w.writeAll("</tbody>\n</table>\n</div>\n");
 
     // What the runs cost.
@@ -1523,9 +1541,12 @@ fn writeVersus(w: W, site: *const Site, tot: model.Totals) Error!void {
             const procs: f64 = @floatFromInt(tm.processes);
             try writeTimeRow(w, "One empty test, harness alone", hc.per_test_s * procs, hr.per_test_s * procs);
             if (o.small_files > 0) try writeTimeRow(w, "Start-up, before the first test", hc.startup_s, hr.startup_s);
-            if (urls > 0) {
-                try writeTimeRow(w, "Of the wall clock: harness (estimate)", hc.of(urls), hr.of(urls));
-                try writeTimeRow(w, "Of the wall clock: the tests (estimate)", if (cw) |x| @max(x - hc.of(urls), 0) else null, @max(tm.reference.wall_s - hr.of(urls), 0));
+            // Each run is split over the test URLs it ran (the worklist's, when it recorded none).
+            const ur = if (tm.reference.tests > 0) tm.reference.tests else urls;
+            const uc = if (tm.crane) |c| (if (c.tests > 0) c.tests else urls) else urls;
+            if (ur > 0) {
+                try writeTimeRow(w, "Of the wall clock: harness (estimate)", hc.of(uc), hr.of(ur));
+                try writeTimeRow(w, "Of the wall clock: the tests (estimate)", if (cw) |x| @max(x - hc.of(uc), 0) else null, @max(tm.reference.wall_s - hr.of(ur), 0));
             }
         };
         try w.writeAll("</tbody>\n</table>\n</div>\n");
@@ -1632,7 +1653,7 @@ pub fn writeComparePage(w: W, site: *const Site) Error!void {
     try writeFigures(w, "Crane", Figures.ofTotals(tot));
     try writeRefFigures(w, site, site.root().ref_totals);
     try w.writeAll("<p class=\"compare-lede\">");
-    try writeRunIdentity(w, site, r);
+    try writeRunIdentity(w, r);
     try w.writeAll(" Its results are a reference, never counted as Crane&rsquo;s. A file is listed where the two pass different numbers of its subtests; the same count can still hide different subtests, which each file&rsquo;s page shows for Crane.</p>\n</header>\n");
 
     try w.print("<section class=\"compare\" id=\"ahead-ref\" aria-labelledby=\"ahead-ref-h\">\n<h2 id=\"ahead-ref-h\">Where {s} passes subtests Crane does not</h2>\n<p>", .{name});

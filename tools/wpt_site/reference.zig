@@ -200,6 +200,8 @@ pub const Measure = struct {
     user_s: f64,
     sys_s: f64,
     server_cpu_s: f64 = 0,
+    /// Test URLs the run ran; zero: not recorded (the worklist's are assumed).
+    tests: u64 = 0,
 
     pub fn cpu(m: Measure) f64 {
         return m.user_s + m.sys_s + m.server_cpu_s;
@@ -211,6 +213,8 @@ pub const CraneMeasure = struct {
     user_s: f64,
     sys_s: f64,
     server_cpu_s: f64 = 0,
+    /// Test URLs the run ran; zero: not recorded.
+    tests: u64 = 0,
     /// Worklist files Crane's runner ran.
     files: u64 = 0,
     /// The frozen runner that ran them (its directory or commit).

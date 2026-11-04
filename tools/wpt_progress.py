@@ -1956,15 +1956,16 @@ def compare_reference(worklist, records, ref):
         elif st == 'OK' and rec.get('failed', 0) == 0 and rec.get('timed_out', 0) == 0:
             t['clean'] += 1
 
+    # The totals compare the files both have a result for; the files only one has are listed.
     crane, refc = blank(), blank()
     areas = collections.defaultdict(lambda: dict(pass_=0, reported=0, blocking=0, run=0))
     ahead_ref, ahead_crane, only_ref, only_crane = [], [], [], []
     for p in worklist:
         c, r = records.get(p), files.get(p)
-        if c is not None:
+        if c is not None and r is not None:
             add(crane, c, p)
-        if r is not None:
             add(refc, r, p)
+        if r is not None:
             a = areas[area_of(p)]
             a['pass_'] += r.get('passed', 0)
             a['reported'] += subtotal(r)
@@ -1987,7 +1988,7 @@ def compare_reference(worklist, records, ref):
     ahead_ref.sort(key=lambda x: (-x[1], x[0]))
     ahead_crane.sort(key=lambda x: (-x[1], x[0]))
     rename = lambda t: {('pass' if k == 'pass_' else k): v for k, v in t.items()}
-    return {'crane': rename(crane), 'ref': rename(refc),
+    return {'crane': rename(crane), 'ref': rename(refc), 'common': crane['run'],
             'areas': {a: rename(v) for a, v in areas.items()},
             'ahead_ref': ahead_ref, 'ahead_crane': ahead_crane,
             'only_ref': only_ref, 'only_crane': only_crane}
@@ -2073,7 +2074,6 @@ def render_reference(worklist, records, ref):
         row('Not run', f"{cr['notrun']:,}", f"{rf['notrun']:,}"),
         row('Blocking files', f"{cr['blocking']:,}", f"{rf['blocking']:,}"),
         row('Clean files', f"{cr['clean']:,}", f"{rf['clean']:,}"),
-        row('Files with a result', f"{cr['run']:,}", f"{rf['run']:,}"),
     ])
 
     timing_html = ''
@@ -2096,8 +2096,11 @@ def render_reference(worklist, records, ref):
             rows.append(row('One empty test, harness alone', fmt_duration(pc * procs), fmt_duration(pr * procs)))
             if o.get('small_files'):
                 rows.append(row('Start-up, before the first test', fmt_duration(sc), fmt_duration(sr)))
-            if urls:
-                hc, hr = sc + pc * urls, sr + pr * urls
+            # Each run is split over the test URLs it ran (the worklist's, when it recorded none).
+            uc = (c.get('tests') or urls) if c else urls
+            ur = r.get('tests') or urls
+            if ur:
+                hc, hr = sc + pc * uc, sr + pr * ur
                 rows.append(row('Of the wall clock: harness (estimate)', fmt_duration(hc), fmt_duration(hr)))
                 rows.append(row('Of the wall clock: the tests (estimate)',
                                 fmt_duration(max(c['wall_s'] - hc, 0)) if c else 'not measured',
@@ -2140,20 +2143,24 @@ def render_reference(worklist, records, ref):
                        f'{esc(gate_status(rec, p))}</span></li>')
         return f'<ul class="samples">{"".join(out)}</ul>'
 
+    sr_, srcs = cov.get('sources_reported', 0), cov.get('sources', len(worklist))
+    ran = (f'has a result for {sr_:,} of the {len(worklist):,} worklist files, run' if sr_ < srcs
+           else f'ran the {len(worklist):,} worklist files')
     sum_ref = sum(d for _, d in cmp['ahead_ref'])
     sum_crane = sum(d for _, d in cmp['ahead_crane'])
     missing = cov.get('urls_missing', 0)
     return f"""
 <h2 class="section" id="versus">Crane and {name} <small class="dim">the same files, a reference run</small></h2>
 <div class="panel">
-  <p class="sub2">{name} <code>{esc(run['browser_version'])}</code>{channel} ran the same {len(worklist):,}
-    worklist files on {esc(when)} with WPT&rsquo;s own runner (<code>wpt run</code>, headless{driver},
+  <p class="sub2">{name} <code>{esc(run['browser_version'])}</code>{channel} {ran} on {esc(when)} with WPT&rsquo;s own runner (<code>wpt run</code>, headless{driver},
     {run['processes']} processes{where}), on WPT revision <code>{esc(run['wpt_revision'][:10])}</code>, over the
     worklist of Crane <code>{esc(run['worklist_commit'])}</code>. Read from <code>{esc(src)}</code>;
     never counted as Crane&rsquo;s. Both columns are journal counts: subtests passed of those reported.</p>
   <table class="comp versus"><thead><tr><th></th><th>Crane</th><th>{name}</th></tr></thead>
   <tbody>{nums}</tbody></table>
-  <p class="dim note">{name} reported {cov.get('urls_reported', 0):,} of the {cov.get('urls_expected', 0):,} test
+  <p class="dim note">Both columns are over the {cmp['common']:,} files both ran.
+    Not compared: {len(cmp['only_ref']):,} file{'s' if len(cmp['only_ref']) != 1 else ''} with a result from {name} alone, {len(cmp['only_crane']):,} from Crane alone.
+    {name} reported {cov.get('urls_reported', 0):,} of the {cov.get('urls_expected', 0):,} test
     URLs of these files{f'; the other {missing:,} have no result, so those files compare over fewer URLs' if missing else ''}.
     Each engine runs under its own harness: Crane&rsquo;s runner, and WPT&rsquo;s <code>wptrunner</code> over WebDriver.</p>
   {timing_html}
