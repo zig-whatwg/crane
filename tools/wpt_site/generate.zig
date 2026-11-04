@@ -1578,3 +1578,206 @@ test "site: no exemptions write the same bytes as before; an invalid one stops t
     try testing.expectError(error.InvalidExemption, runFixtureExempt(gpa, &f, "bad2", fixtureExemption("dom/typo.html"), &diag));
     try testing.expectEqualStrings("dom/typo.html", diag.path);
 }
+
+// ============================================================================
+// Tests: a reference run beside Crane's (lane chromeref1)
+// ============================================================================
+
+/// Chrome's results on the fixture's worklist, as reference.write makes them:
+/// dom/a.html 3 of 3 (Crane 2 of 3), dom/b.html 1 of 1 (Crane TIMEOUT),
+/// dom/nodes/c.any.js 2 of 2 with one test URL missing (Crane NONE-PASSED),
+/// url/u.html 1 of 3 (Crane 3 of 3), url/never.html TIMEOUT 1 of 2 (Crane has
+/// not run it).
+const fixture_reference =
+    \\{"format":"crane-wpt-reference/1","engine":"chrome",
+    \\"run":{"browser_version":"150.0.7000.1","webdriver_version":"150.0.7000.2","channel":"stable","wpt_revision":"56d7fe562b35dfcb063fac457f24bd0a38205481","worklist_commit":"0c228a97aa9","processes":5,"host":"chat.local","command":"wpt run chrome","date":"2026-11-04T11:00:00Z"},
+    \\"product":"chrome","time_start":1793790000000,"time_end":1793793600000,
+    \\"timing":{"processes":5,"reference":{"wall_s":3600.5,"user_s":9000,"sys_s":1200},"crane":{"wall_s":2400,"user_s":8000,"sys_s":400,"files":5,"runner":"main-0c228a97aa"},"overhead":{"files":200,"reference":{"wall_s":60,"user_s":100,"sys_s":20},"crane":{"wall_s":10,"user_s":30,"sys_s":5}}},
+    \\"coverage":{"sources":5,"sources_in_manifest":5,"sources_reported":5,"urls_expected":7,"urls_reported":6,"urls_skipped":0,"urls_missing":1,"urls_outside":0,"urls_unknown":0},
+    \\"files":{
+    \\"dom/a.html":{"engine":"chrome","status":"OK","passed":3,"failed":0,"timed_out":0,"notrun":0,"urls":1,"missing_urls":0,"message":null},
+    \\"dom/b.html":{"engine":"chrome","status":"OK","passed":1,"failed":0,"timed_out":0,"notrun":0,"urls":1,"missing_urls":0,"message":null},
+    \\"dom/nodes/c.any.js":{"engine":"chrome","status":"OK","passed":2,"failed":0,"timed_out":0,"notrun":0,"urls":1,"missing_urls":1,"message":null},
+    \\"url/never.html":{"engine":"chrome","status":"TIMEOUT","passed":1,"failed":0,"timed_out":1,"notrun":0,"urls":1,"missing_urls":0,"message":"slow"},
+    \\"url/u.html":{"engine":"chrome","status":"OK","passed":1,"failed":2,"timed_out":0,"notrun":0,"urls":1,"missing_urls":0,"message":null}
+    \\}}
+;
+
+fn runFixtureRef(gpa: Allocator, f: *Fixture, out_name: []const u8, ref_json: ?[]const u8) !Summary {
+    const st = try f.state(gpa);
+    defer gpa.free(st);
+    var out = try f.tmp.dir.createDirPathOpen(testing.io, out_name, .{ .open_options = .{ .iterate = true } });
+    defer out.close(testing.io);
+    return generate(gpa, testing.io, .{
+        .state_json = st,
+        .history_json = fixture_history,
+        .worklist_text = fixture_worklist,
+        .results = f.results,
+        .assets = null,
+        .wpt = fixture_wpt,
+        .reference_json = ref_json,
+    }, out);
+}
+
+test "site: a reference run is shown beside Crane's on the same files, never in Crane's numbers" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    const s = try runFixtureRef(gpa, &f, "out", fixture_reference);
+    try testing.expectEqual(@as(usize, 5), s.reference_files);
+
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    // Crane's headline is Crane's alone.
+    try expectHas(index, "<span class=\"hl-pass\">5</span><span class=\"hl-of\"> / 8</span>");
+    try expectHas(index, "<div class=\"blk\"><dt>Blocking files</dt><dd>2</dd>");
+    // The comparison: its own section after the scope, before the contents.
+    try expectBefore(index, "id=\"status\"", "id=\"versus\"");
+    try expectBefore(index, "id=\"versus\"", "id=\"contents\"");
+    try expectHas(index, "<h2 id=\"versus-h\">Crane and Chrome</h2>");
+    try expectHas(index, "Chrome <code>150.0.7000.1</code>");
+    try expectHas(index, "ChromeDriver <code>150.0.7000.2</code>");
+    try expectHas(index, "<code>56d7fe562b</code>");
+    try expectHas(index, "4 Nov 2026");
+    // Side by side: subtests passing of reported, and blocking files, for both.
+    try expectHas(index, "<tr><th scope=\"row\">WPT subtests passing</th><td class=\"n\" data-v=\"5\" data-of=\"8\"><b>5</b> / 8</td><td class=\"n\" data-v=\"8\" data-of=\"11\"><b>8</b> / 11</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Blocking files</th><td class=\"n blk\">2</td><td class=\"n blk\">1</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Files with a result</th><td class=\"n\">4</td><td class=\"n\">5</td></tr>");
+    // Where they differ, both directions, on the comparison page.
+    try expectHas(index, "<a href=\"chrome.html#ahead-ref\">3 files</a> where Chrome passes subtests Crane does not (4 subtests)");
+    try expectHas(index, "<a href=\"chrome.html#ahead-crane\">1 file</a> where Crane passes subtests Chrome does not (2 subtests)");
+    // The suite tables carry Chrome's count beside Crane's.
+    try expectHas(index, "<th scope=\"col\" class=\"n\">Chrome</th>");
+
+    // A directory page: Chrome's numbers for the directory, and per file.
+    const dom = try readOut(gpa, &f, "out/dom/index.html");
+    defer gpa.free(dom);
+    try expectHas(dom, "<p class=\"figures-ref\"><span class=\"ref-name\">Chrome</span> <b>6</b> / 6 WPT subtests passing on the same files, <span class=\"quiet\">none blocking</span></p>");
+    try expectHas(dom, "<td class=\"n\" data-v=\"2\" data-of=\"3\"><b>2</b> / 3</td><td class=\"n\" data-v=\"3\" data-of=\"3\"><b>3</b> / 3</td>");
+
+    // A file page: Chrome's standing and count beside Crane's.
+    const b = try readOut(gpa, &f, "out/dom/b.html/index.html");
+    defer gpa.free(b);
+    try expectHas(b, "<div><dt>Chrome</dt><dd><span class=\"gate gate-clean\">Clean</span> <b>1</b> / 1 WPT subtests passing <span class=\"quiet\">runner status <code>OK</code></span></dd></div>");
+    const c = try readOut(gpa, &f, "out/dom/nodes/c.any.js/index.html");
+    defer gpa.free(c);
+    try expectHas(c, "1 of its test URLs has no Chrome result");
+    const never = try readOut(gpa, &f, "out/url/never.html/index.html");
+    defer gpa.free(never);
+    try expectHas(never, "<span class=\"gate gate-unrun\">Not run</span>");
+    try expectHas(never, "<div><dt>Chrome</dt><dd><span class=\"gate gate-timeout g-block\">TIMEOUT</span> <b>1</b> / 2 WPT subtests passing");
+
+    // The comparison page: Chrome ahead by most subtests first, then Crane ahead,
+    // then the files only one of them ran.
+    const cmp = try readOut(gpa, &f, "out/chrome.html");
+    defer gpa.free(cmp);
+    try expectBefore(cmp, "id=\"ahead-ref\"", "id=\"ahead-crane\"");
+    try expectBefore(cmp, "id=\"ahead-crane\"", "id=\"only-one\"");
+    try expectBefore(cmp, "<a href=\"dom/nodes/c.any.js/\">", "<a href=\"dom/a.html/\">");
+    try expectBefore(cmp, "<a href=\"dom/a.html/\">", "<a href=\"dom/b.html/\">");
+    try expectBefore(cmp, "<a href=\"dom/b.html/\">", "id=\"ahead-crane\"");
+    try expectBefore(cmp, "id=\"ahead-crane\"", "<a href=\"url/u.html/\">");
+    try expectBefore(cmp, "id=\"only-one\"", "<a href=\"url/never.html/\">");
+    try expectHas(cmp, "<td class=\"n\" data-v=\"2\">+2</td>");
+    try expectHas(cmp, "<table class=\"listing listing-compare\">");
+    if (pages_mod.needsScript(cmp)) |why| {
+        std.debug.print("\nchrome.html needs script: {s}\n", .{why});
+        return error.TestPageNeedsScript;
+    }
+    // Every page's contents rail leads to it; the rail names no version and no number.
+    try expectHas(dom, "<li class=\"toc-front\"><a href=\"../chrome.html\"><span class=\"secno\"></span><span class=\"toc-name\">Crane and Chrome</span></a></li>");
+    try expectHas(index, "<li class=\"toc-front\"><a href=\"chrome.html\"><span class=\"secno\"></span><span class=\"toc-name\">Crane and Chrome</span></a></li>");
+}
+
+test "site: wall time is shown for both engines with the harness overhead split out" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixtureRef(gpa, &f, "out", fixture_reference);
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<tr><th scope=\"row\">The worklist, wall clock</th><td class=\"n\">40 min 0 s</td><td class=\"n\">1 h 0 min</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">CPU, user + system</th><td class=\"n\">2 h 20 min</td><td class=\"n\">2 h 50 min</td></tr>");
+    // 200 trivial files in 10 s and 60 s with 5 runners: 250 ms and 1.50 s each.
+    try expectHas(index, "<tr><th scope=\"row\">One empty test, harness alone</th><td class=\"n\">250 ms</td><td class=\"n\">1.50 s</td></tr>");
+    try expectHas(index, "5 runners each");
+}
+
+test "site: a reference run's records are never Crane's" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream ++
+        \\{"engine":"chrome","test":"/dom/b.html","status":"OK","message":null,"subtests":[{"name":"chrome's","status":"PASS","message":null}]}
+        \\
+    );
+    defer f.deinit();
+    // A run directory named reference/ is not a run: a record that names a
+    // journal there is not located in it.
+    try f.tmp.dir.createDirPath(testing.io, "results/reference/chrome-150");
+    try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "results/reference/stray.jsonl", .data = "{}\n" });
+    try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "results/reference/chrome-150/reference.json", .data = fixture_reference });
+    const stray = try f.results.statFile(testing.io, "reference/stray.jsonl", .{});
+    const stray_mtime = @as(f64, @floatFromInt(stray.mtime.nanoseconds)) / 1e9;
+
+    // The fixture's state, with url/u.html's record from a journal under
+    // reference/, and one of Chrome's records for url/never.html, which Crane
+    // has not run.
+    const st = try std.fmt.allocPrint(gpa,
+        \\{{"dom/a.html":{{"path":"dom/a.html","status":"OK","passed":2,"failed":1,"timed_out":0,"notrun":0,"_journal":"journal.jsonl","_mtime":{d}}},
+        \\"dom/nodes/c.any.js":{{"path":"dom/nodes/c.any.js","status":"OK","passed":0,"failed":2,"timed_out":0,"notrun":0,"_journal":"journal.jsonl","_mtime":{d}}},
+        \\"dom/b.html":{{"path":"dom/b.html","status":"TIMEOUT","passed":0,"failed":0,"timed_out":0,"notrun":0,"message":"took too long","_journal":"journal.jsonl","_mtime":{d}}},
+        \\"url/u.html":{{"path":"url/u.html","status":"OK","passed":3,"failed":0,"timed_out":0,"notrun":0,"_journal":"stray.jsonl","_mtime":{d}}},
+        \\"url/never.html":{{"engine":"chrome","path":"url/never.html","status":"OK","passed":9,"failed":0,"timed_out":0,"notrun":0,"_journal":"journal.jsonl","_mtime":{d}}}}}
+    , .{ f.journal_mtime, f.journal_mtime, f.journal_mtime, stray_mtime, f.journal_mtime });
+    defer gpa.free(st);
+    var out = try f.tmp.dir.createDirPathOpen(testing.io, "out", .{ .open_options = .{ .iterate = true } });
+    defer out.close(testing.io);
+    const s = try generate(gpa, testing.io, .{
+        .state_json = st,
+        .history_json = fixture_history,
+        .worklist_text = fixture_worklist,
+        .results = f.results,
+        .assets = null,
+        .wpt = fixture_wpt,
+    }, out);
+    try testing.expectEqual(@as(usize, 1), s.refused_records);
+    try testing.expectEqual(@as(usize, 1), s.refused_stream_lines);
+
+    // Chrome's 9 passes are nowhere in Crane's numbers: the file is not run.
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<span class=\"hl-pass\">5</span><span class=\"hl-of\"> / 8</span>");
+    const never = try readOut(gpa, &f, "out/url/never.html/index.html");
+    defer gpa.free(never);
+    try expectHas(never, "<span class=\"gate gate-unrun\">Not run</span>");
+    // Chrome's stream line beside Crane's journal is not Crane's detail.
+    const b = try readOut(gpa, &f, "out/dom/b.html/index.html");
+    defer gpa.free(b);
+    try testing.expect(std.mem.indexOf(u8, b, "chrome&rsquo;s") == null);
+    try testing.expect(std.mem.indexOf(u8, b, "chrome's") == null);
+    try expectHas(b, "No per-subtest data for this file.");
+    // reference/ is never named as a run.
+    const u = try readOut(gpa, &f, "out/url/u.html/index.html");
+    defer gpa.free(u);
+    try testing.expect(std.mem.indexOf(u8, u, "reference/stray") == null);
+    // Without a reference given, there is no comparison.
+    try testing.expect(!exists(&f, "out/chrome.html"));
+    try testing.expect(std.mem.indexOf(u8, index, "id=\"versus\"") == null);
+}
+
+test "site: no reference writes the same bytes as before; an invalid one stops the site" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixture(gpa, &f, "plain", fixture_worklist);
+    _ = try runFixtureRef(gpa, &f, "none", null);
+    const a = try readOut(gpa, &f, "plain/dom/index.html");
+    defer gpa.free(a);
+    const b = try readOut(gpa, &f, "none/dom/index.html");
+    defer gpa.free(b);
+    try testing.expectEqualStrings(a, b);
+    try testing.expect(std.mem.indexOf(u8, a, "Chrome") == null);
+
+    const crane_ref = try std.mem.replaceOwned(u8, gpa, fixture_reference, "\"engine\":\"chrome\",\n\"run\"", "\"engine\":\"crane\",\n\"run\"");
+    defer gpa.free(crane_ref);
+    try testing.expectError(error.InvalidReference, runFixtureRef(gpa, &f, "bad", crane_ref));
+}
