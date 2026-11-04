@@ -2805,17 +2805,31 @@ pub fn build(b: *std.Build) void {
     // the testing graph's modules over its own libcurl, mbedTLS, zlib, nghttp2.
     // `-Dwpt-runner-optimize=Debug` (or an explicit `-Doptimize=Debug`) builds
     // the Debug runner, on the shared libraries, for a diagnosis.
-    const runner_modes = runner_build_mode.runnerModes(
-        b.option(
-            std.builtin.OptimizeMode,
-            "wpt-runner-optimize",
-            "Optimize mode of wpt_runner and gc_bench (default: ReleaseSafe, or -Doptimize when given; Debug for a diagnosis)",
-        ),
+    // `-Dwpt-runner-release` builds the release runner (build_mode.zig
+    // `release_runner`): every part ReleaseSafe, the C code at ReleaseSafe's
+    // default sanitizer, libc's malloc - the build to time and measure beside a
+    // browser's official release, never one to sweep or gate with (the user,
+    // 2026-11-04). It wins over -Dwpt-runner-optimize.
+    const runner_release = b.option(
+        bool,
+        "wpt-runner-release",
+        "The release runner, for timing and memory beside a browser's release build: wpt_runner and gc_bench ReleaseSafe throughout (Crane's modules and C libraries too), the C code at ReleaseSafe's default sanitizer, libc's malloc - no leak or double-free detection, so never for sweeps or gates",
+    ) orelse false;
+    const runner_optimize_option = b.option(
+        std.builtin.OptimizeMode,
+        "wpt-runner-optimize",
+        "Optimize mode of wpt_runner and gc_bench (default: ReleaseSafe, or -Doptimize when given; Debug for a diagnosis)",
+    );
+    const runner_modes = if (runner_release) runner_build_mode.release_runner else runner_build_mode.runnerModes(
+        runner_optimize_option,
         optimize,
         b.user_input_options.contains("optimize") or b.graph.release_mode != .off,
     );
-    const runner_graph = if (!runner_modes.ownCLibraries() or use_system_curl) testing_graph else runner_graph: {
+    // A graph of its own when its C libraries or its Crane modules differ from
+    // the shared graph's: the release runner's Crane modules are ReleaseFast.
+    const runner_graph = if (!runner_modes.ownGraph(optimize) or use_system_curl) testing_graph else runner_graph: {
         var runner_config = module_config;
+        runner_config.optimize = runner_modes.crane_modules;
         runner_config.brotli = buildBrotli(b, target, runner_modes.c_libraries, runner_modes.sanitize_c);
         runner_config.image_codecs = buildImageCodecs(b, target, runner_modes.c_libraries, runner_modes.sanitize_c);
         runner_config.static_libcurl = buildStaticLibcurl(b, target, runner_modes.c_libraries, enable_http2, runner_modes.sanitize_c, if (brotli_enabled) runner_config.brotli else null);
@@ -5159,6 +5173,8 @@ pub fn build(b: *std.Build) void {
     // For the build banner: the root's mode is the runner's own builtin.mode.
     wpt_options.addOption(std.builtin.OptimizeMode, "crane_modules_mode", runner_modes.crane_modules);
     wpt_options.addOption(std.builtin.OptimizeMode, "c_libraries_mode", runner_modes.c_libraries);
+    // The release runner allocates from libc's malloc, with no leak or double-free detection.
+    wpt_options.addOption(bool, "production_allocator", runner_modes.allocator == .production);
 
     // Add WPT options to the runner's root module
     wpt_runner_exe.root_module.addOptions("wpt_options", wpt_options);

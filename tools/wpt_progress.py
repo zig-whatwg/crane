@@ -99,6 +99,27 @@ def gate_status(rec, path=None):
     return st
 
 
+# Reference runs (lane chromeref1; the user, 2026-11-03: "I want the chrome results on the
+# same files represented in our progress report"): another engine's results on the same
+# worklist - `wpt run chrome` over the worklist's test URLs - joined to its sources through the
+# manifest by `zig build wpt-site -- import-reference` (tools/wpt_site/reference.zig) into
+# wpt-results/reference/<run>/reference.json. They are shown beside Crane's and never counted
+# as Crane's: nothing under wpt-results/reference/ is a journal, and a journal or state record
+# whose `engine` is not Crane's is refused wherever it sits, with a message. Every line Crane's
+# runner writes has no `engine`; every record of a reference run carries its own.
+REFERENCE_SUBDIR = 'reference'
+REFERENCE_FORMAT = 'crane-wpt-reference/1'
+
+
+def is_crane(rec):
+    """Whether a record may be counted as Crane's: no `engine` (the runner's own lines) or 'crane'."""
+    return rec.get('engine') in (None, 'crane')
+
+
+def engine_label(engine):
+    return {'chrome': 'Chrome', 'firefox': 'Firefox', 'safari': 'Safari'}.get(engine, engine)
+
+
 # The gate's exemptions (the user, 2026-10-17; AGENTS.md "The 0.1 gate", in full in
 # .claude/rules/wpt-workflow.md): worklist
 # files omitted from the blocking count because ALL THREE of Chrome, Firefox and
@@ -609,6 +630,19 @@ def load_results():
             records = json.load(f)
     except (OSError, json.JSONDecodeError):
         records = {}
+    # A reference run's record in the state is not Crane's, however it got there.
+    dropped = [p for p, r in records.items() if not is_crane(r)]
+    for p in dropped:
+        del records[p]
+    if dropped:
+        print(f"wpt_progress: dropped {len(dropped)} record{'s' if len(dropped) != 1 else ''} "
+              f"of another engine from {STATE}: a reference run is never Crane's")
+    # A reference.json is read only from wpt-results/reference/<run>/, and never as Crane's.
+    for fn in sorted(glob.glob(os.path.join(RESULTS, 'reference.json')) +
+                     glob.glob(os.path.join(RESULTS, '*', 'reference.json'))):
+        print(f"wpt_progress: ignored {os.path.relpath(fn, RESULTS)}: a reference run is read only "
+              f"from wpt-results/{REFERENCE_SUBDIR}/<run>/reference.json, never as Crane's")
+    refused = collections.Counter()
     # High-water marks kept under an older rule are rebuilt from the journals
     # present, and from the record itself (`high_water` counts it).
     revisions = {}
@@ -637,6 +671,9 @@ def load_results():
                 rec = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if 'path' in rec and not is_crane(rec):
+                refused[(os.path.relpath(fn, RESULTS), str(rec.get('engine')))] += 1
+                continue
             if 'path' in rec:
                 rec['_journal'] = journal
                 # The run's label: the directory under wpt-results/ ('' for a
@@ -651,6 +688,11 @@ def load_results():
                 # an old journal cannot roll the picture backwards. It may raise
                 # a floor only when it measured the same WPT snapshot.
                 records[rec['path']] = merge_result(rec, prev)
+
+    for (rel, engine), n in sorted(refused.items()):
+        print(f"wpt_progress: refused {n} record{'s' if n != 1 else ''} of engine {engine} in {rel}: "
+              f"a reference run is never Crane's; it belongs in wpt-results/{REFERENCE_SUBDIR}/<run>/ "
+              "(zig build wpt-site -- import-reference)")
 
     os.makedirs(os.path.dirname(STATE), exist_ok=True)
     tmp_path = STATE + '.tmp'
@@ -668,7 +710,10 @@ def journal_files():
     beside a journal (`X.wptreport.jsonl`, the site's per-subtest detail) is not
     a journal and is never read here."""
     files = glob.glob(os.path.join(RESULTS, '*.jsonl')) + glob.glob(os.path.join(RESULTS, '*', '*.jsonl'))
-    return sorted((f for f in files if not f.endswith('.wptreport.jsonl')), key=os.path.getmtime)
+    # wpt-results/reference/ holds reference runs, never Crane's journals.
+    ref_dir = os.path.join(RESULTS, REFERENCE_SUBDIR) + os.sep
+    return sorted((f for f in files if not f.endswith('.wptreport.jsonl') and not f.startswith(ref_dir)),
+                  key=os.path.getmtime)
 
 
 def area_of(path, depth=2):
@@ -1845,8 +1890,363 @@ status survives.</p>
 """
 
 
+def reference_invalid(ref):
+    """Why `ref` (a parsed reference.json) cannot be shown, or None."""
+    if not isinstance(ref, dict) or ref.get('format') != REFERENCE_FORMAT:
+        return f"not {REFERENCE_FORMAT}"
+    engine = ref.get('engine')
+    if not isinstance(engine, str) or not engine:
+        return 'it names no engine'
+    if engine == 'crane':
+        return "a reference run of Crane itself: Crane's results are its journals"
+    run = ref.get('run') or {}
+    for key in ('browser_version', 'wpt_revision', 'worklist_commit', 'processes', 'date'):
+        if not run.get(key):
+            return f'run.{key} is missing'
+    for path, rec in (ref.get('files') or {}).items():
+        if not isinstance(rec, dict) or rec.get('engine') != engine:
+            return f"{path}: record of engine {rec.get('engine') if isinstance(rec, dict) else '?'} in a {engine} reference"
+    return None
+
+
+def load_reference(engine='chrome'):
+    """The newest valid reference run of `engine` (by its run date) under
+    wpt-results/reference/<run>/reference.json, with `_dir` set, or None. Each
+    invalid one is named and skipped."""
+    best = None
+    for fn in sorted(glob.glob(os.path.join(RESULTS, REFERENCE_SUBDIR, '*', 'reference.json'))):
+        rel = os.path.relpath(fn, RESULTS)
+        try:
+            with open(fn) as f:
+                ref = json.load(f)
+        except (OSError, json.JSONDecodeError) as err:
+            print(f'wpt_progress: ignored {rel}: {err}')
+            continue
+        why = reference_invalid(ref)
+        if why:
+            print(f'wpt_progress: ignored {rel}: {why}')
+            continue
+        if ref['engine'] != engine:
+            continue
+        if best is None or ref['run']['date'] > best['run']['date']:
+            ref['_dir'] = os.path.dirname(fn)
+            best = ref
+    return best
+
+
+def compare_reference(worklist, records, ref):
+    """Both engines over the worklist, from journal counts alone (passed of
+    reported, as the reference reports them), under the same gate rule; and
+    the files where one passes more subtests than the other, the most first."""
+    files = ref.get('files', {})
+
+    def blank():
+        return dict(pass_=0, reported=0, fail=0, timeout=0, notrun=0, blocking=0, clean=0, run=0)
+
+    def add(t, rec, path):
+        t['pass_'] += rec.get('passed', 0)
+        t['reported'] += subtotal(rec)
+        t['fail'] += rec.get('failed', 0)
+        t['timeout'] += rec.get('timed_out', 0)
+        t['notrun'] += rec.get('notrun', 0)
+        t['run'] += 1
+        st = gate_status(rec, path)
+        if st not in ('OK', EXEMPT):
+            t['blocking'] += 1
+        elif st == 'OK' and rec.get('failed', 0) == 0 and rec.get('timed_out', 0) == 0:
+            t['clean'] += 1
+
+    # The totals compare the files both have a result for; the files only one has are listed.
+    crane, refc = blank(), blank()
+    areas = collections.defaultdict(lambda: dict(pass_=0, reported=0, blocking=0, run=0))
+    ahead_ref, ahead_crane, only_ref, only_crane = [], [], [], []
+    for p in worklist:
+        c, r = records.get(p), files.get(p)
+        if c is not None and r is not None:
+            add(crane, c, p)
+            add(refc, r, p)
+        if r is not None:
+            a = areas[area_of(p)]
+            a['pass_'] += r.get('passed', 0)
+            a['reported'] += subtotal(r)
+            a['run'] += 1
+            if gate_status(r, p) not in ('OK', EXEMPT):
+                a['blocking'] += 1
+        if c is None and r is None:
+            continue
+        if c is None:
+            only_ref.append(p)
+            continue
+        if r is None:
+            only_crane.append(p)
+            continue
+        d = r.get('passed', 0) - c.get('passed', 0)
+        if d > 0:
+            ahead_ref.append((p, d))
+        elif d < 0:
+            ahead_crane.append((p, -d))
+    ahead_ref.sort(key=lambda x: (-x[1], x[0]))
+    ahead_crane.sort(key=lambda x: (-x[1], x[0]))
+    rename = lambda t: {('pass' if k == 'pass_' else k): v for k, v in t.items()}
+    return {'crane': rename(crane), 'ref': rename(refc), 'common': crane['run'],
+            'areas': {a: rename(v) for a, v in areas.items()},
+            'ahead_ref': ahead_ref, 'ahead_crane': ahead_crane,
+            'only_ref': only_ref, 'only_crane': only_crane}
+
+
+def harness_split(files, wall, small_files=0, small_wall=None):
+    """(per_test_s, startup_s) from overhead runs of empty tests, as
+    tools/wpt_site/reference.zig harnessSplit: two sizes separate the fixed
+    start-up from the wall clock each test adds to the runner pool."""
+    if not files:
+        return 0.0, 0.0
+    if small_wall is not None and small_files and files > small_files and wall > small_wall:
+        per = (wall - small_wall) / (files - small_files)
+        return per, max(small_wall - per * small_files, 0.0)
+    return wall / files, 0.0
+
+
+def measure_cpu(m):
+    """The run's CPU, as reference.zig Measure.cpu: the larger of its rusage (user + system of
+    what it waited for) and its process tree sampled once a second (which also sees processes no
+    parent waited for), plus its share of a server it did not start."""
+    return max(m['user_s'] + m['sys_s'], m.get('tree_cpu_s', 0)) + m.get('server_cpu_s', 0)
+
+
+def fmt_mb(mb):
+    """As the public site says it: "800 MB", "6.0 GB"."""
+    if mb is None or mb != mb or mb < 0:
+        return '&mdash;'
+    if mb >= 1024:
+        return f'{mb / 1024:.1f} GB'
+    return f'{int(mb + 0.5):,} MB'
+
+
+V8_BUILD_NOTE = ('a release build (<code>is_debug=false</code>, no V8 checks, no heap verification: '
+                 '<code>scripts/build-v8-static.sh</code>) but not an official one: no ThinLTO and no PGO, which '
+                 'Chrome&rsquo;s V8 is built with.')
+V8_NOTE = 'Crane links ' + V8_BUILD_NOTE
+V8_OFFICIAL_NOTE = ('built as Chrome&rsquo;s official build is: ThinLTO and PGO (<code>-Dv8-build=official</code>, '
+                    '<code>scripts/build-v8-official.sh</code>).')
+MEMORY_METHOD = ('Memory is each process&rsquo;s phys_footprint (Activity Monitor&rsquo;s Memory: its own dirty pages, '
+                 'anonymous and compressed; the kernel charges a page shared between processes to one owner, so a sum '
+                 'counts it once), sampled every second and summed over the engine&rsquo;s processes - Chrome&rsquo;s '
+                 'browser, renderer, GPU and utility processes; Crane&rsquo;s runner processes that run the files - and, '
+                 'apart, over the harness&rsquo;s: wptrunner&rsquo;s Python, its servers and ChromeDriver; Crane&rsquo;s '
+                 'supervising runner and the shared WPT server.')
+
+
+def fmt_duration(secs):
+    """As the public site says it: "250 ms", "1.50 s", "40 min 0 s", "2 h 20 min"."""
+    if secs is None or secs != secs or secs < 0:
+        return '&mdash;'
+    if secs < 1:
+        return f'{int(secs * 1000 + 0.5)} ms'
+    if secs < 10:
+        return f'{secs:.2f} s'
+    if secs < 60:
+        return f'{secs:.1f} s'
+    whole = int(secs + 0.5)
+    if whole < 3600:
+        return f'{whole // 60} min {whole % 60} s'
+    return f'{whole // 3600} h {(whole % 3600) // 60} min'
+
+
+_SORT_SCRIPT = """<script>
+document.querySelectorAll('table.sortable').forEach(function (t) {
+  t.querySelectorAll('thead th').forEach(function (th, col) {
+    th.style.cursor = 'pointer';
+    th.addEventListener('click', function () {
+      var rows = Array.from(t.tBodies[0].rows), up = th.dataset.dir !== 'up';
+      rows.sort(function (a, b) {
+        var x = a.cells[col].dataset.v, y = b.cells[col].dataset.v;
+        var c = (x != null && y != null) ? (+x - +y) : a.cells[col].textContent.localeCompare(b.cells[col].textContent);
+        return up ? c : -c;
+      });
+      th.dataset.dir = up ? 'up' : 'down';
+      rows.forEach(function (r) { t.tBodies[0].appendChild(r); });
+    });
+  });
+});
+</script>"""
+
+
+def render_reference(worklist, records, ref):
+    """The comparison with a reference run: the run's identity, both engines'
+    numbers on the same files, the wall time with the harness overhead, and
+    the files each passes more subtests of."""
+    if not ref:
+        return ''
+    name = engine_label(ref['engine'])
+    run = ref['run']
+    cmp = compare_reference(worklist, records, ref)
+    cr, rf = cmp['crane'], cmp['ref']
+    esc = html.escape
+    when = run['date'].replace('T', ' ').replace('Z', ' UTC')
+    driver = (f", {'ChromeDriver' if ref['engine'] == 'chrome' else 'WebDriver'} "
+              f"<code>{esc(run['webdriver_version'])}</code>") if run.get('webdriver_version') else ''
+    channel = f" ({esc(run['channel'])})" if run.get('channel') else ''
+    where = f", {esc(run['host'])}" if run.get('host') else ''
+    src = os.path.relpath(ref.get('_dir', ''), REPO) if ref.get('_dir') else 'wpt-results/reference/'
+    tm0 = ref.get('timing') or {}
+    runner = ((tm0.get('crane') or {}).get('runner') or '')
+    same_window = (f" In the same window Crane&rsquo;s frozen runner, <code>{esc(runner)}</code>, ran the same files "
+                   "with the same runners." if runner else '')
+
+    def row(label, a, b):
+        return f'<tr><td class="area">{label}</td><td class="num">{a}</td><td class="num">{b}</td></tr>'
+
+    nums = ''.join([
+        row('WPT subtests passing', f"{cr['pass']:,} / {cr['reported']:,}", f"{rf['pass']:,} / {rf['reported']:,}"),
+        row('Failed', f"{cr['fail']:,}", f"{rf['fail']:,}"),
+        row('Timed out', f"{cr['timeout']:,}", f"{rf['timeout']:,}"),
+        row('Not run', f"{cr['notrun']:,}", f"{rf['notrun']:,}"),
+        row('Blocking files', f"{cr['blocking']:,}", f"{rf['blocking']:,}"),
+        row('Clean files', f"{cr['clean']:,}", f"{rf['clean']:,}"),
+    ])
+
+    timing_html = ''
+    tm = ref.get('timing')
+    cov = ref.get('coverage', {})
+    if tm:
+        procs = tm['processes']
+        c, r = tm.get('crane'), tm['reference']
+        rows = []
+        if (c or {}).get('reported') or r.get('reported'):
+            rows.append(row('WPT subtests passing in this run',
+                            f"{c['passed']:,} / {c['reported']:,}" if (c or {}).get('reported') else 'not recorded',
+                            f"{r['passed']:,} / {r['reported']:,}" if r.get('reported') else 'not recorded'))
+        rows += [row('The worklist, wall clock', fmt_duration(c['wall_s']) if c else 'not measured', fmt_duration(r['wall_s'])),
+                 row('CPU, user + system', fmt_duration(measure_cpu(c)) if c else 'not measured',
+                     fmt_duration(measure_cpu(r)))]
+        cmem, rmem = (c or {}).get('memory'), r.get('memory')
+        if cmem or rmem:
+            for label, key in (('Memory of the engine, peak', 'engine_peak_mb'), ('Memory of the engine, mean', 'engine_mean_mb'),
+                               ('Memory of the harness, peak', 'harness_peak_mb'), ('Memory of the harness, mean', 'harness_mean_mb'),
+                               ('One runner&rsquo;s engine, largest peak', 'group_peak_max_mb'),
+                               ('One runner&rsquo;s engine, mean of the peaks', 'group_peak_mean_mb')):
+                rows.append(row(label, fmt_mb(cmem[key]) if cmem else 'not measured', fmt_mb(rmem[key]) if rmem else 'not measured'))
+        o = tm.get('overhead')
+        urls = cov.get('urls_expected', 0)
+        if o and o.get('files'):
+            def split(side):
+                small = o.get('small_' + side)
+                return harness_split(o['files'], o[side]['wall_s'], o.get('small_files', 0),
+                                     small['wall_s'] if small else None)
+            (pc, sc), (pr, sr) = split('crane'), split('reference')
+            rows.append(row('One empty test, harness alone', fmt_duration(pc * procs), fmt_duration(pr * procs)))
+            if o.get('small_files'):
+                rows.append(row('Start-up, before the first test', fmt_duration(sc), fmt_duration(sr)))
+            # Each run is split over the test URLs it ran (the worklist's, when it recorded none).
+            uc = (c.get('tests') or urls) if c else urls
+            ur = r.get('tests') or urls
+            if ur:
+                hc, hr = sc + pc * uc, sr + pr * ur
+                rows.append(row('Of the wall clock: harness (estimate)', fmt_duration(hc), fmt_duration(hr)))
+                rows.append(row('Of the wall clock: the tests (estimate)',
+                                fmt_duration(max(c['wall_s'] - hc, 0)) if c else 'not measured',
+                                fmt_duration(max(r['wall_s'] - hr, 0))))
+        timing_html = f"""
+  <h3 class="panelh" style="margin-top:18px">Wall time <span class="dim">{procs} runners each{where}</span></h3>
+  <table class="comp versus"><thead><tr><th></th><th>Crane</th><th>{name}</th></tr></thead>
+  <tbody>{''.join(rows)}</tbody></table>"""
+        if o and o.get('files'):
+            timing_html += (f'<p class="dim note">Each harness also ran {o["files"]:,} files holding one empty test '
+                            f'(<code>tests/wpt/crane/harness-overhead/</code>) with the same {procs} runners: what one '
+                            f'costs is the harness alone, and the estimates split each run at that rate over the '
+                            f'{urls:,} test URLs of the worklist.</p>')
+        timing_html += ('<p class="dim note">CPU is the larger of what the run&rsquo;s harness waited for (rusage) and a '
+                        'once-a-second sample of its whole process tree, which also counts the browser&rsquo;s processes '
+                        'no parent waited for; Crane&rsquo;s includes its share of the shared WPT server, which it does '
+                        'not start.' + (' ' + MEMORY_METHOD if (cmem or rmem) else '') + '</p>')
+        product = 'Chrome for Testing' if ref['engine'] == 'chrome' else name
+        builds = [f"{name}: {product} <code>{esc(run['browser_version'])}</code>" +
+                  (f", {esc(run['build'])}" if run.get('build') else '')]
+        if c:
+            builds.append('Crane: ' + (esc(c['build']) + '; ' if c.get('build') else '') +
+                          f"runner <code>{esc(c.get('runner', ''))}</code>")
+        elif run.get('crane_build'):
+            builds.append('Crane: ' + esc(run['crane_build']))
+        v8 = (f"Crane links V8 <code>{esc(run['crane_js_engine'].removeprefix('V8 '))}</code>, " +
+              (V8_OFFICIAL_NOTE if run.get('crane_v8_build') == 'official' else V8_BUILD_NOTE)
+              if run.get('crane_js_engine') else V8_NOTE)
+        if run.get('js_engine'):
+            v8 += (f" {name} <code>{esc(run['browser_version'])}</code> ships V8 "
+                   f"<code>{esc(run['js_engine'].removeprefix('V8 '))}</code>.")
+        builds.append('V8: ' + v8)
+        if tm.get('reference_reused'):
+            builds.append(f"{name}&rsquo;s figures are from its run of {esc(run['date'][:10])}, reused beside "
+                          f"Crane&rsquo;s: {esc(tm['reference_reused'])}.")
+        timing_html += '<ul class="samples">' + ''.join(f'<li>{b}</li>' for b in builds) + '</ul>'
+
+    def file_rows(items):
+        out = []
+        for p, d in items:
+            c, r = records[p], ref['files'][p]
+            out.append(f'<tr><td class="area">{esc(p)}</td>'
+                       f'<td class="num" data-v="{c.get("passed", 0)}">{c.get("passed", 0):,} / {subtotal(c):,}</td>'
+                       f'<td class="num" data-v="{r.get("passed", 0)}">{r.get("passed", 0):,} / {subtotal(r):,}</td>'
+                       f'<td class="num" data-v="{d}">+{d:,}</td>'
+                       f'<td class="num">{esc(gate_status(c, p))}</td><td class="num">{esc(gate_status(r, p))}</td></tr>')
+        return ''.join(out)
+
+    def table(items, lead):
+        if not items:
+            return '<p class="dim">None.</p>'
+        return (f'<table class="sortable"><thead><tr><th>Test file</th><th>Crane</th><th>{name}</th>'
+                f'<th>{lead} ahead by</th><th>Crane status</th><th>{name} status</th></tr></thead>'
+                f'<tbody>{file_rows(items)}</tbody></table>')
+
+    def only(paths, side):
+        if not paths:
+            return '<p class="dim">None.</p>'
+        out = []
+        for p in paths:
+            rec = ref['files'][p] if side == 'ref' else records[p]
+            out.append(f'<li><code>{esc(p)}</code> <span class="dim">{rec.get("passed", 0):,} / {subtotal(rec):,}, '
+                       f'{esc(gate_status(rec, p))}</span></li>')
+        return f'<ul class="samples">{"".join(out)}</ul>'
+
+    sr_, srcs = cov.get('sources_reported', 0), cov.get('sources', len(worklist))
+    ran = (f'has a result for {sr_:,} of the {len(worklist):,} worklist files, run' if sr_ < srcs
+           else f'ran the {len(worklist):,} worklist files')
+    sum_ref = sum(d for _, d in cmp['ahead_ref'])
+    sum_crane = sum(d for _, d in cmp['ahead_crane'])
+    missing = cov.get('urls_missing', 0)
+    return f"""
+<h2 class="section" id="versus">Crane and {name} <small class="dim">the same files, a reference run</small></h2>
+<div class="panel">
+  <p class="sub2">{name} <code>{esc(run['browser_version'])}</code>{channel} {ran} on {esc(when)} with WPT&rsquo;s own runner (<code>wpt run</code>, headless{driver},
+    {run['processes']} processes{where}), on WPT revision <code>{esc(run['wpt_revision'][:10])}</code>, over the
+    worklist of Crane <code>{esc(run['worklist_commit'])}</code>.{same_window} Read from <code>{esc(src)}</code>;
+    never counted as Crane&rsquo;s. Both columns are journal counts: subtests passed of those reported.</p>
+  <table class="comp versus"><thead><tr><th></th><th>Crane</th><th>{name}</th></tr></thead>
+  <tbody>{nums}</tbody></table>
+  <p class="dim note">Both columns are over the {cmp['common']:,} files both ran.
+    Not compared: {len(cmp['only_ref']):,} file{'s' if len(cmp['only_ref']) != 1 else ''} with a result from {name} alone, {len(cmp['only_crane']):,} from Crane alone.
+    {name} reported {cov.get('urls_reported', 0):,} of the {cov.get('urls_expected', 0):,} test
+    URLs of these files{f'; the other {missing:,} have no result, so those files compare over fewer URLs' if missing else ''}.
+    Each engine runs under its own harness: Crane&rsquo;s runner, and WPT&rsquo;s <code>wptrunner</code> over WebDriver.</p>
+  {timing_html}
+</div>
+<details open><summary><b>Where {name} passes subtests Crane does not</b> &mdash; {len(cmp['ahead_ref']):,} files,
+  {sum_ref:,} subtests (sortable: click a column)</summary>
+{table(cmp['ahead_ref'], name)}
+</details>
+<details><summary><b>Where Crane passes subtests {name} does not</b> &mdash; {len(cmp['ahead_crane']):,} files,
+  {sum_crane:,} subtests</summary>
+{table(cmp['ahead_crane'], 'Crane')}
+</details>
+<details><summary><b>Files only one of them ran</b> &mdash; {name} alone {len(cmp['only_ref']):,},
+  Crane alone {len(cmp['only_crane']):,}</summary>
+<p class="dim">{name} has a result, Crane has none:</p>{only(cmp['only_ref'], 'ref')}
+<p class="dim">Crane has a result, {name} has none:</p>{only(cmp['only_crane'], 'crane')}
+</details>
+{_SORT_SCRIPT}"""
+
+
 def render(areas, worklist, records, files, out_path, history=None, shape=None, roadmap=None,
-           dispositions=None):
+           dispositions=None, reference=None):
     tot = collections.Counter()
     for c in areas.values():
         tot.update(c)
@@ -1931,10 +2331,15 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     preserves it. Its passes use only the current run.</p>
 </div>"""
 
+    ref_areas = compare_reference(worklist, records, reference)['areas'] if reference else None
+    ref_name = engine_label(reference['engine']) if reference else ''
     rows = []
     for area in sorted(areas, key=lambda a: (-areas[a]['gating'], a)):
         c = areas[area]
         g = c['gating']
+        ra = (ref_areas or {}).get(area, {'pass': 0, 'reported': 0, 'blocking': 0, 'run': 0})
+        ref_cells = (f'<td class="num hide-sm">{ra["pass"]:,}<span class="dim"> / {ra["reported"]:,}</span></td>'
+                     f'<td class="num hide-sm">{ra["blocking"] or "&middot;"}</td>') if reference else ''
         rows.append(f"""
       <tr class="{'bad' if g else ('good' if c['run'] and not c['unrun'] else '')}">
         <td class="area">{html.escape(area)}</td>
@@ -1947,7 +2352,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
         <td class="num">{c['partial'] or '&middot;'}</td>
         <td class="num dim">{c['unrun'] or '&middot;'}</td>
         <td class="num hide-sm">{round(c['sub_passing']):,}<span class="dim"> / {round(c['sub_targeted']):,}</span></td>
-        <td>{bar(c['clean'], c['total'], 'ok')}</td>
+        {ref_cells}<td>{bar(c['clean'], c['total'], 'ok')}</td>
       </tr>""")
 
     journals = ''.join(
@@ -1962,6 +2367,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     unexplained = len(unexplained_losses(history or {}, dispositions or {}))
     roadmap_html = render_roadmap(roadmap, worklist, records)
     exempt_html = render_exempt(records, worklist)
+    reference_html = render_reference(worklist, records, reference)
     doc = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2099,6 +2505,9 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
   .pill.done {{ color:var(--ok) }}
   .pill.doing {{ color:var(--warn) }}
   .pill.todo {{ color:var(--dim) }}
+  table.versus {{ max-width:560px; margin-top:6px }}
+  table.versus th {{ text-align:right }}
+  table.sortable td.area {{ font-size:12px }}
 </style></head><body><div class="wrap">
 
 <h1>Crane engine progress</h1>
@@ -2128,6 +2537,8 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
   <div class="card"><div class="k">Mean per-file pass rate</div><div class="v">{file_mean_pct:.1f}%</div></div>
 </div>
 
+{reference_html}
+
 {roadmap_html}
 
 <h2 class="section">WPT detail</h2>
@@ -2145,6 +2556,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     <th>Timeout</th><th>Crash</th><th>Clean</th>
     <th class="hide-sm">Partial</th><th class="hide-sm">Unrun</th>
     <th class="hide-sm">Subtests&nbsp;pass&nbsp;/&nbsp;target</th>
+    {f'<th class="hide-sm">{ref_name}&nbsp;pass&nbsp;/&nbsp;reported</th><th class="hide-sm">{ref_name}&nbsp;blocking</th>' if reference else ''}
     <th class="hide-sm">Clean&nbsp;%</th>
   </tr></thead>
   <tbody>{''.join(rows)}</tbody>
@@ -2202,8 +2614,9 @@ def main():
         rebuild_history(worklist, records, shape)
         print(f"history rebuilt from per-record timestamps -> {HISTORY}")
     history = record_generation(worklist, records, areas)
+    reference = load_reference()
     gate_met, gating, run, total, clean = render(
-        areas, worklist, records, files, out, history, shape, load_roadmap(), dispositions)
+        areas, worklist, records, files, out, history, shape, load_roadmap(), dispositions, reference)
 
     tot = collections.Counter()
     for c in areas.values():
@@ -2229,6 +2642,16 @@ def main():
               'their floors are scoped to the individual journal measurement')
     if rescanned:
         print(f"  (rescanned {rescanned:,} sources -> {ESTIMATES})")
+    if reference:
+        cmp = compare_reference(worklist, records, reference)
+        cr, rf = cmp['crane'], cmp['ref']
+        name = engine_label(reference['engine'])
+        print(f"beside {name} {reference['run']['browser_version']} ({reference['run']['date']}, same files; "
+              f"never counted as Crane's): Crane {cr['pass']:,} / {cr['reported']:,} subtests passing, "
+              f"{cr['blocking']:,} blocking  |  {name} {rf['pass']:,} / {rf['reported']:,}, {rf['blocking']:,} blocking  |  "
+              f"{name} passes more in {len(cmp['ahead_ref']):,} files, Crane in {len(cmp['ahead_crane']):,}")
+    else:
+        print('no reference run under wpt-results/reference/: no comparison')
     print('GATE MET' if gate_met else 'gate not met')
     gens = history.get('generations', [])
     if gens:
@@ -2854,6 +3277,277 @@ def _check_loss_exit_status():
                 raise AssertionError('history rebuild erased tracked losses')
 
 
+# ============================================================================
+# Reference runs (lane chromeref1): another engine's results beside Crane's
+# ============================================================================
+
+def _reference_fixture(date='2026-11-04T11:00:00Z', version='150.0.7000.1', engine='chrome'):
+    files = {
+        'dom/a.html': {'status': 'OK', 'passed': 3, 'failed': 0, 'timed_out': 0, 'notrun': 0, 'urls': 1, 'missing_urls': 0},
+        'dom/b.html': {'status': 'OK', 'passed': 1, 'failed': 0, 'timed_out': 0, 'notrun': 0, 'urls': 1, 'missing_urls': 0},
+        'url/u.html': {'status': 'OK', 'passed': 1, 'failed': 2, 'timed_out': 0, 'notrun': 0, 'urls': 1, 'missing_urls': 0},
+        'url/never.html': {'status': 'TIMEOUT', 'passed': 1, 'failed': 0, 'timed_out': 1, 'notrun': 0, 'urls': 1, 'missing_urls': 1},
+    }
+    for rec in files.values():
+        rec['engine'] = engine
+    return {
+        'format': 'crane-wpt-reference/1', 'engine': engine,
+        'run': {'browser_version': version, 'webdriver_version': version, 'channel': 'stable',
+                'wpt_revision': '56d7fe562b35dfcb063fac457f24bd0a38205481', 'worklist_commit': '0c228a97aa9',
+                'processes': 5, 'host': 'chat.local', 'command': 'wpt run chrome', 'date': date},
+        'product': engine, 'time_start': None, 'time_end': None,
+        'timing': {'processes': 5, 'reference': {'wall_s': 3600.5, 'user_s': 9000, 'sys_s': 1200},
+                   'crane': {'wall_s': 2400, 'user_s': 8000, 'sys_s': 400, 'files': 4, 'runner': 'main-0c228a97aa'},
+                   'overhead': {'files': 200, 'reference': {'wall_s': 60, 'user_s': 100, 'sys_s': 20},
+                                'crane': {'wall_s': 10, 'user_s': 30, 'sys_s': 5}}},
+        'coverage': {'sources': 4, 'sources_in_manifest': 4, 'sources_reported': 4, 'urls_expected': 6,
+                     'urls_reported': 5, 'urls_skipped': 0, 'urls_missing': 1, 'urls_outside': 0, 'urls_unknown': 0},
+        'files': files,
+    }
+
+
+def _check_reference_never_crane():
+    """A reference run's record is never Crane's: a journal line of another engine is refused
+    with a message, a state record of one is dropped, wpt-results/reference/ holds no journals,
+    and a reference.json outside it is ignored, named."""
+    import tempfile, io, contextlib
+    global RESULTS, STATE
+    saved = RESULTS, STATE
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            RESULTS, STATE = d, os.path.join(d, 'state.json')
+
+            def journal(rel, recs, mtime):
+                fn = os.path.join(d, rel)
+                os.makedirs(os.path.dirname(fn), exist_ok=True)
+                with open(fn, 'w') as f:
+                    for r in recs:
+                        f.write(json.dumps(r) + '\n')
+                os.utime(fn, (mtime, mtime))
+
+            mt = QUERY_REACHES_PAGE + 100
+            journal('sweep-abc1234/journal.jsonl', [
+                {'path': 'dom/a.html', 'status': 'OK', 'passed': 1, 'failed': 1},
+                {'path': 'dom/b.html', 'engine': 'chrome', 'status': 'OK', 'passed': 9}], mt)
+            # A reference run copied where Crane's runs are read, newer than Crane's.
+            journal('chrome-copy/journal.jsonl', [
+                {'path': 'dom/a.html', 'engine': 'chrome', 'status': 'OK', 'passed': 7}], mt + 1)
+            journal('top.jsonl', [{'path': 'url/u.html', 'engine': 'firefox', 'status': 'OK', 'passed': 4}], mt + 2)
+            # Nothing under reference/ is a journal, whatever its name.
+            journal('reference/journal.jsonl', [{'path': 'dom/a.html', 'status': 'OK', 'passed': 5}], mt + 3)
+            journal('reference/chrome-150/journal.jsonl', [{'path': 'dom/a.html', 'status': 'OK', 'passed': 6}], mt + 4)
+            with open(os.path.join(d, 'reference', 'chrome-150', 'reference.json'), 'w') as f:
+                json.dump(_reference_fixture(), f)
+            with open(os.path.join(d, 'sweep-abc1234', 'reference.json'), 'w') as f:
+                json.dump(_reference_fixture(), f)
+
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                records, files = load_results()
+            msg = out.getvalue()
+            assert records['dom/a.html']['passed'] == 1, records['dom/a.html']
+            assert 'dom/b.html' not in records and 'url/u.html' not in records
+            assert not any(os.sep + 'reference' + os.sep in f for f in files), files
+            assert 'refused 1 record of engine chrome in chrome-copy/journal.jsonl' in msg, msg
+            assert 'refused 1 record of engine chrome in sweep-abc1234/journal.jsonl' in msg, msg
+            assert 'refused 1 record of engine firefox in top.jsonl' in msg, msg
+            assert 'ignored sweep-abc1234/reference.json' in msg, msg
+
+            # A state that already holds another engine's record loses it, and says so.
+            with open(STATE) as f:
+                state = json.load(f)
+            state['url/never.html'] = {'path': 'url/never.html', 'engine': 'chrome', 'status': 'OK', 'passed': 3, '_mtime': 1}
+            with open(STATE, 'w') as f:
+                json.dump(state, f)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                records, _ = load_results()
+            assert 'url/never.html' not in records
+            assert 'dropped 1 record of another engine from' in out.getvalue(), out.getvalue()
+    finally:
+        RESULTS, STATE = saved
+
+
+def _check_reference_load():
+    """The newest valid reference of an engine is read from wpt-results/reference/<run>/;
+    one of Crane, of another format, or holding another engine's record is refused, named."""
+    import tempfile, io, contextlib
+    global RESULTS
+    saved = RESULTS
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            RESULTS = d
+
+            def put(run, ref):
+                os.makedirs(os.path.join(d, 'reference', run), exist_ok=True)
+                with open(os.path.join(d, 'reference', run, 'reference.json'), 'w') as f:
+                    json.dump(ref, f)
+
+            assert load_reference() is None
+            put('chrome-149', _reference_fixture(date='2026-10-01T00:00:00Z', version='149.0.1'))
+            put('chrome-150', _reference_fixture())
+            put('crane', _reference_fixture(engine='crane'))
+            bad = _reference_fixture(date='2026-12-01T00:00:00Z', version='151.0.1')
+            bad['files']['dom/a.html']['engine'] = 'firefox'
+            put('chrome-151', bad)
+            old = _reference_fixture(date='2026-12-02T00:00:00Z', version='152.0.1')
+            old['format'] = 'crane-wpt-reference/0'
+            put('chrome-152', old)
+            put('firefox-140', _reference_fixture(date='2026-12-03T00:00:00Z', version='140.0', engine='firefox'))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                ref = load_reference()
+            assert ref['run']['browser_version'] == '150.0.7000.1', ref['run']
+            assert ref['_dir'].endswith('chrome-150')
+            msg = out.getvalue()
+            assert 'reference/crane/reference.json' in msg and 'Crane' in msg, msg
+            assert 'reference/chrome-151/reference.json' in msg and 'firefox' in msg, msg
+            assert 'reference/chrome-152/reference.json' in msg, msg
+            with contextlib.redirect_stdout(io.StringIO()):
+                assert load_reference('firefox')['run']['browser_version'] == '140.0'
+    finally:
+        RESULTS = saved
+
+
+def _check_reference_compare():
+    """Both engines' numbers over the same worklist, Crane's from its journal counts alone,
+    and the files each passes more subtests of, the most first."""
+    worklist = ['dom/a.html', 'dom/b.html', 'dom/c.html', 'url/never.html', 'url/u.html']
+    records = {
+        'dom/a.html': {'path': 'dom/a.html', 'status': 'OK', 'passed': 2, 'failed': 1, 'timed_out': 0, 'notrun': 0},
+        'dom/b.html': {'path': 'dom/b.html', 'status': 'TIMEOUT', 'passed': 0, 'failed': 0, 'timed_out': 0, 'notrun': 0},
+        'dom/c.html': {'path': 'dom/c.html', 'status': 'OK', 'passed': 2, 'failed': 0, 'timed_out': 0, 'notrun': 0},
+        'url/u.html': {'path': 'url/u.html', 'status': 'OK', 'passed': 3, 'failed': 0, 'timed_out': 0, 'notrun': 0},
+    }
+    cmp = compare_reference(worklist, records, _reference_fixture())
+    # Both engines over the files both ran (a, b, u): dom/c.html is Crane's alone, url/never.html Chrome's.
+    assert cmp['common'] == 3
+    assert cmp['crane'] == {'pass': 5, 'reported': 6, 'fail': 1, 'timeout': 0, 'notrun': 0,
+                            'blocking': 1, 'clean': 1, 'run': 3}, cmp['crane']
+    assert cmp['ref'] == {'pass': 5, 'reported': 7, 'fail': 2, 'timeout': 0, 'notrun': 0,
+                          'blocking': 0, 'clean': 2, 'run': 3}, cmp['ref']
+    assert [(p, d) for p, d in cmp['ahead_ref']] == [('dom/a.html', 1), ('dom/b.html', 1)], cmp['ahead_ref']
+    assert [(p, d) for p, d in cmp['ahead_crane']] == [('url/u.html', 2)], cmp['ahead_crane']
+    assert cmp['only_ref'] == ['url/never.html'] and cmp['only_crane'] == ['dom/c.html']
+    assert cmp['areas']['dom'] == {'pass': 4, 'reported': 4, 'blocking': 0, 'run': 2}, cmp['areas']['dom']
+    assert cmp['areas']['url'] == {'pass': 2, 'reported': 5, 'blocking': 1, 'run': 2}, cmp['areas']['url']
+
+
+def _check_harness_split():
+    """Two sizes of overhead run separate the start-up; one size makes everything per test."""
+    assert harness_split(200, 60) == (0.3, 0.0)
+    per, start = harness_split(200, 60, 50, 30)
+    assert abs(per - 0.2) < 1e-9 and abs(start - 20) < 1e-9
+    assert harness_split(200, 60, 50, 61) == (0.3, 0.0)
+    assert harness_split(0, 60) == (0.0, 0.0)
+    assert measure_cpu({'user_s': 1, 'sys_s': 2}) == 3 and measure_cpu({'user_s': 1, 'sys_s': 2, 'server_cpu_s': 4}) == 7
+    # The sampled process tree wins when rusage missed processes no parent waited for, and not otherwise.
+    assert measure_cpu({'user_s': 72, 'sys_s': 28, 'tree_cpu_s': 120}) == 120
+    assert measure_cpu({'user_s': 25.5, 'sys_s': 7, 'tree_cpu_s': 30, 'server_cpu_s': 11.5}) == 44
+
+
+def _check_reference_window():
+    """Each side's build is named, and the window's runs give pass counts, CPU and memory side by side."""
+    import tempfile
+    worklist = ['dom/a.html', 'dom/b.html', 'url/never.html', 'url/u.html']
+    records = {'dom/a.html': {'path': 'dom/a.html', 'status': 'OK', 'passed': 2, 'failed': 1, 'timed_out': 0, 'notrun': 0}}
+    ref = _reference_fixture()
+    ref['run']['build'] = 'Chrome for Testing, official release build'
+    ref['timing']['reference'].update(passed=8, reported=11, memory={
+        'samples': 3600, 'engine_peak_mb': 6144, 'engine_mean_mb': 3000.4, 'harness_peak_mb': 900, 'harness_mean_mb': 700,
+        'groups': 5, 'group_peak_max_mb': 1500, 'group_peak_mean_mb': 1200})
+    ref['timing']['crane'].update(runner='release-0c228a97aa', build='release runner: ReleaseSafe throughout, libc malloc',
+                                  passed=5, reported=8, memory={
+        'samples': 2400, 'engine_peak_mb': 800, 'engine_mean_mb': 512, 'harness_peak_mb': 250.6, 'harness_mean_mb': 200,
+        'groups': 330, 'group_peak_max_mb': 400, 'group_peak_mean_mb': 150})
+    areas, _, _ = build(worklist, records)
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref)
+        page = open(out).read()
+    assert '<tr><td class="area">WPT subtests passing in this run</td><td class="num">5 / 8</td><td class="num">8 / 11</td></tr>' in page
+    assert '<tr><td class="area">Memory of the engine, peak</td><td class="num">800 MB</td><td class="num">6.0 GB</td></tr>' in page
+    assert '<tr><td class="area">Memory of the engine, mean</td><td class="num">512 MB</td><td class="num">2.9 GB</td></tr>' in page
+    assert '<tr><td class="area">Memory of the harness, peak</td><td class="num">251 MB</td><td class="num">900 MB</td></tr>' in page
+    assert '<tr><td class="area">One runner&rsquo;s engine, largest peak</td><td class="num">400 MB</td><td class="num">1.5 GB</td></tr>' in page
+    assert 'Chrome: Chrome for Testing <code>150.0.7000.1</code>, Chrome for Testing, official release build' in page
+    assert 'Crane: release runner: ReleaseSafe throughout, libc malloc' in page
+    assert 'no ThinLTO and no PGO' in page and 'phys_footprint' in page
+    ref['run'].update(js_engine='V8 15.7.1', crane_js_engine='V8 13.1.203')
+    ref['timing']['reference_reused'] = 'the host and its load matched'
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref)
+        page2 = open(out).read()
+    assert 'Crane links V8 <code>13.1.203</code>' in page2 and 'Chrome <code>150.0.7000.1</code> ships V8 <code>15.7.1</code>' in page2
+    assert "Chrome&rsquo;s figures are from its run of 2026-11-04, reused beside Crane&rsquo;s: the host and its load matched." in page2
+    # On the official-style V8, the V8 line says so instead of naming a gap.
+    ref['run']['crane_v8_build'] = 'official'
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref)
+        page4 = open(out).read()
+    assert 'Crane links V8 <code>13.1.203</code>, built as Chrome&rsquo;s official build is: ThinLTO and PGO' in page4
+    assert 'no ThinLTO and no PGO' not in page4
+    del ref['run']['crane_v8_build']
+    # Before Crane's full run, its build is still named.
+    del ref['timing']['crane']
+    ref['run']['crane_build'] = 'release runner, overhead only'
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref)
+        page3 = open(out).read()
+    assert 'Crane: release runner, overhead only' in page3
+    assert '<tr><td class="area">The worklist, wall clock</td><td class="num">not measured</td>' in page3
+
+
+def _check_reference_render():
+    """The page shows the reference beside Crane's numbers, never in them."""
+    import tempfile
+    worklist = ['dom/a.html', 'dom/b.html', 'url/never.html', 'url/u.html']
+    records = {
+        'dom/a.html': {'path': 'dom/a.html', 'status': 'OK', 'passed': 2, 'failed': 1, 'timed_out': 0, 'notrun': 0},
+        'dom/b.html': {'path': 'dom/b.html', 'status': 'TIMEOUT', 'passed': 0, 'failed': 0, 'timed_out': 0, 'notrun': 0},
+        'url/u.html': {'path': 'url/u.html', 'status': 'OK', 'passed': 3, 'failed': 0, 'timed_out': 0, 'notrun': 0},
+    }
+    ref = _reference_fixture()
+    areas, _, _ = build(worklist, records)
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref)
+        page = open(out).read()
+        render(areas, worklist, records, [], out)
+        plain = open(out).read()
+    assert '<h2 class="section" id="versus">Crane and Chrome' in page
+    assert 'Chrome <code>150.0.7000.1</code>' in page and 'ChromeDriver <code>150.0.7000.1</code>' in page
+    assert "In the same window Crane&rsquo;s frozen runner, <code>main-0c228a97aa</code>, ran the same files" in page
+    assert '<code>56d7fe562b</code>' in page and '2026-11-04' in page
+    assert '<tr><td class="area">WPT subtests passing</td><td class="num">5 / 6</td><td class="num">5 / 7</td></tr>' in page
+    assert '<tr><td class="area">Blocking files</td><td class="num">1</td><td class="num">0</td></tr>' in page
+    assert 'over the 3 files both ran' in page and 'Not compared: 1 file with a result from Chrome alone, 0 from Crane alone' in page
+    # Without a test count, a run is split over the worklist's 6 URLs; with one, over its own.
+    assert '<tr><td class="area">Of the wall clock: harness (estimate)</td><td class="num">300 ms</td><td class="num">1.80 s</td></tr>' in page
+    ref3 = _reference_fixture()
+    ref3['timing']['reference']['tests'] = 3
+    ref3['timing']['crane']['tests'] = 3
+    ref3['coverage']['sources_reported'] = 2
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref3)
+        page3 = open(out).read()
+    assert '<tr><td class="area">Of the wall clock: harness (estimate)</td><td class="num">150 ms</td><td class="num">900 ms</td></tr>' in page3
+    assert 'has a result for 2 of the 4 worklist files' in page3
+    assert '<tr><td class="area">The worklist, wall clock</td><td class="num">40 min 0 s</td><td class="num">1 h 0 min</td></tr>' in page
+    assert '<tr><td class="area">One empty test, harness alone</td><td class="num">250 ms</td><td class="num">1.50 s</td></tr>' in page
+    assert 'CPU is the larger of what the run&rsquo;s harness waited for (rusage) and a once-a-second sample of its whole process tree' in page
+    assert 'Where Chrome passes subtests Crane does not' in page and 'Where Crane passes subtests Chrome does not' in page
+    assert page.index('>dom/a.html<') < page.index('>dom/b.html<') < page.index('Where Crane passes subtests')
+    assert '<th class="hide-sm">Chrome&nbsp;pass&nbsp;/&nbsp;reported</th>' in page
+    # Crane's own gate and headline are untouched by the reference.
+    assert '<div class="verdict">1 blocking' in page and '<div class="verdict">1 blocking' in plain
+    assert 'Crane and Chrome' not in plain and 'Chrome&nbsp;pass' not in plain
+
+
 if __name__ == '__main__':
     if sys.argv[1:] == ['--self-test']:
         _check_declared_variants()
@@ -2870,6 +3564,12 @@ if __name__ == '__main__':
         _check_retry_counts()
         _check_loss_baseline_migration()
         _check_loss_exit_status()
+        _check_reference_never_crane()
+        _check_reference_load()
+        _check_reference_compare()
+        _check_harness_split()
+        _check_reference_window()
+        _check_reference_render()
         print('wpt_progress self-test: ok')
     else:
         sys.exit(main())

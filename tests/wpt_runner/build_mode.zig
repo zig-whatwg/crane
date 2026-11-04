@@ -14,6 +14,19 @@ const std = @import("std");
 
 const Mode = std.builtin.OptimizeMode;
 
+/// The allocator the runner's process allocates from.
+pub const RunnerAllocator = enum {
+    /// runner_allocator.Fast / Traced (std.heap.DebugAllocator, safety on):
+    /// every leak and every double free reported, which the sweeps and the
+    /// gates read. Every runner but the release runner.
+    debug,
+    /// The allocator a release build of Crane gives its host: libc's malloc,
+    /// std.heap.c_allocator - what src/lib_exports.zig's createBrowser passes,
+    /// thread-safe for the runner's worker and service-worker threads. No
+    /// detection at all: the release runner is for timing only.
+    production,
+};
+
 pub const RunnerModes = struct {
     /// The runner's root module (tests/wpt_runner/main.zig). It decides the
     /// LLVM pipeline for all of the runner's Zig, std's mode, and the -O level
@@ -33,12 +46,36 @@ pub const RunnerModes = struct {
     /// panics with a stack trace instead of dying on a bare SIGTRAP. Null
     /// leaves Zig's default (off in ReleaseFast and ReleaseSmall).
     sanitize_c: ?std.zig.SanitizeC,
+    allocator: RunnerAllocator = .debug,
 
     /// Whether the runner needs C libraries of its own: the ones every other
     /// artifact links are built with -Doptimize's mode.
     pub fn ownCLibraries(self: RunnerModes) bool {
         return self.c_libraries != self.crane_modules;
     }
+
+    /// Whether the runner needs a module graph of its own: its C libraries
+    /// differ from its Crane modules' mode, or its Crane modules from the
+    /// shared graph's (`optimize`, -Doptimize's mode).
+    pub fn ownGraph(self: RunnerModes, optimize: Mode) bool {
+        return self.ownCLibraries() or self.crane_modules != optimize;
+    }
+};
+
+/// `-Dwpt-runner-release`: the runner as a release build of Crane runs - every
+/// part ReleaseSafe (the user, 2026-11-04: "recompile with ReleaseSafe then
+/// re-run the comparison to Chrome"), so Crane's modules leave Debug and its
+/// Debug-only checks (the refcount ledger, the isolate cleanup validation) are
+/// gone; the C code at ReleaseSafe's own sanitizer default, `.trap`, not the
+/// correctness runner's `.full`; and the production allocator. It is the build
+/// to time and measure beside a browser's official release, never one to
+/// sweep or gate with: it reports no leak and no double free.
+pub const release_runner: RunnerModes = .{
+    .root = .ReleaseSafe,
+    .crane_modules = .ReleaseSafe,
+    .c_libraries = .ReleaseSafe,
+    .sanitize_c = .trap,
+    .allocator = .production,
 };
 
 /// `runner_option`: -Dwpt-runner-optimize, if given. `optimize`: -Doptimize's
@@ -129,4 +166,40 @@ test "the banner names each mode as -Doptimize spells it" {
     try testing.expectEqualStrings("ReleaseSafe", displayName(.safe));
     try testing.expectEqualStrings("ReleaseFast", displayName(.fast));
     try testing.expectEqualStrings("ReleaseSmall", displayName(.small));
+}
+
+test "the release runner is ReleaseSafe throughout, at ReleaseSafe's own C sanitizer, with the production allocator" {
+    // -Dwpt-runner-release (the user, 2026-11-04: "recompile with ReleaseSafe
+    // then re-run the comparison to Chrome"): the runner as a release build of
+    // Crane would run, to time and measure beside Chrome for Testing, an
+    // official release build. Crane's modules leave Debug (no refcount ledger,
+    // no isolate cleanup validation), the C code takes ReleaseSafe's default
+    // sanitizer (.trap, not the correctness runner's .full), and the allocator
+    // is the one a host's release build gets. Never for sweeps or gates: it
+    // detects no leak and no double free.
+    const modes = release_runner;
+    try testing.expectEqual(Mode.ReleaseSafe, modes.root);
+    try testing.expectEqual(Mode.ReleaseSafe, modes.crane_modules);
+    try testing.expectEqual(Mode.ReleaseSafe, modes.c_libraries);
+    try testing.expectEqual(@as(?std.zig.SanitizeC, .trap), modes.sanitize_c);
+    try testing.expectEqual(RunnerAllocator.production, modes.allocator);
+    // Its Crane modules are not the shared graph's (built in -Doptimize's mode).
+    try testing.expect(modes.ownGraph(.Debug));
+}
+
+test "every other runner keeps the leak- and double-free-detecting allocator" {
+    // Pins the DEFAULT: the sweeps and the gates read "leaked:" and "Double
+    // free detected", which only the debug allocator reports.
+    try testing.expectEqual(RunnerAllocator.debug, runnerModes(null, .Debug, false).allocator);
+    try testing.expectEqual(RunnerAllocator.debug, runnerModes(.Debug, .Debug, false).allocator);
+    try testing.expectEqual(RunnerAllocator.debug, runnerModes(.ReleaseFast, .Debug, false).allocator);
+    try testing.expectEqual(RunnerAllocator.debug, runnerModes(null, .ReleaseFast, true).allocator);
+}
+
+test "a runner has a module graph of its own when its Crane modules or C libraries differ from the shared graph" {
+    // The default: Debug Crane modules, ReleaseSafe C libraries.
+    try testing.expect(runnerModes(null, .Debug, false).ownGraph(.Debug));
+    // -Doptimize=Debug and an explicit release -Doptimize share the graph built in that mode.
+    try testing.expect(!runnerModes(null, .Debug, true).ownGraph(.Debug));
+    try testing.expect(!runnerModes(null, .ReleaseFast, true).ownGraph(.ReleaseFast));
 }
