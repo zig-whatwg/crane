@@ -981,6 +981,51 @@ test "real processes: the Crane test runner fails a test that leaves process sta
     }
 }
 
+test "real processes: in a joined executable each member's standalone runtime is judged by its own row" {
+    // build.zig compiles tests/test_runner_fixture/joined_fixture.zig as
+    // -Dtest-binaries=v8 joins suites: member "start." with tests-v8's
+    // .process_start (its test start makes the standalone runtime once, for
+    // the process), member "held." with the default .per_test (lane onebin3:
+    // the joined executable judged tests-v8's tests by its own default row,
+    // so 10 of them failed `runtime.standalone_runtime: 0 -> 1`).
+    const fixture = @import("launcher_fixture");
+    const gpa = testing.allocator;
+    const io = testing.io;
+    const argv = [_][]const u8{ fixture.joined_path, "--listen=-", "--seed=0x1" };
+    const md = try queryMetadata(gpa, io, &argv);
+    defer md.deinit(gpa);
+
+    const cases = [_]struct { name: []const u8, first: sched.Status, says: ?[]const u8 }{
+        .{ .name = "start.member.test.makes the standalone runtime once, as its suite's test start does", .first = .pass, .says = null },
+        .{ .name = "held.member.test.leaves nothing", .first = .pass, .says = null },
+        .{ .name = "held.member.test.makes a standalone runtime and leaves it", .first = .log_err, .says = "runtime.standalone_runtime: 0 -> 1" },
+    };
+    var index: [cases.len]u32 = undefined;
+    for (cases, &index) |c, *i| {
+        i.* = for (md.names, 0..) |n, k| {
+            if (std.mem.eql(u8, n, c.name)) break @intCast(k);
+        } else {
+            std.debug.print("no test named {s}\n", .{c.name});
+            return error.TestUnexpectedResult;
+        };
+    }
+
+    // A process per test: each starts from a fresh process.
+    var plan = try @import("plan.zig").make(gpa, &index, .{ .seed = 1, .shuffle = false, .batch_size = 1 });
+    defer plan.deinit(gpa);
+    var exec = try Executor.init(gpa, io, &argv, 60 * std.time.ns_per_s, 1);
+    defer exec.deinit();
+    var run = try sched.Run.init(gpa, io, &plan, md.names.len, exec.executor(), .{ .jobs = 1, .alone_runs = 1 });
+    defer run.deinit();
+    try run.execute();
+    for (cases, index) |c, i| {
+        const rec = run.records[i];
+        errdefer std.debug.print("test {s}: first {t}\n{s}\n", .{ c.name, rec.first, rec.output });
+        try testing.expectEqual(c.first, rec.first);
+        if (c.says) |text| try testing.expect(std.mem.indexOf(u8, rec.output, text) != null);
+    }
+}
+
 test "a test executable that is not there: its tests are LAUNCHER-ERROR, with the path, the errno and whether it is there now" {
     const gpa = testing.allocator;
     const io = testing.io;

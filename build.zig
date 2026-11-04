@@ -1256,7 +1256,7 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
     // Whether this executable can run the many-Browsers variant's busy
     // Browser: -Dmany-browsers, and it links V8 and the browser module. The
     // others run as usual under -Dmany-browsers, and say nothing about it.
-    const many_browsers = useCraneTestRunner(b, test_exe, name, config.state_checks, config.standalone_runtime, launch.many_browsers);
+    const many_browsers = useCraneTestRunner(b, test_exe, name, config.state_checks, config.standalone_runtime, groups, launch.many_browsers);
     const run = b.addRunArtifact(launch.launcher);
     run.setName(b.fmt("test {s}", .{name}));
     // The build runner speaks the test-runner protocol to the launcher.
@@ -1370,7 +1370,13 @@ fn addGroupArgs(b: *std.Build, run: *std.Build.Step.Run, launch: *const TestLaun
 /// where the executable imports the browser module and links V8. Returns
 /// whether it can. `standalone`: who makes the standalone runtime
 /// (`StandaloneRuntime`), which decides how the runner compares it.
-fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []const u8, checks: StateChecks, standalone: StandaloneRuntime, many_browsers: bool) bool {
+/// `members`: the member suites of a joined executable (`OneBinary`,
+/// -Dtest-binaries=v8), each with its own row: the runner judges a test by
+/// its member's StandaloneRuntime, found by the test's name prefix (lane
+/// onebin3: tests-v8's .process_start had no per-member path, so its tests
+/// read as leavers in the joined "tests" executable). Empty for an
+/// executable of one suite, which keeps `standalone` for every test.
+fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []const u8, checks: StateChecks, standalone: StandaloneRuntime, members: []const SuiteGroup, many_browsers: bool) bool {
     const root = test_exe.root_module;
     const wf = b.addWriteFiles();
     _ = wf.addCopyDirectory(b.path("tests/test_runner"), "", .{ .include_extensions = &.{".zig"} });
@@ -1388,11 +1394,22 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []
         \\/// Who makes the standalone runtime (build.zig's StandaloneRuntime).
         \\pub const StandaloneRuntime = enum {{ per_test, process_start }};
         \\pub const standalone_runtime: StandaloneRuntime = .{t};
-        \\
-        \\/// The root module's imports rooted at src/<dir>/root.zig, by directory.
-        \\pub const roots = .{{
+        \\/// A joined executable's member suites (build.zig -Dtest-binaries=v8):
+        \\/// a test whose name starts with a member's prefix is judged by that
+        \\/// member's own StandaloneRuntime - the longest prefix wins. Empty for an
+        \\/// executable of one suite.
+        \\pub const Member = struct {{ prefix: []const u8, standalone_runtime: StandaloneRuntime }};
+        \\pub const members: []const Member = &.{{
         \\
     , .{ name, name, checks, standalone }) catch @panic("OOM");
+    for (members) |m| w.print("    .{{ .prefix = \"{s}\", .standalone_runtime = .{t} }},\n", .{ m.prefix, m.config.standalone_runtime }) catch @panic("OOM");
+    w.writeAll(
+        \\};
+        \\
+        \\/// The root module's imports rooted at src/<dir>/root.zig, by directory.
+        \\pub const roots = .{
+        \\
+    ) catch @panic("OOM");
     // Every import rooted at a src/<dir>/root.zig - but, besides `dom` and
     // `runtime` (the counters' own, which import no other module's root as
     // a file), none whose directory holds another's: its root may import the
@@ -2896,8 +2913,28 @@ pub fn build(b: *std.Build) void {
                 },
             }),
         });
-        _ = useCraneTestRunner(b, state_fixture, "test_state_fixture", .fail, .per_test, false);
+        _ = useCraneTestRunner(b, state_fixture, "test_state_fixture", .fail, .per_test, &.{}, false);
         launcher_fixture_options.addOptionPath("state_path", state_fixture.getEmittedBin());
+        // A joined executable as -Dtest-binaries=v8 makes one (tests/
+        // test_runner_fixture/joined_fixture.zig): two members, "start."
+        // (.process_start, as tests-v8) and "held." (the default .per_test),
+        // each judged by its own row (lane onebin3).
+        const joined_fixture = b.addTest(.{
+            .name = "test_joined_fixture",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tests/test_runner_fixture/joined_fixture.zig"),
+                .target = target,
+                .imports = &.{
+                    .{ .name = "runtime", .module = testing_graph.runtime },
+                    .{ .name = "dom", .module = testing_graph.dom },
+                },
+            }),
+        });
+        _ = useCraneTestRunner(b, joined_fixture, "test_joined_fixture", .fail, .per_test, &.{
+            .{ .prefix = "start.", .config = .{ .standalone_runtime = .process_start }, .plain = false },
+            .{ .prefix = "held.", .config = .{}, .plain = false },
+        }, false);
+        launcher_fixture_options.addOptionPath("joined_path", joined_fixture.getEmittedBin());
         // A test that races, built with ThreadSanitizer: child.zig's tests
         // check that the launcher's TSAN_OPTIONS make the race a crash of
         // its process, blamed on that test (-Dsanitize-thread's contract).
@@ -2928,7 +2965,7 @@ pub fn build(b: *std.Build) void {
                 }),
             });
             linkV8(b, many_fixture.root_module, target);
-            _ = useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, .per_test, true);
+            _ = useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, .per_test, &.{}, true);
             launcher_fixture_options.addOptionPath("many_browsers_path", many_fixture.getEmittedBin());
         }
         const launcher_test_module = b.createModule(.{
