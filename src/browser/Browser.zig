@@ -165,6 +165,10 @@ pub const BrowserConfig = struct {
 
 /// Browser instance managing a single V8 isolate
 pub const Browser = struct {
+    /// What a host attached to the Browser's developer console receives
+    /// (`attachDeveloperConsole`).
+    pub const developer_console = @import("dom").developer_console;
+
     allocator: std.mem.Allocator,
     /// The page's agent (engine.createAgent) - lives for the entire browser
     /// lifetime.
@@ -1052,6 +1056,27 @@ pub const Browser = struct {
         var title = interfaces.Document.get_title(d) catch return allocator.dupe(u8, "");
         defer title.deinit(d.ctx.allocator);
         return allocator.dupe(u8, title.asSlice());
+    }
+
+    // ========================================================================
+    // The developer console
+    // ========================================================================
+
+    /// The host shows this Browser's developer console from now on: the
+    /// console output of every realm of it - its pages, their frames and
+    /// popups, its workers - and their unhandled exceptions and rejections
+    /// are reported to `host` (dom.developer_console: on the realm's thread,
+    /// with the console's lock held; it runs no script), and no longer
+    /// printed to stderr. Until `detachDeveloperConsole`, which a host calls
+    /// before it ends.
+    pub fn attachDeveloperConsole(self: *Browser, host_console: developer_console.Host) !void {
+        try developer_console.attach(self.scope, host_console);
+    }
+
+    /// The host no longer shows the console: no report reaches it once this
+    /// returns (one under way on a worker's thread has ended).
+    pub fn detachDeveloperConsole(self: *Browser) void {
+        developer_console.detach(self.scope);
     }
 
     /// Get the current URL
