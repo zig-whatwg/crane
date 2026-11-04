@@ -49,6 +49,12 @@ standalone runtime of its own and the process's back, and a test that needs a
 realm gets its own `TestAgent`, made by `engine.createAgent` and ended with the
 test through `engine.destroyAgent` - no realm outlives its test
 ([lesson](../docs/lessons/testing-a-test-may-assume-only-what-the-process-start-makes.md)).
+A helper never starts or ends the engine itself: `test_process.start()`, and
+`startSnapshot(bytes)`/`endSnapshot()` for a test whose subject is the snapshot
+(`test_process_test` checks every file). The standalone runtime is the process
+start's only in tests-v8 (build.zig `SuiteConfig.standalone_runtime`); in every
+other suite a test makes and ends its own, and one that leaves it fails by name
+([lesson](../docs/lessons/testing-what-the-process-start-makes-is-a-fact-of-the-suite.md)).
 The Crane test runner (`tests/test_runner/`) checks this after every test: a
 test that leaves a Browser, agent, Global handle or standalone object alive, or
 leaves the start unfinished, fails naming the field and its before and after
