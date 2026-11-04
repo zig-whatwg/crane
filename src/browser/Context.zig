@@ -1663,14 +1663,23 @@ pub const Context = struct {
     /// state, `createLoadDocument`); step 7 makes the realm of a new one.
     fn realmForTraversableDocument(context: *anyopaque, origin: html_mod.Origin) bool {
         const self: *Context = @ptrCast(@alignCast(context));
-        const shown = self.document_instance orelse return true;
-        if (dom_mod.document_lifecycle.isInitialAboutBlank(shown)) return true;
         var buffer: [512]u8 = undefined;
         const serialized: ?[]const u8 = if (origin.is_opaque) null else (if (origin.port) |port|
             std.fmt.bufPrint(&buffer, "{s}://{s}:{d}", .{ origin.scheme, origin.host, port }) catch null
         else
             std.fmt.bufPrint(&buffer, "{s}://{s}", .{ origin.scheme, origin.host }) catch null);
-        self.replaceRealm(serialized orelse "about:blank", serialized) catch return false;
+        if (self.document_instance) |shown| if (!dom_mod.document_lifecycle.isInitialAboutBlank(shown)) {
+            self.replaceRealm(serialized orelse "about:blank", serialized) catch return false;
+        };
+        // The Window the document goes in has the document's origin, as an
+        // embedder load gives it (createLoadDocument): it is what
+        // window.open() hands a popup as its creator's origin (Window's
+        // newTopLevelTraversable), and a same-origin popup's first navigation
+        // reuses the Window open() returned only when the popup's initial
+        // about:blank has that origin (HTML "create and initialize a
+        // Document object" step 6). A kept initial about:blank Window's was
+        // opaque, and so was a new one's.
+        if (self.window_instance) |window| dom_mod.window_globals.setOrigin(window, serialized orelse "null") catch {};
         return true;
     }
 
