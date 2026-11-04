@@ -25,6 +25,7 @@ const std = @import("std");
 const model = @import("model.zig");
 const html = @import("html.zig");
 const chart = @import("chart.zig");
+const reference_mod = @import("reference.zig");
 const Io = std.Io;
 const W = *Io.Writer;
 const Error = Io.Writer.Error;
@@ -58,12 +59,27 @@ pub const FileView = struct {
     has_detail: bool,
     /// Its entry in tools/wpt_gate_exemptions.txt, when it has one.
     exemption: ?*const model.Exemption = null,
+    /// The reference run's result for the file (`Site.reference`), when it has one.
+    ref: ?RefView = null,
+};
+
+/// A reference run's result for one file: never Crane's, shown beside it.
+pub const RefView = struct {
+    status: []const u8,
+    counts: model.Counts,
+    /// Under the same gate rule as Crane's, exemptions included.
+    gate: model.Gate,
+    urls: u64 = 0,
+    /// Test URLs of the file the reference run has no result for.
+    missing_urls: u64 = 0,
 };
 
 pub const DirView = struct {
     /// "dom/nodes/"; "" is the root.
     path: []const u8,
     totals: model.Totals = .{},
+    /// The reference run's totals over the same files (one it lacks is unrun).
+    ref_totals: model.Totals = .{},
     /// Child directory paths, sorted.
     dirs: []const []const u8 = &.{},
     /// Indices into `Site.files`, sorted by path.
@@ -95,6 +111,16 @@ pub const Site = struct {
     card_ref: []const u8,
     /// tools/wpt_gate_exemptions.txt's entries, in the file's order.
     exemptions: []const model.Exemption = &.{},
+    /// Another engine's run on the same worklist (reference.zig), shown beside
+    /// Crane's and never counted as Crane's; null: no comparison.
+    reference: ?*const reference_mod.Reference = null,
+    /// Indices into `files`: both ran and the reference passes more subtests
+    /// (most first); both ran and Crane passes more; only the reference ran;
+    /// only Crane did.
+    ahead_ref: []const usize = &.{},
+    ahead_crane: []const usize = &.{},
+    only_ref: []const usize = &.{},
+    only_crane: []const usize = &.{},
 
     pub fn root(s: *const Site) *const DirView {
         return s.dirs.getPtr("").?;
@@ -168,7 +194,7 @@ fn markClass(status: []const u8) []const u8 {
     return "s-other";
 }
 
-const reserved_ids = [_][]const u8{ "status", "exempt", "contents", "history", "main", "toc", "gens", "chart", "hl-label", "toc-title" };
+const reserved_ids = [_][]const u8{ "status", "exempt", "versus", "contents", "history", "main", "toc", "gens", "chart", "hl-label", "toc-title" };
 
 /// The index section id of a suite ("dom/" -> "dom"), `suite-` prefixed
 /// when it would collide with one of the page's own ids.
@@ -298,6 +324,9 @@ fn writeRail(w: W, site: *const Site, root: []const u8, current: ?[]const u8) Er
     try w.writeAll("<nav class=\"toc\" aria-labelledby=\"toc-title\">\n<p class=\"toc-title\" id=\"toc-title\">Contents</p>\n<ol class=\"toc-list\">\n");
     try w.print("<li class=\"toc-front\"><a href=\"{s}\"><span class=\"secno\"></span><span class=\"toc-name\">Subtest totals</span></a></li>\n", .{home});
     try w.print("<li class=\"toc-front\"><a href=\"{s}#status\"><span class=\"secno\"></span><span class=\"toc-name\">Status of this document</span></a></li>\n", .{root});
+    // The comparison page: named by its engine alone, so no result or version
+    // reaches the frame every page carries.
+    if (site.reference) |r| try w.print("<li class=\"toc-front\"><a href=\"{s}{s}.html\"><span class=\"secno\"></span><span class=\"toc-name\">Crane and {s}</span></a></li>\n", .{ root, r.engine, r.label() });
     for (site.suites, 1..) |s, i| {
         const t = site.dir(s).totals;
         const here = if (current) |c| std.mem.eql(u8, c, s) else false;
@@ -535,11 +564,48 @@ fn writePassOf(w: W, pass: u64, reported: u64) Error!void {
     try html.num(w, reported);
 }
 
+/// The reference run's column head in a tests table, when there is one.
+fn writeRefHead(w: W, site: *const Site) Error!void {
+    const r = site.reference orelse return;
+    try w.print("<th scope=\"col\" class=\"n\">{s}</th>", .{r.label()});
+}
+
+/// The reference run's subtests passing in a table row; `ran` false: it has
+/// no result there.
+fn writeRefCell(w: W, pass: u64, reported: u64, ran: bool) Error!void {
+    if (!ran) return w.writeAll("<td class=\"n\"><span class=\"quiet\">&mdash;</span></td>");
+    try w.print("<td class=\"n\" data-v=\"{d}\" data-of=\"{d}\">", .{ pass, reported });
+    try writePassOf(w, pass, reported);
+    try w.writeAll("</td>");
+}
+
+/// Beneath a directory's or suite's figures: the reference run's numbers for
+/// the same files.
+fn writeRefFigures(w: W, site: *const Site, t: model.Totals) Error!void {
+    const r = site.reference orelse return;
+    try w.print("<p class=\"figures-ref\"><span class=\"ref-name\">{s}</span> ", .{r.label()});
+    try writePassOf(w, t.sub_pass, t.subReported());
+    try w.writeAll(" WPT subtests passing on the same files, ");
+    if (t.blocking() > 0) {
+        try w.writeAll("<span class=\"blk\">");
+        try html.num(w, t.blocking());
+        try w.writeAll(" blocking</span>");
+    } else try w.writeAll("<span class=\"quiet\">none blocking</span>");
+    if (t.unrun > 0) {
+        try w.writeAll(", <span class=\"quiet\">");
+        try html.num(w, t.unrun);
+        try w.writeAll(" without a result</span>");
+    }
+    try w.writeAll("</p>\n");
+}
+
 /// The directories table. `base` is the href prefix from the page to the
 /// site root; `number_under` numbers the rows N.i when the list is a suite's.
 fn writeDirTable(w: W, site: *const Site, base: []const u8, dirs: []const []const u8, number_under: ?usize, row_ids: bool) Error!void {
     if (dirs.len == 0) return;
-    try w.writeAll("<table class=\"listing listing-dirs\">\n<thead><tr><th scope=\"col\">Directory</th><th scope=\"col\" class=\"n\">Subtests passing</th><th scope=\"col\" class=\"n\">Test files</th><th scope=\"col\">Standing</th></tr></thead>\n<tbody>\n");
+    try w.print("<table class=\"listing listing-dirs{s}\">\n<thead><tr><th scope=\"col\">Directory</th><th scope=\"col\" class=\"n\">Subtests passing</th>", .{if (site.reference != null) " has-ref" else ""});
+    try writeRefHead(w, site);
+    try w.writeAll("<th scope=\"col\" class=\"n\">Test files</th><th scope=\"col\">Standing</th></tr></thead>\n<tbody>\n");
     for (dirs, 1..) |d, i| {
         const t = site.dir(d).totals;
         try w.writeAll("<tr");
@@ -556,7 +622,12 @@ fn writeDirTable(w: W, site: *const Site, base: []const u8, dirs: []const []cons
         try html.path(w, d[name_start..]);
         try w.print("</a></th><td class=\"n\" data-v=\"{d}\" data-of=\"{d}\">", .{ t.sub_pass, t.subReported() });
         try writePassOf(w, t.sub_pass, t.subReported());
-        try w.print("</td><td class=\"n\" data-v=\"{d}\">", .{t.files});
+        try w.writeAll("</td>");
+        if (site.reference != null) {
+            const rt = site.dir(d).ref_totals;
+            try writeRefCell(w, rt.sub_pass, rt.subReported(), rt.files > rt.unrun);
+        }
+        try w.print("<td class=\"n\" data-v=\"{d}\">", .{t.files});
         try html.num(w, t.files);
         try w.print("</td><td data-v=\"{d}\"><span class=\"tally\">", .{t.blocking()});
         if (t.blocking() > 0) {
@@ -574,7 +645,9 @@ fn writeDirTable(w: W, site: *const Site, base: []const u8, dirs: []const []cons
 
 fn writeFileTable(w: W, site: *const Site, base: []const u8, files: []const usize, row_ids: bool) Error!void {
     if (files.len == 0) return;
-    try w.writeAll("<table class=\"listing listing-files\">\n<thead><tr><th scope=\"col\">Test file</th><th scope=\"col\" class=\"n\">Subtests passing</th><th scope=\"col\" class=\"n\">Failed</th><th scope=\"col\">Standing</th></tr></thead>\n<tbody>\n");
+    try w.print("<table class=\"listing listing-files{s}\">\n<thead><tr><th scope=\"col\">Test file</th><th scope=\"col\" class=\"n\">Subtests passing</th>", .{if (site.reference != null) " has-ref" else ""});
+    try writeRefHead(w, site);
+    try w.writeAll("<th scope=\"col\" class=\"n\">Failed</th><th scope=\"col\">Standing</th></tr></thead>\n<tbody>\n");
     for (files) |fi| {
         const f = site.files[fi];
         try w.print("<tr data-gate=\"{s}\"", .{f.gate.word()});
@@ -593,7 +666,11 @@ fn writeFileTable(w: W, site: *const Site, base: []const u8, files: []const usiz
         } else {
             try writePassOf(w, f.counts.passed, f.counts.reported());
         }
-        try w.print("</td><td class=\"n\" data-v=\"{d}\">", .{f.counts.failed});
+        try w.writeAll("</td>");
+        if (site.reference != null) {
+            if (f.ref) |rv| try writeRefCell(w, rv.counts.passed, rv.counts.reported(), true) else try writeRefCell(w, 0, 0, false);
+        }
+        try w.print("<td class=\"n\" data-v=\"{d}\">", .{f.counts.failed});
         if (f.counts.failed > 0) {
             try w.writeAll("<span class=\"fail\">");
             try html.num(w, f.counts.failed);
@@ -667,6 +744,7 @@ pub fn writeIndex(w: W, site: *const Site) Error!void {
 
     try writeStatus(w, site, tot);
     try writeExempt(w, site);
+    try writeVersus(w, site, tot);
     try writeContents(w, site);
     for (site.suites, 1..) |s, i| try writeSuite(w, site, s, i);
     try writeHistory(w, site, tot);
@@ -786,7 +864,10 @@ fn writeStatus(w: W, site: *const Site, tot: model.Totals) Error!void {
     try html.num(w, tot.sub_pass);
     try w.writeAll(" of the ");
     try html.num(w, tot.subReported());
-    try w.writeAll(" subtests its runs reported. This is not a browser comparison");
+    try w.writeAll(" subtests its runs reported.");
+    if (site.reference) |r| {
+        try w.print(" {s}&rsquo;s results on the same files are in <a href=\"#versus\">Crane and {s}</a>, beside Crane&rsquo;s and never counted in them", .{ r.label(), r.label() });
+    } else try w.writeAll(" This is not a browser comparison");
     if (site.dirs.getPtr("encoding/")) |enc| {
         const et = enc.totals;
         if (tot.subReported() > 0 and et.subReported() > 0) {
@@ -905,6 +986,7 @@ fn writeSuite(w: W, site: *const Site, s: []const u8, no: usize) Error!void {
     try writeSectionId(w, s);
     try w.print("\" aria-label=\"Link to section {d}\">&para;</a></h2>\n", .{no});
     try writeFigures(w, s, Figures.ofTotals(t));
+    try writeRefFigures(w, site, d.ref_totals);
     try w.writeAll("<div class=\"boxes\">\n");
     try writeConformance(w, s, t);
     try w.writeAll("<div class=\"box tests\">\n<div class=\"box-head\"><h3 class=\"box-title\">Tests</h3><a class=\"box-sub\" href=\"");
@@ -1107,6 +1189,7 @@ pub fn writeDirPage(w: W, site: *const Site, d: *const DirView) Error!void {
     try html.path(w, d.path);
     try w.writeAll("</h1>\n");
     try writeFigures(w, d.path, Figures.ofTotals(d.totals));
+    try writeRefFigures(w, site, d.ref_totals);
     try w.writeAll("</header>\n<div class=\"boxes\">\n");
     try writeConformance(w, d.path, d.totals);
     try w.writeAll("<div class=\"box tests\">\n<div class=\"box-head\"><h2 class=\"box-title\">Tests</h2><span class=\"box-sub\">");
@@ -1152,7 +1235,9 @@ pub fn writeFilePage(w: W, site: *const Site, f: *const FileView, runs: []const 
         try html.text(w, st);
         try w.writeAll("</code></span>");
     }
-    try w.writeAll("</dd></div>\n<div><dt>Run</dt><dd>");
+    try w.writeAll("</dd></div>\n");
+    try writeRefStanding(w, site, f);
+    try w.writeAll("<div><dt>Run</dt><dd>");
     if (f.run) |rid| {
         try w.writeAll("<code>");
         try html.text(w, rid);
@@ -1278,6 +1363,307 @@ fn writeRun(w: W, r: SubtestRun, multi: bool, ids: *IdSet) Error!void {
     }
     if (r.subtests.len == 0 and r.passing_omitted == 0) try w.writeAll("<p class=\"omitted\">No subtests were reported.</p>\n");
     try w.writeAll("</div>\n");
+}
+
+// ============================================================================
+// A reference run beside Crane's
+// ============================================================================
+
+/// A file page's row for the reference run: its standing and subtests, or
+/// that it has none.
+fn writeRefStanding(w: W, site: *const Site, f: *const FileView) Error!void {
+    const r = site.reference orelse return;
+    try w.print("<div><dt>{s}</dt><dd>", .{r.label()});
+    const rv = f.ref orelse return w.writeAll("<span class=\"quiet\">no result in the reference run</span></dd></div>\n");
+    try gateSpan(w, rv.gate);
+    try w.writeByte(' ');
+    try writePassOf(w, rv.counts.passed, rv.counts.reported());
+    try w.writeAll(" WPT subtests passing <span class=\"quiet\">runner status <code>");
+    try html.text(w, rv.status);
+    try w.writeAll("</code></span>");
+    if (rv.missing_urls > 0) {
+        try w.writeAll(" <span class=\"quiet\">");
+        try html.num(w, rv.missing_urls);
+        try w.print(" of its test URLs {s} no {s} result</span>", .{ if (rv.missing_urls == 1) "has" else "have", r.label() });
+    }
+    try w.writeAll("</dd></div>\n");
+}
+
+/// A duration as people say it: "250 ms", "1.50 s", "40 min 0 s", "2 h 20 min".
+fn writeDuration(w: W, secs: f64) Error!void {
+    if (!(secs >= 0)) return w.writeAll("&mdash;");
+    if (secs < 1) return w.print("{d} ms", .{@as(u64, @intFromFloat(@round(secs * 1000)))});
+    if (secs < 10) return w.print("{d:.2} s", .{secs});
+    if (secs < 60) return w.print("{d:.1} s", .{secs});
+    const whole: u64 = @intFromFloat(@round(secs));
+    if (whole < 3600) return w.print("{d} min {d} s", .{ whole / 60, whole % 60 });
+    return w.print("{d} h {d} min", .{ whole / 3600, (whole % 3600) / 60 });
+}
+
+fn writeVersusRow(w: W, label: []const u8, crane: u64, ref: u64, cls: []const u8) Error!void {
+    try w.print("<tr><th scope=\"row\">{s}</th>", .{label});
+    for ([_]u64{ crane, ref }) |v| {
+        try w.print("<td class=\"n{s}{s}\">", .{ if (v > 0 and cls.len > 0) " " else "", if (v > 0) cls else "" });
+        try html.num(w, v);
+        try w.writeAll("</td>");
+    }
+    try w.writeAll("</tr>\n");
+}
+
+fn sumPassDiff(site: *const Site, list: []const usize, ref_ahead: bool) u64 {
+    var n: u64 = 0;
+    for (list) |i| {
+        const f = site.files[i];
+        const rv = f.ref orelse continue;
+        n += if (ref_ahead) rv.counts.passed -| f.counts.passed else f.counts.passed -| rv.counts.passed;
+    }
+    return n;
+}
+
+fn writeTimeRow(w: W, label: []const u8, crane: ?f64, ref: ?f64) Error!void {
+    try w.print("<tr><th scope=\"row\">{s}</th>", .{label});
+    for ([_]?f64{ crane, ref }) |v| {
+        try w.writeAll("<td class=\"n\">");
+        if (v) |x| try writeDuration(w, x) else try w.writeAll("<span class=\"quiet\">not measured</span>");
+        try w.writeAll("</td>");
+    }
+    try w.writeAll("</tr>\n");
+}
+
+/// The run's identity, in a sentence: the engine, its version and driver,
+/// the runner, when and where, and the WPT tree.
+fn writeRunIdentity(w: W, site: *const Site, r: *const reference_mod.Reference) Error!void {
+    const run = r.run;
+    try w.print("{s} <code>", .{r.label()});
+    try html.text(w, run.browser_version);
+    try w.writeAll("</code>");
+    if (run.channel.len > 0) {
+        try w.writeAll(" (");
+        try html.text(w, run.channel);
+        try w.writeAll(")");
+    }
+    try w.writeAll(" ran the same ");
+    try html.plural(w, site.root().totals.files, "test file", "test files");
+    try w.writeAll(" on <span class=\"nowrap\">");
+    try html.shortDateY(w, run.date);
+    try w.writeAll("</span> with WPT&rsquo;s own runner (<code>wpt run</code>, headless");
+    if (run.webdriver_version.len > 0) {
+        try w.print(", {s} <code>", .{if (std.mem.eql(u8, r.engine, "chrome")) "ChromeDriver" else "WebDriver"});
+        try html.text(w, run.webdriver_version);
+        try w.writeAll("</code>");
+    }
+    try w.print(", {d} processes", .{run.processes});
+    if (run.host.len > 0) {
+        try w.writeAll(", ");
+        try html.text(w, run.host);
+    }
+    try w.writeAll("), on WPT revision <a href=\"" ++ links.wpt_fork ++ "/tree/");
+    try html.href(w, run.wpt_revision);
+    try w.writeAll("\"><code>");
+    try html.text(w, run.wpt_revision[0..@min(10, run.wpt_revision.len)]);
+    try w.writeAll("</code></a>, over the worklist of Crane ");
+    try commitLink(w, run.worklist_commit);
+    try w.writeAll(".");
+}
+
+/// The index's comparison with the reference run: both engines' numbers on
+/// the same files, where they differ, and what the runs cost.
+fn writeVersus(w: W, site: *const Site, tot: model.Totals) Error!void {
+    const r = site.reference orelse return;
+    const rt = site.root().ref_totals;
+    const name = r.label();
+    try w.print("<section class=\"front\" id=\"versus\" aria-labelledby=\"versus-h\">\n<h2 id=\"versus-h\">Crane and {s}</h2>\n<div class=\"front-prose\">\n<p>", .{name});
+    try writeRunIdentity(w, site, r);
+    try w.print(" Its results are a reference: they are read only from <code>wpt-results/reference/</code>, never counted as Crane&rsquo;s, and every number here says whose it is.</p>\n<p>", .{});
+    try w.print("<a href=\"{s}.html#ahead-ref\">", .{r.engine});
+    try html.plural(w, site.ahead_ref.len, "file", "files");
+    try w.print("</a> where {s} passes subtests Crane does not (", .{name});
+    try html.plural(w, sumPassDiff(site, site.ahead_ref, true), "subtest", "subtests");
+    try w.print("); <a href=\"{s}.html#ahead-crane\">", .{r.engine});
+    try html.plural(w, site.ahead_crane.len, "file", "files");
+    try w.print("</a> where Crane passes subtests {s} does not (", .{name});
+    try html.plural(w, sumPassDiff(site, site.ahead_crane, false), "subtest", "subtests");
+    try w.writeAll(").</p>\n</div>\n<div class=\"versus-boxes\">\n");
+
+    // The numbers, side by side.
+    try w.print("<div class=\"box versus-box\">\n<div class=\"box-head\"><h3 class=\"box-title\">The same files</h3><span class=\"box-sub\">", .{});
+    try html.plural(w, tot.files, "test file", "test files");
+    try w.print("</span></div>\n<table class=\"versus\">\n<thead><tr><td></td><th scope=\"col\" class=\"n\">Crane</th><th scope=\"col\" class=\"n\">{s}</th></tr></thead>\n<tbody>\n", .{name});
+    try w.writeAll("<tr><th scope=\"row\">WPT subtests passing</th>");
+    for ([_]model.Totals{ tot, rt }) |t| {
+        try w.print("<td class=\"n\" data-v=\"{d}\" data-of=\"{d}\">", .{ t.sub_pass, t.subReported() });
+        try writePassOf(w, t.sub_pass, t.subReported());
+        try w.writeAll("</td>");
+    }
+    try w.writeAll("</tr>\n");
+    try writeVersusRow(w, "Failed", tot.sub_fail, rt.sub_fail, "fail");
+    try writeVersusRow(w, "Timed out", tot.sub_timeout, rt.sub_timeout, "");
+    try writeVersusRow(w, "Not run", tot.sub_notrun, rt.sub_notrun, "");
+    try writeVersusRow(w, "Blocking files", tot.blocking(), rt.blocking(), "blk");
+    try writeVersusRow(w, "Clean files", tot.clean, rt.clean, "");
+    try writeVersusRow(w, "Files with a result", tot.files - tot.unrun, rt.files - rt.unrun, "");
+    try w.writeAll("</tbody>\n</table>\n</div>\n");
+
+    // What the runs cost.
+    if (r.timing) |tm| {
+        try w.print("<div class=\"box versus-box\">\n<div class=\"box-head\"><h3 class=\"box-title\">Wall time</h3><span class=\"box-sub\">{d} runners each", .{tm.processes});
+        if (r.run.host.len > 0) {
+            try w.writeAll(", ");
+            try html.text(w, r.run.host);
+        }
+        try w.print("</span></div>\n<table class=\"versus\">\n<thead><tr><td></td><th scope=\"col\" class=\"n\">Crane</th><th scope=\"col\" class=\"n\">{s}</th></tr></thead>\n<tbody>\n", .{name});
+        const cw: ?f64 = if (tm.crane) |c| c.wall_s else null;
+        const cc: ?f64 = if (tm.crane) |c| c.user_s + c.sys_s else null;
+        try writeTimeRow(w, "The worklist, wall clock", cw, tm.reference.wall_s);
+        try writeTimeRow(w, "CPU, user + system", cc, tm.reference.user_s + tm.reference.sys_s);
+        const urls = r.coverage.urls_expected;
+        if (tm.overhead) |o| if (o.files > 0) {
+            const per = struct {
+                fn f(m: reference_mod.Measure, files: u64, procs: u32) f64 {
+                    return m.wall_s * @as(f64, @floatFromInt(procs)) / @as(f64, @floatFromInt(files));
+                }
+                fn share(m: reference_mod.Measure, files: u64, n: u64) f64 {
+                    return m.wall_s * @as(f64, @floatFromInt(n)) / @as(f64, @floatFromInt(files));
+                }
+            };
+            try writeTimeRow(w, "One empty test, harness alone", per.f(o.crane, o.files, tm.processes), per.f(o.reference, o.files, tm.processes));
+            if (urls > 0) {
+                const hc = per.share(o.crane, o.files, urls);
+                const hr = per.share(o.reference, o.files, urls);
+                try writeTimeRow(w, "Of the wall clock: harness (estimate)", hc, hr);
+                try writeTimeRow(w, "Of the wall clock: the tests (estimate)", if (cw) |x| @max(x - hc, 0) else null, @max(tm.reference.wall_s - hr, 0));
+            }
+        };
+        try w.writeAll("</tbody>\n</table>\n</div>\n");
+    }
+    try w.writeAll("</div>\n<div class=\"note\" role=\"note\">\n<p class=\"note-label\">How the two are compared</p>\n<p>Both counts are per file, over the same test URLs: each global and variant of a file is one test, and a file&rsquo;s URLs are summed as Crane&rsquo;s runner sums them, the worst status winning. ");
+    const c = r.coverage;
+    try w.print("{s} reported ", .{name});
+    try html.num(w, c.urls_reported);
+    try w.writeAll(" of the ");
+    try html.num(w, c.urls_expected);
+    try w.writeAll(" test URLs of these files");
+    if (c.urls_missing > 0) {
+        try w.writeAll("; the other ");
+        try html.num(w, c.urls_missing);
+        try w.writeAll(" have no result, and each file page says when its count covers fewer URLs");
+    }
+    try w.writeAll(". Each engine runs under its own harness: Crane&rsquo;s runner, and WPT&rsquo;s <code>wptrunner</code> driving the browser over WebDriver.");
+    if (r.timing) |tm| if (tm.overhead) |o| {
+        try w.writeAll(" To read the wall clock honestly, each harness also ran ");
+        try html.num(w, o.files);
+        try w.print(" files holding one empty test (<code>tests/wpt/crane/harness-overhead/</code>) with the same {d} runners: what one costs is the harness alone, and the estimates split each run&rsquo;s wall clock at that rate over its ", .{tm.processes});
+        try html.num(w, c.urls_expected);
+        try w.writeAll(" test URLs.");
+    };
+    try w.writeAll("</p>\n</div>\n</section>\n");
+}
+
+/// Most severe first, as site.js sorts a standing column.
+fn gateRank(g: model.Gate) u8 {
+    return switch (g) {
+        .crash => 8,
+        .err => 7,
+        .timeout => 6,
+        .none_passed => 5,
+        .exempt => 4,
+        .unrun => 3,
+        .partial => 2,
+        .empty => 1,
+        .clean => 0,
+    };
+}
+
+fn writeCompareRow(w: W, f: FileView, ref_ahead: bool) Error!void {
+    const rv = f.ref.?;
+    try w.print("<tr data-gate=\"{s}\"><th scope=\"row\"><a href=\"", .{f.gate.word()});
+    try html.href(w, f.path);
+    try w.writeAll("/\">");
+    try html.path(w, f.path);
+    try w.writeAll("</a></th>");
+    try w.print("<td class=\"n\" data-v=\"{d}\" data-of=\"{d}\">", .{ f.counts.passed, f.counts.reported() });
+    try writePassOf(w, f.counts.passed, f.counts.reported());
+    try w.print("</td><td class=\"n\" data-v=\"{d}\" data-of=\"{d}\">", .{ rv.counts.passed, rv.counts.reported() });
+    try writePassOf(w, rv.counts.passed, rv.counts.reported());
+    const d = if (ref_ahead) rv.counts.passed -| f.counts.passed else f.counts.passed -| rv.counts.passed;
+    try w.print("</td><td class=\"n\" data-v=\"{d}\">+", .{d});
+    try html.num(w, d);
+    try w.print("</td><td data-v=\"{d}\">", .{gateRank(f.gate)});
+    try gateSpan(w, f.gate);
+    try w.print("</td><td data-v=\"{d}\">", .{gateRank(rv.gate)});
+    try gateSpan(w, rv.gate);
+    try w.writeAll("</td></tr>\n");
+}
+
+fn writeCompareTable(w: W, site: *const Site, list: []const usize, ref_ahead: bool) Error!void {
+    const name = site.reference.?.label();
+    if (list.len == 0) return w.writeAll("<p class=\"quiet\">None.</p>\n");
+    try w.print("<table class=\"listing listing-compare\">\n<thead><tr><th scope=\"col\">Test file</th><th scope=\"col\" class=\"n\">Crane</th><th scope=\"col\" class=\"n\">{s}</th><th scope=\"col\" class=\"n\">{s} ahead by</th><th scope=\"col\">Crane standing</th><th scope=\"col\">{s} standing</th></tr></thead>\n<tbody>\n", .{ name, if (ref_ahead) name else "Crane", name });
+    for (list) |i| try writeCompareRow(w, site.files[i], ref_ahead);
+    try w.writeAll("</tbody>\n</table>\n");
+}
+
+fn writeOnlyList(w: W, site: *const Site, list: []const usize, ref_side: bool) Error!void {
+    if (list.len == 0) return w.writeAll("<p class=\"quiet\">None.</p>\n");
+    try w.writeAll("<table class=\"listing listing-compare\">\n<thead><tr><th scope=\"col\">Test file</th><th scope=\"col\" class=\"n\">Subtests passing</th><th scope=\"col\">Standing</th></tr></thead>\n<tbody>\n");
+    for (list) |i| {
+        const f = site.files[i];
+        const c = if (ref_side) f.ref.?.counts else f.counts;
+        const g = if (ref_side) f.ref.?.gate else f.gate;
+        try w.writeAll("<tr><th scope=\"row\"><a href=\"");
+        try html.href(w, f.path);
+        try w.writeAll("/\">");
+        try html.path(w, f.path);
+        try w.print("</a></th><td class=\"n\" data-v=\"{d}\" data-of=\"{d}\">", .{ c.passed, c.reported() });
+        try writePassOf(w, c.passed, c.reported());
+        try w.print("</td><td data-v=\"{d}\">", .{gateRank(g)});
+        try gateSpan(w, g);
+        try w.writeAll("</td></tr>\n");
+    }
+    try w.writeAll("</tbody>\n</table>\n");
+}
+
+/// `<engine>.html`: every file the two engines differ on, in both directions,
+/// and the files only one of them ran.
+pub fn writeComparePage(w: W, site: *const Site) Error!void {
+    const r = site.reference orelse return;
+    const name = r.label();
+    var title_buf: [128]u8 = undefined;
+    const title = std.fmt.bufPrint(&title_buf, "Crane and {s} - Crane WPT Results", .{name}) catch "Crane WPT Results";
+    try writeHead(w, .{ .root = "", .title = title, .description = "Crane's web-platform-tests results beside a browser's on the same files: every file where one passes subtests the other does not." });
+    try w.writeAll("</head>\n<body>\n<div class=\"frame\">\n<main class=\"doc\" id=\"main\">\n<header class=\"head head-page\">\n");
+    try w.print("<nav class=\"crumbs\" aria-label=\"Breadcrumb\"><ol><li><a href=\"./\">Crane WPT results</a></li><li aria-current=\"page\">Crane and {s}</li></ol></nav>\n", .{name});
+    try w.print("<h1 class=\"page-title\">Crane and {s}</h1>\n", .{name});
+    const tot = site.root().totals;
+    try writeFigures(w, "Crane", Figures.ofTotals(tot));
+    try writeRefFigures(w, site, site.root().ref_totals);
+    try w.writeAll("<p class=\"compare-lede\">");
+    try writeRunIdentity(w, site, r);
+    try w.writeAll(" Its results are a reference, never counted as Crane&rsquo;s. A file is listed where the two pass different numbers of its subtests; the same count can still hide different subtests, which each file&rsquo;s page shows for Crane.</p>\n</header>\n");
+
+    try w.print("<section class=\"compare\" id=\"ahead-ref\" aria-labelledby=\"ahead-ref-h\">\n<h2 id=\"ahead-ref-h\">Where {s} passes subtests Crane does not</h2>\n<p>", .{name});
+    try html.plural(w, site.ahead_ref.len, "file", "files");
+    try w.writeAll(", ");
+    try html.plural(w, sumPassDiff(site, site.ahead_ref, true), "subtest", "subtests");
+    try w.print(" in all: the work that would bring Crane level with {s} here, the most first.</p>\n", .{name});
+    try writeCompareTable(w, site, site.ahead_ref, true);
+    try w.writeAll("</section>\n");
+
+    try w.print("<section class=\"compare\" id=\"ahead-crane\" aria-labelledby=\"ahead-crane-h\">\n<h2 id=\"ahead-crane-h\">Where Crane passes subtests {s} does not</h2>\n<p>", .{name});
+    try html.plural(w, site.ahead_crane.len, "file", "files");
+    try w.writeAll(", ");
+    try html.plural(w, sumPassDiff(site, site.ahead_crane, false), "subtest", "subtests");
+    try w.writeAll(" in all, the most first.</p>\n");
+    try writeCompareTable(w, site, site.ahead_crane, false);
+    try w.writeAll("</section>\n");
+
+    try w.writeAll("<section class=\"compare\" id=\"only-one\" aria-labelledby=\"only-one-h\">\n<h2 id=\"only-one-h\">Files only one of them ran</h2>\n");
+    try w.print("<h3>{s} has a result, Crane has none</h3>\n", .{name});
+    try writeOnlyList(w, site, site.only_ref, true);
+    try w.print("<h3>Crane has a result, {s} has none</h3>\n", .{name});
+    try writeOnlyList(w, site, site.only_crane, false);
+    try w.writeAll("</section>\n");
+    try writeClose(w, site, "", null);
 }
 
 // ============================================================================

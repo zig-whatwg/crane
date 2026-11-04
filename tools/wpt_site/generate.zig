@@ -57,6 +57,13 @@ pub const Inputs = struct {
     /// Set when the exemptions are invalid (generate then fails with
     /// error.InvalidExemption): where, and why.
     exemption_diag: ?*model.ExemptionDiag = null,
+    /// A reference run's reference.json: another engine's results on the same
+    /// worklist (reference.zig), shown beside Crane's and never counted as
+    /// Crane's. Null: no comparison.
+    reference_json: ?[]const u8 = null,
+    /// Set when the reference is invalid (generate then fails with
+    /// error.InvalidReference): why.
+    reference_diag: ?*reference.Diag = null,
 };
 
 /// The Crane commits from one generation's head to the next's:
@@ -147,6 +154,12 @@ pub const Summary = struct {
     generation: u64 = 0,
     head_buf: [40]u8 = undefined,
     head_len: usize = 0,
+    /// State records of another engine, and stream lines of one: a reference
+    /// run's results where Crane's are read. Refused, never shown as Crane's.
+    refused_records: usize = 0,
+    refused_stream_lines: usize = 0,
+    /// Worklist files with a result in the reference run.
+    reference_files: usize = 0,
 
     /// The Crane commit the latest generation was recorded at.
     pub fn head(s: *const Summary) []const u8 {
@@ -166,6 +179,9 @@ pub const Summary = struct {
 /// test file, plus where it came from (`_journal`, `_mtime`: the journal's
 /// basename and mtime, which tools/wpt_progress.py adds).
 const Record = struct {
+    /// Absent on every line Crane's runner writes; a reference run's records
+    /// carry theirs (reference.isCrane).
+    engine: ?[]const u8 = null,
     status: []const u8 = "ERROR",
     passed: u64 = 0,
     failed: u64 = 0,
@@ -224,12 +240,15 @@ const Journal = struct {
 
 /// Every journal the progress report reads: wpt-results/*.jsonl and
 /// wpt-results/*/*.jsonl, one directory deep, less the result streams.
+/// wpt-results/reference/ holds reference runs, never Crane's journals: it is
+/// not a run.
 fn listJournals(arena: Allocator, io: Io, results: Dir) ![]Journal {
     var out: std.ArrayList(Journal) = .empty;
     try scanJournals(arena, io, results, "", &out);
     var it = results.iterate();
     while (try it.next(io)) |e| {
         if (e.kind != .directory) continue;
+        if (std.mem.eql(u8, e.name, reference.dir_name)) continue;
         var sub = results.openDir(io, e.name, .{ .iterate = true }) catch continue;
         defer sub.close(io);
         try scanJournals(arena, io, sub, try arena.dupe(u8, e.name), &out);
@@ -301,6 +320,7 @@ fn collectStreams(
     used: []const bool,
     known: *const std.StringHashMapUnmanaged(void),
     rec_journal: *const std.StringHashMapUnmanaged(usize),
+    refused: *usize,
 ) !std.StringArrayHashMapUnmanaged(std.ArrayList(Line)) {
     var by_source: std.StringArrayHashMapUnmanaged(std.ArrayList(Line)) = .empty;
     var scratch: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
@@ -321,6 +341,11 @@ fn collectStreams(
             // A line cut short by a killed child is dropped, never guessed at.
             const v = std.json.parseFromSliceLeaky(std.json.Value, scratch.allocator(), line, .{}) catch continue;
             if (v != .object) continue;
+            // A reference run's line beside Crane's journal is not Crane's detail.
+            if (v.object.get("engine")) |e| if (e != .string or !reference.isCrane(e.string)) {
+                refused.* += 1;
+                continue;
+            };
             const t = v.object.get("test") orelse continue;
             if (t != .string) continue;
             const src = model.sourceForTestUrl(known, t.string) orelse continue;
@@ -505,6 +530,8 @@ fn parentDir(path: []const u8) []const u8 {
 
 const DirBuild = struct {
     totals: model.Totals = .{},
+    /// The reference run's, over the same files (a file it lacks is unrun).
+    ref_totals: model.Totals = .{},
     dirs: std.ArrayList([]const u8) = .empty,
     files: std.ArrayList(usize) = .empty,
 };
@@ -524,6 +551,64 @@ fn searchPaths(arena: Allocator, dir_keys: []const []const u8, files: []const pa
 }
 
 // ============================================================================
+// The comparison with a reference run
+// ============================================================================
+
+const CompareLists = struct {
+    /// Files both ran where the reference passes more subtests, most first.
+    ahead_ref: []const usize,
+    /// Files both ran where Crane passes more, most first.
+    ahead_crane: []const usize,
+    /// Files only the reference ran, and only Crane.
+    only_ref: []const usize,
+    only_crane: []const usize,
+};
+
+fn passDiff(a: model.Counts, b: model.Counts) u64 {
+    return a.passed -| b.passed;
+}
+
+fn compareLists(arena: Allocator, files: []const pages_mod.FileView) !CompareLists {
+    var ahead_ref: std.ArrayList(usize) = .empty;
+    var ahead_crane: std.ArrayList(usize) = .empty;
+    var only_ref: std.ArrayList(usize) = .empty;
+    var only_crane: std.ArrayList(usize) = .empty;
+    for (files, 0..) |f, i| {
+        const rv = f.ref orelse {
+            if (f.status != null) try only_crane.append(arena, i);
+            continue;
+        };
+        if (f.status == null) {
+            try only_ref.append(arena, i);
+            continue;
+        }
+        if (rv.counts.passed > f.counts.passed) try ahead_ref.append(arena, i);
+        if (f.counts.passed > rv.counts.passed) try ahead_crane.append(arena, i);
+    }
+    const ByRef = struct {
+        files: []const pages_mod.FileView,
+        fn lt(ctx: @This(), a: usize, b: usize) bool {
+            const da = passDiff(ctx.files[a].ref.?.counts, ctx.files[a].counts);
+            const db = passDiff(ctx.files[b].ref.?.counts, ctx.files[b].counts);
+            if (da != db) return da > db;
+            return std.mem.order(u8, ctx.files[a].path, ctx.files[b].path) == .lt;
+        }
+    };
+    const ByCrane = struct {
+        files: []const pages_mod.FileView,
+        fn lt(ctx: @This(), a: usize, b: usize) bool {
+            const da = passDiff(ctx.files[a].counts, ctx.files[a].ref.?.counts);
+            const db = passDiff(ctx.files[b].counts, ctx.files[b].ref.?.counts);
+            if (da != db) return da > db;
+            return std.mem.order(u8, ctx.files[a].path, ctx.files[b].path) == .lt;
+        }
+    };
+    std.mem.sort(usize, ahead_ref.items, ByRef{ .files = files }, ByRef.lt);
+    std.mem.sort(usize, ahead_crane.items, ByCrane{ .files = files }, ByCrane.lt);
+    return .{ .ahead_ref = ahead_ref.items, .ahead_crane = ahead_crane.items, .only_ref = only_ref.items, .only_crane = only_crane.items };
+}
+
+// ============================================================================
 // generate
 // ============================================================================
 
@@ -534,6 +619,16 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
     var summary: Summary = .{};
 
     const state = try std.json.parseFromSliceLeaky(std.json.ArrayHashMap(Record), arena, in.state_json, parse_options);
+    // A record of another engine in the state is a reference run's result where
+    // Crane's are kept: refused, and its file reads as Crane has it otherwise.
+    for (state.map.values()) |r| {
+        if (!reference.isCrane(r.engine)) summary.refused_records += 1;
+    }
+    var local_rdiag: reference.Diag = .{};
+    const ref: ?reference.Reference = if (in.reference_json) |j|
+        try reference.parse(arena, j, in.reference_diag orelse &local_rdiag)
+    else
+        null;
     const history = try std.json.parseFromSliceLeaky(History, arena, in.history_json, parse_options);
     const generations = try arena.dupe(Generation, history.generations);
     {
@@ -572,7 +667,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
     var rec_journal: std.StringHashMapUnmanaged(usize) = .empty;
     var runs: std.StringArrayHashMapUnmanaged(pages_mod.RunInfo) = .empty;
     for (worklist, 0..) |p, i| {
-        const rec = state.map.get(p);
+        const rec: ?Record = if (state.map.get(p)) |r| (if (reference.isCrane(r.engine)) r else null) else null;
         const c: model.Counts = if (rec) |r| r.counts() else .{};
         files[i] = .{
             .path = p,
@@ -585,6 +680,12 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
             .exemption = exempt_of.get(p),
         };
         if (files[i].exemption != null) files[i].gate = files[i].gate.exempted();
+        if (ref) |rf| if (rf.files.map.get(p)) |rr| {
+            var g = model.gateOf(rr.status, rr.counts());
+            if (files[i].exemption != null) g = g.exempted();
+            files[i].ref = .{ .status = rr.status, .counts = rr.counts(), .gate = g, .urls = rr.urls, .missing_urls = rr.missing_urls };
+            summary.reference_files += 1;
+        };
         const r = rec orelse continue;
         const located = locate(journals, r);
         if (located) |ji| {
@@ -614,7 +715,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         }
     }{ .keys = runs.keys() });
 
-    var streams = try collectStreams(arena, io, in.results, journals, used, &known, &rec_journal);
+    var streams = try collectStreams(arena, io, in.results, journals, used, &known, &rec_journal, &summary.refused_stream_lines);
     for (files) |*f| {
         const lines = streams.getPtr(f.path) orelse continue;
         if (lines.items.len == 0) continue;
@@ -633,6 +734,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
             const gop = try builds.getOrPut(arena, dir);
             if (!gop.found_existing) gop.value_ptr.* = .{};
             gop.value_ptr.totals.add(f.gate, f.counts);
+            if (f.ref) |rv| gop.value_ptr.ref_totals.add(rv.gate, rv.counts) else gop.value_ptr.ref_totals.add(.unrun, .{});
             if (is_file) {
                 try gop.value_ptr.files.append(arena, i);
             } else {
@@ -657,7 +759,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         const b = builds.getPtr(k).?;
         std.mem.sort([]const u8, b.dirs.items, {}, lessStr);
         // Files were appended in worklist (sorted) order already.
-        try dirs.put(arena, k, .{ .path = k, .totals = b.totals, .dirs = b.dirs.items, .files = b.files.items });
+        try dirs.put(arena, k, .{ .path = k, .totals = b.totals, .ref_totals = b.ref_totals, .dirs = b.dirs.items, .files = b.files.items });
     }
     const root_totals = dirs.getPtr("").?.totals;
 
@@ -675,6 +777,9 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
     defer gpa.free(card_png);
     const card_ref = try std.fmt.allocPrint(arena, "card.png?v={x:0>8}", .{@as(u32, @truncate(std.hash.Wyhash.hash(0, card_png)))});
 
+    // The files the two engines differ on, for the comparison page.
+    const cmp = try compareLists(arena, files);
+
     const site: pages_mod.Site = .{
         .files = files,
         .dirs = &dirs,
@@ -687,6 +792,11 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         .site_url = in.site_url,
         .card_ref = card_ref,
         .exemptions = exemptions,
+        .reference = if (ref) |*r| r else null,
+        .ahead_ref = cmp.ahead_ref,
+        .ahead_crane = cmp.ahead_crane,
+        .only_ref = cmp.only_ref,
+        .only_crane = cmp.only_crane,
     };
 
     var o: Output = .{ .gpa = gpa, .io = io, .dir = out, .arena = arena, .summary = &summary };
@@ -699,6 +809,12 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
     defer aw.deinit();
     try pages_mod.writeIndex(&aw.writer, &site);
     try o.put("index.html", aw.written());
+
+    if (site.reference) |r| {
+        aw.clearRetainingCapacity();
+        try pages_mod.writeComparePage(&aw.writer, &site);
+        try o.put(try std.fmt.allocPrint(arena, "{s}.html", .{r.engine}), aw.written());
+    }
 
     for (dir_keys) |k| {
         if (k.len == 0) continue;
@@ -739,14 +855,18 @@ fn usage() noreturn {
     std.debug.print(
         \\usage: wpt_site [--state=<json>] [--history=<json>] [--worklist=<txt>] [--results=<dir>]
         \\                [--assets=<dir>] [--out=<dir>] [--wpt-root=<dir>] [--site-url=<url>]
-        \\                [--exemptions=<txt>] [--no-commit]
+        \\                [--exemptions=<txt>] [--reference=<reference.json>|--no-reference] [--no-commit]
+        \\       wpt_site import-reference --engine=<chrome|firefox|safari> --report=<wptreport.json>
+        \\                --manifest=<MANIFEST.json> --worklist=<txt> --meta=<run.json> --out=<dir>
         \\
         \\Defaults are the repository's: tmp/wpt-progress-state.json, wpt-results/progress-history.json,
         \\tests/wpt_0_1_worklist.txt, wpt-results/, tools/wpt_site/assets/, wpt-results/site/, tests/wpt/,
         \\https://zig-whatwg.github.io/crane/ (the absolute URL the social tags name),
-        \\tools/wpt_gate_exemptions.txt.
+        \\tools/wpt_gate_exemptions.txt, and the newest Chrome run under wpt-results/reference/.
         \\When --out is a git worktree on the gh-pages branch and anything changed, the output is committed
         \\there ("results: generation <n>, Crane <sha>"). Nothing is ever pushed.
+        \\import-reference joins another engine's wptreport to the worklist through the manifest and
+        \\writes <out>/reference.json (tools/wpt_site/reference.zig).
         \\
     , .{});
     std.process.exit(2);
@@ -813,6 +933,84 @@ fn commitSite(arena: Allocator, io: Io, out: []const u8, summary: Summary) !void
     std.debug.print("wpt-site: committed on gh-pages: {s}\n", .{msg});
 }
 
+/// `import-reference`: write <out>/reference.json from a reference run's
+/// wptreport (reference.import).
+fn importReference(arena: Allocator, io: Io, args: anytype) !void {
+    var engine: []const u8 = "";
+    var report_path: []const u8 = "";
+    var manifest_path: []const u8 = "";
+    var worklist_path: []const u8 = "";
+    var meta_path: []const u8 = "";
+    var out_path: []const u8 = "";
+    while (args.next()) |a| {
+        const eq = std.mem.indexOfScalar(u8, a, '=') orelse usage();
+        const key = a[0..eq];
+        const val = a[eq + 1 ..];
+        if (std.mem.eql(u8, key, "--engine")) engine = val else if (std.mem.eql(u8, key, "--report")) report_path = val else if (std.mem.eql(u8, key, "--manifest")) manifest_path = val else if (std.mem.eql(u8, key, "--worklist")) worklist_path = val else if (std.mem.eql(u8, key, "--meta")) meta_path = val else if (std.mem.eql(u8, key, "--out")) out_path = val else usage();
+    }
+    for ([_][]const u8{ engine, report_path, manifest_path, worklist_path, meta_path, out_path }) |v| if (v.len == 0) usage();
+    const cwd = Dir.cwd();
+    const report_bytes = try cwd.readFileAlloc(io, report_path, arena, .limited(1 << 34));
+    const manifest_bytes = try cwd.readFileAlloc(io, manifest_path, arena, .limited(1 << 31));
+    const worklist_text = try cwd.readFileAlloc(io, worklist_path, arena, .limited(1 << 28));
+    const meta_bytes = try cwd.readFileAlloc(io, meta_path, arena, .limited(1 << 20));
+    var diag: reference.Diag = .{};
+    const imp = reference.import(arena, engine, report_bytes, manifest_bytes, worklist_text, meta_bytes, &diag) catch |e| switch (e) {
+        error.InvalidReference => {
+            std.debug.print("wpt-site import-reference: {s}\n", .{diag.message()});
+            std.process.exit(1);
+        },
+        else => |err| return err,
+    };
+    var aw: Io.Writer.Allocating = .init(arena);
+    try reference.write(&aw.writer, imp);
+    var out = try cwd.createDirPathOpen(io, out_path, .{});
+    defer out.close(io);
+    try out.writeFile(io, .{ .sub_path = "reference.json", .data = aw.written() });
+    const c = imp.coverage;
+    std.debug.print(
+        "wpt-site import-reference: {s} {s} ({s}): {d} of {d} worklist sources have a result; " ++
+            "{d} of {d} test URLs reported, {d} skipped, {d} missing; {d} URLs outside the worklist and {d} outside the manifest left out; wrote {s}/reference.json\n",
+        .{
+            imp.engine,      imp.meta.run.browser_version, imp.meta.run.date, c.sources_reported, c.sources,
+            c.urls_reported, c.urls_expected,              c.urls_skipped,    c.urls_missing,     c.urls_outside,
+            c.urls_unknown,  out_path,
+        },
+    );
+}
+
+/// The newest reference run of `engine` under `<results>/reference/*/reference.json`
+/// (by its run date), and the path it came from; null when there is none.
+/// A reference.json anywhere else in `results` is never read, and said so.
+fn findReference(arena: Allocator, io: Io, results: Dir, results_path: []const u8, engine: []const u8) !?struct { path: []const u8, bytes: []const u8 } {
+    var it = results.iterate();
+    while (try it.next(io)) |e| {
+        if (e.kind != .directory or std.mem.eql(u8, e.name, reference.dir_name)) continue;
+        const stray = try std.fmt.allocPrint(arena, "{s}/reference.json", .{e.name});
+        _ = results.statFile(io, stray, .{}) catch continue;
+        std.debug.print("wpt-site: ignored {s}/{s}: a reference run is read only from {s}/{s}/<run>/reference.json, never as Crane's\n", .{ results_path, stray, results_path, reference.dir_name });
+    }
+    var dir = results.openDir(io, reference.dir_name, .{ .iterate = true }) catch return null;
+    defer dir.close(io);
+    var best: ?struct { path: []const u8, bytes: []const u8, date: []const u8 } = null;
+    var dit = dir.iterate();
+    while (try dit.next(io)) |e| {
+        if (e.kind != .directory) continue;
+        const rel = try std.fmt.allocPrint(arena, "{s}/reference.json", .{e.name});
+        const bytes = dir.readFileAlloc(io, rel, arena, .limited(1 << 30)) catch continue;
+        var diag: reference.Diag = .{};
+        const r = reference.parse(arena, bytes, &diag) catch {
+            std.debug.print("wpt-site: ignored {s}/{s}/{s}: {s}\n", .{ results_path, reference.dir_name, rel, diag.message() });
+            continue;
+        };
+        if (!std.mem.eql(u8, r.engine, engine)) continue;
+        if (best) |b| if (std.mem.order(u8, r.run.date, b.date) != .gt) continue;
+        best = .{ .path = try std.fmt.allocPrint(arena, "{s}/{s}/{s}", .{ results_path, reference.dir_name, rel }), .bytes = bytes, .date = r.run.date };
+    }
+    const b = best orelse return null;
+    return .{ .path = b.path, .bytes = b.bytes };
+}
+
 pub fn main(init: std.process.Init) !void {
     var arena_state: std.heap.ArenaAllocator = .init(init.gpa);
     defer arena_state.deinit();
@@ -828,12 +1026,25 @@ pub fn main(init: std.process.Init) !void {
     var wpt_root: []const u8 = "tests/wpt";
     var site_url: []const u8 = default_site_url;
     var exemptions_path: []const u8 = "tools/wpt_gate_exemptions.txt";
+    var reference_path: ?[]const u8 = null;
+    var use_reference = true;
     var commit = true;
 
     var args = try init.minimal.args.iterateAllocator(arena);
     defer args.deinit();
     _ = args.next();
+    var first = true;
     while (args.next()) |a| {
+        if (first and std.mem.eql(u8, a, "import-reference")) return importReference(arena, io, &args);
+        first = false;
+        if (std.mem.eql(u8, a, "--no-reference")) {
+            use_reference = false;
+            continue;
+        }
+        if (std.mem.startsWith(u8, a, "--reference=")) {
+            reference_path = a["--reference=".len..];
+            continue;
+        }
         const eq = std.mem.indexOfScalar(u8, a, '=');
         const key = a[0 .. eq orelse a.len];
         const val = if (eq) |i| a[i + 1 ..] else "";
@@ -866,8 +1077,23 @@ pub fn main(init: std.process.Init) !void {
         try ranges.append(arena, try parseRange(arena, pair.since, pair.head, log));
     }
 
+    // The comparison: the newest Chrome run under wpt-results/reference/, or the one named.
+    var reference_json: ?[]const u8 = null;
+    if (use_reference) {
+        if (reference_path) |rp| {
+            reference_json = try cwd.readFileAlloc(io, rp, arena, .limited(1 << 30));
+            std.debug.print("wpt-site: comparing with the reference run in {s}\n", .{rp});
+        } else if (try findReference(arena, io, results, results_path, "chrome")) |found| {
+            reference_json = found.bytes;
+            std.debug.print("wpt-site: comparing with the reference run in {s}\n", .{found.path});
+        } else std.debug.print("wpt-site: no reference run under {s}/{s}/; no comparison\n", .{ results_path, reference.dir_name });
+    }
+
     var diag: model.ExemptionDiag = .{};
+    var rdiag: reference.Diag = .{};
     const summary = generate(init.gpa, io, .{
+        .reference_json = reference_json,
+        .reference_diag = &rdiag,
         .exemptions_text = exemptions,
         .exemption_diag = &diag,
         .ranges = ranges.items,
@@ -887,8 +1113,17 @@ pub fn main(init: std.process.Init) !void {
                 std.debug.print("wpt-site: {s}: {s}: {s}\n", .{ exemptions_path, diag.path, diag.message });
             std.process.exit(1);
         },
+        error.InvalidReference => {
+            std.debug.print("wpt-site: the reference run is invalid: {s}\n", .{rdiag.message()});
+            std.process.exit(1);
+        },
         else => |err| return err,
     };
+    if (summary.refused_records > 0 or summary.refused_stream_lines > 0) std.debug.print(
+        "wpt-site: REFUSED {d} state records and {d} result-stream lines of another engine: a reference run is never Crane's; it belongs in {s}/{s}/<run>/\n",
+        .{ summary.refused_records, summary.refused_stream_lines, results_path, reference.dir_name },
+    );
+    if (reference_json != null) std.debug.print("wpt-site: the reference run has a result for {d} of the worklist's files\n", .{summary.reference_files});
     std.debug.print(
         "wpt-site: generation {d} (Crane {s}): {d} test files, {d} with subtest detail; {d} directory pages, {d} file pages; " ++
             "{d} files in the site, {d} bytes (largest {s}, {d} bytes); {d} written, {d} unchanged, {d} removed, in {s}\n",

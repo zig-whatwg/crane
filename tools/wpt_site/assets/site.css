@@ -492,6 +492,27 @@ a.box-sub code { font-size: 0.8rem; }
 .foot { border-top: 1px solid var(--rule); padding-top: 1.2rem; font: 400 0.82rem/1.5 var(--sans); color: var(--ink-2); max-width: 60rem; }
 
 /* ------------------------------------------------------------------ narrow */
+/* A reference run beside Crane's (lane chromeref1): its numbers under a
+   directory's figures, the comparison boxes on the index, and the
+   comparison page's tables. Never in the rail. */
+.figures-ref { margin: -0.4rem 0 1rem; font: 400 0.9rem/1.4 var(--sans); font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.figures-ref b { color: var(--ink); font-weight: 600; }
+.ref-name { font-weight: 600; color: var(--ink); margin-right: 0.15rem; }
+.versus-boxes { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 1.5rem; align-items: start; margin: 0.4rem 0 0; }
+.front > .versus-boxes + .note { grid-column: 1 / -1; }
+table.versus { width: 100%; border-collapse: collapse; }
+table.versus th, table.versus td { padding: 0.32rem 1rem; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: baseline; }
+table.versus thead th { font: 600 0.74rem/1.3 var(--sans); color: var(--ink-2); background: var(--paper-2); }
+table.versus tbody th { font-weight: 400; }
+table.versus tbody tr:last-child > * { border-bottom: 0; }
+table.versus .n { text-align: right; white-space: nowrap; }
+table.versus .n b { font-weight: 600; }
+.compare { margin: 0 0 3rem; }
+.compare > p { max-width: var(--measure); }
+.compare h3 { font: 600 1rem/1.3 var(--serif); margin: 1.5rem 0 0.5rem; }
+.compare-lede { max-width: var(--measure); font-size: 1rem; line-height: 1.58; margin: 1rem 0 0; }
+.compare .listing { border: 1px solid var(--rule); border-radius: 3px; }
+
 @media (max-width: 82rem) {
   .front { grid-template-columns: minmax(0, var(--measure)); }
   .front > .note { margin-top: 0.6rem; max-width: var(--measure); }
@@ -525,6 +546,13 @@ a.box-sub code { font-size: 0.8rem; }
   .listing tbody td:nth-child(3) { display: none; }
   .listing tbody td:nth-child(4) { grid-column: 2; }
   .listing .mini { display: none; }
+  /* With the reference column: its count and the third count give way to the standing. */
+  .listing.has-ref tbody td:nth-child(4) { display: none; }
+  .listing.has-ref tbody td:nth-child(5) { grid-column: 2; }
+  /* The comparison tables keep both counts and the difference. */
+  .listing-compare tbody tr { grid-template-columns: repeat(3, minmax(0, auto)); justify-content: start; column-gap: 1.25rem; }
+  .listing-compare tbody td:nth-child(n+2) { display: block; grid-column: auto; text-align: left; }
+  .listing-compare tbody td:nth-child(n+5) { display: none; }
   .sub > details > summary, .sub-line { grid-template-columns: 0.9rem 3.4rem minmax(0, 1fr); }
   .sub > details > .msg { margin-left: 0; }
   .chart-wide { display: none; }
