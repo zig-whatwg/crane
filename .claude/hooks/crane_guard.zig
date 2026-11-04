@@ -148,6 +148,9 @@ fn checkZigBuild(command: []const u8, agent_type: ?[]const u8) Verdict {
     while (std.mem.indexOfPos(u8, command, start, needle)) |at| : (start = at + needle.len) {
         const after_at = at + needle.len;
         if (after_at < command.len and !isSpace(command[after_at]) and !isSegmentEnd(command[after_at])) continue;
+        // `a|zig build|b` with no space at the bar is a regex alternation (pgrep -fl, grep -E), not
+        // a pipe into or out of a build (2026-11-04).
+        if ((at > 0 and command[at - 1] == '|') or (after_at < command.len and command[after_at] == '|')) continue;
         const start_kind = commandStart(command, at);
         if (start_kind == .none) continue;
 
@@ -745,6 +748,8 @@ test "zig build: mentions in text, help and other zig commands are not builds" {
     try expectAllowed("zig test .claude/hooks/crane_guard.zig", null);
     try expectAllowed("tmp/remote/crane-remote.sh main 'zig build test -j2'", null);
     try expectAllowed("ssh chat.local 'ps -axo etime,command | grep -c zig'; pgrep -fl \"zig build test\" | head -3", null);
+    try expectAllowed("ssh h 'bash -c \"pgrep -fl \\\"wpt_runner|zig build|test_launcher\\\" | head -3\"'", null);
+    try expectDenied("zig build | tee build.log", null);
 }
 
 test "zig build: a lane builds in the pool, never on the Mac; the main conversation may build locally" {
