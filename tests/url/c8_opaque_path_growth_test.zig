@@ -104,10 +104,12 @@ test "a data: URL whose opaque path is a whole URI-encoded script parses in memo
 
 test "an opaque path with code points to percent-encode parses in memory linear in its length" {
     // Non-ASCII input takes the parser's other branch: each byte of "é"
-    // (C3 A9) and each C0 control is UTF-8 percent-encoded.
+    // (C3 A9) and each C0 control is UTF-8 percent-encoded. (A unit ending
+    // in a C0 control would lose the last one: the parser strips the input's
+    // trailing C0 controls first.)
     const prefix = "javascript:";
-    const unit = "x\xc3\xa9\x01";
-    const encoded = "x%C3%A9%01";
+    const unit = "x\xc3\xa9\x01y";
+    const encoded = "x%C3%A9%01y";
     const repeats = 16 * 1024;
     const input = try testing.allocator.alloc(u8, prefix.len + unit.len * repeats);
     defer testing.allocator.free(input);
