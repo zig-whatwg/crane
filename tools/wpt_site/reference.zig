@@ -213,6 +213,37 @@ pub const Memory = struct {
     group_peak_mean_mb: f64 = 0,
 };
 
+/// The engine's memory without one file whose runner ran away (lane
+/// chromeref2: one file took a runner to 61 GB while every other stayed
+/// under 2 GB): the file, why it is left out, which samples were left out,
+/// and the engine's peak and mean over the rest. Megabytes.
+pub const MemoryWithout = struct {
+    path: []const u8,
+    /// Why, in words ("a runaway on main too, queued for a fix").
+    note: []const u8 = "",
+    /// Which samples were left out, in words ("its chunk, t=861-1145 s").
+    excluded: []const u8 = "",
+    engine_peak_mb: f64 = 0,
+    engine_mean_mb: f64 = 0,
+};
+
+/// Where a runner pool's wall clock went. `work_s`: the tests' own wall
+/// clock, every file's (or test URL's) summed and divided by the runners -
+/// what a pool that never waits would take. A chunked sweep (Crane's
+/// `crane-measure.sh sweep`: chunks of `chunk_files`, each split into fixed
+/// shards of `shard_files` per runner, the next chunk starting when the
+/// slowest shard ends) also loses `barrier_s`, each chunk's slowest shard
+/// over its mean, and `startup_s`, each chunk's start-up and teardown.
+/// Zero chunks: one queue (wptrunner's), which loses neither.
+pub const Pool = struct {
+    work_s: f64 = 0,
+    chunks: u64 = 0,
+    chunk_files: u64 = 0,
+    shard_files: u64 = 0,
+    barrier_s: f64 = 0,
+    startup_s: f64 = 0,
+};
+
 /// One timed run: wall clock, and the CPU of the run's whole process tree:
 /// the rusage of everything it waited for (`user_s`, `sys_s`), and a sample of
 /// the tree once a second (`tree_cpu_s`), which also sees a process no parent
@@ -232,6 +263,7 @@ pub const Measure = struct {
     passed: u64 = 0,
     reported: u64 = 0,
     memory: ?Memory = null,
+    pool: ?Pool = null,
 
     /// The larger of the rusage and the sampled tree, plus the server share.
     pub fn cpu(m: Measure) f64 {
@@ -251,6 +283,9 @@ pub const CraneMeasure = struct {
     passed: u64 = 0,
     reported: u64 = 0,
     memory: ?Memory = null,
+    pool: ?Pool = null,
+    /// The engine's memory without a file that ran away, beside the measured `memory`.
+    memory_without: ?MemoryWithout = null,
     /// How this runner was built, in words ("release runner: ReleaseSafe throughout, ...").
     build: []const u8 = "",
     /// Worklist files Crane's runner ran.

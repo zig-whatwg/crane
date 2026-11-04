@@ -2116,9 +2116,21 @@ def render_reference(worklist, records, ref):
             rows.append(row('WPT subtests passing in this run',
                             f"{c['passed']:,} / {c['reported']:,}" if (c or {}).get('reported') else 'not recorded',
                             f"{r['passed']:,} / {r['reported']:,}" if r.get('reported') else 'not recorded'))
-        rows += [row('The worklist, wall clock', fmt_duration(c['wall_s']) if c else 'not measured', fmt_duration(r['wall_s'])),
-                 row('CPU, user + system', fmt_duration(measure_cpu(c)) if c else 'not measured',
-                     fmt_duration(measure_cpu(r)))]
+        rows.append(row('The worklist, wall clock', fmt_duration(c['wall_s']) if c else 'not measured', fmt_duration(r['wall_s'])))
+        # Where each pool's wall clock went (reference.zig Pool): the tests' own, and what a chunked sweep lost.
+        cpool, rpool = (c or {}).get('pool'), r.get('pool')
+        if cpool or rpool:
+            def lost(pool, key):
+                if not pool:
+                    return 'not measured'
+                return fmt_duration(pool.get(key, 0)) if pool.get('chunks') else 'none: one queue'
+            rows.append(row('The tests&rsquo; own wall clock, per runner',
+                            fmt_duration(cpool['work_s']) if cpool else 'not measured',
+                            fmt_duration(rpool['work_s']) if rpool else 'not measured'))
+            rows.append(row('Of the wall clock: waiting for a chunk&rsquo;s slowest runner', lost(cpool, 'barrier_s'), lost(rpool, 'barrier_s')))
+            rows.append(row('Of the wall clock: chunk start-up', lost(cpool, 'startup_s'), lost(rpool, 'startup_s')))
+        rows.append(row('CPU, user + system', fmt_duration(measure_cpu(c)) if c else 'not measured',
+                        fmt_duration(measure_cpu(r))))
         cmem, rmem = (c or {}).get('memory'), r.get('memory')
         if cmem or rmem:
             for label, key in (('Memory of the engine, peak', 'engine_peak_mb'), ('Memory of the engine, mean', 'engine_mean_mb'),
@@ -2126,6 +2138,12 @@ def render_reference(worklist, records, ref):
                                ('One runner&rsquo;s engine, largest peak', 'group_peak_max_mb'),
                                ('One runner&rsquo;s engine, mean of the peaks', 'group_peak_mean_mb')):
                 rows.append(row(label, fmt_mb(cmem[key]) if cmem else 'not measured', fmt_mb(rmem[key]) if rmem else 'not measured'))
+                mw = (c or {}).get('memory_without')
+                if mw and key == 'engine_mean_mb':
+                    # The engine without a file whose runner ran away, beside the measured; the reference's own figures.
+                    for what, k in (('peak', 'engine_peak_mb'), ('mean', 'engine_mean_mb')):
+                        rows.append(row(f'Memory of the engine without the runaway file, {what}', fmt_mb(mw[k]),
+                                        fmt_mb(rmem[k]) if rmem else 'not measured'))
         o = tm.get('overhead')
         urls = cov.get('urls_expected', 0)
         if o and o.get('files'):
@@ -2150,6 +2168,19 @@ def render_reference(worklist, records, ref):
   <h3 class="panelh" style="margin-top:18px">Wall time <span class="dim">{procs} runners each{where}</span></h3>
   <table class="comp versus"><thead><tr><th></th><th>Crane</th><th>{name}</th></tr></thead>
   <tbody>{''.join(rows)}</tbody></table>"""
+        if cpool and cpool.get('chunks'):
+            timing_html += (f'<p class="dim note">Crane&rsquo;s run went in {cpool["chunks"]:,} chunks of {cpool.get("chunk_files", 0):,} '
+                            f'files, each split into fixed shards of {cpool.get("shard_files", 0):,} files, one per runner; a chunk '
+                            f'ends when its slowest shard does, so the other runners wait for it. The tests&rsquo; own wall '
+                            f'clock is every file&rsquo;s summed over the {procs} runners: what a pool that never waits would take.' +
+                            (f' {name}&rsquo;s <code>wptrunner</code> feeds its processes from one queue.'
+                             if rpool and not rpool.get('chunks') else '') + '</p>')
+        mw = (c or {}).get('memory_without')
+        if mw:
+            timing_html += (f'<p class="dim note">Crane&rsquo;s engine peak is one file, <code>{esc(mw["path"])}</code>' +
+                            (f': {esc(mw["note"])}' if mw.get('note') else '') +
+                            f'. The rows without the runaway file leave out {esc(mw.get("excluded") or "its samples")}; '
+                            f'{name}&rsquo;s are its whole run.</p>')
         if o and o.get('files'):
             timing_html += (f'<p class="dim note">Each harness also ran {o["files"]:,} files holding one empty test '
                             f'(<code>tests/wpt/crane/harness-overhead/</code>) with the same {procs} runners: what one '
