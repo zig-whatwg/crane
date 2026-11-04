@@ -8,13 +8,18 @@
 //! join-pre-and-other-block.html, normalized as their
 //! normalizeStyleAttributeValues() does.
 //!
-//! The ~720 cases are 12 tests, each on a page of its own: as one test they
+//! The 720 cases are 12 tests, each on a page of its own: as one test they
 //! took 137 s alone, 245-471 s in a loaded gate (lane onebin1's journals)
 //! and more than the 1,200 s of a test declared slow beside the
 //! many-Browsers variant's busy Browser on a loaded host (lane testfix3). The
-//! cases are independent - each sets its host up afresh - so a test per part
-//! keeps every one of them and gives each part the default timeout's
-//! headroom, instead of a longer timeout for the whole.
+//! cases are independent - each sets its host up afresh - and every 50 took
+//! the same 12-16 s from the first to the last (alone; 16-26 s beside the
+//! busy Browser), so nothing builds up across them: a test per part keeps
+//! every case and gives each part the default 300 s timeout, not slow-listed.
+//! Measured on chat.local with all 13 tests of the file at once: each
+//! paragraph part 34-39 s alone, 63-69 s beside the busy Browser; at the
+//! rate of the run that timed out (over 1.67 s a case) a part of 70 cases
+//! takes about 120 s.
 const std = @import("std");
 const html = @import("html");
 const helpers = @import("edges_node_holders_helpers.zig");

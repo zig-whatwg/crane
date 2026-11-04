@@ -1144,8 +1144,6 @@ const html_tsan_skip = [_]DeclaredTest{
 };
 
 const html_slow = [_][]const u8{
-    // 137.6 s.
-    "editing2_white_space_join_test.test.joining blocks keeps the moved line's white-space",
     // 74.6, 78.9 and 50.4 s: 300,000 live ranges; two Browsers churning.
     "rangeuaf_live_range_walk_test.test.removing a node after 300,000 ranges were made in it moves every live range it holds",
     "rangeuaf_live_range_walk_test.test.splitting text after 300,000 ranges were made in it moves every live range it holds",
