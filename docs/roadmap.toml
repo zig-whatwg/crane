@@ -658,6 +658,40 @@ progress = [
   name = "Baseline at zero; the ratchet becomes a hard rule enforced by the module graph"
   status = "todo"
 
+[[infra]]
+id = "v8-pgo"
+title = "V8 built with Crane's own PGO profile (0.1 requirement)"
+why = """The user, 2026-11-04: training our own profile-guided optimization for V8 "should \
+be part of the requirements for 0.1 release". Lane v8opt1 built V8 13.1.203 the way \
+Chrome's official build does, with ThinLTO and Chrome 131's own mac-arm profile plus V8's \
+x64 builtins profile. It changed no WPT result (4,011 files) and was not faster for Crane: \
+gc_bench's DOM loop -1.2% (noise), its JS loop +4.0% slower, wasm+streams unchanged, \
++8-10 MB RSS. Chrome's profile was trained on Chrome's workload, and its builtins profile \
+is x64 with 130 of 768 builtins dropped here. A profile trained on what Crane runs is the \
+remaining lever."""
+done_when = """V8 13.1.203 (or the V8 Crane links at 0.1) is built with ThinLTO and a \
+profile Crane trained itself (an instrumented V8 linked into Crane, run over a TRAINING \
+set: real sites through the console, JS benchmarks through d8, gc_bench, a WPT sample), \
+plus an arm64 builtins profile recorded the same way; it is measured on a HELD-OUT set \
+it was not trained on (alternating pairs on a quiet chat.local) and loses no WPT \
+subtest; the user decides the default from those numbers; scripts/build-v8-official.sh \
+(or its successor) reproduces it."""
+progress = [
+  "2026-11-04 - lane v8opt1: -Dv8-build=static|official; the control rebuild of 13.1.203 is byte-identical to the prebuilt; the Chrome-profile build is no faster (numbers above) - attribution variants (LTO only, PGO only, no builtins PGO) not yet built",
+]
+
+  [[infra.items]]
+  name = "Attribution: LTO-only, PGO-only and no-builtins-PGO builds against the control, to explain the JS-loop loss"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Training: an instrumented V8 linked into Crane, a training set apart from the evaluation set, merged with V8's own llvm-profdata, an arm64 builtins profile"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Evaluation on the held-out set; the user picks the default V8"
+  status = "todo"
+
 # ---------------------------------------------------------------------------
 # Prerequisites for parallel work
 # ---------------------------------------------------------------------------
