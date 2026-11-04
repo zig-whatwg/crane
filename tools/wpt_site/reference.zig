@@ -46,8 +46,8 @@ pub const dir_name = "reference";
 /// Crane's: one with no `engine` at all (every line Crane's runner writes) or
 /// "crane". Anything else is a reference run's, and refused.
 pub fn isCrane(engine: ?[]const u8) bool {
-    _ = engine;
-    return true;
+    const e = engine orelse return true;
+    return std.mem.eql(u8, e, "crane");
 }
 
 // ============================================================================
@@ -63,8 +63,11 @@ fn eql(a: []const u8, b: []const u8) bool {
 /// EXTERNAL-TIMEOUT is a TIMEOUT; ERROR, PRECONDITION_FAILED, INTERNAL-ERROR
 /// and anything unknown are ERROR. SKIP is null: the URL did not run.
 pub fn fileStatus(status: []const u8) ?[]const u8 {
-    _ = status;
-    return "OK";
+    if (eql(status, "SKIP")) return null;
+    if (eql(status, "OK")) return "OK";
+    if (eql(status, "TIMEOUT") or eql(status, "EXTERNAL-TIMEOUT")) return "TIMEOUT";
+    if (eql(status, "CRASH")) return "CRASH";
+    return "ERROR";
 }
 
 /// journal.Status.severity's ranking, for "worst wins" over a source's URLs.
@@ -89,10 +92,26 @@ pub const Tally = struct {
 
     /// Add one reported URL. `status` must not be SKIP (`fileStatus` null).
     pub fn add(t: *Tally, status: []const u8, message: ?[]const u8, subtests: []const ReportSub) void {
-        _ = t;
-        _ = status;
-        _ = message;
-        _ = subtests;
+        const st = fileStatus(status) orelse return;
+        t.urls += 1;
+        if (!eql(st, "OK")) {
+            if (message) |m| {
+                if (severity(st) > severity(t.status) or t.message == null) t.message = m;
+            }
+        }
+        if (severity(st) > severity(t.status)) t.status = st;
+        for (subtests) |s| {
+            if (eql(s.status, "PASS")) {
+                t.counts.passed += 1;
+            } else if (eql(s.status, "TIMEOUT")) {
+                t.counts.timed_out += 1;
+            } else if (eql(s.status, "NOTRUN")) {
+                t.counts.notrun += 1;
+            } else {
+                // FAIL, PRECONDITION_FAILED and anything unknown: not a pass.
+                t.counts.failed += 1;
+            }
+        }
     }
 };
 
@@ -305,14 +324,133 @@ pub fn import(
     meta_bytes: []const u8,
     diag: *Diag,
 ) ImportError!Imported {
-    _ = arena;
-    _ = engine;
-    _ = report_bytes;
-    _ = manifest_bytes;
-    _ = worklist_text;
-    _ = meta_bytes;
-    diag.set("not implemented", .{});
-    return error.InvalidReference;
+    if (engine.len == 0 or isCrane(engine)) {
+        diag.set("--engine must name the reference engine (chrome, firefox, safari), not Crane", .{});
+        return error.InvalidReference;
+    }
+    const opts: std.json.ParseOptions = .{ .ignore_unknown_fields = true };
+    const meta = std.json.parseFromSliceLeaky(Meta, arena, meta_bytes, opts) catch |e| {
+        diag.set("--meta is not a run record ({s}): it needs run.browser_version, run.wpt_revision, run.worklist_commit and run.processes", .{@errorName(e)});
+        return error.InvalidReference;
+    };
+    if (meta.run.browser_version.len == 0) {
+        diag.set("--meta: run.browser_version is empty", .{});
+        return error.InvalidReference;
+    }
+    if (!isHex(meta.run.wpt_revision, 40, 40)) {
+        diag.set("--meta: run.wpt_revision '{s}' is not a 40-digit WPT commit", .{meta.run.wpt_revision});
+        return error.InvalidReference;
+    }
+    if (!isHex(meta.run.worklist_commit, 7, 40)) {
+        diag.set("--meta: run.worklist_commit '{s}' is not a Crane commit", .{meta.run.worklist_commit});
+        return error.InvalidReference;
+    }
+    if (meta.run.processes == 0) {
+        diag.set("--meta: run.processes is 0", .{});
+        return error.InvalidReference;
+    }
+    const report = std.json.parseFromSliceLeaky(Report, arena, report_bytes, opts) catch |e| {
+        diag.set("--report is not a wptreport ({s})", .{@errorName(e)});
+        return error.InvalidReference;
+    };
+    const product = report.run_info.product orelse "";
+    if (!eql(product, engine)) {
+        diag.set("--report's run_info.product is '{s}', not '{s}': refusing to file one engine's results as another's", .{ product, engine });
+        return error.InvalidReference;
+    }
+    if (report.run_info.browser_version) |v| {
+        if (!eql(v, meta.run.browser_version)) {
+            diag.set("--report ran browser version '{s}', but --meta says '{s}'", .{ v, meta.run.browser_version });
+            return error.InvalidReference;
+        }
+    }
+    const manifest = Manifest.parse(arena, manifest_bytes) catch |e| {
+        diag.set("--manifest is not a MANIFEST.json with items.testharness ({s})", .{@errorName(e)});
+        return error.InvalidReference;
+    };
+    const worklist = try parseWorklist(arena, worklist_text);
+    if (worklist.len == 0) {
+        diag.set("--worklist lists no files", .{});
+        return error.InvalidReference;
+    }
+
+    var cov: Coverage = .{};
+    var in_worklist: std.StringHashMapUnmanaged(void) = .empty;
+    for (worklist) |p| {
+        const gop = try in_worklist.getOrPut(arena, p);
+        if (gop.found_existing) continue;
+        cov.sources += 1;
+        if (manifest.urls_of.get(p)) |urls| {
+            cov.sources_in_manifest += 1;
+            cov.urls_expected += urls.len;
+        }
+    }
+
+    // The latest result per URL: a rerun appends, and the last line wins.
+    var latest: std.StringArrayHashMapUnmanaged(usize) = .empty;
+    for (report.results, 0..) |r, i| {
+        try latest.put(arena, std.mem.trimStart(u8, r.@"test", "/"), i);
+    }
+    // In URL order, so the message a tally keeps does not depend on the run's order.
+    latest.sort(struct {
+        keys: []const []const u8,
+        pub fn lessThan(ctx: @This(), a: usize, b: usize) bool {
+            return std.mem.order(u8, ctx.keys[a], ctx.keys[b]) == .lt;
+        }
+    }{ .keys = latest.keys() });
+
+    var tallies: std.StringArrayHashMapUnmanaged(Tally) = .empty;
+    for (latest.keys(), latest.values()) |url, i| {
+        const r = report.results[i];
+        const src = manifest.source_of.get(url) orelse {
+            cov.urls_unknown += 1;
+            continue;
+        };
+        if (!in_worklist.contains(src)) {
+            cov.urls_outside += 1;
+            continue;
+        }
+        if (fileStatus(r.status) == null) {
+            cov.urls_skipped += 1;
+            continue;
+        }
+        cov.urls_reported += 1;
+        const gop = try tallies.getOrPut(arena, src);
+        if (!gop.found_existing) gop.value_ptr.* = .{};
+        gop.value_ptr.add(r.status, r.message, r.subtests);
+    }
+    cov.sources_reported = tallies.count();
+    cov.urls_missing = cov.urls_expected - cov.urls_reported;
+    for (tallies.keys(), tallies.values()) |src, *t| {
+        const expected = if (manifest.urls_of.get(src)) |u| u.len else 0;
+        t.missing_urls = @intCast(expected -| t.urls);
+    }
+    tallies.sort(struct {
+        keys: []const []const u8,
+        pub fn lessThan(ctx: @This(), a: usize, b: usize) bool {
+            return std.mem.order(u8, ctx.keys[a], ctx.keys[b]) == .lt;
+        }
+    }{ .keys = tallies.keys() });
+
+    var m = meta;
+    if (report.time_start) |ms| {
+        const buf = try arena.create([20]u8);
+        m.run.date = model.isoUtc(buf, ms / 1000);
+    }
+    if (m.run.date.len == 0) {
+        diag.set("neither --report's time_start nor --meta's run.date says when the run was", .{});
+        return error.InvalidReference;
+    }
+    return .{
+        .engine = engine,
+        .meta = m,
+        .product = product,
+        .time_start = report.time_start,
+        .time_end = report.time_end,
+        .coverage = cov,
+        .paths = tallies.keys(),
+        .tallies = tallies.values(),
+    };
 }
 
 // ============================================================================
@@ -328,8 +466,34 @@ fn str(w: *std.Io.Writer, s: []const u8) std.Io.Writer.Error!void {
 /// `reference.json`: one header line per part, then one line per file, so a
 /// later run's file diffs line by line. Keys are in a fixed order.
 pub fn write(w: *std.Io.Writer, imp: Imported) std.Io.Writer.Error!void {
-    _ = w;
-    _ = imp;
+    try w.writeAll("{\"format\":");
+    try str(w, format_id);
+    try w.writeAll(",\"engine\":");
+    try str(w, imp.engine);
+    try w.writeAll(",\n\"run\":");
+    try std.json.Stringify.value(imp.meta.run, .{}, w);
+    try w.writeAll(",\n\"product\":");
+    try str(w, imp.product);
+    try w.print(",\"time_start\":{?d},\"time_end\":{?d}", .{ imp.time_start, imp.time_end });
+    try w.writeAll(",\n\"timing\":");
+    try std.json.Stringify.value(imp.meta.timing, .{}, w);
+    try w.writeAll(",\n\"coverage\":");
+    try std.json.Stringify.value(imp.coverage, .{}, w);
+    try w.writeAll(",\n\"files\":{");
+    for (imp.paths, imp.tallies, 0..) |p, t, i| {
+        try w.writeAll(if (i == 0) "\n" else ",\n");
+        try str(w, p);
+        try w.writeAll(":{\"engine\":");
+        try str(w, imp.engine);
+        try w.writeAll(",\"status\":");
+        try str(w, t.status);
+        try w.print(",\"passed\":{d},\"failed\":{d},\"timed_out\":{d},\"notrun\":{d},\"urls\":{d},\"missing_urls\":{d},\"message\":", .{
+            t.counts.passed, t.counts.failed, t.counts.timed_out, t.counts.notrun, t.urls, t.missing_urls,
+        });
+        if (t.message) |m| try str(w, m[0..@min(m.len, max_message)]) else try w.writeAll("null");
+        try w.writeAll("}");
+    }
+    try w.writeAll("\n}}\n");
 }
 
 // ============================================================================
@@ -379,10 +543,25 @@ pub fn engineLabel(engine: []const u8) []const u8 {
 /// Parse a reference.json. One that is not this format, names Crane as its
 /// engine, or holds a record of another engine is error.InvalidReference.
 pub fn parse(arena: Allocator, bytes: []const u8, diag: *Diag) ImportError!Reference {
-    _ = arena;
-    _ = bytes;
-    diag.set("not implemented", .{});
-    return error.InvalidReference;
+    const r = std.json.parseFromSliceLeaky(Reference, arena, bytes, .{ .ignore_unknown_fields = true }) catch |e| {
+        diag.set("not a reference.json ({s})", .{@errorName(e)});
+        return error.InvalidReference;
+    };
+    if (!eql(r.format, format_id)) {
+        diag.set("format '{s}' is not {s}", .{ r.format, format_id });
+        return error.InvalidReference;
+    }
+    if (isCrane(r.engine)) {
+        diag.set("a reference run of Crane itself: Crane's results are its journals", .{});
+        return error.InvalidReference;
+    }
+    for (r.files.map.keys(), r.files.map.values()) |p, rec| {
+        if (!eql(rec.engine, r.engine)) {
+            diag.set("{s}: record of engine '{s}' in a {s} reference", .{ p, rec.engine, r.engine });
+            return error.InvalidReference;
+        }
+    }
+    return r;
 }
 
 // ============================================================================
