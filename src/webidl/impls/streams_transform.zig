@@ -13,6 +13,7 @@ const interfaces = @import("interfaces");
 const js = @import("streams_js.zig");
 const sw = @import("streams_writable.zig");
 const srd = @import("streams_readable.zig");
+const engine = @import("engine");
 
 const Value = js.Value;
 const Realm = js.Realm;
@@ -22,7 +23,10 @@ const Deferred = js.Deferred;
 // Internal slots
 // ============================================================================
 
-/// § 6.2.2 TransformStream internal slots.
+/// § 6.2.2 TransformStream internal slots. [[controller]], [[readable]] and
+/// [[writable]] are traced edges (js.slot), and each of them keeps this
+/// stream back: a script that keeps only `readable` keeps the transform it
+/// pulls through.
 pub const Stream = struct {
     allocator: std.mem.Allocator,
     /// [[backpressure]]; null is the spec's initial undefined.
@@ -52,12 +56,17 @@ pub const Transformer = struct {
         flush: *const fn (ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance) js.Error!Value,
         cancel: *const fn (ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance, reason: Value) js.Error!Value,
         deinit: *const fn (ctx: ?*anyopaque, allocator: std.mem.Allocator) void,
+        /// The controller takes the algorithms over: it traces what they
+        /// close over (a JavaScript transformer's values). Null for native
+        /// algorithms.
+        attach: ?*const fn (ctx: ?*anyopaque, controller: *runtime.Instance) void = null,
     };
 };
 
 /// § 6.3.2 TransformStreamDefaultController internal slots.
 pub const Controller = struct {
     allocator: std.mem.Allocator,
+    /// Kept by a traced edge (js.slot.stream), as the stream keeps this.
     stream: *runtime.Instance,
     /// Null once ClearAlgorithms has run.
     transformer: ?Transformer,
@@ -91,19 +100,94 @@ fn streamSlots(instance: *runtime.Instance) *Stream {
 
 /// The Transformer dictionary, converted, plus the object itself as the
 /// callbacks' "callback this value".
+///
+/// Owned values until the controller takes the algorithms over (`attach`,
+/// setUpController); then transform, flush and cancel - and `this`, when one
+/// of them is present - are values traced from it (js.slot), read for each
+/// call and let go by ClearAlgorithms, as an UnderlyingSource's: a
+/// transformer whose closure keeps its controller kept the whole transform
+/// stream for the realm's life through a strong handle. `start` runs once,
+/// after the setup (the constructor's steps 12-13, `callStart`), with the
+/// values as they are, and is never traced: `attach` leaves it and `this`
+/// owned for it, and `callStart` lets them go.
 pub const JsTransformer = struct {
     this: ?Value = null,
     start: ?Value = null,
     transform: ?Value = null,
     flush: ?Value = null,
     cancel: ?Value = null,
+    /// The controller that traces the values, once attached.
+    controller: ?*runtime.Instance = null,
+    /// Which members are traced from `controller` (bit per Member).
+    traced: u8 = 0,
+
+    const members = [_]Member{ .this, .start, .transform, .flush, .cancel };
+
+    const Member = enum(u3) { this, start, transform, flush, cancel };
+
+    fn bit(member: Member) u8 {
+        return @as(u8, 1) << @backingInt(member);
+    }
+
+    fn slotOf(member: Member) engine.TracedSlot {
+        return switch (member) {
+            .this => js.slot.this,
+            .start => js.slot.start,
+            .transform => js.slot.transform,
+            .flush => js.slot.flush,
+            .cancel => js.slot.cancel,
+        };
+    }
+
+    fn field(self: *JsTransformer, member: Member) *?Value {
+        return switch (member) {
+            .this => &self.this,
+            .start => &self.start,
+            .transform => &self.transform,
+            .flush => &self.flush,
+            .cancel => &self.cancel,
+        };
+    }
+
+    /// `member`, owned for one call (dispose it); null when absent.
+    fn get(self: *JsTransformer, realm: Realm, member: Member) ?Value {
+        if (self.traced & bit(member) != 0) return js.readTraced(realm, self.controller.?, slotOf(member));
+        const value = self.field(member).* orelse return null;
+        return js.clone(value) catch null;
+    }
 
     fn release(self: *JsTransformer) void {
-        js.disposeOptional(&self.this);
-        js.disposeOptional(&self.start);
-        js.disposeOptional(&self.transform);
-        js.disposeOptional(&self.flush);
-        js.disposeOptional(&self.cancel);
+        for (members) |member| {
+            if (self.traced & bit(member) != 0) js.forgetTraced(self.controller.?, slotOf(member)) else js.disposeOptional(self.field(member));
+        }
+        self.traced = 0;
+        self.controller = null;
+    }
+
+    fn usesThis(self: *const JsTransformer) bool {
+        return self.transform != null or self.flush != null or self.cancel != null or self.traced & (bit(.transform) | bit(.flush) | bit(.cancel)) != 0;
+    }
+
+    fn attachErased(ctx: ?*anyopaque, controller: *runtime.Instance) void {
+        const self: *JsTransformer = @ptrCast(@alignCast(ctx.?));
+        self.controller = controller;
+        for ([_]Member{ .transform, .flush, .cancel }) |member| self.traceMember(member);
+        // `this` for the calls that use it; owned a little longer when start
+        // still has to run with it (`callStart`).
+        if (self.start == null) self.settleThis();
+    }
+
+    fn traceMember(self: *JsTransformer, member: Member) void {
+        const value = self.field(member).* orelse return;
+        js.keepTraced(self.controller.?, slotOf(member), value);
+        js.dispose(value);
+        self.field(member).* = null;
+        self.traced |= bit(member);
+    }
+
+    /// `this` traced if a traced algorithm calls with it, else let go.
+    fn settleThis(self: *JsTransformer) void {
+        if (self.usesThis()) self.traceMember(.this) else js.disposeOptional(&self.this);
     }
 
     fn deinitErased(ctx: ?*anyopaque, allocator: std.mem.Allocator) void {
@@ -112,25 +196,55 @@ pub const JsTransformer = struct {
         allocator.destroy(self);
     }
 
+    /// The constructor's steps 12-13: invoke transformer.start with
+    /// « controller » - null when there is none. It runs once, so the
+    /// controller lets it go here, and settles `this`.
+    pub fn callStart(self: *JsTransformer, realm: Realm, controller: *runtime.Instance) js.Error!?js.Completion {
+        const start_fn = self.start orelse return null;
+        // Taken out first: the call may clear the algorithms (release),
+        // which must find nothing of start or `this` left to let go.
+        self.start = null;
+        defer js.dispose(start_fn);
+        const this = self.this;
+        self.this = null;
+        defer if (this) |t| js.dispose(t);
+        const completion = try realm.call(start_fn, this, &.{realm.instanceValue(controller)});
+        // Not cleared by the call: `this` stays for the calls that use it.
+        if (self.controller != null and this != null and self.usesThis()) {
+            js.keepTraced(self.controller.?, js.slot.this, this.?);
+            self.traced |= bit(.this);
+        }
+        return completion;
+    }
+
     fn transformErased(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance, chunk: Value) js.Error!Value {
         const self: *JsTransformer = @ptrCast(@alignCast(ctx.?));
         // Step 5: invoke transform with « chunk, controller ».
-        const f = self.transform orelse return defaultTransform(realm, controller, chunk);
-        return realm.promiseCall(f, self.this, &.{ chunk, try realm.wrap(controller) });
+        const f = self.get(realm, .transform) orelse return defaultTransform(realm, controller, chunk);
+        defer js.dispose(f);
+        const this = self.get(realm, .this);
+        defer if (this) |t| js.dispose(t);
+        return realm.promiseCall(f, this, &.{ chunk, realm.instanceValue(controller) });
     }
 
     fn flushErased(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance) js.Error!Value {
         const self: *JsTransformer = @ptrCast(@alignCast(ctx.?));
         // Steps 3 and 6: invoke flush with « controller ».
-        const f = self.flush orelse return realm.promiseResolvedWithUndefined();
-        return realm.promiseCall(f, self.this, &.{try realm.wrap(controller)});
+        const f = self.get(realm, .flush) orelse return realm.promiseResolvedWithUndefined();
+        defer js.dispose(f);
+        const this = self.get(realm, .this);
+        defer if (this) |t| js.dispose(t);
+        return realm.promiseCall(f, this, &.{realm.instanceValue(controller)});
     }
 
     fn cancelErased(ctx: ?*anyopaque, realm: Realm, _: *runtime.Instance, reason: Value) js.Error!Value {
         const self: *JsTransformer = @ptrCast(@alignCast(ctx.?));
         // Steps 4 and 7: invoke cancel with « reason ».
-        const f = self.cancel orelse return realm.promiseResolvedWithUndefined();
-        return realm.promiseCall(f, self.this, &.{reason});
+        const f = self.get(realm, .cancel) orelse return realm.promiseResolvedWithUndefined();
+        defer js.dispose(f);
+        const this = self.get(realm, .this);
+        defer if (this) |t| js.dispose(t);
+        return realm.promiseCall(f, this, &.{reason});
     }
 
     pub const vtable = Transformer.VTable{
@@ -138,6 +252,7 @@ pub const JsTransformer = struct {
         .flush = flushErased,
         .cancel = cancelErased,
         .deinit = deinitErased,
+        .attach = attachErased,
     };
 };
 
@@ -213,13 +328,20 @@ pub fn initialize(
 ) !void {
     const stream = streamSlots(stream_instance);
     stream.start_promise = start_promise;
-    // The stream is wrapped first: both sides point at it through their
-    // algorithms, and the wrapper cache keeps it for the realm.
-    _ = try realm.wrap(stream_instance);
+    // Both sides keep this stream (their controllers trace it, `attachSide`)
+    // and it keeps both: each side's start reaction holds its controller
+    // until a microtask at the soonest, so the new stream is its maker's by
+    // then (until the first side's setup traces it, it has no wrapper to be
+    // collected with).
     // Steps 1-5: the writable side, whose sink is this stream.
     stream.writable = try sw.createWritableStream(realm, stream_instance.ctx, .{ .ctx = stream_instance, .vtable = &sink_vtable }, writable_hwm, writable_size);
+    engine.traceChild(stream_instance, stream.writable.?, js.slot.writable);
     // Steps 6-8: the readable side, whose source is this stream.
     stream.readable = try srd.createReadableStream(realm, stream_instance.ctx, .{ .ctx = stream_instance, .vtable = &source_vtable }, readable_hwm, readable_size);
+    engine.traceChild(stream_instance, stream.readable.?, js.slot.readable);
+    // The sides' controllers traced this stream, which made its wrapper; one
+    // the engine could not cache leaves it nobody's (the caller frees it).
+    if (!engine.hasWrapper(stream_instance)) return error.OutOfMemory;
     // Steps 9-10: backpressure starts undefined and is set to true.
     stream.backpressure = null;
     setBackpressure(realm, stream, true);
@@ -280,9 +402,16 @@ pub fn newController(ctx: runtime.Context, stream_instance: *runtime.Instance, t
 
 /// SetUpTransformStreamDefaultController(stream, controller, ...)
 pub fn setUpController(realm: Realm, stream_instance: *runtime.Instance, controller_instance: *runtime.Instance) !void {
-    _ = try realm.wrap(controller_instance);
-    // Steps 3-7: link them; the algorithms are in the controller's slots.
+    _ = realm;
+    // Steps 3-7: link them - each keeps the other; the algorithms are in the
+    // controller's slots, and it takes them over (their values traced).
     streamSlots(stream_instance).controller = controller_instance;
+    js.traceBoth(stream_instance, js.slot.controller, controller_instance, js.slot.stream) catch |err| {
+        streamSlots(stream_instance).controller = null;
+        return err;
+    };
+    const c = controllerOf(controller_instance).?;
+    if (c.transformer) |t| if (t.vtable.attach) |attach| attach(t.ctx, controller_instance);
 }
 
 /// TransformStreamDefaultControllerClearAlgorithms(controller)
@@ -333,8 +462,14 @@ fn performTransform(realm: Realm, controller_instance: *runtime.Instance, chunk:
     defer js.dispose(transform_promise);
     // Step 2: react with rejection steps that error the stream and rethrow.
     const holder = try c.allocator.create(TransformReaction);
-    holder.* = .{ .deferred = try Deferred.init(realm), .stream = c.stream, .allocator = c.allocator, .realm = realm };
-    const result = try js.clone(holder.deferred.promise);
+    holder.* = .{ .deferred = Deferred.init(realm) catch |err| {
+        c.allocator.destroy(holder);
+        return err;
+    }, .stream = c.stream, .hold = js.Hold.take(c.stream), .allocator = c.allocator, .realm = realm };
+    const result = js.clone(holder.deferred.promise) catch |err| {
+        holder.finish();
+        return err;
+    };
     realm.react(transform_promise, TransformReaction, holder, TransformReaction.fulfilled, TransformReaction.rejected, TransformReaction.finish) catch {
         holder.deferred.resolveUndefined(realm);
         holder.finish();
@@ -345,12 +480,16 @@ fn performTransform(realm: Realm, controller_instance: *runtime.Instance, chunk:
 const TransformReaction = struct {
     deferred: Deferred,
     stream: *runtime.Instance,
+    /// The transform stream, until the transform's promise settles.
+    hold: js.Hold,
     allocator: std.mem.Allocator,
     realm: Realm,
 
     fn finish(self: *TransformReaction) void {
+        const hold = self.hold;
         self.deferred.deinit();
         self.allocator.destroy(self);
+        hold.give();
     }
 
     fn fulfilled(self: *TransformReaction, _: Value) void {
@@ -360,7 +499,7 @@ const TransformReaction = struct {
 
     fn rejected(self: *TransformReaction, r: Value) void {
         // 2.1 Perform ! TransformStreamError(controller.[[stream]], r).
-        errorStream(self.realm, self.stream, r);
+        if (self.hold.alive()) errorStream(self.realm, self.stream, r);
         // 2.2 Throw r.
         self.deferred.reject(self.realm, r);
         self.finish();
@@ -407,8 +546,17 @@ fn sinkWrite(ctx: ?*anyopaque, realm: Realm, _: *runtime.Instance, chunk: Value)
     // Step 3: wait out backpressure first.
     if (stream.backpressure == true) {
         const change = stream.backpressure_change_promise.?;
-        const wait = try stream.allocator.create(BackpressureWait);
-        wait.* = .{ .deferred = try Deferred.init(realm), .stream = stream_instance, .controller = controller, .chunk = try js.clone(chunk), .allocator = stream.allocator, .realm = realm };
+        const deferred = try Deferred.init(realm);
+        const held_chunk = js.clone(chunk) catch |err| {
+            deferred.deinit();
+            return err;
+        };
+        const wait = stream.allocator.create(BackpressureWait) catch |err| {
+            js.dispose(held_chunk);
+            deferred.deinit();
+            return err;
+        };
+        wait.* = .{ .deferred = deferred, .stream = stream_instance, .controller = controller, .chunk = held_chunk, .hold = js.Hold.take(stream_instance), .allocator = stream.allocator, .realm = realm };
         const result = try js.clone(wait.deferred.promise);
         realm.react(change.promise, BackpressureWait, wait, BackpressureWait.fulfilled, BackpressureWait.rejected, BackpressureWait.finish) catch {
             wait.finish();
@@ -424,18 +572,25 @@ const BackpressureWait = struct {
     stream: *runtime.Instance,
     controller: *runtime.Instance,
     chunk: Value,
+    /// The transform stream (and through its edge its controller) until
+    /// backpressure changes. A write nobody relieves - the readable side
+    /// never read - holds it until its realm ends (design section 4).
+    hold: js.Hold,
     allocator: std.mem.Allocator,
     realm: Realm,
 
     fn finish(self: *BackpressureWait) void {
+        const hold = self.hold;
         js.dispose(self.chunk);
         self.deferred.deinit();
         self.allocator.destroy(self);
+        hold.give();
     }
 
     /// 3.3 fulfillment steps.
     fn fulfilled(self: *BackpressureWait, _: Value) void {
         defer self.finish();
+        if (!self.hold.alive()) return;
         const realm = self.realm;
         const writable = sw.streamOf(streamSlots(self.stream).writable.?).?;
         // 3.3.3 erroring: throw its stored error.
@@ -510,7 +665,11 @@ fn finishWith(realm: Realm, stream_instance: *runtime.Instance, kind: FinishKind
     clearAlgorithms(c);
     // Step 7: react.
     const reaction = try stream.allocator.create(FinishReaction);
-    reaction.* = .{ .stream = stream_instance, .kind = kind, .reason = if (reason) |r| try js.clone(r) else null, .allocator = stream.allocator, .realm = realm };
+    const held_reason = if (reason) |r| js.clone(r) catch |err| {
+        stream.allocator.destroy(reaction);
+        return err;
+    } else null;
+    reaction.* = .{ .stream = stream_instance, .kind = kind, .reason = held_reason, .hold = js.Hold.take(stream_instance), .allocator = stream.allocator, .realm = realm };
     realm.react(p, FinishReaction, reaction, FinishReaction.fulfilled, FinishReaction.rejected, FinishReaction.finish) catch reaction.finish();
     // Step 8: Return controller.[[finishPromise]].
     return js.clone(c.finish_promise.?.promise);
@@ -520,12 +679,16 @@ const FinishReaction = struct {
     stream: *runtime.Instance,
     kind: FinishKind,
     reason: ?Value,
+    /// The transform stream, until the flush or cancel promise settles.
+    hold: js.Hold,
     allocator: std.mem.Allocator,
     realm: Realm,
 
     fn finish(self: *FinishReaction) void {
+        const hold = self.hold;
         js.disposeOptional(&self.reason);
         self.allocator.destroy(self);
+        hold.give();
     }
 
     fn finishPromise(self: *FinishReaction) ?Deferred {
@@ -536,6 +699,7 @@ const FinishReaction = struct {
     /// 7.1: the algorithm's promise was fulfilled.
     fn fulfilled(self: *FinishReaction, _: Value) void {
         defer self.finish();
+        if (!self.hold.alive()) return;
         const realm = self.realm;
         const stream = streamSlots(self.stream);
         const finish_promise = self.finishPromise() orelse return;
@@ -568,6 +732,7 @@ const FinishReaction = struct {
     /// 7.2: the algorithm's promise was rejected with r.
     fn rejected(self: *FinishReaction, r: Value) void {
         defer self.finish();
+        if (!self.hold.alive()) return;
         const realm = self.realm;
         const stream = streamSlots(self.stream);
         const finish_promise = self.finishPromise() orelse return;
@@ -588,6 +753,7 @@ const sink_vtable = sw.Sink.VTable{
     .close = sinkClose,
     .abort = sinkAbort,
     .deinit = noDeinit,
+    .attach = attachSide,
 };
 
 const source_vtable = srd.Source.VTable{
@@ -595,9 +761,17 @@ const source_vtable = srd.Source.VTable{
     .pull = sourcePull,
     .cancel = sourceCancel,
     .deinit = noDeinit,
+    .attach = attachSide,
 };
 
 fn noDeinit(_: ?*anyopaque, _: std.mem.Allocator) void {}
+
+/// A side's controller keeps the transform stream its algorithms run on
+/// (`ctx`): `readable` alone keeps the transform it pulls through.
+fn attachSide(ctx: ?*anyopaque, controller: *runtime.Instance) void {
+    const stream_instance: *runtime.Instance = @ptrCast(@alignCast(ctx.?));
+    engine.traceChild(controller, stream_instance, js.slot.source);
+}
 
 // ============================================================================
 // § 9.3 "Set up a TransformStream" for other specifications
