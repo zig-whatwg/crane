@@ -3,10 +3,11 @@ const std = @import("std");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 const engine = @import("engine");
+const test_process = @import("test_process.zig");
 const Callback = ?*const fn () void;
 
 fn checkStrict() !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     const isolate = ffi.v8_Isolate_New() orelse return error.NoIsolate;
     defer ffi.v8_Isolate_Dispose(isolate);
     ffi.v8_Isolate_Enter(isolate);

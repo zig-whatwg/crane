@@ -152,7 +152,6 @@ test "two agents on two threads make worker realms and churn platform objects at
     // and MessageChannel makes its ports through MessagePort's hook. tests/v8
     // runs in one process: each is idempotent, and the runtime starts only if
     // no file before this one started it.
-    try protocol.initializeEngine(.{});
     test_process.start();
     @import("interfaces").process_hooks.startHooksForTest();
 

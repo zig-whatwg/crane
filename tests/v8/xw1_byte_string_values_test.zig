@@ -3,10 +3,11 @@ const std = @import("std");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 const engine = @import("engine");
+const test_process = @import("test_process.zig");
 const testing = std.testing;
 
 fn check() !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     const isolate = ffi.v8_Isolate_New() orelse return error.NoIsolate;
     defer ffi.v8_Isolate_Dispose(isolate);
     ffi.v8_Isolate_Enter(isolate);
@@ -98,7 +99,7 @@ test "xw1 ByteString conversion keeps cleanup valid on allocation failure and va
 }
 
 fn checkDictionary() !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     const isolate = ffi.v8_Isolate_New() orelse return error.NoIsolate;
     defer ffi.v8_Isolate_Dispose(isolate);
     ffi.v8_Isolate_Enter(isolate);

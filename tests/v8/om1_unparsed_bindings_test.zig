@@ -17,7 +17,7 @@ const Host = struct {
 };
 
 fn check(source: []const u8) !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     interfaces.process_hooks.startHooksForTest();
     // A standalone runtime of this test's own, the process's given back
     // after (test_process.OwnRuntime).

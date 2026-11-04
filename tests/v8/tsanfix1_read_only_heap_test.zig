@@ -80,13 +80,13 @@ const Engine = struct {
         const bytes = try std.heap.c_allocator.alloc(u8, (try file.stat(io)).size);
         errdefer std.heap.c_allocator.free(bytes);
         _ = try file.readPositionalAll(io, bytes, 0);
-        try engine.initializeEngine(.{ .snapshot = bytes });
+        try test_process.startSnapshot(bytes);
         return .{ .bytes = bytes };
     }
 
     /// After every agent restored from the snapshot ended.
     fn stop(self: Engine) void {
-        engine.deinitializeEngine();
+        test_process.endSnapshot();
         std.heap.c_allocator.free(self.bytes);
     }
 };

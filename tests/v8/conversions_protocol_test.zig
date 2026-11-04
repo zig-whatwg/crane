@@ -275,7 +275,7 @@ test "createDate: a Date of the realm, its time clipped" {
 test "agentHost: the host pointer the agent was made with, and null once it is destroyed" {
     defer test_agent.close();
     _ = try realm();
-    try protocol.initializeEngine(.{});
+    test_process.start();
     const no_hooks: protocol.HostHooks = .{};
     var marker: u32 = 7;
     const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks, .host = &marker });

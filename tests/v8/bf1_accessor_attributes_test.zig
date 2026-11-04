@@ -3,13 +3,14 @@ const std = @import("std");
 const v8 = @import("v8");
 const ffi = v8.ffi;
 const engine = @import("engine");
+const test_process = @import("test_process.zig");
 
 fn getter(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     ffi.FunctionCallbackInfo.v8_FunctionCallbackInfo_SetReturnValueInt32(info, 7);
 }
 
 fn checkAttributes() !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     const isolate = ffi.v8_Isolate_New() orelse return error.NoIsolate;
     defer ffi.v8_Isolate_Dispose(isolate);
     ffi.v8_Isolate_Enter(isolate);
