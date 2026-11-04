@@ -15,6 +15,7 @@ const model = @import("model.zig");
 const pages_mod = @import("pages.zig");
 const card = @import("card.zig");
 const png = @import("png.zig");
+const reference = @import("reference.zig");
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 const Dir = std.Io.Dir;
@@ -26,6 +27,7 @@ test {
     _ = @import("chart.zig");
     _ = pages_mod;
     _ = card;
+    _ = reference;
 }
 
 pub const Revision = pages_mod.Revision;
@@ -55,6 +57,13 @@ pub const Inputs = struct {
     /// Set when the exemptions are invalid (generate then fails with
     /// error.InvalidExemption): where, and why.
     exemption_diag: ?*model.ExemptionDiag = null,
+    /// A reference run's reference.json: another engine's results on the same
+    /// worklist (reference.zig), shown beside Crane's and never counted as
+    /// Crane's. Null: no comparison.
+    reference_json: ?[]const u8 = null,
+    /// Set when the reference is invalid (generate then fails with
+    /// error.InvalidReference): why.
+    reference_diag: ?*reference.Diag = null,
 };
 
 /// The Crane commits from one generation's head to the next's:
@@ -145,6 +154,12 @@ pub const Summary = struct {
     generation: u64 = 0,
     head_buf: [40]u8 = undefined,
     head_len: usize = 0,
+    /// State records of another engine, and stream lines of one: a reference
+    /// run's results where Crane's are read. Refused, never shown as Crane's.
+    refused_records: usize = 0,
+    refused_stream_lines: usize = 0,
+    /// Worklist files with a result in the reference run.
+    reference_files: usize = 0,
 
     /// The Crane commit the latest generation was recorded at.
     pub fn head(s: *const Summary) []const u8 {
@@ -164,6 +179,9 @@ pub const Summary = struct {
 /// test file, plus where it came from (`_journal`, `_mtime`: the journal's
 /// basename and mtime, which tools/wpt_progress.py adds).
 const Record = struct {
+    /// Absent on every line Crane's runner writes; a reference run's records
+    /// carry theirs (reference.isCrane).
+    engine: ?[]const u8 = null,
     status: []const u8 = "ERROR",
     passed: u64 = 0,
     failed: u64 = 0,
@@ -222,12 +240,15 @@ const Journal = struct {
 
 /// Every journal the progress report reads: wpt-results/*.jsonl and
 /// wpt-results/*/*.jsonl, one directory deep, less the result streams.
+/// wpt-results/reference/ holds reference runs, never Crane's journals: it is
+/// not a run.
 fn listJournals(arena: Allocator, io: Io, results: Dir) ![]Journal {
     var out: std.ArrayList(Journal) = .empty;
     try scanJournals(arena, io, results, "", &out);
     var it = results.iterate();
     while (try it.next(io)) |e| {
         if (e.kind != .directory) continue;
+        if (std.mem.eql(u8, e.name, reference.dir_name)) continue;
         var sub = results.openDir(io, e.name, .{ .iterate = true }) catch continue;
         defer sub.close(io);
         try scanJournals(arena, io, sub, try arena.dupe(u8, e.name), &out);
@@ -299,6 +320,7 @@ fn collectStreams(
     used: []const bool,
     known: *const std.StringHashMapUnmanaged(void),
     rec_journal: *const std.StringHashMapUnmanaged(usize),
+    refused: *usize,
 ) !std.StringArrayHashMapUnmanaged(std.ArrayList(Line)) {
     var by_source: std.StringArrayHashMapUnmanaged(std.ArrayList(Line)) = .empty;
     var scratch: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
@@ -319,6 +341,11 @@ fn collectStreams(
             // A line cut short by a killed child is dropped, never guessed at.
             const v = std.json.parseFromSliceLeaky(std.json.Value, scratch.allocator(), line, .{}) catch continue;
             if (v != .object) continue;
+            // A reference run's line beside Crane's journal is not Crane's detail.
+            if (v.object.get("engine")) |e| if (e != .string or !reference.isCrane(e.string)) {
+                refused.* += 1;
+                continue;
+            };
             const t = v.object.get("test") orelse continue;
             if (t != .string) continue;
             const src = model.sourceForTestUrl(known, t.string) orelse continue;
@@ -503,6 +530,8 @@ fn parentDir(path: []const u8) []const u8 {
 
 const DirBuild = struct {
     totals: model.Totals = .{},
+    /// The reference run's, over the same files (a file it lacks is unrun).
+    ref_totals: model.Totals = .{},
     dirs: std.ArrayList([]const u8) = .empty,
     files: std.ArrayList(usize) = .empty,
 };
@@ -522,6 +551,74 @@ fn searchPaths(arena: Allocator, dir_keys: []const []const u8, files: []const pa
 }
 
 // ============================================================================
+// The comparison with a reference run
+// ============================================================================
+
+const CompareLists = struct {
+    /// Both engines' totals over the files both have a result for, and how many.
+    crane: model.Totals = .{},
+    ref: model.Totals = .{},
+    both: usize = 0,
+    /// Files both ran where the reference passes more subtests, most first.
+    ahead_ref: []const usize,
+    /// Files both ran where Crane passes more, most first.
+    ahead_crane: []const usize,
+    /// Files only the reference ran, and only Crane.
+    only_ref: []const usize,
+    only_crane: []const usize,
+};
+
+fn passDiff(a: model.Counts, b: model.Counts) u64 {
+    return a.passed -| b.passed;
+}
+
+fn compareLists(arena: Allocator, files: []const pages_mod.FileView) !CompareLists {
+    var ahead_ref: std.ArrayList(usize) = .empty;
+    var ahead_crane: std.ArrayList(usize) = .empty;
+    var only_ref: std.ArrayList(usize) = .empty;
+    var only_crane: std.ArrayList(usize) = .empty;
+    var crane: model.Totals = .{};
+    var ref: model.Totals = .{};
+    var both: usize = 0;
+    for (files, 0..) |f, i| {
+        const rv = f.ref orelse {
+            if (f.status != null) try only_crane.append(arena, i);
+            continue;
+        };
+        if (f.status == null) {
+            try only_ref.append(arena, i);
+            continue;
+        }
+        crane.add(f.gate, f.counts);
+        ref.add(rv.gate, rv.counts);
+        both += 1;
+        if (rv.counts.passed > f.counts.passed) try ahead_ref.append(arena, i);
+        if (f.counts.passed > rv.counts.passed) try ahead_crane.append(arena, i);
+    }
+    const ByRef = struct {
+        files: []const pages_mod.FileView,
+        fn lt(ctx: @This(), a: usize, b: usize) bool {
+            const da = passDiff(ctx.files[a].ref.?.counts, ctx.files[a].counts);
+            const db = passDiff(ctx.files[b].ref.?.counts, ctx.files[b].counts);
+            if (da != db) return da > db;
+            return std.mem.order(u8, ctx.files[a].path, ctx.files[b].path) == .lt;
+        }
+    };
+    const ByCrane = struct {
+        files: []const pages_mod.FileView,
+        fn lt(ctx: @This(), a: usize, b: usize) bool {
+            const da = passDiff(ctx.files[a].counts, ctx.files[a].ref.?.counts);
+            const db = passDiff(ctx.files[b].counts, ctx.files[b].ref.?.counts);
+            if (da != db) return da > db;
+            return std.mem.order(u8, ctx.files[a].path, ctx.files[b].path) == .lt;
+        }
+    };
+    std.mem.sort(usize, ahead_ref.items, ByRef{ .files = files }, ByRef.lt);
+    std.mem.sort(usize, ahead_crane.items, ByCrane{ .files = files }, ByCrane.lt);
+    return .{ .crane = crane, .ref = ref, .both = both, .ahead_ref = ahead_ref.items, .ahead_crane = ahead_crane.items, .only_ref = only_ref.items, .only_crane = only_crane.items };
+}
+
+// ============================================================================
 // generate
 // ============================================================================
 
@@ -532,6 +629,16 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
     var summary: Summary = .{};
 
     const state = try std.json.parseFromSliceLeaky(std.json.ArrayHashMap(Record), arena, in.state_json, parse_options);
+    // A record of another engine in the state is a reference run's result where
+    // Crane's are kept: refused, and its file reads as Crane has it otherwise.
+    for (state.map.values()) |r| {
+        if (!reference.isCrane(r.engine)) summary.refused_records += 1;
+    }
+    var local_rdiag: reference.Diag = .{};
+    const ref: ?reference.Reference = if (in.reference_json) |j|
+        try reference.parse(arena, j, in.reference_diag orelse &local_rdiag)
+    else
+        null;
     const history = try std.json.parseFromSliceLeaky(History, arena, in.history_json, parse_options);
     const generations = try arena.dupe(Generation, history.generations);
     {
@@ -570,7 +677,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
     var rec_journal: std.StringHashMapUnmanaged(usize) = .empty;
     var runs: std.StringArrayHashMapUnmanaged(pages_mod.RunInfo) = .empty;
     for (worklist, 0..) |p, i| {
-        const rec = state.map.get(p);
+        const rec: ?Record = if (state.map.get(p)) |r| (if (reference.isCrane(r.engine)) r else null) else null;
         const c: model.Counts = if (rec) |r| r.counts() else .{};
         files[i] = .{
             .path = p,
@@ -583,6 +690,12 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
             .exemption = exempt_of.get(p),
         };
         if (files[i].exemption != null) files[i].gate = files[i].gate.exempted();
+        if (ref) |rf| if (rf.files.map.get(p)) |rr| {
+            var g = model.gateOf(rr.status, rr.counts());
+            if (files[i].exemption != null) g = g.exempted();
+            files[i].ref = .{ .status = rr.status, .counts = rr.counts(), .gate = g, .urls = rr.urls, .missing_urls = rr.missing_urls };
+            summary.reference_files += 1;
+        };
         const r = rec orelse continue;
         const located = locate(journals, r);
         if (located) |ji| {
@@ -612,7 +725,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         }
     }{ .keys = runs.keys() });
 
-    var streams = try collectStreams(arena, io, in.results, journals, used, &known, &rec_journal);
+    var streams = try collectStreams(arena, io, in.results, journals, used, &known, &rec_journal, &summary.refused_stream_lines);
     for (files) |*f| {
         const lines = streams.getPtr(f.path) orelse continue;
         if (lines.items.len == 0) continue;
@@ -631,6 +744,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
             const gop = try builds.getOrPut(arena, dir);
             if (!gop.found_existing) gop.value_ptr.* = .{};
             gop.value_ptr.totals.add(f.gate, f.counts);
+            if (f.ref) |rv| gop.value_ptr.ref_totals.add(rv.gate, rv.counts) else gop.value_ptr.ref_totals.add(.unrun, .{});
             if (is_file) {
                 try gop.value_ptr.files.append(arena, i);
             } else {
@@ -655,7 +769,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         const b = builds.getPtr(k).?;
         std.mem.sort([]const u8, b.dirs.items, {}, lessStr);
         // Files were appended in worklist (sorted) order already.
-        try dirs.put(arena, k, .{ .path = k, .totals = b.totals, .dirs = b.dirs.items, .files = b.files.items });
+        try dirs.put(arena, k, .{ .path = k, .totals = b.totals, .ref_totals = b.ref_totals, .dirs = b.dirs.items, .files = b.files.items });
     }
     const root_totals = dirs.getPtr("").?.totals;
 
@@ -673,6 +787,14 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
     defer gpa.free(card_png);
     const card_ref = try std.fmt.allocPrint(arena, "card.png?v={x:0>8}", .{@as(u32, @truncate(std.hash.Wyhash.hash(0, card_png)))});
 
+    // The files the two engines differ on, for the comparison page.
+    const cmp = try compareLists(arena, files);
+    const ref_ptr: ?*const reference.Reference = if (ref) |r| blk: {
+        const p = try arena.create(reference.Reference);
+        p.* = r;
+        break :blk p;
+    } else null;
+
     const site: pages_mod.Site = .{
         .files = files,
         .dirs = &dirs,
@@ -685,6 +807,14 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         .site_url = in.site_url,
         .card_ref = card_ref,
         .exemptions = exemptions,
+        .reference = ref_ptr,
+        .both_crane = cmp.crane,
+        .both_ref = cmp.ref,
+        .both = cmp.both,
+        .ahead_ref = cmp.ahead_ref,
+        .ahead_crane = cmp.ahead_crane,
+        .only_ref = cmp.only_ref,
+        .only_crane = cmp.only_crane,
     };
 
     var o: Output = .{ .gpa = gpa, .io = io, .dir = out, .arena = arena, .summary = &summary };
@@ -697,6 +827,12 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
     defer aw.deinit();
     try pages_mod.writeIndex(&aw.writer, &site);
     try o.put("index.html", aw.written());
+
+    if (site.reference) |r| {
+        aw.clearRetainingCapacity();
+        try pages_mod.writeComparePage(&aw.writer, &site);
+        try o.put(try std.fmt.allocPrint(arena, "{s}.html", .{r.engine}), aw.written());
+    }
 
     for (dir_keys) |k| {
         if (k.len == 0) continue;
@@ -737,14 +873,18 @@ fn usage() noreturn {
     std.debug.print(
         \\usage: wpt_site [--state=<json>] [--history=<json>] [--worklist=<txt>] [--results=<dir>]
         \\                [--assets=<dir>] [--out=<dir>] [--wpt-root=<dir>] [--site-url=<url>]
-        \\                [--exemptions=<txt>] [--no-commit]
+        \\                [--exemptions=<txt>] [--reference=<reference.json>|--no-reference] [--no-commit]
+        \\       wpt_site import-reference --engine=<chrome|firefox|safari> --report=<wptreport.json>
+        \\                --manifest=<MANIFEST.json> --worklist=<txt> --meta=<run.json> --out=<dir>
         \\
         \\Defaults are the repository's: tmp/wpt-progress-state.json, wpt-results/progress-history.json,
         \\tests/wpt_0_1_worklist.txt, wpt-results/, tools/wpt_site/assets/, wpt-results/site/, tests/wpt/,
         \\https://zig-whatwg.github.io/crane/ (the absolute URL the social tags name),
-        \\tools/wpt_gate_exemptions.txt.
+        \\tools/wpt_gate_exemptions.txt, and the newest Chrome run under wpt-results/reference/.
         \\When --out is a git worktree on the gh-pages branch and anything changed, the output is committed
         \\there ("results: generation <n>, Crane <sha>"). Nothing is ever pushed.
+        \\import-reference joins another engine's wptreport to the worklist through the manifest and
+        \\writes <out>/reference.json (tools/wpt_site/reference.zig).
         \\
     , .{});
     std.process.exit(2);
@@ -811,6 +951,84 @@ fn commitSite(arena: Allocator, io: Io, out: []const u8, summary: Summary) !void
     std.debug.print("wpt-site: committed on gh-pages: {s}\n", .{msg});
 }
 
+/// `import-reference`: write <out>/reference.json from a reference run's
+/// wptreport (reference.import).
+fn importReference(arena: Allocator, io: Io, args: anytype) !void {
+    var engine: []const u8 = "";
+    var report_path: []const u8 = "";
+    var manifest_path: []const u8 = "";
+    var worklist_path: []const u8 = "";
+    var meta_path: []const u8 = "";
+    var out_path: []const u8 = "";
+    while (args.next()) |a| {
+        const eq = std.mem.indexOfScalar(u8, a, '=') orelse usage();
+        const key = a[0..eq];
+        const val = a[eq + 1 ..];
+        if (std.mem.eql(u8, key, "--engine")) engine = val else if (std.mem.eql(u8, key, "--report")) report_path = val else if (std.mem.eql(u8, key, "--manifest")) manifest_path = val else if (std.mem.eql(u8, key, "--worklist")) worklist_path = val else if (std.mem.eql(u8, key, "--meta")) meta_path = val else if (std.mem.eql(u8, key, "--out")) out_path = val else usage();
+    }
+    for ([_][]const u8{ engine, report_path, manifest_path, worklist_path, meta_path, out_path }) |v| if (v.len == 0) usage();
+    const cwd = Dir.cwd();
+    const report_bytes = try cwd.readFileAlloc(io, report_path, arena, .limited(1 << 34));
+    const manifest_bytes = try cwd.readFileAlloc(io, manifest_path, arena, .limited(1 << 31));
+    const worklist_text = try cwd.readFileAlloc(io, worklist_path, arena, .limited(1 << 28));
+    const meta_bytes = try cwd.readFileAlloc(io, meta_path, arena, .limited(1 << 20));
+    var diag: reference.Diag = .{};
+    const imp = reference.import(arena, engine, report_bytes, manifest_bytes, worklist_text, meta_bytes, &diag) catch |e| switch (e) {
+        error.InvalidReference => {
+            std.debug.print("wpt-site import-reference: {s}\n", .{diag.message()});
+            std.process.exit(1);
+        },
+        else => |err| return err,
+    };
+    var aw: Io.Writer.Allocating = .init(arena);
+    try reference.write(&aw.writer, imp);
+    var out = try cwd.createDirPathOpen(io, out_path, .{});
+    defer out.close(io);
+    try out.writeFile(io, .{ .sub_path = "reference.json", .data = aw.written() });
+    const c = imp.coverage;
+    std.debug.print(
+        "wpt-site import-reference: {s} {s} ({s}): {d} of {d} worklist sources have a result; " ++
+            "{d} of {d} test URLs reported, {d} skipped, {d} missing; {d} URLs outside the worklist and {d} outside the manifest left out; wrote {s}/reference.json\n",
+        .{
+            imp.engine,      imp.meta.run.browser_version, imp.meta.run.date, c.sources_reported, c.sources,
+            c.urls_reported, c.urls_expected,              c.urls_skipped,    c.urls_missing,     c.urls_outside,
+            c.urls_unknown,  out_path,
+        },
+    );
+}
+
+/// The newest reference run of `engine` under `<results>/reference/*/reference.json`
+/// (by its run date), and the path it came from; null when there is none.
+/// A reference.json anywhere else in `results` is never read, and said so.
+fn findReference(arena: Allocator, io: Io, results: Dir, results_path: []const u8, engine: []const u8) !?struct { path: []const u8, bytes: []const u8 } {
+    var it = results.iterate();
+    while (try it.next(io)) |e| {
+        if (e.kind != .directory or std.mem.eql(u8, e.name, reference.dir_name)) continue;
+        const stray = try std.fmt.allocPrint(arena, "{s}/reference.json", .{e.name});
+        _ = results.statFile(io, stray, .{}) catch continue;
+        std.debug.print("wpt-site: ignored {s}/{s}: a reference run is read only from {s}/{s}/<run>/reference.json, never as Crane's\n", .{ results_path, stray, results_path, reference.dir_name });
+    }
+    var dir = results.openDir(io, reference.dir_name, .{ .iterate = true }) catch return null;
+    defer dir.close(io);
+    var best: ?struct { path: []const u8, bytes: []const u8, date: []const u8 } = null;
+    var dit = dir.iterate();
+    while (try dit.next(io)) |e| {
+        if (e.kind != .directory) continue;
+        const rel = try std.fmt.allocPrint(arena, "{s}/reference.json", .{e.name});
+        const bytes = dir.readFileAlloc(io, rel, arena, .limited(1 << 30)) catch continue;
+        var diag: reference.Diag = .{};
+        const r = reference.parse(arena, bytes, &diag) catch {
+            std.debug.print("wpt-site: ignored {s}/{s}/{s}: {s}\n", .{ results_path, reference.dir_name, rel, diag.message() });
+            continue;
+        };
+        if (!std.mem.eql(u8, r.engine, engine)) continue;
+        if (best) |b| if (std.mem.order(u8, r.run.date, b.date) != .gt) continue;
+        best = .{ .path = try std.fmt.allocPrint(arena, "{s}/{s}/{s}", .{ results_path, reference.dir_name, rel }), .bytes = bytes, .date = r.run.date };
+    }
+    const b = best orelse return null;
+    return .{ .path = b.path, .bytes = b.bytes };
+}
+
 pub fn main(init: std.process.Init) !void {
     var arena_state: std.heap.ArenaAllocator = .init(init.gpa);
     defer arena_state.deinit();
@@ -826,12 +1044,25 @@ pub fn main(init: std.process.Init) !void {
     var wpt_root: []const u8 = "tests/wpt";
     var site_url: []const u8 = default_site_url;
     var exemptions_path: []const u8 = "tools/wpt_gate_exemptions.txt";
+    var reference_path: ?[]const u8 = null;
+    var use_reference = true;
     var commit = true;
 
     var args = try init.minimal.args.iterateAllocator(arena);
     defer args.deinit();
     _ = args.next();
+    var first = true;
     while (args.next()) |a| {
+        if (first and std.mem.eql(u8, a, "import-reference")) return importReference(arena, io, &args);
+        first = false;
+        if (std.mem.eql(u8, a, "--no-reference")) {
+            use_reference = false;
+            continue;
+        }
+        if (std.mem.startsWith(u8, a, "--reference=")) {
+            reference_path = a["--reference=".len..];
+            continue;
+        }
         const eq = std.mem.indexOfScalar(u8, a, '=');
         const key = a[0 .. eq orelse a.len];
         const val = if (eq) |i| a[i + 1 ..] else "";
@@ -864,8 +1095,23 @@ pub fn main(init: std.process.Init) !void {
         try ranges.append(arena, try parseRange(arena, pair.since, pair.head, log));
     }
 
+    // The comparison: the newest Chrome run under wpt-results/reference/, or the one named.
+    var reference_json: ?[]const u8 = null;
+    if (use_reference) {
+        if (reference_path) |rp| {
+            reference_json = try cwd.readFileAlloc(io, rp, arena, .limited(1 << 30));
+            std.debug.print("wpt-site: comparing with the reference run in {s}\n", .{rp});
+        } else if (try findReference(arena, io, results, results_path, "chrome")) |found| {
+            reference_json = found.bytes;
+            std.debug.print("wpt-site: comparing with the reference run in {s}\n", .{found.path});
+        } else std.debug.print("wpt-site: no reference run under {s}/{s}/; no comparison\n", .{ results_path, reference.dir_name });
+    }
+
     var diag: model.ExemptionDiag = .{};
+    var rdiag: reference.Diag = .{};
     const summary = generate(init.gpa, io, .{
+        .reference_json = reference_json,
+        .reference_diag = &rdiag,
         .exemptions_text = exemptions,
         .exemption_diag = &diag,
         .ranges = ranges.items,
@@ -885,8 +1131,17 @@ pub fn main(init: std.process.Init) !void {
                 std.debug.print("wpt-site: {s}: {s}: {s}\n", .{ exemptions_path, diag.path, diag.message });
             std.process.exit(1);
         },
+        error.InvalidReference => {
+            std.debug.print("wpt-site: the reference run is invalid: {s}\n", .{rdiag.message()});
+            std.process.exit(1);
+        },
         else => |err| return err,
     };
+    if (summary.refused_records > 0 or summary.refused_stream_lines > 0) std.debug.print(
+        "wpt-site: REFUSED {d} state records and {d} result-stream lines of another engine: a reference run is never Crane's; it belongs in {s}/{s}/<run>/\n",
+        .{ summary.refused_records, summary.refused_stream_lines, results_path, reference.dir_name },
+    );
+    if (reference_json != null) std.debug.print("wpt-site: the reference run has a result for {d} of the worklist's files\n", .{summary.reference_files});
     std.debug.print(
         "wpt-site: generation {d} (Crane {s}): {d} test files, {d} with subtest detail; {d} directory pages, {d} file pages; " ++
             "{d} files in the site, {d} bytes (largest {s}, {d} bytes); {d} written, {d} unchanged, {d} removed, in {s}\n",
@@ -1575,4 +1830,286 @@ test "site: no exemptions write the same bytes as before; an invalid one stops t
     diag = .{};
     try testing.expectError(error.InvalidExemption, runFixtureExempt(gpa, &f, "bad2", fixtureExemption("dom/typo.html"), &diag));
     try testing.expectEqualStrings("dom/typo.html", diag.path);
+}
+
+// ============================================================================
+// Tests: a reference run beside Crane's (lane chromeref1)
+// ============================================================================
+
+/// Chrome's results on the fixture's worklist, as reference.write makes them:
+/// dom/a.html 3 of 3 (Crane 2 of 3), dom/b.html 1 of 1 (Crane TIMEOUT),
+/// dom/nodes/c.any.js 2 of 2 with one test URL missing (Crane NONE-PASSED),
+/// url/u.html 1 of 3 (Crane 3 of 3), url/never.html TIMEOUT 1 of 2 (Crane has
+/// not run it).
+const fixture_reference =
+    \\{"format":"crane-wpt-reference/1","engine":"chrome",
+    \\"run":{"browser_version":"150.0.7000.1","webdriver_version":"150.0.7000.2","channel":"stable","wpt_revision":"56d7fe562b35dfcb063fac457f24bd0a38205481","worklist_commit":"0c228a97aa9","processes":5,"host":"chat.local","command":"wpt run chrome","date":"2026-11-04T11:00:00Z"},
+    \\"product":"chrome","time_start":1793790000000,"time_end":1793793600000,
+    \\"timing":{"processes":5,"reference":{"wall_s":3600.5,"user_s":9000,"sys_s":1200},"crane":{"wall_s":2400,"user_s":8000,"sys_s":400,"files":5,"runner":"main-0c228a97aa"},"overhead":{"files":200,"reference":{"wall_s":60,"user_s":100,"sys_s":20},"crane":{"wall_s":10,"user_s":30,"sys_s":5}}},
+    \\"coverage":{"sources":5,"sources_in_manifest":5,"sources_reported":5,"urls_expected":7,"urls_reported":6,"urls_skipped":0,"urls_missing":1,"urls_outside":0,"urls_unknown":0},
+    \\"files":{
+    \\"dom/a.html":{"engine":"chrome","status":"OK","passed":3,"failed":0,"timed_out":0,"notrun":0,"urls":1,"missing_urls":0,"message":null},
+    \\"dom/b.html":{"engine":"chrome","status":"OK","passed":1,"failed":0,"timed_out":0,"notrun":0,"urls":1,"missing_urls":0,"message":null},
+    \\"dom/nodes/c.any.js":{"engine":"chrome","status":"OK","passed":2,"failed":0,"timed_out":0,"notrun":0,"urls":1,"missing_urls":1,"message":null},
+    \\"url/never.html":{"engine":"chrome","status":"TIMEOUT","passed":1,"failed":0,"timed_out":1,"notrun":0,"urls":1,"missing_urls":0,"message":"slow"},
+    \\"url/u.html":{"engine":"chrome","status":"OK","passed":1,"failed":2,"timed_out":0,"notrun":0,"urls":1,"missing_urls":0,"message":null}
+    \\}}
+;
+
+fn runFixtureRef(gpa: Allocator, f: *Fixture, out_name: []const u8, ref_json: ?[]const u8) !Summary {
+    const st = try f.state(gpa);
+    defer gpa.free(st);
+    var out = try f.tmp.dir.createDirPathOpen(testing.io, out_name, .{ .open_options = .{ .iterate = true } });
+    defer out.close(testing.io);
+    return generate(gpa, testing.io, .{
+        .state_json = st,
+        .history_json = fixture_history,
+        .worklist_text = fixture_worklist,
+        .results = f.results,
+        .assets = null,
+        .wpt = fixture_wpt,
+        .reference_json = ref_json,
+    }, out);
+}
+
+test "site: a reference run is shown beside Crane's on the same files, never in Crane's numbers" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    const s = try runFixtureRef(gpa, &f, "out", fixture_reference);
+    try testing.expectEqual(@as(usize, 5), s.reference_files);
+
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    // Crane's headline is Crane's alone.
+    try expectHas(index, "<span class=\"hl-pass\">5</span><span class=\"hl-of\"> / 8</span>");
+    try expectHas(index, "<div class=\"blk\"><dt>Blocking files</dt><dd>2</dd>");
+    // The comparison: its own section after the scope, before the contents.
+    try expectBefore(index, "id=\"status\"", "id=\"versus\"");
+    try expectBefore(index, "id=\"versus\"", "id=\"contents\"");
+    try expectHas(index, "<h2 id=\"versus-h\">Crane and Chrome</h2>");
+    try expectHas(index, "Chrome <code>150.0.7000.1</code>");
+    try expectHas(index, "ChromeDriver <code>150.0.7000.2</code>");
+    try expectHas(index, "<code>56d7fe562b</code>");
+    try expectHas(index, "4 Nov 2026");
+    // Side by side over the files both ran (url/never.html is Chrome's alone):
+    // subtests passing of reported, and blocking files, for both.
+    try expectHas(index, "<span class=\"box-sub\">4 test files both ran</span>");
+    try expectHas(index, "<tr><th scope=\"row\">WPT subtests passing</th><td class=\"n\" data-v=\"5\" data-of=\"8\"><b>5</b> / 8</td><td class=\"n\" data-v=\"7\" data-of=\"9\"><b>7</b> / 9</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Blocking files</th><td class=\"n blk\">2</td><td class=\"n\">0</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Clean files</th><td class=\"n\">1</td><td class=\"n\">3</td></tr>");
+    try expectHas(index, "Not compared: <a href=\"chrome.html#only-one\">1 file</a> with a result from Chrome alone, 0 from Crane alone.");
+    try expectHas(index, "ran the worklist&rsquo;s 5 test files");
+    // The Crane runner the window timed beside it, by its frozen commit.
+    try expectHas(index, "In the same window Crane&rsquo;s frozen runner, main <a href=\"https://github.com/zig-whatwg/crane/commit/0c228a97aa\"><code>0c228a97aa</code></a>, ran the same files with the same runners.");
+    // Where they differ, both directions, on the comparison page.
+    try expectHas(index, "<a href=\"chrome.html#ahead-ref\">3 files</a> where Chrome passes subtests Crane does not (4 subtests)");
+    try expectHas(index, "<a href=\"chrome.html#ahead-crane\">1 file</a> where Crane passes subtests Chrome does not (2 subtests)");
+    // The suite tables carry Chrome's count beside Crane's.
+    try expectHas(index, "<th scope=\"col\" class=\"n\">Chrome</th>");
+
+    // A directory page: Chrome's numbers for the directory, and per file.
+    const dom = try readOut(gpa, &f, "out/dom/index.html");
+    defer gpa.free(dom);
+    try expectHas(dom, "<p class=\"figures-ref\"><span class=\"ref-name\">Chrome</span> <b>6</b> / 6 WPT subtests passing on the same files, <span class=\"quiet\">none blocking</span></p>");
+    try expectHas(dom, "<td class=\"n\" data-v=\"2\" data-of=\"3\"><b>2</b> / 3</td><td class=\"n\" data-v=\"3\" data-of=\"3\"><b>3</b> / 3</td>");
+
+    // A file page: Chrome's standing and count beside Crane's.
+    const b = try readOut(gpa, &f, "out/dom/b.html/index.html");
+    defer gpa.free(b);
+    try expectHas(b, "<div><dt>Chrome</dt><dd><span class=\"gate gate-clean\">Clean</span> <b>1</b> / 1 WPT subtests passing <span class=\"quiet\">runner status <code>OK</code></span></dd></div>");
+    const c = try readOut(gpa, &f, "out/dom/nodes/c.any.js/index.html");
+    defer gpa.free(c);
+    try expectHas(c, "1 of its test URLs has no Chrome result");
+    const never = try readOut(gpa, &f, "out/url/never.html/index.html");
+    defer gpa.free(never);
+    try expectHas(never, "<span class=\"gate gate-unrun\">Not run</span>");
+    try expectHas(never, "<div><dt>Chrome</dt><dd><span class=\"gate gate-timeout g-block\">TIMEOUT</span> <b>1</b> / 2 WPT subtests passing");
+
+    // The comparison page: Chrome ahead by most subtests first, then Crane ahead,
+    // then the files only one of them ran.
+    const cmp = try readOut(gpa, &f, "out/chrome.html");
+    defer gpa.free(cmp);
+    try expectBefore(cmp, "id=\"ahead-ref\"", "id=\"ahead-crane\"");
+    try expectBefore(cmp, "id=\"ahead-crane\"", "id=\"only-one\"");
+    try expectBefore(cmp, "<a href=\"dom/nodes/c.any.js/\">", "<a href=\"dom/a.html/\">");
+    try expectBefore(cmp, "<a href=\"dom/a.html/\">", "<a href=\"dom/b.html/\">");
+    try expectBefore(cmp, "<a href=\"dom/b.html/\">", "id=\"ahead-crane\"");
+    try expectBefore(cmp, "id=\"ahead-crane\"", "<a href=\"url/u.html/\">");
+    try expectBefore(cmp, "id=\"only-one\"", "<a href=\"url/never.html/\">");
+    try expectHas(cmp, "<td class=\"n\" data-v=\"2\">+2</td>");
+    try expectHas(cmp, "<table class=\"listing listing-compare\">");
+    if (pages_mod.needsScript(cmp)) |why| {
+        std.debug.print("\nchrome.html needs script: {s}\n", .{why});
+        return error.TestPageNeedsScript;
+    }
+    // Every page's contents rail leads to it; the rail names no version and no number.
+    try expectHas(dom, "<li class=\"toc-front\"><a href=\"../chrome.html\"><span class=\"secno\"></span><span class=\"toc-name\">Crane and Chrome</span></a></li>");
+    try expectHas(index, "<li class=\"toc-front\"><a href=\"chrome.html\"><span class=\"secno\"></span><span class=\"toc-name\">Crane and Chrome</span></a></li>");
+}
+
+test "site: wall time is shown for both engines with the harness overhead split out" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixtureRef(gpa, &f, "out", fixture_reference);
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<tr><th scope=\"row\">The worklist, wall clock</th><td class=\"n\">40 min 0 s</td><td class=\"n\">1 h 0 min</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">CPU, user + system</th><td class=\"n\">2 h 20 min</td><td class=\"n\">2 h 50 min</td></tr>");
+    // 200 trivial files in 10 s and 60 s with 5 runners: 250 ms and 1.50 s each.
+    try expectHas(index, "<tr><th scope=\"row\">One empty test, harness alone</th><td class=\"n\">250 ms</td><td class=\"n\">1.50 s</td></tr>");
+    try expectHas(index, "5 runners each");
+    try expectHas(index, "CPU is the larger of what the run&rsquo;s harness waited for (rusage) and a once-a-second sample of its whole process tree");
+    // A run that records no test count is read over the worklist's 7 test URLs.
+    try expectHas(index, "<tr><th scope=\"row\">Of the wall clock: harness (estimate)</th><td class=\"n\">350 ms</td><td class=\"n\">2.10 s</td></tr>");
+
+    // A run that ran 3 test URLs is split over those 3, and says what it ran.
+    const partial = try std.mem.replaceOwned(u8, gpa, fixture_reference, "\"reference\":{\"wall_s\":3600.5,", "\"reference\":{\"tests\":3,\"wall_s\":3600.5,");
+    defer gpa.free(partial);
+    const partial2 = try std.mem.replaceOwned(u8, gpa, partial, "\"crane\":{\"wall_s\":2400,", "\"crane\":{\"tests\":3,\"wall_s\":2400,");
+    defer gpa.free(partial2);
+    const partial3 = try std.mem.replaceOwned(u8, gpa, partial2, "\"sources_reported\":5,", "\"sources_reported\":2,");
+    defer gpa.free(partial3);
+    _ = try runFixtureRef(gpa, &f, "out3", partial3);
+    const index3 = try readOut(gpa, &f, "out3/index.html");
+    defer gpa.free(index3);
+    try expectHas(index3, "<tr><th scope=\"row\">Of the wall clock: harness (estimate)</th><td class=\"n\">150 ms</td><td class=\"n\">900 ms</td></tr>");
+    try expectHas(index3, "has a result for 2 of the worklist&rsquo;s 5 test files");
+}
+
+test "site: each side's build is named, and the window's runs give pass counts, CPU and memory side by side" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    const a = try std.mem.replaceOwned(u8, gpa, fixture_reference, "\"command\":\"wpt run chrome\",", "\"command\":\"wpt run chrome\",\"build\":\"Chrome for Testing, official release build\",");
+    defer gpa.free(a);
+    const b = try std.mem.replaceOwned(u8, gpa, a, "\"reference\":{\"wall_s\":3600.5,\"user_s\":9000,\"sys_s\":1200}", "\"reference\":{\"wall_s\":3600.5,\"user_s\":9000,\"sys_s\":1200,\"passed\":8,\"reported\":11,\"memory\":{\"samples\":3600,\"engine_peak_mb\":6144,\"engine_mean_mb\":3000.4,\"harness_peak_mb\":900,\"harness_mean_mb\":700,\"groups\":5,\"group_peak_max_mb\":1500,\"group_peak_mean_mb\":1200}}");
+    defer gpa.free(b);
+    const c = try std.mem.replaceOwned(u8, gpa, b, "\"files\":5,\"runner\":\"main-0c228a97aa\"}", "\"files\":5,\"runner\":\"release-0c228a97aa\",\"build\":\"release runner: ReleaseSafe throughout, libc malloc\",\"passed\":5,\"reported\":8,\"memory\":{\"samples\":2400,\"engine_peak_mb\":800,\"engine_mean_mb\":512,\"harness_peak_mb\":250.6,\"harness_mean_mb\":200,\"groups\":330,\"group_peak_max_mb\":400,\"group_peak_mean_mb\":150}}");
+    defer gpa.free(c);
+    _ = try runFixtureRef(gpa, &f, "out", c);
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<tr><th scope=\"row\">WPT subtests passing in this run</th><td class=\"n\"><b>5</b> / 8</td><td class=\"n\"><b>8</b> / 11</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Memory of the engine, peak</th><td class=\"n\">800 MB</td><td class=\"n\">6.0 GB</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Memory of the engine, mean</th><td class=\"n\">512 MB</td><td class=\"n\">2.9 GB</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Memory of the harness, peak</th><td class=\"n\">251 MB</td><td class=\"n\">900 MB</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">One runner&rsquo;s engine, largest peak</th><td class=\"n\">400 MB</td><td class=\"n\">1.5 GB</td></tr>");
+    // Each side's build, named.
+    try expectHas(index, "<dt>Chrome</dt><dd>Chrome for Testing <code>150.0.7000.1</code>: Chrome for Testing, official release build</dd>");
+    try expectHas(index, "<dt>Crane</dt><dd>release runner: ReleaseSafe throughout, libc malloc");
+    try expectHas(index, "no ThinLTO and no PGO");
+    try expectHas(index, "phys_footprint");
+
+    // The two V8s by version, and a reference run reused beside a later Crane run, said so.
+    const d = try std.mem.replaceOwned(u8, gpa, c, "\"build\":\"Chrome for Testing, official release build\",", "\"build\":\"Chrome for Testing, official release build\",\"js_engine\":\"V8 15.7.1\",\"crane_js_engine\":\"V8 13.1.203\",");
+    defer gpa.free(d);
+    const e = try std.mem.replaceOwned(u8, gpa, d, "\"timing\":{\"processes\":5,", "\"timing\":{\"processes\":5,\"reference_reused\":\"the host and its load matched\",");
+    defer gpa.free(e);
+    _ = try runFixtureRef(gpa, &f, "out2", e);
+    const index2 = try readOut(gpa, &f, "out2/index.html");
+    defer gpa.free(index2);
+    try expectHas(index2, "Crane links V8 <code>13.1.203</code>");
+    try expectHas(index2, "Chrome <code>150.0.7000.1</code> ships V8 <code>15.7.1</code>");
+    try expectHas(index2, "Chrome&rsquo;s figures are from its run of <span class=\"nowrap\">4 Nov 2026</span>, reused beside Crane&rsquo;s: the host and its load matched.");
+
+    // On the official-style V8 (lane v8opt1), the V8 line says so instead of naming a gap.
+    const official = try std.mem.replaceOwned(u8, gpa, e, "\"crane_js_engine\":\"V8 13.1.203\",", "\"crane_js_engine\":\"V8 13.1.203\",\"crane_v8_build\":\"official\",");
+    defer gpa.free(official);
+    _ = try runFixtureRef(gpa, &f, "out4", official);
+    const index4 = try readOut(gpa, &f, "out4/index.html");
+    defer gpa.free(index4);
+    try expectHas(index4, "Crane links V8 <code>13.1.203</code>, built as Chrome&rsquo;s official build is: ThinLTO and PGO");
+    try testing.expect(std.mem.indexOf(u8, index4, "no ThinLTO and no PGO") == null);
+
+    // Before Crane's full run, its build is still named (its overhead runs are on the page).
+    const g = try std.mem.replaceOwned(u8, gpa, fixture_reference, "\"command\":\"wpt run chrome\",", "\"command\":\"wpt run chrome\",\"crane_build\":\"release runner, overhead only\",");
+    defer gpa.free(g);
+    const h = try std.mem.replaceOwned(u8, gpa, g, "\"crane\":{\"wall_s\":2400,\"user_s\":8000,\"sys_s\":400,\"files\":5,\"runner\":\"main-0c228a97aa\"},", "");
+    defer gpa.free(h);
+    _ = try runFixtureRef(gpa, &f, "out3", h);
+    const index3 = try readOut(gpa, &f, "out3/index.html");
+    defer gpa.free(index3);
+    try expectHas(index3, "<dt>Crane</dt><dd>release runner, overhead only</dd>");
+    try expectHas(index3, "<tr><th scope=\"row\">The worklist, wall clock</th><td class=\"n\"><span class=\"quiet\">not measured</span></td>");
+}
+
+test "site: a reference run's records are never Crane's" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream ++
+        \\{"engine":"chrome","test":"/dom/b.html","status":"OK","message":null,"subtests":[{"name":"chrome's","status":"PASS","message":null}]}
+        \\
+    );
+    defer f.deinit();
+    // A run directory named reference/ is not a run: a record that names a
+    // journal there is not located in it.
+    try f.tmp.dir.createDirPath(testing.io, "results/reference/chrome-150");
+    try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "results/reference/stray.jsonl", .data = "{}\n" });
+    try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "results/reference/chrome-150/reference.json", .data = fixture_reference });
+    const stray = try f.results.statFile(testing.io, "reference/stray.jsonl", .{});
+    const stray_mtime = @as(f64, @floatFromInt(stray.mtime.nanoseconds)) / 1e9;
+
+    // The fixture's state, with url/u.html's record from a journal under
+    // reference/, and one of Chrome's records for url/never.html, which Crane
+    // has not run.
+    const st = try std.fmt.allocPrint(gpa,
+        \\{{"dom/a.html":{{"path":"dom/a.html","status":"OK","passed":2,"failed":1,"timed_out":0,"notrun":0,"_journal":"journal.jsonl","_mtime":{d}}},
+        \\"dom/nodes/c.any.js":{{"path":"dom/nodes/c.any.js","status":"OK","passed":0,"failed":2,"timed_out":0,"notrun":0,"_journal":"journal.jsonl","_mtime":{d}}},
+        \\"dom/b.html":{{"path":"dom/b.html","status":"TIMEOUT","passed":0,"failed":0,"timed_out":0,"notrun":0,"message":"took too long","_journal":"journal.jsonl","_mtime":{d}}},
+        \\"url/u.html":{{"path":"url/u.html","status":"OK","passed":3,"failed":0,"timed_out":0,"notrun":0,"_journal":"stray.jsonl","_mtime":{d}}},
+        \\"url/never.html":{{"engine":"chrome","path":"url/never.html","status":"OK","passed":9,"failed":0,"timed_out":0,"notrun":0,"_journal":"journal.jsonl","_mtime":{d}}}}}
+    , .{ f.journal_mtime, f.journal_mtime, f.journal_mtime, stray_mtime, f.journal_mtime });
+    defer gpa.free(st);
+    var out = try f.tmp.dir.createDirPathOpen(testing.io, "out", .{ .open_options = .{ .iterate = true } });
+    defer out.close(testing.io);
+    const s = try generate(gpa, testing.io, .{
+        .state_json = st,
+        .history_json = fixture_history,
+        .worklist_text = fixture_worklist,
+        .results = f.results,
+        .assets = null,
+        .wpt = fixture_wpt,
+    }, out);
+    try testing.expectEqual(@as(usize, 1), s.refused_records);
+    try testing.expectEqual(@as(usize, 1), s.refused_stream_lines);
+
+    // Chrome's 9 passes are nowhere in Crane's numbers: the file is not run.
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<span class=\"hl-pass\">5</span><span class=\"hl-of\"> / 8</span>");
+    const never = try readOut(gpa, &f, "out/url/never.html/index.html");
+    defer gpa.free(never);
+    try expectHas(never, "<span class=\"gate gate-unrun\">Not run</span>");
+    // Chrome's stream line beside Crane's journal is not Crane's detail.
+    const b = try readOut(gpa, &f, "out/dom/b.html/index.html");
+    defer gpa.free(b);
+    try testing.expect(std.mem.indexOf(u8, b, "chrome&rsquo;s") == null);
+    try testing.expect(std.mem.indexOf(u8, b, "chrome's") == null);
+    try expectHas(b, "No per-subtest data for this file.");
+    // reference/ is never named as a run.
+    const u = try readOut(gpa, &f, "out/url/u.html/index.html");
+    defer gpa.free(u);
+    try testing.expect(std.mem.indexOf(u8, u, "reference/stray") == null);
+    // Without a reference given, there is no comparison.
+    try testing.expect(!exists(&f, "out/chrome.html"));
+    try testing.expect(std.mem.indexOf(u8, index, "id=\"versus\"") == null);
+}
+
+test "site: no reference writes the same bytes as before; an invalid one stops the site" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixture(gpa, &f, "plain", fixture_worklist);
+    _ = try runFixtureRef(gpa, &f, "none", null);
+    const a = try readOut(gpa, &f, "plain/dom/index.html");
+    defer gpa.free(a);
+    const b = try readOut(gpa, &f, "none/dom/index.html");
+    defer gpa.free(b);
+    try testing.expectEqualStrings(a, b);
+    try testing.expect(std.mem.indexOf(u8, a, "Chrome") == null);
+
+    const crane_ref = try std.mem.replaceOwned(u8, gpa, fixture_reference, "\"engine\":\"chrome\",\n\"run\"", "\"engine\":\"crane\",\n\"run\"");
+    defer gpa.free(crane_ref);
+    try testing.expectError(error.InvalidReference, runFixtureRef(gpa, &f, "bad", crane_ref));
 }

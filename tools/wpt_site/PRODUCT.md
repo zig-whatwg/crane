@@ -37,8 +37,11 @@ misled about scope.
 
 Crane is a headless web platform engine written in Zig ("the browser, minus the pixels"). The site shows
 Crane's results only, measured by Crane's own WPT runner, against a pinned upstream WPT revision - after the
-2026-09-30 snapshot move, the same revision wpt.fyi's aligned Chrome/Firefox/Safari runs use. It is not a
-browser comparison.
+2026-09-30 snapshot move, the same revision wpt.fyi's aligned Chrome/Firefox/Safari runs use. Beside them,
+since 2026-11-04 (the user, 2026-11-03: "I want the chrome results on the same files represented in our
+progress report"), a reference run of Chrome on the same worklist files - WPT's own runner, a pinned Chrome
+for Testing, the same host and runner count - shown side by side and never counted as Crane's: its records
+are read only from wpt-results/reference/, and every number says whose it is.
 
 ## Operating Context
 
