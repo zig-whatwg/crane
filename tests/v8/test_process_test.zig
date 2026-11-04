@@ -142,3 +142,67 @@ test "V8 runs with the runtime's flags, whichever test started it" {
     defer ffi.v8_Value_Dispose(value);
     try std.testing.expectEqual(@as(i32, 3), ffi.v8_Value_Int32Value(value, context));
 }
+
+// ---------------------------------------------------------------------------
+// The engine is started and ended only by test_process.zig (lane testfix3):
+// 86 helpers called engine.initializeEngine themselves, so each test wrote the
+// process's engine state again - its dispatchers and its snapshot - while the
+// many-Browsers variant's busy Browser read it (lanes tsanfix1, crashes7:
+// ThreadSanitizer races in protocol_agents.initializeEngine). A helper starts
+// the process with test_process.start() and a snapshot with startSnapshot.
+// ---------------------------------------------------------------------------
+
+/// The tests/v8 files whose subject IS the engine's start or end, with how
+/// many of their lines call initializeEngine or deinitializeEngine and why.
+/// Exact: a call added or removed fails the check until this list says so.
+const engine_start_subjects = [_]struct { file: []const u8, lines: usize, reason: []const u8 }{
+    .{ .file = "platform_start_once_test.zig", .lines = 6, .reason = "V8's platform starts once with the runtime's flags, whichever of two racing threads calls initializeEngine first, and survives deinitializeEngine" },
+    .{ .file = "page_realm_operations_test.zig", .lines = 5, .reason = "\"protocol: initializeEngine starts V8 once, and refuses a snapshot this build did not make\": initializeEngine's own refusals" },
+};
+
+/// The lines of `source` that call initializeEngine or deinitializeEngine,
+/// by any alias of the engine (`engine.`, `protocol.`), outside comments.
+fn engineStartLines(source: []const u8) usize {
+    var count: usize = 0;
+    var lines = std.mem.splitScalar(u8, source, '\n');
+    while (lines.next()) |line| {
+        const code = if (std.mem.indexOf(u8, line, "//")) |i| line[0..i] else line;
+        // "deinitializeEngine(" contains "initializeEngine(": either counts.
+        if (std.mem.indexOf(u8, code, "initializeEngine(") != null) count += 1;
+    }
+    return count;
+}
+
+test "the engine-start check counts calls by any alias and both ends, never a comment" {
+    try std.testing.expectEqual(@as(usize, 0), engineStartLines("    // try engine.initializeEngine(.{});\n    test_process.start();\n"));
+    try std.testing.expectEqual(@as(usize, 1), engineStartLines("    try protocol.initializeEngine(.{});\n"));
+    try std.testing.expectEqual(@as(usize, 1), engineStartLines("    defer engine.deinitializeEngine(); // the end\n"));
+    try std.testing.expectEqual(@as(usize, 2), engineStartLines("try engine.initializeEngine(.{ .snapshot = bytes });\nengine.deinitializeEngine();\n"));
+}
+
+test "no tests/v8 file starts or ends the engine itself: test_process.zig does, and the files whose subject is the start" {
+    const io = std.testing.io;
+    var dir = try std.Io.Dir.cwd().openDir(io, "tests/v8", .{ .iterate = true });
+    defer dir.close(io);
+    var it = dir.iterate();
+    var files: usize = 0;
+    var wrong: usize = 0;
+    while (try it.next(io)) |entry| {
+        if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".zig")) continue;
+        if (std.mem.eql(u8, entry.name, "test_process.zig")) continue;
+        files += 1;
+        const source = try dir.readFileAlloc(io, entry.name, std.testing.allocator, .limited(16 << 20));
+        defer std.testing.allocator.free(source);
+        const found = engineStartLines(source);
+        const declared = for (engine_start_subjects) |subject| {
+            if (std.mem.eql(u8, subject.file, entry.name)) break subject.lines;
+        } else 0;
+        if (found != declared) {
+            wrong += 1;
+            std.debug.print("tests/v8/{s}: {d} line(s) call initializeEngine/deinitializeEngine, {d} declared - start the process with test_process.start(), a snapshot with test_process.startSnapshot(bytes) and its end with endSnapshot(); a file whose subject is the engine's start is declared in engine_start_subjects with its reason\n", .{ entry.name, found, declared });
+        }
+    }
+    // The directory is there: over a hundred test files.
+    try std.testing.expect(files > 100);
+    try std.testing.expectEqual(@as(usize, 0), wrong);
+}
