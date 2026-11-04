@@ -906,6 +906,8 @@ const TestLaunch = struct {
     /// (tests/test_runner/neighbour.zig), so state two instances share shows
     /// up as a failure, or under -Dsanitize-thread as a race.
     many_browsers: bool,
+    /// -Dtest-log-level: the test executables' log level (`useCraneTestRunner`).
+    log_level: ?std.log.Level,
     /// The browser module, which the many-Browsers variant adds to every
     /// test executable that links V8 and lacks it (`addTestRoot`).
     browser_module: ?*std.Build.Module = null,
@@ -1164,7 +1166,7 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
     // Whether this executable can run the many-Browsers variant's busy
     // Browser: -Dmany-browsers, and it links V8 and the browser module. The
     // others run as usual under -Dmany-browsers, and say nothing about it.
-    const many_browsers = useCraneTestRunner(b, test_exe, name, config.state_checks, launch.many_browsers);
+    const many_browsers = useCraneTestRunner(b, test_exe, name, config.state_checks, launch.many_browsers, launch.log_level);
     const run = b.addRunArtifact(launch.launcher);
     run.setName(b.fmt("test {s}", .{name}));
     // The build runner speaks the test-runner protocol to the launcher.
@@ -1248,7 +1250,17 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
 /// the many-Browsers variant (tests/test_runner/neighbour.zig) - `browser`,
 /// where the executable imports the browser module and links V8. Returns
 /// whether it can.
-fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []const u8, checks: StateChecks, many_browsers: bool) bool {
+///
+/// `log_level` (-Dtest-log-level): the runner's `std_options.log_level`, the
+/// level below which every `std.log` call is compiled out, and the level it
+/// prints at while a test runs (`testing.log_level`). Unset, a test
+/// executable compiles its logs at .info - no `log.debug` site is analysed,
+/// though a Debug build's default would compile all of them (lane
+/// compiletime1) - and prints at .warn, as it always has. A test may lower
+/// `testing.log_level` to .info and read info logs; to read debug logs, build
+/// with -Dtest-log-level=debug, which compiles and prints them. The WPT
+/// runner, the library and the tools keep their own levels.
+fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []const u8, checks: StateChecks, many_browsers: bool, log_level: ?std.log.Level) bool {
     const root = test_exe.root_module;
     const wf = b.addWriteFiles();
     _ = wf.addCopyDirectory(b.path("tests/test_runner"), "", .{ .include_extensions = &.{".zig"} });
@@ -1263,11 +1275,13 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []
         \\pub const name = "{s}";
         \\pub const Mode = enum {{ off, report, fail }};
         \\pub const mode: Mode = .{t};
+        \\/// -Dtest-log-level, or null: the runner's log levels (runner.zig).
+        \\pub const log_level_option: ?@import("std").log.Level = {s};
         \\
         \\/// The root module's imports rooted at src/<dir>/root.zig, by directory.
         \\pub const roots = .{{
         \\
-    , .{ name, name, checks }) catch @panic("OOM");
+    , .{ name, name, checks, if (log_level) |level| b.fmt(".{t}", .{level}) else "null" }) catch @panic("OOM");
     // Every import rooted at a src/<dir>/root.zig - but, besides `dom` and
     // `runtime` (the counters' own, which import no other module's root as
     // a file), none whose directory holds another's: its root may import the
@@ -2667,6 +2681,7 @@ pub fn build(b: *std.Build) void {
     // checks `test` adds; -Dspec and -Dtest-file select them for both.
     const launch: *const TestLaunch = launch: {
         const many_browsers = b.option(bool, "many-browsers", "The many-Browsers variant: every test runs beside a second, busy Browser on another thread of its process (suites that link V8)") orelse false;
+        const test_log_level = b.option(std.log.Level, "test-log-level", "The test executables' log level: compiled and printed while a test runs (default: compiled at info, printed at warn; debug for a local diagnosis)");
         const launcher_module = b.createModule(.{
             .root_source_file = b.path("tools/test_launcher/main.zig"),
             // Build-time tool: runs on the host, as codegen does.
@@ -2706,7 +2721,7 @@ pub fn build(b: *std.Build) void {
                 },
             }),
         });
-        _ = useCraneTestRunner(b, state_fixture, "test_state_fixture", .fail, false);
+        _ = useCraneTestRunner(b, state_fixture, "test_state_fixture", .fail, false, test_log_level);
         launcher_fixture_options.addOptionPath("state_path", state_fixture.getEmittedBin());
         // A test that races, built with ThreadSanitizer: child.zig's tests
         // check that the launcher's TSAN_OPTIONS make the race a crash of
@@ -2738,7 +2753,7 @@ pub fn build(b: *std.Build) void {
                 }),
             });
             linkV8(b, many_fixture.root_module, target);
-            _ = useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, true);
+            _ = useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, true, test_log_level);
             launcher_fixture_options.addOptionPath("many_browsers_path", many_fixture.getEmittedBin());
         }
         const launcher_test_module = b.createModule(.{
@@ -2764,6 +2779,7 @@ pub fn build(b: *std.Build) void {
             .shuffle = b.option(bool, "launch-shuffle", "true: shuffle every suite's order and batches from the seed; false: index order everywhere (default: each suite's suite_configs row, mostly shuffled)"),
             .sanitize_thread = b.option(bool, "sanitize-thread", "Build every test executable with ThreadSanitizer (Crane's own modules; not the C libraries or the V8 prebuilt) and run it so a race crashes its test (TSAN_OPTIONS=halt_on_error=1)") orelse false,
             .many_browsers = many_browsers,
+            .log_level = test_log_level,
             .browser_module = testing_graph.browser,
             .test_exes = test_exes: {
                 const list = b.allocator.create(std.ArrayList(*std.Build.Step.Compile)) catch @panic("OOM");

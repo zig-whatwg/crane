@@ -42,7 +42,24 @@ const suite = @import("suite.zig");
 
 pub const std_options: std.Options = .{
     .logFn = log,
+    .log_level = compiled_log_level,
 };
+
+/// -Dtest-log-level (build.zig, useCraneTestRunner), or null. Public for
+/// tests/infra/test_log_level_test.zig, which pins the defaults below.
+pub const test_log_level_option: ?std.log.Level = suite.log_level_option;
+
+/// The level below which every `std.log` call is compiled out: .info unless
+/// -Dtest-log-level says otherwise. A Debug build's default, .debug, analyses
+/// and emits every `log.debug` site - hundreds, many in the generic binding
+/// code - in every test executable, for output the runner never prints (lane
+/// compiletime1).
+const compiled_log_level: std.log.Level = test_log_level_option orelse .info;
+
+/// The level the runner prints at while a test runs (`testing.log_level`,
+/// which a test may lower): .warn, or -Dtest-log-level's level, so a local
+/// diagnosis built with -Dtest-log-level=debug prints its debug logs.
+const printed_log_level: std.log.Level = test_log_level_option orelse .warn;
 
 /// Atomic: the many-Browsers variant's busy Browser logs from its own thread.
 var log_err_count: std.atomic.Value(usize) = .init(0);
@@ -302,7 +319,7 @@ fn mainTerminal(init: std.process.Init.Minimal) void {
             testing.io_instance.deinit();
             if (testing.allocator_instance.deinit() != 0) leaks += 1;
         }
-        testing.log_level = .warn;
+        testing.log_level = printed_log_level;
         testing.environ = init.environ;
 
         const test_node = root_node.start(test_fn.name, 0);
