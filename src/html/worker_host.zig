@@ -1465,32 +1465,12 @@ pub const WorkerHost = struct {
             \\};
         );
 
-        // Set up console object (no-op implementation for workers)
-        try self.runSetupScript(
-            \\(function() {
-            \\  function consoleNoop() {}
-            \\  globalThis.console = {
-            \\    log: consoleNoop,
-            \\    warn: consoleNoop,
-            \\    error: consoleNoop,
-            \\    info: consoleNoop,
-            \\    debug: consoleNoop,
-            \\    trace: consoleNoop,
-            \\    dir: consoleNoop,
-            \\    table: consoleNoop,
-            \\    assert: consoleNoop,
-            \\    clear: consoleNoop,
-            \\    count: consoleNoop,
-            \\    countReset: consoleNoop,
-            \\    group: consoleNoop,
-            \\    groupCollapsed: consoleNoop,
-            \\    groupEnd: consoleNoop,
-            \\    time: consoleNoop,
-            \\    timeLog: consoleNoop,
-            \\    timeEnd: consoleNoop,
-            \\  };
-            \\})();
-        );
+        // The console is the realm's own console namespace ([Exposed=*],
+        // registered with every namespace when the realm was made), whose
+        // output goes where a window's does - the Browser's developer console
+        // when its host shows one, else stderr. (A script here replaced it
+        // with an object of no-op functions: a worker's console output went
+        // nowhere, and the namespace's own checks failed in workers.)
     }
 
     /// `createWorkerRealm`'s `on_realm`: the realm exists, and its global
@@ -1730,11 +1710,16 @@ pub const WorkerHost = struct {
     /// otherwise, as before).
     fn reportToDeveloperConsole(self: *Self, info: *const runtime.ErrorInfo) void {
         const realm = self.realm orelse return;
-        _ = @import("dom").developer_console.report(&.{
+        const developer_console = @import("dom").developer_console;
+        if (!developer_console.isAttached(realm)) return;
+        // "Uncaught TypeError: ...", as DevTools words it (report_exception.zig).
+        const text = if (std.mem.startsWith(u8, info.message, "Uncaught")) info.message else std.mem.concat(self.allocator, u8, &.{ "Uncaught ", info.message }) catch info.message;
+        defer if (text.ptr != info.message.ptr) self.allocator.free(text);
+        _ = developer_console.report(&.{
             .realm = realm,
             .kind = .exception,
             .level = .@"error",
-            .text = info.message,
+            .text = text,
             .location = .{ .url = if (info.filename.len > 0) info.filename else self.script_url, .line = info.lineno, .column = info.colno },
         });
     }
