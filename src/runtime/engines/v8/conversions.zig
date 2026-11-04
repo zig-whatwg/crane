@@ -1810,6 +1810,28 @@ pub fn requireFiniteArm(comptime T: type, value: T) ConversionError!void {
     }
 }
 
+/// A dictionary conversion that failed part-way: the members of `result`
+/// before the `converted`th, freed as `interface.freeConvertedArg` frees a
+/// whole dictionary (what each allocated, and an `any` member's handle).
+/// Kept, a RequestInit whose `duplex` was missing leaked its body's copy.
+///
+/// A function of its own, one per dictionary type: written as an `errdefer
+/// inline for` in the conversion, the loop over every member was copied at
+/// every error exit of every member's conversion - members times exits
+/// times members - and MediaTrackConstraintSet's conversion alone was 878 KB
+/// of machine code in a Debug test binary (lane compiletime1's code-size
+/// report, 2026-11-04). The same frees run, in the same order, on the same
+/// paths.
+fn freeConvertedMembers(comptime T: type, allocator: std.mem.Allocator, result: *const T, converted: usize) void {
+    const members = comptime dictionaryMemberOrder(T);
+    inline for (members, 0..) |field, index| {
+        if (index < converted) {
+            interface_mod.freeConvertedArg(field.type, allocator, @field(result.*, field.name));
+            interface_mod.releaseAnyArgument(field.type, @field(result.*, field.name));
+        }
+    }
+}
+
 fn convertValueAs(
     comptime T: type,
     comptime Interface: ?type,
@@ -2580,12 +2602,7 @@ fn convertValueAs(
         // allocated, and an `any` member's handle). Kept, a RequestInit
         // whose `duplex` was missing leaked its body's copy.
         var converted: usize = 0;
-        errdefer inline for (members, 0..) |field, index| {
-            if (index < converted) {
-                interface_mod.freeConvertedArg(field.type, allocator, @field(result, field.name));
-                interface_mod.releaseAnyArgument(field.type, @field(result, field.name));
-            }
-        };
+        errdefer freeConvertedMembers(T, allocator, &result, converted);
         inline for (members) |field| {
             // Special handling for 'base' field in dictionary inheritance
             // In WebIDL, child dictionaries inherit parent fields directly on the object
