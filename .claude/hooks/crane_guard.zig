@@ -192,7 +192,9 @@ fn checkZigBuild(command: []const u8, agent_type: ?[]const u8) Verdict {
         }
         if (!has_jobs) return "always pass -j2 to `zig build` (AGENTS.md: each root compile is ~6 GB; in a pool job the host's shim adjusts it)";
         if (tmp_cache) return "never put a zig cache in /tmp: macOS prunes it and Zig trusts the half-pruned entries (AGENTS.md). Use ~/Library/Caches/crane-z16-cache";
-        if (isLane(agent_type) and !isRemote(command[0..at]))
+        // A `zig build` inside quotes is an argument (to ssh, crane-remote.sh, a lane's own wrapper
+        // around them), not a command this shell runs (2026-11-03: console1's `remote.sh` wrapper).
+        if (isLane(agent_type) and start_kind == .plain and !isRemote(command[0..at]))
             return "lanes compile nothing on this Mac (the user, 2026-10-29): run builds and tests through tmp/remote/crane-remote.sh <mirror> '<cmd>'";
     }
     return null;
@@ -750,6 +752,8 @@ test "zig build: a lane builds in the pool, never on the Mac; the main conversat
     try expectAllowed("zig build test -Dspec=dom -j2", null);
     try expectAllowed("zig build test -Dspec=dom -j2", "Explore");
     try expectAllowed("zig fmt src/", "lane-xhigh");
+    // 2026-11-03 (console1): a lane's wrapper around crane-remote.sh takes the build as an argument.
+    try expectAllowed("/Users/x/crane/tmp/console1/remote.sh summary 'zig build test -j2 --summary line'", "lane-xhigh");
 }
 
 test "a heredoc that cat or tee writes to a file is data, not commands; one fed to a shell is commands" {
