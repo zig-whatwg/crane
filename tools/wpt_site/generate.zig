@@ -1960,6 +1960,7 @@ test "site: wall time is shown for both engines with the harness overhead split 
     // 200 trivial files in 10 s and 60 s with 5 runners: 250 ms and 1.50 s each.
     try expectHas(index, "<tr><th scope=\"row\">One empty test, harness alone</th><td class=\"n\">250 ms</td><td class=\"n\">1.50 s</td></tr>");
     try expectHas(index, "5 runners each");
+    try expectHas(index, "CPU is the larger of what the run&rsquo;s harness waited for (rusage) and a once-a-second sample of its whole process tree");
     // A run that records no test count is read over the worklist's 7 test URLs.
     try expectHas(index, "<tr><th scope=\"row\">Of the wall clock: harness (estimate)</th><td class=\"n\">350 ms</td><td class=\"n\">2.10 s</td></tr>");
 

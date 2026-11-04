@@ -3426,6 +3426,7 @@ def _check_reference_render():
     assert 'has a result for 2 of the 4 worklist files' in page3
     assert '<tr><td class="area">The worklist, wall clock</td><td class="num">40 min 0 s</td><td class="num">1 h 0 min</td></tr>' in page
     assert '<tr><td class="area">One empty test, harness alone</td><td class="num">250 ms</td><td class="num">1.50 s</td></tr>' in page
+    assert 'CPU is the larger of what the run&rsquo;s harness waited for (rusage) and a once-a-second sample of its whole process tree' in page
     assert 'Where Chrome passes subtests Crane does not' in page and 'Where Crane passes subtests Chrome does not' in page
     assert page.index('>dom/a.html<') < page.index('>dom/b.html<') < page.index('Where Crane passes subtests')
     assert '<th class="hide-sm">Chrome&nbsp;pass&nbsp;/&nbsp;reported</th>' in page
