@@ -130,3 +130,36 @@ test "the banner names each mode as -Doptimize spells it" {
     try testing.expectEqualStrings("ReleaseFast", displayName(.fast));
     try testing.expectEqualStrings("ReleaseSmall", displayName(.small));
 }
+
+test "the release runner is ReleaseFast throughout, with no C sanitizer and the production allocator" {
+    // -Dwpt-runner-release (the user, 2026-11-04: "We should have the same
+    // compilation equiv as the release for Chrome"): the runner as a release
+    // build of Crane would run - for timing beside Chrome for Testing, an
+    // official release build. Never for sweeps or gates: it detects no leak
+    // and no double free.
+    const modes = release_runner;
+    try testing.expectEqual(Mode.ReleaseFast, modes.root);
+    try testing.expectEqual(Mode.ReleaseFast, modes.crane_modules);
+    try testing.expectEqual(Mode.ReleaseFast, modes.c_libraries);
+    try testing.expectEqual(@as(?std.zig.SanitizeC, null), modes.sanitize_c);
+    try testing.expectEqual(RunnerAllocator.production, modes.allocator);
+    // Its Crane modules are not the shared graph's (built in -Doptimize's mode).
+    try testing.expect(modes.ownGraph(.Debug));
+}
+
+test "every other runner keeps the leak- and double-free-detecting allocator" {
+    // Pins the DEFAULT: the sweeps and the gates read "leaked:" and "Double
+    // free detected", which only the debug allocator reports.
+    try testing.expectEqual(RunnerAllocator.debug, runnerModes(null, .Debug, false).allocator);
+    try testing.expectEqual(RunnerAllocator.debug, runnerModes(.Debug, .Debug, false).allocator);
+    try testing.expectEqual(RunnerAllocator.debug, runnerModes(.ReleaseFast, .Debug, false).allocator);
+    try testing.expectEqual(RunnerAllocator.debug, runnerModes(null, .ReleaseFast, true).allocator);
+}
+
+test "a runner has a module graph of its own when its Crane modules or C libraries differ from the shared graph" {
+    // The default: Debug Crane modules, ReleaseSafe C libraries.
+    try testing.expect(runnerModes(null, .Debug, false).ownGraph(.Debug));
+    // -Doptimize=Debug and an explicit release -Doptimize share the graph built in that mode.
+    try testing.expect(!runnerModes(null, .Debug, true).ownGraph(.Debug));
+    try testing.expect(!runnerModes(null, .ReleaseFast, true).ownGraph(.ReleaseFast));
+}
