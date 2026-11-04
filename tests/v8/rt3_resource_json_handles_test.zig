@@ -33,7 +33,7 @@ const Trial = struct {
     fn check(_: *Trial) !void {
         // A fresh thread owns all per-thread runtime state. Never change
         // V8 flags: another tests/v8 file may already have started V8.
-        try engine.initializeEngine(.{});
+        test_process.start();
         // A standalone runtime of this test's own, the process's given back
         // after (test_process.OwnRuntime).
         const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);

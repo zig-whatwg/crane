@@ -60,7 +60,7 @@ fn evaluate(realm: runtime.Context, source: []const u8) ![]u8 {
 /// `check` to evaluate to `expected` (the log sorted: what the order of
 /// promise jobs is, is not what these tests are about).
 fn expectAfterSettling(setup: []const u8, check: []const u8, expected: []const u8) !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
     defer own_runtime.end();
     interfaces.process_hooks.startHooksForTest();

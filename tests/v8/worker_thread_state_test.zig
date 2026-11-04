@@ -150,7 +150,6 @@ test "worker threads that end leave no per-thread containers mapped" {
 fn countWorkerThreadState() !void {
     test_process.start();
     @import("interfaces").process_hooks.startHooksForTest();
-    try engine.initializeEngine(.{});
 
     // First use of every process-wide pool and cache, before counting.
     try runWorkers(8);

@@ -55,7 +55,7 @@ fn importViews(realm: runtime.Context) !void {
 }
 
 fn checkImports() !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     interfaces.process_hooks.startHooksForTest();
     // A standalone runtime of this test's own, the process's given back
     // after (test_process.OwnRuntime).
@@ -101,7 +101,7 @@ fn adoptionScript(realm: runtime.Context, text: []const u8) !engine.Owned {
 }
 
 fn checkAdoption(source: []const u8, inspect_owners: bool, collect: bool) !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     interfaces.process_hooks.startHooksForTest();
     // A standalone runtime of this test's own, the process's given back
     // after (test_process.OwnRuntime).

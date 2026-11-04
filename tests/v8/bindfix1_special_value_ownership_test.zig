@@ -145,7 +145,6 @@ const Page = struct {
     realm: runtime.Context,
 
     fn open() !Page {
-        try protocol.initializeEngine(.{});
         test_process.start();
         const scope = try testing.allocator.create(runtime.BrowserScope);
         errdefer testing.allocator.destroy(scope);

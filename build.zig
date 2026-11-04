@@ -825,7 +825,75 @@ const TestSelection = struct {
     suite_dirs: *std.ArrayList([]const u8) = undefined,
     /// The V8 archives every test that links V8 links (-Dv8-build).
     v8: v8_archives.Archives,
+    /// -Dtest-binaries=v8: the directories `test` runs that link V8 join ONE
+    /// executable (`OneBinary`) instead of one each. Null: one executable per
+    /// directory.
+    one: ?*OneBinary = null,
 };
+
+/// How `zig build test` groups its tests into executables (-Dtest-binaries;
+/// lanes onebin1 and onebin2, which measured three layouts on chat2, -j2,
+/// fresh caches - tests/AGENTS.md "Test binaries"; the user chose the
+/// hybrid, 2026-11-03).
+const TestBinaries = enum {
+    /// One executable per tests/<dir>/ (`addTestFilesFromDir`): the default,
+    /// because a change to one test file rebuilds only its directory's
+    /// executable (245 s against 775 s for `v8`).
+    dirs,
+    /// ONE executable for the tests/<dir>/ suites `test` runs that link V8
+    /// and whose imports agree (`OneBinary`): each of their executables is a
+    /// full analysis and V8 link of the engine, so one executable does that
+    /// work once (cold 1,560 s against 2,176 s for `dirs`). The rest keep
+    /// their cheap executables. For cold full gates (main's gate, final
+    /// checks). A third layout, every directory in one (`one`), lost to this
+    /// one on every row and was removed (lane onebin2).
+    v8,
+};
+
+/// -Dtest-binaries=v8: the tests/<dir>/ suites `test` runs that link V8,
+/// compiled as ONE executable rooted at tests/.all_tests.zig (gitignored, generated like a
+/// directory's), which imports each member's `<dir>/.all_tests.zig`. Test
+/// names start with the member's directory under tests/ ("html.<file>.test.
+/// <name>"), so each member's suite_configs row still applies, keyed by that
+/// prefix: the launcher batches each member as its own executable was
+/// (`--group`), and its slow, alone and tsan_skip names carry the prefix.
+///
+/// What joins: a directory whose imports agree with the others' (each name
+/// to the module most members give it) and whose row needs nothing the one
+/// executable cannot give per member - a process count of its own (`jobs`),
+/// index order, a state-check or variant mode other than `.fail` - and that
+/// imports no module whose root file another member's module imports as a
+/// file (tests/codegen: `codegen`, which src/webidl/root.zig imports as
+/// codegen/root.zig). Any other keeps an executable of its own, as before
+/// (tests/runtime: its `runtime` and `engine` are the engine-less tier's).
+/// src/ module roots cannot join:
+/// Zig collects test blocks from the root module only, and each such root is
+/// the module itself (or a clone of one other modules import).
+const OneBinary = struct {
+    /// The step whose directories join (`test`): one added to another step
+    /// (test-browser, bench, test-eventsource) keeps its own executable.
+    step: *std.Build.Step,
+    /// The V8 archives the executables it makes link (-Dv8-build).
+    v8: v8_archives.Archives,
+    members: std.ArrayList(Member) = .empty,
+
+    const Member = struct {
+        dir_path: []const u8,
+        /// Its suite's name and suite_configs row ("tests-html").
+        name: []const u8,
+        /// Its test files, relative to `dir_path` (for test-verify).
+        files: []const []const u8,
+        imports: []const std.Build.Module.Import,
+        link_v8: bool,
+        target: std.Build.ResolvedTarget,
+    };
+};
+
+/// A member suite of a one-binary executable, as the launcher runs it
+/// (`addSuiteRunWith`): its tests' name prefix, its suite_configs row, and
+/// whether its own executable linked V8 (`plain`: it did not, so the
+/// many-Browsers variant never runs a busy Browser beside it).
+const SuiteGroup = struct { prefix: []const u8, config: SuiteConfig, plain: bool };
 
 /// Record `dir`, a tests/<dir>/ whose tests a hand-made root runs, as a
 /// suite (`TestSelection.suite_dirs`).
@@ -921,6 +989,13 @@ const TestLaunch = struct {
     /// `zig build test-verify`: the changed test files and their step
     /// (`TestVerify`).
     verify: *TestVerify,
+    /// -Dtest-filter=PATTERN, repeatable: run-time test selection. Each is
+    /// passed to every suite's launcher as `--filter=` (a test runs when any
+    /// pattern matches its whole name, `*` any run of characters;
+    /// tools/test_launcher/filter.zig). It changes no compile: every test
+    /// executable is the one the build's cache already holds, and a suite
+    /// that has no matching test runs nothing and passes.
+    filters: []const []const u8 = &.{},
 };
 
 /// `zig build test-verify` (the approved test plan, section 6: Gecko's
@@ -990,7 +1065,20 @@ const SuiteConfig = struct {
     /// test that merely waits on a time budget is fixed to wait on its
     /// condition instead. Keep it to one or two.
     tsan_skip: []const DeclaredTest = &.{},
+    /// Who makes the standalone runtime (runtime.initializeRuntime), the
+    /// Crane test runner's `runtime.standalone_runtime`.
+    standalone_runtime: StandaloneRuntime = .per_test,
 };
+
+/// Who makes a suite's standalone runtime. `.per_test`: each test that
+/// needs one makes and ends its own, so none runs between tests and a test
+/// that leaves one fails by the field's name - a later test that makes and
+/// ends its own would replace it and end with none (lane testfix3: two
+/// tests/html files left one, and 8 later tests failed ORDER-DEPENDENT with
+/// `runtime.standalone_runtime: 1 -> 0`). `.process_start`: the suite's test
+/// start makes it once for the process (tests/v8/test_process.zig `start`),
+/// so it may appear once, as everything the process start makes may.
+const StandaloneRuntime = enum { per_test, process_start };
 
 /// A test declared by its full name, with why (`SuiteConfig.alone`,
 /// `SuiteConfig.tsan_skip`).
@@ -1032,8 +1120,9 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // fixes1, v8state1).
     // Beside the busy Browser (-Dmany-browsers) it fails like any run (lane
     // tsanfix1); the tests that need their process to themselves run alone,
-    // each with its reason (`v8_alone`).
-    .{ .name = "tests-v8", .config = .{ .batch = 1, .alone = &v8_alone } },
+    // each with its reason (`v8_alone`). Its test start makes the
+    // standalone runtime for the process (test_process.start).
+    .{ .name = "tests-v8", .config = .{ .batch = 1, .alone = &v8_alone, .standalone_runtime = .process_start } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "tests-browser", .config = .{ .batch = 1 } },
     // The browser console (tools/repl.zig): every test starts a Browser
@@ -1139,8 +1228,6 @@ const html_tsan_skip = [_]DeclaredTest{
 };
 
 const html_slow = [_][]const u8{
-    // 137.6 s.
-    "editing2_white_space_join_test.test.joining blocks keeps the moved line's white-space",
     // 74.6, 78.9 and 50.4 s: 300,000 live ranges; two Browsers churning.
     "rangeuaf_live_range_walk_test.test.removing a node after 300,000 ranges were made in it moves every live range it holds",
     "rangeuaf_live_range_walk_test.test.splitting text after 300,000 ranges were made in it moves every live range it holds",
@@ -1166,11 +1253,18 @@ fn suiteConfig(name: []const u8) SuiteConfig {
 /// The caller adds it to its own step; `test-launch` gets the ones `test`
 /// reaches.
 fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, config_name: ?[]const u8) *std.Build.Step.Run {
+    return addSuiteRunWith(b, launch, test_exe, name, config_name, &.{});
+}
+
+/// `addSuiteRun` for an executable that holds several suites (`OneBinary`):
+/// each of `groups` keeps its own row of suite_configs, keyed by its tests'
+/// name prefix (`addGroupArgs`).
+fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, config_name: ?[]const u8, groups: []const SuiteGroup) *std.Build.Step.Run {
     const config = suiteConfig(config_name orelse name);
     // Whether this executable can run the many-Browsers variant's busy
     // Browser: -Dmany-browsers, and it links V8 and the browser module. The
     // others run as usual under -Dmany-browsers, and say nothing about it.
-    const many_browsers = useCraneTestRunner(b, test_exe, name, config.state_checks, launch.many_browsers);
+    const many_browsers = useCraneTestRunner(b, test_exe, name, config.state_checks, config.standalone_runtime, groups, launch.many_browsers);
     const run = b.addRunArtifact(launch.launcher);
     run.setName(b.fmt("test {s}", .{name}));
     // The build runner speaks the test-runner protocol to the launcher.
@@ -1214,17 +1308,22 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
             run.addArg(b.fmt("--alone-reason={s}", .{alone.reason}));
         }
     }
+    addGroupArgs(b, run, launch, groups, many_browsers, true);
     // A variant's TEMPORARY report-only row: every verdict printed and
     // recorded, the step passes (`VariantMode`).
     if ((many_browsers and config.many_browsers == .report) or (launch.sanitize_thread and config.sanitize_thread == .report)) run.addArg("--report-only");
     launch.test_exes.append(b.allocator, test_exe) catch @panic("OOM");
+    // -Dtest-filter: run-time selection, so the executable stays the cached
+    // one.
+    for (launch.filters) |pattern| run.addArg(b.fmt("--filter={s}", .{pattern}));
     // Relative to the repository root, where tests open their fixtures. A
-    // variant's results beside the suite's own, never over them:
-    // tmp/test-launch/<name>[.tsan][.many-browsers].jsonl (the timings stay
-    // the plain run's).
-    const variant = b.fmt("{s}{s}", .{
+    // variant's results, and a filtered run's, beside the suite's own, never
+    // over them: tmp/test-launch/<name>[.tsan][.many-browsers][.filtered].jsonl
+    // (the timings stay the plain full run's).
+    const variant = b.fmt("{s}{s}{s}", .{
         if (launch.sanitize_thread) ".tsan" else "",
         if (many_browsers) ".many-browsers" else "",
+        if (launch.filters.len != 0) ".filtered" else "",
     });
     run.addArg(b.fmt("--out=tmp/test-launch/{s}{s}.jsonl", .{ name, variant }));
     run.addArg(b.fmt("--timings=tmp/test-launch/{s}.jsonl", .{name}));
@@ -1232,6 +1331,30 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
     // A fresh seed every run must run every time.
     if (std.mem.eql(u8, launch.seed, "random")) run.has_side_effects = true;
     return run;
+}
+
+/// The launcher arguments of the member suites of a one-binary executable
+/// (`SuiteGroup`): each one's batch size (`--group`; -Dlaunch-batch
+/// overrides every one, so batch 0 is still each suite in one process), its
+/// slow, alone and tsan_skip names with its prefix, and `--plain` for one
+/// whose own executable linked no V8. `batches`: false for test-verify,
+/// which runs its own shapes.
+fn addGroupArgs(b: *std.Build, run: *std.Build.Step.Run, launch: *const TestLaunch, groups: []const SuiteGroup, many_browsers: bool, batches: bool) void {
+    for (groups) |g| {
+        if (batches) run.addArg(b.fmt("--group={s}={d}", .{ g.prefix, launch.batch orelse g.config.batch }));
+        for (g.config.slow) |slow| run.addArg(b.fmt("--slow={s}{s}", .{ g.prefix, slow }));
+        if (launch.sanitize_thread) for (g.config.tsan_skip) |skip| {
+            run.addArg(b.fmt("--tsan-skip={s}{s}", .{ g.prefix, skip.name }));
+            run.addArg(b.fmt("--tsan-skip-reason={s}", .{skip.reason}));
+        };
+        if (many_browsers) {
+            if (g.plain) run.addArg(b.fmt("--plain={s}", .{g.prefix}));
+            for (g.config.alone) |alone| {
+                run.addArg(b.fmt("--alone={s}{s}", .{ g.prefix, alone.name }));
+                run.addArg(b.fmt("--alone-reason={s}", .{alone.reason}));
+            }
+        }
+    }
 }
 
 /// Builds `test_exe` with the Crane test runner (tests/test_runner/): Zig's
@@ -1253,8 +1376,15 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
 /// `many_browsers` (-Dmany-browsers): the runner may run the busy Browser of
 /// the many-Browsers variant (tests/test_runner/neighbour.zig) - `browser`,
 /// where the executable imports the browser module and links V8. Returns
-/// whether it can.
-fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []const u8, checks: StateChecks, many_browsers: bool) bool {
+/// whether it can. `standalone`: who makes the standalone runtime
+/// (`StandaloneRuntime`), which decides how the runner compares it.
+/// `members`: the member suites of a joined executable (`OneBinary`,
+/// -Dtest-binaries=v8), each with its own row: the runner judges a test by
+/// its member's StandaloneRuntime, found by the test's name prefix (lane
+/// onebin3: tests-v8's .process_start had no per-member path, so its tests
+/// read as leavers in the joined "tests" executable). Empty for an
+/// executable of one suite, which keeps `standalone` for every test.
+fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []const u8, checks: StateChecks, standalone: StandaloneRuntime, members: []const SuiteGroup, many_browsers: bool) bool {
     const root = test_exe.root_module;
     const wf = b.addWriteFiles();
     _ = wf.addCopyDirectory(b.path("tests/test_runner"), "", .{ .include_extensions = &.{".zig"} });
@@ -1269,11 +1399,25 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []
         \\pub const name = "{s}";
         \\pub const Mode = enum {{ off, report, fail }};
         \\pub const mode: Mode = .{t};
+        \\/// Who makes the standalone runtime (build.zig's StandaloneRuntime).
+        \\pub const StandaloneRuntime = enum {{ per_test, process_start }};
+        \\pub const standalone_runtime: StandaloneRuntime = .{t};
+        \\/// A joined executable's member suites (build.zig -Dtest-binaries=v8):
+        \\/// a test whose name starts with a member's prefix is judged by that
+        \\/// member's own StandaloneRuntime - the longest prefix wins. Empty for an
+        \\/// executable of one suite.
+        \\pub const Member = struct {{ prefix: []const u8, standalone_runtime: StandaloneRuntime }};
+        \\pub const members: []const Member = &.{{
+        \\
+    , .{ name, name, checks, standalone }) catch @panic("OOM");
+    for (members) |m| w.print("    .{{ .prefix = \"{s}\", .standalone_runtime = .{t} }},\n", .{ m.prefix, m.config.standalone_runtime }) catch @panic("OOM");
+    w.writeAll(
+        \\};
         \\
         \\/// The root module's imports rooted at src/<dir>/root.zig, by directory.
-        \\pub const roots = .{{
+        \\pub const roots = .{
         \\
-    , .{ name, name, checks }) catch @panic("OOM");
+    ) catch @panic("OOM");
     // Every import rooted at a src/<dir>/root.zig - but, besides `dom` and
     // `runtime` (the counters' own, which import no other module's root as
     // a file), none whose directory holds another's: its root may import the
@@ -1395,6 +1539,13 @@ fn testVerifySelection(b: *std.Build) *TestVerify {
 /// Test names start with the file's path in the directory, '/' as '.', no
 /// `.zig`: "navigation.nav2h_indexes_test.test.<name>".
 fn addTestVerify(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, dir_path: []const u8, files: []const []const u8) void {
+    addTestVerifyIn(b, launch, test_exe, name, dir_path, files, .{ .prefix = "", .config = suiteConfig(name), .plain = false });
+}
+
+/// `addTestVerify` for one member suite of a one-binary executable
+/// (`OneBinary`): its tests' names start with `group.prefix`, and its row of
+/// suite_configs is `group.config`.
+fn addTestVerifyIn(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, dir_path: []const u8, files: []const []const u8, group: SuiteGroup) void {
     const v = launch.verify;
     var prefixes: std.ArrayList([]const u8) = .empty;
     for (v.files, v.matched) |file, *matched| {
@@ -1406,11 +1557,10 @@ fn addTestVerify(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.
             const stem = rel[0 .. rel.len - ".zig".len];
             const dotted = b.allocator.dupe(u8, stem) catch @panic("OOM");
             std.mem.replaceScalar(u8, dotted, '/', '.');
-            prefixes.append(b.allocator, b.fmt("{s}.test.", .{dotted})) catch @panic("OOM");
+            prefixes.append(b.allocator, b.fmt("{s}{s}.test.", .{ group.prefix, dotted })) catch @panic("OOM");
         }
     }
     if (prefixes.items.len == 0) return;
-    const config = suiteConfig(name);
     const run = b.addRunArtifact(launch.launcher);
     run.setName(b.fmt("test-verify {s}", .{name}));
     run.addArtifactArg(test_exe);
@@ -1421,21 +1571,12 @@ fn addTestVerify(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.
         // slow one, and a race needs no repetition to be seen.
         run.addArgs(&.{ "--verify-batched=1", "--verify-alone=0", "--sanitize-thread" });
         run.addPrefixedFileArg("--tsan-suppressions=", b.path("tools/test_launcher/tsan_suppressions.txt"));
-        for (config.tsan_skip) |skip| {
-            run.addArg(b.fmt("--tsan-skip={s}", .{skip.name}));
-            run.addArg(b.fmt("--tsan-skip-reason={s}", .{skip.reason}));
-        }
     }
-    if (launch.many_browsers) {
-        run.addArg("--many-browsers");
-        for (config.alone) |alone| {
-            run.addArg(b.fmt("--alone={s}", .{alone.name}));
-            run.addArg(b.fmt("--alone-reason={s}", .{alone.reason}));
-        }
-    }
+    if (launch.many_browsers) run.addArg("--many-browsers");
+    // The row's names (tsan_skip, alone, slow), with the member's prefix.
+    addGroupArgs(b, run, launch, &.{group}, launch.many_browsers, false);
     if (launch.jobs) |jobs| run.addArg(b.fmt("--jobs={d}", .{jobs}));
     run.addArg(b.fmt("--timeout={d}", .{launch.timeout}));
-    for (config.slow) |slow| run.addArg(b.fmt("--slow={s}", .{slow}));
     run.addArg(b.fmt("--out=tmp/test-launch/{s}.verify{s}.jsonl", .{ name, if (launch.sanitize_thread) ".tsan" else "" }));
     run.setCwd(b.path("."));
     // A verification is a run, never a cache hit.
@@ -1575,8 +1716,120 @@ fn addTestFilesFromDir(
 
     var name: std.ArrayList(u8) = .empty;
     for (dir_path) |c| try name.append(allocator, if (c == '/') '-' else c);
+    // -Dtest-binaries=v8: a directory `test` runs joins the one executable
+    // (`finishOneBinary` decides whether it can, at the end of the build).
+    if (select.one) |one| if (step == one.step) {
+        try one.members.append(allocator, .{
+            .dir_path = dir_path,
+            .name = name.items,
+            .files = files.items,
+            .imports = try allocator.dupe(std.Build.Module.Import, modules),
+            .link_v8 = link_v8,
+            .target = target,
+        });
+        return;
+    };
     const test_exe = addTestRoot(builder, step, root_path, name.items, null, target, modules, link_v8, select.launch, select.v8);
     addTestVerify(builder, select.launch, test_exe, name.items, dir_path, files.items);
+}
+
+/// -Dtest-binaries=v8, at the end of the build: the members that link V8,
+/// whose imports agree and whose rows allow it (`OneBinary`) become ONE
+/// executable, "tests", rooted at tests/.all_tests.zig; every other member
+/// gets its own executable, as with -Dtest-binaries=dirs.
+fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !void {
+    const allocator = b.allocator;
+    const members = one.members.items;
+    if (members.len == 0) return;
+    // Each import name's module: the one most members give it
+    // (tools/test_suites.zig importTable), keyed by the module's address.
+    const keyed = try allocator.alloc([]const test_suites.Import, members.len);
+    for (members, keyed) |m, *k| {
+        const list = try allocator.alloc(test_suites.Import, m.imports.len);
+        for (m.imports, list) |imp, *e| e.* = .{ .name = imp.name, .key = @intFromPtr(imp.module) };
+        k.* = list;
+    }
+    const table = try test_suites.importTable(allocator, keyed);
+
+    // A module whose root file another table module's root imports as a file
+    // (test_suites.importsAsFile: src/webidl/root.zig's `codegen/root.zig`,
+    // the `codegen` module's root) cannot share a compile with it once
+    // anything reaches that declaration - "file exists in modules", measured
+    // on the first one-binary build. The members that import such a module
+    // keep their own executables.
+    var claimed: std.AutoHashMapUnmanaged(usize, void) = .empty;
+    {
+        // A configure-time read of the checkout the configure cache cannot track.
+        b.graph.poisonCache();
+        var roots: std.ArrayList(struct { key: usize, path: []const u8 }) = .empty;
+        for (members) |m| for (m.imports) |imp| {
+            const source = imp.module.root_source_file orelse continue;
+            if (source != .src_path or source.src_path.owner != b) continue;
+            const key = @intFromPtr(imp.module);
+            for (roots.items) |r| {
+                if (r.key == key) break;
+            } else try roots.append(allocator, .{ .key = key, .path = source.src_path.sub_path });
+        };
+        for (roots.items) |outer| {
+            var text: ?[]const u8 = null;
+            for (roots.items) |inner| {
+                const rel = test_suites.pathFrom(outer.path, inner.path) orelse continue;
+                if (text == null) text = b.root.root_dir.handle.readFileAlloc(b.graph.io, outer.path, allocator, .limited(16 << 20)) catch "";
+                if (test_suites.importsAsFile(text.?, rel)) try claimed.put(allocator, inner.key, {});
+            }
+        }
+    }
+
+    var joined: std.ArrayList(OneBinary.Member) = .empty;
+    var joined_dirs: std.ArrayList([]const u8) = .empty;
+    for (members, keyed) |m, imports| {
+        const config = suiteConfig(m.name);
+        var fits = m.link_v8 and config.jobs == null and config.shuffle and config.state_checks == .fail and
+            config.many_browsers == .fail and config.sanitize_thread == .fail and
+            m.target.result.cpu.arch == members[0].target.result.cpu.arch and m.target.result.os.tag == members[0].target.result.os.tag;
+        for (imports) |imp| {
+            if (claimed.contains(imp.key)) fits = false;
+        }
+        if (fits and test_suites.agrees(&table, imports)) {
+            try joined.append(allocator, m);
+            try joined_dirs.append(allocator, m.dir_path);
+            continue;
+        }
+        const root_path = b.fmt("{s}/{s}", .{ m.dir_path, test_root_name });
+        const exe = addTestRoot(b, one.step, root_path, m.name, null, m.target, m.imports, m.link_v8, launch, one.v8);
+        addTestVerify(b, launch, exe, m.name, m.dir_path, m.files);
+    }
+    if (joined.items.len == 0) return;
+
+    // tests/.all_tests.zig: each member's own root, which imports its files.
+    // Written as a directory's root is: through a temporary and a rename,
+    // only when it changes.
+    const contents = try test_suites.oneBinaryRoot(allocator, joined_dirs.items, test_root_name);
+    const io = b.graph.io;
+    var tests_dir = try std.Io.Dir.cwd().openDir(io, "tests", .{});
+    defer tests_dir.close(io);
+    const current = tests_dir.readFileAlloc(io, test_root_name, allocator, .limited(1 << 20)) catch "";
+    if (!std.mem.eql(u8, current, contents)) {
+        const tmp_name = b.fmt("{s}.{d}.tmp", .{ test_root_name, std.Thread.getCurrentId() });
+        try tests_dir.writeFile(io, .{ .sub_path = tmp_name, .data = contents });
+        try tests_dir.rename(tmp_name, tests_dir, test_root_name, io);
+    }
+
+    var groups: std.ArrayList(SuiteGroup) = .empty;
+    var link_v8 = false;
+    for (joined.items) |m| {
+        link_v8 = link_v8 or m.link_v8;
+        try groups.append(allocator, .{ .prefix = try test_suites.memberPrefix(allocator, m.dir_path), .config = suiteConfig(m.name), .plain = !m.link_v8 });
+    }
+    // The table's names a joined member imports, with their modules.
+    var imports: std.ArrayList(std.Build.Module.Import) = .empty;
+    for (joined.items) |m| for (m.imports) |imp| {
+        for (imports.items) |have| {
+            if (std.mem.eql(u8, have.name, imp.name)) break;
+        } else try imports.append(allocator, imp);
+    };
+    const exe = addTestRootWith(b, one.step, b.fmt("tests/{s}", .{test_root_name}), "tests", null, joined.items[0].target, imports.items, link_v8, launch, one.v8, groups.items);
+    for (joined.items, groups.items) |m, g| addTestVerifyIn(b, launch, exe, m.name, m.dir_path, m.files, g);
 }
 
 fn addTestRoot(
@@ -1590,6 +1843,24 @@ fn addTestRoot(
     link_v8: bool,
     launch: *const TestLaunch,
     v8: v8_archives.Archives,
+) *std.Build.Step.Compile {
+    return addTestRootWith(builder, step, root_path, name, config_name, target, modules, link_v8, launch, v8, &.{});
+}
+
+/// `addTestRoot` for an executable that holds several suites' tests
+/// (`OneBinary`, `addSuiteRunWith`).
+fn addTestRootWith(
+    builder: *std.Build,
+    step: *std.Build.Step,
+    root_path: []const u8,
+    name: []const u8,
+    config_name: ?[]const u8,
+    target: std.Build.ResolvedTarget,
+    modules: []const std.Build.Module.Import,
+    link_v8: bool,
+    launch: *const TestLaunch,
+    v8: v8_archives.Archives,
+    groups: []const SuiteGroup,
 ) *std.Build.Step.Compile {
     const test_exe = builder.addTest(.{
         .name = name,
@@ -1628,7 +1899,7 @@ fn addTestRoot(
         }
     }
 
-    step.dependOn(&addSuiteRun(builder, launch, test_exe, name, config_name).step);
+    step.dependOn(&addSuiteRunWith(builder, launch, test_exe, name, config_name, groups).step);
     return test_exe;
 }
 
@@ -2660,8 +2931,28 @@ pub fn build(b: *std.Build) void {
                 },
             }),
         });
-        _ = useCraneTestRunner(b, state_fixture, "test_state_fixture", .fail, false);
+        _ = useCraneTestRunner(b, state_fixture, "test_state_fixture", .fail, .per_test, &.{}, false);
         launcher_fixture_options.addOptionPath("state_path", state_fixture.getEmittedBin());
+        // A joined executable as -Dtest-binaries=v8 makes one (tests/
+        // test_runner_fixture/joined_fixture.zig): two members, "start."
+        // (.process_start, as tests-v8) and "held." (the default .per_test),
+        // each judged by its own row (lane onebin3).
+        const joined_fixture = b.addTest(.{
+            .name = "test_joined_fixture",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tests/test_runner_fixture/joined_fixture.zig"),
+                .target = target,
+                .imports = &.{
+                    .{ .name = "runtime", .module = testing_graph.runtime },
+                    .{ .name = "dom", .module = testing_graph.dom },
+                },
+            }),
+        });
+        _ = useCraneTestRunner(b, joined_fixture, "test_joined_fixture", .fail, .per_test, &.{
+            .{ .prefix = "start.", .config = .{ .standalone_runtime = .process_start }, .plain = false },
+            .{ .prefix = "held.", .config = .{}, .plain = false },
+        }, false);
+        launcher_fixture_options.addOptionPath("joined_path", joined_fixture.getEmittedBin());
         // A test that races, built with ThreadSanitizer: child.zig's tests
         // check that the launcher's TSAN_OPTIONS make the race a crash of
         // its process, blamed on that test (-Dsanitize-thread's contract).
@@ -2692,7 +2983,7 @@ pub fn build(b: *std.Build) void {
                 }),
             });
             linkV8(b, many_fixture.root_module, v8);
-            _ = useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, true);
+            _ = useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, .per_test, &.{}, true);
             launcher_fixture_options.addOptionPath("many_browsers_path", many_fixture.getEmittedBin());
         }
         const launcher_test_module = b.createModule(.{
@@ -2725,10 +3016,17 @@ pub fn build(b: *std.Build) void {
                 break :test_exes list;
             },
             .verify = testVerifySelection(b),
+            .filters = b.option([]const []const u8, "test-filter", "Run only the tests this pattern matches (repeatable: any of them): the whole test name, `*` any run of characters - names start with the file's stem, so 'mutation_test*' is a file and '*removes*' any name holding 'removes'. Selected at run time: nothing recompiles, and a suite with no match runs nothing") orelse &.{},
         };
         break :launch l;
     };
     test_selection.launch = launch;
+    const test_binaries = b.option(TestBinaries, "test-binaries", "How `test` compiles tests/<dir>/: dirs (an executable each, the default: a test-file change rebuilds one directory) or v8 (ONE executable for the directories that link V8: for cold full gates)") orelse .dirs;
+    if (test_binaries == .v8 and test_selection.file == null) {
+        const one = b.allocator.create(OneBinary) catch @panic("OOM");
+        one.* = .{ .step = test_step, .v8 = v8 };
+        test_selection.one = one;
+    }
     test_selection.suite_dirs = suite_dirs: {
         const list = b.allocator.create(std.ArrayList([]const u8)) catch @panic("OOM");
         list.* = .empty;
@@ -4505,6 +4803,55 @@ pub fn build(b: *std.Build) void {
     const repl_step = b.step("repl", "Run the browser console (use -- to pass args)");
     repl_step.dependOn(&run_repl.step);
 
+    // The console-parity step: WPT parity through the console
+    // (tools/console_parity.zig) - each test file of a list opened by the
+    // console binary against `wpt serve`, its results compared with a WPT
+    // runner journal. It expands a source into the runner's own runs with
+    // the runner's own parser (tests/wpt_runner/test_parser.zig, with the
+    // imports the harness tests give it below), and is built for the
+    // console's target: it runs where the console does.
+    const parity_test_parser_mod = b.createModule(.{
+        .root_source_file = b.path("tests/wpt_runner/test_parser.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "clock", .module = clock_mod },
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "xml", .module = crane_graph.xml },
+            .{ .name = "xml_document_encoding", .module = crane_graph.xml_document_encoding },
+        },
+    });
+    const console_parity_exe = b.addExecutable(.{
+        .name = "console_parity",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/console_parity.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .imports = &.{.{ .name = "wpt_test_parser", .module = parity_test_parser_mod }},
+        }),
+    });
+    const install_console_parity = b.addInstallArtifact(console_parity_exe, .{});
+    const console_parity_step = b.step("console-parity", "Build the console's WPT parity tool alone (zig-out/bin/console_parity)");
+    console_parity_step.dependOn(&install_console_parity.step);
+    const console_parity_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("tools/console_parity.zig"),
+        .target = target,
+        .optimize = .Debug,
+        .link_libc = true,
+        .imports = &.{.{ .name = "wpt_test_parser", .module = b.createModule(.{
+            .root_source_file = b.path("tests/wpt_runner/test_parser.zig"),
+            .target = target,
+            .imports = &.{
+                .{ .name = "clock", .module = testing_graph.clock },
+                .{ .name = "host", .module = testing_graph.host },
+                .{ .name = "xml", .module = testing_graph.xml },
+                .{ .name = "xml_document_encoding", .module = testing_graph.xml_document_encoding },
+            },
+        }) }},
+    }) });
+    test_step.dependOn(&addSuiteRun(b, launch, console_parity_tests, "tools-console_parity", null).step);
+
     // tests/repl/: the browser console driven in-process (tools/repl.zig's
     // Console fed lines, its output read back), part of `zig build test`.
     // Each test starts a Browser: batch 1 (suite_configs, tests-repl).
@@ -5863,6 +6210,7 @@ pub fn build(b: *std.Build) void {
 
     // Every test executable runs through the launcher; and `test-launch` is
     // the launcher runs `test` makes. Both known here, once every step exists.
+    if (test_selection.one) |one| finishOneBinary(b, launch, one) catch |err| std.debug.panic("build.zig: the one test executable: {t}", .{err});
     checkEveryTestRunsThroughTheLauncher(b, launch, test_step);
     // Every tests/<dir>/ with test files is a suite: known here, once every
     // suite has been added - when no -Dspec or -Dtest-file skipped some.

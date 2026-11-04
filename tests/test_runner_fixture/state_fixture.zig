@@ -20,6 +20,22 @@ test "leaves a Browser alive" {
     scope.* = runtime.BrowserScope.init(std.heap.page_allocator);
 }
 
+test "makes a standalone runtime of its own and ends it" {
+    // What a test in a suite whose start makes none does (tests/html):
+    // runtime.initializeRuntime, then deinitializeRuntime before it returns.
+    runtime.initializeRuntime(std.testing.allocator);
+    runtime.deinitializeRuntime();
+}
+
+test "makes a standalone runtime and leaves it" {
+    // A test start of its own - `if none runs, initializeRuntime` - in a suite
+    // whose process start makes none: every later test that makes and ends
+    // its own replaces this one and ends with no standalone runtime at all
+    // (lane testfix3: 8 tests-html tests ORDER-DEPENDENT after two such).
+    // From the page allocator, so that only the state check sees it.
+    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+}
+
 fn noEntry(_: *runtime.Instance, _: *const anyopaque) anyerror!*runtime.Instance {
     return error.NotSupported;
 }

@@ -126,7 +126,6 @@ const Page = struct {
     realm: runtime.Context,
 
     fn open() !Page {
-        try protocol.initializeEngine(.{});
         test_process.start();
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
         errdefer protocol.destroyAgent(agent);

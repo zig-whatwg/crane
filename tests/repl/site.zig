@@ -152,6 +152,7 @@ fn route(method: []const u8, path: []const u8) Page {
         .{ .path = "/count.html", .page = .{ .body = "<!doctype html><title>count</title><script>sessionStorage.n = (+sessionStorage.n || 0) + 1; document.title = 'count ' + sessionStorage.n;</script>" } },
         .{ .path = "/later.html", .page = .{ .make = &later } },
         .{ .path = "/data.json", .page = .{ .content_type = "application/json", .body = "{\"items\":[\"x\",\"y\"]}" } },
+        .{ .path = "/fetch.html", .page = .{ .body = "<!doctype html><title>fetch</title><ul id=out></ul><script>fetch('/data.json').then(r => r.json()).then(d => { for (const item of d.items) document.getElementById('out').append(Object.assign(document.createElement('li'), {textContent: item})); console.log('fetched', d.items.length); });</script>" } },
         .{ .path = "/cookie.html", .page = .{ .set_cookie = "server=1; Path=/", .make = &cookieEcho } },
     };
     for (pages) |entry| if (std.mem.eql(u8, entry.path, path)) return entry.page;
