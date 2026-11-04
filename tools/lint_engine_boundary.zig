@@ -484,7 +484,7 @@ test "the adapter, its tests and the WPT checkout are exempt; everything else is
 
 test "a build-generated test root is not held to the boundary; a hand-written file beside it is" {
     // tests/.all_tests.zig, the one test executable's root (build.zig
-    // -Dtest-binaries=one), imports each directory's root - tests/v8's too.
+    // -Dtest-binaries=v8), imports each directory's root - tests/v8's too.
     try testing.expect(!inScope("tests/.all_tests.zig"));
     try testing.expect(!inScope("tests/html/.all_tests.zig"));
     try expectRefs(

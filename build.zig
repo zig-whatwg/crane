@@ -819,29 +819,33 @@ const TestSelection = struct {
     /// beside its wiring (`recordSuiteDir`), whether or not -Dspec selects
     /// it. `checkEveryTestDirectoryIsASuite` reads it.
     suite_dirs: *std.ArrayList([]const u8) = undefined,
-    /// -Dtest-binaries=one: the directories `test` runs join ONE executable
-    /// (`OneBinary`) instead of one each. Null: one executable per directory.
+    /// -Dtest-binaries=v8: the directories `test` runs that link V8 join ONE
+    /// executable (`OneBinary`) instead of one each. Null: one executable per
+    /// directory.
     one: ?*OneBinary = null,
 };
 
 /// How `zig build test` groups its tests into executables (-Dtest-binaries;
-/// lane onebin1, which measured both: tmp/plans/lane-onebin1-handoff.md).
+/// lanes onebin1 and onebin2, which measured three layouts on chat2, -j2,
+/// fresh caches - tests/AGENTS.md "Test binaries"; the user chose the
+/// hybrid, 2026-11-03).
 const TestBinaries = enum {
-    /// One executable per tests/<dir>/ (`addTestFilesFromDir`).
+    /// One executable per tests/<dir>/ (`addTestFilesFromDir`): the default,
+    /// because a change to one test file rebuilds only its directory's
+    /// executable (245 s against 775 s for `v8`).
     dirs,
-    /// ONE executable for every tests/<dir>/ the `test` step runs whose
-    /// imports agree (`OneBinary`) - Lightpanda's model: every executable
-    /// that reaches the engine is a full analysis and V8 link of its own, so
-    /// one executable does that work once.
-    one,
-    /// The same, for the directories that link V8 only: the ones whose own
-    /// executables each analyse the engine. The rest keep theirs - cheap
-    /// compiles, and a change there rebuilds and reruns only them.
+    /// ONE executable for the tests/<dir>/ suites `test` runs that link V8
+    /// and whose imports agree (`OneBinary`): each of their executables is a
+    /// full analysis and V8 link of the engine, so one executable does that
+    /// work once (cold 1,560 s against 2,176 s for `dirs`). The rest keep
+    /// their cheap executables. For cold full gates (main's gate, final
+    /// checks). A third layout, every directory in one (`one`), lost to this
+    /// one on every row and was removed (lane onebin2).
     v8,
 };
 
-/// -Dtest-binaries=one: the tests/<dir>/ suites `test` runs, compiled as ONE
-/// executable rooted at tests/.all_tests.zig (gitignored, generated like a
+/// -Dtest-binaries=v8: the tests/<dir>/ suites `test` runs that link V8,
+/// compiled as ONE executable rooted at tests/.all_tests.zig (gitignored, generated like a
 /// directory's), which imports each member's `<dir>/.all_tests.zig`. Test
 /// names start with the member's directory under tests/ ("html.<file>.test.
 /// <name>"), so each member's suite_configs row still applies, keyed by that
@@ -863,8 +867,6 @@ const OneBinary = struct {
     /// The step whose directories join (`test`): one added to another step
     /// (test-browser, bench, test-eventsource) keeps its own executable.
     step: *std.Build.Step,
-    /// -Dtest-binaries=v8: only the members that link V8 join.
-    v8_only: bool = false,
     members: std.ArrayList(Member) = .empty,
 
     const Member = struct {
@@ -1659,7 +1661,7 @@ fn addTestFilesFromDir(
 
     var name: std.ArrayList(u8) = .empty;
     for (dir_path) |c| try name.append(allocator, if (c == '/') '-' else c);
-    // -Dtest-binaries=one: a directory `test` runs joins the one executable
+    // -Dtest-binaries=v8: a directory `test` runs joins the one executable
     // (`finishOneBinary` decides whether it can, at the end of the build).
     if (select.one) |one| if (step == one.step) {
         try one.members.append(allocator, .{
@@ -1676,10 +1678,10 @@ fn addTestFilesFromDir(
     addTestVerify(builder, select.launch, test_exe, name.items, dir_path, files.items);
 }
 
-/// -Dtest-binaries=one, at the end of the build: the members whose imports
-/// agree and whose rows allow it (`OneBinary`) become ONE executable,
-/// "tests", rooted at tests/.all_tests.zig; every other member gets its own
-/// executable, as with -Dtest-binaries=dirs.
+/// -Dtest-binaries=v8, at the end of the build: the members that link V8,
+/// whose imports agree and whose rows allow it (`OneBinary`) become ONE
+/// executable, "tests", rooted at tests/.all_tests.zig; every other member
+/// gets its own executable, as with -Dtest-binaries=dirs.
 fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !void {
     const allocator = b.allocator;
     const members = one.members.items;
@@ -1727,7 +1729,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
     var joined_dirs: std.ArrayList([]const u8) = .empty;
     for (members, keyed) |m, imports| {
         const config = suiteConfig(m.name);
-        var fits = (!one.v8_only or m.link_v8) and config.jobs == null and config.shuffle and config.state_checks == .fail and
+        var fits = m.link_v8 and config.jobs == null and config.shuffle and config.state_checks == .fail and
             config.many_browsers == .fail and config.sanitize_thread == .fail and
             m.target.result.cpu.arch == members[0].target.result.cpu.arch and m.target.result.os.tag == members[0].target.result.os.tag;
         for (imports) |imp| {
@@ -2933,10 +2935,10 @@ pub fn build(b: *std.Build) void {
         break :launch l;
     };
     test_selection.launch = launch;
-    const test_binaries = b.option(TestBinaries, "test-binaries", "How `test` compiles tests/<dir>/: dirs (an executable each, the default), one (ONE executable for every directory whose imports agree) or v8 (one for those that link V8)") orelse .dirs;
-    if (test_binaries != .dirs and test_selection.file == null) {
+    const test_binaries = b.option(TestBinaries, "test-binaries", "How `test` compiles tests/<dir>/: dirs (an executable each, the default: a test-file change rebuilds one directory) or v8 (ONE executable for the directories that link V8: for cold full gates)") orelse .dirs;
+    if (test_binaries == .v8 and test_selection.file == null) {
         const one = b.allocator.create(OneBinary) catch @panic("OOM");
-        one.* = .{ .step = test_step, .v8_only = test_binaries == .v8 };
+        one.* = .{ .step = test_step };
         test_selection.one = one;
     }
     test_selection.suite_dirs = suite_dirs: {
