@@ -121,7 +121,7 @@ test "an opaque path with code points to percent-encode parses in memory linear 
 }
 
 test "short opaque paths: unchanged by the bound" {
-    try expectLinear("data:,", "");
+    try expectLinear("data:,", ",");
     try expectLinear("data:text/plain,hi", "text/plain,hi");
     try expectLinear("mailto:a@b.test", "a@b.test");
     try expectLinear("javascript:void(0) ", "void(0)");

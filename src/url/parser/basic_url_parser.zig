@@ -69,7 +69,8 @@ const ParserContext = struct {
     host: ?Host,
     port: ?u16,
     path_segments: infra.List([]const u8),
-    opaque_path: ?[]const u8,
+    /// The opaque path, appended to in place as it grows (`appendToOpaquePath`).
+    opaque_path: ?std.ArrayListUnmanaged(u8),
     query: infra.List(u8),
     fragment: infra.List(u8),
 
@@ -148,7 +149,7 @@ const ParserContext = struct {
         // NOTE: Do NOT free path_segments items - ownership is transferred to URLRecord
         // via clone(). The segments are shallow-copied, so URLRecord owns them.
         self.path_segments.deinit();
-        if (self.opaque_path) |op| self.allocator.free(op);
+        if (self.opaque_path) |*op| op.deinit(self.allocator);
         self.query.deinit();
         self.fragment.deinit();
         self.buffer.deinit();
@@ -375,7 +376,8 @@ fn initContextFromURL(ctx: *ParserContext, url: *const URLRecord) !void {
 
     // Copy path
     if (url.path == .opaque_path) {
-        ctx.opaque_path = try ctx.allocator.dupe(u8, url.path.opaque_path);
+        ctx.opaque_path = .empty;
+        try appendToOpaquePath(ctx, url.path.opaque_path);
     } else {
         for (url.path.segments.toSlice()) |segment| {
             try ctx.path_segments.append(try ctx.allocator.dupe(u8, segment));
@@ -446,7 +448,7 @@ fn buildURLRecord(allocator: std.mem.Allocator, ctx: *ParserContext) !URLRecord 
     // Path segments may have been allocated in the arena, so we need to deep clone
     // each string to ensure they survive after arena.deinit()
     var path = if (ctx.opaque_path) |op|
-        Path{ .opaque_path = try allocator.dupe(u8, op) }
+        Path{ .opaque_path = try allocator.dupe(u8, op.items) }
     else blk: {
         var segments = infra.List([]const u8).init(allocator);
         errdefer {
@@ -642,7 +644,7 @@ fn schemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
             // Spec step 2.9 (line 1113): Otherwise, opaque path
             // Initialize opaque_path to empty string so even "a:" creates an opaque path URL
-            ctx.opaque_path = "";
+            ctx.opaque_path = .empty;
             ctx.state = .opaque_path;
             return;
         }
@@ -671,7 +673,8 @@ fn noSchemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
         if (c == null or c.? != '#') return ParseError.MissingSchemeNonRelativeURL;
         // Copy base components
         try ctx.scheme.appendSlice(base.scheme());
-        ctx.opaque_path = try ctx.allocator.dupe(u8, base.path.opaque_path);
+        ctx.opaque_path = .empty;
+        try appendToOpaquePath(ctx, base.path.opaque_path);
         if (base.query()) |q| {
             try ctx.query.appendSlice(q);
             ctx.has_query = true;
@@ -1373,27 +1376,25 @@ fn opaquePathState(ctx: *ParserContext, c: ?u8) ParseError!void {
         if (ctx.is_ascii and char < 128) {
             const result = encodeSingleAscii(char, encode_set);
             const encoded_slice = result.bytes[0..result.length];
-
-            if (ctx.opaque_path) |*op| {
-                const new_path = try std.mem.concat(ctx.allocator, u8, &[_][]const u8{ op.*, encoded_slice });
-                ctx.allocator.free(op.*);
-                op.* = new_path;
-            } else {
-                ctx.opaque_path = try ctx.allocator.dupe(u8, encoded_slice);
-            }
+            try appendToOpaquePath(ctx, encoded_slice);
         } else {
             const encoded = try percentEncode(ctx.allocator, &[_]u8{char}, .c0_control);
             defer ctx.allocator.free(encoded);
-
-            if (ctx.opaque_path) |*op| {
-                const new_path = try std.mem.concat(ctx.allocator, u8, &[_][]const u8{ op.*, encoded });
-                ctx.allocator.free(op.*);
-                op.* = new_path;
-            } else {
-                ctx.opaque_path = try ctx.allocator.dupe(u8, encoded);
-            }
+            try appendToOpaquePath(ctx, encoded);
         }
     }
+}
+
+/// Append `bytes` to the opaque path being built, in place - a list that
+/// grows geometrically. The path lives in the parse's arena, where a free is
+/// a no-op: it was once rebuilt by concatenating the whole path with each
+/// code point's encoding and "freeing" the old copy, so an n-byte opaque path
+/// held about n^2/2 bytes (a ~350 KB data: URL, ~60 GB:
+/// html/cross-origin-embedder-policy/worker-inheritance.sub.https.html;
+/// lane crashes8, tests/url/c8_opaque_path_growth_test.zig).
+fn appendToOpaquePath(ctx: *ParserContext, bytes: []const u8) ParseError!void {
+    if (ctx.opaque_path == null) ctx.opaque_path = .empty;
+    ctx.opaque_path.?.appendSlice(ctx.allocator, bytes) catch return ParseError.OutOfMemory;
 }
 
 fn inQuerySet(byte: u8) bool {
