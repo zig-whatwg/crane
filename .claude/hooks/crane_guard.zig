@@ -190,7 +190,9 @@ fn checkZigBuild(command: []const u8, agent_type: ?[]const u8) Verdict {
             if (ended_by_quote and !flags) continue;
             return "never run a bare `zig build` (no step builds all ~19 artifacts at ~6 GB each): name the step, e.g. `zig build wpt-runner -j2 --cache-dir ~/Library/Caches/crane-z16-cache`";
         }
-        if (!has_jobs) return "always pass -j2 to `zig build` (AGENTS.md: each root compile is ~6 GB; in a pool job the host's shim adjusts it)";
+        // Inside quotes it is a pattern (pgrep -fl "zig build test") or a remote command whose host's
+        // shim sets -j: only a build this shell runs must carry -j (2026-11-03).
+        if (!has_jobs and start_kind == .plain) return "always pass -j2 to `zig build` (AGENTS.md: each root compile is ~6 GB; in a pool job the host's shim adjusts it)";
         if (tmp_cache) return "never put a zig cache in /tmp: macOS prunes it and Zig trusts the half-pruned entries (AGENTS.md). Use ~/Library/Caches/crane-z16-cache";
         // A `zig build` inside quotes is an argument (to ssh, crane-remote.sh, a lane's own wrapper
         // around them), not a command this shell runs (2026-11-03: console1's `remote.sh` wrapper).
@@ -742,6 +744,7 @@ test "zig build: mentions in text, help and other zig commands are not builds" {
     try expectAllowed("zig fmt src/ tests/ tools/", null);
     try expectAllowed("zig test .claude/hooks/crane_guard.zig", null);
     try expectAllowed("tmp/remote/crane-remote.sh main 'zig build test -j2'", null);
+    try expectAllowed("ssh chat.local 'ps -axo etime,command | grep -c zig'; pgrep -fl \"zig build test\" | head -3", null);
 }
 
 test "zig build: a lane builds in the pool, never on the Mac; the main conversation may build locally" {
