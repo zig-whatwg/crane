@@ -76,9 +76,8 @@ const Reports = struct {
 };
 
 fn setup() !void {
-    try protocol.initializeEngine(.{});
-    // The runtime's pools start once per process: another file of the
-    // directory may have started them.
+    // The process start (test_process.zig): the engine, the hooks and the
+    // runtime's pools, once per process - another test may have started them.
     test_process.start();
     interfaces.process_hooks.startHooksForTest();
 }

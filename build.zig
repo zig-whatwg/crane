@@ -984,7 +984,20 @@ const SuiteConfig = struct {
     /// test that merely waits on a time budget is fixed to wait on its
     /// condition instead. Keep it to one or two.
     tsan_skip: []const DeclaredTest = &.{},
+    /// Who makes the standalone runtime (runtime.initializeRuntime), the
+    /// Crane test runner's `runtime.standalone_runtime`.
+    standalone_runtime: StandaloneRuntime = .per_test,
 };
+
+/// Who makes a suite's standalone runtime. `.per_test`: each test that
+/// needs one makes and ends its own, so none runs between tests and a test
+/// that leaves one fails by the field's name - a later test that makes and
+/// ends its own would replace it and end with none (lane testfix3: two
+/// tests/html files left one, and 8 later tests failed ORDER-DEPENDENT with
+/// `runtime.standalone_runtime: 1 -> 0`). `.process_start`: the suite's test
+/// start makes it once for the process (tests/v8/test_process.zig `start`),
+/// so it may appear once, as everything the process start makes may.
+const StandaloneRuntime = enum { per_test, process_start };
 
 /// A test declared by its full name, with why (`SuiteConfig.alone`,
 /// `SuiteConfig.tsan_skip`).
@@ -1026,8 +1039,9 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // fixes1, v8state1).
     // Beside the busy Browser (-Dmany-browsers) it fails like any run (lane
     // tsanfix1); the tests that need their process to themselves run alone,
-    // each with its reason (`v8_alone`).
-    .{ .name = "tests-v8", .config = .{ .batch = 1, .alone = &v8_alone } },
+    // each with its reason (`v8_alone`). Its test start makes the
+    // standalone runtime for the process (test_process.start).
+    .{ .name = "tests-v8", .config = .{ .batch = 1, .alone = &v8_alone, .standalone_runtime = .process_start } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "tests-browser", .config = .{ .batch = 1 } },
     // The browser console (tools/repl.zig): every test starts a Browser
@@ -1133,8 +1147,6 @@ const html_tsan_skip = [_]DeclaredTest{
 };
 
 const html_slow = [_][]const u8{
-    // 137.6 s.
-    "editing2_white_space_join_test.test.joining blocks keeps the moved line's white-space",
     // 74.6, 78.9 and 50.4 s: 300,000 live ranges; two Browsers churning.
     "rangeuaf_live_range_walk_test.test.removing a node after 300,000 ranges were made in it moves every live range it holds",
     "rangeuaf_live_range_walk_test.test.splitting text after 300,000 ranges were made in it moves every live range it holds",
@@ -1164,7 +1176,7 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
     // Whether this executable can run the many-Browsers variant's busy
     // Browser: -Dmany-browsers, and it links V8 and the browser module. The
     // others run as usual under -Dmany-browsers, and say nothing about it.
-    const many_browsers = useCraneTestRunner(b, test_exe, name, config.state_checks, launch.many_browsers);
+    const many_browsers = useCraneTestRunner(b, test_exe, name, config.state_checks, config.standalone_runtime, launch.many_browsers);
     const run = b.addRunArtifact(launch.launcher);
     run.setName(b.fmt("test {s}", .{name}));
     // The build runner speaks the test-runner protocol to the launcher.
@@ -1247,8 +1259,9 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
 /// `many_browsers` (-Dmany-browsers): the runner may run the busy Browser of
 /// the many-Browsers variant (tests/test_runner/neighbour.zig) - `browser`,
 /// where the executable imports the browser module and links V8. Returns
-/// whether it can.
-fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []const u8, checks: StateChecks, many_browsers: bool) bool {
+/// whether it can. `standalone`: who makes the standalone runtime
+/// (`StandaloneRuntime`), which decides how the runner compares it.
+fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []const u8, checks: StateChecks, standalone: StandaloneRuntime, many_browsers: bool) bool {
     const root = test_exe.root_module;
     const wf = b.addWriteFiles();
     _ = wf.addCopyDirectory(b.path("tests/test_runner"), "", .{ .include_extensions = &.{".zig"} });
@@ -1263,11 +1276,14 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []
         \\pub const name = "{s}";
         \\pub const Mode = enum {{ off, report, fail }};
         \\pub const mode: Mode = .{t};
+        \\/// Who makes the standalone runtime (build.zig's StandaloneRuntime).
+        \\pub const StandaloneRuntime = enum {{ per_test, process_start }};
+        \\pub const standalone_runtime: StandaloneRuntime = .{t};
         \\
         \\/// The root module's imports rooted at src/<dir>/root.zig, by directory.
         \\pub const roots = .{{
         \\
-    , .{ name, name, checks }) catch @panic("OOM");
+    , .{ name, name, checks, standalone }) catch @panic("OOM");
     // Every import rooted at a src/<dir>/root.zig - but, besides `dom` and
     // `runtime` (the counters' own, which import no other module's root as
     // a file), none whose directory holds another's: its root may import the
@@ -2645,7 +2661,7 @@ pub fn build(b: *std.Build) void {
                 },
             }),
         });
-        _ = useCraneTestRunner(b, state_fixture, "test_state_fixture", .fail, false);
+        _ = useCraneTestRunner(b, state_fixture, "test_state_fixture", .fail, .per_test, false);
         launcher_fixture_options.addOptionPath("state_path", state_fixture.getEmittedBin());
         // A test that races, built with ThreadSanitizer: child.zig's tests
         // check that the launcher's TSAN_OPTIONS make the race a crash of
@@ -2677,7 +2693,7 @@ pub fn build(b: *std.Build) void {
                 }),
             });
             linkV8(b, many_fixture.root_module, target);
-            _ = useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, true);
+            _ = useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, .per_test, true);
             launcher_fixture_options.addOptionPath("many_browsers_path", many_fixture.getEmittedBin());
         }
         const launcher_test_module = b.createModule(.{

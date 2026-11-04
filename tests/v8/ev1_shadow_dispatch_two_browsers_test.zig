@@ -116,7 +116,6 @@ const Side = struct {
 };
 
 test "two Browsers on two threads dispatch composed events through nested shadow trees at once" {
-    try protocol.initializeEngine(.{});
     test_process.start();
     interfaces.process_hooks.startHooksForTest();
 

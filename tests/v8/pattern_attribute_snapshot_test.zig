@@ -25,7 +25,7 @@
 //! pattern code ran - the cause is not established. So in that executable
 //! they skip, saying so. They run in a process of their own: tests-v8 runs at
 //! batch 1 (a process per test), and `-Dtest-file=`. The engine is given the snapshot for these tests only and
-//! forgets it after (deinitializeEngine).
+//! forgets it after (test_process.endSnapshot).
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -92,9 +92,8 @@ const SnapshotPage = struct {
 
         // The process first - it starts the engine with no snapshot - and
         // then the engine's snapshot, for this page alone.
-        test_process.start();
-        try protocol.initializeEngine(.{ .snapshot = bytes });
-        errdefer protocol.deinitializeEngine();
+        try test_process.startSnapshot(bytes);
+        errdefer test_process.endSnapshot();
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = true, .hooks = &no_hooks, .host = null });
         errdefer protocol.destroyAgent(agent);
         // Restored, not made afresh: v8_Isolate_NewFromSnapshot keeps the
@@ -116,7 +115,7 @@ const SnapshotPage = struct {
     fn close(self: SnapshotPage) void {
         protocol.destroyWindowRealm(self.realm, .global_detached);
         protocol.destroyAgent(self.agent);
-        protocol.deinitializeEngine();
+        test_process.endSnapshot();
         std.heap.c_allocator.free(self.bytes);
     }
 

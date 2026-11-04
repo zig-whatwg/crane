@@ -55,7 +55,6 @@ pub const Page = struct {
     realm: runtime.Context,
 
     pub fn start(self: *Page, origin: []const u8) !void {
-        try protocol.initializeEngine(.{});
         test_process.start();
         interfaces.process_hooks.startHooksForTest();
         self.scope = runtime.BrowserScope.init(std.heap.page_allocator);

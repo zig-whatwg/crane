@@ -78,7 +78,6 @@ const Page = struct {
 };
 
 fn startProcess() !void {
-    try protocol.initializeEngine(.{});
     test_process.start();
     interfaces.process_hooks.startHooksForTest();
 }

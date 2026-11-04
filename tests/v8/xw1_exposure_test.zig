@@ -111,8 +111,8 @@ pub fn checkWithSnapshot(snapshot: ?[]const u8) !void {
     // The process first - it starts the engine with no snapshot - and
     // then the engine's snapshot (test_process.zig).
     test_process.start();
-    try engine.initializeEngine(.{ .snapshot = snapshot });
-    defer if (snapshot != null) engine.deinitializeEngine();
+    if (snapshot) |bytes| try test_process.startSnapshot(bytes);
+    defer if (snapshot != null) test_process.endSnapshot();
     interfaces.process_hooks.startHooksForTest();
     // A standalone runtime of this test's own, the process's given back
     // after (test_process.OwnRuntime).

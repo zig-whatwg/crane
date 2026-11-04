@@ -24,7 +24,7 @@ fn expect(realm: runtime.Context, source: []const u8, expected: []const u8) !voi
     try std.testing.expectEqualStrings(expected, got);
 }
 fn check() !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     // A standalone runtime of this test's own, the process's given back
     // after (test_process.OwnRuntime).
     const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);

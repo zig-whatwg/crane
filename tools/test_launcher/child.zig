@@ -948,6 +948,8 @@ test "real processes: the Crane test runner fails a test that leaves process sta
     const cases = [_]struct { name: []const u8, first: sched.Status, says: ?[]const u8 }{
         .{ .name = "leaves nothing", .first = .pass, .says = null },
         .{ .name = "leaves a Browser alive", .first = .log_err, .says = "runtime.browsers: 0 -> 1" },
+        .{ .name = "makes a standalone runtime of its own and ends it", .first = .pass, .says = null },
+        .{ .name = "makes a standalone runtime and leaves it", .first = .log_err, .says = "runtime.standalone_runtime: 0 -> 1" },
         .{ .name = "installs a hook for itself, as startHooksForTest does", .first = .pass, .says = null },
         .{ .name = "starts the process, installing a hook", .first = .pass, .says = null },
         .{ .name = "overrides a hook and gives it back", .first = .pass, .says = null },
