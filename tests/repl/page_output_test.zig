@@ -138,14 +138,19 @@ test "a dedicated worker's message and console.log arrive while the console wait
     try expectContains(f.printed(), "[worker blob:");
 }
 
-test "a popup's console.log is marked with its tab" {
+test "a popup's console.log is marked with its tab, and the first tab's with its own once there are two" {
     var f: Fixture = undefined;
     try f.init();
     defer f.deinit();
     try f.open("/a.html");
     const popup = try f.url("/popup.html");
     defer testing.allocator.free(popup);
-    const line = try std.fmt.allocPrint(testing.allocator, "const p = window.open('{s}'); await new Promise(r => p.onload = r); p.console.log('in the popup'), undefined", .{popup});
+    const line = try std.fmt.allocPrint(testing.allocator, "window.open('{s}'), undefined", .{popup});
     defer testing.allocator.free(line);
-    try expectContains(try f.run(line), "[tab 2] in the popup\n");
+    _ = try f.run(line);
+    try f.runUntilPrinted("[tab 2] Navigated to");
+    // The first tab's own log, now that there are two.
+    try expectContains(try f.run("console.log('in the first tab')"), "[tab 1] in the first tab\n");
+    _ = try f.run(".tab 2");
+    try expectContains(try f.run("console.log('in the popup')"), "[tab 2] in the popup\n");
 }

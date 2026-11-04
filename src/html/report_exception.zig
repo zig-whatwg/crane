@@ -123,11 +123,19 @@ fn reportExtracted(
 /// Step 7's report to `realm`'s Browser's developer console: whether one
 /// took it (none is attached: the debug log has it, as before).
 fn reportToDeveloperConsole(realm: runtime.Context, message: []const u8, filename: []const u8, lineno: u32, colno: u32) bool {
-    return @import("dom").developer_console.report(&.{
+    const developer_console = @import("dom").developer_console;
+    if (!developer_console.isAttached(realm)) return false;
+    // As DevTools words it: "Uncaught TypeError: ...". V8's message for a
+    // script's throw says "Uncaught" already; a callback's (a timer's, a
+    // listener's) is the error's own "TypeError: ...".
+    const uncaught = "Uncaught ";
+    const text = if (std.mem.startsWith(u8, message, "Uncaught")) message else std.mem.concat(realm.allocator, u8, &.{ uncaught, message }) catch message;
+    defer if (text.ptr != message.ptr) realm.allocator.free(text);
+    return developer_console.report(&.{
         .realm = realm,
         .kind = .exception,
         .level = .@"error",
-        .text = message,
+        .text = text,
         .location = .{ .url = filename, .line = lineno, .column = colno },
     });
 }
