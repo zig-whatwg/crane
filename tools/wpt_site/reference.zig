@@ -896,3 +896,33 @@ test "reference: a reference.json of another format, of Crane, or with a record 
     try testing.expectError(error.InvalidReference, parse(arena, try std.mem.replaceOwned(u8, arena, ok, "{\"engine\":\"chrome\",\"status\"", "{\"engine\":\"firefox\",\"status\""), &diag));
     try testing.expect(std.mem.indexOf(u8, diag.message(), "firefox") != null);
 }
+
+test "reference: a window's pool split and a runaway file left out of the memory survive the import and read back" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var diag: Diag = .{};
+    const a = try std.mem.replaceOwned(u8, arena, fixture_meta, "\"reference\":{\"wall_s\":3600.5,\"user_s\":9000,\"sys_s\":1200.25}", "\"reference\":{\"wall_s\":3600.5,\"user_s\":9000,\"sys_s\":1200.25,\"pool\":{\"work_s\":1538.8}}");
+    const meta = try std.mem.replaceOwned(u8, arena, a, "\"runner\":\"main-0c228a97aa\"}", "\"runner\":\"main-0c228a97aa\",\"pool\":{\"work_s\":1347.8,\"chunks\":66,\"chunk_files\":200,\"shard_files\":40,\"barrier_s\":904.6,\"startup_s\":100.9},\"memory_without\":{\"path\":\"html/x/runaway.html\",\"note\":\"a runaway on main too, queued for a fix\",\"excluded\":\"its chunk\",\"engine_peak_mb\":1525,\"engine_mean_mb\":572}}");
+    const imp = try importFixture(arena, fixture_report, meta, &diag);
+    var aw: std.Io.Writer.Allocating = .init(arena);
+    try write(&aw.writer, imp);
+    const tm = (try parse(arena, aw.written(), &diag)).timing.?;
+
+    // Chrome's pool is one queue: its tests' own wall, and no chunks.
+    try testing.expectEqual(Pool{ .work_s = 1538.8 }, tm.reference.pool.?);
+    const c = tm.crane.?;
+    try testing.expectEqual(Pool{ .work_s = 1347.8, .chunks = 66, .chunk_files = 200, .shard_files = 40, .barrier_s = 904.6, .startup_s = 100.9 }, c.pool.?);
+    const mw = c.memory_without.?;
+    try testing.expectEqualStrings("html/x/runaway.html", mw.path);
+    try testing.expectEqualStrings("a runaway on main too, queued for a fix", mw.note);
+    try testing.expectEqualStrings("its chunk", mw.excluded);
+    try testing.expectEqual(@as(f64, 1525), mw.engine_peak_mb);
+    try testing.expectEqual(@as(f64, 572), mw.engine_mean_mb);
+
+    // A window that measured neither reads back without them.
+    const plain = try importFixture(arena, fixture_report, fixture_meta, &diag);
+    try testing.expect(plain.meta.timing.?.crane.?.pool == null);
+    try testing.expect(plain.meta.timing.?.crane.?.memory_without == null);
+    try testing.expect(plain.meta.timing.?.reference.pool == null);
+}

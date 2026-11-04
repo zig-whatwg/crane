@@ -2035,6 +2035,37 @@ test "site: each side's build is named, and the window's runs give pass counts, 
     try expectHas(index3, "<tr><th scope=\"row\">The worklist, wall clock</th><td class=\"n\"><span class=\"quiet\">not measured</span></td>");
 }
 
+test "site: the wall time says where each pool's time goes, and the engine's memory without a runaway file stands beside the measured" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    const a = try std.mem.replaceOwned(u8, gpa, fixture_reference, "\"reference\":{\"wall_s\":3600.5,\"user_s\":9000,\"sys_s\":1200}", "\"reference\":{\"wall_s\":3600.5,\"user_s\":9000,\"sys_s\":1200,\"pool\":{\"work_s\":1538.8},\"memory\":{\"samples\":3600,\"engine_peak_mb\":6144,\"engine_mean_mb\":3000.4,\"harness_peak_mb\":900,\"harness_mean_mb\":700,\"groups\":5,\"group_peak_max_mb\":1500,\"group_peak_mean_mb\":1200}}");
+    defer gpa.free(a);
+    const b = try std.mem.replaceOwned(u8, gpa, a, "\"files\":5,\"runner\":\"main-0c228a97aa\"}", "\"files\":5,\"runner\":\"main-0c228a97aa\",\"memory\":{\"samples\":2240,\"engine_peak_mb\":62353,\"engine_mean_mb\":1458,\"harness_peak_mb\":1058,\"harness_mean_mb\":1053,\"groups\":332,\"group_peak_max_mb\":62214,\"group_peak_mean_mb\":438},\"pool\":{\"work_s\":1347.8,\"chunks\":66,\"chunk_files\":200,\"shard_files\":40,\"barrier_s\":904.6,\"startup_s\":100.9},\"memory_without\":{\"path\":\"html/x/runaway.html\",\"note\":\"a runaway on main too, queued for a fix\",\"excluded\":\"its chunk\",\"engine_peak_mb\":1525,\"engine_mean_mb\":572}}");
+    defer gpa.free(b);
+    _ = try runFixtureRef(gpa, &f, "out", b);
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    // Beside the wall clock: the tests' own wall per runner, and what Crane's chunks lost; Chrome's one queue loses neither.
+    try expectHas(index, "<tr><th scope=\"row\">The tests&rsquo; own wall clock, per runner</th><td class=\"n\">22 min 28 s</td><td class=\"n\">25 min 39 s</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Of the wall clock: waiting for a chunk&rsquo;s slowest runner</th><td class=\"n\">15 min 5 s</td><td class=\"n\"><span class=\"quiet\">none: one queue</span></td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Of the wall clock: chunk start-up</th><td class=\"n\">1 min 41 s</td><td class=\"n\"><span class=\"quiet\">none: one queue</span></td></tr>");
+    try expectHas(index, "Crane&rsquo;s run went in 66 chunks of 200 files, each split into fixed shards of 40 files, one per runner; a chunk ends when its slowest shard does");
+    try expectHas(index, "Chrome&rsquo;s <code>wptrunner</code> feeds its processes from one queue.");
+    // The measured peak stays; the engine without the runaway file stands beside it, Chrome's own figures for comparison.
+    try expectHas(index, "<tr><th scope=\"row\">Memory of the engine, peak</th><td class=\"n\">60.9 GB</td><td class=\"n\">6.0 GB</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Memory of the engine without the runaway file, peak</th><td class=\"n\">1.5 GB</td><td class=\"n\">6.0 GB</td></tr>");
+    try expectHas(index, "<tr><th scope=\"row\">Memory of the engine without the runaway file, mean</th><td class=\"n\">572 MB</td><td class=\"n\">2.9 GB</td></tr>");
+    try expectHas(index, "Crane&rsquo;s engine peak is one file, <code>html/x/runaway.html</code>: a runaway on main too, queued for a fix. The rows without the runaway file leave out its chunk; Chrome&rsquo;s are its whole run.");
+
+    // A window that measured neither shows neither.
+    _ = try runFixtureRef(gpa, &f, "out2", fixture_reference);
+    const plain = try readOut(gpa, &f, "out2/index.html");
+    defer gpa.free(plain);
+    try testing.expect(std.mem.indexOf(u8, plain, "own wall clock, per runner") == null);
+    try testing.expect(std.mem.indexOf(u8, plain, "without the runaway file") == null);
+}
+
 test "site: a reference run's records are never Crane's" {
     const gpa = testing.allocator;
     var f = try Fixture.init(fixture_stream ++

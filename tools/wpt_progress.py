@@ -3501,6 +3501,48 @@ def _check_reference_window():
     assert '<tr><td class="area">The worklist, wall clock</td><td class="num">not measured</td>' in page3
 
 
+def _check_reference_pool_and_runaway():
+    """Beside the wall clock, where each pool's time goes; beside the measured memory, the engine without a runaway file."""
+    import tempfile
+    worklist = ['dom/a.html', 'dom/b.html', 'url/never.html', 'url/u.html']
+    records = {'dom/a.html': {'path': 'dom/a.html', 'status': 'OK', 'passed': 2, 'failed': 1, 'timed_out': 0, 'notrun': 0}}
+    ref = _reference_fixture()
+    ref['timing']['reference'].update(pool={'work_s': 1538.8}, memory={
+        'samples': 3600, 'engine_peak_mb': 6144, 'engine_mean_mb': 3000.4, 'harness_peak_mb': 900, 'harness_mean_mb': 700,
+        'groups': 5, 'group_peak_max_mb': 1500, 'group_peak_mean_mb': 1200})
+    ref['timing']['crane'].update(
+        memory={'samples': 2240, 'engine_peak_mb': 62353, 'engine_mean_mb': 1458, 'harness_peak_mb': 1058,
+                'harness_mean_mb': 1053, 'groups': 332, 'group_peak_max_mb': 62214, 'group_peak_mean_mb': 438},
+        pool={'work_s': 1347.8, 'chunks': 66, 'chunk_files': 200, 'shard_files': 40, 'barrier_s': 904.6, 'startup_s': 100.9},
+        memory_without={'path': 'html/x/runaway.html', 'note': 'a runaway on main too, queued for a fix',
+                        'excluded': 'its chunk', 'engine_peak_mb': 1525, 'engine_mean_mb': 572})
+    areas, _, _ = build(worklist, records)
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref)
+        page = open(out).read()
+        render(areas, worklist, records, [], out, reference=_reference_fixture())
+        plain = open(out).read()
+    assert ('<tr><td class="area">The tests&rsquo; own wall clock, per runner</td><td class="num">22 min 28 s</td>'
+            '<td class="num">25 min 39 s</td></tr>') in page
+    assert ('<tr><td class="area">Of the wall clock: waiting for a chunk&rsquo;s slowest runner</td>'
+            '<td class="num">15 min 5 s</td><td class="num">none: one queue</td></tr>') in page
+    assert ('<tr><td class="area">Of the wall clock: chunk start-up</td><td class="num">1 min 41 s</td>'
+            '<td class="num">none: one queue</td></tr>') in page
+    assert ('Crane&rsquo;s run went in 66 chunks of 200 files, each split into fixed shards of 40 files, one per runner; '
+            'a chunk ends when its slowest shard does') in page
+    assert 'Chrome&rsquo;s <code>wptrunner</code> feeds its processes from one queue.' in page
+    assert '<tr><td class="area">Memory of the engine, peak</td><td class="num">60.9 GB</td><td class="num">6.0 GB</td></tr>' in page
+    assert ('<tr><td class="area">Memory of the engine without the runaway file, peak</td><td class="num">1.5 GB</td>'
+            '<td class="num">6.0 GB</td></tr>') in page
+    assert ('<tr><td class="area">Memory of the engine without the runaway file, mean</td><td class="num">572 MB</td>'
+            '<td class="num">2.9 GB</td></tr>') in page
+    assert ('Crane&rsquo;s engine peak is one file, <code>html/x/runaway.html</code>: a runaway on main too, queued for a '
+            'fix. The rows without the runaway file leave out its chunk; Chrome&rsquo;s are its whole run.') in page
+    # A window that measured neither shows neither.
+    assert 'own wall clock, per runner' not in plain and 'without the runaway file' not in plain
+
+
 def _check_reference_render():
     """The page shows the reference beside Crane's numbers, never in them."""
     import tempfile
@@ -3569,6 +3611,7 @@ if __name__ == '__main__':
         _check_reference_compare()
         _check_harness_split()
         _check_reference_window()
+        _check_reference_pool_and_runaway()
         _check_reference_render()
         print('wpt_progress self-test: ok')
     else:
