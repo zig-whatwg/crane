@@ -2507,7 +2507,7 @@ pub fn build(b: *std.Build) void {
     const v8_build = b.option(
         v8_archives.Build,
         "v8-build",
-        "Which V8 13.1.203 build to link on macOS: static (default; jsengines/v8/out/static) or official (jsengines/v8/out/official, ThinLTO + PGO as Chrome's official build, scripts/build-v8-official.sh; built on chat.local only - build with it there)",
+        "Which V8 13.1.203 build to link on macOS: static (default; jsengines/v8/out/static) or official (opt-in: jsengines/v8/out/official, ThinLTO + PGO as Chrome's official build, scripts/build-v8-official.sh; on chat.local only - build with it there)",
     ) orelse v8_archives.Build.default;
     const v8 = v8_archives.select(v8_build, target.result.os.tag) catch |err| switch (err) {
         error.NoOfficialIosBuild => {

@@ -7,7 +7,8 @@
 #
 # Measured 2026-11-04 (lane v8opt1, the same Crane tree, the default runner): WPT identical over
 # 4,011 files; gc_bench DOM -1.7% CPU (noise), gc_bench JS loop +3.2% CPU (slower), a wasm/ +
-# streams/ WPT subset -0.2% CPU; max RSS +8 to +10 MB. Not the default.
+# streams/ WPT subset -0.2% CPU; max RSS +8 to +10 MB. The user kept static as the default
+# (2026-11-04); official stays opt-in. Training Crane's own PGO profile is roadmap item v8-pgo.
 #
 #   scripts/build-v8-official.sh <step>... (in this order the first time)
 #     checkout  V8 13.1.203 in a gclient root of its own ($V8_ROOT, default ~/v8-13.1.203), at that

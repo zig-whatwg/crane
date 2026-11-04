@@ -12,8 +12,9 @@
 //!   PGO). Its ThinLTO step has already run: the archives hold native arm64
 //!   Mach-O objects, since Zig's linker cannot read LLVM bitcode. It exists
 //!   on chat.local only (every pool mirror's jsengines/v8 is the host's), so
-//!   a build with -Dv8-build=official runs there until the user decides on
-//!   a default (2026-11-04).
+//!   a build with -Dv8-build=official runs there. Opt-in: the user kept
+//!   static as the default (2026-11-04) after lane v8opt1 measured no gain
+//!   (WPT identical; gc_bench DOM -1.7% CPU, a JS loop +3.2%).
 //!
 //! out/static is also the official build's baseline: the control build of
 //! scripts/build-v8-official.sh - out/static's arguments from a 13.1.203
@@ -33,8 +34,8 @@ pub const Build = enum {
     static,
     official,
 
-    /// The build a plain `zig build` links. It stays `static` until the user
-    /// chooses otherwise (lane v8opt1, 2026-11-04).
+    /// The build a plain `zig build` links: `static`, the user's choice
+    /// (2026-11-04) after lane v8opt1's measurement.
     pub const default: Build = .static;
 };
 
