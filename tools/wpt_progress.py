@@ -3459,6 +3459,14 @@ def _check_reference_window():
     assert 'Chrome: Chrome for Testing <code>150.0.7000.1</code>, Chrome for Testing, official release build' in page
     assert 'Crane: release runner: ReleaseSafe throughout, libc malloc' in page
     assert 'no ThinLTO and no PGO' in page and 'phys_footprint' in page
+    ref['run'].update(js_engine='V8 15.7.1', crane_js_engine='V8 13.1.203')
+    ref['timing']['reference_reused'] = 'the host and its load matched'
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref)
+        page2 = open(out).read()
+    assert 'Crane links V8 <code>13.1.203</code>' in page2 and 'Chrome <code>150.0.7000.1</code> ships V8 <code>15.7.1</code>' in page2
+    assert "Chrome&rsquo;s figures are from its run of 2026-11-04, reused beside Crane&rsquo;s: the host and its load matched." in page2
 
 
 def _check_reference_render():

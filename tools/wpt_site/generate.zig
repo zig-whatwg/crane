@@ -2001,6 +2001,18 @@ test "site: each side's build is named, and the window's runs give pass counts, 
     try expectHas(index, "<dt>Crane</dt><dd>release runner: ReleaseSafe throughout, libc malloc");
     try expectHas(index, "no ThinLTO and no PGO");
     try expectHas(index, "phys_footprint");
+
+    // The two V8s by version, and a reference run reused beside a later Crane run, said so.
+    const d = try std.mem.replaceOwned(u8, gpa, c, "\"build\":\"Chrome for Testing, official release build\",", "\"build\":\"Chrome for Testing, official release build\",\"js_engine\":\"V8 15.7.1\",\"crane_js_engine\":\"V8 13.1.203\",");
+    defer gpa.free(d);
+    const e = try std.mem.replaceOwned(u8, gpa, d, "\"timing\":{\"processes\":5,", "\"timing\":{\"processes\":5,\"reference_reused\":\"the host and its load matched\",");
+    defer gpa.free(e);
+    _ = try runFixtureRef(gpa, &f, "out2", e);
+    const index2 = try readOut(gpa, &f, "out2/index.html");
+    defer gpa.free(index2);
+    try expectHas(index2, "Crane links V8 <code>13.1.203</code>");
+    try expectHas(index2, "Chrome <code>150.0.7000.1</code> ships V8 <code>15.7.1</code>");
+    try expectHas(index2, "Chrome&rsquo;s figures are from its run of <span class=\"nowrap\">4 Nov 2026</span>, reused beside Crane&rsquo;s: the host and its load matched.");
 }
 
 test "site: a reference run's records are never Crane's" {
