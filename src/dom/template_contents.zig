@@ -5,6 +5,7 @@ const interfaces = @import("interfaces");
 const process_start = @import("process_start.zig");
 const instance_bridge = @import("instance_bridge.zig");
 const refcount = @import("refcount.zig");
+const Hook = @import("hook.zig").Hook;
 
 pub const Hooks = struct {
     owner_document: ?*const fn (*runtime.Instance) anyerror!*runtime.Instance = null,
@@ -17,24 +18,26 @@ pub const Hooks = struct {
 };
 
 // process-wide: owner algorithms are identical for every Browser and installed only at process start
-var hooks: Hooks = .{};
+var hooks: Hook(Hooks) = .init(.{});
 
 pub fn install(owned: Hooks) void {
-    process_start.assertInstalling();
+    // Read, change, install: an install of what is there writes nothing.
+    var next = hooks.get();
     inline for (@typeInfo(Hooks).@"struct".field_names) |field_name| {
-        if (@field(owned, field_name)) |algorithm| @field(hooks, field_name) = algorithm;
+        if (@field(owned, field_name)) |algorithm| @field(next, field_name) = algorithm;
     }
+    hooks.install(next);
 }
 
 pub fn ownerDocument(document: *runtime.Instance) !*runtime.Instance {
-    const algorithm = hooks.owner_document orelse return error.InvalidStateError;
+    const algorithm = hooks.read().owner_document orelse return error.InvalidStateError;
     return algorithm(document);
 }
 
 /// HTML4.12.3's already-existing appropriate template owner, without
 /// running the creating algorithm. Borrowed; null when none is established.
 pub fn existingOwnerDocument(document: *runtime.Instance) ?*runtime.Instance {
-    const algorithm = hooks.existing_owner_document orelse return null;
+    const algorithm = hooks.read().existing_owner_document orelse return null;
     return algorithm(document);
 }
 
@@ -42,19 +45,19 @@ pub fn existingOwnerDocument(document: *runtime.Instance) ?*runtime.Instance {
 /// exposed to script. Calling this again leaves its existing fragment alone.
 pub fn establish(node: *runtime.Instance) !void {
     if (node.stateAs(interfaces.HTMLTemplateElement.State) == null) return;
-    const algorithm = hooks.establish orelse return error.InvalidStateError;
+    const algorithm = hooks.read().establish orelse return error.InvalidStateError;
     try algorithm(node);
 }
 
 /// HTML's adopting steps run after DOM changes the node document.
 pub fn adopted(node: *runtime.Instance) !void {
     if (node.stateAs(interfaces.HTMLTemplateElement.State) == null) return;
-    const algorithm = hooks.adopted orelse return error.InvalidStateError;
+    const algorithm = hooks.read().adopted orelse return error.InvalidStateError;
     try algorithm(node);
 }
 
 pub fn setHost(fragment: *runtime.Instance, element: *runtime.Instance) !void {
-    const algorithm = hooks.set_host orelse return error.InvalidStateError;
+    const algorithm = hooks.read().set_host orelse return error.InvalidStateError;
     try algorithm(fragment, element);
     // The contents' holds count in the template's chain from here on (the
     // host-including chain of tmp/plans/refcount-design.md 1.4).
@@ -67,7 +70,7 @@ pub fn setHost(fragment: *runtime.Instance, element: *runtime.Instance) !void {
 /// longer any template's (`ownedByLiveTemplate` answers false from now on),
 /// and lives on only while script holds it.
 pub fn releaseHost(fragment: *runtime.Instance) void {
-    const algorithm = hooks.clear_host orelse return;
+    const algorithm = hooks.read().clear_host orelse return;
     algorithm(fragment);
     // A detached root of its (inert) document from here on.
     if (instance_bridge.getNodeBase(fragment)) |content| refcount.hostGone(content);
@@ -90,14 +93,14 @@ pub fn contentOf(node: *runtime.Instance) ?*runtime.Instance {
 pub fn ownedByLiveTemplate(fragment: *runtime.Instance) bool {
     if (fragment.stateAs(interfaces.DocumentFragment.State) == null) return false;
     if (fragment.stateAs(interfaces.ShadowRoot.State) != null) return false;
-    const algorithm = hooks.host orelse return false;
+    const algorithm = hooks.read().host orelse return false;
     return algorithm(fragment) != null;
 }
 
 pub fn host(fragment: *runtime.Instance) ?*runtime.Instance {
     if (fragment.stateAs(interfaces.ShadowRoot.State) != null)
         return interfaces.ShadowRoot.get_host(fragment) catch null;
-    const algorithm = hooks.host orelse return null;
+    const algorithm = hooks.read().host orelse return null;
     return algorithm(fragment);
 }
 
@@ -111,9 +114,8 @@ pub fn insertionTarget(node: *runtime.Instance) !*runtime.Instance {
 
 test "an absent owner algorithm fails without dereferencing an instance" {
     const std = @import("std");
-    const saved = hooks;
-    defer hooks = saved;
-    hooks = .{};
+    const override = hooks.overrideForTest(.{});
+    defer override.restore();
     var document: runtime.Instance = undefined;
     try std.testing.expectError(error.InvalidStateError, ownerDocument(&document));
     try std.testing.expectError(error.InvalidStateError, setHost(&document, &document));

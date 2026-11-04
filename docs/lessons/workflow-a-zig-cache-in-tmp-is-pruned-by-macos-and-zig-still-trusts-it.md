@@ -17,7 +17,7 @@ mbedTLS's 74 headers; that directory's mtime, and 310 others', was exactly Oct 2
 The surviving headers were the ones compiled within the last three days. Both "old" and "new" builds read the same
 damaged cache, which is why the older main failed identically.
 
-**Fix**: Local builds use `--cache-dir ~/Library/Caches/crane-z16-cache` (AGENTS.md "Before every commit"). The
+**Fix**: Local builds use `--cache-dir ~/Library/Caches/crane-z16-cache` (AGENTS.md "Building"; in full in .claude/rules/build-and-toolchain.md). The
 damaged cache was deleted. chat's caches were already outside /tmp (`~/crane-caches/<mirror>`), and
 `tmp/remote/crane-remote.sh` strips the local cache path from commands it forwards so chat never creates one.
 

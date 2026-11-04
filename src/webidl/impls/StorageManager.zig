@@ -117,7 +117,14 @@ pub fn call_persist(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    const result = internal.manager.persist() catch {
+    // TODO(persist permission): step 5.1's "request permission to use
+    // persistent-storage" belongs to this realm's Browser - its permission
+    // store (src/permissions/browser_store.zig, through BrowserScope) and
+    // the platform protocol's os_permissions `requestPermission`, an
+    // asynchronous Reply that resolves the promise. This operation is still
+    // a placeholder (it returns no promise), so nothing requests yet: denied,
+    // as the process-wide callback no embedder set answered before.
+    const result = internal.manager.persist(.denied) catch {
         return error.SecurityError;
     };
 

@@ -530,9 +530,18 @@ fn countRestore(_: runtime.Context) void {
 }
 
 test "an owner's restore step runs once per restore, for the restored page, and never for an evicted one" {
-    dom.bfcache.installRestoreStep(&countRestore);
     const fixture = try Fixture.start(.{ .back_forward_cache_ttl_seconds = 1 });
-    defer fixture.stop();
+    // The process started with the Browser, so the override covers the
+    // owners' installed steps; the test's own step joins them in the override
+    // (dom.bfcache's owner steps are a hook: written only by the process
+    // start or into a test's override) and leaves with the restore, after the
+    // Browser is gone. It used to stay installed for every later test.
+    const override = dom.bfcache.overrideOwnerStepsForTest();
+    defer {
+        fixture.stop();
+        override.restore();
+    }
+    dom.bfcache.installRestoreStep(&countRestore);
     const bc = try fixture.openPopup("/a.html");
     const before = restore_steps_run.load(.monotonic);
     try fixture.goTo(bc, "location.href = '/b.html'", "/b.html");

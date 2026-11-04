@@ -21,9 +21,9 @@
 //!
 //! lint-impls: hook for Context, Document
 const std = @import("std");
-const process_start = @import("process_start.zig");
 const refcount = @import("refcount.zig");
 const runtime = @import("runtime");
+const Hook = @import("hook.zig").Hook;
 
 /// The per-document steps of "update the rendering", numbered as the spec
 /// numbers them. Steps 1-5 (collect the documents, order them, filter the
@@ -135,7 +135,7 @@ const animations = @import("animations/registry.zig");
 
 /// The animations of `realm`'s event loop (Loop.animation_registry).
 pub fn animationRegistry(realm: runtime.Context) ?*animations.Registry {
-    const impl = loop orelse return null;
+    const impl = loop.get() orelse return null;
     const get = impl.animation_registry orelse return null;
     return get(realm);
 }
@@ -143,7 +143,7 @@ pub fn animationRegistry(realm: runtime.Context) ?*animations.Registry {
 /// The latest refresh moment at or before now of `realm`'s event loop
 /// (Loop.latest_refresh).
 pub fn latestRefresh(realm: runtime.Context) ?i64 {
-    const impl = loop orelse return null;
+    const impl = loop.get() orelse return null;
     const get = impl.latest_refresh orelse return null;
     return get(realm);
 }
@@ -151,26 +151,27 @@ pub fn latestRefresh(realm: runtime.Context) ?i64 {
 const step_count = @typeInfo(Step).@"enum".field_names.len;
 
 // process-wide: function pointers the browser layer installs once at process start (crane.Process), the same for every Browser and thread
-var loop: ?Loop = null;
+var loop: Hook(?Loop) = .init(null);
 // process-wide: function pointers each step's owner installs once at process start (crane.Process); a frame's state is its event loop's and its documents', never this table's
-var steps: [24]?DocumentStep = @as([24]?DocumentStep, @splat(null));
+var steps: Hook([24]?DocumentStep) = .init(@splat(null));
 
 /// Called by the browser layer, once, at process start (process_start.zig).
 pub fn installLoop(impl: Loop) void {
-    process_start.assertInstalling();
-    loop = impl;
+    loop.install(impl);
 }
 
 /// Called by `step`'s owner, once, at process start (process_start.zig).
 pub fn installStep(step: Step, document_step: DocumentStep) void {
-    process_start.assertInstalling();
-    steps[@backingInt(step)] = document_step;
+    const table = steps.installing();
+    // The same step again writes nothing (hook.zig, Hook.install).
+    const slot = &table[@backingInt(step)];
+    if (slot.* == null or slot.*.? != document_step) slot.* = document_step;
 }
 
 /// Ask `document`'s event loop for a rendering opportunity. Without an
 /// installed loop - a document no Browser runs - nothing happens.
 pub fn requestFrame(document: *runtime.Instance) void {
-    const impl = loop orelse return;
+    const impl = loop.get() orelse return;
     impl.request_frame(document);
 }
 
@@ -211,13 +212,13 @@ pub fn watchFocusedArea(document: *runtime.Instance) void {
 
 /// Run `step` for `document`, if its owner installed it. The loop's.
 pub fn run(step: Step, document: *runtime.Instance, frame: Frame) void {
-    const installed = steps[@backingInt(step)] orelse return;
+    const installed = steps.read()[@backingInt(step)] orelse return;
     installed(document, frame);
 }
 
 /// Whether `step`'s owner installed it.
 pub fn isInstalled(step: Step) bool {
-    return steps[@backingInt(step)] != null;
+    return steps.read()[@backingInt(step)] != null;
 }
 
 test "the steps keep the spec's numbers and order" {
@@ -246,14 +247,10 @@ test "refresh moments are a grid from its origin" {
 }
 
 test "without an installed loop a frame request does nothing, and an uninstalled step is skipped" {
-    const saved_loop = loop;
-    const saved_steps = steps;
-    defer {
-        loop = saved_loop;
-        steps = saved_steps;
-    }
-    loop = null;
-    steps = @as([24]?DocumentStep, @splat(null));
+    const loop_override = loop.overrideForTest(null);
+    defer loop_override.restore();
+    const steps_override = steps.overrideForTest(@splat(null));
+    defer steps_override.restore();
     // Never dereferenced: with nothing installed nothing reads the document.
     var document: runtime.Instance = undefined;
     requestFrame(&document);
@@ -262,8 +259,8 @@ test "without an installed loop a frame request does nothing, and an uninstalled
 }
 
 test "an installed step runs for its document with the frame" {
-    const saved_steps = steps;
-    defer steps = saved_steps;
+    const override = steps.overrideForTest(@splat(null));
+    defer override.restore();
     const Probe = struct {
         var seen: ?*runtime.Instance = null;
         var timestamp: i64 = 0;
@@ -272,7 +269,7 @@ test "an installed step runs for its document with the frame" {
             timestamp = frame.timestamp_ns;
         }
     };
-    steps[@backingInt(Step.reveal)] = &Probe.step;
+    installStep(.reveal, &Probe.step);
     var document: runtime.Instance = undefined;
     run(.reveal, &document, .{ .timestamp_ns = 42 });
     try std.testing.expect(Probe.seen == &document);

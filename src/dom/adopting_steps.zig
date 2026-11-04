@@ -16,7 +16,7 @@
 //!
 //! lint-impls: hook for HTMLImageElement, ShadowRoot
 const std = @import("std");
-const process_start = @import("process_start.zig");
+const hook = @import("hook.zig");
 const runtime = @import("runtime");
 
 /// The adopting steps of one node type: given the node, whose node document
@@ -25,48 +25,42 @@ const runtime = @import("runtime");
 pub const Steps = *const fn (node: *runtime.Instance, old_document: ?*runtime.Instance) void;
 
 /// The types with adopting steps: the img element (HTML 4.8.4.3.2, "the
-/// element's adopting steps are run" is a relevant mutation). The bound stays
-/// above the count; an entry dropped here is a type whose steps never run.
-const max_entries = 8;
+/// element's adopting steps are run" is a relevant mutation) - 1 at start
+/// today. An install past the bound panics, naming it (hook.List): a type
+/// whose steps were dropped would silently never run them.
+pub const max_entries = 8;
 // process-wide: function pointers element impls install once at process start (process_start.zig), the same for every Browser
-var entries: [max_entries]Steps = undefined;
-// process-wide: the number of `entries` installed at process start, the same for every Browser
-var count: usize = 0;
+var entries: hook.Hook(hook.List(Steps, max_entries)) = .init(.empty);
 
-/// Install `steps`. Idempotent: installing the same steps again changes
+/// Install `steps`. Idempotent: installing the same steps again writes
 /// nothing.
 pub fn install(steps: Steps) void {
-    process_start.assertInstalling();
-    for (entries[0..count]) |entry| {
-        if (entry == steps) return;
-    }
-    std.debug.assert(count < max_entries);
-    if (count == max_entries) return;
-    entries[count] = steps;
-    count += 1;
+    const list = entries.installing();
+    if (list.contains(steps)) return;
+    list.append(steps);
+}
+
+/// How many types' steps the process start installed (the start-fits test).
+pub fn installedCount() usize {
+    return entries.read().len;
 }
 
 /// Run every installed type's adopting steps for `node`, adopted from
 /// `old_document`.
 pub fn run(node: *runtime.Instance, old_document: ?*runtime.Instance) void {
-    for (entries[0..count]) |steps| steps(node, old_document);
+    for (entries.read().slice()) |steps| steps(node, old_document);
 }
 
 fn testSteps(_: *runtime.Instance, _: ?*runtime.Instance) void {}
 fn otherTestSteps(_: *runtime.Instance, _: ?*runtime.Instance) void {}
 
 test "installing the same adopting steps twice keeps one entry; different steps each get one" {
-    const saved_count = count;
-    const saved_entries = entries;
-    defer {
-        count = saved_count;
-        entries = saved_entries;
-    }
-    count = 0;
+    const override = entries.overrideForTest(.empty);
+    defer override.restore();
     install(&testSteps);
     install(&testSteps);
-    try std.testing.expectEqual(@as(usize, 1), count);
+    try std.testing.expectEqual(@as(usize, 1), entries.read().len);
     install(&otherTestSteps);
-    try std.testing.expectEqual(@as(usize, 2), count);
-    try std.testing.expect(entries[0] == &testSteps and entries[1] == &otherTestSteps);
+    try std.testing.expectEqual(@as(usize, 2), entries.read().len);
+    try std.testing.expect(entries.read().items[0] == &testSteps and entries.read().items[1] == &otherTestSteps);
 }

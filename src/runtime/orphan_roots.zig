@@ -32,6 +32,7 @@ const Instance = @import("instance.zig").Instance;
 const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
 const instance_lifecycle = @import("instance_lifecycle.zig");
 const ContextData = @import("context.zig").ContextData;
+const Hook = @import("process").Hook;
 
 /// What the owner of node lifetimes installs (the Node impl, from its
 /// installHooks, at process start): runtime cannot read a node.
@@ -46,12 +47,12 @@ pub const Hooks = struct {
 };
 
 // process-wide: the Node impl's two functions, installed once while the process starts (Node.installHooks) and the same for every Browser and thread; read-only after
-var hooks: ?Hooks = null;
+var hooks: Hook(?Hooks) = .init(null);
 
 /// The owner of node lifetimes installs its hooks: once, while the process
 /// starts.
 pub fn install(owned: Hooks) void {
-    hooks = owned;
+    hooks.install(owned);
 }
 
 /// A recorded root, as it was when its removal recorded it.
@@ -92,7 +93,7 @@ fn stillOrphan(entry: Record, owned: Hooks) bool {
 /// a realm already ended, an engine-less context nothing ends - and the
 /// orphan then stays until its Browser ends, as every orphan did before.
 pub fn record(realm: *ContextData, instance: *Instance) void {
-    const owned = hooks orelse return;
+    const owned = hooks.get() orelse return;
     if (!realm.hasEngine()) return;
     const list = &realm.orphan_roots;
     if (list.ended) return;
@@ -117,7 +118,7 @@ pub fn record(realm: *ContextData, instance: *Instance) void {
 pub fn drain(realm: *ContextData) void {
     const list = &realm.orphan_roots;
     list.ended = true;
-    const owned = hooks orelse {
+    const owned = hooks.get() orelse {
         list.records.clearAndFree(realm.allocator);
         return;
     };

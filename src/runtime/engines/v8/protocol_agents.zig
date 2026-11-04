@@ -52,7 +52,39 @@ const log = std.log.scoped(.protocol_agents);
 /// agent is destroyed (engine_protocol.zig). One blob for every isolate of
 /// the process, as Chromium points every isolate's StartupData into its one
 /// snapshot mapping (gin/v8_initializer.cc, GetMappedFileData).
+// process-wide: the one blob every isolate of the process restores from (V8 keeps one read-only heap per process); written by initializeEngine/deinitializeEngine at the process start and end - and by snapshot tests, which run alone - only when it changes (setEngineSnapshot), so another Browser's createAgent reading it on its thread races no write
 var engine_snapshot: ?[]const u8 = null;
+
+/// Set `engine_snapshot`, writing nothing when it already holds `blob`. A
+/// test's own initializeEngine(.{}) beside another Browser's createAgent (the
+/// many-Browsers variant: tests/html's engine-starting tests, ev1 among them)
+/// then puts the null that is there back as a read, not a write - the data
+/// race ThreadSanitizer reported (lane gstate4's -Dsanitize-thread
+/// -Dmany-browsers tests-html run). The same rule as every hook slot's
+/// install (src/process/hook.zig). A test that CHANGES the snapshot restores
+/// agents from it and runs alone (build.zig `snapshot_first`).
+fn setEngineSnapshot(blob: ?[]const u8) void {
+    if (sameBlob(engine_snapshot, blob)) return;
+    engine_snapshot = blob;
+}
+
+/// Whether two snapshot blobs are the same bytes (the same pointer and
+/// length; both absent counts as the same).
+fn sameBlob(a: ?[]const u8, b: ?[]const u8) bool {
+    const x = a orelse return b == null;
+    const y = b orelse return false;
+    return x.ptr == y.ptr and x.len == y.len;
+}
+
+test "the engine snapshot is the same blob only for the same bytes, or both absent" {
+    const bytes = "0123456789";
+    try std.testing.expect(sameBlob(null, null));
+    try std.testing.expect(sameBlob(bytes[0..4], bytes[0..4]));
+    try std.testing.expect(!sameBlob(null, bytes[0..4]));
+    try std.testing.expect(!sameBlob(bytes[0..4], null));
+    try std.testing.expect(!sameBlob(bytes[0..4], bytes[0..5]));
+    try std.testing.expect(!sameBlob(bytes[0..4], bytes[1..5]));
+}
 
 /// Prepare V8 for agents: its flags and platform - once per process: V8
 /// freezes its flags when the platform starts and cannot start again after
@@ -81,8 +113,11 @@ pub fn initializeEngine(options: engine.EngineOptions) Error!void {
     ffi.v8_SetProtocolWasmStreamingDispatcher(protocol_webassembly.onWasmStreaming);
     // [cross_origin_objects]: the access checks' dispatch, the same way.
     @import("cross_origin.zig").installDispatch();
-    engine_snapshot = null;
-    if (options.snapshot) |stamped| engine_snapshot = try usableSnapshot(stamped);
+    const blob: ?[]const u8 = if (options.snapshot) |stamped| usableSnapshot(stamped) catch |err| {
+        setEngineSnapshot(null);
+        return err;
+    } else null;
+    setEngineSnapshot(blob);
 }
 
 /// The V8 blob inside `stamped_data`, when this build can restore it: a blob
@@ -125,7 +160,7 @@ pub fn deinitializeEngine() void {
         const live = liveSnapshotAgents();
         if (live != 0) log.err("deinitializeEngine with {d} agent(s) restored from the snapshot still alive: they read its bytes in place, so the host must destroy them before it frees the snapshot", .{live});
     }
-    engine_snapshot = null;
+    setEngineSnapshot(null);
 }
 
 // ============================================================================
@@ -272,8 +307,10 @@ pub fn observableArraysOf(isolate: *ffi.Isolate) ?*observable_array.Registry {
     return record.observable_arrays;
 }
 
+// process-wide: the lock over `agents`, the process's one index of live agents, which every Browser's and worker's thread reaches
 var agents_lock: std.Io.Mutex = .init;
 /// Every agent made by createAgent and not yet destroyed, by isolate.
+// process-wide: V8's isolates are the process's, and a hook dispatch finds its agent's record by isolate from any thread; each Browser and worker adds and removes only its own agents' records, always under agents_lock (the records themselves are their Browser's or WorkerHost's)
 var agents: std.AutoHashMapUnmanaged(*ffi.Isolate, *AgentRecord) = .empty;
 
 /// How many agents createAgent restored from the engine's snapshot and that

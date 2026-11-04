@@ -38,7 +38,6 @@
 //! lint-impls: hook for Performance, PerformanceEntry, PerformanceObserverEntryList, PerformanceMeasure
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const clock = @import("clock");
@@ -46,6 +45,7 @@ const fetch = @import("fetch");
 const interfaces = @import("interfaces");
 const fire_event = @import("fire_event.zig");
 const document_activity = @import("document_activity.zig");
+const Hook = @import("hook.zig").Hook;
 
 const Instance = runtime.Instance;
 
@@ -207,13 +207,13 @@ pub const Entries = struct {
 
 /// "initialize a PerformanceEntry" (Performance Timeline 3).
 pub fn initializeEntry(entry: *Instance, start_time: f64, entry_type: EntryType, entry_name: []const u8, end_time: f64) !void {
-    const impl = hooks.entries orelse return error.NotSupported;
+    const impl = hooks.read().entries orelse return error.NotSupported;
     try impl.initialize(entry, start_time, entry_type, entry_name, end_time);
 }
 
 /// `entry`'s attributes, or null.
 pub fn dataOf(entry: *Instance) ?*EntryData {
-    const impl = hooks.entries orelse return null;
+    const impl = hooks.read().entries orelse return null;
     return impl.data(entry);
 }
 
@@ -789,7 +789,7 @@ fn notifyObserver(timeline: *Timeline, realm: runtime.Context, po: *Observer) !v
     defer timeline.allocator.free(entry_list_items);
     // 3.3.5. The PerformanceObserverEntryList keeps the entries (before the
     // observer's edges go, so they are never unkept).
-    const lists = hooks.entry_lists orelse return error.NotSupported;
+    const lists = hooks.read().entry_lists orelse return error.NotSupported;
     const observer_entry_list = try lists.create(realm, entry_list_items);
     const list_generation = runtime.SlabAllocator.generationOf(observer_entry_list);
     defer observer_entry_list.releaseIfUnwrapped(list_generation);
@@ -831,7 +831,7 @@ fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
     const observer_realm: runtime.Context = @ptrCast(@alignCast(host orelse return));
     const realm = info.realm orelse observer_realm;
     const global = globalOf(realm) orelse return;
-    const reporter = hooks.exception_reporter orelse return;
+    const reporter = hooks.read().exception_reporter orelse return;
     reporter(global, info);
 }
 
@@ -1204,7 +1204,7 @@ const FetchTimestampConverter = struct {
 
     fn call(self: FetchTimestampConverter, ts: f64) f64 {
         if (ts == 0) return 0;
-        const impl = hooks.performances orelse return 0;
+        const impl = hooks.read().performances orelse return 0;
         return impl.relative_coarse_time(self.realm, ts) orelse 0;
     }
 };
@@ -1286,7 +1286,7 @@ fn reportResourceTimingFor(global: *Instance, report: *const fetch.internal.Timi
 /// what "setup the resource timing entry" sets.
 pub fn markResourceTiming(realm: runtime.Context, timing: *const ResourceTiming) !void {
     const timeline = timelineOf(realm) orelse return;
-    const impl = hooks.resource_timings orelse return error.NotSupported;
+    const impl = hooks.read().resource_timings orelse return error.NotSupported;
     // 1-2. A new PerformanceResourceTiming in global's realm, set up.
     const entry = try impl.create(realm, timing);
     const generation = runtime.SlabAllocator.generationOf(entry);
@@ -1430,14 +1430,14 @@ pub const NavigationServiceWorkerTiming = struct {
 /// timing info afresh.
 pub fn createNavigationTimingEntry(realm: runtime.Context, record: NavigationRecord) !void {
     const timeline = timelineOf(realm) orelse return;
-    const impl = hooks.navigation_timings orelse return error.NotSupported;
+    const impl = hooks.read().navigation_timings orelse return error.NotSupported;
     // HTML "create and initialize a Document object": the load timing
     // info's navigation start time is the response's timing info's start
     // time, and it is the settings object's time origin - so it is set
     // first, and every time below is relative to it. (The Window, made
     // earlier or later than the fetch, recorded its creation as a stand-in.)
     if (record.report.timing_info.start_time != 0) {
-        if (hooks.performances) |performances_impl| performances_impl.set_navigation_start(realm, record.report.timing_info.start_time);
+        if (hooks.read().performances) |performances_impl| performances_impl.set_navigation_start(realm, record.report.timing_info.start_time);
     }
     // A new document: a new load timing info, made with readiness
     // "loading"; only the current document's entry is in the timeline.
@@ -1552,7 +1552,7 @@ pub const NavigationTimings = struct {
 /// "setup the resource timing entry" for an entry of a
 /// PerformanceResourceTiming type made elsewhere (see ResourceTimings.setup).
 pub fn setupResourceTiming(entry: *Instance, timing: *const ResourceTiming) !void {
-    const impl = hooks.resource_timings orelse return error.NotSupported;
+    const impl = hooks.read().resource_timings orelse return error.NotSupported;
     try impl.setup(entry, timing);
 }
 
@@ -1618,75 +1618,68 @@ const Hooks = struct {
 };
 
 // process-wide: function pointers the timeline's owners (Performance, PerformanceEntry, PerformanceObserver, PerformanceObserverEntryList, PerformanceMeasure) install once at process start (crane.Process), the same for every instance
-var hooks: Hooks = .{};
+var hooks: Hook(Hooks) = .init(.{});
 
 /// Called by PerformanceNavigationTiming's installHooks, once, at process
 /// start.
 pub fn installNavigationTimings(impl: NavigationTimings) void {
-    process_start.assertInstalling();
-    hooks.navigation_timings = impl;
+    hooks.installField("navigation_timings", impl);
 }
 
 /// Called by PerformanceResourceTiming's installHooks, once, at process
 /// start.
 pub fn installResourceTimings(impl: ResourceTimings) void {
-    process_start.assertInstalling();
-    hooks.resource_timings = impl;
+    hooks.installField("resource_timings", impl);
 }
 
 /// Called by PerformanceEntry's installHooks, once, at process start.
 pub fn installEntries(impl: Entries) void {
-    process_start.assertInstalling();
-    hooks.entries = impl;
+    hooks.installField("entries", impl);
 }
 
 /// Called by Performance's installHooks, once, at process start.
 pub fn installPerformances(impl: Performances) void {
-    process_start.assertInstalling();
-    hooks.performances = impl;
+    hooks.installField("performances", impl);
 }
 
 /// Called by PerformanceObserverEntryList's installHooks, once, at process
 /// start.
 pub fn installEntryLists(impl: EntryLists) void {
-    process_start.assertInstalling();
-    hooks.entry_lists = impl;
+    hooks.installField("entry_lists", impl);
 }
 
 /// Called by PerformanceMeasure's installHooks, once, at process start.
 pub fn installMeasures(impl: Measures) void {
-    process_start.assertInstalling();
-    hooks.measures = impl;
+    hooks.installField("measures", impl);
 }
 
 /// Called by PerformanceObserver's installHooks, once, at process start.
 pub fn installExceptionReporter(reporter: ExceptionReporter) void {
-    process_start.assertInstalling();
-    hooks.exception_reporter = reporter;
+    hooks.installField("exception_reporter", reporter);
 }
 
 /// The timeline of `realm`'s global object, or null.
 pub fn timelineOf(realm: runtime.Context) ?*Timeline {
-    const impl = hooks.performances orelse return null;
+    const impl = hooks.read().performances orelse return null;
     return impl.of_realm(realm);
 }
 
 /// The timeline a Performance object keeps, or null.
 fn timelineOfPerformance(performance: *Instance) ?*Timeline {
-    const impl = hooks.performances orelse return null;
+    const impl = hooks.read().performances orelse return null;
     return impl.of_performance(performance);
 }
 
 /// The time origin timestamp of `realm`'s global (ms since the Unix epoch),
 /// or null.
 pub fn timeOriginTimestamp(realm: runtime.Context) ?f64 {
-    const impl = hooks.performances orelse return null;
+    const impl = hooks.read().performances orelse return null;
     return impl.time_origin_timestamp(realm);
 }
 
 /// The current relative timestamp of `realm`'s global, or null.
 pub fn now(realm: runtime.Context) ?f64 {
-    const impl = hooks.performances orelse return null;
+    const impl = hooks.read().performances orelse return null;
     return impl.now(realm);
 }
 
@@ -1696,13 +1689,13 @@ pub fn now(realm: runtime.Context) ?f64 {
 /// start, once a navigation set it), as performance.now() measures. Null
 /// without a Performance.
 pub fn relativeCoarseTime(realm: runtime.Context, unsafe_ms: f64) ?f64 {
-    const impl = hooks.performances orelse return null;
+    const impl = hooks.read().performances orelse return null;
     return impl.relative_coarse_time(realm, unsafe_ms);
 }
 
 /// A new PerformanceMeasure (see Measures.create).
 pub fn createMeasure(realm: runtime.Context, measure_name: []const u8, start_time: f64, end_time: f64, detail: ?runtime.JSValue) !*Instance {
-    const impl = hooks.measures orelse return error.NotSupported;
+    const impl = hooks.read().measures orelse return error.NotSupported;
     return impl.create(realm, measure_name, start_time, end_time, detail);
 }
 
@@ -1754,9 +1747,10 @@ test "a buffer is full at its maxBufferSize, and each entry it turns away is cou
 }
 
 test "filter buffer by name and type keeps matches in chronological order, ties in buffer order" {
-    const saved = hooks.entries;
-    defer hooks.entries = saved;
-    hooks.entries = .{ .initialize = &TestEntry.initialize, .data = &TestEntry.data_of };
+    var with_entries = hooks.get();
+    with_entries.entries = .{ .initialize = &TestEntry.initialize, .data = &TestEntry.data_of };
+    const override = hooks.overrideForTest(with_entries);
+    defer override.restore();
     var e: [4]TestEntry = .{ .{}, .{}, .{}, .{} };
     try initializeEntry(&e[0].instance, 5, .mark, "a", 0);
     try initializeEntry(&e[1].instance, 1, .mark, "b", 0);

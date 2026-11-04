@@ -26,4 +26,4 @@ worklist's INCLUDE table, add it here too - or run the area with
 runner answer that involves zero of something - zero tests, zero subtests, zero
 crashes - deserves one question before it is believed: what would this look like
 if the input had simply been dropped? This is the sixth distinct way this harness
-manufactures a result; the other five are among the Testing lessons in the AGENTS.md index.
+manufactures a result; the other five are among the Testing lessons in the docs/lessons/README.md index.

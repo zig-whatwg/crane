@@ -5,8 +5,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const storage = @import("storage");
-const process_start = @import("process_start.zig");
 const engine = @import("engine");
+const Hook = @import("hook.zig").Hook;
 
 pub const FactorySteps = struct {
     /// Run the factory's open requests that wait on an upgrade transaction
@@ -96,14 +96,13 @@ pub const RecordSteps = struct {
 };
 
 // process-wide: hook table written once at process start by IDBRecord.installHooks (B0); comptime in B9
-var records: ?RecordSteps = null;
+var records: Hook(?RecordSteps) = .init(null);
 
 pub fn installRecords(steps: RecordSteps) void {
-    process_start.assertInstalling();
-    records = steps;
+    records.install(steps);
 }
 pub fn attachRecordSnapshot(instance: *runtime.Instance, key: storage.indexeddb.IDBKey, primary_key: storage.indexeddb.IDBKey, bytes: []const u8) !void {
-    try (records orelse return error.NotSupported).attach_snapshot(instance, key, primary_key, bytes);
+    try (records.get() orelse return error.NotSupported).attach_snapshot(instance, key, primary_key, bytes);
 }
 pub const TransactionSteps = struct {
     attach: *const fn (*runtime.Instance, *storage.indexeddb.IDBTransaction, *runtime.Instance) anyerror!void,
@@ -154,28 +153,28 @@ pub const Operation = struct {
 
 /// Transfer the operation's native arguments on success only.
 pub fn enqueueRequest(transaction: *runtime.Instance, source: *runtime.Instance, operation: Operation, request: ?*runtime.Instance) !*runtime.Instance {
-    const enqueue = (transactions orelse return error.NotSupported).enqueue orelse return error.NotSupported;
+    const enqueue = (transactions.get() orelse return error.NotSupported).enqueue orelse return error.NotSupported;
     return enqueue(transaction, source, operation, request);
 }
 /// Schema population occupies the same FIFO, without an observable request.
 pub fn enqueueInternal(transaction: *runtime.Instance, source: *runtime.Instance, operation: Operation) !void {
-    const enqueue = (transactions orelse return error.NotSupported).enqueue_internal orelse return error.NotSupported;
+    const enqueue = (transactions.get() orelse return error.NotSupported).enqueue_internal orelse return error.NotSupported;
     try enqueue(transaction, source, operation);
 }
 pub fn executeInternal(source: *runtime.Instance) !void {
-    const populate = (indexes orelse return error.NotSupported).populate orelse return error.NotSupported;
+    const populate = (indexes.get() orelse return error.NotSupported).populate orelse return error.NotSupported;
     try populate(source);
 }
 pub fn transactionOutcome(transaction: *runtime.Instance) ?bool {
-    const outcome = (transactions orelse return null).outcome orelse return null;
+    const outcome = (transactions.get() orelse return null).outcome orelse return null;
     return outcome(transaction);
 }
 pub fn databaseTransactionFinished(database: *runtime.Instance) void {
-    const finished = (databases orelse return).transaction_finished orelse return;
+    const finished = (databases.get() orelse return).transaction_finished orelse return;
     finished(database);
 }
 pub fn wakeFactoryTransactions(factory: *runtime.Instance) void {
-    const wake = (factories orelse return).wake_transactions orelse return;
+    const wake = (factories.get() orelse return).wake_transactions orelse return;
     wake(factory);
 }
 pub fn executeRequest(source: *runtime.Instance, request: *runtime.Instance, operation: *Operation) !void {
@@ -192,15 +191,15 @@ pub fn executeRequest(source: *runtime.Instance, request: *runtime.Instance, ope
         return completeNativeRequest(request, native);
     }
     if (operation.cursor) |cursor| {
-        const execute = (cursors orelse return error.NotSupported).execute orelse return error.NotSupported;
+        const execute = (cursors.get() orelse return error.NotSupported).execute orelse return error.NotSupported;
         return execute(cursor, request, operation);
     }
     if (source.stateAs(interfaces.IDBObjectStore.State) != null) {
-        const execute = (stores orelse return error.NotSupported).execute orelse return error.NotSupported;
+        const execute = (stores.get() orelse return error.NotSupported).execute orelse return error.NotSupported;
         return execute(source, request, operation);
     }
     if (source.stateAs(interfaces.IDBIndex.State) != null) {
-        const execute = (indexes orelse return error.NotSupported).execute orelse return error.NotSupported;
+        const execute = (indexes.get() orelse return error.NotSupported).execute orelse return error.NotSupported;
         return execute(source, request, operation);
     }
     return error.InvalidStateError;
@@ -391,75 +390,69 @@ pub fn retrieve(source: *runtime.Instance, request: *runtime.Instance, native_so
 }
 
 // process-wide: hook table written once at process start by IDBFactory.installHooks (B0); comptime in B9
-var factories: ?FactorySteps = null;
+var factories: Hook(?FactorySteps) = .init(null);
 
 // process-wide: hook table written once at process start by IDBRequest.installHooks (B0); comptime in B9
-var requests: ?RequestSteps = null;
+var requests: Hook(?RequestSteps) = .init(null);
 // process-wide: hook table written once at process start by IDBDatabase.installHooks (B0); comptime in B9
-var databases: ?DatabaseSteps = null;
+var databases: Hook(?DatabaseSteps) = .init(null);
 // process-wide: hook table written once at process start by IDBTransaction.installHooks (B0); comptime in B9
-var transactions: ?TransactionSteps = null;
+var transactions: Hook(?TransactionSteps) = .init(null);
 
 // process-wide: hook table written once at process start by IDBObjectStore.installHooks (B0); comptime in B9
-var stores: ?StoreSteps = null;
+var stores: Hook(?StoreSteps) = .init(null);
 // process-wide: hook table written once at process start by IDBIndex.installHooks (B0); comptime in B9
-var indexes: ?IndexSteps = null;
+var indexes: Hook(?IndexSteps) = .init(null);
 // process-wide: hook table written once at process start by IDBCursor.installHooks (B0); comptime in B9
-var cursors: ?CursorSteps = null;
+var cursors: Hook(?CursorSteps) = .init(null);
 
 pub fn installStores(steps: StoreSteps) void {
-    process_start.assertInstalling();
-    stores = steps;
+    stores.install(steps);
 }
 pub fn installIndexes(steps: IndexSteps) void {
-    process_start.assertInstalling();
-    indexes = steps;
+    indexes.install(steps);
 }
 pub fn installCursors(steps: CursorSteps) void {
-    process_start.assertInstalling();
-    cursors = steps;
+    cursors.install(steps);
 }
 pub fn attachStore(instance: *runtime.Instance, store: *storage.indexeddb.IDBObjectStore, transaction: *runtime.Instance, transfer: bool) !void {
-    try (stores orelse return error.NotSupported).attach(instance, store, transaction, transfer);
+    try (stores.get() orelse return error.NotSupported).attach(instance, store, transaction, transfer);
 }
 pub fn attachIndex(instance: *runtime.Instance, index: *storage.indexeddb.IDBIndex, store: *runtime.Instance) !void {
-    try (indexes orelse return error.NotSupported).attach(instance, index, store);
+    try (indexes.get() orelse return error.NotSupported).attach(instance, index, store);
 }
 pub fn attachCursor(instance: *runtime.Instance, cursor: *storage.indexeddb.IDBCursor, source: *runtime.Instance, request: *runtime.Instance) !void {
-    try (cursors orelse return error.NotSupported).attach(instance, cursor, source, request);
+    try (cursors.get() orelse return error.NotSupported).attach(instance, cursor, source, request);
 }
 pub fn cursorState(instance: *runtime.Instance) ?*storage.indexeddb.IDBCursor {
-    return (cursors orelse return null).state(instance);
+    return (cursors.get() orelse return null).state(instance);
 }
 /// Borrow the visible value's realm; check hasEngine() before using it.
 pub fn cursorValueRealm(instance: *runtime.Instance) runtime.Context {
-    return (cursors orelse return instance.ctx).value_realm(instance);
+    return (cursors.get() orelse return instance.ctx).value_realm(instance);
 }
 
 pub fn installRequests(steps: RequestSteps) void {
-    process_start.assertInstalling();
-    requests = steps;
+    requests.install(steps);
 }
 pub fn installDatabases(steps: DatabaseSteps) void {
-    process_start.assertInstalling();
-    databases = steps;
+    databases.install(steps);
 }
 pub fn installTransactions(steps: TransactionSteps) void {
-    process_start.assertInstalling();
-    transactions = steps;
+    transactions.install(steps);
 }
 
 pub fn completeRequest(instance: *runtime.Instance, result: runtime.JSValue, exception: ?*runtime.Instance) !void {
-    return (requests orelse return error.NotSupported).complete(instance, result, exception);
+    return (requests.get() orelse return error.NotSupported).complete(instance, result, exception);
 }
 pub fn setRequestTransaction(instance: *runtime.Instance, transaction: ?*runtime.Instance) void {
-    (requests orelse return).set_transaction(instance, transaction);
+    (requests.get() orelse return).set_transaction(instance, transaction);
 }
 pub fn attachDatabase(instance: *runtime.Instance, database: *storage.indexeddb.IDBDatabase) !void {
-    try (databases orelse return error.NotSupported).attach(instance, database);
+    try (databases.get() orelse return error.NotSupported).attach(instance, database);
 }
 pub fn cleanupTransaction(instance: *runtime.Instance) void {
-    (transactions orelse return).cleanup(instance);
+    (transactions.get() orelse return).cleanup(instance);
 }
 
 /// Agent-owned transaction cleanup list (IndexedDB 2.7). Entries are borrowed;
@@ -523,29 +516,29 @@ test "IndexedDB cleanup list owns storage but borrows unique transactions" {
 pub fn getTheParent(target: *runtime.Instance) ?*runtime.Instance {
     if (target.stateAs(interfaces.IDBOpenDBRequest.State) != null) return null;
     if (target.stateAs(interfaces.IDBRequest.State) != null) {
-        return (requests orelse return null).get_the_parent(target);
+        return (requests.get() orelse return null).get_the_parent(target);
     }
     if (target.stateAs(interfaces.IDBTransaction.State) != null) {
-        return (transactions orelse return null).get_the_parent(target);
+        return (transactions.get() orelse return null).get_the_parent(target);
     }
     // A connection, and every other non-IDB target, has no IDB parent.
     return null;
 }
 
 pub fn beginUpgrade(instance: *runtime.Instance) !*runtime.Instance {
-    return (databases orelse return error.NotSupported).begin_upgrade(instance);
+    return (databases.get() orelse return error.NotSupported).begin_upgrade(instance);
 }
 pub fn endUpgrade(instance: *runtime.Instance) void {
-    (databases orelse return).end_upgrade(instance);
+    (databases.get() orelse return).end_upgrade(instance);
 }
 pub fn attachTransaction(instance: *runtime.Instance, transaction: *storage.indexeddb.IDBTransaction, database: *runtime.Instance) !void {
-    try (transactions orelse return error.NotSupported).attach(instance, transaction, database);
+    try (transactions.get() orelse return error.NotSupported).attach(instance, transaction, database);
 }
 pub fn associateUpgradeRequest(transaction: *runtime.Instance, request: *runtime.Instance) void {
-    (transactions orelse return).associate_upgrade_request(transaction, request);
+    (transactions.get() orelse return).associate_upgrade_request(transaction, request);
 }
 pub fn finishTransaction(instance: *runtime.Instance, abort: bool) !bool {
-    return (transactions orelse return error.NotSupported).finish(instance, abort);
+    return (transactions.get() orelse return error.NotSupported).finish(instance, abort);
 }
 
 /// ED 4.4 transaction() step 8 registers creation cleanup on the owning
@@ -676,37 +669,35 @@ test "IndexedDB queues a database task on the event loop only, never on a timer"
 }
 
 pub fn setRequestPending(instance: *runtime.Instance) void {
-    (requests orelse return).set_pending(instance);
+    (requests.get() orelse return).set_pending(instance);
 }
 
 pub fn setRequestSource(instance: *runtime.Instance, source: ?*runtime.Instance) void {
-    (requests orelse return).set_source(instance, source);
+    (requests.get() orelse return).set_source(instance, source);
 }
 pub fn completeSerializedRequest(instance: *runtime.Instance, bytes: []const u8) !void {
-    try (requests orelse return error.NotSupported).complete_serialized(instance, bytes);
+    try (requests.get() orelse return error.NotSupported).complete_serialized(instance, bytes);
 }
 
 pub fn installFactories(steps: FactorySteps) void {
-    process_start.assertInstalling();
-    factories = steps;
+    factories.install(steps);
 }
 pub fn setDatabaseFactory(connection: *runtime.Instance, factory: *runtime.Instance) void {
-    (databases orelse return).set_factory(connection, factory);
+    (databases.get() orelse return).set_factory(connection, factory);
 }
 
 pub fn connectionIsClosing(connection: *runtime.Instance) bool {
-    return (databases orelse return true).is_closing(connection);
+    return (databases.get() orelse return true).is_closing(connection);
 }
 pub fn endTransactionEvent(transaction: *runtime.Instance, did_throw: bool) !bool {
-    return (transactions orelse return error.NotSupported).end_event(transaction, did_throw);
+    return (transactions.get() orelse return error.NotSupported).end_event(transaction, did_throw);
 }
 
 // process-wide: hook table written once at process start by IDBKeyRange.installHooks (B0); comptime in B9
-var key_ranges: ?KeyRangeSteps = null;
+var key_ranges: Hook(?KeyRangeSteps) = .init(null);
 pub fn installKeyRanges(steps: KeyRangeSteps) void {
-    process_start.assertInstalling();
-    key_ranges = steps;
+    key_ranges.install(steps);
 }
 pub fn copyKeyRange(instance: *runtime.Instance, allocator: std.mem.Allocator) !storage.indexeddb.IDBKeyRange {
-    return (key_ranges orelse return error.NotSupported).copy(instance, allocator);
+    return (key_ranges.get() orelse return error.NotSupported).copy(instance, allocator);
 }

@@ -2,7 +2,7 @@
 //! The selector module stays below HTML and asks through this seam.
 //! lint-impls: hook for HTMLElement
 const runtime = @import("runtime");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 pub const Kind = union(enum) {
     any_link,
@@ -47,17 +47,16 @@ pub const Implementation = struct {
     popover_showing: *const fn (*runtime.Instance) bool,
 };
 // process-wide: HTMLElement installs immutable function pointers once at process start, shared by all Browsers and threads
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 pub fn matches(element: *runtime.Instance, which: Kind) bool {
-    return (implementation orelse return false).matches(element, which);
+    return (implementation.get() orelse return false).matches(element, which);
 }
 
 pub fn popoverShowing(element: *runtime.Instance) bool {
-    return (implementation orelse return false).popover_showing(element);
+    return (implementation.get() orelse return false).popover_showing(element);
 }

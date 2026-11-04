@@ -62,11 +62,11 @@
 const std = @import("std");
 const tombstones = @import("infra").tombstones;
 const runtime = @import("runtime");
-const process_start = @import("process_start.zig");
 const NodeBase = @import("node_base.zig").NodeBase;
 const element_data = @import("element_data.zig");
 const instance_bridge = @import("instance_bridge.zig");
 const live_collections = @import("live_collections.zig");
+const Hook = @import("hook.zig").Hook;
 
 const log = std.log.scoped(.tree_ordered_map);
 
@@ -457,20 +457,18 @@ pub const Implementation = struct {
 };
 
 // process-wide: two immutable function pointers Document and ShadowRoot install once at process start (crane.Process); each reads only the object it is given, so one serves every Browser and thread
-var implementation: Implementation = .{};
+var implementation: Hook(Implementation) = .init(.{});
 
 /// Called by Document's installHooks, once, at process start: `of` is the
 /// document's maps, or null for an object that is no Document.
 pub fn installDocument(of: *const fn (document: *runtime.Instance) ?*Maps) void {
-    process_start.assertInstalling();
-    implementation.document = of;
+    implementation.installField("document", of);
 }
 
 /// Called by ShadowRoot's installHooks, once, at process start: `of` is the
 /// shadow root's maps, or null for a DocumentFragment that is no ShadowRoot.
 pub fn installShadowRoot(of: *const fn (shadow_root: *runtime.Instance) ?*Maps) void {
-    process_start.assertInstalling();
-    implementation.shadow_root = of;
+    implementation.installField("shadow_root", of);
 }
 
 /// The maps of the tree scope whose root is `root`: a Document's or a
@@ -479,8 +477,8 @@ pub fn installShadowRoot(of: *const fn (shadow_root: *runtime.Instance) ?*Maps) 
 fn mapsOfRoot(root: *NodeBase) ?*Maps {
     const instance = instanceOf(root) orelse return null;
     const maps = switch (root.node_type) {
-        NodeBase.DOCUMENT_NODE => (implementation.document orelse return null)(instance),
-        NodeBase.DOCUMENT_FRAGMENT_NODE => (implementation.shadow_root orelse return null)(instance),
+        NodeBase.DOCUMENT_NODE => (implementation.read().document orelse return null)(instance),
+        NodeBase.DOCUMENT_FRAGMENT_NODE => (implementation.read().shadow_root orelse return null)(instance),
         else => return null,
     } orelse return null;
     return if (maps.ended) null else maps;
@@ -819,7 +817,7 @@ pub fn supportedNames(document: *runtime.Instance, kind: NamedKind, allocator: s
 // =============================================================================
 
 fn documentMaps(document: *runtime.Instance) ?*Maps {
-    const maps = (implementation.document orelse return null)(document) orelse return null;
+    const maps = (implementation.read().document orelse return null)(document) orelse return null;
     return if (maps.ended) null else maps;
 }
 

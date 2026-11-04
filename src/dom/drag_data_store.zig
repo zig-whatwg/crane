@@ -33,9 +33,9 @@ const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
-const process_start = @import("process_start.zig");
 const file_lists = @import("file_lists.zig");
 const KeptInstance = @import("custom_elements.zig").KeptInstance;
+const Hook = @import("hook.zig").Hook;
 
 /// The drag data item kind.
 pub const Kind = enum {
@@ -237,34 +237,31 @@ const Implementation = struct {
 };
 
 // process-wide: hook table written once at process start by DataTransferItemList's and DataTransferItem's installHooks (B0); every store is its DataTransfer's own state
-var implementation: Implementation = .{};
+var implementation: Hook(Implementation) = .init(.{});
 
 /// Called by DataTransferItemList's installHooks, once, at process start.
 pub fn installItemList(steps: ItemListSteps) void {
-    process_start.assertInstalling();
-    implementation.item_list = steps;
+    implementation.installField("item_list", steps);
 }
 
 /// Called by DataTransferItem's installHooks, once, at process start.
 pub fn installItem(steps: ItemSteps) void {
-    process_start.assertInstalling();
-    implementation.item = steps;
+    implementation.installField("item", steps);
 }
 
 pub fn makeItemList(data_transfer: *runtime.Instance, store: *Store) !*runtime.Instance {
-    const steps = implementation.item_list orelse return error.NotSupported;
+    const steps = implementation.read().item_list orelse return error.NotSupported;
     return steps.make(data_transfer, store);
 }
 
 pub fn makeItem(data_transfer: *runtime.Instance, store: *Store, id: u32) !*runtime.Instance {
-    const steps = implementation.item orelse return error.NotSupported;
+    const steps = implementation.read().item orelse return error.NotSupported;
     return steps.make(data_transfer, store, id);
 }
 
 test "with nothing installed, making an item list or an item reports NotSupported" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = .{};
+    const override = implementation.overrideForTest(.{});
+    defer override.restore();
     // Never dereferenced: with no implementation the call does not reach it.
     var object: runtime.Instance = undefined;
     var store: Store = .{ .allocator = std.testing.allocator, .owner = &object, .mode = .read_write };

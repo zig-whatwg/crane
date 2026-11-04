@@ -1,24 +1,7 @@
+<!-- Keep this file under 200 lines: rules here, details in the files the index names. -->
 # Agent Guidelines for Crane
 
 ## What Crane is
-
-A web platform engine in Zig. ~1M lines, 6,300+ files. V8 for JavaScript via a
-hand-written C++ FFI wrapper (`src/runtime/engines/v8/v8_wrapper.cpp`, ~9.8k
-lines).
-
-Subsystems in `src/`: browser, dom, html, css, selector, fetch, streams, xhr,
-websocket, service_worker, storage, cookiestore, csp, trusted_types,
-permissions, webdriver, intl (CLDR), url, encoding, mimesniff, infra, webidl,
-file, fs, quirks, referrer_policy, urlpattern, console, hr_time, platform,
-js_bindings.
-
-The WebIDL surface is **generated** from 341 official IDL files into 1,263
-interfaces, with 1,270 hand-written impls behind them.
-
-Layout is a pluggable backend (`src/platform/layout_backend.zig`) — Crane is the
-web platform, the host supplies pixels. It links for `aarch64-ios`.
-
-Conformance is judged by WPT (`zig build wpt`), not by our own tests.
 
 **The goal is web spec conformance, not compatibility with any one framework.**
 Crane is a general-purpose browser engine: the target is everything a headless
@@ -26,881 +9,12 @@ browser engine can run, with rendering and layout the single deliberate
 exclusion. A framework's test suite - React's, or anything else's - is a way to
 VERIFY that, never a way to scope it.
 
-So **"framework X does not use this" is not a reason to leave something out**,
-and neither is it a reason to stop halfway through an algorithm. That criterion
-was used by mistake early in this work and produced two real defects: an
-`addEventListener` options flatten that handled only the boolean form because
-"React passes booleans", which made `addEventListener(t, fn, 2.3)` register as
-a bubble listener when the spec says capture; and `navigation-api/` excluded
-from the WPT worklist on the grounds that React and Phoenix do not need it.
-When in doubt, implement what the spec says and let WPT report the gap - and
-where the spec text and the browsers disagree, golden rule 2 decides: the
-browsers win, unless they are only behind a newer spec.
+- "Framework X does not use this" is never a reason to leave something out, nor to stop halfway through an algorithm: implement what the spec says and let WPT, the judge of conformance, report the gap.
+- Where the spec text and the browsers disagree, golden rule 2 decides: the browsers win, unless they are only behind a newer spec.
+- **Stuck on HOW to implement something?** Read how V8, WebKit, Blink or Gecko did it BEFORE designing a mechanism, and cite it in the commit; take the design, never the code.
 
 **Not everything has a spec.** V8 handle ownership, allocator lifetimes and
 teardown order are engine concerns — read the code, not `specs/`.
-
-**Stuck on HOW to implement something? Read an engine that already has.**
-The specs say what; V8, WebKit, Blink and Gecko show how, and every problem
-this engine meets - wrapper lifetime, handle ownership, teardown order, event
-dispatch, parser state - was met and solved there first. Read them BEFORE
-designing a mechanism, not after a theory has failed:
-
-| Question | Where |
-|----------|-------|
-| V8's contract for an API (handles, weak callbacks, embedder roots, CHECKs) | `jsengines/v8/include/*.h` - V8 13.1 (the linked prebuilt), local; the doc comments ARE the contract. Source: `jsengines/v8/v8/` is a full checkout at a NEWER V8 (14.6 on 2026-10-19): read the linked version with `git -C jsengines/v8/v8 show 13.1.99:<path>` |
-| How a browser binds the DOM to V8 | Blink: `third_party/blink/renderer/bindings/` and `platform/bindings/` (script_wrappable, dom_data_store, the GC controller) in https://github.com/chromium/chromium |
-| The most readable DOM and bindings implementation | WebKit: `Source/WebCore/bindings/js/` (JSNodeCustom.cpp, JSDOMWrapper) and `Source/WebCore/dom/` in https://github.com/WebKit/WebKit |
-| Implementations annotated with the spec's own step numbers | Gecko: `dom/base/`, `dom/bindings/`, `js/src/` via https://searchfox.org |
-
-Fetch the file, read the function, cite it in the commit. Take the DESIGN,
-never the code: the licences differ, and a copied function carries assumptions
-about refcounting, tracing and threading that this engine does not share.
-
----
-
-## Know what kind of work you're doing
-
-**Spec work** (a DOM method, a parser state machine, a WebIDL conversion):
-load the complete algorithm section from `specs/` before writing. Never work
-from grep fragments — every algorithm has edge cases that live in the
-surrounding prose.
-
-**Specs are cached in `specs/`, and kept fresh** (the user, 2026-10-02). A spec
-you need that is not there: fetch it and save it (`specs/get <url> <dir>`:
-`specs/w3c/` for W3C, WICG and CSSWG drafts, `specs/whatwg/` for WHATWG), as its
-own commit. A cached spec six months old or more: compare it with upstream before
-relying on it, and update it when a newer version exists, as its own commit.
-`specs/whatwg/` is gitignored (local only; worktrees link it). `specs/idl/` is
-different: a pinned webref snapshot that codegen depends on, updated only by the
-procedure in specs/idl/WEBREF.md.
-
-**Engine work** (V8 handle ownership, allocator lifetimes, teardown order, the
-FFI boundary, build/codegen): there is no spec. Read the code, and prefer a
-measurement over an assumption — `gc_bench`, `leaks --atExit`, the live-handle
-counters. Guessing at ownership here has shipped use-after-frees twice.
-
----
-
-## Doing a task
-
-All tasks: failing test first, commit each logical unit, `tmp/` for scratch.
-
-Then branch on type:
-
-| Type | First move |
-|------|-----------|
-| **Spec** | Load the full algorithm from `specs/` |
-| **Bug** | Reproduce with a test before touching code |
-| **WPT** | Isolate one test, fix, uncomment all, re-verify |
-| **Engine** | Measure before and after; regression-check with timers |
-
-### Batch the expensive gates (the user, 2026-11-01)
-
-Wall-clock time matters as much as tokens. A full `zig build test` is 30-45 minutes on a shared host, a
-ReleaseSafe runner build about 12, and a sweep over an hour. Never pay those for a two-line change on its own.
-
-- **Each change still gets its own cheap proof:** its targeted test fails first, then passes
-  (`-Dtest-file=`, `--repeat`, a few WPT files).
-- **Changes whose files and WPT directories don't overlap share ONE native gate, ONE runner build and ONE
-  A/B** over the union of their directories. The directories keep the attribution, and each change is
-  still its own commit.
-- **Before starting any gate or run over 20 minutes,** look at what else is about to land, and batch it in
-  instead of starting the next long job the moment this one ends.
-- **Merge current main into your branch before you report.** If your gated tip's tree is the tree the
-  integrator would merge, your gates stand and the merge needs no re-run.
-
-### Fixing a WPT failure
-
-```bash
-zig build wpt -- <path/to/test.html>
-```
-
-1. **Isolate.** Comment out every other test in the file, leaving only the
-   failing one. Confirm it fails.
-2. **Fix it.** Verify the isolated test passes.
-3. **Uncomment everything.** Re-run the whole file. This is not optional —
-   tests interact, and shared state shows up only here.
-4. **Commit** fix + test together.
-
-Isolated or custom tests live in `tests/wpt/crane/`.
-
-### Regression protocol for handle-ownership changes
-
-`zig build test` is **not** sufficient, and neither are DOM WPT files — they
-missed two use-after-frees that shipped.
-
-```bash
-./zig-out/bin/wpt_runner html/webappapis/timers/ --parallel=3   # x3, count crashes
-```
-
-**A sweep-only crash is fixed only when counts say so.** A plausible mechanism with a green unit test is
-not proof that it caused a crash seen only in sweeps. Claim it fixed with a same-list comparison: main's
-runner crashing k of N single-process runs of the list that preceded the crash, yours 0 of N, N at least 6.
-Otherwise it is unproven and stays open (2026-09-30: the WebSocket pump-token use-after-free was real, fixed,
-and not the sweep crash - main 1/6, the fixed tip 4/6).
-
-### Keep the progress report current
-
-**The 0.1 gate: no file in the worklist blocks.** A file blocks when it times
-out, errors or crashes, or when its harness finishes (OK) but none of its
-subtests passes (`NONE-PASSED`, `gate_status` in `tools/wpt_progress.py`). "OK"
-says only that the page ran to its end; 1,053 files were OK with nothing passing
-when this rule was added (2026-09-30). Report blocking files by this rule, and
-beside the headline subtest rate report the rate outside `encoding/` and the mean
-per-file rate, which the page prints: `encoding/` holds most of the subtests.
-One exception (the user, 2026-10-17): a file whose failures exist because ALL
-THREE browsers intentionally deviate from the spec - golden rule 2's "all three
-intentionally declined" case, each browser with evidence of intent - is omitted
-from the blocking count. Each such file is listed with its evidence (the
-wpt.fyi results and the standards position, WontFix bug or objection per
-browser) in `tools/wpt_gate_exemptions.txt`, which `tools/wpt_progress.py`
-reads and the page shows as its own group. A file every browser merely fails,
-or that only some browsers decline, is NOT exempt.
-
-`wpt-results/progress.html` is how the 0.1 gate is watched. It is regenerated
-from journals, and only from `wpt-results/*.jsonl` and
-`wpt-results/<label>/*.jsonl` - ONE directory deep: it keeps the latest record
-per file, ordered by the journal file's mtime, and accumulates them in
-`tmp/wpt-progress-state.json`. A run whose journal lands anywhere else - a
-scratchpad, `tmp/sweepNN/`, `wpt-results/<label>/<area>/` - never reaches the
-page, and nothing says so: the headline simply does not move.
-
-After every feature commit:
-
-1. **Put main's WPT runs where the report reads them - and only main's.** A run
-   of main (a sweep, or the integrator's targeted run after a merge): point
-   `--output` at `wpt-results/<label>/` (e.g. `wpt-results/sweep-<short-sha>/`),
-   or copy its `journal*.jsonl` there afterwards with `cp -p` - `-p` keeps the
-   mtime, and the mtime decides which result is latest. Several runs under one
-   label go side by side as `journal.<area>.jsonl`, never in subdirectories.
-   **A lane's run (any branch that is not main) goes to `wpt-results/lanes/<label>/`**,
-   which the report never reads: it takes the newest result per file, so a
-   branch's run replaces main's - on 2026-10-04 a lane's full A/B, on a branch
-   without main's IndexedDB merge, made a generation 25,000 subtests lower than
-   main's own sweep ([lesson](docs/lessons/workflow-a-branchs-wpt-run-replaces-mains-in-the-report.md)).
-   **A sweep brings its result streams too:** concatenate its
-   `full/chunks/*/journal*.wptreport.jsonl` into `journal.wptreport.jsonl` beside its
-   `journal.jsonl`. The site's file pages list each subtest's status and failure message only from
-   the stream beside the journal that supplied the file's counts; without it, every page shows
-   counts alone (generations 83-111 did). Delete the previous sweep's stream when the next lands.
-2. **Regenerate:** `zig build wpt-progress -j2 --cache-dir ~/Library/Caches/crane-z16-cache`.
-   `wpt-progress` also regenerates Crane's public results site
-   (tools/wpt_site/generate.zig, published at https://zig-whatwg.github.io/crane/) into
-   `wpt-results/site/`, and when that is the `gh-pages` worktree it commits there as
-   "results: generation <n>, Crane <sha>". Push `gh-pages` with main
-   (`git push origin main gh-pages`). `zig build wpt-site -- --out=<dir> --no-commit` writes
-   a copy anywhere.
-3. **Report the headline** - blocking files and passing subtests from the page -
-   in your summary.
-4. **Keep the roadmap current.** The same page renders the engine roadmap from
-   `docs/roadmap.toml`: the shared infrastructure to finish before feature
-   areas go to parallel agents, the prerequisites for that, and the areas to
-   hand out. When a commit moves a roadmap item, flip its `status` and add the
-   commit to its piece's `progress`. Write no numbers there - the page measures
-   blocking files per area, retained heap per file and unpushed commits itself.
-
-And at least once per working session, or every few feature commits: a full
-worklist sweep at HEAD, from a frozen copy of the runner, into
-`wpt-results/sweep-<short-sha>/`, then regenerate. Targeted runs keep the areas
-you touched current; only a sweep catches what moved elsewhere.
-
----
-
-## Tests come first
-
-Write the failing test first, then satisfy it. This is not optional (see global
-CLAUDE.md).
-
-Where that is awkward, do it anyway but adapt the form:
-
-- **WPT failures**: isolate the one failing test first, confirm it fails, fix,
-  then uncomment and re-run all. That *is* the red-green loop.
-- **Leaks**: the failing "test" is a measurement — record the B/cycle or leak
-  count *before* the fix, so the after-number means something.
-- **Comptime predicates**: pin the default in a test before relying on it.
-
-WPT is the bar: `zig build wpt -- <path>`. Unit tests use
-`std.testing.allocator` always, so leaks fail the test. Realistic inputs, spec
-edge cases.
-
-**A test directory is one executable, and the launcher runs it.** `zig build test`
-compiles each `tests/<dir>/` as ONE test binary, from a root build.zig generates
-(`tests/<dir>/.all_tests.zig`, gitignored) - a new `*_test.zig` joins it with
-no list to edit. Every test executable - those, the `src/` module roots, the
-tool and harness tests - runs through `tools/test_launcher` (`addSuiteRun` in
-build.zig; the configuration fails if a step runs one directly). The launcher
-runs a binary's tests in seeded, shuffled batches of child processes, several
-at once, with a per-test timeout (300 s; a test listed as slow in build.zig's
-`suite_configs` gets 4x), and re-runs every test that did not pass alone:
-**FAIL** (fails alone), **ORDER-DEPENDENT** (passes alone, fails again after
-the tests that ran before it in its process - a bug, named with its batch and
-seed), **FLAKY** (the runs disagree). None of the three is a pass; each prints
-as `error: '<test>' failed:` with the verdict. A test whose process the
-launcher itself could not start (no slot, no spawn) is **LAUNCHER-ERROR**, never
-charged to the test: it is not re-run, the suite's step fails, and each cause
-prints once as `error: 'test <suite>' failed: LAUNCHER-ERROR, N tests not run
-...: <step>, <path>: <error> (<errno>)`. The batch size is per suite
-(`suite_configs`: 1, a process per test, for the suites that start V8 or a
-Browser; 10 for the rest), so a test may share its process with any other
-tests of its binary, in any order: never assume yours is the first to start
-V8, initialise a per-thread manager, leave no isolate entered, or set a V8
-flag (V8 freezes its flags when it starts; setting one after is a fatal
-CHECK). A test may assume only what the process start makes, and leaves the
-process as it found it: in tests/v8 every helper goes through
-`tests/v8/test_process.zig` - `start()` starts the engine with the runtime's
-flags, the hooks and the standalone runtime once, `OwnRuntime` gives a test a
-standalone runtime of its own and the process's back, and a test that needs a
-realm gets its own `TestAgent`, made by `engine.createAgent` and ended with the
-test through `engine.destroyAgent` - no realm outlives its test
-([lesson](docs/lessons/testing-a-test-may-assume-only-what-the-process-start-makes.md)).
-The Crane test runner (`tests/test_runner/`) checks this after every test: a
-test that leaves a Browser, agent, Global handle or standalone object alive, or
-leaves the start unfinished, fails naming the field and its before and after
-values. `CRANE_TEST_STATE=report|off` for a survey; a suite still in report
-mode is listed in build.zig as TEMPORARY with its findings file.
-A test that needs a fresh per-thread state runs its body on a `std.Thread` of
-its own. A race test
-between Browsers on different threads gives each Browser its own leak-checking
-`std.heap.DebugAllocator(.{ .stack_trace_frames = 0 })` instead of the shared
-`std.testing.allocator`: the shared one's lock and per-allocation stack capture
-make the threads take turns, so the race never happens - a liveclassic race
-that crashed 7/7 with per-Browser allocators passed 6/6 with the shared one
-([lesson](docs/lessons/testing-a-shared-test-allocator-makes-two-browsers-take-turns.md)).
-A test that needs this build's V8 snapshot imports `test_snapshot` (tests/v8),
-never a path under `zig-out/`.
-
-- **Seeds.** `zig build test` uses a seed hashed from each executable's bytes,
-  printed in that suite's summary line, so an unchanged suite keeps its plan
-  and Zig's cache skips it (the user, 2026-11-01). `-Dlaunch-seed=random`
-  shuffles afresh every run (never cached); `-Dlaunch-seed=<value>` replays
-  one. By hand: `test_launcher <exe> --seed=S --batch=B [--only-batch=K]`.
-- **Shapes.** `-Dlaunch-batch=1` runs every test in a process of its own,
-  `-Dlaunch-batch=0` each suite in one process, `-Dlaunch-shuffle=true`
-  shuffles even the suites kept in index order; `zig build test-launch` runs
-  the test executables alone, without the lints and checks `test` adds.
-  Results: `tmp/test-launch/<suite>.jsonl` (+ `.log`, the output of each
-  non-pass); they also order the next run, longest batches first.
-
-One file alone, for a quick red/green:
-`zig build test -Dspec=<dir> -Dtest-file=tests/<dir>/foo_test.zig -j2`.
-Once per merge round the integrator runs the launcher in the two shapes that
-show what sharing a process hides: every suite at batch 1 (`zig build
-test-launch -Dlaunch-batch=1`, every test in a process of its own - a test that
-passes only because an earlier one started V8 or installed a hook for it fails
-there), and every suite as one shuffled process with fresh seeds (`zig build
-test-launch -Dlaunch-batch=0 -Dlaunch-shuffle=true -Dlaunch-seed=random`, three
-runs - a test that fails after another left state behind is ORDER-DEPENDENT
-there). Both use the per-directory binaries; the per-file executables of
-`-Dtest-isolation=file` (1,592 of them, about four times the CPU) are retired
-(2026-11-01, lane v8order1, once tests-v8 passed both shapes).
-
-**Two variants, run every night** (tmp/remote/nightly-tests.sh; results in
-tmp/nightly/, `latest` and `index.tsv`), and by hand with `test` or
-`test-launch` (lane tsan1, 2026-11-02):
-
-- **`-Dsanitize-thread`**: every test executable built with ThreadSanitizer -
-  Crane's own modules, v8_wrapper.cpp among them; the C libraries and the V8
-  prebuilt stay uninstrumented - and run with `TSAN_OPTIONS=halt_on_error=1`,
-  so a race crashes its process and is blamed on the test that was running,
-  with line numbers (a dSYM beside each macOS executable). A race in Crane's
-  code is a bug with an owner; `tools/test_launcher/tsan_suppressions.txt` takes
-  only a proven false positive of the uninstrumented V8, with its proof.
-- **`-Dmany-browsers`**: every test of a suite that links V8 runs beside a
-  second, busy Browser on another thread of its process
-  (tests/test_runner/busy_browser.zig: page loads, timers, DOM churn, a Browser
-  per iteration) - V8's `--isolates` variant, WebKit's `--threaded`. The runner
-  holds it between iterations while it takes each state digest, and a failure
-  of the busy Browser fails the test it ran beside. A suite whose findings are
-  not fixed yet runs it report-only (`suite_configs` `.many_browsers =
-  .report`, TEMPORARY, naming its findings file): every verdict printed and
-  recorded in tmp/test-launch/<suite>.many-browsers.jsonl, the step passes.
-
-The two combine (`-Dsanitize-thread -Dmany-browsers`: races between two
-instances). A variant's results go beside the suite's own:
-tmp/test-launch/<suite>.tsan.jsonl, .many-browsers.jsonl.
-
-Two kinds this codebase keeps needing:
-
-1. **Memory.** `std.testing.allocator` does not see C++ allocations. For
-   anything touching V8 handles or allocators, measure with `zig build gc-bench`
-   and name leaks with `leaks --atExit -- <cmd>`. Run the WPT runner under it
-   in-process: no `--parallel` (not even `=1`) and no `--supervise`, which make
-   it a supervisor of child processes that `leaks` never inspects
-   ([lesson](docs/lessons/testing-leaks-at-exit-sees-only-the-supervisor-not-its-child-runners.md)).
-2. **Comptime predicates** that gate handle ownership (`typeRetainsContext`,
-   `argHandleIsCopied`) must have a test pinning their **default**, not just
-   their known cases. See `tests/v8/retention_predicate_test.zig` — two
-   use-after-frees shipped because the default was wrong.
-
----
-
-## Memory
-
-Three families, three tools:
-
-| Family | Measure with |
-|--------|--------------|
-| Zig pools (arena, slab, gpa) | `std.testing.allocator`, `gc_bench` columns |
-| C++ `Global<T>` handles | `leaks --atExit`, live-handle counters |
-| V8's own heap | `v8_Isolate_GetHeapUsage` |
-
-**A leak invisible to (1) is usually (2).** This migration fixed 635,764 leaked
-handles while the suite was green throughout.
-
-### Zig side
-
-`defer` at the point of allocation, `errdefer` on error paths, thread the
-allocator through the call chain, no global state.
-
-**`ArenaAllocator.free` is a no-op.** An arena serving a hot path is a leak
-until teardown, invisible to both `std.testing.allocator` and `mstats()`.
-
-### The C++ seam — where the bugs are
-
-The wrapper heap-allocates a `Global<T>` wherever V8 returns a borrowed
-`Local<T>`. Every `v8_*` call returning a pointer allocates, and **the caller
-owns it**. One wrong assumption here leaked in ~20 places at once, on the DOM's
-hottest paths.
-
-- Returned `*Context` / `*Object` / `*Value`: dispose it, or don't acquire it.
-  **Prefer not acquiring** — moving acquisition past the early returns needs no
-  proof about what the callee retains.
-- Before disposing, **prove** the callee doesn't retain it. Two use-after-frees
-  shipped from guessing.
-- Gate any "safe to dispose" decision on an **allowlist** predicate whose
-  default is the safe answer. Blocklists are wrong by default over an open set
-  of types.
-
----
-
-## Before every commit
-
-```bash
-zig fmt src/ tests/ tools/
-zig build wpt-runner -j2 --cache-dir ~/Library/Caches/crane-z16-cache   # the one artifact WPT needs
-zig build test       -j2 --cache-dir ~/Library/Caches/crane-z16-cache   # includes lint-impls
-```
-
-`zig build test` runs `lint-impls`, the impls-boundary ratchet (see "The impls
-boundary"), so it fails on any new reference into an impl from code that does
-not own it.
-
-`zig build test` also includes `crane-check` (crane compiled without linking); the integrator's merge check runs `zig build check-linux -j2` and the full `zig build crane -j2`.
-
-**A branch that adds or changes tests also passes verify mode, and its merge
-report quotes it** (the approved test plan, section 6: Gecko's test-verify runs
-a changed test 10 times in one browser and 5 times fresh; Chromium 20x; WebKit
-10x). A test that fails one run in fifteen is a flake on its first day: fix it
-before it lands, not after it has an owner-less bug.
-
-```bash
-# The changed test files, computed in the checkout (a pool mirror has no .git):
-files=$(git diff --name-only --diff-filter=AMR main...HEAD -- 'tests/*_test.zig' ':!tests/wpt' | paste -sd, -)
-crane-remote.sh <mirror> "zig build test-verify -j2 -Dverify-files=$files"                    # 10 in one process, 5 alone
-crane-remote.sh <mirror> "zig build test-verify -j2 -Dverify-files=$files -Dsanitize-thread"  # once under ThreadSanitizer
-```
-
-Every test of those files prints `VERIFY PASS <test>: batched 10/10 in one
-process, alone 5/5`; any other run (fail, crash, timeout, leak, logged error, a
-state check, a race) is `VERIFY FAIL` with its first bad run, and fails the step
-(`-Dverify-base=main` computes the list itself where there is a git checkout).
-
-The WPT side: every Crane test the branch adds or changes, and every file whose
-result its A/B changed (newly passing, newly failing, newly blocking), repeated
-10 times on the branch's ReleaseSafe runner, in one `crane-pool.sh wpt` job:
-
-```bash
-./zig-out/bin/wpt_runner --repeat=10 --verify --from-file=<list> --wpt-root=tests/wpt --output=<dir>
-```
-
-It exits 1, and its tally (`<dir>/repeat-tally.txt`) says `verify: UNSTABLE`,
-naming each file, harness status and subtest with the statuses it had, when any
-of them differed between the ten runs; a consistent failure is not a flake.
-
-**Local builds use `--cache-dir ~/Library/Caches/crane-z16-cache`, never a cache in `/tmp`.** macOS
-deletes `/tmp` files untouched for three days (`com.apple.tmp_cleaner`, nightly at 00:00), and Zig trusts a
-cache hit without re-checking its output, so a half-pruned cache entry stays a "hit" with files missing: on
-2026-10-02 it made the iOS build fail with `'mbedtls/version.h' file not found` and looked like a build.zig
-regression ([lesson](docs/lessons/workflow-a-zig-cache-in-tmp-is-pruned-by-macos-and-zig-still-trusts-it.md)).
-**Codegen is the exception: `zig build codegen` and `codegen-check` run with a cache of your own**
-(`--cache-dir ~/Library/Caches/crane-<lane>-codegen`, deleted when you are done). The shared cache serves
-whichever worktree last built the codegen binary, so a regeneration can silently use another lane's
-generator: on 2026-10-17 lane leaks4's regeneration picked up lane worklets' unmerged generator hunk.
-
-**Never run a bare `zig build`, and always pass `-j2`.** In a pool job the hosts' zig shim replaces
-the `-j` you pass with that host's fair share of root compiles, which it sizes from free memory and the
-builds sharing the host. So `-j2` is the Mac's hard cap, and on chat/chat2 it is only a request (the user,
-2026-11-01: a fixed `-j2` left a quiet 64 GB host idle). `build.zig` installs
-19 artifacts, and every one that embeds the tree is a separate root-module
-analysis of ~1M lines at ~6 GB of RAM each, three at a time by default. One
-bare build is 18 GB; one bare build plus two agents doing the same on a 32 GB
-machine is swap, which is what a load average of 68 looked like on 2026-09-22.
-`wpt-runner` builds the single executable the WPT loop uses; `-j2` caps the
-concurrent root compiles for `test`, which has many. The `wpt` step
-(`zig build wpt -j2 -- <path>`) builds `wpt_runner` and runs it - it used to
-depend on the whole install step (all 19 artifacts) AND `kill -9` every process
-on the WPT ports first, which took the shared server down under three agents
-mid-run. Both are gone; but on a shared machine prefer the binary directly:
-
-```bash
-./zig-out/bin/wpt_runner --from-file=<list> --parallel=1 --wpt-root=tests/wpt --output=<dir>
-```
-
-**The WPT runner is built optimized: ReleaseSafe** (the user, 2026-10-11). Zig
-optimizes a compilation at its root module's level, so `zig build wpt-runner`
-puts ALL of the runner's Zig through LLVM's O3 pipeline. v8_wrapper.cpp and the
-runner's own libcurl, mbedTLS, zlib and nghttp2 build at -O2, with the full C
-sanitizer, so a failed check names itself as it does in Debug. Crane's modules
-keep `-Doptimize`'s `builtin.mode` (Debug), so the refcount ledger, the
-ownership checks and the cleanup validation stay.
-`tests/wpt_runner/build_mode.zig` decides each part and pins it, and the banner
-names all three: `wpt_runner: ReleaseSafe build (Crane modules Debug, C
-libraries ReleaseSafe)`. gc_bench is built the same way. The snapshot generator
-and every unit test stay Debug: `zig build test` builds neither the runner nor
-gc_bench.
-
-- **The price is the compile.** Any edit recompiles the whole runner: on Zig
-  0.17 about 12 min and 20.5 GB cold (7 min and 14 GB on 0.16), against
-  2 min and 10 GB in Debug. Locally, on a 32 GB Mac, run only one ReleaseSafe
-  runner compile at a time.
-- **`-Dwpt-runner-optimize=Debug`** (or an explicit `-Doptimize=Debug`) builds
-  the Debug runner and gc_bench. Use it for red/green iteration and for a
-  diagnosis. The leak and double-free reports are the same in both modes, but
-  `CRANE_LEAK_TRACES=1` traces need the Debug runner. Optimized, an allocation
-  inlined into its caller is traced from that caller's return address, so the
-  trace names no allocation site, and the runner says so when it starts.
-- **An A/B compares runners built in the same mode as its baseline**, and
-  main's baselines are ReleaseSafe. Between modes, timeouts move. The
-  parity sweep (2026-10-11, 10,035 files in each mode) found the
-  dom/nodes tampered NodeList files timing out at 60 s in Debug and passing
-  in 24 s, a few timing-sensitive resource-timing files passing more often,
-  and nothing else once the release-only defects it exposed were fixed. The
-  bars ran 2-5x faster. A release build folds identical functions and merges
-  equal constants: an identity built on either is Debug-only
-  ([lesson](docs/lessons/debugging-equal-constants-share-one-address-in-a-release-build.md)).
-
-**The toolchain is Zig 0.17, pinned** (the user, 2026-10-28): a build of the
-0.17.x branch at 77c319a0f00a (`zig version`: `0.17.1-dev+77c319a0f0`), because
-0.17.0 cannot build aarch64-ios (ziglang/zig#37061, fixed for 0.17.1). It lives
-at `~/crane-toolchains/zig-0.17.1-dev+77c319a0f0/` on the Mac and every pool
-host; `build.zig.zon`'s `minimum_zig_version` says 0.17, and the pool's zig shim
-picks the toolchain from it. Switch to 0.17.1 when it ships.
-
-- **`zig build` takes no `--global-cache-dir`.** The global cache is set only
-  through `ZIG_GLOBAL_CACHE_DIR` (the pool's shim exports `~/.cache/zig-017`, a
-  cache 0.16 never shared); `--cache-dir` works as before.
-- **The configuration is cached.** `build.zig` runs in a configure process
-  whose result Zig 0.17 caches: anything it reads from the machine at configure
-  time (a file probe, `xcrun`, `curl-config`) must call
-  `b.graph.poisonCache()`, or a changed machine reuses a stale configuration.
-- **The macOS SDK is the default one.** Zig 0.17's libc++ builds against the
-  macOS 27 SDK, so the 0.16 workaround that built against a 26.x SDK through a
-  libc file (`useBuildableMacosSdk`, the `INFINITY` break) is gone. Do not put
-  an `xcrun` shim on PATH: Zig asks `xcrun --sdk macosx --show-sdk-path`, and
-  `/tmp/sdkshim` broke the build twice by answering it with the wrong SDK.
-
-All three must pass. For changes to V8 handle ownership, they are not
-sufficient — see the regression protocol above.
-
----
-
-## Tools are Zig
-
-Crane is a Zig repo, and its tools are Zig. Anything committed to `tools/` or
-run by `build.zig` is written in Zig, built by `build.zig` for the host
-(`.target = b.graph.host`, as `codegen` is), and tested with `std.testing`
-test blocks that `zig build test` runs. No Python, shell or JavaScript tools -
-with one exception, the existing WPT tools (below).
-
-- **A gate must not add an interpreter to the build.** A Python lint wired into
-  `zig build test` makes every machine that builds Crane need Python to run its
-  tests, and cannot be tested the way this repo tests things.
-- **Tests first applies to tools.** Pin a tool's rules in `std.testing` blocks
-  before relying on it - the Zig port of the impls-boundary lint caught a swap
-  the first draft's rule could not see.
-- **Scratch analysis is not a tool** - a throwaway query over a journal in the
-  scratchpad is fine. The moment it is committed, wired into a build step, or
-  anyone would run it twice, it is written in Zig.
-- **The existing WPT tools are allowed as they are, in whatever language they
-  are written in.** That is the upstream harness in `tests/wpt/` (`wpt serve`
-  and the rest of WPT's own tooling are Python) and Crane's WPT scripts,
-  `tools/wpt_progress.py` (run by `zig build wpt-progress`) and
-  `tools/wpt_subset.py`. Use and maintain them without porting them. A NEW tool
-  is Zig, WPT-related or not.
-- **Any other non-Zig tool is debt, not precedent:** today that is
-  `tools/update_impl_signatures.py`. Port it to Zig when you next need to change
-  it; never add another.
-
----
-
-## WebIDL codegen
-
-```
-specs/idl/            334 webref .idl files, committed, pinned (specs/idl/WEBREF.md)
-specs/supplementary/  Crane's own definitions (7 files)
-        |
-        v             src/webidl/codegen/
-        |
-src/webidl/interfaces/    1,263  generated
-src/webidl/typedefs/             generated
-src/webidl/dictionaries/         generated
-src/webidl/callbacks/            generated
-src/webidl/impls/         1,270  HAND-WRITTEN, never overwritten
-src/webidl/impls_tmp/            generated stubs, gitignored, NOT built
-```
-
-Generated files **are** committed. `impls/` is yours; codegen writes stubs to
-`impls_tmp/` for you to diff and merge by hand.
-
-### Never edit generated files directly
-
-Fix the codegen in `src/webidl/codegen/` or the source IDL, then regenerate.
-
-You *may* edit a generated file to test a fix, but the fix must then move into
-the codegen and the temporary edit must be overwritten by a regeneration —
-that is how you know the codegen actually produces it. Never commit a
-hand-edited generated file.
-
-Regenerate - **one invocation, both sources, one model**:
-
-```bash
-zig build codegen -- --dest-root src/webidl/
-```
-
-With no source named, codegen reads `specs/idl` and `specs/supplementary`
-together, so a name in one resolves against the other (`typedef Window
-WindowProxy` needs Window) and every `root.zig` lists both. Its output is
-`zig fmt`-clean, so `git status` after a regeneration shows only real changes.
-Never regenerate from one source alone: that run resolves against that source
-only and rewrites every root with its entries.
-
-The model does not depend on the order files are read in (`ir.zig`,
-"Merging"): every partial definition merges into its definition, members go
-definition first, then partials by (file name, position), and overloads are
-numbered in that order. Two non-partial definitions of one name are an error
-unless `src/webidl/codegen/duplicates.zig` names the definer (from webref's
-curated idlnames); codegen stops and says so.
-
-**`zig build codegen-check`** (part of `zig build test`) regenerates the whole
-tree from scratch into a temporary directory and compares it byte for byte with
-the committed generated directories. A hand-edited generated file, an IDL or
-codegen change committed without its regeneration, and a stale generated file
-all fail it, and it prints the command above. `specs/idl` is a pinned webref
-snapshot: update it only by the procedure in specs/idl/WEBREF.md.
-
-When codegen behaviour is in question, **delete the generated directories and
-regenerate from scratch.** Partial regeneration hides systemic issues — that is
-how a parent-vs-child signature bug stayed hidden behind 12 "unrelated" type
-mismatches. `codegen-check` does exactly that against the committed tree; then
-build (`zig build wpt-runner -j2`) to confirm no interface/impl signature drift.
-
-### New interfaces
-
-1. Run codegen. 2. Copy the stub from `impls_tmp/X.zig` to `impls/X.zig`.
-3. Implement it. 4. Commit the file in `impls/`.
-
-When an IDL signature changes, diff `impls_tmp/X.zig` against `impls/X.zig` and
-merge by hand, preserving your implementation.
-
-### Names are the binding map
-
-The binding finds an impl's functions by the names its generated file gives
-them. There is no separate table saying which Zig function backs which member,
-and none may be added - so the prefixes mean "exposed to script" and nothing
-else:
-
-| Member | Impl function |
-|--------|---------------|
-| regular attribute | `get_<name>`, `set_<name>` |
-| operation | `call_<name>`; a further overload `call_<name>__<k>` (optional: until it exists, overload 0 runs) |
-| static attribute | `get_static_<name>`, `set_static_<name>` - accessors of the interface object |
-| static operation | `call_static_<name>` |
-| constant | none - the generated interface answers it (`get_<NAME>()`) |
-| special operation (indexed/named getter, setter, deleter) | bound from the generated `Meta.special_operations`, never by name; an anonymous one's delegate is `call_<keyword>`, or `call_<keyword>__<k>` for the k-th of its keyword |
-
-- **A private function never takes one of those prefixes.** Name helpers in
-  camelCase.
-- **A public one the generated file never calls is a map entry pointing
-  nowhere**: a stale copy, a member that belongs to another type - or a
-  broken map. Find out which before deleting it - see
-  [An API name nothing binds is a bug report](docs/lessons/codegen-an-api-name-nothing-binds-is-a-bug-report-not.md).
-- **Mixin members are inherited.** WebIDL `includes` makes a mixin's members
-  the includer's own: on its prototype, under its brand check, with its
-  instance as `this`. So the includer's generated interface takes each one
-  from the mixin's generated module by alias -
-  `pub const get_onclick = mixins.GlobalEventHandlers.get_onclick;` - and the
-  member is implemented ONCE, in the mixin's impl. Nothing calls a mixin on its
-  own, and an includer's impl never implements or overrides a member it
-  includes (WebIDL forbids redeclaring one); behaviour the spec keys on the
-  receiver is written in the mixin impl. Event handler IDL attributes
-  (EventHandler, OnErrorEventHandler, OnBeforeUnloadEventHandler) are the
-  exception: codegen emits them through `dom.event_handlers`, which also holds
-  the receiver-keyed rule for body/frameset's window-reflecting handlers, so an
-  impl declares an `on*` accessor only to add behaviour (impls B5). The move is
-  under way: a mixin joins
-  `src/webidl/codegen/inherited_mixins.zig` in the commit that moves its
-  implementation out of its includers' impls, and until then its includers'
-  delegates still call their own impls.
-
-`zig build lint-impls` (part of `zig build test`) checks this: strictly for
-interface, namespace and helper impls and for the impls of inherited mixins
-(bound by their generated module), and as a ratchet over
-`tools/impls_naming_baseline.txt` for the other mixin impls, whose unrouted
-functions predate the rule.
-
----
-
-## The impls boundary
-
-**An interface's impl is reached ONLY through that interface's own generated
-file. Nothing else references it - no other impl, not an ancestor's impl, not
-src/dom, src/html, src/browser, the engine adapter, tools or tests.** (The
-user's rule, 2026-09-29. It replaces the old exception that let an impl call its
-ancestors' impls directly.)
-
-```
-Anything -> an IDL member of any type  ->  interfaces.X.<member>
-Anything -> a step with no IDL member  ->  a src/dom hook the owning impl installs
-The generated interface X.zig          ->  its own impl (the one allowed reference)
-```
-
-1. **IDL members: the interface.** `interfaces.Node.get_ownerDocument(n)`, never
-   `NodeImpl.getOwnerDocument(n)` - from Range, from Text (Node's own
-   descendant), from anywhere. IDL constants too: `interfaces.Node.get_DOCUMENT_NODE()`.
-   Interfaces are the stable API and carry CEReactions, validation and the other
-   cross-cutting concerns; a direct impl call bypasses all of it.
-2. **No IDL member: a hook the owner installs** - except facts given at construction (node document, node type), which travel as construction arguments through the generated construction chain (the user, 2026-10-11; tmp/plans/impls-boundary-design.md). Setting a node's document,
-   joining a live range to its document, setting up a traverser, making a
-   collection live, an element's form reset steps - the owning impl installs the
-   step into a hook module in `src/dom/` (`node_document.zig`,
-   `range_boundaries.zig`, `traversal.zig`, `live_collections.zig`,
-   `abort_algorithms.zig`, ...), each declaring its owners on a
-   `//! lint-impls: hook for <Owner>` line. Callers call the hook and never name
-   the impl. Add a hook module for a new step rather than an import. This holds
-   for a type's own descendants too: Text sets its node document through the
-   hook, not through NodeImpl.
-3. **Shared helpers do not live in `src/webidl/impls/`.** A helper that serves
-   several types goes in `src/dom/`, `src/html/` or its subsystem, and reaches
-   types through interfaces and hooks like any other code.
-
-Never `@import("impls")` or name an `XImpl` outside the generated layers in new
-code, and never cast another type's `_internal` to its `InternalState`.
-
-**Construction and destruction are the generated chain.** `interfaces.X.init`
-runs the parent interface's chain, then `XImpl.initOwn(instance, allocator,
-comptime StateType, args)`; `deinit` runs `XImpl.deinitOwn`, then the parent's.
-An impl writes only its own part (or none), never an ancestor's init or deinit;
-a fact given at construction is listed in `pub const construction_args` and
-passed with `interfaces.X.initWith(.., .{ .name = value })`. An impl still
-defining `init`/`deinit` chains by hand, and the chain honours it
-([lesson](docs/lessons/codegen-the-generated-interface-is-the-class.md)).
-
-**Existing references are debt, not precedent.** About 200 files outside the
-generated layers still reference impls (most of them impls reaching ancestors,
-which the old rule allowed). A change that touches such a line converts it.
-
-**Checked by `zig build lint-impls`** (part of `zig build test`), counting ancestors since 1a94e0043:
-
-```bash
-zig build lint-impls -j2 --cache-dir ~/Library/Caches/crane-z16-cache                # fails on any new reference into an impl
-zig build lint-impls -j2 --cache-dir ~/Library/Caches/crane-z16-cache -- --update    # after paying debt down: record the lower baseline
-```
-
-`tools/lint_impls_boundary.zig` counts references into impls per file AND per
-`Impl.member` against `tools/impls_boundary_baseline.txt`. Each use counts once,
-however many times its alias is declared in the file; src/ (outside the
-generated layers), tests/ and tools/ are scanned, and a file that imports
-`impls` but reaches nothing in it counts one `impls.@import`, because the
-module-graph step drops that edge too. `-- --list` prints every site as
-`path:line Impl.member`: the work list for a conversion batch. A count that
-rises fails; so does a pair the baseline lacks - which catches a swap. The
-`//! lint-impls: hook for <Owner>` line is documentation - it names who installs
-the hook; the tool does not parse it (its in-hierarchy hook check went with the
-ancestor exception, 1a94e0043). The
-generated layers (interfaces, mixins, namespaces, codegen) are skipped:
-delegating to impls is their job. `--rebase-for-rule-change` exists for one purpose: re-recording the
-baseline when the RULE changes (it was used once, when ancestors started to count); a code change
-never uses it.
-
-**The baseline must reach zero before Crane 0.1** (the user, 2026-10-10; roadmap item `impls-boundary`).
-
-The baseline only goes down. `--update` refuses to record an increase, and
-editing the file by hand to make the check pass defeats the only thing that
-stops this debt growing. The count is whatever the baseline says - **do not
-write it down here.**
-
----
-
-## The engine boundary
-
-**Crane's JavaScript engine is an adapter, and the protocol is the only way to
-reach it.** V8 is one implementation, statically linked on desktop and server;
-on iOS Crane links the system JavaScriptCore dynamically instead. Behaviour may
-differ between targets only where the difference is declared - never by
-accident.
-
-The protocol is the `engine` module, `src/runtime/engine_protocol.zig`. Its
-signatures and doc comments are the contract; build.zig binds it, as
-`engine_impl`, to the adapter `-Dengine=v8|jsc|quickjs` selects, so dispatch is
-static. Whether an adapter links its engine statically (V8) or dynamically
-(JavaScriptCore on iOS) is the adapter's business; the protocol does not change.
-What it is: [docs/engine-protocol.md](docs/engine-protocol.md). How to move code
-onto it: [docs/engine-protocol-recipes.md](docs/engine-protocol-recipes.md), a
-recipe per intent.
-
-```
-src/runtime/engine_protocol.zig      THE PROTOCOL: module "engine", one pub inline fn per operation
-src/runtime/engines/v8/              the V8 adapter: protocol.zig and protocol_*.zig (the operations),
-                                     v8_wrapper.cpp, ffi.zig, conversions, the wrapper cache, context_manager
-src/runtime/engines/{jsc,quickjs}/   the other adapters' protocol.zig
-tests/runtime/protocol_test_adapter.zig   the engine-less adapter the runtime-tier tests bind
-tests/v8/                            the V8 adapter's tests
-everything else                      `const engine = @import("engine");`, runtime.Instance,
-                                     runtime.JSValue, runtime.Context
-```
-
-1. **V8 types and calls live only in the adapter.** Outside
-   `src/runtime/engines/v8/` and `tests/v8/` - impls, src/html, src/dom,
-   src/fetch, src/browser, src/websocket, streams, the parsers, tools - there
-   is no `@import("v8")`, no `v8_*`, and no Isolate, Global, Local or
-   HandleScope. The generated WebIDL interfaces are engine-neutral comptime
-   tables the adapter consumes; codegen never emits an engine call.
-2. **Everything else reaches the engine through the protocol:** `engine.op(...)`,
-   no function pointers, no optional unwrapping. **Every `pub inline fn` in
-   engine_protocol.zig is an operation**, and a comptime check makes each
-   adapter declare each one with exactly its types - a missing or mis-typed
-   operation is a compile error. Helpers built over operations are plain
-   `pub fn`s.
-3. **Ownership is in the types.** A `JSValue` parameter is borrowed for the
-   call. What the caller must release has an owning type - `engine.Owned`
-   (`release()` or `take()`, exactly once), `Completion`, `CallbackFunction`,
-   `CallbackInterface`, `PromiseCapability` - and its declaration says so.
-   Nothing crosses the seam as an untyped engine pointer or with a flag saying
-   who frees it. "Every `v8_*` return is owned" is an adapter-internal rule.
-4. **A platform object converts in its relevant realm.** Every operation turns
-   an `.instance` into its wrapper in `instance.ctx`, whichever realm it
-   entered. Results are made in the current realm, `engine.currentRealm()` -
-   null outside script, never "whatever context is entered".
-5. **Capabilities are tri-state comptime constants.** `engine.capabilities.X`
-   is `.native`, `.emulated` or `.unsupported`. A gated operation compiles only
-   inside `if (engine.capabilities.X != .unsupported)`, and the host implements
-   the declared fallback for the rest; nothing assumes V8. The no-snapshot
-   startup path keeps working, because JavaScriptCore runs on it.
-6. **A new engine need is a new protocol operation, named after the spec
-   concept** - an ECMAScript abstract operation, a WebIDL or HTML algorithm -
-   or, where there is no spec, after the engine concern. Never a pass-through
-   with a V8-shaped signature: if the JavaScriptCore C API could not implement
-   it, it is shaped like V8. The integrator owns engine_protocol.zig; request
-   the operation the way you request a grant. It lands with its V8
-   implementation, entries in the JavaScriptCore, QuickJS and test adapters
-   (`error.NotSupported` where they cannot answer), a tests/v8 test with values
-   made the way the binding makes them, and its line in docs/engine-protocol.md.
-7. **The runtime Engine table is gone** (deleted with the final cleanup, f84096c88).
-   Nothing reaches the engine through a function-pointer table: the runtime
-   tier itself imports `engine` and calls the protocol (releasing an unwrapped
-   instance is `engine.hasWrapper`, [PutForwards] is the protocol's Set). Do
-   not bring a table back to break an import cycle - the runtime <-> engine
-   cycle is the same shape as the facade <-> adapter one and builds.
-8. **Existing debt is paid file by file.** Editing a file that makes direct V8
-   calls or table calls means moving that file onto the protocol in the same
-   change, by its recipes.
-
-**Checked, and `zig build test` runs the check:**
-
-```bash
-zig build lint-engine -j2 --cache-dir ~/Library/Caches/crane-z16-cache               # fails on any new V8 reference outside the adapter
-zig build lint-engine -j2 --cache-dir ~/Library/Caches/crane-z16-cache -- --update   # after paying debt down: record the lower baseline
-```
-
-`tools/lint_engine_boundary.zig` counts, per file AND per name, every import
-whose path names V8, every `v8_*` identifier, and every member reached through
-an alias of a V8 import (`v8.context_manager`, `v8.ffi.Isolate`), against
-`tools/engine_boundary_baseline.txt`. A count that rises fails, and so does a
-pair the baseline lacks - which catches a swap. The baseline only goes down;
-when it reaches zero, "v8" leaves the non-adapter modules' imports in build.zig
-and the module graph enforces the rule. Report the baseline's total in every
-summary, beside blocking files and passing subtests. Why this rule exists:
-[Crane's JavaScript engine is an adapter](docs/lessons/architecture-the-javascript-engine-is-an-adapter.md);
-why the seam is a protocol designed whole:
-[Design the protocol before migrating](docs/lessons/architecture-design-the-protocol-before-migrating.md).
-
----
-
-## Global state
-
-**Crane runs isolated instances (Browsers) and every worker on their own threads, so state has an
-owner: the process, a Browser, a Tab, an agent or a realm** - never a thread, never "whoever got
-here first". The model and the rules for new state are in [docs/instances.md](docs/instances.md);
-read it before adding state.
-
-1. **No new `threadlocal` and no new container-level `var`** (function statics included). Put the
-   state on the object that owns it, or reach it through the realm you run in.
-2. **A hook is installed once, at process start**, from its owner's `installHooks()` - never lazily
-   in `init`, never on first use, never by making a throwaway object.
-3. **Checked by `zig build lint-global-state`** (part of `zig build test`;
-   tools/lint_global_state.zig) as a HARD rule (lane gstate4, 2026-11-03): every container-level
-   `var` and `threadlocal` in src/ (function statics included) and every C++ global and
-   `thread_local` is one of three things, and anything else fails:
-   - **a hook slot** - `var x: Hook(T) = .init(..)`, `Hook` from the hook module
-     (`@import("dom").Hook`, `@import("process").Hook` or `.hook.Hook`, `@import("hook.zig").Hook`
-     inside src/dom and src/process). Its type is the rule (frozen after the process start): it
-     needs no marker and no inventory entry. Never `threadlocal`, never in src/webidl/impls/, never
-     its `value`/`overrides` assigned or taken by address - write through `install()`,
-     `installing()` or `overrideForTest()`;
-   - **reviewed process state** - a container-level `var` or C++ global with a
-     `// process-wide: <why>` line directly above it: state that genuinely is one per process.
-     Say why it holds with many instances on many threads, and how writes from several threads
-     are safe - atomic, lock or init-once (an id counter whose only property is uniqueness, a
-     diagnostic count, V8's platform);
-   - **reviewed per-thread state** - a `threadlocal` or C++ `thread_local` with a
-     `// per-thread: <why>` line directly above it: state whose owner is the thread. Say what
-     makes the thread the right scope - a call-stack extent (what runs on this thread's stack
-     now), an engine's own thread-local. Rare: a threadlocal is never per instance or per tab.
-   A marker on the wrong kind fails, and so does a broken hook slot. `tools/global_state_baseline.txt`
-   is the INVENTORY - every variable with its class, which the Crane test runner's digest reads -
-   not a debt list: a reviewed variable new to it fails until `-- --update` records it (the
-   integrator reviews each at merge), and `-- --update` refuses unmarked and misplaced ones.
-   `-- --rename '<old>' '<new>'` records a same-file rename with the same kind, declaration and
-   count. Never edit the file by hand. Until lane hookfreeze2 has converted the last registration
-   lists, keys the inventory already records may stay unmarked (`recorded_debt_allowed` in the
-   tool; the integrator turns it off). Report the total and the tool's `by rule:` line beside the
-   engine-boundary total.
-
----
-
-## The platform boundary
-
-**Everything platform-specific goes through the `platform` protocol** (the user, 2026-10-09):
-OS services (clocks, randomness, network, files, threads), page capabilities (permissions, dialogs,
-pickers, media decoding, camera, clipboard...), the storage engine, crypto primitives and layout.
-It is bound at build time like the engine (`-Dplatform=darwin|linux|testing`,
-`-Dplatform-module=<path>` for a third-party platform, `-Dplatform-without=<capability>` to compile
-one out). The contract is [docs/platform-protocol.md](docs/platform-protocol.md); the migration
-steps are [docs/platform-protocol-recipes.md](docs/platform-protocol-recipes.md); the user's
-decisions are in tmp/plans/platform-decisions.md.
-
-- No new OS access outside `src/platform/` (std.fs, std.time clock reads, std.process, curl,
-  sqlite, mbedtls, getenv, randomness). **Checked by `zig build lint-platform`** (part of
-  `zig build test`) against `tools/platform_boundary_baseline.txt`, which only goes down.
-- Old platform code stays until the migration step that replaces it retires it.
-
----
-
-## DOM lifetime: reference counting
-
-**Crane's DOM is moving to reference counting** (WebKit's model; the user, 2026-10-09): one model
-under V8 and JavaScriptCore. Design: tmp/plans/refcount-design.md; the user's decisions:
-tmp/plans/refcount-decisions.md. Until the switch (design step 7), an object that keeps a node for
-script holds it through `src/dom/node_holds.zig` or a traced edge, never a bare pointer; a
-generation check is only a teardown net. Collected trees are freed in slices from the event loop
-(`runtime.gc.DeferredTeardown`), never inside the collector.
-
-- **Checked by `zig build lint-refcount`** (part of `zig build test`; tools/lint_refcount.zig):
-  no direct `.parent_node =` writes outside NodeBase's setter, and no counted reference stored in
-  node state (back links stay raw). Its baseline only goes down.
-
----
 
 ## Golden rules
 
@@ -949,28 +63,74 @@ generation check is only a teardown net. Collected trees are freed in slices fro
 5. **Handle dependencies correctly.** Check `src/` for the real implementation.
    If it doesn't exist, mock it with a clear `TODO` marker — never skip it.
 
----
+## Doing a task
 
-## Generated files go in `tmp/`
+All tasks: failing test first, commit each logical unit, `tmp/` for scratch.
 
-Everything you generate that isn't source or a committed doc goes in `tmp/`
-(gitignored):
+Then branch on type:
 
+| Type | First move |
+|------|-----------|
+| **Spec** | Load the full algorithm from `specs/` |
+| **Bug** | Reproduce with a test before touching code |
+| **WPT** | Isolate one test, fix, uncomment all, re-verify |
+| **Engine** | Measure before and after; regression-check with timers |
+
+- **Spec work:** load the complete algorithm section from `specs/` before writing, never grep fragments; a spec not in `specs/` is fetched (`specs/get`) as its own commit, and one cached six months or more is compared with upstream first; `specs/idl/` is a pinned webref snapshot, updated only by the procedure in specs/idl/WEBREF.md (specs/AGENTS.md).
+- **Engine work** (handle ownership, allocator lifetimes, teardown order, the FFI, build/codegen): there is no spec - read the code, and prefer a measurement (`gc_bench`, `leaks --atExit`, the live-handle counters) over an assumption.
+- **Batch the expensive gates** (the user, 2026-11-01): each change still gets its own cheap red/green proof; changes whose files and WPT directories do not overlap share one native gate, one runner build and one A/B; before starting any gate or run over 20 minutes, batch in what else is about to land; merge current main into your branch before you report (docs/agents/working-on-crane.md).
+- **Handle-ownership changes:** `zig build test` and the DOM WPT files are not sufficient - run the regression protocol (timers x3), and call a sweep-only crash fixed only when same-list counts say so (tests/AGENTS.md).
+- Everything you generate that is not source or a committed doc goes in `tmp/`; background jobs use `$CLAUDE_JOB_DIR/tmp`; the project root holds committed docs only.
+
+## Tests come first, in short
+
+- Write the failing test first, then satisfy it; where that is awkward, adapt its form: a WPT failure's isolated test, a leak's count recorded before the fix, a test pinning a comptime predicate's default (tests/AGENTS.md).
+- Unit tests use `std.testing.allocator` always, with realistic inputs and spec edge cases; it does not see C++ allocations, so measure those with `zig build gc-bench` and name leaks with `leaks --atExit`.
+- A test directory is one executable, run by `tools/test_launcher` in seeded, shuffled batches: a test may assume only what the process start makes, and leaves the process as it found it; a race test between Browsers gives each Browser its own leak-checking `DebugAllocator`.
+
+## Before every commit
+
+```bash
+zig fmt src/ tests/ tools/
+zig build wpt-runner -j2 --cache-dir ~/Library/Caches/crane-z16-cache   # the one artifact WPT needs
+zig build test       -j2 --cache-dir ~/Library/Caches/crane-z16-cache   # includes lint-impls
 ```
-tmp/summaries/   session summaries, reports
-tmp/analysis/    investigation notes
-tmp/plans/       design docs, decision logs
-tmp/debug/       test output, traces
-tmp/scratch/     everything else
-```
 
-Project root is for committed docs only (README, CHANGELOG, CONTRIBUTING). Put
-something there only if the user explicitly asks for it.
+- `zig build test` also runs `crane-check`, `codegen-check` and the lints - lint-impls, lint-engine, lint-global-state, lint-platform, lint-refcount - each a ratchet whose baseline only goes down (tools/AGENTS.md).
+- **Verify mode:** a branch that adds or changes tests also passes `zig build test-verify` (plain and with `-Dsanitize-thread`) and `wpt_runner --repeat=10 --verify`, and its merge report quotes both (tests/AGENTS.md, "Verify mode").
 
-**Background jobs**: use `$CLAUDE_JOB_DIR/tmp` instead — parallel jobs clobber
-each other in `/tmp`.
+All three must pass. For changes to V8 handle ownership, they are not
+sufficient — see the regression protocol above.
 
----
+## Building
+
+- **Never run a bare `zig build`, and always pass `-j2`:** every artifact that embeds the tree is a ~6 GB root compile; on a shared machine run `./zig-out/bin/wpt_runner` directly (.claude/rules/build-and-toolchain.md).
+- **Lane agents compile nothing on this Mac** (the user, 2026-10-29): every `zig build`, test run and benchmark goes through `crane-remote.sh` or `crane-pool.sh`; on the Mac a lane edits, reads, runs git and `zig fmt`.
+- **Local builds use `--cache-dir ~/Library/Caches/crane-z16-cache`, never a cache in `/tmp`;** `zig build codegen` and `codegen-check` use a cache of your own (`~/Library/Caches/crane-<lane>-codegen`, deleted when you are done).
+- **The toolchain is Zig 0.17, pinned** (the user, 2026-10-28): `0.17.1-dev+77c319a0f0`; `zig build` takes no `--global-cache-dir`, the global cache is set only through `ZIG_GLOBAL_CACHE_DIR`; anything `build.zig` reads from the machine at configure time calls `b.graph.poisonCache()`; never put an `xcrun` shim on PATH.
+- **The WPT runner is built ReleaseSafe** (the user, 2026-10-11), about 12 minutes cold: `-Dwpt-runner-optimize=Debug` for red/green, and an A/B compares runners built in the same mode as its baseline (.claude/rules/wpt-workflow.md).
+
+## Boundaries
+
+- **Impls:** an interface's impl is reached ONLY through that interface's own generated file - no other impl, not an ancestor's, and no other code names an `XImpl` or imports `impls`; a step with no IDL member goes through a `src/dom` hook its owner installs; shared helpers live outside `src/webidl/impls/`; never cast another type's `_internal` to its `InternalState` (src/webidl/AGENTS.md, "The impls boundary").
+- **Names are the binding map:** in an impl, `get_`/`set_`/`call_` mean "exposed to script" and nothing else, and a mixin's member is implemented once, in the mixin's impl; a private function never takes one of those prefixes (src/webidl/AGENTS.md).
+- **Never edit generated files** (`src/webidl/{interfaces,typedefs,dictionaries,callbacks,mixins,namespaces,enums}/`, the directories `codegen-check` compares): fix the codegen or the IDL and regenerate with `zig build codegen -- --dest-root src/webidl/`, one invocation over both sources (src/webidl/AGENTS.md, "WebIDL codegen").
+- **Engine:** V8 types and calls live only in `src/runtime/engines/v8/` and `tests/v8/`; everything else calls the `engine` protocol, and a new engine need is a new protocol operation, requested from the integrator; ownership is in the types - a `JSValue` parameter is borrowed, what the caller must release has an owning type (src/runtime/AGENTS.md, "The engine boundary").
+- **Platform:** no new OS access outside `src/platform/` (files, clocks, network, threads, process, getenv, randomness, curl, sqlite, mbedtls); everything platform-specific goes through the `platform` protocol (src/platform/AGENTS.md).
+- **Global state:** no new `threadlocal` and no new container-level `var`; state has an owner - the process, a Browser, a Tab, an agent or a realm - and a hook is installed once, at process start; a reviewed exception carries its `// process-wide:` or `// per-thread:` line (src/AGENTS.md, "Global state").
+- **DOM lifetime:** an object that keeps a node for script holds it through `src/dom/node_holds.zig` or a traced edge, never a bare pointer; collected trees are freed in slices from the event loop, never inside the collector; no direct `.parent_node =` write outside NodeBase's setter (src/AGENTS.md).
+- **Memory:** `defer` at the allocation, `errdefer` on error paths; every `v8_*` call returning a pointer allocates and the caller owns it - prefer not acquiring it, and prove the callee does not retain it before disposing it; a "safe to dispose" gate is an allowlist whose default is the safe answer; `ArenaAllocator.free` is a no-op (src/AGENTS.md, "Memory").
+- **Tools are Zig:** anything committed to `tools/` or run by `build.zig` is Zig, tested with `std.testing`; only the existing WPT tools are exempt (tools/AGENTS.md).
+- **Known debt only goes down:** the baselines in `tools/` never rise, and a change that touches an impl reference or a direct V8 call converts it; a baseline is never edited by hand, and the impls baseline reaches zero before Crane 0.1 (tools/AGENTS.md).
+- **Upstream WPT:** never edit a test in `tests/wpt/` outside `crane/` to make it pass; Crane's own tests live in `tests/wpt/crane/`.
+
+## WPT and the 0.1 gate
+
+- **The 0.1 gate: no file in the worklist blocks.** A file blocks when it times out, errors or crashes, or finishes OK with none of its subtests passing; a file only ALL THREE browsers intentionally deviate on is exempt, listed with its evidence in `tools/wpt_gate_exemptions.txt`.
+- Fixing a file: isolate the one failing test, fix it, then uncomment everything and re-run the whole file; commit the fix and its test together (.claude/rules/wpt-workflow.md).
+- Only main's runs go where the report reads them (`wpt-results/<label>/`, one directory deep), a lane's to `wpt-results/lanes/<label>/`.
+- After a feature commit, regenerate (`zig build wpt-progress`; push `gh-pages` with main) and keep `docs/roadmap.toml` current; once per working session, a full worklist sweep at HEAD from a frozen runner, with its `journal.wptreport.jsonl`.
+- Every summary reports the headline - blocking files and passing subtests, the rate outside `encoding/` and the mean per-file rate - beside the engine-boundary baseline total and the global-state total with its `by rule:` line.
 
 ## Clean up as you go, not at the end
 
@@ -978,35 +138,7 @@ Delete each temporary artifact **as soon as it stops being useful**, not when
 the task finishes. "I'll tidy up at the end" means it is still there at the end,
 because the end is where context runs out and sessions get interrupted.
 
-Applies to: build caches, `/tmp` clones and scratch directories, git worktrees
-and their branches, crash dumps, throwaway databases, captured logs and profiler
-output, and anything under `tmp/` you have finished reading.
-
-Concretely, while working:
-
-- **Finished with a measurement?** Delete the logs it produced. A `leaks` or
-  `heap` dump is worth keeping until you have extracted the number, and worthless
-  after.
-- **Switched approach?** The artifacts of the abandoned one go now.
-- **Spawned load generators, servers or background jobs?** Kill them in the same
-  step that stops needing them, and verify with `pgrep` rather than assuming.
-- **Long session?** Check disk periodically — `df -h /` and
-  `du -sh /tmp/* 2>/dev/null | sort -h | tail -5`. Do not wait to be surprised.
-
-Build caches are the big one. `~/Library/Caches/crane-z16-cache` reached **31 GB** in a
-single session; deleting it returned 398 GB free to 429 GB. It is worth keeping
-while you are still building and worth deleting the moment you are not — a cold
-rebuild is ~10 minutes, since V8 itself is prebuilt.
-
-Before reporting a task complete, verify rather than claim:
-
-```bash
-git worktree list          # only the checkout you expect
-pgrep -fl 'gc_bench|wpt_runner|zig build'   # nothing of yours running
-du -sh /tmp/* 2>/dev/null | sort -h | tail -5
-```
-
----
+- Before reporting a task complete, verify rather than claim: `git worktree list`, `pgrep -fl 'gc_bench|wpt_runner|zig build'`, `du -sh /tmp/* 2>/dev/null | sort -h | tail -5`; kill the servers and background jobs you started in the step that stops needing them (docs/agents/working-on-crane.md).
 
 ## Non-negotiable
 
@@ -1031,96 +163,14 @@ du -sh /tmp/* 2>/dev/null | sort -h | tail -5
 - Leaving temporary artifacts behind, or deferring cleanup to the end of a task
   — see "Clean up as you go"
 
-## Known debt — do not add to it
-
-- References into impls from anywhere but their own generated interface -
-  recorded in `tools/impls_boundary_baseline.txt`, which may only go down
-- API-named functions in mixin impls that nothing calls - recorded in
-  `tools/impls_naming_baseline.txt`, which may only go down
-- V8 references outside src/runtime/engines/v8/ - recorded in
-  `tools/engine_boundary_baseline.txt`, which may only go down
-- Process-global and threadlocal mutable state - recorded in
-  `tools/global_state_baseline.txt`, which may only go down
-- Non-Zig tools outside the WPT exception: `tools/update_impl_signatures.py`
-- Untested and undocumented code exists
-
-These are real and being paid down. Saying "zero tolerance" about them trains
-you to skim.
-
----
-
-## When in doubt
-
-1. **Have you committed recently?** If you have working changes, commit them now.
-2. **Creating files?** `tmp/`, unless asked otherwise.
-3. **Which subsystem?** Check the file path and imports.
-4. **Spec work?** Read the complete section from `specs/whatwg/<spec>.md` or `specs/w3c/<spec>.md` (fetch it there first if it is missing or six months old).
-5. **Engine work?** Read the code and measure.
-6. **Check dependencies** in `src/` before mocking anything.
-7. **Look at existing tests** for patterns in similar subsystems.
-8. **Inventing a mechanism?** Check how V8, WebKit, Blink or Gecko do it
-   first - see "Stuck on HOW" above. If they have a name for it, use theirs.
-
----
-
-## WHATWG specifications
-
-| Spec | URL | Local |
-|------|-----|-------|
-| URL | https://url.spec.whatwg.org/ | `specs/whatwg/url.md` |
-| Encoding | https://encoding.spec.whatwg.org/ | `specs/whatwg/encoding.md` |
-| Streams | https://streams.spec.whatwg.org/ | `specs/whatwg/streams.md` |
-| Infra | https://infra.spec.whatwg.org/ | `specs/whatwg/infra.md` |
-| WebIDL | https://webidl.spec.whatwg.org/ | `specs/whatwg/webidl.md` |
-| Console | https://console.spec.whatwg.org/ | `specs/whatwg/console.md` |
-| MIME Sniff | https://mimesniff.spec.whatwg.org/ | `specs/whatwg/mimesniff.md` |
-| Fetch | https://fetch.spec.whatwg.org/ | `specs/whatwg/fetch.md` |
-| DOM | https://dom.spec.whatwg.org/ | `specs/whatwg/dom.md` |
-| HTML | https://html.spec.whatwg.org/ | `specs/whatwg/html.md` (parsing chapter alone: `specs/whatwg/html/parsing.md`) |
-
-Specs reference each other constantly. Most depend on **Infra**; anything with
-a Web API depends on **WebIDL**.
-
----
-
 ## ⚠️ Record what you learn
 
-When you learn something new or find a better way to do something, you **must**
-record it. Add a lesson when you: discover a bug pattern that could recur, find
-a better approach to a common task, learn from user feedback about correct
-methodology, identify a systemic issue rather than a one-off, or establish a new
-best practice.
-
-A lesson is two things, committed with the work that taught it:
-
-1. **A file**, `docs/lessons/<category>-<slug>.md`, in this shape:
-
-   ```markdown
-   # Category: Brief Lesson Title
-
-   **Date**: YYYY-MM-DD
-   **Lesson**: One-sentence summary.
-
-   **Why**: The underlying issue.
-
-   **What Happened**: Context, what went wrong, how it manifested.
-
-   **Fix**: Step-by-step, with code if relevant.
-
-   **Takeaway**: **Bold key insight** for future work.
-   ```
-
-2. **One line in [docs/lessons/README.md](docs/lessons/README.md)**, under its category:
-   `- [Title](<file>.md) - <the takeaway>` (the README's links are relative).
-
-Categories: Architecture, Spec Compliance, Codegen, Testing, Debugging, Workflow.
+- When you learn something that could recur - a bug pattern, a better approach to a common task, user feedback on method, a systemic issue, a new best practice - you **must** record it as a lesson: a file in `docs/lessons/` and one line in its index, committed with the work that taught it (the format: docs/lessons/AGENTS.md).
 
 Keep this file a rulebook. When a lesson becomes a rule, write the rule in its
 section above and keep the lesson as the reason. When a lesson is superseded,
 update its file with a dated **Status** line rather than leaving advice that
 contradicts current practice.
-
----
 
 ## Lessons index
 
@@ -1128,7 +178,22 @@ The index - one line per lesson, its title and takeaway - is
 [docs/lessons/README.md](docs/lessons/README.md). It is kept out of this file
 because every agent re-reads this file on every call.
 
-- **Starting a batch:** your brief names the lessons chosen for its work. Read
-  those files before you design anything.
-- **Stuck on a symptom:** grep `docs/lessons/` for it before theorising, and
-  read your area's section of the index.
+- Starting a batch, read the lessons your brief names before you design anything; stuck on a symptom, grep `docs/lessons/` before theorising.
+
+## Index: before you work in X, read Y
+
+Every section moved out of this file kept its heading there: a comment citing `AGENTS.md "<heading>"` means the file this table lists it under. The two `.claude/rules/` files load by themselves only in Claude Code, for their paths; Codex, and a Bash read, open them from here.
+
+| Before you work in | Read | Its sections (headings, and the bold leads comments cite) |
+|---|---|---|
+| any file under `src/` | [src/AGENTS.md](src/AGENTS.md) | Global state; DOM lifetime: reference counting; Memory (Zig side; The C++ seam — where the bugs are) |
+| `src/webidl/`, codegen, an impl, code that reaches another type | [src/webidl/AGENTS.md](src/webidl/AGENTS.md) | WebIDL codegen; Never edit generated files directly; New interfaces; Names are the binding map; The impls boundary |
+| the JavaScript engine, `src/runtime/`, `tests/v8/` | [src/runtime/AGENTS.md](src/runtime/AGENTS.md) | The engine boundary (rules 1-8) |
+| `src/platform/`, anything that touches the OS | [src/platform/AGENTS.md](src/platform/AGENTS.md) | The platform boundary |
+| `tests/`, a test, the launcher | [tests/AGENTS.md](tests/AGENTS.md) | Tests come first (A test directory is one executable; Seeds; Shapes; Two variants; Two kinds: Memory, Comptime predicates); Regression protocol for handle-ownership changes; Verify mode |
+| `tools/`, a lint, a baseline | [tools/AGENTS.md](tools/AGENTS.md) | Tools are Zig; lint-impls; lint-engine; The other lints; Known debt — do not add to it |
+| a spec, `specs/` | [specs/AGENTS.md](specs/AGENTS.md) | Know what kind of work you're doing (Spec work; Specs are cached in `specs/`); WHATWG specifications |
+| WPT: a failure, a run, the report, the runner | [.claude/rules/wpt-workflow.md](.claude/rules/wpt-workflow.md) | Fixing a WPT failure; Keep the progress report current (The 0.1 gate; Keep the roadmap current); The runner's build mode (The WPT runner is built optimized) |
+| `build.zig`, caches, `-j`, the toolchain | [.claude/rules/build-and-toolchain.md](.claude/rules/build-and-toolchain.md) | `crane-check` and the merge check; Local builds use `--cache-dir`; Never run a bare `zig build`; The toolchain is Zig 0.17 |
+| a lesson: using or writing one | [docs/lessons/AGENTS.md](docs/lessons/AGENTS.md) | Record what you learn: the format; Lessons index: using them |
+| how to work here | [docs/agents/working-on-crane.md](docs/agents/working-on-crane.md) | What Crane is: the details (Stuck on HOW); Engine work; Batch the expensive gates; Generated files go in `tmp/`; Clean up as you go: the details; When in doubt |

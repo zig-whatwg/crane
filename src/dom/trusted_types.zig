@@ -29,6 +29,7 @@ const trusted_types = @import("trusted_types");
 const process_start = @import("process_start.zig");
 const global_settings = @import("global_settings.zig");
 const csp_violations = @import("csp_violations.zig");
+const Hook = @import("hook.zig").Hook;
 
 pub const Kind = trusted_types.Kind;
 
@@ -106,28 +107,25 @@ const Table = struct {
 };
 
 // process-wide: hook table written once at process start by the five Trusted Types impls' installHooks; read-only after
-var table: Table = .{};
+var table: Hook(Table) = .init(.{});
 
 /// Called by TrustedHTML, TrustedScript and TrustedScriptURL.
 pub fn installValue(kind: Kind, hooks: ValueHooks) void {
-    process_start.assertInstalling();
     switch (kind) {
-        .html => table.html = hooks,
-        .script => table.script = hooks,
-        .script_url => table.script_url = hooks,
+        .html => table.installField("html", hooks),
+        .script => table.installField("script", hooks),
+        .script_url => table.installField("script_url", hooks),
     }
 }
 
 /// Called by TrustedTypePolicyFactory.
 pub fn installFactory(hooks: FactoryHooks) void {
-    process_start.assertInstalling();
-    table.factory = hooks;
+    table.installField("factory", hooks);
 }
 
 /// Called by TrustedTypePolicy.
 pub fn installPolicy(hooks: PolicyHooks) void {
-    process_start.assertInstalling();
-    table.policy = hooks;
+    table.installField("policy", hooks);
 }
 
 // ============================================================================
@@ -136,19 +134,19 @@ pub fn installPolicy(hooks: PolicyHooks) void {
 
 /// A new object of `kind` in `realm` whose data is a copy of `data`.
 pub fn createValue(realm: runtime.Context, kind: Kind, data: []const u8) anyerror!*runtime.Instance {
-    const hooks = table.values(kind) orelse return error.NotImplemented;
+    const hooks = table.read().values(kind) orelse return error.NotImplemented;
     return hooks.create(realm, data);
 }
 
 /// 3.1 steps 4-6: a new TrustedTypePolicy named `name` with `options`.
 pub fn createPolicy(realm: runtime.Context, name: []const u8, options: PolicyOptions) anyerror!*runtime.Instance {
-    const hooks = table.policy orelse return error.NotImplemented;
+    const hooks = table.read().policy orelse return error.NotImplemented;
     return hooks.create(realm, name, options);
 }
 
 /// `instance`'s data, when it is an object of `kind`.
 pub fn dataOf(instance: *runtime.Instance, kind: Kind) ?[]const u8 {
-    const hooks = table.values(kind) orelse return null;
+    const hooks = table.read().values(kind) orelse return null;
     return hooks.data_of(instance);
 }
 
@@ -231,7 +229,7 @@ pub fn factoryOf(global: *runtime.Instance) ?*runtime.Instance {
 
 /// `global`'s trusted type policy factory's default policy, or null.
 pub fn defaultPolicyOf(global: *runtime.Instance) ?*runtime.Instance {
-    const hooks = table.factory orelse return null;
+    const hooks = table.read().factory orelse return null;
     const factory = factoryOf(global) orelse return null;
     return hooks.default_policy(factory);
 }
@@ -266,7 +264,7 @@ pub fn processValueWithDefaultPolicy(
     // factory's default policy." Null has no options: no value (3.3 step 3
     // with throwIfMissing false).
     const policy = defaultPolicyOf(global) orelse return null;
-    const hooks = table.policy orelse return null;
+    const hooks = table.read().policy orelse return null;
     // 2. Get trusted type policy value with defaultPolicy, stringified input,
     // expectedType's type name, « trustedTypeName, sink », false.
     const arguments = [_]runtime.JSValue{

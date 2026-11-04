@@ -6,6 +6,7 @@ const engine = @import("engine");
 const interfaces = @import("interfaces");
 const process_start = @import("process_start.zig");
 const fire_event = @import("fire_event.zig");
+const Hook = @import("hook.zig").Hook;
 
 /// Each owner supplies its association or notification step; callers never
 /// reach into another interface's state.
@@ -17,29 +18,28 @@ pub const Implementation = struct {
 };
 
 // process-wide: immutable Selection/Range callbacks installed once before any Browser or worker starts.
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Selection.installHooks and Range.installHooks at process startup.
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    var combined = implementation orelse Implementation{};
+    var combined = implementation.get() orelse Implementation{};
     if (impl.bind_document) |step| combined.bind_document = step;
     if (impl.associate_range) |step| combined.associate_range = step;
     if (impl.range_mutated) |step| combined.range_mutated = step;
     if (impl.schedule_change) |step| combined.schedule_change = step;
-    implementation = combined;
+    implementation.install(combined);
 }
 
 /// Bind the wrapped selection to the document that keeps it.
 pub fn bindDocument(selection: *runtime.Instance, document: *runtime.Instance) void {
-    const impl = implementation orelse return;
+    const impl = implementation.get() orelse return;
     const step = impl.bind_document orelse return;
     step(selection, document);
 }
 
 /// Selection alone sets/clears Range's weak link back to its selection.
 pub fn associateRange(range: *runtime.Instance, selection: *runtime.Instance, associated: bool) void {
-    const step = (implementation orelse return).associate_range orelse return;
+    const step = (implementation.get() orelse return).associate_range orelse return;
     step(range, selection, associated);
 }
 
@@ -47,7 +47,7 @@ pub fn associateRange(range: *runtime.Instance, selection: *runtime.Instance, as
 /// document, otherwise dissociate; queue the event without ever running script
 /// inside the DOM mutation algorithm.
 pub fn rangeMutated(selection: *runtime.Instance, range: *runtime.Instance, containers_changed: bool) void {
-    const step = (implementation orelse return).range_mutated orelse return;
+    const step = (implementation.get() orelse return).range_mutated orelse return;
     step(selection, range, containers_changed);
 }
 
@@ -68,7 +68,7 @@ pub fn scheduleTextControlSelectionchange(element: *runtime.Instance, flag: Sele
     const root = try interfaces.Node.call_getRootNode(element, .notPassed());
     if (root.stateAs(interfaces.ShadowRoot.State) != null) {
         const selection = (try interfaces.Document.call_getSelection(document)) orelse return;
-        const step = (implementation orelse return).schedule_change orelse return;
+        const step = (implementation.get() orelse return).schedule_change orelse return;
         return step(selection);
     }
 
