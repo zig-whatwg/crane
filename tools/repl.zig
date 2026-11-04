@@ -17,7 +17,10 @@
 //! sets in the task that fires load - at most `--timeout` ms (30,000). Type
 //! JavaScript; Enter evaluates once the input is complete, Tab completes a
 //! name, the arrows walk the history, Ctrl+C stops waiting (or stops a
-//! script that runs too long), Ctrl+D exits. `.help` lists the commands.
+//! script that runs too long) and at a prompt clears the line - twice at an
+//! empty prompt it exits, as Node's REPL does - Ctrl+D exits. `.help` lists
+//! the commands. Built ReleaseSafe by default (`-Drepl-optimize=Debug` for a
+//! diagnosis), with libc malloc (`--check-leaks` for a leak-checking one).
 //!
 //! How it is built:
 //!
@@ -110,6 +113,10 @@ pub const Options = struct {
     wait_for_navigation: bool = false,
     /// `--profile=<dir>`, which the console refuses (`profile_refusal`).
     profile: ?[]const u8 = null,
+    /// `--check-leaks`: a leak-checking allocator (std's DebugAllocator,
+    /// no per-allocation stack traces unless CRANE_LEAK_TRACES=1) instead of
+    /// libc malloc; what leaked is reported when the console exits.
+    check_leaks: bool = false,
     /// `--help`.
     help: bool = false,
 };
@@ -130,6 +137,8 @@ pub const usage =
     \\  --timeout=<ms>           how long a load or an evaluation is waited for (30000)
     \\  --wait-for-navigation    hold the next prompt while an input's navigation loads
     \\                           (always, when input is piped)
+    \\  --check-leaks            a leak-checking allocator; leaks reported at exit
+    \\                           (CRANE_LEAK_TRACES=1 adds each one's stack trace)
     \\
 ;
 
@@ -151,6 +160,8 @@ pub fn parseOptions(args: []const []const u8, bad: *[]const u8) OptionsError!Opt
             options.accept_insecure_certs = true;
         } else if (std.mem.eql(u8, arg, "--wait-for-navigation")) {
             options.wait_for_navigation = true;
+        } else if (std.mem.eql(u8, arg, "--check-leaks")) {
+            options.check_leaks = true;
         } else if (valueOf(arg, "--user-agent")) |value| {
             options.user_agent = value;
         } else if (valueOf(arg, "--proxy")) |value| {
@@ -760,7 +771,10 @@ pub const Console = struct {
         \\.newtab [<url>]  open a new tab (not supported yet)
         \\.close [<n>]     close tab <n> (a popup), or the selected one
         \\.help            this list
-        \\.exit            end the console (Ctrl+D)
+        \\.exit            end the console (Ctrl+D, or Ctrl+C twice at an empty prompt)
+        \\
+        \\Ctrl+C stops what the console waits for (an evaluation, a page's load) or a script
+        \\that runs too long; at a prompt it clears the line.
         \\
     ;
 
@@ -1228,6 +1242,33 @@ const Evaluation = struct {
 // The terminal
 // ============================================================================
 
+/// Ctrl+C at a prompt, as Node's REPL answers it: with text on the line (or
+/// an input continued over lines) the line goes; on an empty prompt the
+/// first one says how to exit and a second one, with no other key between,
+/// exits.
+pub const ExitGuard = struct {
+    armed: bool = false,
+
+    pub const Answer = enum { clear_line, hint, exit };
+
+    pub const hint_text = "(To exit, press Ctrl+C again or Ctrl+D or type .exit)\n";
+
+    pub fn interrupt(self: *ExitGuard, line_empty: bool, continuation: bool) Answer {
+        if (!line_empty or continuation) {
+            self.armed = false;
+            return .clear_line;
+        }
+        if (self.armed) return .exit;
+        self.armed = true;
+        return .hint;
+    }
+
+    /// Any other key.
+    pub fn key(self: *ExitGuard) void {
+        self.armed = false;
+    }
+};
+
 /// The line editor, fed one byte at a time: cursor movement, history and
 /// tab completion (the console's), echoing through `write`. It never reads:
 /// the terminal's thread feeds it what it read.
@@ -1432,6 +1473,8 @@ pub const Terminal = struct {
     editor: LineEditor,
     /// What the line being edited answers; null while no prompt is shown.
     prompt: ?Console.Ready = null,
+    /// Ctrl+C twice at an empty prompt exits (`ExitGuard`).
+    exit_guard: ExitGuard = .{},
     /// The console's word, set on the window thread and read by the
     /// terminal's: 0 nothing yet, else a Console.Ready + 1.
     word: std.atomic.Value(u32) = .init(0),
@@ -1617,8 +1660,21 @@ pub const Terminal = struct {
                 if (byte != '\r') try self.editor.buffer.append(self.allocator, byte);
                 break :blk LineEditor.Action.none;
             }
+            const line_empty = self.editor.buffer.items.len == 0;
             const action = try self.editor.feed(byte, self.out);
             self.out.flush() catch {};
+            if (action == .interrupt) {
+                switch (self.exit_guard.interrupt(line_empty, self.prompt == .more)) {
+                    .clear_line => {},
+                    .hint => {
+                        self.out.writeAll("\n" ++ ExitGuard.hint_text) catch {};
+                        self.out.writeAll(promptText(self.prompt orelse .ready)) catch {};
+                        self.out.flush() catch {};
+                        break :blk LineEditor.Action.none;
+                    },
+                    .exit => break :blk LineEditor.Action.end,
+                }
+            } else self.exit_guard.key();
             break :blk action;
         };
         switch (action) {
@@ -1775,7 +1831,6 @@ const CompletionRequest = struct {
 };
 
 pub fn main(init: std.process.Init) !u8 {
-    const allocator = init.gpa;
     const io = init.io;
     var stderr_buffer: [1024]u8 = undefined;
     var stderr = std.Io.File.stderr().writerStreaming(io, &stderr_buffer);
@@ -1805,6 +1860,24 @@ pub fn main(init: std.process.Init) !u8 {
         try err_out.flush();
         return 2;
     }
+
+    // The console's allocator, chosen - not init.gpa, which in a Debug build
+    // captures a stack trace on every allocation and free (DWARF unwinding on
+    // the page's hot path: the WPT runner's 37-second lesson, docs/lessons/
+    // debugging-a-two-subtest-page-took-37-seconds-to-exit-and.md). libc
+    // malloc, as a host embedding Crane would; --check-leaks: a leak-checking
+    // DebugAllocator with no traces (tests/wpt_runner/runner_allocator.zig's
+    // configurations), with six-frame traces under CRANE_LEAK_TRACES=1.
+    // Thread-safe in every case: workers allocate from their threads.
+    var leak_check: std.heap.DebugAllocator(.{ .stack_trace_frames = 0, .safety = true }) = .init;
+    var leak_trace: std.heap.DebugAllocator(.{ .stack_trace_frames = 6, .safety = true }) = .init;
+    const traces = if (init.environ_map.get("CRANE_LEAK_TRACES")) |v| v.len != 0 and v[0] != '0' else false;
+    const allocator: std.mem.Allocator = if (!options.check_leaks) std.heap.c_allocator else if (traces) leak_trace.allocator() else leak_check.allocator();
+    defer if (options.check_leaks) {
+        const leaked = if (traces) leak_trace.deinit() == .leak else leak_check.deinit() == .leak;
+        err_out.print("repl: --check-leaks: {s}\n", .{if (leaked) "leaks reported above" else "no leaks"}) catch {};
+        err_out.flush() catch {};
+    };
 
     // The process first (crane.Process), as the WPT runner starts it: the
     // engine, its snapshot - the one beside this binary - and every hook.

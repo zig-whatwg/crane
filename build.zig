@@ -4427,12 +4427,25 @@ pub fn build(b: *std.Build) void {
     // evaluation waits (Browser.spinEventLoopUntil), results printed by the
     // Console Standard's printer (src/console/printer.zig). Its imports are
     // the ones the console uses, and nothing else.
+    // The console is a user-facing tool: ReleaseSafe unless asked otherwise,
+    // the WPT runner's rule (tests/wpt_runner/build_mode.zig runnerModes,
+    // pinned by its tests) - `-Drepl-optimize=Debug` (or an explicit
+    // `-Doptimize=Debug`) builds the Debug console a diagnosis wants. Its
+    // root decides the LLVM pipeline of all of its Zig; Crane's modules keep
+    // -Doptimize's `builtin.mode`. A Debug console was slow to the point of
+    // lag: std's Debug allocator captures a stack trace per allocation and
+    // free (tools/repl.zig, main, chooses its own allocator too).
+    const repl_optimize = runner_build_mode.runnerModes(
+        b.option(std.builtin.OptimizeMode, "repl-optimize", "Optimize mode of the browser console (default: ReleaseSafe, or -Doptimize when given; Debug for a diagnosis)"),
+        optimize,
+        b.user_input_options.contains("optimize") or b.graph.release_mode != .off,
+    ).root;
     const repl_exe = b.addExecutable(.{
         .name = "repl",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/repl.zig"),
             .target = target,
-            .optimize = optimize,
+            .optimize = repl_optimize,
             .imports = &.{
                 .{ .name = "engine", .module = engine_mod },
                 .{ .name = "browser", .module = browser_mod },

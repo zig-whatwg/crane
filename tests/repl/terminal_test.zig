@@ -167,3 +167,26 @@ test "the command line: a URL, the Browser's options, and what is refused" {
     // A profile directory is taken, for the console to refuse it.
     try testing.expectEqualStrings("/tmp/p", (try repl.parseOptions(&.{"--profile=/tmp/p"}, &bad)).profile.?);
 }
+
+test "Ctrl+C at a prompt, as Node's REPL: the line goes; on an empty prompt the first says how to exit and a second exits; any other key between resets it" {
+    const ExitGuard = repl.ExitGuard;
+    var guard: ExitGuard = .{};
+    try testing.expectEqual(ExitGuard.Answer.clear_line, guard.interrupt(false, false));
+    try testing.expectEqual(ExitGuard.Answer.hint, guard.interrupt(true, false));
+    try testing.expectEqual(ExitGuard.Answer.exit, guard.interrupt(true, false));
+
+    guard = .{};
+    try testing.expectEqual(ExitGuard.Answer.hint, guard.interrupt(true, false));
+    guard.key();
+    try testing.expectEqual(ExitGuard.Answer.hint, guard.interrupt(true, false));
+    // An input continued over lines (`...`): the input goes, never an exit.
+    try testing.expectEqual(ExitGuard.Answer.clear_line, guard.interrupt(true, true));
+    try testing.expectEqual(ExitGuard.Answer.hint, guard.interrupt(true, false));
+    try testing.expectEqualStrings("(To exit, press Ctrl+C again or Ctrl+D or type .exit)\n", ExitGuard.hint_text);
+}
+
+test "--check-leaks is an option of its own" {
+    var bad: []const u8 = "";
+    try testing.expect(!(try repl.parseOptions(&.{}, &bad)).check_leaks);
+    try testing.expect((try repl.parseOptions(&.{"--check-leaks"}, &bad)).check_leaks);
+}

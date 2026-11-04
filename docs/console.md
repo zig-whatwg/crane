@@ -13,8 +13,15 @@ zig build repl-exe -j2 -Doptimize=ReleaseSafe --cache-dir ~/Library/Caches/crane
 ```
 
 `zig build repl-exe` builds the console and its snapshot (`zig-out/bin/whatwg_snapshot.bin`, read
-from beside the binary) and nothing else; `zig build repl -- <args>` builds it and runs it. A Debug
-build (`-Doptimize=Debug`, the default) works the same, slower.
+from beside the binary) and nothing else; `zig build repl -- <args>` builds it and runs it.
+
+The console builds **ReleaseSafe by default**, as the WPT runner does: it is a tool people use, and a
+Debug console lags (std's Debug allocator captured a stack trace on every allocation and free).
+`-Drepl-optimize=Debug` (or an explicit `-Doptimize=Debug`) builds the Debug console, for a diagnosis
+in a debugger; Crane's own modules keep `-Doptimize`'s mode either way, so their Debug-only checks stay.
+The console allocates with libc malloc; `--check-leaks` gives it a leak-checking allocator instead
+(no per-allocation traces; `CRANE_LEAK_TRACES=1` adds a six-frame trace to each leak), and the leaks
+are reported when it exits.
 
 ```
 repl [<url>] [--user-agent=<s>] [--proxy=system|direct|<url>] [--accept-insecure-certs]
@@ -32,6 +39,7 @@ repl [<url>] [--user-agent=<s>] [--proxy=system|direct|<url>] [--accept-insecure
 | `--ca-bundle=<pem>` | Trust this PEM bundle besides the system's (WPT's `tools/certs/cacert.pem`). |
 | `--timeout=<ms>` | How long a load, or an evaluation, is waited for (30000). |
 | `--wait-for-navigation` | On a terminal too, an input that starts a navigation holds the next prompt until it has loaded (piped input always does). |
+| `--check-leaks` | A leak-checking allocator; leaks are reported at exit (`CRANE_LEAK_TRACES=1` for traces). |
 
 `--profile=<dir>` is refused: no store persists yet (cookies, localStorage, IndexedDB, the Cache
 API and the HTTP cache are all in memory, and the Browser writes nothing to disk). Persistence is
@@ -42,8 +50,10 @@ queued (STORAGE PERSISTENCE).
 Type JavaScript; Enter evaluates once the input is complete (an open block asks for more with
 `...`). Input is evaluated as Chrome's console evaluates it (REPL mode): top-level `await`, and a
 `let`, `const` or `class` declared again replaces the earlier one. Tab completes a name, the arrows
-walk the history, Ctrl+C stops waiting for an evaluation or a load (and aborts a synchronous script
-that runs too long), Ctrl+D exits.
+walk the history. Ctrl+C stops waiting for an evaluation or a load (and aborts a synchronous script
+that runs too long); at a prompt it clears the line, and at an empty prompt it says
+"(To exit, press Ctrl+C again or Ctrl+D or type .exit)" - a second Ctrl+C exits, as in Node's REPL.
+Ctrl+D or `.exit` exits.
 
 The page is live while the console waits for input: timers fire, fetches complete, workers post,
 navigations proceed. What the page prints - `console.log` and the rest, from the page, its frames,
@@ -74,7 +84,7 @@ line reads the page the line before it left.
 | `.tab <n>` | Evaluate in tab `<n>` from now on. |
 | `.close [<n>]` | Close a popup (HTML "close": beforeunload, unload, destroy). |
 | `.newtab` | Not supported yet (HOST-OPENED TABS: the host page's realm is entered for its life). |
-| `.help`, `.exit` | |
+| `.help`, `.exit` | `.exit` ends the console, as Ctrl+D does, and Ctrl+C twice at an empty prompt. |
 
 ## Scripted use
 
