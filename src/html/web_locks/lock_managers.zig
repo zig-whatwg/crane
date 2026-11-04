@@ -13,6 +13,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const Hook = @import("dom").Hook;
 
 /// What LockManager supplies.
 pub const Implementation = struct {
@@ -22,26 +23,24 @@ pub const Implementation = struct {
 };
 
 // process-wide: function pointers LockManager installs once at process start (crane.Process), the same for every instance
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by LockManager's installHooks, once, at process start
 /// (dom.process_start).
 pub fn install(impl: Implementation) void {
-    @import("dom").process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// The LockManager of `realm`'s environment. NotSupported before LockManager
 /// installed the hook (a context built for tests without one).
 pub fn of(realm: runtime.Context) anyerror!*runtime.Instance {
-    const impl = implementation orelse return error.NotSupported;
+    const impl = implementation.get() orelse return error.NotSupported;
     return impl.of(realm);
 }
 
 test "without an installed implementation there is no LockManager" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: with no implementation nothing reads it.
     var realm: runtime.ContextData = undefined;
     try std.testing.expectError(error.NotSupported, of(&realm));

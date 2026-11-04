@@ -74,7 +74,9 @@ const Nested = struct {
     var current: ?*Nested = null;
 
     fn hookedDeinit(instance: *runtime.Instance) void {
-        const self = current.?;
+        // No Nested: the test has returned, and only this object's teardown
+        // is left (the test ends its outer realm first on every path).
+        const self = current orelse return interfaces.TextEncoder.vtable.deinit.?(instance);
         self.original_deinit(instance);
         if (self.ran) return;
         self.ran = true;
@@ -110,6 +112,13 @@ test "a realm ended inside another realm's teardown leaves that teardown its coo
     nested.hooked_vtable.deinit = &Nested.hookedDeinit;
     Nested.current = &nested;
     defer Nested.current = null;
+    // Every way out ends the outer realm while the hook still finds
+    // `current`: a defer declared after `current`'s runs before it. Left to
+    // the agent's end after a failed step, its teardown ran the hook with no
+    // Nested, and the failure was a crash (lane crashes7: the same shape in
+    // workerteardown1_global_last_test).
+    var outer_ended = false;
+    defer if (!outer_ended) protocol.destroyWindowRealm(outer, .global_detached);
 
     // The hooked object, wrapped in the outer realm (its cache's sweep tears
     // it down when the outer realm ends).
@@ -122,6 +131,7 @@ test "a realm ended inside another realm's teardown leaves that teardown its coo
     }
 
     protocol.destroyWindowRealm(outer, .global_detached);
+    outer_ended = true;
 
     try testing.expect(nested.ran);
     // The outer teardown was still under way after the inner one returned,

@@ -21,6 +21,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const Instance = @import("instance.zig").Instance;
+const Hook = @import("process").Hook;
 
 /// What a counted type's VTable points at. One table for every counted type:
 /// the runtime dispatches through it, and the owner the hooks name decides.
@@ -52,17 +53,17 @@ pub const Hooks = struct {
 };
 
 // process-wide: dom.refcount's two functions, installed once while the process starts (refcount.install, from Document's and Node's installHooks) and the same for every Browser and thread; read-only after
-var hooks: Hooks = .{};
+var hooks: Hook(Hooks) = .init(.{});
 
 /// The owner of the counts installs its hooks: once, while the process starts
-/// (its caller asserts it). A field left null keeps what is installed.
-/// Installing what is installed writes nothing (`merged`): a test start's
-/// re-install while another Browser's thread reads the hooks is then no data
-/// race (ThreadSanitizer, the many-Browsers variant: lane tsanfix1's
-/// sc2_shadow_import_drop). The full move onto dom.Hook (src/dom/hook.zig)
-/// is the P-res batch's, once Hook lives in a module below runtime.
+/// (the slot refuses any other write). A field left null keeps what is
+/// installed. Installing what is installed writes nothing (`merged`, and
+/// Hook.install compares): a test start's re-install while another Browser's
+/// thread reads the hooks is then no data race (ThreadSanitizer, the
+/// many-Browsers variant: lane tsanfix1's sc2_shadow_import_drop).
 pub fn install(owned: Hooks) void {
-    if (merged(hooks, owned)) |next| hooks = next;
+    const current = hooks.get();
+    hooks.install(merged(current, owned) orelse current);
 }
 
 /// `current` with `owned`'s non-null fields, or null when that changes
@@ -95,12 +96,15 @@ test "installing the hooks already installed writes nothing; a new or changed on
     try std.testing.expect(changed.acquire == &T.acquire);
 }
 
-/// Tests: replace the hooks, returning the ones there were.
-pub fn swapHooksForTest(replacement: Hooks) Hooks {
-    if (!builtin.is_test) @compileError("swapHooksForTest is for tests");
-    const previous = hooks;
-    hooks = replacement;
-    return previous;
+/// A test's override of the hooks (`overrideHooksForTest`).
+pub const HooksOverride = Hook(Hooks).Override;
+
+/// Tests: `replacement` until the returned guard's `restore()`, which the
+/// test calls before it ends (Hook.overrideForTest). Start the process
+/// first: its start installs dom.refcount's hooks UNDER the override, and
+/// the restore brings those back.
+pub fn overrideHooksForTest(replacement: Hooks) HooksOverride {
+    return hooks.overrideForTest(replacement);
 }
 
 /// `instance`'s wrapper was made and cached: it takes its reference. The
@@ -109,7 +113,7 @@ pub fn swapHooksForTest(replacement: Hooks) Hooks {
 /// (`VTable.counted`), or when no owner is installed.
 pub fn wrapperAcquired(instance: *Instance) ?*anyopaque {
     _ = instance.vtable.counted orelse return null;
-    const acquire = hooks.acquire orelse return null;
+    const acquire = hooks.read().acquire orelse return null;
     return acquire(instance);
 }
 
@@ -119,7 +123,7 @@ pub fn wrapperAcquired(instance: *Instance) ?*anyopaque {
 /// the wrapper lived (shadow mode: the collector still frees). Never inside a
 /// collection; on the agent's thread.
 pub fn wrapperReleased(target: *anyopaque) void {
-    const release = hooks.release orelse return;
+    const release = hooks.read().release orelse return;
     release(target);
 }
 
@@ -130,7 +134,7 @@ pub fn wrapperReleased(target: *anyopaque) void {
 /// batch free. SHADOW MODE only: once counts decide (step 7) a node with a
 /// wrapper is held, and is never freed under it.
 pub fn wrapperForgotten() void {
-    const forget = hooks.forget orelse return;
+    const forget = hooks.read().forget orelse return;
     forget();
 }
 

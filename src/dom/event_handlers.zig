@@ -25,7 +25,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 pub const Implementation = struct {
     get: *const fn (*runtime.Instance, []const u8) ?usize,
@@ -40,7 +40,7 @@ pub const Implementation = struct {
 };
 
 // process-wide: hook table written once at process start by EventTarget.installHooks (B0); comptime in B9
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// What compiling a raw uncompiled handler came to.
 pub const RawCompile = union(enum) {
@@ -83,25 +83,23 @@ pub const RawSource = struct {
 };
 
 // process-wide: a function pointer Element's installHooks writes once at process start, the same for every Browser
-var raw_compiler: ?RawCompiler = null;
+var raw_compiler: Hook(?RawCompiler) = .init(null);
 
 /// Install the owner's steps before any Browser exists.
 pub fn install(steps: Implementation) void {
-    process_start.assertInstalling();
-    implementation = steps;
+    implementation.install(steps);
 }
 
 /// Install Element's raw-handler compiling step before any Browser exists.
 pub fn installRawCompiler(compiler: RawCompiler) void {
-    process_start.assertInstalling();
-    raw_compiler = compiler;
+    raw_compiler.install(compiler);
 }
 
 /// The event handler content attribute change steps 5.2-5.6 for an element
 /// given `target`: its handler for
 /// `event_type` becomes an internal raw uncompiled handler, activated.
 pub fn setRaw(target: *runtime.Instance, event_type: []const u8, source: RawSource) !void {
-    const steps = implementation orelse return error.NotSupported;
+    const steps = implementation.get() orelse return error.NotSupported;
     const set_raw = steps.set_raw orelse return error.NotSupported;
     return set_raw(target, event_type, source);
 }
@@ -110,7 +108,7 @@ pub fn setRaw(target: *runtime.Instance, event_type: []const u8, source: RawSour
 /// (EventTarget's "getting the current value"). With no compiler installed
 /// the handler stays raw: nothing can compile it.
 pub fn compileRaw(target: *runtime.Instance, event_type: []const u8, source: RawSource) RawCompile {
-    const compiler = raw_compiler orelse return .scripting_disabled;
+    const compiler = raw_compiler.get() orelse return .scripting_disabled;
     return compiler(target, event_type, source);
 }
 
@@ -232,13 +230,13 @@ pub fn determineTarget(this: *runtime.Instance, name: []const u8) ?*runtime.Inst
 
 /// Borrow the handler in the binding's representation.
 pub inline fn get(comptime Handler: type, target: *runtime.Instance, event_type: []const u8) Handler {
-    const address = (implementation orelse return null).get(target, event_type) orelse return null;
+    const address = (implementation.get() orelse return null).get(target, event_type) orelse return null;
     return fromAddress(Handler, address);
 }
 
 /// Hand the binding's handler value to EventTarget, or deactivate it.
 pub inline fn set(comptime Handler: type, target: *runtime.Instance, event_type: []const u8, handler: Handler) !void {
-    const steps = implementation orelse return error.NotSupported;
+    const steps = implementation.get() orelse return error.NotSupported;
     return steps.set(target, event_type, toAddress(Handler, handler));
 }
 
@@ -247,14 +245,14 @@ pub inline fn set(comptime Handler: type, target: *runtime.Instance, event_type:
 /// included (XHR send() step 5, "one or more event listeners are registered
 /// on this's upload object").
 pub fn hasListeners(target: *runtime.Instance) bool {
-    const steps = implementation orelse return false;
+    const steps = implementation.get() orelse return false;
     return steps.has_listeners(target);
 }
 
 /// HTML "erase all event listeners and handlers", including activated IDL
 /// event handlers. document.open applies this to its shadow-including tree.
 pub fn eraseAll(target: *runtime.Instance) void {
-    const steps = implementation orelse return;
+    const steps = implementation.get() orelse return;
     steps.erase(target);
 }
 
@@ -296,9 +294,8 @@ test "a content attribute's event type matches its IDL attribute's" {
 }
 
 test "without a compiler a raw handler stays raw" {
-    const saved = raw_compiler;
-    defer raw_compiler = saved;
-    raw_compiler = null;
+    const override = raw_compiler.overrideForTest(null);
+    defer override.restore();
     // Never dereferenced: nothing is installed to read it.
     var target: runtime.Instance = undefined;
     try std.testing.expectEqual(RawCompile.scripting_disabled, compileRaw(&target, "click", .{ .body = "", .url = "" }));

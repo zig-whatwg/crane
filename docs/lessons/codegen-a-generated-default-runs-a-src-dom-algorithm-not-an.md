@@ -3,7 +3,7 @@
 **Date**: 2026-10-12
 **Lesson**: When codegen supplies a member's implementation by default, the generated accessor calls a spec algorithm in src/dom (the generated modules import `dom`), never a helper file in src/webidl/impls/; what the IDL fixes - the attribute's name - is decided at compile time, so the default costs nothing the hand-written member did not.
 
-**Why**: AGENTS.md's impls boundary, rule 3: shared helpers do not live in src/webidl/impls/. A helper there is
+**Why**: src/webidl/AGENTS.md's impls boundary, rule 3: shared helpers do not live in src/webidl/impls/. A helper there is
 reached by `@import("impls").x` from every generated file, so the final module-graph step (impls batch B11,
 `impls` imported only by the generated layers) would keep a second door into impls open, and the lint does not
 count lower-case helper files (design 1.2). [Reflect]'s default set the precedent the wrong way:

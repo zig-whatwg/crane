@@ -26,9 +26,9 @@
 //! Spec: https://html.spec.whatwg.org/multipage/document-sequences.html#fully-active
 //!
 //! lint-impls: hook for Document
-const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
+const Hook = @import("hook.zig").Hook;
 
 /// A document's activity, as the event loop classifies a task's document.
 pub const Activity = enum {
@@ -51,12 +51,11 @@ pub const Implementation = struct {
 };
 
 // process-wide: function pointers Document installs once at process start (crane.Process), the same for every instance
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    implementation = impl;
+    implementation.install(impl);
 }
 
 /// The activity of the document a task names - `document` as queued, with
@@ -70,7 +69,7 @@ pub fn activity(document: *anyopaque, generation: u64) Activity {
     // Still the same object, so its context is too: a realm that has ended
     // has no document that can be fully active again.
     if (!instance.ctx.hasEngine()) return .gone;
-    const impl = implementation orelse return .fully_active;
+    const impl = implementation.get() orelse return .fully_active;
     return impl.activity(instance);
 }
 

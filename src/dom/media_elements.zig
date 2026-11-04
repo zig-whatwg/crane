@@ -2,7 +2,7 @@
 //! lint-impls: hook for MediaError, TextTrack, TextTrackList, HTMLTrackElement, HTMLSourceElement, HTMLMediaElement
 const std = @import("std");
 const runtime = @import("runtime");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 pub const ErrorCode = enum(u16) { aborted = 1, network = 2, decode = 3, source_not_supported = 4 };
 pub const Kind = enum { subtitles, captions, descriptions, chapters, metadata };
@@ -56,116 +56,127 @@ pub const Implementation = struct {
     video_size: ?NaturalSize = null,
 };
 // process-wide: hook table written only by its owners at process start (B0); immutable while Browsers run, comptime in B9
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
-fn installing() *Implementation {
-    process_start.assertInstalling();
-    if (implementation == null) implementation = .{};
-    return &implementation.?;
+/// The table as installed so far, for an owner to fill its part of and
+/// `implementation.install` whole: several owners fill this table, and an
+/// install of the table already there writes nothing (src/dom/hook.zig).
+fn installed() Implementation {
+    return implementation.get() orelse .{};
 }
 pub fn installMediaError(create: CreateError) void {
-    installing().create_error = create;
+    var table = installed();
+    table.create_error = create;
+    implementation.install(table);
 }
 pub fn installTextTrack(operations: TrackOperations) void {
-    installing().track = operations;
+    var table = installed();
+    table.track = operations;
+    implementation.install(table);
 }
 pub fn installTrackElement(changed: ModeChanged) void {
-    installing().mode_changed = changed;
+    var table = installed();
+    table.mode_changed = changed;
+    implementation.install(table);
 }
 pub fn installSourceElement(url: SourceURL) void {
-    installing().source_url = url;
+    var table = installed();
+    table.source_url = url;
+    implementation.install(table);
 }
 pub fn installMediaElement(delays_load: DelaysLoad, parent_changed: ParentChanged, mode_changed: TrackModeChanged, video_size: NaturalSize, selector_state: SelectorStateReader) void {
-    const table = installing();
+    var table = installed();
     table.delays_load = delays_load;
     table.parent_changed = parent_changed;
     table.track_mode_changed = mode_changed;
     table.video_size = video_size;
     table.selector_state = selector_state;
+    implementation.install(table);
 }
 pub fn selectorState(element: *runtime.Instance) ?SelectorState {
-    const read = (implementation orelse return null).selector_state orelse return null;
+    const read = (implementation.get() orelse return null).selector_state orelse return null;
     return read(element);
 }
 
 pub fn installTextTrackList(operations: ListOperations) void {
-    installing().list = operations;
+    var table = installed();
+    table.list = operations;
+    implementation.install(table);
 }
 pub fn createTextTrackList(ctx: runtime.Context) !*runtime.Instance {
-    const list = (implementation orelse return error.NotSupported).list orelse return error.NotSupported;
+    const list = (implementation.get() orelse return error.NotSupported).list orelse return error.NotSupported;
     return list.create(ctx);
 }
 pub fn appendTextTrack(object: *runtime.Instance, track: *runtime.Instance) !void {
-    const list = (implementation orelse return error.NotSupported).list orelse return error.NotSupported;
+    const list = (implementation.get() orelse return error.NotSupported).list orelse return error.NotSupported;
     return list.append(object, track);
 }
 pub fn removeTextTrack(object: *runtime.Instance, track: *runtime.Instance) void {
-    const list = (implementation orelse return).list orelse return;
+    const list = (implementation.get() orelse return).list orelse return;
     list.remove(object, track);
 }
 pub fn trackElementParentChanged(element: *runtime.Instance, old_parent: ?*runtime.Instance, new_parent: ?*runtime.Instance) void {
-    const changed = (implementation orelse return).parent_changed orelse return;
+    const changed = (implementation.get() orelse return).parent_changed orelse return;
     changed(element, old_parent, new_parent);
 }
 pub fn textTrackModeChanged(media: *runtime.Instance) void {
-    const changed = (implementation orelse return).track_mode_changed orelse return;
+    const changed = (implementation.get() orelse return).track_mode_changed orelse return;
     changed(media);
 }
 
 pub fn createError(ctx: runtime.Context, code: ErrorCode) !*runtime.Instance {
-    const create = (implementation orelse return error.NotSupported).create_error orelse return error.NotSupported;
+    const create = (implementation.get() orelse return error.NotSupported).create_error orelse return error.NotSupported;
     return create(ctx, code);
 }
 pub fn createTrackElementTrack(ctx: runtime.Context, kind: Kind, label: runtime.DOMString, language: runtime.DOMString, id: runtime.DOMString) !*runtime.Instance {
-    const track = (implementation orelse return error.NotSupported).track orelse return error.NotSupported;
+    const track = (implementation.get() orelse return error.NotSupported).track orelse return error.NotSupported;
     return track.create(ctx, kind, label, language, id);
 }
 pub fn updateTrackAttributes(object: *runtime.Instance, kind: Kind, label: runtime.DOMString, language: runtime.DOMString, id: runtime.DOMString) !void {
-    const track = (implementation orelse return error.NotSupported).track orelse return error.NotSupported;
+    const track = (implementation.get() orelse return error.NotSupported).track orelse return error.NotSupported;
     return track.update(object, kind, label, language, id);
 }
 /// Uninstalled setters/notifications are no-ops; readiness defaults to not_loaded.
 pub fn setTrackReadiness(object: *runtime.Instance, readiness: Readiness) void {
-    const track = (implementation orelse return).track orelse return;
+    const track = (implementation.get() orelse return).track orelse return;
     track.set_readiness(object, readiness);
 }
 pub fn trackReadiness(object: *runtime.Instance) Readiness {
-    const track = (implementation orelse return .not_loaded).track orelse return .not_loaded;
+    const track = (implementation.get() orelse return .not_loaded).track orelse return .not_loaded;
     return track.readiness(object);
 }
 pub fn linkTrackElement(object: *runtime.Instance, element: *runtime.Instance) void {
-    const track = (implementation orelse return).track orelse return;
+    const track = (implementation.get() orelse return).track orelse return;
     track.link_element(object, element);
 }
 pub fn trackElementDestroyed(object: *runtime.Instance) void {
-    const track = (implementation orelse return).track orelse return;
+    const track = (implementation.get() orelse return).track orelse return;
     track.element_destroyed(object);
 }
 pub fn trackModeChanged(element: *runtime.Instance, old_mode: Mode, new_mode: Mode) void {
-    const changed = (implementation orelse return).mode_changed orelse return;
+    const changed = (implementation.get() orelse return).mode_changed orelse return;
     changed(element, old_mode, new_mode);
 }
 /// Borrowed until src changes or the source is destroyed; copy before script.
 pub fn sourceURL(element: *runtime.Instance) ?[]const u8 {
-    const url = (implementation orelse return null).source_url orelse return null;
+    const url = (implementation.get() orelse return null).source_url orelse return null;
     return url(element);
 }
 /// The natural size of a video element's video: the media element owns the
 /// decoder that knows it, and HTMLVideoElement's videoWidth and videoHeight
 /// read it here. 0x0 when uninstalled.
 pub fn videoSize(element: *runtime.Instance) VideoSize {
-    const size = (implementation orelse return .{}).video_size orelse return .{};
+    const size = (implementation.get() orelse return .{}).video_size orelse return .{};
     return size(element);
 }
 pub fn mediaDelaysLoadEvent(document: *runtime.Instance) bool {
-    const delays_load = (implementation orelse return false).delays_load orelse return false;
+    const delays_load = (implementation.get() orelse return false).delays_load orelse return false;
     return delays_load(document);
 }
 
 test "uninstalled media hooks define every fallback without accessing an instance" {
-    const saved = implementation;
-    defer implementation = saved;
-    implementation = null;
+    const override = implementation.overrideForTest(null);
+    defer override.restore();
     var instance: runtime.Instance = undefined;
     var ctx: runtime.ContextData = undefined;
     try std.testing.expectError(error.NotSupported, createError(&ctx, .aborted));

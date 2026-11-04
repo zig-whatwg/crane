@@ -11,7 +11,8 @@ chain had passed minutes earlier. `ls` of Xcode's SDK folder showed only
 `MacOSX.sdk` and two `27` symlinks; 435 cache manifests in the build cache still
 named `MacOSX26.5.sdk`, the newest written that morning. Xcode had updated its
 SDK from 26.5 to 27.0 during the run. The next build then failed for real, on
-the `INFINITY` incompatibility described under "Before every commit".
+the `INFINITY` incompatibility described under "Before every commit" (since 2026-11-03
+in .claude/rules/build-and-toolchain.md, "The macOS SDK is the default one").
 
 **Fix**: `build.zig` now selects a buildable SDK itself (`useBuildableMacosSdk`).
 To triage the next one: `xcrun --sdk macosx --show-sdk-version`,

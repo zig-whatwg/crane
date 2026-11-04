@@ -14,7 +14,7 @@
 //! lint-impls: hook for EventTarget
 const std = @import("std");
 const runtime = @import("runtime");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 /// Whether `target`'s event listener list holds a listener whose type is
 /// `event_type` and whose removed is false - an activated event handler's
@@ -22,17 +22,16 @@ const process_start = @import("process_start.zig");
 pub const HasListenersOfType = *const fn (target: *runtime.Instance, event_type: []const u8) bool;
 
 // process-wide: a function pointer EventTarget's installHooks writes once at process start, the same for every Browser
-var implementation: ?HasListenersOfType = null;
+var implementation: Hook(?HasListenersOfType) = .init(null);
 
 /// Install the owner's step before any Browser exists.
 pub fn install(step: HasListenersOfType) void {
-    process_start.assertInstalling();
-    implementation = step;
+    implementation.install(step);
 }
 
 /// Whether `target` has a listener of `event_type` (false while no
 /// EventTarget step is installed: no target exists then).
 pub fn hasListenersOfType(target: *runtime.Instance, event_type: []const u8) bool {
-    const step = implementation orelse return false;
+    const step = implementation.get() orelse return false;
     return step(target, event_type);
 }

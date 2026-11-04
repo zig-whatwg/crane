@@ -32,6 +32,7 @@ const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const NodeBase = @import("node_base.zig").NodeBase;
+const Hook = @import("hook.zig").Hook;
 
 pub const ELEMENT_NODE: u16 = NodeBase.ELEMENT_NODE;
 pub const TEXT_NODE: u16 = NodeBase.TEXT_NODE;
@@ -151,17 +152,16 @@ pub const Implementation = struct {
 
 /// Process-wide, written once at start-up (process_start.zig).
 // process-wide: function pointers Element, Text and HTMLSlotElement install once at process start (crane.Process); they read only the instance they are given, so every Browser and thread shares them
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 /// Called by the owners' installHooks, once each, at process start
 /// (process_start.zig). Each installs only its own members.
 pub fn install(impl: Implementation) void {
-    process_start.assertInstalling();
-    var combined = implementation orelse Implementation{};
+    var combined = implementation.get() orelse Implementation{};
     if (impl.element_slottable) |f| combined.element_slottable = f;
     if (impl.text_slottable) |f| combined.text_slottable = f;
     if (impl.slot_state) |f| combined.slot_state = f;
-    implementation = combined;
+    implementation.install(combined);
 }
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
@@ -197,12 +197,12 @@ pub fn slottable(node: *NodeBase) ?Slottable {
     const instance = instanceOf(node) orelse return null;
     switch (node.node_type) {
         ELEMENT_NODE => {
-            const impl = implementation orelse return null;
+            const impl = implementation.get() orelse return null;
             const f = impl.element_slottable orelse return null;
             return f(instance);
         },
         TEXT_NODE => {
-            const impl = implementation orelse return null;
+            const impl = implementation.get() orelse return null;
             const f = impl.text_slottable orelse return null;
             const state = f(instance) orelse return null;
             return .{ .state = state, .name = "" };
@@ -214,7 +214,7 @@ pub fn slottable(node: *NodeBase) ?Slottable {
 /// `node`'s slot state, or null when it is not a slot.
 pub fn slotState(node: *NodeBase) ?*SlotState {
     if (!isSlot(node)) return null;
-    const impl = implementation orelse return null;
+    const impl = implementation.get() orelse return null;
     const f = impl.slot_state orelse return null;
     const instance = instanceOf(node) orelse return null;
     return f(instance);

@@ -2,8 +2,9 @@
 
 Crane's JavaScript engine is an adapter, and the protocol is the only way to
 reach it. This is the reference for what the protocol is and how it is
-extended. The rules that bind every change are in AGENTS.md ("The engine
-boundary"); how to move existing code onto the protocol is in
+extended. The rules that bind every change are in
+[src/runtime/AGENTS.md](../src/runtime/AGENTS.md) ("The engine boundary"); how
+to move existing code onto the protocol is in
 [engine-protocol-recipes.md](engine-protocol-recipes.md); why it was designed
 whole before anything migrated is in
 [the lesson](lessons/architecture-design-the-protocol-before-migrating.md).

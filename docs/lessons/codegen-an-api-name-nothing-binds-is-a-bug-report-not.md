@@ -5,7 +5,7 @@
 file called, 124 were stale - and six were the only visible trace of two real
 defects.
 
-**Why**: the name is the map (see "Names are the binding map"). An API-named
+**Why**: the name is the map (see src/webidl/AGENTS.md, "Names are the binding map"). An API-named
 function nothing binds means the map and the implementation disagree, and
 either side can be the wrong one.
 

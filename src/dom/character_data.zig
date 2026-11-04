@@ -17,11 +17,11 @@
 //! Spec: https://dom.spec.whatwg.org/#interface-characterdata
 //!
 //! lint-impls: hook for CharacterData, ProcessingInstruction
-const process_start = @import("process_start.zig");
 
 const std = @import("std");
 const infra = @import("infra");
 const runtime = @import("runtime");
+const Hook = @import("hook.zig").Hook;
 
 pub const Steps = struct {
     /// `node`'s data, borrowed (see above), or null when `node` has no
@@ -39,31 +39,29 @@ const Hooks = struct {
     processing_instruction: ?ProcessingInstructionSteps = null,
 };
 // process-wide: immutable algorithms set by install (CharacterData) and installProcessingInstruction at process start; each reads only the supplied node, with no instance state
-var steps: Hooks = .{};
+var steps: Hook(Hooks) = .init(.{});
 
 /// Called by CharacterData's installHooks, once, at process start (process_start.zig).
 pub fn install(s: Steps) void {
-    process_start.assertInstalling();
-    steps.character_data = s;
+    steps.installField("character_data", s);
 }
 
 /// `node`'s data, borrowed until it next changes: copy what you keep. Null
 /// when `node` is no CharacterData node (or CharacterData installed nothing).
 pub fn dataOf(node: *runtime.Instance) ?[]const u8 {
-    const s = steps.character_data orelse return null;
+    const s = steps.read().character_data orelse return null;
     return s.data_of(node);
 }
 
 /// Called by ProcessingInstruction's installHooks, once at process start.
 pub fn installProcessingInstruction(s: ProcessingInstructionSteps) void {
-    process_start.assertInstalling();
-    steps.processing_instruction = s;
+    steps.installField("processing_instruction", s);
 }
 
 /// Only CharacterData's PI branch calls this; ordinary Text mutations never
 /// enter the PI owner or parse any attributes.
 pub fn processingInstructionDataChanged(node: *runtime.Instance) void {
-    const s = steps.processing_instruction orelse return;
+    const s = steps.read().processing_instruction orelse return;
     s.data_changed(node);
 }
 

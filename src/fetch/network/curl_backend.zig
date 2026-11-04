@@ -39,10 +39,12 @@ const kit_curl = @import("kit_curl_share");
 // Browser reuses its own connections and never another's.
 
 /// How many holders curl's global state has (reference counted, thread-safe).
+// process-wide: libcurl's global init (curl_global_init/curl_global_cleanup) is one per process by libcurl's contract, whatever the number of Browsers; this counts its holders (crane.Process, each Browser's network) and is read and written only under global_init_mutex
 var global_init_count: usize = 0;
 // 0.16 removed std.Thread.Mutex. std.Io.Mutex is the replacement; the free
 // functions std.Io.Threaded.mutexLock/mutexUnlock drive it where no Io value is
 // in scope.
+// process-wide: the lock over libcurl's one-per-process global init and global_init_count; every Browser's thread that takes or releases curl's global state takes it first
 var global_init_mutex: std.Io.Mutex = .init;
 
 /// Initialize libcurl globally.

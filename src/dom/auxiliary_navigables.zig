@@ -16,7 +16,6 @@
 //! lint-impls: hook for HTMLIFrameElement, Window
 
 const std = @import("std");
-const process_start = @import("process_start.zig");
 const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
 const SandboxingFlagSet = @import("sandboxing.zig").SandboxingFlagSet;
@@ -79,12 +78,11 @@ pub const TopLevelChooser = struct {
 /// process start by Window's installHooks, the same for every Browser and
 /// thread.
 // process-wide: only a function pointer (Window's chooser), set once by installHooks at process start; it keeps no state, so one serves every Browser and thread
-var top_level_chooser: ?TopLevelChooser = null;
+var top_level_chooser: Hook(?TopLevelChooser) = .init(null);
 
 /// Called by Window's installHooks, once, at process start (process_start.zig).
 pub fn installTopLevelChooser(impl: TopLevelChooser) void {
-    process_start.assertInstalling();
-    top_level_chooser = impl;
+    top_level_chooser.install(impl);
 }
 
 /// "The rules for choosing a navigable" for `target` - not "_self",
@@ -94,7 +92,7 @@ pub fn installTopLevelChooser(impl: TopLevelChooser) void {
 /// with no opener and in a group of its own when `noopener`). Null when
 /// none can be made.
 pub fn chooseTopLevel(current_window: *runtime.Instance, target: []const u8, noopener: bool) ?Chosen {
-    const impl = top_level_chooser orelse return null;
+    const impl = top_level_chooser.get() orelse return null;
     return impl.choose(current_window, target, noopener);
 }
 

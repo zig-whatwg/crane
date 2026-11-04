@@ -6,9 +6,9 @@ const ShadowRootInit = @import("dictionaries").ShadowRootInit;
 pub const ValidityFlags = @import("dictionaries").ValidityStateFlags;
 pub const ValidationState = enum { inapplicable, valid, invalid };
 const core = @import("html_core");
-const process_start = @import("process_start.zig");
 const node_holds = @import("node_holds.zig");
 const instance_bridge = @import("instance_bridge.zig");
+const Hook = @import("hook.zig").Hook;
 
 pub const State = core.custom_element_reaction.State;
 pub const Definition = core.custom_element_definition.Definition(runtime, engine);
@@ -227,61 +227,52 @@ pub const FormSteps = struct {
 };
 const Implementation = struct { form: ?FormSteps = null, element: ?ElementSteps = null, owner: ?OwnerSteps = null, document: ?DocumentSteps = null, shadow: ?ShadowSteps = null, html_element: ?HTMLElementSteps = null, internals: ?InternalsSteps = null, custom_states: ?CustomStateSteps = null, validity: ?ValiditySteps = null };
 // process-wide: immutable function pointers installed at process start; all mutable data belongs to elements or agents, so many Browsers and threads share no reaction state
-var implementation: Implementation = .{};
+var implementation: Hook(Implementation) = .init(.{});
 
 pub fn installElement(steps: ElementSteps) void {
-    process_start.assertInstalling();
-    implementation.element = steps;
+    implementation.installField("element", steps);
 }
 pub fn installOwner(steps: OwnerSteps) void {
-    process_start.assertInstalling();
-    implementation.owner = steps;
+    implementation.installField("owner", steps);
 }
 pub fn installForm(steps: FormSteps) void {
-    process_start.assertInstalling();
-    implementation.form = steps;
+    implementation.installField("form", steps);
 }
 pub fn installDocument(steps: DocumentSteps) void {
-    process_start.assertInstalling();
-    implementation.document = steps;
+    implementation.installField("document", steps);
 }
 pub fn installShadow(steps: ShadowSteps) void {
-    process_start.assertInstalling();
-    implementation.shadow = steps;
+    implementation.installField("shadow", steps);
 }
 pub fn installHTMLElement(steps: HTMLElementSteps) void {
-    process_start.assertInstalling();
-    implementation.html_element = steps;
+    implementation.installField("html_element", steps);
 }
 pub fn installInternals(steps: InternalsSteps) void {
-    process_start.assertInstalling();
-    implementation.internals = steps;
+    implementation.installField("internals", steps);
 }
 pub fn installCustomStates(steps: CustomStateSteps) void {
-    process_start.assertInstalling();
-    implementation.custom_states = steps;
+    implementation.installField("custom_states", steps);
 }
 pub fn installValidity(steps: ValiditySteps) void {
-    process_start.assertInstalling();
-    implementation.validity = steps;
+    implementation.installField("validity", steps);
 }
 pub fn setValidityInternals(validity: *runtime.Instance, internals: *runtime.Instance) !void {
-    return (implementation.validity orelse return error.InvalidStateError).set_internals(validity, internals);
+    return (implementation.read().validity orelse return error.InvalidStateError).set_internals(validity, internals);
 }
 pub fn setValidityControl(validity: *runtime.Instance, control: *runtime.Instance) !void {
-    return (implementation.validity orelse return error.InvalidStateError).set_control(validity, control);
+    return (implementation.read().validity orelse return error.InvalidStateError).set_control(validity, control);
 }
 pub fn validityFlags(internals: *runtime.Instance) ValidityFlags {
-    return (implementation.internals orelse return .{}).validity_flags(internals);
+    return (implementation.read().internals orelse return .{}).validity_flags(internals);
 }
 pub fn validationState(element: *runtime.Instance) ValidationState {
-    return (implementation.internals orelse return .inapplicable).validation_state(element);
+    return (implementation.read().internals orelse return .inapplicable).validation_state(element);
 }
 pub fn disabledState(element: *runtime.Instance) ?bool {
-    return (implementation.internals orelse return null).disabled_state(element);
+    return (implementation.read().internals orelse return null).disabled_state(element);
 }
 pub fn setCustomStatesTarget(states: *runtime.Instance, target: *runtime.Instance) !void {
-    return (implementation.custom_states orelse return error.InvalidStateError).set_target(states, target);
+    return (implementation.read().custom_states orelse return error.InvalidStateError).set_target(states, target);
 }
 /// DOM's defined-element definition and HTML 4.16.3: registry association
 /// does not affect whether an uncustomized or custom element is defined.
@@ -292,14 +283,14 @@ pub fn isDefined(element: *runtime.Instance) bool {
 /// HTML :state() reads the target's states without materializing internals.
 pub fn matchesState(element: *runtime.Instance, name: []const u8) bool {
     const internals = attachedInternals(element) orelse return false;
-    const states = (implementation.internals orelse return false).states(internals) orelse return false;
-    return (implementation.custom_states orelse return false).has(states, name);
+    const states = (implementation.read().internals orelse return false).states(internals) orelse return false;
+    return (implementation.read().custom_states orelse return false).has(states, name);
 }
 pub fn attachedInternals(element: *runtime.Instance) ?*runtime.Instance {
-    return (implementation.html_element orelse return null).internals(element);
+    return (implementation.read().html_element orelse return null).internals(element);
 }
 pub fn ensureInternals(element: *runtime.Instance) !*runtime.Instance {
-    return (implementation.html_element orelse return error.InvalidStateError).ensure_internals(element);
+    return (implementation.read().html_element orelse return error.InvalidStateError).ensure_internals(element);
 }
 pub fn isFormAssociated(element: *runtime.Instance) bool {
     const data = get(element) orelse return false;
@@ -314,50 +305,50 @@ pub fn refreshForm(element: *runtime.Instance) void {
 /// Ordinary mutations must not expose precustomized elements as form controls.
 pub fn refreshFormAfterUpgrade(element: *runtime.Instance) void {
     const internals = ensureInternals(element) catch return;
-    (implementation.internals orelse return).refresh_form(internals);
+    (implementation.read().internals orelse return).refresh_form(internals);
 }
 pub fn appendFormEntries(element: *runtime.Instance, form_data: *runtime.Instance) !void {
     const internals = attachedInternals(element) orelse return;
-    return (implementation.internals orelse return error.InvalidStateError).append_form_entries(internals, form_data);
+    return (implementation.read().internals orelse return error.InvalidStateError).append_form_entries(internals, form_data);
 }
 pub fn setInternalsTarget(internals: *runtime.Instance, target: *runtime.Instance) !void {
-    return (implementation.internals orelse return error.InvalidStateError).set_target(internals, target);
+    return (implementation.read().internals orelse return error.InvalidStateError).set_target(internals, target);
 }
 pub fn setElementRegistry(element: *runtime.Instance, registry: ?*runtime.Instance) !void {
-    return (implementation.element orelse return error.InvalidStateError).set_registry(element, registry);
+    return (implementation.read().element orelse return error.InvalidStateError).set_registry(element, registry);
 }
 pub fn setDocumentRegistry(document: *runtime.Instance, registry: ?*runtime.Instance) !void {
-    return (implementation.document orelse return error.InvalidStateError).set_registry(document, registry);
+    return (implementation.read().document orelse return error.InvalidStateError).set_registry(document, registry);
 }
 pub fn ensureGlobalRegistry(document: *runtime.Instance) !*runtime.Instance {
-    return (implementation.document orelse return error.InvalidStateError).ensure_global_registry(document);
+    return (implementation.read().document orelse return error.InvalidStateError).ensure_global_registry(document);
 }
 pub fn setShadowRegistry(shadow: *runtime.Instance, registry: ?*runtime.Instance) !void {
-    return (implementation.shadow orelse return error.InvalidStateError).set_registry(shadow, registry);
+    return (implementation.read().shadow orelse return error.InvalidStateError).set_registry(shadow, registry);
 }
 pub fn attachShadow(host: *runtime.Instance, options: ShadowRootInit, registry: ?*runtime.Instance) !*runtime.Instance {
-    return (implementation.element orelse return error.InvalidStateError).attach_shadow(host, options, registry);
+    return (implementation.read().element orelse return error.InvalidStateError).attach_shadow(host, options, registry);
 }
 pub fn createShadow(host: *runtime.Instance, options: ShadowRootInit, registry: ?*runtime.Instance) !*runtime.Instance {
-    return (implementation.shadow orelse return error.InvalidStateError).create(host, options, registry);
+    return (implementation.read().shadow orelse return error.InvalidStateError).create(host, options, registry);
 }
 pub fn cloneShadowFlags(source: *runtime.Instance, copy: *runtime.Instance) void {
-    (implementation.shadow orelse return).clone_flags(source, copy);
+    (implementation.read().shadow orelse return).clone_flags(source, copy);
 }
 pub fn shadowAvailableToInternals(shadow: *runtime.Instance) bool {
-    return (implementation.shadow orelse return false).available_to_internals(shadow);
+    return (implementation.read().shadow orelse return false).available_to_internals(shadow);
 }
 pub fn shadowKeepsRegistryNull(shadow: *runtime.Instance) bool {
-    return (implementation.shadow orelse return false).keeps_registry_null(shadow);
+    return (implementation.read().shadow orelse return false).keeps_registry_null(shadow);
 }
 /// `node` was inserted (`old_parent` null), removed (`new_parent` null) or
 /// moved; the tree is in its new shape.
 pub fn formSubtreeMoved(node: *runtime.Instance, old_parent: ?*runtime.Instance, new_parent: ?*runtime.Instance) void {
-    (implementation.form orelse return).subtree_moved(node, old_parent, new_parent);
+    (implementation.read().form orelse return).subtree_moved(node, old_parent, new_parent);
 }
 /// An attribute in no namespace changed on `element`.
 pub fn formAttributeChanged(element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, new_value: ?[]const u8) void {
-    (implementation.form orelse return).attribute_changed(element, local_name, old_value, new_value);
+    (implementation.read().form orelse return).attribute_changed(element, local_name, old_value, new_value);
 }
 /// DOM's effective global custom element registry: a scoped registry yields null.
 pub fn effectiveGlobal(registry: ?*runtime.Instance) ?*runtime.Instance {
@@ -365,52 +356,52 @@ pub fn effectiveGlobal(registry: ?*runtime.Instance) ?*runtime.Instance {
     return if (isScoped(value)) null else value;
 }
 pub fn isScoped(registry: *runtime.Instance) bool {
-    return (implementation.owner orelse return false).is_scoped(registry);
+    return (implementation.read().owner orelse return false).is_scoped(registry);
 }
 pub fn associateDocument(registry: *runtime.Instance, document: *runtime.Instance) !void {
-    return (implementation.owner orelse return error.InvalidStateError).associate_document(registry, document);
+    return (implementation.read().owner orelse return error.InvalidStateError).associate_document(registry, document);
 }
 pub fn get(element: *runtime.Instance) ?ElementData {
-    return (implementation.element orelse return null).get(element);
+    return (implementation.read().element orelse return null).get(element);
 }
 /// DOM create-an-element's prefix, is value and custom-element state.
 pub fn initialize(element: *runtime.Instance, prefix: ?[]const u8, is_value: ?[]const u8, state: State) !void {
-    return (implementation.element orelse return error.InvalidStateError).initialize(element, prefix, is_value, state);
+    return (implementation.read().element orelse return error.InvalidStateError).initialize(element, prefix, is_value, state);
 }
 pub fn setState(element: *runtime.Instance, state: State) void {
-    (implementation.element orelse return).set_state(element, state);
+    (implementation.read().element orelse return).set_state(element, state);
 }
 pub fn setDefinition(element: *runtime.Instance, definition: ?*Definition) void {
-    (implementation.element orelse return).set_definition(element, definition);
+    (implementation.read().element orelse return).set_definition(element, definition);
 }
 /// DOM's shadow root concept, including closed roots. The IDL shadowRoot
 /// getter deliberately hides closed roots and cannot serve tree algorithms.
 pub fn shadowRootOf(element: *runtime.Instance) ?*runtime.Instance {
-    return (implementation.element orelse return null).shadow_root_of(element);
+    return (implementation.read().element orelse return null).shadow_root_of(element);
 }
 pub fn markEnqueued(element: *runtime.Instance) void {
-    (implementation.element orelse return).mark_enqueued(element);
+    (implementation.read().element orelse return).mark_enqueued(element);
 }
 pub fn cancelElement(element: *runtime.Instance) void {
-    (implementation.owner orelse return).cancel_element(element);
+    (implementation.read().owner orelse return).cancel_element(element);
 }
 /// The registry is explicit: lookup never substitutes an entered realm.
 pub fn lookup(registry: ?*runtime.Instance, namespace: ?[]const u8, local_name: []const u8, is_value: ?[]const u8) ?*Definition {
-    return (implementation.owner orelse return null).lookup(registry, namespace, local_name, is_value);
+    return (implementation.read().owner orelse return null).lookup(registry, namespace, local_name, is_value);
 }
 /// HTMLConstructor's registry lookup uses SameValue on the constructor.
 pub fn definitionForConstructor(registry: *runtime.Instance, realm: runtime.Context, constructor: runtime.JSValue) ?*Definition {
-    return (implementation.owner orelse return null).definition_for_constructor(registry, realm, constructor);
+    return (implementation.read().owner orelse return null).definition_for_constructor(registry, realm, constructor);
 }
 pub fn create(options: Creation) !*runtime.Instance {
-    return (implementation.owner orelse return error.InvalidStateError).create(options);
+    return (implementation.read().owner orelse return error.InvalidStateError).create(options);
 }
 pub fn tryUpgrade(element: *runtime.Instance) void {
-    (implementation.owner orelse return).try_upgrade(element);
+    (implementation.read().owner orelse return).try_upgrade(element);
 }
 pub fn hasDefinitions(realm: runtime.Context) bool {
-    return (implementation.owner orelse return false).has_definitions(realm);
+    return (implementation.read().owner orelse return false).has_definitions(realm);
 }
 pub fn enqueueCallback(element: *runtime.Instance, kind: CallbackType, args: CallbackArgs) void {
-    (implementation.owner orelse return).enqueue_callback(element, kind, args);
+    (implementation.read().owner orelse return).enqueue_callback(element, kind, args);
 }

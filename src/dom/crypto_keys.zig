@@ -3,7 +3,7 @@
 
 const runtime = @import("runtime");
 const Slots = @import("webcrypto").key.Slots;
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 
 pub const Implementation = struct {
     /// Takes ownership of slots on success only.
@@ -13,21 +13,20 @@ pub const Implementation = struct {
 };
 
 // process-wide: hook table written once at process start by CryptoKey.installHooks (B0); comptime in B9
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 pub fn install(value: Implementation) void {
-    process_start.assertInstalling();
-    implementation = value;
+    implementation.install(value);
 }
 
 /// Create in the key's relevant realm, transferring native ownership on success.
 pub fn create(realm: runtime.Context, slots: Slots) !*runtime.Instance {
-    const hooks = implementation orelse return error.NotSupportedError;
+    const hooks = implementation.get() orelse return error.NotSupportedError;
     return hooks.create(realm, slots);
 }
 
 /// Read slots without invoking any script-visible CryptoKey getter.
 pub fn get(key: *runtime.Instance) ?*const Slots {
-    const hooks = implementation orelse return null;
+    const hooks = implementation.get() orelse return null;
     return hooks.get(key);
 }

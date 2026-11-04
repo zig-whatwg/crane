@@ -5,7 +5,7 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const layer = @import("top_layer.zig");
-const process_start = @import("process_start.zig");
+const Hook = @import("hook.zig").Hook;
 const Instance = runtime.Instance;
 
 pub const Implementation = struct {
@@ -15,28 +15,27 @@ pub const Implementation = struct {
     inert: *const fn (*Instance) ?bool,
 };
 // process-wide: immutable dialog hook function pointers installed at process start, identical for every Browser and thread
-var implementation: ?Implementation = null;
+var implementation: Hook(?Implementation) = .init(null);
 
 pub fn install(steps: Implementation) void {
-    process_start.assertInstalling();
-    implementation = steps;
+    implementation.install(steps);
 }
 
 /// "Show a modal dialog", with the invoker supplied by command activation.
 pub fn showModal(subject: *Instance, source: ?*Instance) !void {
-    try (implementation orelse return error.NotSupported).show_modal(subject, source);
+    try (implementation.get() orelse return error.NotSupported).show_modal(subject, source);
 }
 
 /// "Close the dialog", retaining absence of the invoker's value attribute.
 pub fn close(subject: *Instance, result: webidl.Opt(runtime.DOMString), source: ?*Instance) !void {
-    try (implementation orelse return error.NotSupported).close(subject, result, source);
+    try (implementation.get() orelse return error.NotSupported).close(subject, result, source);
 }
 
 /// "Request to close the dialog", with the invoker supplied by command
 /// activation as the request close source element (HTML command steps,
 /// step 3); the IDL requestClose() passes null.
 pub fn requestClose(subject: *Instance, result: webidl.Opt(runtime.DOMString), source: ?*Instance) !void {
-    try (implementation orelse return error.NotSupported).request_close(subject, result, source);
+    try (implementation.get() orelse return error.NotSupported).request_close(subject, result, source);
 }
 
 /// Membership is independent of open, shared by selectors and popovers.
@@ -48,5 +47,5 @@ pub fn isModal(subject: *Instance) bool {
 
 /// Null means there is no modal, so focus keeps its existing ancestor walk.
 pub fn inertness(node: *Instance) ?bool {
-    return (implementation orelse return null).inert(node);
+    return (implementation.get() orelse return null).inert(node);
 }

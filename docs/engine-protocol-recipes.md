@@ -5,7 +5,8 @@ protocol, `@import("engine")` (src/runtime/engine_protocol.zig). One recipe
 per intent - what the code was trying to do - with the V8 pattern it replaces,
 the protocol call, who owns what, the pitfalls, and a before/after. The
 protocol itself is described in [engine-protocol.md](engine-protocol.md); the
-rules that bind every change are in AGENTS.md, "The engine boundary".
+rules that bind every change are in [src/runtime/AGENTS.md](../src/runtime/AGENTS.md), "The engine
+boundary".
 
 "Seen in" names files where the pattern was found when the recipes were
 written; most of them have migrated since, and are now the models to copy.
