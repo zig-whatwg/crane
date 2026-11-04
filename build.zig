@@ -2538,13 +2538,14 @@ pub fn build(b: *std.Build) void {
     // `-Dwpt-runner-optimize=Debug` (or an explicit `-Doptimize=Debug`) builds
     // the Debug runner, on the shared libraries, for a diagnosis.
     // `-Dwpt-runner-release` builds the release runner (build_mode.zig
-    // `release_runner`): every part ReleaseFast, no C sanitizer, libc's malloc -
-    // the build to time beside a browser's official release, never one to sweep
-    // or gate with (the user, 2026-11-04). It wins over -Dwpt-runner-optimize.
+    // `release_runner`): every part ReleaseSafe, the C code at ReleaseSafe's
+    // default sanitizer, libc's malloc - the build to time and measure beside a
+    // browser's official release, never one to sweep or gate with (the user,
+    // 2026-11-04). It wins over -Dwpt-runner-optimize.
     const runner_release = b.option(
         bool,
         "wpt-runner-release",
-        "The release runner, for timing beside a browser's release build: wpt_runner and gc_bench ReleaseFast throughout (Crane's modules and C libraries too), no C sanitizer, libc's malloc - no leak or double-free detection, so never for sweeps or gates",
+        "The release runner, for timing and memory beside a browser's release build: wpt_runner and gc_bench ReleaseSafe throughout (Crane's modules and C libraries too), the C code at ReleaseSafe's default sanitizer, libc's malloc - no leak or double-free detection, so never for sweeps or gates",
     ) orelse false;
     const runner_optimize_option = b.option(
         std.builtin.OptimizeMode,

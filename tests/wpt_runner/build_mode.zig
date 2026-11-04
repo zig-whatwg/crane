@@ -63,17 +63,18 @@ pub const RunnerModes = struct {
 };
 
 /// `-Dwpt-runner-release`: the runner as a release build of Crane runs - every
-/// part ReleaseFast (docs/swift-integration.md tells hosts to build Crane
-/// ReleaseFast; the benchmarks do), Zig's default C sanitizer (none in
-/// ReleaseFast), and the production allocator. It is the build to time beside
-/// a browser's official release (the user, 2026-11-04), never one to sweep or
-/// gate with: no Debug-only check runs (the refcount ledger, the isolate
-/// cleanup validation) and no leak or double free is reported.
+/// part ReleaseSafe (the user, 2026-11-04: "recompile with ReleaseSafe then
+/// re-run the comparison to Chrome"), so Crane's modules leave Debug and its
+/// Debug-only checks (the refcount ledger, the isolate cleanup validation) are
+/// gone; the C code at ReleaseSafe's own sanitizer default, `.trap`, not the
+/// correctness runner's `.full`; and the production allocator. It is the build
+/// to time and measure beside a browser's official release, never one to
+/// sweep or gate with: it reports no leak and no double free.
 pub const release_runner: RunnerModes = .{
-    .root = .ReleaseFast,
-    .crane_modules = .ReleaseFast,
-    .c_libraries = .ReleaseFast,
-    .sanitize_c = null,
+    .root = .ReleaseSafe,
+    .crane_modules = .ReleaseSafe,
+    .c_libraries = .ReleaseSafe,
+    .sanitize_c = .trap,
     .allocator = .production,
 };
 
