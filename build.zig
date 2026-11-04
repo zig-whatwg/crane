@@ -981,6 +981,13 @@ const TestLaunch = struct {
     /// `zig build test-verify`: the changed test files and their step
     /// (`TestVerify`).
     verify: *TestVerify,
+    /// -Dtest-filter=PATTERN, repeatable: run-time test selection. Each is
+    /// passed to every suite's launcher as `--filter=` (a test runs when any
+    /// pattern matches its whole name, `*` any run of characters;
+    /// tools/test_launcher/filter.zig). It changes no compile: every test
+    /// executable is the one the build's cache already holds, and a suite
+    /// that has no matching test runs nothing and passes.
+    filters: []const []const u8 = &.{},
 };
 
 /// `zig build test-verify` (the approved test plan, section 6: Gecko's
@@ -1283,13 +1290,17 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
     // recorded, the step passes (`VariantMode`).
     if ((many_browsers and config.many_browsers == .report) or (launch.sanitize_thread and config.sanitize_thread == .report)) run.addArg("--report-only");
     launch.test_exes.append(b.allocator, test_exe) catch @panic("OOM");
+    // -Dtest-filter: run-time selection, so the executable stays the cached
+    // one.
+    for (launch.filters) |pattern| run.addArg(b.fmt("--filter={s}", .{pattern}));
     // Relative to the repository root, where tests open their fixtures. A
-    // variant's results beside the suite's own, never over them:
-    // tmp/test-launch/<name>[.tsan][.many-browsers].jsonl (the timings stay
-    // the plain run's).
-    const variant = b.fmt("{s}{s}", .{
+    // variant's results, and a filtered run's, beside the suite's own, never
+    // over them: tmp/test-launch/<name>[.tsan][.many-browsers][.filtered].jsonl
+    // (the timings stay the plain full run's).
+    const variant = b.fmt("{s}{s}{s}", .{
         if (launch.sanitize_thread) ".tsan" else "",
         if (many_browsers) ".many-browsers" else "",
+        if (launch.filters.len != 0) ".filtered" else "",
     });
     run.addArg(b.fmt("--out=tmp/test-launch/{s}{s}.jsonl", .{ name, variant }));
     run.addArg(b.fmt("--timings=tmp/test-launch/{s}.jsonl", .{name}));
@@ -2931,6 +2942,7 @@ pub fn build(b: *std.Build) void {
                 break :test_exes list;
             },
             .verify = testVerifySelection(b),
+            .filters = b.option([]const []const u8, "test-filter", "Run only the tests this pattern matches (repeatable: any of them): the whole test name, `*` any run of characters - names start with the file's stem, so 'mutation_test*' is a file and '*removes*' any name holding 'removes'. Selected at run time: nothing recompiles, and a suite with no match runs nothing") orelse &.{},
         };
         break :launch l;
     };
