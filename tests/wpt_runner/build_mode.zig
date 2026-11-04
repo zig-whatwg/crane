@@ -167,17 +167,20 @@ test "the banner names each mode as -Doptimize spells it" {
     try testing.expectEqualStrings("ReleaseSmall", displayName(.small));
 }
 
-test "the release runner is ReleaseFast throughout, with no C sanitizer and the production allocator" {
-    // -Dwpt-runner-release (the user, 2026-11-04: "We should have the same
-    // compilation equiv as the release for Chrome"): the runner as a release
-    // build of Crane would run - for timing beside Chrome for Testing, an
-    // official release build. Never for sweeps or gates: it detects no leak
-    // and no double free.
+test "the release runner is ReleaseSafe throughout, at ReleaseSafe's own C sanitizer, with the production allocator" {
+    // -Dwpt-runner-release (the user, 2026-11-04: "recompile with ReleaseSafe
+    // then re-run the comparison to Chrome"): the runner as a release build of
+    // Crane would run, to time and measure beside Chrome for Testing, an
+    // official release build. Crane's modules leave Debug (no refcount ledger,
+    // no isolate cleanup validation), the C code takes ReleaseSafe's default
+    // sanitizer (.trap, not the correctness runner's .full), and the allocator
+    // is the one a host's release build gets. Never for sweeps or gates: it
+    // detects no leak and no double free.
     const modes = release_runner;
-    try testing.expectEqual(Mode.ReleaseFast, modes.root);
-    try testing.expectEqual(Mode.ReleaseFast, modes.crane_modules);
-    try testing.expectEqual(Mode.ReleaseFast, modes.c_libraries);
-    try testing.expectEqual(@as(?std.zig.SanitizeC, null), modes.sanitize_c);
+    try testing.expectEqual(Mode.ReleaseSafe, modes.root);
+    try testing.expectEqual(Mode.ReleaseSafe, modes.crane_modules);
+    try testing.expectEqual(Mode.ReleaseSafe, modes.c_libraries);
+    try testing.expectEqual(@as(?std.zig.SanitizeC, .trap), modes.sanitize_c);
     try testing.expectEqual(RunnerAllocator.production, modes.allocator);
     // Its Crane modules are not the shared graph's (built in -Doptimize's mode).
     try testing.expect(modes.ownGraph(.Debug));
