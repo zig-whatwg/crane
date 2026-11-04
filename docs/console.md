@@ -8,12 +8,15 @@ watch what the page prints, follow its navigations, its popups and its workers.
 ## Build and run
 
 ```bash
-zig build repl-exe -j2 -Doptimize=ReleaseSafe --cache-dir ~/Library/Caches/crane-z16-cache
+zig build repl-exe -j2 --cache-dir ~/Library/Caches/crane-z16-cache
 ./zig-out/bin/repl https://example.com
 ```
 
 `zig build repl-exe` builds the console and its snapshot (`zig-out/bin/whatwg_snapshot.bin`, read
-from beside the binary) and nothing else; `zig build repl -- <args>` builds it and runs it.
+from beside the binary) and nothing else; `zig build repl -- <args>` builds it and runs it. The
+snapshot generator is a Debug build whatever the mode (`-Dsnapshot-generator-optimize` for a
+diagnosis): the snapshot is the same for every mode, and the console's compile does not wait for it -
+only its install does.
 
 The console builds **ReleaseSafe by default**, as the WPT runner does: it is a tool people use, and a
 Debug console lags (std's Debug allocator captured a stack trace on every allocation and free).

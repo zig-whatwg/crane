@@ -4342,6 +4342,19 @@ pub fn build(b: *std.Build) void {
     // SNAPSHOT GENERATOR (must be defined before REPL and WPT runner)
     // ========================================================================
 
+    // The generator's mode is fixed - Debug, whatever -Doptimize says
+    // (tools/snapshot_generator_mode.zig): the blob it writes is a function
+    // of the source, not of the optimizer, and every artifact restores it
+    // whatever its own mode. Built with -Doptimize, a release build paid a
+    // second optimized compile of Crane before its snapshot could run.
+    // -Dsnapshot-generator-optimize builds another for a diagnosis.
+    const snapshot_generator_mode = @import("tools/snapshot_generator_mode.zig");
+    const snapshot_generator_optimize = snapshot_generator_mode.snapshotGeneratorMode(b.option(
+        std.builtin.OptimizeMode,
+        "snapshot-generator-optimize",
+        "Optimize mode of the V8 snapshot generator (default: Debug, whatever -Doptimize says)",
+    ));
+
     // Snapshot Generator tool for creating V8 heap snapshots with WebIDL interfaces
     const snapshot_gen_exe = b.addExecutable(.{
         .name = "snapshot_generator",
@@ -4356,7 +4369,7 @@ pub fn build(b: *std.Build) void {
             // scanner and the three cldr tools; this one was missed, and it would
             // have been the next failure after the V8 blocker is lifted.
             .target = b.graph.host,
-            .optimize = optimize,
+            .optimize = snapshot_generator_optimize,
             .imports = &.{
                 .{ .name = "runtime", .module = runtime_mod },
                 .{ .name = "v8", .module = v8_mod },
@@ -4389,12 +4402,24 @@ pub fn build(b: *std.Build) void {
     // Link C++ standard library
     snapshot_gen_exe.root_module.link_libcpp = true; //
 
+    // A ReleaseSafe generator (-Dsnapshot-generator-optimize) over the
+    // Debug-built C libraries links the full UBSan runtime they call into.
+    if (snapshot_generator_mode.sanitizeC(snapshot_generator_optimize)) |sanitizer| snapshot_gen_exe.root_module.sanitize_c = sanitizer;
+
     // Add run step for Snapshot Generator (manual use)
     const run_snapshot_gen = b.addRunArtifact(snapshot_gen_exe);
     run_snapshot_gen.addPassthruArgs();
 
     const snapshot_gen_step = b.step("snapshot-generator", "Run snapshot generator (use -- to pass output path)");
     snapshot_gen_step.dependOn(&run_snapshot_gen.step);
+
+    // tools/snapshot_generator_mode.zig: the generator's fixed mode, std-only.
+    const snapshot_generator_mode_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("tools/snapshot_generator_mode.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    }) });
+    test_step.dependOn(&addSuiteRun(b, launch, snapshot_generator_mode_tests, "tools-snapshot_generator_mode", null).step);
 
     // ========================================================================
     // SNAPSHOT GENERATION (auto-generate snapshot for fast browser startup)
@@ -4487,16 +4512,17 @@ pub fn build(b: *std.Build) void {
     repl_exe.root_module.link_libcpp = true;
 
     // The snapshot the console's Browser starts from (zig-out/bin/
-    // whatwg_snapshot.bin, beside the binary).
-    repl_exe.step.dependOn(&gen_snapshot.step);
-
-    b.installArtifact(repl_exe);
+    // whatwg_snapshot.bin, read beside the binary when it RUNS): its install
+    // waits for the generator, its compile does not, so the console's
+    // compile and the generator's build and run go side by side.
+    const install_repl = b.addInstallArtifact(repl_exe, .{});
+    install_repl.step.dependOn(&gen_snapshot.step);
+    b.getInstallStep().dependOn(&install_repl.step);
 
     // `zig build repl-exe`: the console alone - zig-out/bin/repl and its
     // snapshot - not the install step (19 artifacts, a root-module analysis
     // of the tree each: the ReleaseSafe console took ~2 h on the Mac that
     // way, 2026-11-02).
-    const install_repl = b.addInstallArtifact(repl_exe, .{});
     const repl_exe_step = b.step("repl-exe", "Build the browser console alone (zig-out/bin/repl)");
     repl_exe_step.dependOn(&install_repl.step);
 
