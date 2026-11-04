@@ -41,6 +41,9 @@ const protocol_modules = @import("protocol_modules.zig");
 const builtin = @import("builtin");
 const protocol_realms = @import("protocol_realms.zig");
 const protocol_scripts = @import("protocol_scripts.zig");
+/// [repl_mode]: console input in REPL mode, through the agent's inspector
+/// session.
+const protocol_repl = @import("protocol_repl.zig");
 const protocol_webassembly = @import("protocol_webassembly.zig");
 const support = @import("protocol_support.zig");
 
@@ -103,6 +106,11 @@ pub const capabilities: engine.Capabilities = .{
     // the agent's seed through V8::SetEntropySource (v8_wrapper.cpp
     // craneEntropySource), not the process-wide --random-seed.
     .seeded_random = .native,
+    // REPL mode through an in-process inspector session of the agent's own
+    // (protocol_repl.zig): Runtime.evaluate with replMode, as Deno's REPL
+    // does - V8's REPL scripts (v8::debug::EvaluateGlobal's repl mode) are
+    // public only through the inspector.
+    .repl_mode = .native,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.
@@ -347,6 +355,11 @@ pub fn evaluateClassicScript(realm: Context, source: engine.ScriptSource, url: [
 pub fn evaluateClassicScriptToString(realm: Context, source: engine.ScriptSource, url: []const u8, host_defined: ?*anyopaque, allocator: Allocator, reporter: engine.Reporter) Error![]u8 {
     forbidScriptInHold(realm);
     return protocol_scripts.evaluateClassicScriptToString(realm, source, url, host_defined, allocator, reporter);
+}
+
+pub fn evaluateReplScript(realm: Context, source: []const u8, steps: *const engine.PromiseReactionSteps, data: ?*anyopaque) Error!engine.ReplInput {
+    forbidScriptInHold(realm);
+    return protocol_repl.evaluateReplScript(realm, source, steps, data);
 }
 
 pub fn compileEventHandler(realm: Context, source: *const engine.EventHandlerSource, reporter: engine.Reporter) Error!?Owned {

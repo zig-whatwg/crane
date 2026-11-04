@@ -12,10 +12,13 @@
 //! Console state (counts, timers, groups) is stored in `runtime.Context.console_state`.
 //! This allows namespaces (which are stateless static objects) to maintain per-context state.
 //!
-//! ### Data Formatting
-//! The `data` parameter is `[]const runtime.JSValue` - values from WebIDL bindings.
-//! Full format specifier support (%s, %d, etc.) requires runtime type introspection.
-//! Current implementation provides basic string output with proper indentation.
+//! ### Formatting and printing
+//! The Standard's Formatter and Printer are the console module's
+//! (src/console/printer.zig), shared with the browser console
+//! (tools/repl.zig), so a value prints the same from console.log and as a
+//! console result. What a call prints is formatted first and written to
+//! stderr after, so no script (a getter the Printer reads) runs while stderr
+//! is locked.
 //!
 //! ### Indentation
 //! Group operations (group, groupCollapsed, groupEnd) manage indent level via group_stack.
@@ -25,63 +28,54 @@ const std = @import("std");
 const runtime = @import("runtime");
 const webidl = @import("webidl");
 const clock = @import("clock");
+const printer = @import("console").printer;
 
-/// Get indentation string for current group level
-fn getIndent(ctx: runtime.Context) []const u8 {
-    const indent_level = ctx.console_state.getIndentLevel();
-    if (indent_level == 0) return "";
-
-    // Each level = 2 spaces
-    const indent_spaces = indent_level * 2;
-    const max_indent = 32; // Max 16 levels
-    const spaces = "                                "; // 32 spaces
-    return spaces[0..@min(indent_spaces, max_indent)];
+/// The group stack's size: how many levels a message is indented.
+fn groupDepth(ctx: runtime.Context) usize {
+    return ctx.console_state.getIndentLevel();
 }
 
-/// Print message with indentation
+/// Write `bytes` to stderr, the console namespace's output.
+fn writeOut(bytes: []const u8) void {
+    var buffer: [256]u8 = undefined;
+    const stderr = std.debug.lockStderr(&buffer);
+    defer std.debug.unlockStderr();
+    stderr.file_writer.interface.writeAll(bytes) catch {};
+}
+
+/// Print a message of the console's own (a count, a timer's warning), at
+/// the group's indentation. Straight to stderr, allocating nothing: it runs
+/// no script, so nothing waits on the lock, and count() and time() on an
+/// existing label allocate nothing even under memory pressure
+/// (tests/v8/console_state_operations_test.zig).
 fn printIndented(ctx: runtime.Context, comptime fmt: []const u8, args: anytype) void {
-    const indent = getIndent(ctx);
-    if (indent.len > 0) {
-        std.debug.print("{s}", .{indent});
-    }
-    std.debug.print(fmt, args);
-    std.debug.print("\n", .{});
+    var buffer: [256]u8 = undefined;
+    const stderr = std.debug.lockStderr(&buffer);
+    defer std.debug.unlockStderr();
+    const out = &stderr.file_writer.interface;
+    out.splatByteAll(' ', groupDepth(ctx) * 2) catch return;
+    out.print(fmt ++ "\n", args) catch return;
 }
 
-/// Format and print console values
+/// Logger(logLevel, data) (Console 2.1): Formatter, then Printer.
 fn printConsoleValues(ctx: runtime.Context, data: []const runtime.JSValue) void {
-    const indent = getIndent(ctx);
-    if (indent.len > 0) {
-        std.debug.print("{s}", .{indent});
-    }
+    var line: std.Io.Writer.Allocating = .init(ctx.allocator);
+    defer line.deinit();
+    printer.printLogged(ctx.allocator, ctx, data, groupDepth(ctx), &line.writer) catch return;
+    writeOut(line.written());
+}
 
-    for (data, 0..) |value, i| {
-        if (i > 0) std.debug.print(" ", .{});
+/// Printer(logLevel, data) (Console 2.3) alone, without the Formatter.
+fn printValuesOnly(ctx: runtime.Context, data: []const runtime.JSValue) void {
+    var line: std.Io.Writer.Allocating = .init(ctx.allocator);
+    defer line.deinit();
+    printer.printValues(ctx.allocator, ctx, data, groupDepth(ctx), &line.writer) catch return;
+    writeOut(line.written());
+}
 
-        switch (value) {
-            .undefined => std.debug.print("undefined", .{}),
-            .null => std.debug.print("null", .{}),
-            .boolean => |b| std.debug.print("{}", .{b}),
-            .number => |n| {
-                if (std.math.isNan(n)) {
-                    std.debug.print("NaN", .{});
-                } else if (std.math.isInf(n)) {
-                    if (n > 0) {
-                        std.debug.print("Infinity", .{});
-                    } else {
-                        std.debug.print("-Infinity", .{});
-                    }
-                } else {
-                    std.debug.print("{d}", .{n});
-                }
-            },
-            .string => |s| std.debug.print("{s}", .{s.data}),
-            .handle => std.debug.print("[object]", .{}),
-            .instance => std.debug.print("[instance]", .{}),
-        }
-    }
-
-    std.debug.print("\n", .{});
+/// `text` as a string argument, borrowed.
+fn stringArgument(text: []const u8) runtime.JSValue {
+    return .{ .string = .{ .data = text, .owned = false } };
 }
 
 /// console.log(data...)
@@ -135,24 +129,34 @@ pub fn call_trace(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!
 ///
 /// WHATWG Console Standard: If !condition, Logger("assert", data)
 pub fn call_assert(ctx: runtime.Context, condition: webidl.Opt(bool), data: []const runtime.JSValue) anyerror!void {
-    const cond = if (condition.wasPassed()) condition.value else true;
-    if (!cond) {
-        const indent = getIndent(ctx);
-        if (indent.len > 0) std.debug.print("{s}", .{indent});
-        std.debug.print("Assertion failed", .{});
-        if (data.len > 0) {
-            std.debug.print(": ", .{});
-            for (data, 0..) |value, i| {
-                if (i > 0) std.debug.print(" ", .{});
-                switch (value) {
-                    .string => |s| std.debug.print("{s}", .{s.data}),
-                    .number => |n| std.debug.print("{d}", .{n}),
-                    .boolean => |b| std.debug.print("{}", .{b}),
-                    else => std.debug.print("[value]", .{}),
-                }
-            }
-        }
-        std.debug.print("\n", .{});
+    // 1. If condition is true, return.
+    const cond = if (condition.wasPassed()) condition.value else false;
+    if (cond) return;
+    // 2. Let message be a string without any formatting specifiers
+    //    indicating generically an assertion failure.
+    const message = "Assertion failed";
+    // 3. If data is empty, append message to data.
+    if (data.len == 0) return printConsoleValues(ctx, &.{stringArgument(message)});
+    switch (data[0]) {
+        // 4.3. Otherwise (first is a String): let concat be message, ": " and
+        //      first; set data[0] to concat.
+        .string => |first| {
+            const concat = std.mem.concat(ctx.allocator, u8, &.{ message, ": ", first.data }) catch return;
+            defer ctx.allocator.free(concat);
+            const changed = ctx.allocator.dupe(runtime.JSValue, data) catch return;
+            defer ctx.allocator.free(changed);
+            changed[0] = stringArgument(concat);
+            // 5. Perform Logger("assert", data).
+            printConsoleValues(ctx, changed);
+        },
+        // 4.2. If first is not a String, prepend message to data.
+        else => {
+            const changed = ctx.allocator.alloc(runtime.JSValue, data.len + 1) catch return;
+            defer ctx.allocator.free(changed);
+            changed[0] = stringArgument(message);
+            @memcpy(changed[1..], data);
+            printConsoleValues(ctx, changed);
+        },
     }
 }
 
@@ -204,9 +208,7 @@ pub fn call_time(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) any
         gop.key_ptr.* = owned_label;
         gop.value_ptr.* = clock.monotonicMillis();
     } else {
-        const indent = getIndent(ctx);
-        if (indent.len > 0) std.debug.print("{s}", .{indent});
-        std.debug.print("Timer '{s}' already exists\n", .{label_str});
+        printIndented(ctx, "Timer '{s}' already exists", .{label_str});
     }
 }
 
@@ -217,28 +219,20 @@ pub fn call_timeLog(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), 
     const label_str = if (label.wasPassed()) label.value.asSlice() else "default";
 
     if (ctx.console_state.timer_table.get(label_str)) |start_time| {
-        const now = clock.monotonicMillis();
-        const elapsed = now - start_time;
-        const indent = getIndent(ctx);
-        if (indent.len > 0) std.debug.print("{s}", .{indent});
-        std.debug.print("{s}: {d}ms", .{ label_str, elapsed });
-        if (data.len > 0) {
-            std.debug.print(" ", .{});
-            for (data, 0..) |value, i| {
-                if (i > 0) std.debug.print(" ", .{});
-                switch (value) {
-                    .string => |s| std.debug.print("{s}", .{s.data}),
-                    .number => |n| std.debug.print("{d}", .{n}),
-                    .boolean => |b| std.debug.print("{}", .{b}),
-                    else => std.debug.print("[value]", .{}),
-                }
-            }
-        }
-        std.debug.print("\n", .{});
+        // 3. Let duration be the time since startTime.
+        const elapsed = clock.monotonicMillis() - start_time;
+        // 4. Let concat be label, ": " and duration.
+        const concat = std.fmt.allocPrint(ctx.allocator, "{s}: {d}ms", .{ label_str, elapsed }) catch return;
+        defer ctx.allocator.free(concat);
+        // 5. Prepend concat to data.
+        const changed = ctx.allocator.alloc(runtime.JSValue, data.len + 1) catch return;
+        defer ctx.allocator.free(changed);
+        changed[0] = stringArgument(concat);
+        @memcpy(changed[1..], data);
+        // 6. Perform Printer("timeLog", data).
+        printValuesOnly(ctx, changed);
     } else {
-        const indent = getIndent(ctx);
-        if (indent.len > 0) std.debug.print("{s}", .{indent});
-        std.debug.print("Timer '{s}' does not exist\n", .{label_str});
+        printIndented(ctx, "Timer '{s}' does not exist", .{label_str});
     }
 }
 
@@ -255,9 +249,7 @@ pub fn call_timeEnd(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) 
         printIndented(ctx, "{s}: {d}ms - timer ended", .{ label_str, elapsed });
         ctx.allocator.free(entry.key); // Free the owned label string
     } else {
-        const indent = getIndent(ctx);
-        if (indent.len > 0) std.debug.print("{s}", .{indent});
-        std.debug.print("Timer '{s}' does not exist\n", .{label_str});
+        printIndented(ctx, "Timer '{s}' does not exist", .{label_str});
     }
 }
 
@@ -297,9 +289,7 @@ pub fn call_countReset(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString
     if (ctx.console_state.count_map.fetchRemove(label_str)) |entry| {
         ctx.allocator.free(entry.key); // Free the owned label string
     } else {
-        const indent = getIndent(ctx);
-        if (indent.len > 0) std.debug.print("{s}", .{indent});
-        std.debug.print("Count for '{s}' does not exist\n", .{label_str});
+        printIndented(ctx, "Count for '{s}' does not exist", .{label_str});
     }
 }
 
@@ -313,26 +303,29 @@ pub fn call_clear(ctx: runtime.Context) anyerror!void {
 
 /// console.table(tabularData, properties)
 ///
-/// WHATWG Console Standard: Display tabular data
+/// WHATWG Console Standard 1.1.7: "Fall back to just logging the argument if
+/// it can't be parsed as tabular" - no table is constructed yet, so the
+/// argument is logged (Logger("log", « tabularData »)).
 pub fn call_table(ctx: runtime.Context, tabularData: webidl.Opt(runtime.JSValue), properties: webidl.Opt(runtime.JSValue)) anyerror!void {
-    _ = tabularData; // TODO: Format as ASCII table
     _ = properties;
-    printIndented(ctx, "(table)", .{});
+    printConsoleValues(ctx, &.{if (tabularData.wasPassed()) tabularData.value else runtime.JSValue.jsUndefined});
 }
 
 /// console.dir(item, options)
 ///
-/// WHATWG Console Standard: Display object properties
+/// WHATWG Console Standard 1.1.10: 1. Let object be item with generic
+/// JavaScript object formatting applied. 2. Perform Printer("dir",
+/// « object », options).
 pub fn call_dir(ctx: runtime.Context, item: webidl.Opt(runtime.JSValue), options: webidl.Opt(?runtime.JSValue)) anyerror!void {
-    _ = item; // TODO: Inspect object properties
     _ = options;
-    printIndented(ctx, "(dir)", .{});
+    printValuesOnly(ctx, &.{if (item.wasPassed()) item.value else runtime.JSValue.jsUndefined});
 }
 
 /// console.dirxml(data...)
 ///
-/// WHATWG Console Standard: Display XML/HTML representation
+/// WHATWG Console Standard 1.1.11: each item as a DOM tree representation
+/// where it is a node (the Printer prints a node as its markup), else with
+/// optimally useful formatting; then Logger("dirxml", finalList).
 pub fn call_dirxml(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
-    _ = data; // TODO: Format as XML/HTML
-    printIndented(ctx, "(dirxml)", .{});
+    printConsoleValues(ctx, data);
 }
