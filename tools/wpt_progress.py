@@ -2854,6 +2854,191 @@ def _check_loss_exit_status():
                 raise AssertionError('history rebuild erased tracked losses')
 
 
+# ============================================================================
+# Reference runs (lane chromeref1): another engine's results beside Crane's
+# ============================================================================
+
+def _reference_fixture(date='2026-11-04T11:00:00Z', version='150.0.7000.1', engine='chrome'):
+    files = {
+        'dom/a.html': {'status': 'OK', 'passed': 3, 'failed': 0, 'timed_out': 0, 'notrun': 0, 'urls': 1, 'missing_urls': 0},
+        'dom/b.html': {'status': 'OK', 'passed': 1, 'failed': 0, 'timed_out': 0, 'notrun': 0, 'urls': 1, 'missing_urls': 0},
+        'url/u.html': {'status': 'OK', 'passed': 1, 'failed': 2, 'timed_out': 0, 'notrun': 0, 'urls': 1, 'missing_urls': 0},
+        'url/never.html': {'status': 'TIMEOUT', 'passed': 1, 'failed': 0, 'timed_out': 1, 'notrun': 0, 'urls': 1, 'missing_urls': 1},
+    }
+    for rec in files.values():
+        rec['engine'] = engine
+    return {
+        'format': 'crane-wpt-reference/1', 'engine': engine,
+        'run': {'browser_version': version, 'webdriver_version': version, 'channel': 'stable',
+                'wpt_revision': '56d7fe562b35dfcb063fac457f24bd0a38205481', 'worklist_commit': '0c228a97aa9',
+                'processes': 5, 'host': 'chat.local', 'command': 'wpt run chrome', 'date': date},
+        'product': engine, 'time_start': None, 'time_end': None,
+        'timing': {'processes': 5, 'reference': {'wall_s': 3600.5, 'user_s': 9000, 'sys_s': 1200},
+                   'crane': {'wall_s': 2400, 'user_s': 8000, 'sys_s': 400, 'files': 4, 'runner': 'main-0c228a97aa'},
+                   'overhead': {'files': 200, 'reference': {'wall_s': 60, 'user_s': 100, 'sys_s': 20},
+                                'crane': {'wall_s': 10, 'user_s': 30, 'sys_s': 5}}},
+        'coverage': {'sources': 4, 'sources_in_manifest': 4, 'sources_reported': 4, 'urls_expected': 6,
+                     'urls_reported': 5, 'urls_skipped': 0, 'urls_missing': 1, 'urls_outside': 0, 'urls_unknown': 0},
+        'files': files,
+    }
+
+
+def _check_reference_never_crane():
+    """A reference run's record is never Crane's: a journal line of another engine is refused
+    with a message, a state record of one is dropped, wpt-results/reference/ holds no journals,
+    and a reference.json outside it is ignored, named."""
+    import tempfile, io, contextlib
+    global RESULTS, STATE
+    saved = RESULTS, STATE
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            RESULTS, STATE = d, os.path.join(d, 'state.json')
+
+            def journal(rel, recs, mtime):
+                fn = os.path.join(d, rel)
+                os.makedirs(os.path.dirname(fn), exist_ok=True)
+                with open(fn, 'w') as f:
+                    for r in recs:
+                        f.write(json.dumps(r) + '\n')
+                os.utime(fn, (mtime, mtime))
+
+            mt = QUERY_REACHES_PAGE + 100
+            journal('sweep-abc1234/journal.jsonl', [
+                {'path': 'dom/a.html', 'status': 'OK', 'passed': 1, 'failed': 1},
+                {'path': 'dom/b.html', 'engine': 'chrome', 'status': 'OK', 'passed': 9}], mt)
+            # A reference run copied where Crane's runs are read, newer than Crane's.
+            journal('chrome-copy/journal.jsonl', [
+                {'path': 'dom/a.html', 'engine': 'chrome', 'status': 'OK', 'passed': 7}], mt + 1)
+            journal('top.jsonl', [{'path': 'url/u.html', 'engine': 'firefox', 'status': 'OK', 'passed': 4}], mt + 2)
+            # Nothing under reference/ is a journal, whatever its name.
+            journal('reference/journal.jsonl', [{'path': 'dom/a.html', 'status': 'OK', 'passed': 5}], mt + 3)
+            journal('reference/chrome-150/journal.jsonl', [{'path': 'dom/a.html', 'status': 'OK', 'passed': 6}], mt + 4)
+            with open(os.path.join(d, 'reference', 'chrome-150', 'reference.json'), 'w') as f:
+                json.dump(_reference_fixture(), f)
+            with open(os.path.join(d, 'sweep-abc1234', 'reference.json'), 'w') as f:
+                json.dump(_reference_fixture(), f)
+
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                records, files = load_results()
+            msg = out.getvalue()
+            assert records['dom/a.html']['passed'] == 1, records['dom/a.html']
+            assert 'dom/b.html' not in records and 'url/u.html' not in records
+            assert not any(os.sep + 'reference' + os.sep in f for f in files), files
+            assert 'refused 1 record of engine chrome in chrome-copy/journal.jsonl' in msg, msg
+            assert 'refused 1 record of engine chrome in sweep-abc1234/journal.jsonl' in msg, msg
+            assert 'refused 1 record of engine firefox in top.jsonl' in msg, msg
+            assert 'ignored sweep-abc1234/reference.json' in msg, msg
+
+            # A state that already holds another engine's record loses it, and says so.
+            with open(STATE) as f:
+                state = json.load(f)
+            state['url/never.html'] = {'path': 'url/never.html', 'engine': 'chrome', 'status': 'OK', 'passed': 3, '_mtime': 1}
+            with open(STATE, 'w') as f:
+                json.dump(state, f)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                records, _ = load_results()
+            assert 'url/never.html' not in records
+            assert 'dropped 1 record of another engine from' in out.getvalue(), out.getvalue()
+    finally:
+        RESULTS, STATE = saved
+
+
+def _check_reference_load():
+    """The newest valid reference of an engine is read from wpt-results/reference/<run>/;
+    one of Crane, of another format, or holding another engine's record is refused, named."""
+    import tempfile, io, contextlib
+    global RESULTS
+    saved = RESULTS
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            RESULTS = d
+
+            def put(run, ref):
+                os.makedirs(os.path.join(d, 'reference', run), exist_ok=True)
+                with open(os.path.join(d, 'reference', run, 'reference.json'), 'w') as f:
+                    json.dump(ref, f)
+
+            assert load_reference() is None
+            put('chrome-149', _reference_fixture(date='2026-10-01T00:00:00Z', version='149.0.1'))
+            put('chrome-150', _reference_fixture())
+            put('crane', _reference_fixture(engine='crane'))
+            bad = _reference_fixture(date='2026-12-01T00:00:00Z', version='151.0.1')
+            bad['files']['dom/a.html']['engine'] = 'firefox'
+            put('chrome-151', bad)
+            old = _reference_fixture(date='2026-12-02T00:00:00Z', version='152.0.1')
+            old['format'] = 'crane-wpt-reference/0'
+            put('chrome-152', old)
+            put('firefox-140', _reference_fixture(date='2026-12-03T00:00:00Z', version='140.0', engine='firefox'))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                ref = load_reference()
+            assert ref['run']['browser_version'] == '150.0.7000.1', ref['run']
+            assert ref['_dir'].endswith('chrome-150')
+            msg = out.getvalue()
+            assert 'reference/crane/reference.json' in msg and 'Crane' in msg, msg
+            assert 'reference/chrome-151/reference.json' in msg and 'firefox' in msg, msg
+            assert 'reference/chrome-152/reference.json' in msg, msg
+            assert load_reference('firefox')['run']['browser_version'] == '140.0'
+    finally:
+        RESULTS = saved
+
+
+def _check_reference_compare():
+    """Both engines' numbers over the same worklist, Crane's from its journal counts alone,
+    and the files each passes more subtests of, the most first."""
+    worklist = ['dom/a.html', 'dom/b.html', 'dom/c.html', 'url/never.html', 'url/u.html']
+    records = {
+        'dom/a.html': {'path': 'dom/a.html', 'status': 'OK', 'passed': 2, 'failed': 1, 'timed_out': 0, 'notrun': 0},
+        'dom/b.html': {'path': 'dom/b.html', 'status': 'TIMEOUT', 'passed': 0, 'failed': 0, 'timed_out': 0, 'notrun': 0},
+        'dom/c.html': {'path': 'dom/c.html', 'status': 'OK', 'passed': 2, 'failed': 0, 'timed_out': 0, 'notrun': 0},
+        'url/u.html': {'path': 'url/u.html', 'status': 'OK', 'passed': 3, 'failed': 0, 'timed_out': 0, 'notrun': 0},
+    }
+    cmp = compare_reference(worklist, records, _reference_fixture())
+    assert cmp['crane'] == {'pass': 7, 'reported': 8, 'fail': 1, 'timeout': 0, 'notrun': 0,
+                            'blocking': 1, 'clean': 2, 'run': 4}, cmp['crane']
+    assert cmp['ref'] == {'pass': 6, 'reported': 9, 'fail': 2, 'timeout': 1, 'notrun': 0,
+                          'blocking': 1, 'clean': 2, 'run': 4}, cmp['ref']
+    assert [(p, d) for p, d in cmp['ahead_ref']] == [('dom/a.html', 1), ('dom/b.html', 1)], cmp['ahead_ref']
+    assert [(p, d) for p, d in cmp['ahead_crane']] == [('url/u.html', 2)], cmp['ahead_crane']
+    assert cmp['only_ref'] == ['url/never.html'] and cmp['only_crane'] == ['dom/c.html']
+    assert cmp['areas']['dom'] == {'pass': 4, 'reported': 4, 'blocking': 0, 'run': 2}, cmp['areas']['dom']
+    assert cmp['areas']['url'] == {'pass': 2, 'reported': 5, 'blocking': 1, 'run': 2}, cmp['areas']['url']
+
+
+def _check_reference_render():
+    """The page shows the reference beside Crane's numbers, never in them."""
+    import tempfile
+    worklist = ['dom/a.html', 'dom/b.html', 'url/never.html', 'url/u.html']
+    records = {
+        'dom/a.html': {'path': 'dom/a.html', 'status': 'OK', 'passed': 2, 'failed': 1, 'timed_out': 0, 'notrun': 0},
+        'dom/b.html': {'path': 'dom/b.html', 'status': 'TIMEOUT', 'passed': 0, 'failed': 0, 'timed_out': 0, 'notrun': 0},
+        'url/u.html': {'path': 'url/u.html', 'status': 'OK', 'passed': 3, 'failed': 0, 'timed_out': 0, 'notrun': 0},
+    }
+    ref = _reference_fixture()
+    areas, _, _ = build(worklist, records)
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref)
+        page = open(out).read()
+        render(areas, worklist, records, [], out)
+        plain = open(out).read()
+    assert '<h2 class="section" id="versus">Crane and Chrome' in page
+    assert 'Chrome <code>150.0.7000.1</code>' in page and 'ChromeDriver <code>150.0.7000.1</code>' in page
+    assert '<code>56d7fe562b</code>' in page and '2026-11-04' in page
+    assert '<tr><td class="area">WPT subtests passing</td><td class="num">5 / 6</td><td class="num">6 / 9</td></tr>' in page
+    assert '<tr><td class="area">Blocking files</td><td class="num">1</td><td class="num">1</td></tr>' in page
+    assert '<tr><td class="area">The worklist, wall clock</td><td class="num">40 min 0 s</td><td class="num">1 h 0 min</td></tr>' in page
+    assert '<tr><td class="area">One empty test, harness alone</td><td class="num">250 ms</td><td class="num">1.50 s</td></tr>' in page
+    assert 'Where Chrome passes subtests Crane does not' in page and 'Where Crane passes subtests Chrome does not' in page
+    assert page.index('>dom/a.html<') < page.index('>dom/b.html<') < page.index('Where Crane passes subtests')
+    assert '<th class="hide-sm">Chrome&nbsp;pass&nbsp;/&nbsp;reported</th>' in page
+    # Crane's own gate and headline are untouched by the reference.
+    assert '<div class="verdict">1 blocking' in page and '<div class="verdict">1 blocking' in plain
+    assert 'Crane and Chrome' not in plain and 'Chrome&nbsp;pass' not in plain
+
+
 if __name__ == '__main__':
     if sys.argv[1:] == ['--self-test']:
         _check_declared_variants()
@@ -2870,6 +3055,10 @@ if __name__ == '__main__':
         _check_retry_counts()
         _check_loss_baseline_migration()
         _check_loss_exit_status()
+        _check_reference_never_crane()
+        _check_reference_load()
+        _check_reference_compare()
+        _check_reference_render()
         print('wpt_progress self-test: ok')
     else:
         sys.exit(main())
