@@ -688,6 +688,15 @@ test "reference: two sizes of overhead run separate a harness's start-up from wh
     try testing.expectEqual(HarnessSplit{ .per_test_s = 0, .startup_s = 0 }, harnessSplit(0, 60, 0, null));
 }
 
+test "reference: a run's CPU is the larger of its rusage and its sampled process tree, plus its server share" {
+    // rusage only: user + system + the shared server's share.
+    try testing.expectEqual(@as(f64, 7), (Measure{ .wall_s = 1, .user_s = 1, .sys_s = 2, .server_cpu_s = 4 }).cpu());
+    // Chrome's renderers that no parent waited for are missing from rusage, not from the samples.
+    try testing.expectEqual(@as(f64, 120), (Measure{ .wall_s = 1, .user_s = 72, .sys_s = 28, .tree_cpu_s = 120 }).cpu());
+    // A sample misses up to a second of each short process: rusage wins when larger.
+    try testing.expectEqual(@as(f64, 32.5 + 11.5), (Measure{ .wall_s = 1, .user_s = 25.5, .sys_s = 7, .tree_cpu_s = 30, .server_cpu_s = 11.5 }).cpu());
+}
+
 test "reference: a test URL's status is filed as Crane's runner files it" {
     try testing.expectEqualStrings("OK", fileStatus("OK").?);
     try testing.expectEqualStrings("TIMEOUT", fileStatus("TIMEOUT").?);

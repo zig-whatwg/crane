@@ -3377,6 +3377,9 @@ def _check_harness_split():
     assert harness_split(200, 60, 50, 61) == (0.3, 0.0)
     assert harness_split(0, 60) == (0.0, 0.0)
     assert measure_cpu({'user_s': 1, 'sys_s': 2}) == 3 and measure_cpu({'user_s': 1, 'sys_s': 2, 'server_cpu_s': 4}) == 7
+    # The sampled process tree wins when rusage missed processes no parent waited for, and not otherwise.
+    assert measure_cpu({'user_s': 72, 'sys_s': 28, 'tree_cpu_s': 120}) == 120
+    assert measure_cpu({'user_s': 25.5, 'sys_s': 7, 'tree_cpu_s': 30, 'server_cpu_s': 11.5}) == 44
 
 
 def _check_reference_render():
