@@ -5237,6 +5237,27 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&addSuiteRun(b, launch, lint_tombstones_tests, "tools-lint_tombstones", null).step);
 
     // ========================================================================
+    // The code-size report
+    // ========================================================================
+    // tools/code_size_report.zig groups a binary's functions by generic
+    // family - every instance of `V8Interface(X).constructorCallback` is one
+    // family - from its symbol table, with count and bytes per family: what
+    // LLVM emitted, so what LLVM Emit Object spent its time on (lane
+    // compiletime1; Rust's cargo-llvm-lines). `zig build code-size --
+    // <binary> [--top=N] [--base=<binary>] [--tsv]`.
+    const code_size_module = b.createModule(.{
+        .root_source_file = b.path("tools/code_size_report.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const code_size_run = b.addRunArtifact(b.addExecutable(.{ .name = "code_size_report", .root_module = code_size_module }));
+    code_size_run.has_side_effects = true;
+    code_size_run.setCwd(b.path("."));
+    code_size_run.addPassthruArgs();
+    b.step("code-size", "Group a binary's functions by generic family, with count and bytes (-- <binary> [--top=N] [--base=<binary>] [--tsv])").dependOn(&code_size_run.step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = code_size_module }), "tools-code_size_report", null).step);
+
+    // ========================================================================
     // WPT: the wpt.fyi upload package
     // ========================================================================
     // tools/wpt_upload_package.zig turns a supervised sweep's reports, result
