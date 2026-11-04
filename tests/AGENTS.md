@@ -129,7 +129,11 @@ a pool mirror (crane-remote's rsync renames each file into place, and the host's
 file events see it), but saves only the restart - a tests/dom file 241 s, a
 src/dom leaf 250 s, rebuild and run under `-Dspec=dom`. `-fincremental` cannot
 build anything on aarch64-macos with the pinned Zig (0.17.1-dev+77c319a0f0): each
-compile panics `TODO(MachO2): load archive` (a hello world too). And it could
+compile panics `TODO(MachO2): load archive` (a hello world too) - known and
+expected upstream: `-fincremental` on macOS selects the new Mach-O linker, still
+a stub, and the old one cannot do incremental either (ziglang/zig on Codeberg:
+#37268, closed as expected; #32053 "-fincremental -fllvm crashes self-hosted
+linkers", open). Retry when the pin moves. And it could
 save at most the Sema and code generation share (about 40% of a test binary's
 rebuild): LLVM Emit Object (about 58%) is redone whole either way.
 
