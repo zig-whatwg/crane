@@ -5012,6 +5012,11 @@ pub fn build(b: *std.Build) void {
                 }),
             });
             const run_harness_tests = addSuiteRun(b, launch, harness_tests, b.fmt("wpt_runner-{s}", .{std.fs.path.stem(src)}), null);
+            // test-verify for the runner's own modules: their tests live in
+            // the module (no *_test.zig), so each module root is its own
+            // "directory executable" of one file for the verify mode -
+            // -Dverify-files=tests/wpt_runner/work_queue.zig.
+            if (std.mem.startsWith(u8, src, "tests/wpt_runner/")) addTestVerify(b, launch, harness_tests, b.fmt("wpt_runner-{s}", .{std.fs.path.stem(src)}), "tests/wpt_runner", &.{std.fs.path.basename(src)});
             // manifest.zig has a regression test that reads the real
             // tests/wpt/MANIFEST.json by relative path (and skips itself when
             // the WPT checkout is absent), so it must run from the repo root.
