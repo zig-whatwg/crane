@@ -72,6 +72,92 @@ pub fn wantsAttribution(value: ?[]const u8) bool {
     return wantsTraces(v);
 }
 
+/// The byte the sweep allocator writes over every small block before it is
+/// freed (`Poisoning`). 0xdd, "dead" (the MSVC debug heap's fill for freed
+/// blocks): read back as a pointer, 0xdddd_dddd_dddd_dddd is not a canonical
+/// address on arm64 or x86-64, so a pointer read from freed memory faults at
+/// its first use; an enum tag or an optional's flag read from it is out of
+/// range or set.
+pub const poison_byte: u8 = 0xdd;
+
+/// The largest block `Poisoning` overwrites: the DebugAllocator's largest
+/// small size class at its default page size on these hosts (128 KiB pages:
+/// 32 KiB). A larger block is a large allocation, which
+/// the DebugAllocator unmaps when it is freed - a later read faults anyway -
+/// so writing it first would cost time and catch nothing more.
+pub const poison_limit: usize = 32 * 1024;
+
+/// The sweep allocator's front: every small block is overwritten with
+/// `poison_byte` as it is freed (lane crashes8).
+///
+/// Why: std.heap.DebugAllocator NEVER reuses a freed small slot (a bucket's
+/// slots are handed out once, and its page goes back only when every slot is
+/// free) and never writes to it, and `Allocator.destroy` writes nothing
+/// either (`Allocator.free` writes `undefined`, which is 0xaa only in a Debug
+/// build). So a struct freed under the ReleaseSafe correctness runner kept
+/// its exact bytes, and a read after its free found the right values: two
+/// service-worker use-after-frees (a body pump freed inside its own step,
+/// then read) passed there and crashed every time on the release runner,
+/// whose libc malloc writes its free list into a freed block. With the
+/// slot never reused AND poisoned, such a read is deterministic: a pointer
+/// read from it faults, at the read.
+///
+/// Thread-safe as the child is: the block is the caller's until the child's
+/// `free`, so the write happens before the child's lock. A free whose length
+/// is wrong (larger than the block) writes past it before the DebugAllocator
+/// reports the mismatch; that report still comes.
+pub const Poisoning = struct {
+    child: std.mem.Allocator,
+
+    pub fn allocator(self: *Poisoning) std.mem.Allocator {
+        return .{ .ptr = self, .vtable = &vtable };
+    }
+
+    const vtable: std.mem.Allocator.VTable = .{ .alloc = alloc, .resize = resize, .remap = remap, .free = free };
+
+    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret: usize) ?[*]u8 {
+        const self: *Poisoning = @ptrCast(@alignCast(ctx));
+        return self.child.rawAlloc(len, alignment, ret);
+    }
+
+    /// A small block shrunk in place keeps its slot: its tail is freed
+    /// memory from now on, and is poisoned like a free.
+    fn resize(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret: usize) bool {
+        const self: *Poisoning = @ptrCast(@alignCast(ctx));
+        if (!self.child.rawResize(memory, alignment, new_len, ret)) return false;
+        poisonTail(memory, new_len);
+        return true;
+    }
+
+    fn remap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret: usize) ?[*]u8 {
+        const self: *Poisoning = @ptrCast(@alignCast(ctx));
+        const moved = self.child.rawRemap(memory, alignment, new_len, ret) orelse return null;
+        if (moved == memory.ptr) poisonTail(memory, new_len);
+        return moved;
+    }
+
+    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret: usize) void {
+        const self: *Poisoning = @ptrCast(@alignCast(ctx));
+        if (memory.len <= poison_limit) @memset(memory, poison_byte);
+        self.child.rawFree(memory, alignment, ret);
+    }
+
+    fn poisonTail(memory: []u8, new_len: usize) void {
+        if (new_len >= memory.len or memory.len > poison_limit) return;
+        @memset(memory[new_len..], poison_byte);
+    }
+};
+
+/// Whether the sweep allocator poisons freed blocks: `CRANE_POISON_FREES`
+/// unset is `poison_by_default`; set, on when non-empty and not starting
+/// with '0' (as `CRANE_LEAK_TRACES`).
+pub const poison_by_default = true;
+
+pub fn wantsPoison(value: ?[]const u8) bool {
+    const v = value orelse return poison_by_default;
+    return wantsTraces(v);
+}
+
 /// What a `CRANE_LEAK_TRACES=1` run in an optimized runner must say first, or
 /// null. DebugAllocator starts a trace at the allocator's caller
 /// (`@returnAddress()` in std.mem.Allocator's alloc/dupe), and in an
@@ -729,4 +815,89 @@ test "attribution: after deinit allocations pass straight through, and frees sti
     a.free(made_before);
     attributing.enterFile("ignored.html");
     try testing.expectEqualStrings(Attributing.before_first_file, attributing.currentFile());
+}
+
+test "poisoning: a freed small block reads back as poison, a live neighbour keeps its bytes" {
+    // A child that never unmaps or reuses, so the freed bytes can be read
+    // back here.
+    var buffer: [256]u8 = undefined;
+    var fixed = std.heap.FixedBufferAllocator.init(&buffer);
+    var poisoning: Poisoning = .{ .child = fixed.allocator() };
+    const a = poisoning.allocator();
+    const freed = try a.alloc(u8, 24);
+    const neighbour = try a.alloc(u8, 24);
+    @memset(freed, 0x11);
+    @memset(neighbour, 0x22);
+    a.free(freed);
+    for (freed) |byte| try testing.expectEqual(poison_byte, byte);
+    for (neighbour) |byte| try testing.expectEqual(@as(u8, 0x22), byte);
+    a.free(neighbour);
+}
+
+test "poisoning: a pointer read from a freed struct is not a canonical address" {
+    const Node = struct { next: ?*u64, value: u64 };
+    var buffer: [256]u8 = undefined;
+    var fixed = std.heap.FixedBufferAllocator.init(&buffer);
+    var poisoning: Poisoning = .{ .child = fixed.allocator() };
+    const a = poisoning.allocator();
+    var target: u64 = 7;
+    const node = try a.create(Node);
+    node.* = .{ .next = &target, .value = 1 };
+    const bytes: [*]const u8 = @ptrCast(node);
+    a.destroy(node);
+    // What a stale `node.next` reads: every byte poison - an address with
+    // its top bits set, which arm64 and x86-64 both fault on.
+    const stale = std.mem.readInt(usize, bytes[0..@sizeOf(usize)], .little);
+    try testing.expectEqual(@as(usize, 0xdddd_dddd_dddd_dddd), stale);
+}
+
+test "poisoning: a block shrunk in place has its tail poisoned; a large block is left to the unmap" {
+    var buffer: [256]u8 = undefined;
+    var fixed = std.heap.FixedBufferAllocator.init(&buffer);
+    var poisoning: Poisoning = .{ .child = fixed.allocator() };
+    const a = poisoning.allocator();
+    const block = try a.alloc(u8, 32);
+    @memset(block, 0x33);
+    try testing.expect(a.resize(block, 8));
+    for (block[0..8]) |byte| try testing.expectEqual(@as(u8, 0x33), byte);
+    for (block[8..]) |byte| try testing.expectEqual(poison_byte, byte);
+    a.free(block[0..8]);
+
+    // Over the limit: the DebugAllocator's large allocations, unmapped on
+    // free - poisoning them first would only cost.
+    var big_buffer: [poison_limit + 64]u8 = undefined;
+    var big_fixed = std.heap.FixedBufferAllocator.init(&big_buffer);
+    var big_poisoning: Poisoning = .{ .child = big_fixed.allocator() };
+    const b = big_poisoning.allocator();
+    const big = try b.alloc(u8, poison_limit + 1);
+    @memset(big, 0x44);
+    // rawFree: Allocator.free writes `undefined` first in a Debug build.
+    b.rawFree(big, .@"1", @returnAddress());
+    try testing.expectEqual(@as(u8, 0x44), big[0]);
+}
+
+test "poisoning: in front of the sweep allocator, double-free and leak checks still hold, and a clean run deinits clean" {
+    var gpa: Fast = .{};
+    var poisoning: Poisoning = .{ .child = gpa.allocator() };
+    const a = poisoning.allocator();
+    const kept = try a.create(u64);
+    const bytes = try a.alloc(u8, 100);
+    a.free(bytes);
+    a.destroy(kept);
+    try testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
+test "the poison limit is the DebugAllocator's largest small block: larger ones are unmapped when freed" {
+    // DebugAllocator's default page size on these hosts is 128 KiB
+    // (max(page_size_max, 128 KiB)), and its small size classes run up to
+    // 2^(log2(page_size) - 2) bytes (minimum_slots_per_bucket_log2 = 1):
+    // 32 KiB. Anything larger is a large allocation.
+    const page_size = @max(std.heap.page_size_max, 128 * 1024);
+    try testing.expectEqual(@as(usize, page_size / 4), poison_limit);
+}
+
+test "CRANE_POISON_FREES: on by default, off when set to 0" {
+    try testing.expect(wantsPoison(null) == poison_by_default);
+    try testing.expect(!wantsPoison("0"));
+    try testing.expect(wantsPoison("1"));
 }
