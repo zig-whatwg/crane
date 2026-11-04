@@ -54,6 +54,12 @@ pub const Session = struct {
     /// `pass` for what failed - the variant's report mode, as the Crane test
     /// runner's report-only state check logs without failing.
     report_only: bool = false,
+    /// A filtered run (`--filter`): the tests the build runner hears of, in
+    /// order - entry k is the test of the metadata's index k and of
+    /// `run_test k`. The others are not listed at all, so its Build Summary
+    /// counts the selected tests, and a run that selects none lists none.
+    /// Null: every test.
+    listed: ?[]const u32 = null,
 
     pub fn init(gpa: Allocator, io: Io, names: []const []const u8, expects_panic: []const bool, selected: []const bool, run: *sched.Run, seed: u64) !Session {
         const known = try gpa.alloc(Io.Event, names.len);
@@ -144,9 +150,11 @@ pub fn serve(s: *Session, gpa: Allocator, in: *Io.Reader, out: *Io.Writer, diag:
         };
         switch (hdr.tag) {
             .exit => return,
-            .query_test_metadata => try serveMetadata(&server, gpa, s.names, s.expects_panic),
+            .query_test_metadata => try serveMetadata(&server, gpa, s.names, s.expects_panic, s.listed),
             .run_test => {
-                const t = try server.receiveBody_u32();
+                // The build runner's index: into the listing, when filtered.
+                const k = try server.receiveBody_u32();
+                const t = if (s.listed) |l| (if (k < l.len) l[k] else return error.NoSuchTest) else k;
                 if (t >= s.names.len) return error.NoSuchTest;
                 try server.serveStringMessage(.test_started, &.{});
                 const verdict = try s.verdictOf(t);
@@ -163,7 +171,7 @@ pub fn serve(s: *Session, gpa: Allocator, in: *Io.Reader, out: *Io.Writer, diag:
                     // moment for it to arrive (failures only - rare).
                     s.io.sleep(.fromMilliseconds(100), .awake) catch {};
                 }
-                try server.serveTestResults(.{ .index = t, .flags = .{
+                try server.serveTestResults(.{ .index = k, .flags = .{
                     .status = status,
                     .fuzz = false,
                     .log_err_count = 0,
@@ -175,23 +183,26 @@ pub fn serve(s: *Session, gpa: Allocator, in: *Io.Reader, out: *Io.Writer, diag:
     }
 }
 
-/// The executable's test list, as its own test runner would send it; a test
-/// that expects a panic is marked so the build runner skips it, as it skips
-/// it in the executable itself.
-fn serveMetadata(server: *std.zig.Server, gpa: Allocator, names: []const []const u8, expects_panic: []const bool) !void {
+/// The executable's test list, as its own test runner would send it - or,
+/// filtered, the tests `listed` names, in its order; a test that expects a
+/// panic is marked so the build runner skips it, as it skips it in the
+/// executable itself.
+fn serveMetadata(server: *std.zig.Server, gpa: Allocator, names: []const []const u8, expects_panic: []const bool, listed: ?[]const u32) !void {
     var strings: std.ArrayList(u8) = .empty;
     defer strings.deinit(gpa);
     try strings.append(gpa, 0);
-    const offsets = try gpa.alloc(u32, names.len);
+    const len = if (listed) |l| l.len else names.len;
+    const offsets = try gpa.alloc(u32, len);
     defer gpa.free(offsets);
-    const panics = try gpa.alloc(u32, names.len);
+    const panics = try gpa.alloc(u32, len);
     defer gpa.free(panics);
-    for (names, expects_panic, offsets, panics) |name, p, *o, *pm| {
+    for (offsets, panics, 0..) |*o, *pm, k| {
+        const t = if (listed) |l| l[k] else k;
         o.* = @intCast(strings.items.len);
-        try strings.appendSlice(gpa, name);
+        try strings.appendSlice(gpa, names[t]);
         try strings.append(gpa, 0);
         // Any non-zero offset says "expects a panic"; point it at the name.
-        pm.* = if (p) o.* else 0;
+        pm.* = if (expects_panic[t]) o.* else 0;
     }
     try server.serveTestMetadata(.{ .names = offsets, .expected_panic_msgs = panics, .string_bytes = strings.items });
 }
@@ -294,6 +305,119 @@ test "serves the build runner: the list, then each test's verdict, failures with
     try testing.expect(one < two);
     try testing.expect(std.mem.indexOf(u8, text, "seed 0xabc") != null);
     try testing.expect(std.mem.indexOf(u8, text, "test 1 said no") != null);
+}
+
+test "a filtered session lists only its tests, and answers each run_test for the test the listing names" {
+    const gpa = testing.allocator;
+    const io = testing.io;
+    const names = [_][]const u8{ "a.test.zero", "a.test.one", "a.test.two", "b.test.zero", "a.test.panics" };
+    const expects_panic = [_]bool{ false, false, false, false, true };
+    // The filter took tests 1, 2 and 4 (the panicking one is listed, as an
+    // unfiltered run lists it, and the build runner skips it).
+    const listed = [_]u32{ 1, 2, 4 };
+    const selected = [_]bool{ false, true, true, false, false };
+    var plan = try plan_mod.make(gpa, &.{ 1, 2 }, .{ .seed = 1, .shuffle = false, .batch_size = 0 });
+    defer plan.deinit(gpa);
+    var fake: Fake = .{};
+    var session: Session = undefined;
+    var run = try sched.Run.init(gpa, io, &plan, names.len, fake.executor(), .{
+        .jobs = 1,
+        .alone_runs = 2,
+        .on_verdict = Session.onVerdict,
+        .on_verdict_ctx = &session,
+    });
+    defer run.deinit();
+    session = try Session.init(gpa, io, &names, &expects_panic, &selected, &run, 0xabc);
+    session.listed = &listed;
+    defer session.deinit(gpa);
+
+    var to_server: Io.Writer.Allocating = .init(gpa);
+    defer to_server.deinit();
+    var client: std.zig.Client = .{ .in = undefined, .out = &to_server.writer };
+    try client.serveBodylessMessage(.query_test_metadata);
+    for ([_]u32{ 0, 1 }) |k| try client.serveRunTest(k);
+    try client.serveBodylessMessage(.exit);
+    var in: Io.Reader = .fixed(to_server.written());
+    var out: Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+    var diag: Io.Writer.Allocating = .init(gpa);
+    defer diag.deinit();
+    try serve(&session, gpa, &in, &out.writer, &diag.writer);
+    session.finish();
+
+    var r: Io.Reader = .fixed(out.written());
+    const Msg = std.zig.Server.Message;
+    var hdr = try r.takeStruct(Msg.Header, .little);
+    r.toss(hdr.bytes_len); // zig_version
+    hdr = try r.takeStruct(Msg.Header, .little);
+    try testing.expectEqual(Msg.Tag.test_metadata, hdr.tag);
+    const md = try child_mod.parseMetadata(gpa, try r.take(hdr.bytes_len));
+    defer md.deinit(gpa);
+    try testing.expectEqual(@as(usize, 3), md.names.len);
+    try testing.expectEqualStrings("a.test.one", md.names[0]);
+    try testing.expectEqualStrings("a.test.two", md.names[1]);
+    try testing.expectEqualStrings("a.test.panics", md.names[2]);
+    try testing.expectEqualSlices(bool, &.{ false, false, true }, md.expects_panic);
+    // run_test 0 is a.test.one (always fails), 1 is a.test.two (a flake).
+    for ([_]TestResults.Status{ .fail, .fail }, 0..) |w, k| {
+        hdr = try r.takeStruct(Msg.Header, .little);
+        try testing.expectEqual(Msg.Tag.test_started, hdr.tag);
+        r.toss(hdr.bytes_len);
+        hdr = try r.takeStruct(Msg.Header, .little);
+        const res = try r.takeStruct(TestResults, .little);
+        try testing.expectEqual(@as(u32, @intCast(k)), res.index);
+        try testing.expectEqual(w, res.flags.status);
+    }
+    try testing.expectEqual(@as(usize, 0), r.bufferedLen());
+    const text = diag.written();
+    try testing.expect(std.mem.indexOf(u8, text, "FAIL a.test.one") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "FLAKY a.test.two") != null);
+}
+
+test "a filtered session that selected nothing lists no test" {
+    const gpa = testing.allocator;
+    const io = testing.io;
+    const names = [_][]const u8{ "a.test.zero", "a.test.one" };
+    const expects_panic = [_]bool{ false, false };
+    const selected = [_]bool{ false, false };
+    var plan = try plan_mod.make(gpa, &.{}, .{ .seed = 1, .shuffle = false, .batch_size = 10 });
+    defer plan.deinit(gpa);
+    var fake: Fake = .{};
+    var session: Session = undefined;
+    var run = try sched.Run.init(gpa, io, &plan, names.len, fake.executor(), .{
+        .jobs = 1,
+        .on_verdict = Session.onVerdict,
+        .on_verdict_ctx = &session,
+    });
+    defer run.deinit();
+    session = try Session.init(gpa, io, &names, &expects_panic, &selected, &run, 0xabc);
+    session.listed = &.{};
+    defer session.deinit(gpa);
+
+    var to_server: Io.Writer.Allocating = .init(gpa);
+    defer to_server.deinit();
+    var client: std.zig.Client = .{ .in = undefined, .out = &to_server.writer };
+    try client.serveBodylessMessage(.query_test_metadata);
+    try client.serveBodylessMessage(.exit);
+    var in: Io.Reader = .fixed(to_server.written());
+    var out: Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+    var diag: Io.Writer.Allocating = .init(gpa);
+    defer diag.deinit();
+    try serve(&session, gpa, &in, &out.writer, &diag.writer);
+    session.finish();
+
+    var r: Io.Reader = .fixed(out.written());
+    const Msg = std.zig.Server.Message;
+    var hdr = try r.takeStruct(Msg.Header, .little);
+    r.toss(hdr.bytes_len); // zig_version
+    hdr = try r.takeStruct(Msg.Header, .little);
+    try testing.expectEqual(Msg.Tag.test_metadata, hdr.tag);
+    const md = try child_mod.parseMetadata(gpa, try r.take(hdr.bytes_len));
+    defer md.deinit(gpa);
+    try testing.expectEqual(@as(usize, 0), md.names.len);
+    try testing.expectEqual(@as(usize, 0), r.bufferedLen());
+    try testing.expectEqual(@as(u32, 0), run.processes.load(.monotonic));
 }
 
 test "report-only: every failure is printed, marked report-only, and answered pass; LAUNCHER-ERROR still skips" {
