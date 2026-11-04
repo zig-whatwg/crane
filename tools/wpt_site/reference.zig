@@ -334,6 +334,9 @@ pub const RunMeta = struct {
     /// The reference's JavaScript engine ("V8 15.7.212.1"), and Crane's ("V8 13.1.203").
     js_engine: []const u8 = "",
     crane_js_engine: []const u8 = "",
+    /// Crane's runner build, named when no full Crane run is recorded yet
+    /// (its overhead runs are): `timing.crane.build` names it otherwise.
+    crane_build: []const u8 = "",
     /// ISO 8601 UTC. Taken from the report's time_start when it has one.
     date: []const u8 = "",
 };

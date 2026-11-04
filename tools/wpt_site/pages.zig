@@ -1637,6 +1637,10 @@ fn writeVersus(w: W, site: *const Site) Error!void {
             try w.writeAll("runner <code>");
             try html.text(w, c.runner);
             try w.writeAll("</code></dd></div>");
+        } else if (r.run.crane_build.len > 0) {
+            try w.writeAll("<div><dt>Crane</dt><dd>");
+            try html.text(w, r.run.crane_build);
+            try w.writeAll("</dd></div>");
         }
         try w.writeAll("<div><dt>V8</dt><dd>");
         if (r.run.crane_js_engine.len > 0) {

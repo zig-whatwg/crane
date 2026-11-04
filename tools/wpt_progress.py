@@ -2163,6 +2163,8 @@ def render_reference(worklist, records, ref):
         if c:
             builds.append('Crane: ' + (esc(c['build']) + '; ' if c.get('build') else '') +
                           f"runner <code>{esc(c.get('runner', ''))}</code>")
+        elif run.get('crane_build'):
+            builds.append('Crane: ' + esc(run['crane_build']))
         v8 = (f"Crane links V8 <code>{esc(run['crane_js_engine'].removeprefix('V8 '))}</code>, " + V8_BUILD_NOTE
               if run.get('crane_js_engine') else V8_NOTE)
         if run.get('js_engine'):
