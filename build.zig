@@ -5237,6 +5237,36 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&addSuiteRun(b, launch, lint_tombstones_tests, "tools-lint_tombstones", null).step);
 
     // ========================================================================
+    // LINT: the CSS module's two import boundaries
+    // ========================================================================
+    // Two cold Typed OM entries stay off CSS's parsing and computation paths
+    // (Q61: the native animation-list concatenation; Q59: the canonical-text
+    // inspection). Each was a `comptime {}` block that @embedFile'd and
+    // searched the files it guards - 20 s of single-threaded Sema in every
+    // test binary that reached src/css (lane onebin2's time report).
+    // tools/lint_css_boundaries.zig checks the same files for the same
+    // patterns with the same messages, once per `zig build test` (lane
+    // compiletime1). Not a ratchet: any breach fails.
+    const lint_css_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_css_boundaries.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_css_exe = b.addExecutable(.{
+        .name = "lint_css_boundaries",
+        .root_module = lint_css_module,
+    });
+    const lint_css_step = b.step("lint-css", "Fail when a CSS parsing/computation file reaches a cold Typed OM entry (Q59, Q61)");
+    const lint_css = b.addRunArtifact(lint_css_exe);
+    // It reads src/css, which the build graph does not track.
+    lint_css.has_side_effects = true;
+    lint_css.setCwd(b.path("."));
+    lint_css_step.dependOn(&lint_css.step);
+    test_step.dependOn(&lint_css.step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_css_module }), "tools-lint_css", null).step);
+
+    // ========================================================================
     // The code-size report
     // ========================================================================
     // tools/code_size_report.zig groups a binary's functions by generic
