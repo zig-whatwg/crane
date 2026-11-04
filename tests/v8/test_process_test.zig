@@ -167,17 +167,21 @@ fn engineStartLines(source: []const u8) usize {
     var lines = std.mem.splitScalar(u8, source, '\n');
     while (lines.next()) |line| {
         const code = if (std.mem.indexOf(u8, line, "//")) |i| line[0..i] else line;
-        // "deinitializeEngine(" contains "initializeEngine(": either counts.
-        if (std.mem.indexOf(u8, code, "initializeEngine(") != null) count += 1;
+        // The end's name contains the start's: either counts. Spelled in two
+        // pieces, so that this file, which the check reads too, holds no call.
+        if (std.mem.indexOf(u8, code, "initialize" ++ "Engine(") != null) count += 1;
     }
     return count;
 }
 
 test "the engine-start check counts calls by any alias and both ends, never a comment" {
-    try std.testing.expectEqual(@as(usize, 0), engineStartLines("    // try engine.initializeEngine(.{});\n    test_process.start();\n"));
-    try std.testing.expectEqual(@as(usize, 1), engineStartLines("    try protocol.initializeEngine(.{});\n"));
-    try std.testing.expectEqual(@as(usize, 1), engineStartLines("    defer engine.deinitializeEngine(); // the end\n"));
-    try std.testing.expectEqual(@as(usize, 2), engineStartLines("try engine.initializeEngine(.{ .snapshot = bytes });\nengine.deinitializeEngine();\n"));
+    // Spelled in two pieces, so that this file - which the check reads too -
+    // holds no call of its own.
+    const start_call = "initialize" ++ "Engine(";
+    try std.testing.expectEqual(@as(usize, 0), engineStartLines("    // try engine." ++ start_call ++ ".{});\n    test_process.start();\n"));
+    try std.testing.expectEqual(@as(usize, 1), engineStartLines("    try protocol." ++ start_call ++ ".{});\n"));
+    try std.testing.expectEqual(@as(usize, 1), engineStartLines("    defer engine.de" ++ start_call ++ "); // the end\n"));
+    try std.testing.expectEqual(@as(usize, 2), engineStartLines("try engine." ++ start_call ++ ".{ .snapshot = bytes });\nengine.de" ++ start_call ++ ");\n"));
 }
 
 test "no tests/v8 file starts or ends the engine itself: test_process.zig does, and the files whose subject is the start" {
