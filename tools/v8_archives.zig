@@ -10,14 +10,19 @@
 //!   arguments plus what Chrome's official build adds (is_official_build:
 //!   ThinLTO with Chrome's mac-arm64 clang PGO profile, and V8's builtins
 //!   PGO). Its ThinLTO step has already run: the archives hold native arm64
-//!   Mach-O objects, since Zig's linker cannot read LLVM bitcode.
-//! - `control`: out/control, the official build's baseline - out/static's
-//!   arguments built by scripts/build-v8-official.sh from the same checkout
-//!   and clang as out/official, so a measurement against it isolates what
-//!   ThinLTO and PGO change.
+//!   Mach-O objects, since Zig's linker cannot read LLVM bitcode. It exists
+//!   on chat.local only (every pool mirror's jsengines/v8 is the host's), so
+//!   a build with -Dv8-build=official runs there until the user decides on
+//!   a default (2026-11-04).
 //!
-//! iOS links out/ios-arm64 whatever the option says: there is no official iOS
-//! build, so asking for one is an error rather than a quiet fallback.
+//! out/static is also the official build's baseline: the control build of
+//! scripts/build-v8-official.sh - out/static's arguments from a 13.1.203
+//! checkout, with the clang 13.1.203's DEPS pins and SDK 26.2 - reproduces
+//! its three archives byte for byte (lane v8opt1, 2026-11-04: equal
+//! SHA-256s), so static and official differ in ThinLTO and PGO alone.
+//!
+//! iOS links out/ios-arm64. There is no official iOS build, so
+//! -Dv8-build=official for an iOS target is an error, not a quiet fallback.
 //!
 //! std-only, so `zig build test` pins the paths (tools-v8_archives).
 
@@ -27,7 +32,6 @@ const std = @import("std");
 pub const Build = enum {
     static,
     official,
-    control,
 
     /// The build a plain `zig build` links. It stays `static` until the user
     /// chooses otherwise (lane v8opt1, 2026-11-04).
@@ -48,17 +52,20 @@ pub const Archives = struct {
 };
 
 pub const SelectError = error{
-    /// -Dv8-build=official or control for an iOS target: out/ios-arm64 is
-    /// the only iOS build.
+    /// -Dv8-build=official for an iOS target: out/ios-arm64 is the only iOS
+    /// build.
     NoOfficialIosBuild,
 };
 
 /// The archives `build` names for a target whose OS is `os`.
 pub fn select(build: Build, os: std.Target.Os.Tag) SelectError!Archives {
-    _ = build;
-    return switch (os) {
-        .ios => archivesIn("jsengines/v8/out/ios-arm64"),
-        else => archivesIn("jsengines/v8/out/static"),
+    if (os == .ios) return switch (build) {
+        .static => archivesIn("jsengines/v8/out/ios-arm64"),
+        .official => error.NoOfficialIosBuild,
+    };
+    return switch (build) {
+        .static => archivesIn("jsengines/v8/out/static"),
+        .official => archivesIn("jsengines/v8/out/official"),
     };
 }
 
@@ -106,15 +113,6 @@ test "iOS links out/ios-arm64 by default" {
     try testing.expectEqualStrings("jsengines/v8/out/ios-arm64/obj/libv8_libbase_fat.a", a.libbase);
 }
 
-test "control on macOS: the three archives of out/control" {
-    const a = try select(.control, .macos);
-    try testing.expectEqualStrings("jsengines/v8/out/control", a.dir);
-    try testing.expectEqualStrings("jsengines/v8/out/control/obj/libv8_monolith.a", a.monolith);
-    try testing.expectEqualStrings("jsengines/v8/out/control/obj/libv8_libplatform_fat.a", a.libplatform);
-    try testing.expectEqualStrings("jsengines/v8/out/control/obj/libv8_libbase_fat.a", a.libbase);
-}
-
-test "official or control for iOS is an error, never a quiet fallback" {
+test "official for iOS is an error, never a quiet fallback" {
     try testing.expectError(error.NoOfficialIosBuild, select(.official, .ios));
-    try testing.expectError(error.NoOfficialIosBuild, select(.control, .ios));
 }
