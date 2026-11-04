@@ -1103,6 +1103,9 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     .{ .name = "tests-v8", .config = .{ .batch = 1, .alone = &v8_alone } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "tests-browser", .config = .{ .batch = 1 } },
+    // The browser console (tools/repl.zig): every test starts a Browser
+    // (lane console1).
+    .{ .name = "tests-repl", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },
     .{ .name = "tests-codegen", .config = .{ .slow = &codegen_slow } },
 };
@@ -4660,7 +4663,12 @@ pub fn build(b: *std.Build) void {
     // REPL TOOL
     // ========================================================================
 
-    // REPL tool - uses Browser API for headless browser functionality
+    // The browser console (tools/repl.zig): a Browser on a page, and the
+    // console that evaluates in it - REPL-mode evaluation through the engine
+    // (engine.evaluateReplScript), the Browser's event loop running while an
+    // evaluation waits (Browser.spinEventLoopUntil), results printed by the
+    // Console Standard's printer (src/console/printer.zig). Its imports are
+    // the ones the console uses, and nothing else.
     const repl_exe = b.addExecutable(.{
         .name = "repl",
         .root_module = b.createModule(.{
@@ -4668,29 +4676,11 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "runtime", .module = runtime_mod },
                 .{ .name = "engine", .module = engine_mod },
-                .{ .name = "interfaces", .module = interfaces_mod },
-                .{ .name = "namespaces", .module = namespaces_mod },
-                .{ .name = "fetch", .module = fetch_mod },
-                // Platform abstraction for timer backend
-                .{ .name = "platform", .module = platform_mod },
-                // HTML event loop and timer manager (core module without interfaces)
-                .{ .name = "html", .module = html_core_mod },
-                // HTML full module with custom_elements for thread-local cleanup
-                .{ .name = "html_full", .module = html_mod },
-                // DOM module for mutation observer thread-local cleanup
-                .{ .name = "dom", .module = dom_mod },
-                // Infra primitives
-                .{ .name = "infra", .module = infra_mod },
-                // Browser module for headless browser functionality
                 .{ .name = "browser", .module = browser_mod },
-                // Impls module for HTMLParser (needed for HTML parsing)
-                .{ .name = "impls", .module = impls_mod },
-                // WebIDL module for Optional type wrappers
-                .{ .name = "webidl", .module = webidl_mod },
-                // Dictionaries module for Event init dictionaries
-                .{ .name = "dictionaries", .module = dictionaries_mod },
+                .{ .name = "console", .module = console_mod },
+                // Real time for the console's deadlines (platform.monotonicNow).
+                .{ .name = "platform", .module = platform_mod },
             },
         }),
     });
@@ -4716,21 +4706,57 @@ pub fn build(b: *std.Build) void {
     repl_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
 
     // Link C++ standard library
-    repl_exe.root_module.link_libcpp = true; //
+    repl_exe.root_module.link_libcpp = true;
 
-    // Make REPL depend on snapshot generation
-    // This ensures the snapshot is always up-to-date with the current V8 build
+    // The snapshot the console's Browser starts from (zig-out/bin/
+    // whatwg_snapshot.bin, beside the binary).
     repl_exe.step.dependOn(&gen_snapshot.step);
 
     b.installArtifact(repl_exe);
 
-    // Add run step for REPL
+    // `zig build repl-exe`: the console alone - zig-out/bin/repl and its
+    // snapshot - not the install step (19 artifacts, a root-module analysis
+    // of the tree each: the ReleaseSafe console took ~2 h on the Mac that
+    // way, 2026-11-02).
+    const install_repl = b.addInstallArtifact(repl_exe, .{});
+    const repl_exe_step = b.step("repl-exe", "Build the browser console alone (zig-out/bin/repl)");
+    repl_exe_step.dependOn(&install_repl.step);
+
+    // `zig build repl -- <args>`: build the console alone, then run it.
     const run_repl = b.addRunArtifact(repl_exe);
-    run_repl.step.dependOn(b.getInstallStep());
+    run_repl.step.dependOn(&install_repl.step);
     run_repl.addPassthruArgs();
 
-    const repl_step = b.step("repl", "Run REPL tool (use -- to pass args)");
+    const repl_step = b.step("repl", "Run the browser console (use -- to pass args)");
     repl_step.dependOn(&run_repl.step);
+
+    // tests/repl/: the browser console driven in-process (tools/repl.zig's
+    // Console fed lines, its output read back), part of `zig build test`.
+    // Each test starts a Browser: batch 1 (suite_configs, tests-repl).
+    // Selected with the Browser's own spec name, -Dspec=browser (tests/console/
+    // is the Console Standard's suite, without V8).
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "browser")) {
+        const repl_test_mod = b.createModule(.{
+            .root_source_file = b.path("tools/repl.zig"),
+            .target = target,
+            .imports = &.{
+                .{ .name = "engine", .module = testing_graph.engine },
+                .{ .name = "browser", .module = testing_graph.browser },
+                .{ .name = "console", .module = testing_graph.console },
+                .{ .name = "platform", .module = testing_graph.platform },
+            },
+        });
+        const console_test_imports = [_]std.Build.Module.Import{
+            .{ .name = "repl", .module = repl_test_mod },
+            .{ .name = "browser", .module = testing_graph.browser },
+            .{ .name = "engine", .module = testing_graph.engine },
+            .{ .name = "console", .module = testing_graph.console },
+            .{ .name = "clock", .module = testing_graph.clock },
+        };
+        addTestFilesFromDir(b, test_step, "tests/repl", target, &console_test_imports, true, test_selection) catch |err| {
+            std.debug.print("Warning: Failed to add repl test files: {}\n", .{err});
+        };
+    }
 
     // ========================================================================
     // GC BENCHMARK (Phase 6 exit criterion)
@@ -6898,6 +6924,12 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     console_mod.addImport("webidl", webidl_mod);
     console_mod.addImport("interfaces", interfaces_mod);
     console_mod.addImport("namespaces", namespaces_mod);
+    // The Console Standard's printer (src/console/printer.zig) reads values
+    // through the engine protocol.
+    console_mod.addImport("engine", engine_mod);
+    console_mod.addImport("runtime", runtime_mod);
+    // The console namespace's impl prints through it.
+    impls_mod.addImport("console", console_mod);
 
     // Streams internal modules (used by both root.zig and generated interfaces)
     // All internal files need to import each other via modules to avoid circular file ownership
@@ -7023,17 +7055,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         },
     });
 
-    const streams_structured_clone_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/structured_clone.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "common", .module = streams_common_mod },
-            .{ .name = "pull_into_descriptor", .module = streams_pull_into_descriptor_mod },
-            .{ .name = "message_port", .module = streams_message_port_mod },
-        },
-    });
-
     // Main streams module
     const streams_mod = graphModule(b, public, "streams", .{
         .root_source_file = b.path("src/streams/root.zig"),
@@ -7059,7 +7080,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     streams_mod.addImport("read_into_request", streams_read_into_request_mod);
     streams_mod.addImport("pull_into_descriptor", streams_pull_into_descriptor_mod);
     streams_mod.addImport("write_request", streams_write_request_mod);
-    streams_mod.addImport("structured_clone", streams_structured_clone_mod);
     streams_mod.addImport("view_construction", streams_view_construction_mod);
     streams_mod.addImport("async_iterator", streams_async_iterator_mod);
     streams_mod.addImport("message_port", streams_message_port_mod);

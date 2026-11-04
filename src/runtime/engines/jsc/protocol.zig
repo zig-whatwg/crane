@@ -86,6 +86,9 @@ pub const capabilities: engine.Capabilities = .{
     // set (JSGlobalObject.cpp). Emulation is possible: replace Math.random
     // in each global with a seeded JSObjectMakeFunctionWithCallback.
     .seeded_random = .unsupported,
+    // No REPL mode in the public C API (JSEvaluateScript is a classic
+    // script's evaluation; Web Inspector's console evaluation is private).
+    .repl_mode = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.
@@ -215,6 +218,9 @@ pub fn evaluateClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, 
     return error.NotSupported;
 }
 pub fn evaluateClassicScriptToString(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: Allocator, _: engine.Reporter) Error![]u8 {
+    return error.NotSupported;
+}
+pub fn evaluateReplScript(_: Context, _: []const u8, _: *const engine.PromiseReactionSteps, _: ?*anyopaque) Error!engine.ReplInput {
     return error.NotSupported;
 }
 pub fn compileEventHandler(_: Context, _: *const engine.EventHandlerSource, _: engine.Reporter) Error!?Owned {

@@ -17,6 +17,7 @@
 #include <v8-snapshot.h>
 #include <libplatform/libplatform.h>
 #include <v8-profiler.h>
+#include <v8-inspector.h>  // engine.evaluateReplScript (lane console1)
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -15753,3 +15754,357 @@ void v8_WasmResponseCompilation_Abort(CraneWasmResponseCompilation* compilation,
 
 } // extern "C"
 // ---- end lane: wasmweb1 ----
+// ---- lane: console1 (engine.evaluateReplScript: REPL mode through the inspector) ----
+
+/// What an agent's console keeps of V8's inspector (engine.evaluateReplScript,
+/// protocol_repl.zig): an inspector of the agent's isolate, the client it
+/// asks, and one session whose responses come back here.
+///
+/// REPL mode is Chrome DevTools' console evaluation - Runtime.evaluate with
+/// `replMode` (js_protocol.pdl: "enables `let` re-declaration and top-level
+/// `await`"). V8 13.1 compiles such a script with v8::debug::EvaluateGlobal's
+/// repl flag, which is not public API (src/debug/debug-interface.h); its one
+/// public door is the inspector. Deno's REPL, an embedder like Crane, goes
+/// through it the same way: an in-process session that dispatches
+/// Runtime.evaluate with replMode (deno cli/tools/repl/session.rs). A REPL
+/// script always completes through a promise of {".repl_result": value}, and
+/// the inspector answers once that settles (13.1 injected-script.cc,
+/// ProtocolPromiseHandler::thenCallback unwraps `.repl_result`;
+/// catchCallback reports a rejection) - so the answer comes in a
+/// sendResponse, here, and is handed to `outcome`.
+///
+/// Per agent, never process-wide: the inspector is the isolate's
+/// (V8Inspector::create(isolate, client) - v8::debug::SetInspector and
+/// SetConsoleDelegate on that isolate alone), made on the console's first use
+/// and deleted by the agent's end (v8_ReplSession_Delete) after its last
+/// microtask checkpoint and before the isolate is disposed: a promise job of
+/// the inspector's that ran after it was deleted would find no inspector
+/// (13.1 thenCallback reads v8::debug::GetInspector). No V8 flag is set. No
+/// domain is enabled, so the inspector reports nothing on its own (no
+/// Runtime.consoleAPICalled, no exceptionThrown) and pauses nothing. Used on
+/// the agent's own thread only.
+class CraneReplSession final : public v8_inspector::V8InspectorClient,
+                               public v8_inspector::V8Inspector::Channel {
+public:
+    /// What a response came to (protocol_repl.zig, Outcome).
+    enum Kind : int { kCompleted = 0, kThrew = 1, kFailed = 2 };
+    using Outcome = void (*)(void* host, int call_id, int kind, Global<Value>* value, bool incomplete);
+    /// Every context of the agent is in the one group the session joins.
+    static constexpr int kContextGroupId = 1;
+
+    CraneReplSession(Isolate* isolate, Outcome outcome, void* host)
+        : isolate_(isolate), outcome_(outcome), host_(host) {
+        inspector_ = v8_inspector::V8Inspector::create(isolate, this);
+        if (inspector_) {
+            session_ = inspector_->connect(kContextGroupId, this, v8_inspector::StringView(),
+                                           v8_inspector::V8Inspector::kFullyTrusted,
+                                           v8_inspector::V8Inspector::kNotWaitingForDebugger);
+        }
+    }
+
+    ~CraneReplSession() override {
+        // From here on a response - the session's end fails what is still
+        // pending - reaches nobody.
+        closing_ = true;
+        HandleScope handle_scope(isolate_);
+        DetachContexts();
+        if (session_) session_->releaseObjectGroup(ObjectGroup());
+        session_.reset();
+        inspector_.reset();
+        utility_.Reset();
+    }
+
+    bool ok() const { return inspector_ && session_; }
+
+    /// The inspector's execution context id for `context`, made known to the
+    /// inspector first if it is not yet (contextCreated). 0 on failure.
+    int Register(Local<Context> context) {
+        int id = v8_inspector::V8ContextInfo::executionContextId(context);
+        if (id != 0 && contexts_.count(id) != 0) return id;
+        // InspectedContext's constructor gives the context's `console` a
+        // createTask (async stack tagging, 13.1 inspected-context.cc). That
+        // is Chrome's console object, not the Console Standard's, and nothing
+        // of the console goes on the page: taken off again unless the page
+        // had one of its own.
+        Local<Object> console;
+        bool had_create_task = true;
+        {
+            TryCatch try_catch(isolate_);
+            Local<Value> found;
+            if (context->Global()->Get(context, String::NewFromUtf8Literal(isolate_, "console")).ToLocal(&found) && found->IsObject()) {
+                console = found.As<Object>();
+                had_create_task = console->HasOwnProperty(context, String::NewFromUtf8Literal(isolate_, "createTask")).FromMaybe(true);
+            }
+        }
+        const char* name = "crane-console";
+        v8_inspector::V8ContextInfo info(context, kContextGroupId, v8_inspector::StringView(reinterpret_cast<const uint8_t*>(name), strlen(name)));
+        inspector_->contextCreated(info);
+        if (!console.IsEmpty() && !had_create_task) {
+            TryCatch try_catch(isolate_);
+            (void)console->Delete(context, String::NewFromUtf8Literal(isolate_, "createTask"));
+        }
+        id = v8_inspector::V8ContextInfo::executionContextId(context);
+        if (id == 0) return 0;
+        Global<Context> weak(isolate_, context);
+        weak.SetWeak();
+        contexts_[id] = std::move(weak);
+        return id;
+    }
+
+    /// The realm of context `id` ended: the inspector forgets it now
+    /// (contextDestroyed), while the context still exists, rather than when
+    /// the collector takes it - which, at an agent's end, could be after the
+    /// inspector itself.
+    void ContextEnded(int id) {
+        auto it = contexts_.find(id);
+        if (it == contexts_.end()) return;
+        Global<Context> handle = std::move(it->second);
+        contexts_.erase(it);
+        if (handle.IsEmpty()) return;
+        HandleScope handle_scope(isolate_);
+        inspector_->contextDestroyed(handle.Get(isolate_));
+        handle.Reset();
+    }
+
+    /// Every context the inspector still knows of, forgotten (ContextEnded).
+    void DetachContexts() {
+        std::vector<int> ids;
+        ids.reserve(contexts_.size());
+        for (auto& entry : contexts_) ids.push_back(entry.first);
+        for (int id : ids) ContextEnded(id);
+    }
+
+    /// Dispatch one protocol message (`json`, ASCII: protocol_repl.zig
+    /// escapes everything else). What a previous response bound in the
+    /// object group is released first: the host has taken its value.
+    void Dispatch(const uint8_t* json, size_t length) {
+        if (release_pending_) {
+            session_->releaseObjectGroup(ObjectGroup());
+            release_pending_ = false;
+        }
+        // Not a script call: no kAuto microtask checkpoint inside it
+        // (NativeStepScope), so an evaluation's outcome comes back at the
+        // agent's next checkpoint - or here, for input that does not parse.
+        NativeStepScope native_step(isolate_);
+        session_->dispatchProtocolMessage(v8_inspector::StringView(json, length));
+    }
+
+    // ---- V8Inspector::Channel ----
+
+    void sendResponse(int call_id, std::unique_ptr<v8_inspector::StringBuffer> message) override {
+        if (closing_ || !message) return;
+        release_pending_ = true;
+        HandleScope handle_scope(isolate_);
+        int kind = kFailed;
+        bool incomplete = false;
+        Global<Value>* owned = nullptr;
+        {
+            TryCatch try_catch(isolate_);
+            Local<Value> value;
+            kind = Read(message->string(), &value);
+            if (kind == kThrew) incomplete = IsIncompleteInput(value);
+            if (kind != kFailed) owned = trackHandle(new Global<Value>(isolate_, value));
+        }
+        // In the context the inspector entered for the response - the
+        // evaluation's - not the utility context Read parsed in.
+        outcome_(host_, call_id, kind, owned, incomplete);
+    }
+
+    void sendNotification(std::unique_ptr<v8_inspector::StringBuffer>) override {}
+    void flushProtocolNotifications() override {}
+
+    // ---- V8InspectorClient ----
+
+    /// The inspector's ids (each context's unique id, its isolate's) from a
+    /// counter of the session's own: by default it draws them from the
+    /// isolate's random number generator, which a seeded agent's Math.random
+    /// is seeded from (engine.capabilities.seeded_random).
+    int64_t generateUniqueId() override { return ++unique_id_; }
+
+private:
+    /// The object group every response's values are bound in (a string
+    /// literal: static storage).
+    static v8_inspector::StringView ObjectGroup() {
+        const char* group = "crane-repl";
+        return v8_inspector::StringView(reinterpret_cast<const uint8_t*>(group), strlen(group));
+    }
+
+    /// The context responses are parsed in: the session's own, made on first
+    /// use - a plain global no script can reach, so reading the parsed JSON
+    /// runs nothing of the page's (NewPlainGlobalContext). Empty when none
+    /// could be made.
+    Local<Context> Utility() {
+        if (utility_.IsEmpty()) {
+            Local<Context> made = NewPlainGlobalContext(isolate_);
+            if (made.IsEmpty()) return made;
+            utility_.Reset(isolate_, made);
+        }
+        return utility_.Get(isolate_);
+    }
+
+    static Local<Value> Field(Isolate* isolate, Local<Context> context, Local<Value> object, const char* name) {
+        if (!object->IsObject()) return Undefined(isolate);
+        Local<String> key;
+        Local<Value> found;
+        if (!String::NewFromUtf8(isolate, name).ToLocal(&key) || !object.As<Object>()->Get(context, key).ToLocal(&found)) return Undefined(isolate);
+        return found;
+    }
+
+    /// A Runtime.evaluate response (`message`): kCompleted with the result,
+    /// kThrew with the exception (`exceptionDetails.exception`), or kFailed
+    /// (an error response, or one this cannot read).
+    int Read(v8_inspector::StringView message, Local<Value>* value) {
+        Local<Context> utility = Utility();
+        if (utility.IsEmpty()) return kFailed;
+        Context::Scope context_scope(utility);
+        Local<String> text;
+        const bool made = message.is8Bit()
+            ? String::NewFromOneByte(isolate_, message.characters8(), NewStringType::kNormal, static_cast<int>(message.length())).ToLocal(&text)
+            : String::NewFromTwoByte(isolate_, message.characters16(), NewStringType::kNormal, static_cast<int>(message.length())).ToLocal(&text);
+        Local<Value> parsed;
+        if (!made || !JSON::Parse(utility, text).ToLocal(&parsed)) return kFailed;
+        Local<Value> result = Field(isolate_, utility, parsed, "result");
+        if (!result->IsObject()) return kFailed;
+        Local<Value> details = Field(isolate_, utility, result, "exceptionDetails");
+        const bool threw = details->IsObject();
+        Local<Value> remote = threw ? Field(isolate_, utility, details, "exception") : Field(isolate_, utility, result, "result");
+        if (!remote->IsObject() || !FromRemoteObject(utility, remote, value)) return kFailed;
+        return threw ? kThrew : kCompleted;
+    }
+
+    /// The value a Runtime.RemoteObject stands for: an object (or symbol)
+    /// by its objectId, a primitive by its `value` or `unserializableValue`.
+    bool FromRemoteObject(Local<Context> utility, Local<Value> remote, Local<Value>* out) {
+        Local<Value> object_id = Field(isolate_, utility, remote, "objectId");
+        if (object_id->IsString()) {
+            String::Utf8Value id(isolate_, object_id);
+            if (!*id) return false;
+            std::unique_ptr<v8_inspector::StringBuffer> error;
+            std::unique_ptr<v8_inspector::StringBuffer> group;
+            Local<Context> context;
+            return session_->unwrapObject(&error, v8_inspector::StringView(reinterpret_cast<const uint8_t*>(*id), static_cast<size_t>(id.length())), out, &context, &group);
+        }
+        Local<Value> unserializable = Field(isolate_, utility, remote, "unserializableValue");
+        if (unserializable->IsString()) {
+            String::Utf8Value text(isolate_, unserializable);
+            if (!*text) return false;
+            const std::string value(*text, static_cast<size_t>(text.length()));
+            if (value == "NaN") *out = Number::New(isolate_, std::numeric_limits<double>::quiet_NaN());
+            else if (value == "Infinity") *out = Number::New(isolate_, std::numeric_limits<double>::infinity());
+            else if (value == "-Infinity") *out = Number::New(isolate_, -std::numeric_limits<double>::infinity());
+            else if (value == "-0") *out = Number::New(isolate_, -0.0);
+            else if (!value.empty() && value.back() == 'n') {
+                // A BigInt, as its digits and "n": BigInt(digits), the
+                // utility context's own %BigInt%.
+                Local<Value> big_int;
+                Local<String> digits;
+                if (!utility->Global()->Get(utility, String::NewFromUtf8Literal(isolate_, "BigInt")).ToLocal(&big_int) || !big_int->IsFunction()) return false;
+                if (!String::NewFromUtf8(isolate_, value.data(), NewStringType::kNormal, static_cast<int>(value.size() - 1)).ToLocal(&digits)) return false;
+                Local<Value> argv[] = {digits};
+                if (!big_int.As<Function>()->Call(utility, Undefined(isolate_), 1, argv).ToLocal(out)) return false;
+            } else {
+                return false;
+            }
+            return true;
+        }
+        if (remote.As<Object>()->HasOwnProperty(utility, String::NewFromUtf8Literal(isolate_, "value")).FromMaybe(false)) {
+            *out = Field(isolate_, utility, remote, "value");
+            return true;
+        }
+        Local<Value> type = Field(isolate_, utility, remote, "type");
+        if (type->IsString()) {
+            String::Utf8Value name(isolate_, type);
+            if (*name && strcmp(*name, "undefined") == 0) {
+                *out = Undefined(isolate_);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Whether `exception` - what the input threw - says the input ended
+    /// before its syntax did: V8's SyntaxErrors "Unexpected end of input" and
+    /// "Unterminated template literal", the two Chrome DevTools' console
+    /// reads as "read another line" (JavaScriptREPL.isExpressionComplete:
+    /// Runtime.compileScript, then the exception's description). Read from
+    /// V8's own message for the value (Exception::CreateMessage: no script
+    /// runs), never from properties the page could change.
+    bool IsIncompleteInput(Local<Value> exception) {
+        if (exception.IsEmpty() || !exception->IsNativeError()) return false;
+        Local<Message> message = Exception::CreateMessage(isolate_, exception);
+        if (message.IsEmpty()) return false;
+        String::Utf8Value text(isolate_, message->Get());
+        if (!*text) return false;
+        return strcmp(*text, "Uncaught SyntaxError: Unexpected end of input") == 0 ||
+               strcmp(*text, "Uncaught SyntaxError: Unterminated template literal") == 0;
+    }
+
+    Isolate* isolate_;
+    Outcome outcome_;
+    void* host_;
+    bool closing_ = false;
+    /// A response bound its value in the object group: released at the next
+    /// dispatch (the host took the value in `outcome`).
+    bool release_pending_ = false;
+    int64_t unique_id_ = 0x63726e65;
+    /// The contexts made known to the inspector, by its id: weak handles,
+    /// for ContextEnded.
+    std::unordered_map<int, Global<Context>> contexts_;
+    Global<Context> utility_;
+    std::unique_ptr<v8_inspector::V8Inspector> inspector_;
+    std::unique_ptr<v8_inspector::V8InspectorSession> session_;
+};
+
+extern "C" {
+
+/// A new console session for `isolate` (CraneReplSession), whose responses
+/// go to `outcome(host, ...)`. Null when V8 could not make one. With the
+/// isolate entered.
+CraneReplSession* v8_ReplSession_New(Isolate* isolate, CraneReplSession::Outcome outcome, void* host) {
+    if (!isolate || !outcome) return nullptr;
+    auto* session = new CraneReplSession(isolate, outcome, host);
+    if (!session->ok()) {
+        delete session;
+        return nullptr;
+    }
+    return session;
+}
+
+/// End the session: every context it made known is forgotten, its pending
+/// evaluations fail silently, and the inspector is deleted. With the
+/// isolate entered, before it is disposed.
+void v8_ReplSession_Delete(CraneReplSession* session) {
+    delete session;
+}
+
+/// The inspector's execution context id for `context` (registered on first
+/// use); 0 on failure.
+int v8_ReplSession_Register(CraneReplSession* session, Global<Context>* context) {
+    if (!session || !context || context->IsEmpty()) return 0;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> local = context->Get(isolate);
+    Context::Scope context_scope(local);
+    return session->Register(local);
+}
+
+/// Dispatch a protocol message (ASCII JSON) to the session.
+void v8_ReplSession_Dispatch(CraneReplSession* session, const uint8_t* json, size_t length) {
+    if (!session || !json) return;
+    session->Dispatch(json, length);
+}
+
+/// The realm whose context the inspector knows as `context_id` ended.
+void v8_ReplSession_ContextEnded(CraneReplSession* session, int context_id) {
+    if (!session) return;
+    session->ContextEnded(context_id);
+}
+
+/// Every context the session made known, forgotten (the agent's end).
+void v8_ReplSession_DetachContexts(CraneReplSession* session) {
+    if (!session) return;
+    session->DetachContexts();
+}
+
+} // extern "C"
+// ---- end lane: console1 ----

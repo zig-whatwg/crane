@@ -148,7 +148,12 @@ fn checkZigBuild(command: []const u8, agent_type: ?[]const u8) Verdict {
     while (std.mem.indexOfPos(u8, command, start, needle)) |at| : (start = at + needle.len) {
         const after_at = at + needle.len;
         if (after_at < command.len and !isSpace(command[after_at]) and !isSegmentEnd(command[after_at])) continue;
-        const start_kind = commandStart(command, at);
+        // `a|zig build|b` with no space at the bar is a regex alternation (pgrep -fl, grep -E), not
+        // a pipe into or out of a build (2026-11-04).
+        if ((at > 0 and command[at - 1] == '|') or (after_at < command.len and command[after_at] == '|')) continue;
+        // Inside a quoted string (a printf or echo argument, a commit message, a pattern, a remote
+        // command) a `;` before it is text, not a command boundary (2026-11-04).
+        const start_kind: StartKind = if (insideQuotes(command, at)) .quote else commandStart(command, at);
         if (start_kind == .none) continue;
 
         var args = ArgIter{ .text = command[after_at..] };
@@ -190,9 +195,13 @@ fn checkZigBuild(command: []const u8, agent_type: ?[]const u8) Verdict {
             if (ended_by_quote and !flags) continue;
             return "never run a bare `zig build` (no step builds all ~19 artifacts at ~6 GB each): name the step, e.g. `zig build wpt-runner -j2 --cache-dir ~/Library/Caches/crane-z16-cache`";
         }
-        if (!has_jobs) return "always pass -j2 to `zig build` (AGENTS.md: each root compile is ~6 GB; in a pool job the host's shim adjusts it)";
+        // Inside quotes it is a pattern (pgrep -fl "zig build test") or a remote command whose host's
+        // shim sets -j: only a build this shell runs must carry -j (2026-11-03).
+        if (!has_jobs and start_kind == .plain) return "always pass -j2 to `zig build` (AGENTS.md: each root compile is ~6 GB; in a pool job the host's shim adjusts it)";
         if (tmp_cache) return "never put a zig cache in /tmp: macOS prunes it and Zig trusts the half-pruned entries (AGENTS.md). Use ~/Library/Caches/crane-z16-cache";
-        if (isLane(agent_type) and !isRemote(command[0..at]))
+        // A `zig build` inside quotes is an argument (to ssh, crane-remote.sh, a lane's own wrapper
+        // around them), not a command this shell runs (2026-11-03: console1's `remote.sh` wrapper).
+        if (isLane(agent_type) and start_kind == .plain and !isRemote(command[0..at]))
             return "lanes compile nothing on this Mac (the user, 2026-10-29): run builds and tests through tmp/remote/crane-remote.sh <mirror> '<cmd>'";
     }
     return null;
@@ -454,6 +463,23 @@ fn isCommandStart(command: []const u8, pos: usize) bool {
 }
 
 const StartKind = enum { none, plain, quote };
+
+/// Whether byte `pos` lies inside a single- or double-quoted string, as the shell reads the
+/// command from its start (a backslash escapes the next byte outside single quotes).
+fn insideQuotes(command: []const u8, pos: usize) bool {
+    var single = false;
+    var double = false;
+    var i: usize = 0;
+    while (i < pos and i < command.len) : (i += 1) {
+        const c = command[i];
+        if (c == '\\' and !single) {
+            i += 1;
+            continue;
+        }
+        if (c == '\'' and !double) single = !single else if (c == '"' and !single) double = !double;
+    }
+    return single or double;
+}
 
 /// How the word at `pos` starts a command: after the start of the command or
 /// a `;` `&` `|` `(` newline (`.plain`), right after a quote (`.quote`: inside
@@ -740,6 +766,12 @@ test "zig build: mentions in text, help and other zig commands are not builds" {
     try expectAllowed("zig fmt src/ tests/ tools/", null);
     try expectAllowed("zig test .claude/hooks/crane_guard.zig", null);
     try expectAllowed("tmp/remote/crane-remote.sh main 'zig build test -j2'", null);
+    try expectAllowed("ssh chat.local 'ps -axo etime,command | grep -c zig'; pgrep -fl \"zig build test\" | head -3", null);
+    try expectAllowed("ssh h 'bash -c \"pgrep -fl \\\"wpt_runner|zig build|test_launcher\\\" | head -3\"'", null);
+    try expectDenied("zig build | tee build.log", null);
+    try expectAllowed("printf -- \"- main: gate = main + lanes; zig build test + crane-check\\n\" >> log.md", null);
+    try expectAllowed("git commit -m \"merge; zig build test 485/485\"", "lane-xhigh");
+    try expectDenied("cd x; zig build test --summary all", null);
 }
 
 test "zig build: a lane builds in the pool, never on the Mac; the main conversation may build locally" {
@@ -750,6 +782,8 @@ test "zig build: a lane builds in the pool, never on the Mac; the main conversat
     try expectAllowed("zig build test -Dspec=dom -j2", null);
     try expectAllowed("zig build test -Dspec=dom -j2", "Explore");
     try expectAllowed("zig fmt src/", "lane-xhigh");
+    // 2026-11-03 (console1): a lane's wrapper around crane-remote.sh takes the build as an argument.
+    try expectAllowed("/Users/x/crane/tmp/console1/remote.sh summary 'zig build test -j2 --summary line'", "lane-xhigh");
 }
 
 test "a heredoc that cat or tee writes to a file is data, not commands; one fed to a shell is commands" {

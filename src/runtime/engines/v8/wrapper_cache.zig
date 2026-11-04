@@ -203,8 +203,10 @@ const Holds = packed struct {
 
 /// Whether `entry`'s wrapper must be held strongly: a caller's reason
 /// (`Holds`), or the engine holding the wrapper itself (a window's document,
-/// Location or History, a streams-graph object). The default - no reason - is
-/// weak, and only then. A node in a tree is NOT a reason: its wrapper is kept
+/// Location or History). The default - no reason - is weak, and only then.
+/// A streams object is weak too: the pointers between streams objects are
+/// traced edges and pending work holds what it touches (pending activity),
+/// streams_js.zig "Lifetime of the objects the reactions point at". A node in a tree is NOT a reason: its wrapper is kept
 /// by edges from its parent's and its children's wrappers (node tracing, see
 /// `drawTreeEdges`), so a tree lives exactly as long as script reaches any
 /// wrapper in it - its root's included.
@@ -348,11 +350,12 @@ pub fn templateOwns(instance: *runtime.Instance) bool {
 }
 
 /// The part of `engineOwns` that holds the WRAPPER too, not only the
-/// instance: a streams-graph object, a window's Location or History, a
-/// document with a default view. (A node in a tree is the other part: its
-/// instance is its tree's, its wrapper the edges' - `shouldBeStrong`.)
+/// instance: a window's Location or History, a document with a default view.
+/// (A node in a tree is the other part: its instance is its tree's, its
+/// wrapper the edges' - `shouldBeStrong`.) Streams objects were held here for
+/// their realm's life until lane streamslife1 (2026-11-03) made their
+/// pointers traced edges: tests/v8/streams_lifetime_test.zig.
 fn engineHoldsWrapper(instance: *runtime.Instance) bool {
-    if (isStreamsGraphObject(instance.vtable.name)) return true;
     if (isWindowOwned(instance)) return true;
     // A Document is a node: any other type - every object a worker realm
     // wraps, on the worker's thread - asks the window thread's unlocked
@@ -427,25 +430,6 @@ fn isWindowOwned(instance: *runtime.Instance) bool {
         return internal.window != null;
     }
     return false;
-}
-
-/// Streams objects reach each other through Zig pointers V8 cannot see: a
-/// stream's [[controller]] and [[writer]], a controller's [[stream]], and the
-/// context of every pending promise reaction. Blink traces those slots
-/// (third_party/blink/renderer/core/streams/, `Trace` on every class); with
-/// Global handles there is nothing to trace, so collecting one wrapper frees
-/// an instance another still points at. Their wrappers are held strongly and
-/// the realm's teardown sweep frees them - memory for the realm's lifetime,
-/// never a dangling [[controller]].
-///
-/// An allowlist, and only of the classes built on the `impls/streams_*.zig`
-/// ownership rules: their teardown touches nothing but their own slots, so
-/// the realm's sweep can free them in any order. The list itself is
-/// runtime.streams_graph.streams_graph_classes.
-pub fn isStreamsGraphObject(name: []const u8) bool {
-    // One list, in the runtime tier: streams_js.Realm.wrap takes only these,
-    // because only these are held here.
-    return runtime.streams_graph.isStreamsGraphObject(name);
 }
 
 /// Which node wrappers V8 may collect, and when. WebKit keeps a node's
@@ -1137,14 +1121,7 @@ fn finalizeEntry(entry: *CacheEntry) void {
     // document from its browsing context, and neither pointer is visible to
     // V8. Only the wrapper goes; a later wrap makes a fresh one. A realm's
     // Window is freed by its realm's end, never by its wrapper's death.
-    //
-    // And a streams object of a detached realm is not kept: its graph was
-    // held for the realm's life by the global object, which is gone now with
-    // every wrapper of the graph, and the realm's end no longer finds this
-    // entry to free it (the teardown of these classes touches only their own
-    // slots, so any order is safe).
-    const detached_streams = entry.cache.detached_holder != null and isStreamsGraphObject(entry.instance.vtable.name);
-    if (isRealmWindow(entry.instance) or (engineOwns(entry.instance) and !detached_streams)) {
+    if (isRealmWindow(entry.instance) or engineOwns(entry.instance)) {
         log.debug("[finalizeEntry] ENGINE-OWNED: instance={*} - wrapper released, instance kept", .{entry.instance});
         // [wrap_tracking]: this was the instance's last engine object - no
         // other realm's cache wraps it, and it is no realm's global - so

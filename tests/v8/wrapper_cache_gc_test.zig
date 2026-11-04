@@ -140,25 +140,11 @@ fn cleanupMockCacheEntries(cache: *WrapperCache, instances: []const *runtime.Ins
 // Which wrappers are held strongly (the default must stay weak)
 // ============================================================================
 
-test "isStreamsGraphObject - streams graph held strongly, everything else keeps the weak default" {
-    const isStreamsGraphObject = v8.wrapper_cache_mod.isStreamsGraphObject;
-    try testing.expect(isStreamsGraphObject("WritableStream"));
-    try testing.expect(isStreamsGraphObject("WritableStreamDefaultWriter"));
-    try testing.expect(isStreamsGraphObject("WritableStreamDefaultController"));
-    try testing.expect(isStreamsGraphObject("ReadableStream"));
-    try testing.expect(isStreamsGraphObject("ReadableStreamBYOBReader"));
-    try testing.expect(isStreamsGraphObject("ReadableByteStreamController"));
-    try testing.expect(isStreamsGraphObject("ReadableStreamBYOBRequest"));
-    try testing.expect(isStreamsGraphObject("TransformStreamDefaultController"));
-    // The default: an interface nobody listed keeps its weak wrapper.
-    try testing.expect(!isStreamsGraphObject("ReadableStreamGenericReader"));
-    try testing.expect(!isStreamsGraphObject("TextDecoderStream"));
-    try testing.expect(!isStreamsGraphObject("HTMLDivElement"));
-    try testing.expect(!isStreamsGraphObject("Response"));
-    try testing.expect(!isStreamsGraphObject(""));
-    try testing.expect(!isStreamsGraphObject("WritableStreamX"));
-    try testing.expect(!isStreamsGraphObject("MockInterface"));
-}
+// Streams objects were the one class list held strongly here, for their
+// realm's life, until lane streamslife1 (2026-11-03) made the pointers
+// between them traced edges: tests/v8/streams_lifetime_test.zig pins that a
+// dropped stream is collected, streams_gc_midflight_test.zig that one with
+// work pending is not.
 
 // ============================================================================
 // Test 1: Cache Lifecycle with Multiple Entries
