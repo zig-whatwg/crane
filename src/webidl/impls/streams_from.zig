@@ -130,9 +130,11 @@ const FromSource = struct {
         //    steps (PullStep.fulfilled).
         const step = try allocator.create(PullStep);
         errdefer allocator.destroy(step);
-        step.* = .{ .deferred = try js.Deferred.init(realm), .controller = controller, .allocator = allocator, .realm = realm, .ctx = source_realm };
+        const deferred = try js.Deferred.init(realm);
+        step.* = .{ .deferred = deferred, .controller = controller, .hold = js.Hold.take(controller), .allocator = allocator, .realm = realm, .ctx = source_realm };
         const result = js.clone(step.deferred.promise) catch |err| {
             step.deferred.deinit();
+            step.hold.give();
             return err;
         };
         realm.react(next_promise, PullStep, step, PullStep.fulfilled, PullStep.rejected, PullStep.finish) catch {
@@ -230,19 +232,26 @@ const ResultStep = struct {
 const PullStep = struct {
     deferred: js.Deferred,
     controller: *runtime.Instance,
+    /// The controller, until the iterator's next() settles: script may hold
+    /// nothing of the stream but the iterator's pending promise.
+    hold: js.Hold,
     allocator: std.mem.Allocator,
     realm: Realm,
     ctx: runtime.Context,
 
     fn finish(self: *PullStep) void {
+        const hold = self.hold;
         self.deferred.deinit();
         self.allocator.destroy(self);
+        hold.give();
     }
 
     /// Fulfillment steps, given iterResult. What they throw rejects the
     /// reaction's promise.
     fn fulfilled(self: *PullStep, iter_result: Value) void {
         defer self.finish();
+        // Its realm's end freed the stream: settle nothing on it.
+        if (!self.hold.alive()) return;
         const realm = self.realm;
         // 1. If iterResult is not an Object, throw a TypeError.
         // 2. Let done be ? IteratorComplete(iterResult).

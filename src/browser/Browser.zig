@@ -51,6 +51,8 @@ const log = std.log.scoped(.browser);
 const engine = @import("engine");
 const runtime = @import("runtime");
 const namespaces = @import("namespaces");
+const interfaces = @import("interfaces");
+const html_mod = @import("html");
 
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
@@ -694,6 +696,362 @@ pub const Browser = struct {
             if (now_ns >= deadline_ns) return .timed_out;
             _ = event_loop.runOnceBlocking(std.math.divCeil(u64, deadline_ns - now_ns, std.time.ns_per_ms) catch 1);
         }
+    }
+
+    // ========================================================================
+    // The host's view of its top-level traversables
+    // ========================================================================
+    //
+    // A host shows its Browser's top-level traversables (HTML 7.3.1.2) - the
+    // host page's, and every popup window.open() or a link's or form's target
+    // made ("every popup is a tab", docs/instances.md) - and drives them as a
+    // browser's UI does: navigate one, reload it, traverse its history, close
+    // it. Each is named by the id of its top-level browsing context, which it
+    // keeps for its life; an id whose traversable has closed names nothing
+    // (null, or error.NoSuchTraversable). On the Browser's window thread, from
+    // outside script (a task of the loop, or between its turns).
+    //
+    // Opening a tab - a host-made top-level traversable in a new browsing
+    // context group - is not here: the host page's Window realm is entered for
+    // its life (the engine's createWindowRealm), so a second one cannot end
+    // before a later one (tmp/plans/lane-console-handoff.md, HOST-OPENED TABS).
+
+    /// One top-level traversable, as `traversables` lists it.
+    pub const TraversableInfo = struct {
+        /// Its top-level browsing context's id.
+        id: u64,
+        /// Its active document's URL and title. OWNED (`freeTraversables`).
+        url: []u8,
+        title: []u8,
+        /// Who made it: the host (the Browser's page), or a page's script
+        /// (a popup).
+        made_by: enum { host, page },
+        /// The traversable whose page opened it, while it lives and the popup
+        /// was not opened with noopener; null otherwise.
+        opener: ?u64,
+    };
+
+    /// Every top-level traversable of this Browser that is not closed: the
+    /// host page's first, then the popups in the order they were made.
+    /// OWNED by `allocator`: `freeTraversables`.
+    pub fn traversables(self: *Browser, allocator: std.mem.Allocator) ![]TraversableInfo {
+        var list: std.ArrayListUnmanaged(TraversableInfo) = .empty;
+        errdefer {
+            for (list.items) |info| {
+                allocator.free(info.url);
+                allocator.free(info.title);
+            }
+            list.deinit(allocator);
+        }
+        const host_id = self.hostTraversableId();
+        var contexts: std.ArrayListUnmanaged(*html_mod.BrowsingContext) = .empty;
+        defer contexts.deinit(allocator);
+        if (@import("dom").browser_state.existingNavigablesIn(self.scope)) |navigables| {
+            for (navigables.contexts()) |bc| {
+                if (!isOpenTopLevel(bc)) continue;
+                try contexts.append(allocator, bc);
+            }
+        }
+        std.mem.sort(*html_mod.BrowsingContext, contexts.items, host_id, struct {
+            fn lessThan(host_tab: ?u64, a: *html_mod.BrowsingContext, b: *html_mod.BrowsingContext) bool {
+                if (host_tab) |h| {
+                    if (a.id == h) return b.id != h;
+                    if (b.id == h) return false;
+                }
+                return a.id < b.id;
+            }
+        }.lessThan);
+        for (contexts.items) |bc| {
+            const document: ?*runtime.Instance = if (bc.getActiveDocument()) |d| @ptrCast(@alignCast(d)) else null;
+            const url = try documentUrl(allocator, document);
+            errdefer allocator.free(url);
+            const title = try documentTitle(allocator, document);
+            errdefer allocator.free(title);
+            const opener: ?u64 = if (bc.opener) |o| (if (!bc.disowned and isOpenTopLevel(o)) o.id else null) else null;
+            try list.append(allocator, .{
+                .id = bc.id,
+                .url = url,
+                .title = title,
+                .made_by = if (host_id != null and bc.id == host_id.?) .host else .page,
+                .opener = opener,
+            });
+        }
+        return list.toOwnedSlice(allocator);
+    }
+
+    /// The ids of the open top-level traversables, in `traversables`'
+    /// order, written into `out` (as many as fit): how many there are.
+    /// Allocates nothing - a host asks between turns of the loop.
+    pub fn traversableIds(self: *Browser, out: []u64) usize {
+        const navigables = @import("dom").browser_state.existingNavigablesIn(self.scope) orelse return 0;
+        const host_id = self.hostTraversableId();
+        var count: usize = 0;
+        if (host_id) |h| if (self.openTraversable(h) != null) {
+            if (count < out.len) out[count] = h;
+            count += 1;
+        };
+        const first_popup = count;
+        for (navigables.contexts()) |bc| {
+            if (!isOpenTopLevel(bc)) continue;
+            if (host_id) |h| if (bc.id == h) continue;
+            if (count < out.len) out[count] = bc.id;
+            count += 1;
+        }
+        const written = @min(count, out.len);
+        if (written > first_popup) std.mem.sort(u64, out[first_popup..written], {}, std.sort.asc(u64));
+        return count;
+    }
+
+    /// Free what `traversables` returned.
+    pub fn freeTraversables(allocator: std.mem.Allocator, list: []TraversableInfo) void {
+        for (list) |info| {
+            allocator.free(info.url);
+            allocator.free(info.title);
+        }
+        allocator.free(list);
+    }
+
+    /// The host page's top-level traversable: the Browser's first tab.
+    pub fn hostTraversableId(self: *Browser) ?u64 {
+        const ctx = self.current_context orelse return null;
+        const bc = ctx.browsing_context orelse return null;
+        return bc.id;
+    }
+
+    /// The realm of traversable `id`'s active window - where script typed
+    /// into its console runs, and what follows its navigations - or null
+    /// while it has none (a navigation between two Windows) or once it has
+    /// closed.
+    pub fn traversableRealm(self: *Browser, id: u64) ?runtime.Context {
+        const window = self.traversableWindow(id) orelse return null;
+        return window.ctx;
+    }
+
+    /// Traversable `id`'s active window (its Window), or null.
+    pub fn traversableWindow(self: *Browser, id: u64) ?*runtime.Instance {
+        const bc = self.openTraversable(id) orelse return null;
+        const window = bc.getActiveWindow() orelse return null;
+        return @ptrCast(@alignCast(window));
+    }
+
+    /// Where traversable `id` is, read without running script or
+    /// allocating - a host asks between turns of the loop. Null once it has
+    /// closed.
+    pub const TraversableState = struct {
+        /// Its active document, as an identity to tell one document from the
+        /// next with `document_generation` (a freed document's address is
+        /// reused): never dereferenced by the caller. Null between two
+        /// documents.
+        document: ?*anyopaque,
+        document_generation: u64,
+        /// The active document is its initial about:blank one.
+        initial_about_blank: bool,
+        /// A navigation of it is under way, or a traversal or reload queued
+        /// on its session history traversal queue.
+        navigating: bool,
+        /// The active document's load event has run: HTML "the end" step 7
+        /// makes its readiness "complete" and fires load in one task.
+        loaded: bool,
+        /// The URL the navigation under way navigates to, when it is a
+        /// navigation (not a traversal or a reload queued): BORROWED, valid
+        /// until the loop's next turn.
+        navigating_to: ?[]const u8 = null,
+    };
+
+    pub fn traversableState(self: *Browser, id: u64) ?TraversableState {
+        const bc = self.openTraversable(id) orelse return null;
+        const document: ?*runtime.Instance = if (bc.getActiveDocument()) |d| @ptrCast(@alignCast(d)) else null;
+        const integration = integrationOf(bc);
+        const navigating = if (integration) |i| i.ongoing_navigation != .none else false;
+        const queued = if (bc.traversal_queue) |queue| queue.items.items.len > 0 or queue.running != null else false;
+        const loaded = if (document) |d| ((interfaces.Document.get_readyState(d) catch ._loading_) == ._complete_) else false;
+        var navigating_to: ?[]const u8 = null;
+        if (integration) |i| switch (i.ongoing_navigation) {
+            .id => |navigation_id| if (bc.navigables) |navigables| {
+                if (navigables.navigation(navigation_id)) |record| navigating_to = @import("dom").navigables.navigationUrl(record);
+            },
+            else => {},
+        };
+        return .{
+            .navigating_to = navigating_to,
+            .document = if (document) |d| @ptrCast(d) else null,
+            .document_generation = if (document) |d| runtime.SlabAllocator.generationOf(d) else 0,
+            .initial_about_blank = if (document) |d| @import("dom").document_lifecycle.isInitialAboutBlank(d) else false,
+            .navigating = navigating or queued,
+            .loaded = loaded,
+        };
+    }
+
+    /// Traversable `id`'s active document's URL ("about:blank" while it has
+    /// none). OWNED by `allocator`; error.NoSuchTraversable once it closed.
+    pub fn traversableUrl(self: *Browser, allocator: std.mem.Allocator, id: u64) ![]u8 {
+        const bc = self.openTraversable(id) orelse return error.NoSuchTraversable;
+        const document: ?*runtime.Instance = if (bc.getActiveDocument()) |d| @ptrCast(@alignCast(d)) else null;
+        return documentUrl(allocator, document);
+    }
+
+    /// The response status of the navigation that made traversable `id`'s
+    /// active document - its navigation timing entry's responseStatus - or
+    /// 0: a document no response made (about:blank, a srcdoc, an error
+    /// document) has no entry, and one fetched from no network a status of 0.
+    pub fn traversableStatus(self: *Browser, id: u64) u16 {
+        const window = self.traversableWindow(id) orelse return 0;
+        const entry = @import("dom").performance_timeline.navigationEntryOf(window.ctx) orelse return 0;
+        return interfaces.PerformanceResourceTiming.get_responseStatus(entry) catch 0;
+    }
+
+    /// HTML "navigate" traversable `id` to `url` as the browser's UI does -
+    /// its address bar: the host page's through its record
+    /// (Context.navigate, user involvement "browser UI"), a popup's through
+    /// its navigable's own navigate with no source document. The navigation
+    /// runs as tasks of the loop: run it to see the new document.
+    /// error.InvalidUrl for a `url` the basic URL parser does not take as an
+    /// absolute URL: nothing is navigated.
+    pub fn navigateTraversable(self: *Browser, id: u64, url: []const u8) !void {
+        const bc = self.openTraversable(id) orelse return error.NoSuchTraversable;
+        const serialized = serializedUrl(self.allocator, url) orelse return error.InvalidUrl;
+        defer self.allocator.free(serialized);
+        if (self.isHostTraversable(bc)) return self.navigateInPlace(serialized);
+        const integration = integrationOf(bc) orelse return error.NoSuchTraversable;
+        integration.navigate(serialized, .{});
+    }
+
+    /// HTML "reload" traversable `id`'s navigable, as the browser's reload
+    /// button does (History's reload steps for its active window).
+    pub fn reloadTraversable(self: *Browser, id: u64) !void {
+        const window = self.traversableWindow(id) orelse return error.NoSuchTraversable;
+        @import("dom").history_traversal.reload(window);
+    }
+
+    /// HTML "traverse the history by a delta" for traversable `id`, as a
+    /// browser's back (-1) and forward (+1) buttons do: no sourceDocument
+    /// (step 3's allowed-to-navigate check is the document's, and the user
+    /// is not a document), its steps appended to the traversable's session
+    /// history traversal queue (step 4). False when there is no entry `delta`
+    /// steps away (step 4.4 would return): nothing is queued. The traversal
+    /// runs as tasks of the loop.
+    pub fn traverseHistoryByDelta(self: *Browser, id: u64, delta: i32) !bool {
+        const bc = self.openTraversable(id) orelse return error.NoSuchTraversable;
+        const history = try bc.ensureHistoryEntries(&historyDocumentInfo);
+        const apply_history_step = html_mod.navigation.apply_history_step;
+        const predicted = history.predictedStepByDelta(delta) orelse return false;
+        const cross_document = switch (predicted) {
+            .listed => |target| apply_history_step.changesDocument(bc, history, target),
+            .pushed => false,
+        };
+        apply_history_step.traverse(bc, self.allocator, .{ .delta = delta }, .{ .cross_document_delta = cross_document, .delta_navigable = bc.id });
+        return true;
+    }
+
+    /// HTML "close a top-level traversable" for popup `id`: its documents
+    /// are asked about unloading (beforeunload), unloaded and destroyed, and
+    /// its browsing context closed (dom.auxiliary_navigables.definitelyClose).
+    /// The host's own page closes only with the Browser:
+    /// error.HostTraversable.
+    pub fn closeTraversable(self: *Browser, id: u64) !void {
+        const bc = self.openTraversable(id) orelse return error.NoSuchTraversable;
+        if (self.isHostTraversable(bc)) return error.HostTraversable;
+        const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse return error.NoSuchTraversable));
+        if (!@import("dom").auxiliary_navigables.definitelyClose(window)) return error.NoSuchTraversable;
+    }
+
+    /// How many top-level traversables are open.
+    pub fn traversableCount(self: *Browser) usize {
+        const navigables = @import("dom").browser_state.existingNavigablesIn(self.scope) orelse return 0;
+        var count: usize = 0;
+        for (navigables.contexts()) |bc| {
+            if (isOpenTopLevel(bc)) count += 1;
+        }
+        return count;
+    }
+
+    /// Where traversable `id` is in `traversables`' order, from 0 (the host
+    /// page's); null once it has closed. Allocates nothing.
+    pub fn traversableIndex(self: *Browser, id: u64) ?usize {
+        const target = self.openTraversable(id) orelse return null;
+        const host_id = self.hostTraversableId();
+        if (host_id) |h| if (target.id == h) return 0;
+        const navigables = @import("dom").browser_state.existingNavigablesIn(self.scope) orelse return null;
+        var index: usize = if (host_id != null and self.openTraversable(host_id.?) != null) 1 else 0;
+        for (navigables.contexts()) |bc| {
+            if (!isOpenTopLevel(bc) or bc.id == target.id) continue;
+            if (host_id) |h| if (bc.id == h) continue;
+            if (bc.id < target.id) index += 1;
+        }
+        return index;
+    }
+
+    /// Where a Window realm of this Browser is shown: the top-level
+    /// traversable it is in, and whether it is a frame's (a child
+    /// navigable's) rather than the traversable's own. Null for a realm that
+    /// is not a Window's, or one no browsing context shows any more. On the
+    /// Browser's window thread.
+    pub const RealmSource = struct { traversable: u64, frame: bool };
+
+    pub fn realmSource(self: *Browser, realm: runtime.Context) ?RealmSource {
+        _ = self;
+        if (!realm.isWindow()) return null;
+        const record = realm.getRealm() orelse return null;
+        const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+        const bc = @import("dom").browser_state.browsingContextOf(global) orelse return null;
+        return .{ .traversable = bc.getTop().id, .frame = bc.parent != null };
+    }
+
+    /// The open top-level browsing context with this id.
+    fn openTraversable(self: *Browser, id: u64) ?*html_mod.BrowsingContext {
+        const navigables = @import("dom").browser_state.existingNavigablesIn(self.scope) orelse return null;
+        const bc = navigables.byId(id) orelse return null;
+        return if (isOpenTopLevel(bc)) bc else null;
+    }
+
+    fn isHostTraversable(self: *Browser, bc: *const html_mod.BrowsingContext) bool {
+        const host_id = self.hostTraversableId() orelse return false;
+        return bc.id == host_id;
+    }
+
+    /// A top-level browsing context still shown: not a frame's, not closed,
+    /// not orphaned (a group switch's leftover).
+    fn isOpenTopLevel(bc: *const html_mod.BrowsingContext) bool {
+        return bc.parent == null and !bc.is_closed and !bc.orphaned and bc.active_window != null;
+    }
+
+    /// The navigable integration that drives `bc` - a popup's, or the host
+    /// page's record - if it lives.
+    fn integrationOf(bc: *html_mod.BrowsingContext) ?*html_mod.IFrameIntegration {
+        const navigables = bc.navigables orelse return null;
+        for (navigables.integrations.items) |integration| {
+            if (integration.browsing_context == bc) return integration;
+        }
+        return null;
+    }
+
+    /// What a traversable's session history records about a document (its
+    /// URL and origin, serialized), read through the interfaces - the
+    /// `info_of` of BrowsingContext.ensureHistoryEntries, as History's own.
+    fn historyDocumentInfo(document_ptr: *anyopaque, allocator: std.mem.Allocator) anyerror!html_mod.navigation.joint_history.DocumentInfo {
+        const document: *runtime.Instance = @ptrCast(@alignCast(document_ptr));
+        const url = try documentUrl(allocator, document);
+        errdefer allocator.free(url);
+        const window = (interfaces.Document.get_defaultView(document) catch null) orelse return .{ .url = url, .origin = try allocator.dupe(u8, "null") };
+        const origin = interfaces.Window.get_origin(window) catch return .{ .url = url, .origin = try allocator.dupe(u8, "null") };
+        defer window.ctx.allocator.free(origin);
+        return .{ .url = url, .origin = try allocator.dupe(u8, origin) };
+    }
+
+    /// `document`'s URL, "about:blank" for none. OWNED by `allocator`.
+    fn documentUrl(allocator: std.mem.Allocator, document: ?*runtime.Instance) ![]u8 {
+        const d = document orelse return allocator.dupe(u8, "about:blank");
+        const url = interfaces.Document.get_URL(d) catch return allocator.dupe(u8, "about:blank");
+        defer d.ctx.allocator.free(url);
+        return allocator.dupe(u8, if (url.len == 0) "about:blank" else url);
+    }
+
+    /// `document`'s title, "" for none. OWNED by `allocator`.
+    fn documentTitle(allocator: std.mem.Allocator, document: ?*runtime.Instance) ![]u8 {
+        const d = document orelse return allocator.dupe(u8, "");
+        var title = interfaces.Document.get_title(d) catch return allocator.dupe(u8, "");
+        defer title.deinit(d.ctx.allocator);
+        return allocator.dupe(u8, title.asSlice());
     }
 
     /// Get the current URL
