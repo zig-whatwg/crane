@@ -2022,9 +2022,10 @@ def fmt_mb(mb):
     return f'{int(mb + 0.5):,} MB'
 
 
-V8_NOTE = ('Crane links a release V8 (<code>is_debug=false</code>, no V8 checks, no heap verification: '
-           '<code>scripts/build-v8-static.sh</code>) but not an official one: no ThinLTO and no PGO, which '
-           'Chrome&rsquo;s V8 is built with.')
+V8_BUILD_NOTE = ('a release build (<code>is_debug=false</code>, no V8 checks, no heap verification: '
+                 '<code>scripts/build-v8-static.sh</code>) but not an official one: no ThinLTO and no PGO, which '
+                 'Chrome&rsquo;s V8 is built with.')
+V8_NOTE = 'Crane links ' + V8_BUILD_NOTE
 MEMORY_METHOD = ('Memory is each process&rsquo;s phys_footprint (Activity Monitor&rsquo;s Memory: its own dirty pages, '
                  'anonymous and compressed; the kernel charges a page shared between processes to one owner, so a sum '
                  'counts it once), sampled every second and summed over the engine&rsquo;s processes - Chrome&rsquo;s '
@@ -2162,7 +2163,15 @@ def render_reference(worklist, records, ref):
         if c:
             builds.append('Crane: ' + (esc(c['build']) + '; ' if c.get('build') else '') +
                           f"runner <code>{esc(c.get('runner', ''))}</code>")
-        builds.append('V8: ' + V8_NOTE)
+        v8 = (f"Crane links V8 <code>{esc(run['crane_js_engine'].removeprefix('V8 '))}</code>, " + V8_BUILD_NOTE
+              if run.get('crane_js_engine') else V8_NOTE)
+        if run.get('js_engine'):
+            v8 += (f" {name} <code>{esc(run['browser_version'])}</code> ships V8 "
+                   f"<code>{esc(run['js_engine'].removeprefix('V8 '))}</code>.")
+        builds.append('V8: ' + v8)
+        if tm.get('reference_reused'):
+            builds.append(f"{name}&rsquo;s figures are from its run of {esc(run['date'][:10])}, reused beside "
+                          f"Crane&rsquo;s: {esc(tm['reference_reused'])}.")
         timing_html += '<ul class="samples">' + ''.join(f'<li>{b}</li>' for b in builds) + '</ul>'
 
     def file_rows(items):

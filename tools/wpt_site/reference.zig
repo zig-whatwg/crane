@@ -308,6 +308,9 @@ pub fn harnessOf(o: Overhead, crane: bool) HarnessSplit {
 /// count for both engines, and the harness overhead measured beside them.
 pub const Timing = struct {
     processes: u32,
+    /// Set when the reference's run is reused from an earlier window beside a
+    /// later Crane run: why that is fair (the host and its conditions).
+    reference_reused: []const u8 = "",
     reference: Measure,
     crane: ?CraneMeasure = null,
     overhead: ?Overhead = null,
@@ -328,6 +331,9 @@ pub const RunMeta = struct {
     command: []const u8 = "",
     /// How the reference engine was built, in words ("official release build").
     build: []const u8 = "",
+    /// The reference's JavaScript engine ("V8 15.7.212.1"), and Crane's ("V8 13.1.203").
+    js_engine: []const u8 = "",
+    crane_js_engine: []const u8 = "",
     /// ISO 8601 UTC. Taken from the report's time_start when it has one.
     date: []const u8 = "",
 };

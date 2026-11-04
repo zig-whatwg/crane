@@ -1442,8 +1442,14 @@ fn writeMemRow(w: W, label: []const u8, crane: ?f64, ref: ?f64) Error!void {
     try w.writeAll("</tr>\n");
 }
 
+/// "V8 13.1.203" -> "13.1.203" (a prefix, never a set of characters: "V8 8.4" keeps its 8).
+fn withoutV8(s: []const u8) []const u8 {
+    return if (std.mem.startsWith(u8, s, "V8 ")) s["V8 ".len..] else s;
+}
+
 /// What Crane's V8 is, beside Chrome's (scripts/build-v8-static.sh).
-const v8_note = "Crane links a release V8 (<code>is_debug=false</code>, no V8 checks, no heap verification: <code>scripts/build-v8-static.sh</code>) but not an official one: no ThinLTO and no PGO, which Chrome&rsquo;s V8 is built with.";
+const v8_build_note = "a release build (<code>is_debug=false</code>, no V8 checks, no heap verification: <code>scripts/build-v8-static.sh</code>) but not an official one: no ThinLTO and no PGO, which Chrome&rsquo;s V8 is built with.";
+const v8_note = "Crane links " ++ v8_build_note;
 
 /// How memory is measured, as the comparison's note says it.
 const memory_method = "Memory is each process&rsquo;s phys_footprint (Activity Monitor&rsquo;s Memory: its own dirty pages, anonymous and compressed; the kernel charges a page shared between processes to one owner, so a sum counts it once), sampled every second and summed over the engine&rsquo;s processes - Chrome&rsquo;s browser, renderer, GPU and utility processes; Crane&rsquo;s runner processes that run the files - and, apart, over the harness&rsquo;s: wptrunner&rsquo;s Python, its servers and ChromeDriver; Crane&rsquo;s supervising runner and the shared WPT server.";
@@ -1632,7 +1638,28 @@ fn writeVersus(w: W, site: *const Site) Error!void {
             try html.text(w, c.runner);
             try w.writeAll("</code></dd></div>");
         }
-        try w.writeAll("<div><dt>V8</dt><dd>" ++ v8_note ++ "</dd></div></dl>\n</div>\n");
+        try w.writeAll("<div><dt>V8</dt><dd>");
+        if (r.run.crane_js_engine.len > 0) {
+            try w.writeAll("Crane links V8 <code>");
+            try html.text(w, withoutV8(r.run.crane_js_engine));
+            try w.writeAll("</code>, " ++ v8_build_note);
+        } else try w.writeAll(v8_note);
+        if (r.run.js_engine.len > 0) {
+            try w.print(" {s} <code>", .{name});
+            try html.text(w, r.run.browser_version);
+            try w.writeAll("</code> ships V8 <code>");
+            try html.text(w, withoutV8(r.run.js_engine));
+            try w.writeAll("</code>.");
+        }
+        try w.writeAll("</dd></div></dl>\n");
+        if (tm.reference_reused.len > 0) {
+            try w.print("<p class=\"reused\">{s}&rsquo;s figures are from its run of <span class=\"nowrap\">", .{name});
+            try html.shortDateY(w, r.run.date);
+            try w.writeAll("</span>, reused beside Crane&rsquo;s: ");
+            try html.text(w, tm.reference_reused);
+            try w.writeAll(".</p>\n");
+        }
+        try w.writeAll("</div>\n");
     }
     try w.writeAll("</div>\n<div class=\"note\" role=\"note\">\n<p class=\"note-label\">How the two are compared</p>\n<p>Both counts are per file, over the same test URLs: each global and variant of a file is one test, and a file&rsquo;s URLs are summed as Crane&rsquo;s runner sums them, the worst status winning. ");
     const c = r.coverage;
