@@ -93,9 +93,10 @@ pub const poison_limit: usize = 32 * 1024;
 /// Why: std.heap.DebugAllocator NEVER reuses a freed small slot (a bucket's
 /// slots are handed out once, and its page goes back only when every slot is
 /// free) and never writes to it, and `Allocator.destroy` writes nothing
-/// either (`Allocator.free` writes `undefined`, which is 0xaa only in a Debug
-/// build). So a struct freed under the ReleaseSafe correctness runner kept
-/// its exact bytes, and a read after its free found the right values: two
+/// either (`Allocator.free` writes `undefined` - 0xaa in Debug code, as the
+/// correctness runner's Crane modules are - but `destroy` has no write). So
+/// a struct freed under the correctness runner kept its exact bytes, and a
+/// read after its free found the right values: two
 /// service-worker use-after-frees (a body pump freed inside its own step,
 /// then read) passed there and crashed every time on the release runner,
 /// whose libc malloc writes its free list into a freed block. With the
