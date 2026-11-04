@@ -334,6 +334,9 @@ pub const RunMeta = struct {
     /// The reference's JavaScript engine ("V8 15.7.212.1"), and Crane's ("V8 13.1.203").
     js_engine: []const u8 = "",
     crane_js_engine: []const u8 = "",
+    /// "official": Crane's V8 is built as Chrome's official build is (ThinLTO,
+    /// PGO; -Dv8-build=official, lane v8opt1); empty: the release build.
+    crane_v8_build: []const u8 = "",
     /// Crane's runner build, named when no full Crane run is recorded yet
     /// (its overhead runs are): `timing.crane.build` names it otherwise.
     crane_build: []const u8 = "",

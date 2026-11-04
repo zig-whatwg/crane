@@ -1450,6 +1450,7 @@ fn withoutV8(s: []const u8) []const u8 {
 /// What Crane's V8 is, beside Chrome's (scripts/build-v8-static.sh).
 const js_build_note = "a release build (<code>is_debug=false</code>, no V8 checks, no heap verification: <code>scripts/build-v8-static.sh</code>) but not an official one: no ThinLTO and no PGO, which Chrome&rsquo;s V8 is built with.";
 const js_note = "Crane links " ++ js_build_note;
+const js_official_note = "built as Chrome&rsquo;s official build is: ThinLTO and PGO (<code>-Dv8-build=official</code>, <code>scripts/build-v8-official.sh</code>).";
 
 /// How memory is measured, as the comparison's note says it.
 const memory_method = "Memory is each process&rsquo;s phys_footprint (Activity Monitor&rsquo;s Memory: its own dirty pages, anonymous and compressed; the kernel charges a page shared between processes to one owner, so a sum counts it once), sampled every second and summed over the engine&rsquo;s processes - Chrome&rsquo;s browser, renderer, GPU and utility processes; Crane&rsquo;s runner processes that run the files - and, apart, over the harness&rsquo;s: wptrunner&rsquo;s Python, its servers and ChromeDriver; Crane&rsquo;s supervising runner and the shared WPT server.";
@@ -1646,7 +1647,10 @@ fn writeVersus(w: W, site: *const Site) Error!void {
         if (r.run.crane_js_engine.len > 0) {
             try w.writeAll("Crane links V8 <code>");
             try html.text(w, withoutV8(r.run.crane_js_engine));
-            try w.writeAll("</code>, " ++ js_build_note);
+            if (std.mem.eql(u8, r.run.crane_v8_build, "official"))
+                try w.writeAll("</code>, " ++ js_official_note)
+            else
+                try w.writeAll("</code>, " ++ js_build_note);
         } else try w.writeAll(js_note);
         if (r.run.js_engine.len > 0) {
             try w.print(" {s} <code>", .{name});

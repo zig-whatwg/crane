@@ -2026,6 +2026,8 @@ V8_BUILD_NOTE = ('a release build (<code>is_debug=false</code>, no V8 checks, no
                  '<code>scripts/build-v8-static.sh</code>) but not an official one: no ThinLTO and no PGO, which '
                  'Chrome&rsquo;s V8 is built with.')
 V8_NOTE = 'Crane links ' + V8_BUILD_NOTE
+V8_OFFICIAL_NOTE = ('built as Chrome&rsquo;s official build is: ThinLTO and PGO (<code>-Dv8-build=official</code>, '
+                    '<code>scripts/build-v8-official.sh</code>).')
 MEMORY_METHOD = ('Memory is each process&rsquo;s phys_footprint (Activity Monitor&rsquo;s Memory: its own dirty pages, '
                  'anonymous and compressed; the kernel charges a page shared between processes to one owner, so a sum '
                  'counts it once), sampled every second and summed over the engine&rsquo;s processes - Chrome&rsquo;s '
@@ -2165,7 +2167,8 @@ def render_reference(worklist, records, ref):
                           f"runner <code>{esc(c.get('runner', ''))}</code>")
         elif run.get('crane_build'):
             builds.append('Crane: ' + esc(run['crane_build']))
-        v8 = (f"Crane links V8 <code>{esc(run['crane_js_engine'].removeprefix('V8 '))}</code>, " + V8_BUILD_NOTE
+        v8 = (f"Crane links V8 <code>{esc(run['crane_js_engine'].removeprefix('V8 '))}</code>, " +
+              (V8_OFFICIAL_NOTE if run.get('crane_v8_build') == 'official' else V8_BUILD_NOTE)
               if run.get('crane_js_engine') else V8_NOTE)
         if run.get('js_engine'):
             v8 += (f" {name} <code>{esc(run['browser_version'])}</code> ships V8 "
