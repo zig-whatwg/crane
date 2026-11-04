@@ -2168,6 +2168,15 @@ def render_reference(worklist, records, ref):
   <h3 class="panelh" style="margin-top:18px">Wall time <span class="dim">{procs} runners each{where}</span></h3>
   <table class="comp versus"><thead><tr><th></th><th>Crane</th><th>{name}</th></tr></thead>
   <tbody>{''.join(rows)}</tbody></table>"""
+        if cpool and not cpool.get('chunks'):
+            timing_html += ('<p class="dim note">Crane&rsquo;s run is one shared queue: each runner takes the next file when '
+                            'it is free, so no runner waits for another' +
+                            (f', and each runner process runs {cpool["files_per_runner"]:,} files before a fresh one takes '
+                             f'its place' if cpool.get('files_per_runner') else '') +
+                            f'. The tests&rsquo; own wall clock is every file&rsquo;s summed over the {procs} runners: what '
+                            f'a pool that never waits would take.' +
+                            (f' {name}&rsquo;s <code>wptrunner</code> feeds its processes from one queue too.'
+                             if rpool and not rpool.get('chunks') else '') + '</p>')
         if cpool and cpool.get('chunks'):
             timing_html += (f'<p class="dim note">Crane&rsquo;s run went in {cpool["chunks"]:,} chunks of {cpool.get("chunk_files", 0):,} '
                             f'files, each split into fixed shards of {cpool.get("shard_files", 0):,} files, one per runner; a chunk '

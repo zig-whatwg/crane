@@ -1461,9 +1461,16 @@ fn writePoolRow(w: W, label: []const u8, crane: ?reference_mod.Pool, ref: ?refer
 fn writePoolNote(w: W, tm: reference_mod.Timing, name: []const u8) Error!void {
     const c = tm.crane orelse return;
     const p = c.pool orelse return;
-    if (p.chunks == 0) return;
+    const ref_queue = if (tm.reference.pool) |rp| rp.chunks == 0 else false;
+    if (p.chunks == 0) {
+        try w.writeAll("<p class=\"box-note\">Crane&rsquo;s run is one shared queue: each runner takes the next file when it is free, so no runner waits for another");
+        if (p.files_per_runner > 0) try w.print(", and each runner process runs {d} files before a fresh one takes its place", .{p.files_per_runner});
+        try w.print(". The tests&rsquo; own wall clock is every file&rsquo;s summed over the {d} runners: what a pool that never waits would take.", .{tm.processes});
+        if (ref_queue) try w.print(" {s}&rsquo;s <code>wptrunner</code> feeds its processes from one queue too.", .{name});
+        return w.writeAll("</p>\n");
+    }
     try w.print("<p class=\"box-note\">Crane&rsquo;s run went in {d} chunks of {d} files, each split into fixed shards of {d} files, one per runner; a chunk ends when its slowest shard does, so the other runners wait for it. The tests&rsquo; own wall clock is every file&rsquo;s summed over the {d} runners: what a pool that never waits would take.", .{ p.chunks, p.chunk_files, p.shard_files, tm.processes });
-    if (tm.reference.pool) |rp| if (rp.chunks == 0) try w.print(" {s}&rsquo;s <code>wptrunner</code> feeds its processes from one queue.", .{name});
+    if (ref_queue) try w.print(" {s}&rsquo;s <code>wptrunner</code> feeds its processes from one queue.", .{name});
     try w.writeAll("</p>\n");
 }
 

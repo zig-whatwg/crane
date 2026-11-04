@@ -234,9 +234,12 @@ pub const MemoryWithout = struct {
 /// shards of `shard_files` per runner, the next chunk starting when the
 /// slowest shard ends) also loses `barrier_s`, each chunk's slowest shard
 /// over its mean, and `startup_s`, each chunk's start-up and teardown.
-/// Zero chunks: one queue (wptrunner's), which loses neither.
+/// Zero chunks: one queue (wptrunner's; Crane's runner since lane sweepq1),
+/// which loses neither; `files_per_runner`, when set, is how many files one
+/// runner process runs before a fresh one takes its place.
 pub const Pool = struct {
     work_s: f64 = 0,
+    files_per_runner: u64 = 0,
     chunks: u64 = 0,
     chunk_files: u64 = 0,
     shard_files: u64 = 0,
