@@ -190,21 +190,25 @@ pub const Manifest = struct {
     }
 };
 
-/// One timed run: wall clock, and the CPU of the run's whole process tree
-/// (rusage of everything it waited for). Crane's runner uses the host's
-/// shared `wpt serve`, which is not its child, so its share of that server's
-/// CPU over the run is `server_cpu_s`; wptrunner starts its own servers, whose
-/// CPU is already in its user and system time.
+/// One timed run: wall clock, and the CPU of the run's whole process tree:
+/// the rusage of everything it waited for (`user_s`, `sys_s`), and a sample of
+/// the tree once a second (`tree_cpu_s`), which also sees a process no parent
+/// waited for - Chrome's rusage missed a sixth of its CPU in the pilot. Crane's
+/// runner uses the host's shared `wpt serve`, which is not its child, so its
+/// share of that server's CPU over the run is `server_cpu_s`; wptrunner starts
+/// its own servers, whose CPU is already in its tree.
 pub const Measure = struct {
     wall_s: f64,
     user_s: f64,
     sys_s: f64,
     server_cpu_s: f64 = 0,
+    tree_cpu_s: f64 = 0,
     /// Test URLs the run ran; zero: not recorded (the worklist's are assumed).
     tests: u64 = 0,
 
+    /// The larger of the rusage and the sampled tree, plus the server share.
     pub fn cpu(m: Measure) f64 {
-        return m.user_s + m.sys_s + m.server_cpu_s;
+        return @max(m.user_s + m.sys_s, m.tree_cpu_s) + m.server_cpu_s;
     }
 };
 
@@ -213,12 +217,17 @@ pub const CraneMeasure = struct {
     user_s: f64,
     sys_s: f64,
     server_cpu_s: f64 = 0,
+    tree_cpu_s: f64 = 0,
     /// Test URLs the run ran; zero: not recorded.
     tests: u64 = 0,
     /// Worklist files Crane's runner ran.
     files: u64 = 0,
     /// The frozen runner that ran them (its directory or commit).
     runner: []const u8 = "",
+
+    pub fn cpu(m: CraneMeasure) f64 {
+        return @max(m.user_s + m.sys_s, m.tree_cpu_s) + m.server_cpu_s;
+    }
 };
 
 pub const Overhead = struct {

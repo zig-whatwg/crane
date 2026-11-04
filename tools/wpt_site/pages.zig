@@ -1531,7 +1531,7 @@ fn writeVersus(w: W, site: *const Site) Error!void {
         }
         try w.print("</span></div>\n<table class=\"versus\">\n<thead><tr><td></td><th scope=\"col\" class=\"n\">Crane</th><th scope=\"col\" class=\"n\">{s}</th></tr></thead>\n<tbody>\n", .{name});
         const cw: ?f64 = if (tm.crane) |c| c.wall_s else null;
-        const cc: ?f64 = if (tm.crane) |c| c.user_s + c.sys_s + c.server_cpu_s else null;
+        const cc: ?f64 = if (tm.crane) |c| c.cpu() else null;
         try writeTimeRow(w, "The worklist, wall clock", cw, tm.reference.wall_s);
         try writeTimeRow(w, "CPU, user + system", cc, tm.reference.cpu());
         const urls = r.coverage.urls_expected;

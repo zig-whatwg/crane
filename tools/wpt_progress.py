@@ -2007,8 +2007,10 @@ def harness_split(files, wall, small_files=0, small_wall=None):
 
 
 def measure_cpu(m):
-    """User + system of the run's process tree, plus its share of a server it did not start."""
-    return m['user_s'] + m['sys_s'] + m.get('server_cpu_s', 0)
+    """The run's CPU, as reference.zig Measure.cpu: the larger of its rusage (user + system of
+    what it waited for) and its process tree sampled once a second (which also sees processes no
+    parent waited for), plus its share of a server it did not start."""
+    return max(m['user_s'] + m['sys_s'], m.get('tree_cpu_s', 0)) + m.get('server_cpu_s', 0)
 
 
 def fmt_duration(secs):
