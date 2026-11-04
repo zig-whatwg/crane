@@ -99,6 +99,27 @@ def gate_status(rec, path=None):
     return st
 
 
+# Reference runs (lane chromeref1; the user, 2026-11-03: "I want the chrome results on the
+# same files represented in our progress report"): another engine's results on the same
+# worklist - `wpt run chrome` over the worklist's test URLs - joined to its sources through the
+# manifest by `zig build wpt-site -- import-reference` (tools/wpt_site/reference.zig) into
+# wpt-results/reference/<run>/reference.json. They are shown beside Crane's and never counted
+# as Crane's: nothing under wpt-results/reference/ is a journal, and a journal or state record
+# whose `engine` is not Crane's is refused wherever it sits, with a message. Every line Crane's
+# runner writes has no `engine`; every record of a reference run carries its own.
+REFERENCE_SUBDIR = 'reference'
+REFERENCE_FORMAT = 'crane-wpt-reference/1'
+
+
+def is_crane(rec):
+    """Whether a record may be counted as Crane's: no `engine` (the runner's own lines) or 'crane'."""
+    return rec.get('engine') in (None, 'crane')
+
+
+def engine_label(engine):
+    return {'chrome': 'Chrome', 'firefox': 'Firefox', 'safari': 'Safari'}.get(engine, engine)
+
+
 # The gate's exemptions (the user, 2026-10-17; AGENTS.md "The 0.1 gate", in full in
 # .claude/rules/wpt-workflow.md): worklist
 # files omitted from the blocking count because ALL THREE of Chrome, Firefox and
@@ -609,6 +630,19 @@ def load_results():
             records = json.load(f)
     except (OSError, json.JSONDecodeError):
         records = {}
+    # A reference run's record in the state is not Crane's, however it got there.
+    dropped = [p for p, r in records.items() if not is_crane(r)]
+    for p in dropped:
+        del records[p]
+    if dropped:
+        print(f"wpt_progress: dropped {len(dropped)} record{'s' if len(dropped) != 1 else ''} "
+              f"of another engine from {STATE}: a reference run is never Crane's")
+    # A reference.json is read only from wpt-results/reference/<run>/, and never as Crane's.
+    for fn in sorted(glob.glob(os.path.join(RESULTS, 'reference.json')) +
+                     glob.glob(os.path.join(RESULTS, '*', 'reference.json'))):
+        print(f"wpt_progress: ignored {os.path.relpath(fn, RESULTS)}: a reference run is read only "
+              f"from wpt-results/{REFERENCE_SUBDIR}/<run>/reference.json, never as Crane's")
+    refused = collections.Counter()
     # High-water marks kept under an older rule are rebuilt from the journals
     # present, and from the record itself (`high_water` counts it).
     revisions = {}
@@ -637,6 +671,9 @@ def load_results():
                 rec = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if 'path' in rec and not is_crane(rec):
+                refused[(os.path.relpath(fn, RESULTS), str(rec.get('engine')))] += 1
+                continue
             if 'path' in rec:
                 rec['_journal'] = journal
                 # The run's label: the directory under wpt-results/ ('' for a
@@ -651,6 +688,11 @@ def load_results():
                 # an old journal cannot roll the picture backwards. It may raise
                 # a floor only when it measured the same WPT snapshot.
                 records[rec['path']] = merge_result(rec, prev)
+
+    for (rel, engine), n in sorted(refused.items()):
+        print(f"wpt_progress: refused {n} record{'s' if n != 1 else ''} of engine {engine} in {rel}: "
+              f"a reference run is never Crane's; it belongs in wpt-results/{REFERENCE_SUBDIR}/<run>/ "
+              "(zig build wpt-site -- import-reference)")
 
     os.makedirs(os.path.dirname(STATE), exist_ok=True)
     tmp_path = STATE + '.tmp'
@@ -668,7 +710,10 @@ def journal_files():
     beside a journal (`X.wptreport.jsonl`, the site's per-subtest detail) is not
     a journal and is never read here."""
     files = glob.glob(os.path.join(RESULTS, '*.jsonl')) + glob.glob(os.path.join(RESULTS, '*', '*.jsonl'))
-    return sorted((f for f in files if not f.endswith('.wptreport.jsonl')), key=os.path.getmtime)
+    # wpt-results/reference/ holds reference runs, never Crane's journals.
+    ref_dir = os.path.join(RESULTS, REFERENCE_SUBDIR) + os.sep
+    return sorted((f for f in files if not f.endswith('.wptreport.jsonl') and not f.startswith(ref_dir)),
+                  key=os.path.getmtime)
 
 
 def area_of(path, depth=2):
@@ -1845,8 +1890,270 @@ status survives.</p>
 """
 
 
+def reference_invalid(ref):
+    """Why `ref` (a parsed reference.json) cannot be shown, or None."""
+    if not isinstance(ref, dict) or ref.get('format') != REFERENCE_FORMAT:
+        return f"not {REFERENCE_FORMAT}"
+    engine = ref.get('engine')
+    if not isinstance(engine, str) or not engine:
+        return 'it names no engine'
+    if engine == 'crane':
+        return "a reference run of Crane itself: Crane's results are its journals"
+    run = ref.get('run') or {}
+    for key in ('browser_version', 'wpt_revision', 'worklist_commit', 'processes', 'date'):
+        if not run.get(key):
+            return f'run.{key} is missing'
+    for path, rec in (ref.get('files') or {}).items():
+        if not isinstance(rec, dict) or rec.get('engine') != engine:
+            return f"{path}: record of engine {rec.get('engine') if isinstance(rec, dict) else '?'} in a {engine} reference"
+    return None
+
+
+def load_reference(engine='chrome'):
+    """The newest valid reference run of `engine` (by its run date) under
+    wpt-results/reference/<run>/reference.json, with `_dir` set, or None. Each
+    invalid one is named and skipped."""
+    best = None
+    for fn in sorted(glob.glob(os.path.join(RESULTS, REFERENCE_SUBDIR, '*', 'reference.json'))):
+        rel = os.path.relpath(fn, RESULTS)
+        try:
+            with open(fn) as f:
+                ref = json.load(f)
+        except (OSError, json.JSONDecodeError) as err:
+            print(f'wpt_progress: ignored {rel}: {err}')
+            continue
+        why = reference_invalid(ref)
+        if why:
+            print(f'wpt_progress: ignored {rel}: {why}')
+            continue
+        if ref['engine'] != engine:
+            continue
+        if best is None or ref['run']['date'] > best['run']['date']:
+            ref['_dir'] = os.path.dirname(fn)
+            best = ref
+    return best
+
+
+def compare_reference(worklist, records, ref):
+    """Both engines over the worklist, from journal counts alone (passed of
+    reported, as the reference reports them), under the same gate rule; and
+    the files where one passes more subtests than the other, the most first."""
+    files = ref.get('files', {})
+
+    def blank():
+        return dict(pass_=0, reported=0, fail=0, timeout=0, notrun=0, blocking=0, clean=0, run=0)
+
+    def add(t, rec, path):
+        t['pass_'] += rec.get('passed', 0)
+        t['reported'] += subtotal(rec)
+        t['fail'] += rec.get('failed', 0)
+        t['timeout'] += rec.get('timed_out', 0)
+        t['notrun'] += rec.get('notrun', 0)
+        t['run'] += 1
+        st = gate_status(rec, path)
+        if st not in ('OK', EXEMPT):
+            t['blocking'] += 1
+        elif st == 'OK' and rec.get('failed', 0) == 0 and rec.get('timed_out', 0) == 0:
+            t['clean'] += 1
+
+    crane, refc = blank(), blank()
+    areas = collections.defaultdict(lambda: dict(pass_=0, reported=0, blocking=0, run=0))
+    ahead_ref, ahead_crane, only_ref, only_crane = [], [], [], []
+    for p in worklist:
+        c, r = records.get(p), files.get(p)
+        if c is not None:
+            add(crane, c, p)
+        if r is not None:
+            add(refc, r, p)
+            a = areas[area_of(p)]
+            a['pass_'] += r.get('passed', 0)
+            a['reported'] += subtotal(r)
+            a['run'] += 1
+            if gate_status(r, p) not in ('OK', EXEMPT):
+                a['blocking'] += 1
+        if c is None and r is None:
+            continue
+        if c is None:
+            only_ref.append(p)
+            continue
+        if r is None:
+            only_crane.append(p)
+            continue
+        d = r.get('passed', 0) - c.get('passed', 0)
+        if d > 0:
+            ahead_ref.append((p, d))
+        elif d < 0:
+            ahead_crane.append((p, -d))
+    ahead_ref.sort(key=lambda x: (-x[1], x[0]))
+    ahead_crane.sort(key=lambda x: (-x[1], x[0]))
+    rename = lambda t: {('pass' if k == 'pass_' else k): v for k, v in t.items()}
+    return {'crane': rename(crane), 'ref': rename(refc),
+            'areas': {a: rename(v) for a, v in areas.items()},
+            'ahead_ref': ahead_ref, 'ahead_crane': ahead_crane,
+            'only_ref': only_ref, 'only_crane': only_crane}
+
+
+def fmt_duration(secs):
+    """As the public site says it: "250 ms", "1.50 s", "40 min 0 s", "2 h 20 min"."""
+    if secs is None or secs != secs or secs < 0:
+        return '&mdash;'
+    if secs < 1:
+        return f'{int(secs * 1000 + 0.5)} ms'
+    if secs < 10:
+        return f'{secs:.2f} s'
+    if secs < 60:
+        return f'{secs:.1f} s'
+    whole = int(secs + 0.5)
+    if whole < 3600:
+        return f'{whole // 60} min {whole % 60} s'
+    return f'{whole // 3600} h {(whole % 3600) // 60} min'
+
+
+_SORT_SCRIPT = """<script>
+document.querySelectorAll('table.sortable').forEach(function (t) {
+  t.querySelectorAll('thead th').forEach(function (th, col) {
+    th.style.cursor = 'pointer';
+    th.addEventListener('click', function () {
+      var rows = Array.from(t.tBodies[0].rows), up = th.dataset.dir !== 'up';
+      rows.sort(function (a, b) {
+        var x = a.cells[col].dataset.v, y = b.cells[col].dataset.v;
+        var c = (x != null && y != null) ? (+x - +y) : a.cells[col].textContent.localeCompare(b.cells[col].textContent);
+        return up ? c : -c;
+      });
+      th.dataset.dir = up ? 'up' : 'down';
+      rows.forEach(function (r) { t.tBodies[0].appendChild(r); });
+    });
+  });
+});
+</script>"""
+
+
+def render_reference(worklist, records, ref):
+    """The comparison with a reference run: the run's identity, both engines'
+    numbers on the same files, the wall time with the harness overhead, and
+    the files each passes more subtests of."""
+    if not ref:
+        return ''
+    name = engine_label(ref['engine'])
+    run = ref['run']
+    cmp = compare_reference(worklist, records, ref)
+    cr, rf = cmp['crane'], cmp['ref']
+    esc = html.escape
+    when = run['date'].replace('T', ' ').replace('Z', ' UTC')
+    driver = (f", {'ChromeDriver' if ref['engine'] == 'chrome' else 'WebDriver'} "
+              f"<code>{esc(run['webdriver_version'])}</code>") if run.get('webdriver_version') else ''
+    channel = f" ({esc(run['channel'])})" if run.get('channel') else ''
+    where = f", {esc(run['host'])}" if run.get('host') else ''
+    src = os.path.relpath(ref.get('_dir', ''), REPO) if ref.get('_dir') else 'wpt-results/reference/'
+
+    def row(label, a, b):
+        return f'<tr><td class="area">{label}</td><td class="num">{a}</td><td class="num">{b}</td></tr>'
+
+    nums = ''.join([
+        row('WPT subtests passing', f"{cr['pass']:,} / {cr['reported']:,}", f"{rf['pass']:,} / {rf['reported']:,}"),
+        row('Failed', f"{cr['fail']:,}", f"{rf['fail']:,}"),
+        row('Timed out', f"{cr['timeout']:,}", f"{rf['timeout']:,}"),
+        row('Not run', f"{cr['notrun']:,}", f"{rf['notrun']:,}"),
+        row('Blocking files', f"{cr['blocking']:,}", f"{rf['blocking']:,}"),
+        row('Clean files', f"{cr['clean']:,}", f"{rf['clean']:,}"),
+        row('Files with a result', f"{cr['run']:,}", f"{rf['run']:,}"),
+    ])
+
+    timing_html = ''
+    tm = ref.get('timing')
+    cov = ref.get('coverage', {})
+    if tm:
+        procs = tm['processes']
+        c, r = tm.get('crane'), tm['reference']
+        rows = [row('The worklist, wall clock', fmt_duration(c['wall_s']) if c else 'not measured', fmt_duration(r['wall_s'])),
+                row('CPU, user + system', fmt_duration(c['user_s'] + c['sys_s']) if c else 'not measured',
+                    fmt_duration(r['user_s'] + r['sys_s']))]
+        o = tm.get('overhead')
+        urls = cov.get('urls_expected', 0)
+        if o and o.get('files'):
+            rows.append(row('One empty test, harness alone', fmt_duration(o['crane']['wall_s'] * procs / o['files']),
+                            fmt_duration(o['reference']['wall_s'] * procs / o['files'])))
+            if urls:
+                hc = o['crane']['wall_s'] * urls / o['files']
+                hr = o['reference']['wall_s'] * urls / o['files']
+                rows.append(row('Of the wall clock: harness (estimate)', fmt_duration(hc), fmt_duration(hr)))
+                rows.append(row('Of the wall clock: the tests (estimate)',
+                                fmt_duration(max(c['wall_s'] - hc, 0)) if c else 'not measured',
+                                fmt_duration(max(r['wall_s'] - hr, 0))))
+        timing_html = f"""
+  <h3 class="panelh" style="margin-top:18px">Wall time <span class="dim">{procs} runners each{where}</span></h3>
+  <table class="comp versus"><thead><tr><th></th><th>Crane</th><th>{name}</th></tr></thead>
+  <tbody>{''.join(rows)}</tbody></table>"""
+        if o and o.get('files'):
+            timing_html += (f'<p class="dim note">Each harness also ran {o["files"]:,} files holding one empty test '
+                            f'(<code>tests/wpt/crane/harness-overhead/</code>) with the same {procs} runners: what one '
+                            f'costs is the harness alone, and the estimates split each run at that rate over the '
+                            f'{urls:,} test URLs of the worklist.</p>')
+
+    def file_rows(items):
+        out = []
+        for p, d in items:
+            c, r = records[p], ref['files'][p]
+            out.append(f'<tr><td class="area">{esc(p)}</td>'
+                       f'<td class="num" data-v="{c.get("passed", 0)}">{c.get("passed", 0):,} / {subtotal(c):,}</td>'
+                       f'<td class="num" data-v="{r.get("passed", 0)}">{r.get("passed", 0):,} / {subtotal(r):,}</td>'
+                       f'<td class="num" data-v="{d}">+{d:,}</td>'
+                       f'<td class="num">{esc(gate_status(c, p))}</td><td class="num">{esc(gate_status(r, p))}</td></tr>')
+        return ''.join(out)
+
+    def table(items, lead):
+        if not items:
+            return '<p class="dim">None.</p>'
+        return (f'<table class="sortable"><thead><tr><th>Test file</th><th>Crane</th><th>{name}</th>'
+                f'<th>{lead} ahead by</th><th>Crane status</th><th>{name} status</th></tr></thead>'
+                f'<tbody>{file_rows(items)}</tbody></table>')
+
+    def only(paths, side):
+        if not paths:
+            return '<p class="dim">None.</p>'
+        out = []
+        for p in paths:
+            rec = ref['files'][p] if side == 'ref' else records[p]
+            out.append(f'<li><code>{esc(p)}</code> <span class="dim">{rec.get("passed", 0):,} / {subtotal(rec):,}, '
+                       f'{esc(gate_status(rec, p))}</span></li>')
+        return f'<ul class="samples">{"".join(out)}</ul>'
+
+    sum_ref = sum(d for _, d in cmp['ahead_ref'])
+    sum_crane = sum(d for _, d in cmp['ahead_crane'])
+    missing = cov.get('urls_missing', 0)
+    return f"""
+<h2 class="section" id="versus">Crane and {name} <small class="dim">the same files, a reference run</small></h2>
+<div class="panel">
+  <p class="sub2">{name} <code>{esc(run['browser_version'])}</code>{channel} ran the same {len(worklist):,}
+    worklist files on {esc(when)} with WPT&rsquo;s own runner (<code>wpt run</code>, headless{driver},
+    {run['processes']} processes{where}), on WPT revision <code>{esc(run['wpt_revision'][:10])}</code>, over the
+    worklist of Crane <code>{esc(run['worklist_commit'])}</code>. Read from <code>{esc(src)}</code>;
+    never counted as Crane&rsquo;s. Both columns are journal counts: subtests passed of those reported.</p>
+  <table class="comp versus"><thead><tr><th></th><th>Crane</th><th>{name}</th></tr></thead>
+  <tbody>{nums}</tbody></table>
+  <p class="dim note">{name} reported {cov.get('urls_reported', 0):,} of the {cov.get('urls_expected', 0):,} test
+    URLs of these files{f'; the other {missing:,} have no result, so those files compare over fewer URLs' if missing else ''}.
+    Each engine runs under its own harness: Crane&rsquo;s runner, and WPT&rsquo;s <code>wptrunner</code> over WebDriver.</p>
+  {timing_html}
+</div>
+<details open><summary><b>Where {name} passes subtests Crane does not</b> &mdash; {len(cmp['ahead_ref']):,} files,
+  {sum_ref:,} subtests (sortable: click a column)</summary>
+{table(cmp['ahead_ref'], name)}
+</details>
+<details><summary><b>Where Crane passes subtests {name} does not</b> &mdash; {len(cmp['ahead_crane']):,} files,
+  {sum_crane:,} subtests</summary>
+{table(cmp['ahead_crane'], 'Crane')}
+</details>
+<details><summary><b>Files only one of them ran</b> &mdash; {name} alone {len(cmp['only_ref']):,},
+  Crane alone {len(cmp['only_crane']):,}</summary>
+<p class="dim">{name} has a result, Crane has none:</p>{only(cmp['only_ref'], 'ref')}
+<p class="dim">Crane has a result, {name} has none:</p>{only(cmp['only_crane'], 'crane')}
+</details>
+{_SORT_SCRIPT}"""
+
+
 def render(areas, worklist, records, files, out_path, history=None, shape=None, roadmap=None,
-           dispositions=None):
+           dispositions=None, reference=None):
     tot = collections.Counter()
     for c in areas.values():
         tot.update(c)
@@ -1931,10 +2238,15 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     preserves it. Its passes use only the current run.</p>
 </div>"""
 
+    ref_areas = compare_reference(worklist, records, reference)['areas'] if reference else None
+    ref_name = engine_label(reference['engine']) if reference else ''
     rows = []
     for area in sorted(areas, key=lambda a: (-areas[a]['gating'], a)):
         c = areas[area]
         g = c['gating']
+        ra = (ref_areas or {}).get(area, {'pass': 0, 'reported': 0, 'blocking': 0, 'run': 0})
+        ref_cells = (f'<td class="num hide-sm">{ra["pass"]:,}<span class="dim"> / {ra["reported"]:,}</span></td>'
+                     f'<td class="num hide-sm">{ra["blocking"] or "&middot;"}</td>') if reference else ''
         rows.append(f"""
       <tr class="{'bad' if g else ('good' if c['run'] and not c['unrun'] else '')}">
         <td class="area">{html.escape(area)}</td>
@@ -1947,7 +2259,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
         <td class="num">{c['partial'] or '&middot;'}</td>
         <td class="num dim">{c['unrun'] or '&middot;'}</td>
         <td class="num hide-sm">{round(c['sub_passing']):,}<span class="dim"> / {round(c['sub_targeted']):,}</span></td>
-        <td>{bar(c['clean'], c['total'], 'ok')}</td>
+        {ref_cells}<td>{bar(c['clean'], c['total'], 'ok')}</td>
       </tr>""")
 
     journals = ''.join(
@@ -1962,6 +2274,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     unexplained = len(unexplained_losses(history or {}, dispositions or {}))
     roadmap_html = render_roadmap(roadmap, worklist, records)
     exempt_html = render_exempt(records, worklist)
+    reference_html = render_reference(worklist, records, reference)
     doc = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2099,6 +2412,9 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
   .pill.done {{ color:var(--ok) }}
   .pill.doing {{ color:var(--warn) }}
   .pill.todo {{ color:var(--dim) }}
+  table.versus {{ max-width:560px; margin-top:6px }}
+  table.versus th {{ text-align:right }}
+  table.sortable td.area {{ font-size:12px }}
 </style></head><body><div class="wrap">
 
 <h1>Crane engine progress</h1>
@@ -2128,6 +2444,8 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
   <div class="card"><div class="k">Mean per-file pass rate</div><div class="v">{file_mean_pct:.1f}%</div></div>
 </div>
 
+{reference_html}
+
 {roadmap_html}
 
 <h2 class="section">WPT detail</h2>
@@ -2145,6 +2463,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     <th>Timeout</th><th>Crash</th><th>Clean</th>
     <th class="hide-sm">Partial</th><th class="hide-sm">Unrun</th>
     <th class="hide-sm">Subtests&nbsp;pass&nbsp;/&nbsp;target</th>
+    {f'<th class="hide-sm">{ref_name}&nbsp;pass&nbsp;/&nbsp;reported</th><th class="hide-sm">{ref_name}&nbsp;blocking</th>' if reference else ''}
     <th class="hide-sm">Clean&nbsp;%</th>
   </tr></thead>
   <tbody>{''.join(rows)}</tbody>
@@ -2202,8 +2521,9 @@ def main():
         rebuild_history(worklist, records, shape)
         print(f"history rebuilt from per-record timestamps -> {HISTORY}")
     history = record_generation(worklist, records, areas)
+    reference = load_reference()
     gate_met, gating, run, total, clean = render(
-        areas, worklist, records, files, out, history, shape, load_roadmap(), dispositions)
+        areas, worklist, records, files, out, history, shape, load_roadmap(), dispositions, reference)
 
     tot = collections.Counter()
     for c in areas.values():
@@ -2229,6 +2549,16 @@ def main():
               'their floors are scoped to the individual journal measurement')
     if rescanned:
         print(f"  (rescanned {rescanned:,} sources -> {ESTIMATES})")
+    if reference:
+        cmp = compare_reference(worklist, records, reference)
+        cr, rf = cmp['crane'], cmp['ref']
+        name = engine_label(reference['engine'])
+        print(f"beside {name} {reference['run']['browser_version']} ({reference['run']['date']}, same files; "
+              f"never counted as Crane's): Crane {cr['pass']:,} / {cr['reported']:,} subtests passing, "
+              f"{cr['blocking']:,} blocking  |  {name} {rf['pass']:,} / {rf['reported']:,}, {rf['blocking']:,} blocking  |  "
+              f"{name} passes more in {len(cmp['ahead_ref']):,} files, Crane in {len(cmp['ahead_crane']):,}")
+    else:
+        print('no reference run under wpt-results/reference/: no comparison')
     print('GATE MET' if gate_met else 'gate not met')
     gens = history.get('generations', [])
     if gens:
@@ -2980,7 +3310,8 @@ def _check_reference_load():
             assert 'reference/crane/reference.json' in msg and 'Crane' in msg, msg
             assert 'reference/chrome-151/reference.json' in msg and 'firefox' in msg, msg
             assert 'reference/chrome-152/reference.json' in msg, msg
-            assert load_reference('firefox')['run']['browser_version'] == '140.0'
+            with contextlib.redirect_stdout(io.StringIO()):
+                assert load_reference('firefox')['run']['browser_version'] == '140.0'
     finally:
         RESULTS = saved
 
