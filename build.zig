@@ -2060,7 +2060,67 @@ const ModuleConfig = struct {
     platform_without: []const []const u8,
     platform_static: []const []const u8,
     platform_module: ?[]const u8,
+    /// Tables computed once by build steps and embedded (`addGeneratedTables`).
+    tables: GeneratedTables,
 };
+
+/// Tables a build step computes once and Zig caches, which modules embed with
+/// `@embedFile` of an anonymous import (lane compiletime1, 2026-11-04). Each
+/// was computed at compile time in every binary that reached it - about 9 s of
+/// single-threaded Sema per test binary (lane onebin2's time report). Their
+/// tools' tests run in `zig build test`; the tables' identity with what the
+/// compile-time code made is pinned by tests/encoding/
+/// reverse_index_table_test.zig and tests/url/psl_table_test.zig.
+const GeneratedTables = struct {
+    /// src/encoding/reverse_index.zig's five tables, by
+    /// `reverse_index_table_names` (tools/encoding/reverse_index_table.zig).
+    reverse_index: [reverse_index_table_names.len]std.Build.LazyPath,
+    /// src/url/public_suffix.zig's rule table (tools/url/psl_table.zig).
+    psl: std.Build.LazyPath,
+    /// The tools' root modules, whose tests `zig build test` runs.
+    reverse_index_tool: *std.Build.Module,
+    psl_tool: *std.Build.Module,
+};
+
+/// The reverse indexes, in the order tools/encoding/reverse_index_table.zig
+/// takes its output paths; each forward index is the tool's module
+/// `<name>_index`, and each table the encoding module's import
+/// `reverse_index_<name>`.
+const reverse_index_table_names = [_][]const u8{ "jis0208", "jis0212", "big5", "gb18030", "euc_kr" };
+const reverse_index_forward_indexes = [_][]const u8{
+    "src/encoding/japanese/jis0208_index.zig",
+    "src/encoding/japanese/jis0212_index.zig",
+    "src/encoding/chinese/big5_index.zig",
+    "src/encoding/chinese/gb18030_index.zig",
+    "src/encoding/korean/euc_kr_index.zig",
+};
+
+/// The generated tables' tools, run once per build (`GeneratedTables`).
+fn addGeneratedTables(b: *std.Build) GeneratedTables {
+    const reverse_index_module = b.createModule(.{
+        .root_source_file = b.path("tools/encoding/reverse_index_table.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    for (reverse_index_table_names, reverse_index_forward_indexes) |name, path| {
+        reverse_index_module.addAnonymousImport(b.fmt("{s}_index", .{name}), .{ .root_source_file = b.path(path) });
+    }
+    const reverse_index_run = b.addRunArtifact(b.addExecutable(.{ .name = "reverse_index_table", .root_module = reverse_index_module }));
+    var reverse_index: [reverse_index_table_names.len]std.Build.LazyPath = undefined;
+    for (reverse_index_table_names, &reverse_index) |name, *table| table.* = reverse_index_run.addOutputFileArg(b.fmt("{s}.bin", .{name}));
+
+    const psl_module = b.createModule(.{
+        .root_source_file = b.path("tools/url/psl_table.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const psl_run = b.addRunArtifact(b.addExecutable(.{ .name = "psl_table", .root_module = psl_module }));
+    psl_run.addFileArg(b.path("src/url/public_suffix_data.zig"));
+    const psl = psl_run.addOutputFileArg("psl_table.bin");
+
+    return .{ .reverse_index = reverse_index, .psl = psl, .reverse_index_tool = reverse_index_module, .psl_tool = psl_module };
+}
 
 /// The platform protocol's modules for one platform (docs/platform-protocol.md
 /// section 1): the facade `platform` (src/platform/protocol.zig), the bound
@@ -2524,6 +2584,7 @@ pub fn build(b: *std.Build) void {
         .platform_without = platform_without,
         .platform_static = platform_static,
         .platform_module = platform_module_path,
+        .tables = addGeneratedTables(b),
     };
     const crane_graph = addCraneModules(b, target, target_platform, module_config);
     const testing_graph = if (target_platform == .testing) crane_graph else addCraneModules(b, target, .testing, module_config);
@@ -5266,6 +5327,10 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&lint_css.step);
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_css_module }), "tools-lint_css", null).step);
 
+    // The generated tables' tools (`addGeneratedTables`): their own tests.
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = module_config.tables.reverse_index_tool }), "tools-reverse_index_table", null).step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = module_config.tables.psl_tool }), "tools-psl_table", null).step);
+
     // ========================================================================
     // The code-size report
     // ========================================================================
@@ -6409,6 +6474,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
     encoding_mod.addImport("infra", infra_mod);
     encoding_mod.addImport("webidl", webidl_mod);
+    for (reverse_index_table_names, config.tables.reverse_index) |name, table| {
+        encoding_mod.addAnonymousImport(b.fmt("reverse_index_{s}", .{name}), .{ .root_source_file = table });
+    }
     css_mod.addImport("encoding", encoding_mod);
 
     // URL internal modules that generated interfaces need
@@ -6424,6 +6492,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .target = target,
     });
     public_suffix_mod.addImport("host", url_internal_host_mod);
+    public_suffix_mod.addAnonymousImport("psl_table", .{ .root_source_file = config.tables.psl });
     cookiestore_mod.addImport("public_suffix", public_suffix_mod);
 
     const url_internal_path_mod = b.createModule(.{

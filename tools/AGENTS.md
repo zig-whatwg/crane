@@ -96,6 +96,12 @@ why the seam is a protocol designed whole:
 - `zig build lint-platform`: [src/platform/AGENTS.md](../src/platform/AGENTS.md), "The platform boundary".
 - `zig build lint-refcount`: [src/AGENTS.md](../src/AGENTS.md), "DOM lifetime: reference counting".
 - The naming ratchet of `zig build lint-impls` (`tools/impls_naming_baseline.txt`): [src/webidl/AGENTS.md](../src/webidl/AGENTS.md), "Names are the binding map".
+- `zig build lint-css` (tools/lint_css_boundaries.zig): the CSS module's two cold Typed OM entries (Q59, Q61) stay off the parsing/computation files. Not a ratchet: any breach fails. A boundary rule like these is a lint here, never a `comptime {}` block that @embedFile's and searches sources: such a block runs in every binary that reaches its file - these two were 20 s of single-threaded Sema per test binary (lane compiletime1).
+
+## Compile time: what to measure
+
+- `zig build code-size -- <binary> [--base=<binary>]` (tools/code_size_report.zig) groups a binary's functions by generic family from its symbol table - every `V8Interface(X).MethodCallback(...).callback` is one family - with count and bytes: what LLVM emitted, so what LLVM Emit Object (about 60% of a test binary's compile) spent its time on. Pick compile-time targets from it, not from guesses.
+- A table the compiler would compute (a sort, a reverse index, a `StaticStringMap.initComptime` of thousands of entries) is computed once by a build step whose output Zig caches, and embedded with `@embedFile` of an anonymous import (build.zig `addGeneratedTables`); its identity with the compile-time result is pinned by a test.
 
 ## Known debt — do not add to it
 

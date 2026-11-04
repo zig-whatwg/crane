@@ -7,14 +7,21 @@
 //! index that has a code point, ordered by code point and - for a code point
 //! with several pointers - by pointer, so the first match is the first pointer.
 //!
-//! Every reverse index is a constant, built at compile time (an LSD radix sort
-//! over the forward index, `orderOf`): no lazy build, no initialisation flag,
+//! Every reverse index is a constant: no lazy build, no initialisation flag,
 //! no allocation, nothing two threads could race on. They were five
 //! process-wide `var`s built on first use behind atomic flags, where two
 //! threads' first lookups both built and both wrote the index while a third
 //! read it (lane gstate4). A table is two bytes per mapped pointer (the
-//! pointer; its code point is read from the forward index), about 170 KB for
-//! all five.
+//! pointer, little-endian; its code point is read from the forward index),
+//! about 170 KB for all five.
+//!
+//! The tables are computed once, at build time, by
+//! tools/encoding/reverse_index_table.zig and embedded here (`@embedFile` of
+//! the step's output; lane compiletime1). A radix sort used to build them at
+//! compile time in every binary that reached this file - 7 s of
+//! single-threaded Sema in each test binary - and
+//! tests/encoding/reverse_index_table_test.zig proves the embedded tables are
+//! that sort's result.
 //!
 //! Usage:
 //!   const ptr = reverse_index.findEucKrPointer(0xAC00);
@@ -33,18 +40,29 @@ const euc_kr_index = @import("korean/euc_kr_index.zig");
 pub const ReverseIndex = struct {
     /// The forward index: pointer -> code point (0: no code point).
     index: []const u21,
-    /// Every pointer of `index` with a code point, in code point order.
-    order: []const u16,
+    /// Every pointer of `index` with a code point, in code point order: two
+    /// bytes each, little-endian (the build step's table).
+    order: []const u8,
+
+    /// How many pointers the table lists.
+    pub fn len(self: *const ReverseIndex) usize {
+        return self.order.len / 2;
+    }
+
+    /// The table's `i`th pointer.
+    pub fn pointerAt(self: *const ReverseIndex, i: usize) u16 {
+        return std.mem.readInt(u16, self.order[i * 2 ..][0..2], .little);
+    }
 
     fn codePointAt(self: *const ReverseIndex, i: usize) u21 {
-        return self.index[self.order[i]];
+        return self.index[self.pointerAt(i)];
     }
 
     /// The position of the first entry whose code point is not below
     /// `code_point`.
     fn lowerBound(self: *const ReverseIndex, code_point: u21) usize {
         var left: usize = 0;
-        var right: usize = self.order.len;
+        var right: usize = self.len();
         while (left < right) {
             const mid = left + (right - left) / 2;
             if (self.codePointAt(mid) < code_point) left = mid + 1 else right = mid;
@@ -56,7 +74,7 @@ pub const ReverseIndex = struct {
     /// `code_point`.
     fn upperBound(self: *const ReverseIndex, code_point: u21) usize {
         var left: usize = 0;
-        var right: usize = self.order.len;
+        var right: usize = self.len();
         while (left < right) {
             const mid = left + (right - left) / 2;
             if (self.codePointAt(mid) <= code_point) left = mid + 1 else right = mid;
@@ -67,14 +85,14 @@ pub const ReverseIndex = struct {
     /// The FIRST pointer for `code_point` ("index pointer").
     pub fn findPointer(self: *const ReverseIndex, code_point: u21) ?u16 {
         const i = self.lowerBound(code_point);
-        if (i < self.order.len and self.codePointAt(i) == code_point) return self.order[i];
+        if (i < self.len() and self.codePointAt(i) == code_point) return self.pointerAt(i);
         return null;
     }
 
     /// The LAST pointer for `code_point`.
     pub fn findLastPointer(self: *const ReverseIndex, code_point: u21) ?u16 {
         const i = self.upperBound(code_point);
-        if (i > 0 and self.codePointAt(i - 1) == code_point) return self.order[i - 1];
+        if (i > 0 and self.codePointAt(i - 1) == code_point) return self.pointerAt(i - 1);
         return null;
     }
 
@@ -82,8 +100,8 @@ pub const ReverseIndex = struct {
     /// (Big5's exclusion of the pointers below 5024).
     pub fn findPointerAbove(self: *const ReverseIndex, code_point: u21, min_pointer: u16) ?u16 {
         var i = self.lowerBound(code_point);
-        while (i < self.order.len and self.codePointAt(i) == code_point) : (i += 1) {
-            if (self.order[i] >= min_pointer) return self.order[i];
+        while (i < self.len() and self.codePointAt(i) == code_point) : (i += 1) {
+            if (self.pointerAt(i) >= min_pointer) return self.pointerAt(i);
         }
         return null;
     }
@@ -92,8 +110,8 @@ pub const ReverseIndex = struct {
     /// (Shift_JIS's "index Shift_JIS pointer").
     pub fn findPointerOutside(self: *const ReverseIndex, code_point: u21, exclude_min: u16, exclude_max: u16) ?u16 {
         var i = self.lowerBound(code_point);
-        while (i < self.order.len and self.codePointAt(i) == code_point) : (i += 1) {
-            const pointer = self.order[i];
+        while (i < self.len() and self.codePointAt(i) == code_point) : (i += 1) {
+            const pointer = self.pointerAt(i);
             if (pointer < exclude_min or pointer > exclude_max) return pointer;
         }
         return null;
@@ -108,69 +126,24 @@ pub const ReverseIndex = struct {
     }
 };
 
-/// How many pointers of `index` have a code point.
-fn mappedCount(comptime index: []const u21) usize {
-    @setEvalBranchQuota(4 * index.len + 1_000);
-    var n: usize = 0;
-    for (index) |code_point| {
-        if (code_point != 0) n += 1;
-    }
-    return n;
-}
-
-/// The pointers of `index` that have a code point, ordered by code point and,
-/// for equal code points, by pointer: a least-significant-digit radix sort on
-/// the 21-bit code point, two stable passes of 11 bits over the pointers in
-/// pointer order. Linear in the index, so cheap at compile time.
-fn orderOf(comptime index: []const u21) [mappedCount(index)]u16 {
-    @setEvalBranchQuota(40 * index.len + 100_000);
-    const n = comptime mappedCount(index);
-    comptime {
-        var by_pointer: [n]u16 = undefined;
-        var k: usize = 0;
-        for (index, 0..) |code_point, pointer| {
-            if (code_point == 0) continue;
-            by_pointer[k] = @intCast(pointer);
-            k += 1;
-        }
-        const by_low_digit = radixPass(n, index, by_pointer, 0);
-        return radixPass(n, index, by_low_digit, 11);
-    }
-}
-
-/// One stable counting-sort pass of `pointers` on the 11-bit digit of their
-/// code points at `shift`.
-fn radixPass(comptime n: usize, comptime index: []const u21, comptime pointers: [n]u16, comptime shift: u5) [n]u16 {
-    comptime {
-        var starts: [2049]usize = @splat(0);
-        for (pointers) |pointer| starts[((index[pointer] >> shift) & 0x7FF) + 1] += 1;
-        for (1..starts.len) |i| starts[i] += starts[i - 1];
-        var sorted: [n]u16 = undefined;
-        for (pointers) |pointer| {
-            const digit = (index[pointer] >> shift) & 0x7FF;
-            sorted[starts[digit]] = pointer;
-            starts[digit] += 1;
-        }
-        return sorted;
-    }
-}
-
-const jis0208_order = orderOf(&jis0208_index.INDEX);
-const jis0212_order = orderOf(&jis0212_index.INDEX);
-const big5_order = orderOf(&big5_index.INDEX);
-const gb18030_order = orderOf(&gb18030_index.INDEX);
-const euc_kr_order = orderOf(&euc_kr_index.INDEX);
+// The build step's tables, by the anonymous import names build.zig gives
+// them (`addGeneratedTables`).
+const jis0208_order = @embedFile("reverse_index_jis0208");
+const jis0212_order = @embedFile("reverse_index_jis0212");
+const big5_order = @embedFile("reverse_index_big5");
+const gb18030_order = @embedFile("reverse_index_gb18030");
+const euc_kr_order = @embedFile("reverse_index_euc_kr");
 
 /// Index jis0208, reversed.
-pub const jis0208: ReverseIndex = .{ .index = &jis0208_index.INDEX, .order = &jis0208_order };
+pub const jis0208: ReverseIndex = .{ .index = &jis0208_index.INDEX, .order = jis0208_order };
 /// Index jis0212, reversed.
-pub const jis0212: ReverseIndex = .{ .index = &jis0212_index.INDEX, .order = &jis0212_order };
+pub const jis0212: ReverseIndex = .{ .index = &jis0212_index.INDEX, .order = jis0212_order };
 /// Index Big5, reversed.
-pub const big5: ReverseIndex = .{ .index = &big5_index.INDEX, .order = &big5_order };
+pub const big5: ReverseIndex = .{ .index = &big5_index.INDEX, .order = big5_order };
 /// Index gb18030, reversed.
-pub const gb18030: ReverseIndex = .{ .index = &gb18030_index.INDEX, .order = &gb18030_order };
+pub const gb18030: ReverseIndex = .{ .index = &gb18030_index.INDEX, .order = gb18030_order };
 /// Index EUC-KR, reversed.
-pub const euc_kr: ReverseIndex = .{ .index = &euc_kr_index.INDEX, .order = &euc_kr_order };
+pub const euc_kr: ReverseIndex = .{ .index = &euc_kr_index.INDEX, .order = euc_kr_order };
 
 // ============================================================================
 // Lookups
@@ -236,7 +209,7 @@ fn expectMatchesScan(reverse: *const ReverseIndex, index: []const u21) !void {
     for (index) |code_point| {
         if (code_point != 0) mapped += 1;
     }
-    try testing.expectEqual(mapped, reverse.order.len);
+    try testing.expectEqual(mapped, reverse.len());
     var it = first.iterator();
     while (it.next()) |entry| {
         try testing.expectEqual(@as(?u16, entry.value_ptr.*), reverse.findPointer(entry.key_ptr.*));
