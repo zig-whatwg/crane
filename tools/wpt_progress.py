@@ -3572,6 +3572,21 @@ def _check_reference_pool_and_runaway():
             'fix. The rows without the runaway file leave out its chunk; Chrome&rsquo;s are its whole run.') in page
     # A window that measured neither shows neither.
     assert 'own wall clock, per runner' not in plain and 'without the runaway file' not in plain
+    # A run that is one shared queue (lane sweepq1) waits for no chunk, and the page says so.
+    ref['timing']['crane']['pool'] = {'work_s': 1345.1, 'files_per_runner': 40}
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref)
+        queue = open(out).read()
+    assert ('<tr><td class="area">The tests&rsquo; own wall clock, per runner</td><td class="num">22 min 25 s</td>'
+            '<td class="num">25 min 39 s</td></tr>') in queue
+    assert ('<tr><td class="area">Of the wall clock: waiting for a chunk&rsquo;s slowest runner</td>'
+            '<td class="num">none: one queue</td><td class="num">none: one queue</td></tr>') in queue
+    assert ('Crane&rsquo;s run is one shared queue: each runner takes the next file when it is free, so no runner waits '
+            'for another, and each runner process runs 40 files before a fresh one takes its place. The tests&rsquo; own '
+            'wall clock is every file&rsquo;s summed over the 5 runners: what a pool that never waits would take. '
+            'Chrome&rsquo;s <code>wptrunner</code> feeds its processes from one queue too.') in queue
+    assert 'chunks of' not in queue
 
 
 def _check_reference_render():

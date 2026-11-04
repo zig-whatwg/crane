@@ -2058,6 +2058,17 @@ test "site: the wall time says where each pool's time goes, and the engine's mem
     try expectHas(index, "<tr><th scope=\"row\">Memory of the engine without the runaway file, mean</th><td class=\"n\">572 MB</td><td class=\"n\">2.9 GB</td></tr>");
     try expectHas(index, "Crane&rsquo;s engine peak is one file, <code>html/x/runaway.html</code>: a runaway on main too, queued for a fix. The rows without the runaway file leave out its chunk; Chrome&rsquo;s are its whole run.");
 
+    // A run that is one shared queue (lane sweepq1) waits for no chunk, and the page says so.
+    const q = try std.mem.replaceOwned(u8, gpa, b, "\"pool\":{\"work_s\":1347.8,\"chunks\":66,\"chunk_files\":200,\"shard_files\":40,\"barrier_s\":904.6,\"startup_s\":100.9}", "\"pool\":{\"work_s\":1345.1,\"files_per_runner\":40}");
+    defer gpa.free(q);
+    _ = try runFixtureRef(gpa, &f, "out3", q);
+    const queue = try readOut(gpa, &f, "out3/index.html");
+    defer gpa.free(queue);
+    try expectHas(queue, "<tr><th scope=\"row\">The tests&rsquo; own wall clock, per runner</th><td class=\"n\">22 min 25 s</td><td class=\"n\">25 min 39 s</td></tr>");
+    try expectHas(queue, "<tr><th scope=\"row\">Of the wall clock: waiting for a chunk&rsquo;s slowest runner</th><td class=\"n\"><span class=\"quiet\">none: one queue</span></td><td class=\"n\"><span class=\"quiet\">none: one queue</span></td></tr>");
+    try expectHas(queue, "Crane&rsquo;s run is one shared queue: each runner takes the next file when it is free, so no runner waits for another, and each runner process runs 40 files before a fresh one takes its place. The tests&rsquo; own wall clock is every file&rsquo;s summed over the 5 runners: what a pool that never waits would take. Chrome&rsquo;s <code>wptrunner</code> feeds its processes from one queue too.");
+    try testing.expect(std.mem.indexOf(u8, queue, "chunks of") == null);
+
     // A window that measured neither shows neither.
     _ = try runFixtureRef(gpa, &f, "out2", fixture_reference);
     const plain = try readOut(gpa, &f, "out2/index.html");
