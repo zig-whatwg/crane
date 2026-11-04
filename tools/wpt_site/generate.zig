@@ -779,6 +779,11 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
 
     // The files the two engines differ on, for the comparison page.
     const cmp = try compareLists(arena, files);
+    const ref_ptr: ?*const reference.Reference = if (ref) |r| blk: {
+        const p = try arena.create(reference.Reference);
+        p.* = r;
+        break :blk p;
+    } else null;
 
     const site: pages_mod.Site = .{
         .files = files,
@@ -792,7 +797,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         .site_url = in.site_url,
         .card_ref = card_ref,
         .exemptions = exemptions,
-        .reference = if (ref) |*r| r else null,
+        .reference = ref_ptr,
         .ahead_ref = cmp.ahead_ref,
         .ahead_crane = cmp.ahead_crane,
         .only_ref = cmp.only_ref,
