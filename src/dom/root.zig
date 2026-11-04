@@ -154,6 +154,9 @@ pub const agent_hosts = @import("agent_hosts.zig");
 pub const browser_object_lists = @import("browser_object_lists.zig");
 /// The CookieStores that hear their Browser's cookie jar, on any thread.
 pub const cookie_change_listeners = @import("cookie_change_listeners.zig");
+/// A Browser's developer console: where its realms' console output and
+/// unhandled exceptions and rejections go when its host shows one.
+pub const developer_console = @import("developer_console.zig");
 /// The Performance Timeline: each global's entry buffers and registered
 /// performance observers, kept by its Performance object.
 pub const performance_timeline = @import("performance_timeline.zig");

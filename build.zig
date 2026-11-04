@@ -4746,6 +4746,55 @@ pub fn build(b: *std.Build) void {
     const repl_step = b.step("repl", "Run the browser console (use -- to pass args)");
     repl_step.dependOn(&run_repl.step);
 
+    // The console-parity step: WPT parity through the console
+    // (tools/console_parity.zig) - each test file of a list opened by the
+    // console binary against `wpt serve`, its results compared with a WPT
+    // runner journal. It expands a source into the runner's own runs with
+    // the runner's own parser (tests/wpt_runner/test_parser.zig, with the
+    // imports the harness tests give it below), and is built for the
+    // console's target: it runs where the console does.
+    const parity_test_parser_mod = b.createModule(.{
+        .root_source_file = b.path("tests/wpt_runner/test_parser.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "clock", .module = clock_mod },
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "xml", .module = crane_graph.xml },
+            .{ .name = "xml_document_encoding", .module = crane_graph.xml_document_encoding },
+        },
+    });
+    const console_parity_exe = b.addExecutable(.{
+        .name = "console_parity",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/console_parity.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .imports = &.{.{ .name = "wpt_test_parser", .module = parity_test_parser_mod }},
+        }),
+    });
+    const install_console_parity = b.addInstallArtifact(console_parity_exe, .{});
+    const console_parity_step = b.step("console-parity", "Build the console's WPT parity tool alone (zig-out/bin/console_parity)");
+    console_parity_step.dependOn(&install_console_parity.step);
+    const console_parity_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("tools/console_parity.zig"),
+        .target = target,
+        .optimize = .Debug,
+        .link_libc = true,
+        .imports = &.{.{ .name = "wpt_test_parser", .module = b.createModule(.{
+            .root_source_file = b.path("tests/wpt_runner/test_parser.zig"),
+            .target = target,
+            .imports = &.{
+                .{ .name = "clock", .module = testing_graph.clock },
+                .{ .name = "host", .module = testing_graph.host },
+                .{ .name = "xml", .module = testing_graph.xml },
+                .{ .name = "xml_document_encoding", .module = testing_graph.xml_document_encoding },
+            },
+        }) }},
+    }) });
+    test_step.dependOn(&addSuiteRun(b, launch, console_parity_tests, "tools-console_parity", null).step);
+
     // tests/repl/: the browser console driven in-process (tools/repl.zig's
     // Console fed lines, its output read back), part of `zig build test`.
     // Each test starts a Browser: batch 1 (suite_configs, tests-repl).

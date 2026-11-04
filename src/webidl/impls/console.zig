@@ -29,48 +29,79 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const clock = @import("clock");
 const printer = @import("console").printer;
+const developer_console = @import("dom").developer_console;
+const Level = developer_console.Level;
 
 /// The group stack's size: how many levels a message is indented.
 fn groupDepth(ctx: runtime.Context) usize {
     return ctx.console_state.getIndentLevel();
 }
 
-/// Write `bytes` to stderr, the console namespace's output.
-fn writeOut(bytes: []const u8) void {
+/// Write `bytes`, what the Printer printed for `level`, to the realm's
+/// Browser's developer console when its host shows one
+/// (dom.developer_console: the browser console), else to stderr, the console
+/// namespace's output.
+fn writeOut(ctx: runtime.Context, level: Level, bytes: []const u8) void {
+    if (reportToDeveloperConsole(ctx, level, bytes)) return;
     var buffer: [256]u8 = undefined;
     const stderr = std.debug.lockStderr(&buffer);
     defer std.debug.unlockStderr();
     stderr.file_writer.interface.writeAll(bytes) catch {};
 }
 
+/// `bytes` (lines, each ending in a newline) reported to the realm's
+/// Browser's developer console, without the last newline: whether one took
+/// it.
+fn reportToDeveloperConsole(ctx: runtime.Context, level: Level, bytes: []const u8) bool {
+    const text = if (std.mem.endsWith(u8, bytes, "\n")) bytes[0 .. bytes.len - 1] else bytes;
+    return developer_console.report(&.{ .realm = ctx, .kind = .console, .level = level, .text = text });
+}
+
 /// Print a message of the console's own (a count, a timer's warning), at
 /// the group's indentation. Straight to stderr, allocating nothing: it runs
 /// no script, so nothing waits on the lock, and count() and time() on an
 /// existing label allocate nothing even under memory pressure
-/// (tests/v8/console_state_operations_test.zig).
-fn printIndented(ctx: runtime.Context, comptime fmt: []const u8, args: anytype) void {
+/// (tests/v8/console_state_operations_test.zig). With a developer console
+/// attached it goes there instead, formatted first - into a buffer on the
+/// stack, or, for a longer message, the realm's allocator.
+fn printIndented(ctx: runtime.Context, level: Level, comptime fmt: []const u8, args: anytype) void {
+    if (developer_console.isAttached(ctx)) {
+        var buffer: [512]u8 = undefined;
+        var fixed = std.Io.Writer.fixed(&buffer);
+        if (writeIndentedMessage(&fixed, groupDepth(ctx), fmt, args)) {
+            if (reportToDeveloperConsole(ctx, level, fixed.buffered())) return;
+        } else |_| {
+            var line: std.Io.Writer.Allocating = .init(ctx.allocator);
+            defer line.deinit();
+            writeIndentedMessage(&line.writer, groupDepth(ctx), fmt, args) catch return;
+            if (reportToDeveloperConsole(ctx, level, line.written())) return;
+        }
+    }
     var buffer: [256]u8 = undefined;
     const stderr = std.debug.lockStderr(&buffer);
     defer std.debug.unlockStderr();
-    const out = &stderr.file_writer.interface;
-    out.splatByteAll(' ', groupDepth(ctx) * 2) catch return;
-    out.print(fmt ++ "\n", args) catch return;
+    writeIndentedMessage(&stderr.file_writer.interface, groupDepth(ctx), fmt, args) catch return;
+}
+
+fn writeIndentedMessage(out: *std.Io.Writer, depth: usize, comptime fmt: []const u8, args: anytype) std.Io.Writer.Error!void {
+    try out.splatByteAll(' ', depth * 2);
+    try out.print(fmt ++ "\n", args);
 }
 
 /// Logger(logLevel, data) (Console 2.1): Formatter, then Printer.
-fn printConsoleValues(ctx: runtime.Context, data: []const runtime.JSValue) void {
+fn printConsoleValues(ctx: runtime.Context, level: Level, data: []const runtime.JSValue) void {
     var line: std.Io.Writer.Allocating = .init(ctx.allocator);
     defer line.deinit();
     printer.printLogged(ctx.allocator, ctx, data, groupDepth(ctx), &line.writer) catch return;
-    writeOut(line.written());
+    writeOut(ctx, level, line.written());
 }
 
 /// Printer(logLevel, data) (Console 2.3) alone, without the Formatter.
-fn printValuesOnly(ctx: runtime.Context, data: []const runtime.JSValue) void {
+fn printValuesOnly(ctx: runtime.Context, level: Level, data: []const runtime.JSValue) void {
     var line: std.Io.Writer.Allocating = .init(ctx.allocator);
     defer line.deinit();
     printer.printValues(ctx.allocator, ctx, data, groupDepth(ctx), &line.writer) catch return;
-    writeOut(line.written());
+    writeOut(ctx, level, line.written());
 }
 
 /// `text` as a string argument, borrowed.
@@ -82,35 +113,35 @@ fn stringArgument(text: []const u8) runtime.JSValue {
 ///
 /// WHATWG Console Standard: Logger("log", data)
 pub fn call_log(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
-    printConsoleValues(ctx, data);
+    printConsoleValues(ctx, .log, data);
 }
 
 /// console.info(data...)
 ///
 /// WHATWG Console Standard: Logger("info", data)
 pub fn call_info(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
-    printConsoleValues(ctx, data);
+    printConsoleValues(ctx, .info, data);
 }
 
 /// console.debug(data...)
 ///
 /// WHATWG Console Standard: Logger("debug", data)
 pub fn call_debug(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
-    printConsoleValues(ctx, data);
+    printConsoleValues(ctx, .debug, data);
 }
 
 /// console.warn(data...)
 ///
 /// WHATWG Console Standard: Logger("warn", data)
 pub fn call_warn(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
-    printConsoleValues(ctx, data);
+    printConsoleValues(ctx, .warn, data);
 }
 
 /// console.error(data...)
 ///
 /// WHATWG Console Standard: Logger("error", data)
 pub fn call_error(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
-    printConsoleValues(ctx, data);
+    printConsoleValues(ctx, .@"error", data);
 }
 
 /// console.trace(data...)
@@ -118,9 +149,9 @@ pub fn call_error(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!
 /// WHATWG Console Standard: Log with stack trace
 pub fn call_trace(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
     if (data.len > 0) {
-        printConsoleValues(ctx, data);
+        printConsoleValues(ctx, .trace, data);
     } else {
-        printIndented(ctx, "Trace", .{});
+        printIndented(ctx, .trace, "Trace", .{});
     }
     // TODO: Stack trace generation requires debug info integration
 }
@@ -136,7 +167,7 @@ pub fn call_assert(ctx: runtime.Context, condition: webidl.Opt(bool), data: []co
     //    indicating generically an assertion failure.
     const message = "Assertion failed";
     // 3. If data is empty, append message to data.
-    if (data.len == 0) return printConsoleValues(ctx, &.{stringArgument(message)});
+    if (data.len == 0) return printConsoleValues(ctx, .assert, &.{stringArgument(message)});
     switch (data[0]) {
         // 4.3. Otherwise (first is a String): let concat be message, ": " and
         //      first; set data[0] to concat.
@@ -147,7 +178,7 @@ pub fn call_assert(ctx: runtime.Context, condition: webidl.Opt(bool), data: []co
             defer ctx.allocator.free(changed);
             changed[0] = stringArgument(concat);
             // 5. Perform Logger("assert", data).
-            printConsoleValues(ctx, changed);
+            printConsoleValues(ctx, .assert, changed);
         },
         // 4.2. If first is not a String, prepend message to data.
         else => {
@@ -155,7 +186,7 @@ pub fn call_assert(ctx: runtime.Context, condition: webidl.Opt(bool), data: []co
             defer ctx.allocator.free(changed);
             changed[0] = stringArgument(message);
             @memcpy(changed[1..], data);
-            printConsoleValues(ctx, changed);
+            printConsoleValues(ctx, .assert, changed);
         },
     }
 }
@@ -166,9 +197,9 @@ pub fn call_assert(ctx: runtime.Context, condition: webidl.Opt(bool), data: []co
 pub fn call_group(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
     // Print group header with data
     if (data.len > 0) {
-        printConsoleValues(ctx, data);
+        printConsoleValues(ctx, .group, data);
     } else {
-        printIndented(ctx, "Group", .{});
+        printIndented(ctx, .group, "Group", .{});
     }
     // Push new indent level
     ctx.console_state.group_stack.append(ctx.allocator, 0) catch {};
@@ -208,7 +239,7 @@ pub fn call_time(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) any
         gop.key_ptr.* = owned_label;
         gop.value_ptr.* = clock.monotonicMillis();
     } else {
-        printIndented(ctx, "Timer '{s}' already exists", .{label_str});
+        printIndented(ctx, .warn, "Timer '{s}' already exists", .{label_str});
     }
 }
 
@@ -230,9 +261,9 @@ pub fn call_timeLog(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString), 
         changed[0] = stringArgument(concat);
         @memcpy(changed[1..], data);
         // 6. Perform Printer("timeLog", data).
-        printValuesOnly(ctx, changed);
+        printValuesOnly(ctx, .timeLog, changed);
     } else {
-        printIndented(ctx, "Timer '{s}' does not exist", .{label_str});
+        printIndented(ctx, .warn, "Timer '{s}' does not exist", .{label_str});
     }
 }
 
@@ -246,10 +277,10 @@ pub fn call_timeEnd(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) 
         const start_time = entry.value;
         const now = clock.monotonicMillis();
         const elapsed = now - start_time;
-        printIndented(ctx, "{s}: {d}ms - timer ended", .{ label_str, elapsed });
+        printIndented(ctx, .timeEnd, "{s}: {d}ms - timer ended", .{ label_str, elapsed });
         ctx.allocator.free(entry.key); // Free the owned label string
     } else {
-        printIndented(ctx, "Timer '{s}' does not exist", .{label_str});
+        printIndented(ctx, .warn, "Timer '{s}' does not exist", .{label_str});
     }
 }
 
@@ -273,7 +304,7 @@ pub fn call_count(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString)) an
         gop.value_ptr.* += 1;
     }
 
-    printIndented(ctx, "{s}: {d}", .{ label_str, gop.value_ptr.* });
+    printIndented(ctx, .count, "{s}: {d}", .{ label_str, gop.value_ptr.* });
 }
 
 /// console.countReset(label)
@@ -289,7 +320,7 @@ pub fn call_countReset(ctx: runtime.Context, label: webidl.Opt(runtime.DOMString
     if (ctx.console_state.count_map.fetchRemove(label_str)) |entry| {
         ctx.allocator.free(entry.key); // Free the owned label string
     } else {
-        printIndented(ctx, "Count for '{s}' does not exist", .{label_str});
+        printIndented(ctx, .warn, "Count for '{s}' does not exist", .{label_str});
     }
 }
 
@@ -308,7 +339,7 @@ pub fn call_clear(ctx: runtime.Context) anyerror!void {
 /// argument is logged (Logger("log", « tabularData »)).
 pub fn call_table(ctx: runtime.Context, tabularData: webidl.Opt(runtime.JSValue), properties: webidl.Opt(runtime.JSValue)) anyerror!void {
     _ = properties;
-    printConsoleValues(ctx, &.{if (tabularData.wasPassed()) tabularData.value else runtime.JSValue.jsUndefined});
+    printConsoleValues(ctx, .table, &.{if (tabularData.wasPassed()) tabularData.value else runtime.JSValue.jsUndefined});
 }
 
 /// console.dir(item, options)
@@ -318,7 +349,7 @@ pub fn call_table(ctx: runtime.Context, tabularData: webidl.Opt(runtime.JSValue)
 /// « object », options).
 pub fn call_dir(ctx: runtime.Context, item: webidl.Opt(runtime.JSValue), options: webidl.Opt(?runtime.JSValue)) anyerror!void {
     _ = options;
-    printValuesOnly(ctx, &.{if (item.wasPassed()) item.value else runtime.JSValue.jsUndefined});
+    printValuesOnly(ctx, .dir, &.{if (item.wasPassed()) item.value else runtime.JSValue.jsUndefined});
 }
 
 /// console.dirxml(data...)
@@ -327,5 +358,5 @@ pub fn call_dir(ctx: runtime.Context, item: webidl.Opt(runtime.JSValue), options
 /// where it is a node (the Printer prints a node as its markup), else with
 /// optimally useful formatting; then Logger("dirxml", finalList).
 pub fn call_dirxml(ctx: runtime.Context, data: []const runtime.JSValue) anyerror!void {
-    printConsoleValues(ctx, data);
+    printConsoleValues(ctx, .dirxml, data);
 }

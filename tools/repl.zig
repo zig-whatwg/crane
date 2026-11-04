@@ -7,8 +7,8 @@
 //!
 //!     zig build repl-exe -j2 -Doptimize=ReleaseSafe --cache-dir ~/Library/Caches/crane-z16-cache
 //!     ./zig-out/bin/repl [<url>] [--user-agent=<s>] [--proxy=system|direct|<url>]
-//!                        [--accept-insecure-certs] [--timeout=<ms>]
-//!                        [--wait-for-navigation]
+//!                        [--accept-insecure-certs] [--ca-bundle=<pem>]
+//!                        [--timeout=<ms>] [--wait-for-navigation]
 //!
 //! (`zig build repl-exe` builds this binary and its snapshot, nothing else;
 //! `zig build repl -- <args>` builds it and runs it.) The first tab opens
@@ -36,6 +36,12 @@
 //!   ends too soon asks for another line (`...`), as Node's and Chrome's
 //!   consoles do: the engine says so, from its own parser. Its result is
 //!   printed from its promise reaction, as it settles.
+//! - THE PAGE'S OUTPUT: console.* of the page, its frames, its popups and
+//!   its workers, and what no handler took - an uncaught exception, an
+//!   unhandled rejection - is printed as it happens, above the prompt,
+//!   through the Browser's developer console (Browser.attachDeveloperConsole),
+//!   marked with where it came from (`[tab 2]`, `[frame <url>]`,
+//!   `[worker <url>]`) whenever it is not the one tab's own document.
 //! - NAVIGATION: the console evaluates in the selected tab's active document
 //!   (Browser.traversableRealm), whichever navigation made it - a link, a
 //!   form, `location.href = ..`, history.back() - and prints each navigation
@@ -72,6 +78,7 @@ const browser_mod = @import("browser");
 const Browser = browser_mod.Browser;
 const BrowserConfig = browser_mod.BrowserConfig;
 const printer = @import("console").printer;
+const developer_console = Browser.developer_console;
 
 /// No debug log lines in a Debug build of the console: the console's output
 /// is what the user reads (tools/gc_bench.zig does the same).
@@ -93,6 +100,9 @@ pub const Options = struct {
     proxy: BrowserConfig.Proxy = .system,
     /// TLS certificates are not verified (WebDriver's acceptInsecureCerts).
     accept_insecure_certs: bool = false,
+    /// A PEM bundle of certificate authorities trusted besides the system's
+    /// (BrowserConfig.ca_bundle_path): WPT's tools/certs/cacert.pem.
+    ca_bundle: ?[]const u8 = null,
     /// How long a load or an evaluation is waited for, in ms.
     timeout_ms: u64 = Console.default_deadline_ms,
     /// On a terminal too, an input that leaves the tab navigating holds the
@@ -106,7 +116,8 @@ pub const Options = struct {
 
 pub const usage =
     \\usage: repl [<url>] [--user-agent=<s>] [--proxy=system|direct|<url>]
-    \\            [--accept-insecure-certs] [--timeout=<ms>] [--wait-for-navigation]
+    \\            [--accept-insecure-certs] [--ca-bundle=<pem>] [--timeout=<ms>]
+    \\            [--wait-for-navigation]
     \\
     \\  <url>                    the first tab's page (default about:blank); the
     \\                           first prompt waits for its load event
@@ -115,6 +126,7 @@ pub const usage =
     \\  --proxy=direct           no proxy
     \\  --proxy=<url>            every request through this proxy
     \\  --accept-insecure-certs  do not verify TLS certificates
+    \\  --ca-bundle=<pem>        trust these certificate authorities too
     \\  --timeout=<ms>           how long a load or an evaluation is waited for (30000)
     \\  --wait-for-navigation    hold the next prompt while an input's navigation loads
     \\                           (always, when input is piped)
@@ -149,6 +161,9 @@ pub fn parseOptions(args: []const []const u8, bad: *[]const u8) OptionsError!Opt
                 .direct
             else
                 .{ .manual = .{ .http = value, .https = value } };
+        } else if (valueOf(arg, "--ca-bundle")) |value| {
+            if (value.len == 0) return error.MissingValue;
+            options.ca_bundle = value;
         } else if (valueOf(arg, "--timeout")) |value| {
             options.timeout_ms = std.fmt.parseUnsigned(u64, value, 10) catch return error.InvalidTimeout;
         } else if (valueOf(arg, "--profile")) |value| {
@@ -225,6 +240,8 @@ pub const Console = struct {
     /// An interrupt aborted the input's script: the agent runs script again
     /// once it has unwound (engine.resumeScripts).
     abort_requested: bool = false,
+    /// The console is the Browser's developer console (`attach`).
+    attached: bool = false,
 
     pub const default_deadline_ms: u64 = 30_000;
 
@@ -303,6 +320,7 @@ pub const Console = struct {
     }
 
     pub fn deinit(self: *Console) void {
+        self.detach();
         switch (self.waiting) {
             .evaluation => |wait| wait.evaluation.abandon(),
             .navigation => self.endNavigationWait(),
@@ -311,6 +329,22 @@ pub const Console = struct {
         self.waiting = .none;
         self.input.deinit(self.allocator);
         self.seen.deinit(self.allocator);
+    }
+
+    /// The console shows the Browser's developer console from now on: the
+    /// page's own console output and its uncaught errors print here, as they
+    /// happen.
+    pub fn attach(self: *Console) !void {
+        try self.browser.attachDeveloperConsole(.{ .context = self, .report = reportMessage });
+        self.attached = true;
+    }
+
+    /// Stop showing the developer console (deinit does): once this returns,
+    /// no message reaches the console, a worker's under way included.
+    pub fn detach(self: *Console) void {
+        if (!self.attached) return;
+        self.browser.detachDeveloperConsole();
+        self.attached = false;
     }
 
     /// What the console says when it starts.
@@ -340,6 +374,51 @@ pub const Console = struct {
         const text = std.fmt.allocPrint(self.allocator, format, args) catch return;
         defer self.allocator.free(text);
         self.emit(text);
+    }
+
+    /// The developer console's host (Browser.attachDeveloperConsole): a
+    /// message of the page, a frame, a popup or a worker, on its realm's
+    /// thread, with the developer console's lock held. Runs no script: the
+    /// text was formatted by whoever reported it.
+    fn reportMessage(context: *anyopaque, message: *const developer_console.Message) void {
+        const self: *Console = @ptrCast(@alignCast(context));
+        var text: std.Io.Writer.Allocating = .init(self.allocator);
+        defer text.deinit();
+        self.writeLabel(&text.writer, message.realm) catch return;
+        text.writer.writeAll(message.text) catch return;
+        text.writer.writeByte('\n') catch return;
+        // An exception's source, as DevTools shows it beside the message.
+        if (message.kind != .console and message.location.url.len > 0) {
+            text.writer.print("    at {s}:{d}:{d}\n", .{ message.location.url, message.location.line, message.location.column }) catch return;
+        }
+        self.emit(text.written());
+    }
+
+    /// Where a message of `realm` came from, when that is not the selected
+    /// tab's own document while it is the only tab: `[tab 2] `,
+    /// `[frame <url>] `, `[tab 2 frame <url>] `, `[worker <url>] `. On the
+    /// realm's thread.
+    fn writeLabel(self: *Console, out: *std.Io.Writer, source_realm: engine.Context) !void {
+        if (source_realm.isWindow()) {
+            // A Window's realm runs on the Browser's window thread: its
+            // traversables may be read there.
+            const source = self.browser.realmSource(source_realm) orelse return;
+            const several = self.browser.traversableCount() > 1;
+            const other_tab = self.selected != null and source.traversable != self.selected.?;
+            if (!source.frame and !several and !other_tab) return;
+            try out.writeByte('[');
+            if (several or other_tab) {
+                const index = self.browser.traversableIndex(source.traversable) orelse 0;
+                try out.print("tab {d}", .{index + 1});
+                if (source.frame) try out.writeByte(' ');
+            }
+            if (source.frame) try out.print("frame {s}", .{source_realm.documentUrl() orelse ""});
+            try out.writeAll("] ");
+            return;
+        }
+        // A worker's (or a worklet's) realm, on its own thread: its own URL.
+        const kind = if (source_realm.isWorker()) "worker" else "worklet";
+        try out.print("[{s} {s}] ", .{ kind, source_realm.documentUrl() orelse "" });
     }
 
     // ------------------------------------------------------------------------
@@ -1740,9 +1819,9 @@ pub fn main(init: std.process.Init) !u8 {
     var process = try browser_mod.Process.init(.{ .snapshot_path = if (has_snapshot) snapshot else null });
     defer process.deinit();
 
-    // In memory: nothing is written to disk.
+    // In memory (BrowserConfig's default): nothing is written to disk.
     const browser = try Browser.init(allocator, .{
-        .persist_storage = false,
+        .ca_bundle_path = options.ca_bundle,
         .user_agent = options.user_agent,
         .proxy = options.proxy,
         .accept_insecure_certs = options.accept_insecure_certs,
@@ -1760,6 +1839,8 @@ pub fn main(init: std.process.Init) !u8 {
     // the new page.
     const stdin_is_tty = std.Io.File.stdin().isTty(io) catch false;
     console.wait_for_navigation = options.wait_for_navigation or !stdin_is_tty;
+    // The page's own output prints here from now on, not on stderr.
+    try console.attach();
     console.banner();
 
     // The first tab's page, loaded before the first prompt.
