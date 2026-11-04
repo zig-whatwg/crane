@@ -213,6 +213,40 @@ pub const Memory = struct {
     group_peak_mean_mb: f64 = 0,
 };
 
+/// The engine's memory without one file whose runner ran away (lane
+/// chromeref2: one file took a runner to 61 GB while every other stayed
+/// under 2 GB): the file, why it is left out, which samples were left out,
+/// and the engine's peak and mean over the rest. Megabytes.
+pub const MemoryWithout = struct {
+    path: []const u8,
+    /// Why, in words ("a runaway on main too, queued for a fix").
+    note: []const u8 = "",
+    /// Which samples were left out, in words ("its chunk, t=861-1145 s").
+    excluded: []const u8 = "",
+    engine_peak_mb: f64 = 0,
+    engine_mean_mb: f64 = 0,
+};
+
+/// Where a runner pool's wall clock went. `work_s`: the tests' own wall
+/// clock, every file's (or test URL's) summed and divided by the runners -
+/// what a pool that never waits would take. A chunked sweep (Crane's
+/// `crane-measure.sh sweep`: chunks of `chunk_files`, each split into fixed
+/// shards of `shard_files` per runner, the next chunk starting when the
+/// slowest shard ends) also loses `barrier_s`, each chunk's slowest shard
+/// over its mean, and `startup_s`, each chunk's start-up and teardown.
+/// Zero chunks: one queue (wptrunner's; Crane's runner since lane sweepq1),
+/// which loses neither; `files_per_runner`, when set, is how many files one
+/// runner process runs before a fresh one takes its place.
+pub const Pool = struct {
+    work_s: f64 = 0,
+    files_per_runner: u64 = 0,
+    chunks: u64 = 0,
+    chunk_files: u64 = 0,
+    shard_files: u64 = 0,
+    barrier_s: f64 = 0,
+    startup_s: f64 = 0,
+};
+
 /// One timed run: wall clock, and the CPU of the run's whole process tree:
 /// the rusage of everything it waited for (`user_s`, `sys_s`), and a sample of
 /// the tree once a second (`tree_cpu_s`), which also sees a process no parent
@@ -232,6 +266,7 @@ pub const Measure = struct {
     passed: u64 = 0,
     reported: u64 = 0,
     memory: ?Memory = null,
+    pool: ?Pool = null,
 
     /// The larger of the rusage and the sampled tree, plus the server share.
     pub fn cpu(m: Measure) f64 {
@@ -251,6 +286,9 @@ pub const CraneMeasure = struct {
     passed: u64 = 0,
     reported: u64 = 0,
     memory: ?Memory = null,
+    pool: ?Pool = null,
+    /// The engine's memory without a file that ran away, beside the measured `memory`.
+    memory_without: ?MemoryWithout = null,
     /// How this runner was built, in words ("release runner: ReleaseSafe throughout, ...").
     build: []const u8 = "",
     /// Worklist files Crane's runner ran.
@@ -895,4 +933,34 @@ test "reference: a reference.json of another format, of Crane, or with a record 
     try testing.expectError(error.InvalidReference, parse(arena, try std.mem.replaceOwned(u8, arena, ok, "\"engine\":\"chrome\",\"run\"", "\"engine\":\"crane\",\"run\""), &diag));
     try testing.expectError(error.InvalidReference, parse(arena, try std.mem.replaceOwned(u8, arena, ok, "{\"engine\":\"chrome\",\"status\"", "{\"engine\":\"firefox\",\"status\""), &diag));
     try testing.expect(std.mem.indexOf(u8, diag.message(), "firefox") != null);
+}
+
+test "reference: a window's pool split and a runaway file left out of the memory survive the import and read back" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var diag: Diag = .{};
+    const a = try std.mem.replaceOwned(u8, arena, fixture_meta, "\"reference\":{\"wall_s\":3600.5,\"user_s\":9000,\"sys_s\":1200.25}", "\"reference\":{\"wall_s\":3600.5,\"user_s\":9000,\"sys_s\":1200.25,\"pool\":{\"work_s\":1538.8}}");
+    const meta = try std.mem.replaceOwned(u8, arena, a, "\"runner\":\"main-0c228a97aa\"}", "\"runner\":\"main-0c228a97aa\",\"pool\":{\"work_s\":1347.8,\"chunks\":66,\"chunk_files\":200,\"shard_files\":40,\"barrier_s\":904.6,\"startup_s\":100.9},\"memory_without\":{\"path\":\"html/x/runaway.html\",\"note\":\"a runaway on main too, queued for a fix\",\"excluded\":\"its chunk\",\"engine_peak_mb\":1525,\"engine_mean_mb\":572}}");
+    const imp = try importFixture(arena, fixture_report, meta, &diag);
+    var aw: std.Io.Writer.Allocating = .init(arena);
+    try write(&aw.writer, imp);
+    const tm = (try parse(arena, aw.written(), &diag)).timing.?;
+
+    // Chrome's pool is one queue: its tests' own wall, and no chunks.
+    try testing.expectEqual(Pool{ .work_s = 1538.8 }, tm.reference.pool.?);
+    const c = tm.crane.?;
+    try testing.expectEqual(Pool{ .work_s = 1347.8, .chunks = 66, .chunk_files = 200, .shard_files = 40, .barrier_s = 904.6, .startup_s = 100.9 }, c.pool.?);
+    const mw = c.memory_without.?;
+    try testing.expectEqualStrings("html/x/runaway.html", mw.path);
+    try testing.expectEqualStrings("a runaway on main too, queued for a fix", mw.note);
+    try testing.expectEqualStrings("its chunk", mw.excluded);
+    try testing.expectEqual(@as(f64, 1525), mw.engine_peak_mb);
+    try testing.expectEqual(@as(f64, 572), mw.engine_mean_mb);
+
+    // A window that measured neither reads back without them.
+    const plain = try importFixture(arena, fixture_report, fixture_meta, &diag);
+    try testing.expect(plain.meta.timing.?.crane.?.pool == null);
+    try testing.expect(plain.meta.timing.?.crane.?.memory_without == null);
+    try testing.expect(plain.meta.timing.?.reference.pool == null);
 }

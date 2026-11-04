@@ -2116,9 +2116,21 @@ def render_reference(worklist, records, ref):
             rows.append(row('WPT subtests passing in this run',
                             f"{c['passed']:,} / {c['reported']:,}" if (c or {}).get('reported') else 'not recorded',
                             f"{r['passed']:,} / {r['reported']:,}" if r.get('reported') else 'not recorded'))
-        rows += [row('The worklist, wall clock', fmt_duration(c['wall_s']) if c else 'not measured', fmt_duration(r['wall_s'])),
-                 row('CPU, user + system', fmt_duration(measure_cpu(c)) if c else 'not measured',
-                     fmt_duration(measure_cpu(r)))]
+        rows.append(row('The worklist, wall clock', fmt_duration(c['wall_s']) if c else 'not measured', fmt_duration(r['wall_s'])))
+        # Where each pool's wall clock went (reference.zig Pool): the tests' own, and what a chunked sweep lost.
+        cpool, rpool = (c or {}).get('pool'), r.get('pool')
+        if cpool or rpool:
+            def lost(pool, key):
+                if not pool:
+                    return 'not measured'
+                return fmt_duration(pool.get(key, 0)) if pool.get('chunks') else 'none: one queue'
+            rows.append(row('The tests&rsquo; own wall clock, per runner',
+                            fmt_duration(cpool['work_s']) if cpool else 'not measured',
+                            fmt_duration(rpool['work_s']) if rpool else 'not measured'))
+            rows.append(row('Of the wall clock: waiting for a chunk&rsquo;s slowest runner', lost(cpool, 'barrier_s'), lost(rpool, 'barrier_s')))
+            rows.append(row('Of the wall clock: chunk start-up', lost(cpool, 'startup_s'), lost(rpool, 'startup_s')))
+        rows.append(row('CPU, user + system', fmt_duration(measure_cpu(c)) if c else 'not measured',
+                        fmt_duration(measure_cpu(r))))
         cmem, rmem = (c or {}).get('memory'), r.get('memory')
         if cmem or rmem:
             for label, key in (('Memory of the engine, peak', 'engine_peak_mb'), ('Memory of the engine, mean', 'engine_mean_mb'),
@@ -2126,6 +2138,12 @@ def render_reference(worklist, records, ref):
                                ('One runner&rsquo;s engine, largest peak', 'group_peak_max_mb'),
                                ('One runner&rsquo;s engine, mean of the peaks', 'group_peak_mean_mb')):
                 rows.append(row(label, fmt_mb(cmem[key]) if cmem else 'not measured', fmt_mb(rmem[key]) if rmem else 'not measured'))
+                mw = (c or {}).get('memory_without')
+                if mw and key == 'engine_mean_mb':
+                    # The engine without a file whose runner ran away, beside the measured; the reference's own figures.
+                    for what, k in (('peak', 'engine_peak_mb'), ('mean', 'engine_mean_mb')):
+                        rows.append(row(f'Memory of the engine without the runaway file, {what}', fmt_mb(mw[k]),
+                                        fmt_mb(rmem[k]) if rmem else 'not measured'))
         o = tm.get('overhead')
         urls = cov.get('urls_expected', 0)
         if o and o.get('files'):
@@ -2150,6 +2168,28 @@ def render_reference(worklist, records, ref):
   <h3 class="panelh" style="margin-top:18px">Wall time <span class="dim">{procs} runners each{where}</span></h3>
   <table class="comp versus"><thead><tr><th></th><th>Crane</th><th>{name}</th></tr></thead>
   <tbody>{''.join(rows)}</tbody></table>"""
+        if cpool and not cpool.get('chunks'):
+            timing_html += ('<p class="dim note">Crane&rsquo;s run is one shared queue: each runner takes the next file when '
+                            'it is free, so no runner waits for another' +
+                            (f', and each runner process runs {cpool["files_per_runner"]:,} files before a fresh one takes '
+                             f'its place' if cpool.get('files_per_runner') else '') +
+                            f'. The tests&rsquo; own wall clock is every file&rsquo;s summed over the {procs} runners: what '
+                            f'a pool that never waits would take.' +
+                            (f' {name}&rsquo;s <code>wptrunner</code> feeds its processes from one queue too.'
+                             if rpool and not rpool.get('chunks') else '') + '</p>')
+        if cpool and cpool.get('chunks'):
+            timing_html += (f'<p class="dim note">Crane&rsquo;s run went in {cpool["chunks"]:,} chunks of {cpool.get("chunk_files", 0):,} '
+                            f'files, each split into fixed shards of {cpool.get("shard_files", 0):,} files, one per runner; a chunk '
+                            f'ends when its slowest shard does, so the other runners wait for it. The tests&rsquo; own wall '
+                            f'clock is every file&rsquo;s summed over the {procs} runners: what a pool that never waits would take.' +
+                            (f' {name}&rsquo;s <code>wptrunner</code> feeds its processes from one queue.'
+                             if rpool and not rpool.get('chunks') else '') + '</p>')
+        mw = (c or {}).get('memory_without')
+        if mw:
+            timing_html += (f'<p class="dim note">Crane&rsquo;s engine peak is one file, <code>{esc(mw["path"])}</code>' +
+                            (f': {esc(mw["note"])}' if mw.get('note') else '') +
+                            f'. The rows without the runaway file leave out {esc(mw.get("excluded") or "its samples")}; '
+                            f'{name}&rsquo;s are its whole run.</p>')
         if o and o.get('files'):
             timing_html += (f'<p class="dim note">Each harness also ran {o["files"]:,} files holding one empty test '
                             f'(<code>tests/wpt/crane/harness-overhead/</code>) with the same {procs} runners: what one '
@@ -3501,6 +3541,63 @@ def _check_reference_window():
     assert '<tr><td class="area">The worklist, wall clock</td><td class="num">not measured</td>' in page3
 
 
+def _check_reference_pool_and_runaway():
+    """Beside the wall clock, where each pool's time goes; beside the measured memory, the engine without a runaway file."""
+    import tempfile
+    worklist = ['dom/a.html', 'dom/b.html', 'url/never.html', 'url/u.html']
+    records = {'dom/a.html': {'path': 'dom/a.html', 'status': 'OK', 'passed': 2, 'failed': 1, 'timed_out': 0, 'notrun': 0}}
+    ref = _reference_fixture()
+    ref['timing']['reference'].update(pool={'work_s': 1538.8}, memory={
+        'samples': 3600, 'engine_peak_mb': 6144, 'engine_mean_mb': 3000.4, 'harness_peak_mb': 900, 'harness_mean_mb': 700,
+        'groups': 5, 'group_peak_max_mb': 1500, 'group_peak_mean_mb': 1200})
+    ref['timing']['crane'].update(
+        memory={'samples': 2240, 'engine_peak_mb': 62353, 'engine_mean_mb': 1458, 'harness_peak_mb': 1058,
+                'harness_mean_mb': 1053, 'groups': 332, 'group_peak_max_mb': 62214, 'group_peak_mean_mb': 438},
+        pool={'work_s': 1347.8, 'chunks': 66, 'chunk_files': 200, 'shard_files': 40, 'barrier_s': 904.6, 'startup_s': 100.9},
+        memory_without={'path': 'html/x/runaway.html', 'note': 'a runaway on main too, queued for a fix',
+                        'excluded': 'its chunk', 'engine_peak_mb': 1525, 'engine_mean_mb': 572})
+    areas, _, _ = build(worklist, records)
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref)
+        page = open(out).read()
+        render(areas, worklist, records, [], out, reference=_reference_fixture())
+        plain = open(out).read()
+    assert ('<tr><td class="area">The tests&rsquo; own wall clock, per runner</td><td class="num">22 min 28 s</td>'
+            '<td class="num">25 min 39 s</td></tr>') in page
+    assert ('<tr><td class="area">Of the wall clock: waiting for a chunk&rsquo;s slowest runner</td>'
+            '<td class="num">15 min 5 s</td><td class="num">none: one queue</td></tr>') in page
+    assert ('<tr><td class="area">Of the wall clock: chunk start-up</td><td class="num">1 min 41 s</td>'
+            '<td class="num">none: one queue</td></tr>') in page
+    assert ('Crane&rsquo;s run went in 66 chunks of 200 files, each split into fixed shards of 40 files, one per runner; '
+            'a chunk ends when its slowest shard does') in page
+    assert 'Chrome&rsquo;s <code>wptrunner</code> feeds its processes from one queue.' in page
+    assert '<tr><td class="area">Memory of the engine, peak</td><td class="num">60.9 GB</td><td class="num">6.0 GB</td></tr>' in page
+    assert ('<tr><td class="area">Memory of the engine without the runaway file, peak</td><td class="num">1.5 GB</td>'
+            '<td class="num">6.0 GB</td></tr>') in page
+    assert ('<tr><td class="area">Memory of the engine without the runaway file, mean</td><td class="num">572 MB</td>'
+            '<td class="num">2.9 GB</td></tr>') in page
+    assert ('Crane&rsquo;s engine peak is one file, <code>html/x/runaway.html</code>: a runaway on main too, queued for a '
+            'fix. The rows without the runaway file leave out its chunk; Chrome&rsquo;s are its whole run.') in page
+    # A window that measured neither shows neither.
+    assert 'own wall clock, per runner' not in plain and 'without the runaway file' not in plain
+    # A run that is one shared queue (lane sweepq1) waits for no chunk, and the page says so.
+    ref['timing']['crane']['pool'] = {'work_s': 1345.1, 'files_per_runner': 40}
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 'p.html')
+        render(areas, worklist, records, [], out, reference=ref)
+        queue = open(out).read()
+    assert ('<tr><td class="area">The tests&rsquo; own wall clock, per runner</td><td class="num">22 min 25 s</td>'
+            '<td class="num">25 min 39 s</td></tr>') in queue
+    assert ('<tr><td class="area">Of the wall clock: waiting for a chunk&rsquo;s slowest runner</td>'
+            '<td class="num">none: one queue</td><td class="num">none: one queue</td></tr>') in queue
+    assert ('Crane&rsquo;s run is one shared queue: each runner takes the next file when it is free, so no runner waits '
+            'for another, and each runner process runs 40 files before a fresh one takes its place. The tests&rsquo; own '
+            'wall clock is every file&rsquo;s summed over the 5 runners: what a pool that never waits would take. '
+            'Chrome&rsquo;s <code>wptrunner</code> feeds its processes from one queue too.') in queue
+    assert 'chunks of' not in queue
+
+
 def _check_reference_render():
     """The page shows the reference beside Crane's numbers, never in them."""
     import tempfile
@@ -3569,6 +3666,7 @@ if __name__ == '__main__':
         _check_reference_compare()
         _check_harness_split()
         _check_reference_window()
+        _check_reference_pool_and_runaway()
         _check_reference_render()
         print('wpt_progress self-test: ok')
     else:
