@@ -14,6 +14,19 @@ const std = @import("std");
 
 const Mode = std.builtin.OptimizeMode;
 
+/// The allocator the runner's process allocates from.
+pub const RunnerAllocator = enum {
+    /// runner_allocator.Fast / Traced (std.heap.DebugAllocator, safety on):
+    /// every leak and every double free reported, which the sweeps and the
+    /// gates read. Every runner but the release runner.
+    debug,
+    /// The allocator a release build of Crane gives its host: libc's malloc,
+    /// std.heap.c_allocator - what src/lib_exports.zig's createBrowser passes,
+    /// thread-safe for the runner's worker and service-worker threads. No
+    /// detection at all: the release runner is for timing only.
+    production,
+};
+
 pub const RunnerModes = struct {
     /// The runner's root module (tests/wpt_runner/main.zig). It decides the
     /// LLVM pipeline for all of the runner's Zig, std's mode, and the -O level
@@ -33,12 +46,35 @@ pub const RunnerModes = struct {
     /// panics with a stack trace instead of dying on a bare SIGTRAP. Null
     /// leaves Zig's default (off in ReleaseFast and ReleaseSmall).
     sanitize_c: ?std.zig.SanitizeC,
+    allocator: RunnerAllocator = .debug,
 
     /// Whether the runner needs C libraries of its own: the ones every other
     /// artifact links are built with -Doptimize's mode.
     pub fn ownCLibraries(self: RunnerModes) bool {
         return self.c_libraries != self.crane_modules;
     }
+
+    /// Whether the runner needs a module graph of its own: its C libraries
+    /// differ from its Crane modules' mode, or its Crane modules from the
+    /// shared graph's (`optimize`, -Doptimize's mode).
+    pub fn ownGraph(self: RunnerModes, optimize: Mode) bool {
+        return self.ownCLibraries() or self.crane_modules != optimize;
+    }
+};
+
+/// `-Dwpt-runner-release`: the runner as a release build of Crane runs - every
+/// part ReleaseFast (docs/swift-integration.md tells hosts to build Crane
+/// ReleaseFast; the benchmarks do), Zig's default C sanitizer (none in
+/// ReleaseFast), and the production allocator. It is the build to time beside
+/// a browser's official release (the user, 2026-11-04), never one to sweep or
+/// gate with: no Debug-only check runs (the refcount ledger, the isolate
+/// cleanup validation) and no leak or double free is reported.
+pub const release_runner: RunnerModes = .{
+    .root = .ReleaseFast,
+    .crane_modules = .ReleaseFast,
+    .c_libraries = .ReleaseFast,
+    .sanitize_c = null,
+    .allocator = .production,
 };
 
 /// `runner_option`: -Dwpt-runner-optimize, if given. `optimize`: -Doptimize's

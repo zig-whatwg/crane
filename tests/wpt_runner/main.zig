@@ -1493,8 +1493,13 @@ fn run(init: std.process.Init) !u8 {
     // slice, and later reads of them reported (src/dom/refcount_audit.zig).
     // Frees nothing differently.
     if (runner_allocator.wantsTraces(init.minimal.environ.getPosix("CRANE_REFCOUNT_AUDIT"))) @import("dom").refcount_audit.enable();
-    const tracked = if (want_traces) gpa_traced.allocator() else gpa_fast.allocator();
-    if (runner_allocator.wantsAttribution(init.minimal.environ.getPosix("CRANE_LEAK_FILES"))) attribution = runner_allocator.Attributing.init(tracked);
+    // The release runner (-Dwpt-runner-release, build_mode.zig `release_runner`)
+    // allocates as a release build of Crane does: libc's malloc, what
+    // src/lib_exports.zig's createBrowser gives a host, and thread-safe for the
+    // worker and service-worker threads. Nothing is detected: it is for timing.
+    const production = comptime wpt_options.production_allocator;
+    const tracked = if (production) std.heap.c_allocator else if (want_traces) gpa_traced.allocator() else gpa_fast.allocator();
+    if (!production and runner_allocator.wantsAttribution(init.minimal.environ.getPosix("CRANE_LEAK_FILES"))) attribution = runner_allocator.Attributing.init(tracked);
     const allocator = if (attribution) |*a| a.allocator() else tracked;
     defer {
         // What is still live now is what the DebugAllocator reports below,
@@ -1504,7 +1509,8 @@ fn run(init: std.process.Init) !u8 {
             a.deinit();
         }
         // Leak detection still runs; only the traces are gone in the fast case.
-        if (want_traces) {
+        // The release runner's allocator has none to run.
+        if (production) {} else if (want_traces) {
             _ = gpa_traced.deinit();
         } else {
             _ = gpa_fast.deinit();
@@ -1539,9 +1545,15 @@ fn run(init: std.process.Init) !u8 {
         build_mode.displayName(wpt_options.c_libraries_mode),
     });
     if (!options.isChild() or options.wantsSupervisor()) {
-        if (runner_allocator.tracesNote(builtin.mode, want_traces)) |note| print("wpt_runner: {s}\n", .{note});
+        if (production) {
+            print("wpt_runner: the release runner: libc's malloc, no leak or double-free detection, no Debug-only checks - for timing beside a browser's release build, never for sweeps or gates\n", .{});
+        } else if (runner_allocator.tracesNote(builtin.mode, want_traces)) |note| print("wpt_runner: {s}\n", .{note});
     }
 
+    if (options.allocator_self_check and production) {
+        print("allocator self-check ({s}): the release runner's allocator detects nothing - it is for timing, never for sweeps or gates\n", .{build_mode.displayName(builtin.mode)});
+        return 1;
+    }
     if (options.allocator_self_check) {
         const check = runner_allocator.selfCheck();
         print("allocator self-check ({s}): double free {s}, leak {s}, leak {s}\n", .{
