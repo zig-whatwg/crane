@@ -196,6 +196,7 @@ pub fn installHooks() void {
         }.of,
         .create_browsing_context_and_document = &createBrowsingContextAndDocument,
         .process_frame_attributes = &processFrameAttributes,
+        .navigation_url = &navigationUrlOf,
     });
     // The states no deinit reached, at their Browser's end.
     States.installSweep();
@@ -860,6 +861,13 @@ const TraversalWait = struct {
         return .{ .navigables = navigables, .traversable_id = w.traversable_id, .token = w.token, .navigable = bc.id };
     }
 };
+
+/// dom.navigables: the URL navigation `record` (a `Navigation`, as
+/// Navigables.navigations keeps it) navigates to.
+fn navigationUrlOf(record: *anyopaque) []const u8 {
+    const navigation: *const Navigation = @ptrCast(@alignCast(record));
+    return navigation.url;
+}
 
 /// One navigation, from "navigate" step 19 until its document commits or it
 /// is abandoned.
