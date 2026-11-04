@@ -4437,6 +4437,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "engine", .module = engine_mod },
                 .{ .name = "browser", .module = browser_mod },
                 .{ .name = "console", .module = console_mod },
+                // Real time for the console's deadlines (platform.monotonicNow).
+                .{ .name = "platform", .module = platform_mod },
             },
         }),
     });
@@ -4499,6 +4501,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "engine", .module = testing_graph.engine },
                 .{ .name = "browser", .module = testing_graph.browser },
                 .{ .name = "console", .module = testing_graph.console },
+                .{ .name = "platform", .module = testing_graph.platform },
             },
         });
         const console_test_imports = [_]std.Build.Module.Import{
