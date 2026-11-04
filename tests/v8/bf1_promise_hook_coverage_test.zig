@@ -2,6 +2,7 @@
 const std = @import("std");
 const engine = @import("engine");
 const v8 = @import("v8");
+const test_process = @import("test_process.zig");
 const ffi = v8.ffi;
 
 const Counts = struct {
@@ -27,7 +28,7 @@ fn eval(isolate: *ffi.Isolate, context: *ffi.Context, source: []const u8) !*ffi.
     return ffi.v8_Script_Run(context, script) orelse error.NoValue;
 }
 fn check() !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     const isolate = ffi.v8_Isolate_New() orelse return error.NoIsolate;
     defer ffi.v8_Isolate_Dispose(isolate);
     ffi.v8_Isolate_Enter(isolate);

@@ -26,7 +26,7 @@ fn drain(sink: *runtime.TaskSink) !void {
 }
 
 fn check() !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     // A standalone runtime of this test's own, the process's given back
     // after (test_process.OwnRuntime).
     const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
@@ -95,7 +95,7 @@ test "foreground delayed task supplies a wake and deadline, then releases its si
 
 fn raceTeardown(comptime can_block: bool) !void {
     if (comptime @hasDecl(ffi, "v8_test_ForegroundTaskRunner")) {
-        try engine.initializeEngine(.{});
+        test_process.start();
         // A standalone runtime of this test's own, the process's given back
         // after (test_process.OwnRuntime).
         const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);

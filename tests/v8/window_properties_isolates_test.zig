@@ -84,7 +84,6 @@ const Side = struct {
 test "two agents on two threads make window realms at once, each with its own WindowProperties template" {
     // The engine, the standalone runtime and the hooks start on this thread
     // first, as crane.Process starts them before any Browser.
-    try protocol.initializeEngine(.{});
     test_process.start();
     interfaces.process_hooks.startHooksForTest();
 

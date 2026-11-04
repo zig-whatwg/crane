@@ -17,23 +17,33 @@
 //! other's records too, and the other ended ERROR, "No header has been
 //! recorded" x3 (lane flakes2, 2026-11-02: lane fixes1's A/B base side).
 //!
-//! So each run of a file holds an exclusive lock on the test file itself
-//! (`<wpt root>/<path>`, the document the server serves), and a second runner
-//! on the host waits until the first is done with it. The lock is flock(2),
-//! through std's File.lock, as wpt_server's SpawnLock locks the WPT root: it
-//! belongs to its descriptor, so a runner that dies releases it, and it is no
-//! file of its own. Runners whose roots are one tree (every mirror on a pool
-//! host shares the host's) lock the same inode.
+//! So a runner holds an exclusive lock on the test file itself (`<wpt
+//! root>/<path>`, the document the server serves) for ALL of the file's runs -
+//! every global, times every variant - and a second runner on the host waits
+//! until the first is done with the file. One hold per file, not per run: a
+//! runner that released the lock between its runs took it back within
+//! microseconds, while the waiter polls every `poll_ms`, so the waiter sat
+//! through every run of the holder's file - and gave up at one run's bound,
+//! though no hold had outlasted a run (lane testfix3, hookfreeze2's A/B:
+//! crane/fm4-radio-arrow-cost.html, 20 variants, "held the file for over 90
+//! s (pid 44797 (running), holding it for 8 s)", and
+//! crane/ds1-destination-case.https.html, 29 variants, "over 40 s").
+//!
+//! The lock is flock(2), through std's File.lock, as wpt_server's SpawnLock
+//! locks the WPT root: it belongs to its descriptor, so a runner that dies
+//! releases it, and it is no file of its own. Runners whose roots are one
+//! tree (every mirror on a pool host shares the host's) lock the same inode.
 //!
 //! The wait is bounded: a run lasts at most its ceiling (config.Timeout) and a
-//! margin, so a lock held longer is a runner that hangs, and the waiter gives
-//! up with `error.HeldTooLong` - the caller journals the file as an error
-//! naming the holder - never waits silently. The holder is named by a note
-//! the holder writes into `Options.notes` (the host's temporary directory)
-//! while it holds the lock: its pid and when it took the lock. The note is
-//! only a name: the lock never depends on it, a note left by a runner that
-//! died is overwritten by the next holder, and a stale one reads as a pid
-//! that no longer runs.
+//! margin, so a file's runs last at most that many times as long
+//! (`fileBound`), a lock held longer is a runner that hangs, and the waiter
+//! gives up with `error.HeldTooLong` - the caller journals each of the file's
+//! runs as an error naming the holder - never waits silently. The holder is
+//! named by a note the holder writes into `Options.notes` (the host's
+//! temporary directory) while it holds the lock: its pid and when it took the
+//! lock. The note is only a name: the lock never depends on it, a note left
+//! by a runner that died is overwritten by the next holder, and a stale one
+//! reads as a pid that no longer runs.
 
 const std = @import("std");
 const clock = @import("clock");
@@ -116,6 +126,15 @@ const note_name_max = 32;
 fn noteName(io: std.Io, file: std.Io.File, buf: *[note_name_max]u8) ![]const u8 {
     const stat = try file.stat(io);
     return std.fmt.bufPrint(buf, "ino-{d}", .{stat.inode});
+}
+
+/// How long a runner waits for another to finish a file before it takes the
+/// other for hung: the other runs the file's `runs` runs under one hold, each
+/// at most `run_ceiling_ms` (its harness ceiling) and `run_margin_ms` (its
+/// script-deadline slack, its harness report and its page's teardown, under
+/// load).
+pub fn fileBound(runs: usize, run_ceiling_ms: u64, run_margin_ms: u64) u64 {
+    return @as(u64, @max(runs, 1)) * (run_ceiling_ms + run_margin_ms);
 }
 
 fn elapsedSince(start_ms: i64) u64 {
@@ -316,6 +335,31 @@ test "a waiting run takes the file as soon as the holder releases it, within its
     defer second.release(testing.io);
     try testing.expect(second.waited_ms >= hold_ms / 2);
     try testing.expect(second.waited_ms < no_bound);
+}
+
+test "the bound is the whole file's: every run's ceiling and margin" {
+    // crane/fm4-radio-arrow-cost.html: 20 variants of a long test.
+    try testing.expectEqual(@as(u64, 20 * (60_000 + 30_000)), fileBound(20, 60_000, 30_000));
+    try testing.expectEqual(@as(u64, 10_000 + 30_000), fileBound(1, 10_000, 30_000));
+    // A file with no run still waits as one run would.
+    try testing.expectEqual(@as(u64, 10_000 + 30_000), fileBound(0, 10_000, 30_000));
+}
+
+test "a waiter waits out a holder running a file's three runs under one hold, longer than one run's bound" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try makeFile(tmp.dir, "fm4-radio-arrow-cost.html");
+    // Three runs of 100 ms each, held at once: past one run's bound (100 ms
+    // and a 50 ms margin), within the file's.
+    const run_ms: u64 = 100;
+    const margin_ms: u64 = 50;
+    const first = try FileLock.acquire(testing.io, tmp.dir, "fm4-radio-arrow-cost.html", .{ .bound_ms = no_bound });
+    const holder = try std.Thread.spawn(.{}, holdThenRelease, .{ first, 3 * run_ms });
+    const second = FileLock.acquire(testing.io, tmp.dir, "fm4-radio-arrow-cost.html", .{ .bound_ms = fileBound(3, run_ms, margin_ms) });
+    holder.join();
+    const held = try second;
+    defer held.release(testing.io);
+    try testing.expect(held.waited_ms > run_ms + margin_ms);
 }
 
 test "the holder is named by its note; the note goes with the lock" {

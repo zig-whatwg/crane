@@ -248,7 +248,7 @@ test "the indexed property setter releases the current context" {
     defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
-    try engine.initializeEngine(.{});
+    test_process.start();
     @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     try std.testing.expectEqual(@as(i32, 1), try scriptInt(
@@ -265,7 +265,7 @@ test "the indexed property definer releases the current context" {
     defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
-    try engine.initializeEngine(.{});
+    test_process.start();
     @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     // Object.defineProperty on an indexed collection runs the definer: on a
@@ -287,7 +287,7 @@ test "the indexed property definer releases every handle it takes" {
     defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
-    try engine.initializeEngine(.{});
+    test_process.start();
     @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     // Besides the current context: the descriptor's value
@@ -315,7 +315,7 @@ test "the named property setter releases the current context" {
     defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
-    try engine.initializeEngine(.{});
+    test_process.start();
     @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     try std.testing.expectEqual(@as(i32, 3), try scriptInt(
@@ -456,7 +456,7 @@ test "the indexed descriptor and query release what they make" {
     defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
-    try engine.initializeEngine(.{});
+    test_process.start();
     @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     // V8 asks a legacy platform object for an index's descriptor
@@ -479,7 +479,7 @@ test "an indexed getter frees the string it returns" {
     defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
-    try engine.initializeEngine(.{});
+    test_process.start();
     @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     // DOMTokenList's indexed getter is item(): a copy of the token, owned by
@@ -498,7 +498,7 @@ test "a named getter frees the string it returns" {
     defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
-    try engine.initializeEngine(.{});
+    test_process.start();
     @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     // DOMStringMap's named getter answers the data-* attribute's value.
@@ -519,7 +519,7 @@ test "document.all's legacy caller releases what it takes" {
     defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
-    try engine.initializeEngine(.{});
+    test_process.start();
     @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     // Called as a function, document.all runs the binding's call handler:
@@ -542,7 +542,7 @@ test "document.all() with no argument is null" {
     defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
-    try engine.initializeEngine(.{});
+    test_process.start();
     @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     // WebIDL: the legacy caller is the operation `item(optional DOMString
@@ -605,7 +605,7 @@ test "an attribute getter called on an illegal receiver throws the getter's real
     defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
-    try engine.initializeEngine(.{});
+    test_process.start();
     @import("interfaces").process_hooks.startHooksForTest();
     try secondRealm();
     // WebIDL 3.7.6 (attribute getter) step 1.2: the receiver is not a platform
@@ -645,7 +645,7 @@ test "an indexed getter's and a length getter's success paths leave no handle" {
     defer test_agent.close();
     // Production's start, as crane.Process does it with no Browser: the engine
     // (its tree hooks keep a parented node's wrapper strong), then the hooks.
-    try engine.initializeEngine(.{});
+    test_process.start();
     @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     try std.testing.expectEqual(@as(i32, 3), try scriptInt(

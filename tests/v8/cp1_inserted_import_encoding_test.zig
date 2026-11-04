@@ -5,6 +5,7 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
+const test_process = @import("test_process.zig");
 
 fn createGlobal(realm: runtime.Context, _: runtime.JSValue, _: ?*anyopaque) ?*runtime.Instance {
     return interfaces.Window.init(realm.allocator, realm) catch null;
@@ -57,7 +58,7 @@ fn checkInsertedImport() !void {
 }
 
 test "CSSOM-inserted import inherits a parsed detached parent's encoding" {
-    try engine.initializeEngine(.{});
+    test_process.start();
     interfaces.process_hooks.startHooksForTest();
     const Run = struct {
         fn run(result: *anyerror!void) void {

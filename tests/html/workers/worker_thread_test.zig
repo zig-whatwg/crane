@@ -21,11 +21,17 @@ const TaskSink = runtime.TaskSink;
 
 const allocator = std.heap.page_allocator;
 
-/// The process-wide pieces a worker's platform objects need, as crane.Process
-/// starts them - unless a file before this one did.
+/// What a worker's platform objects need: the hooks, as crane.Process starts
+/// them, and a standalone runtime of the test's own, which the test ends
+/// (`defer runtime.deinitializeRuntime()`) once its worker threads are done.
+/// tests/html leaves none running between tests: each test makes and ends its
+/// own, and the Crane test runner fails one that leaves it (build.zig
+/// StandaloneRuntime). This helper used to start one only when none ran and
+/// never end it, and every later test that made and ended its own replaced
+/// it and ended with none (lane testfix3).
 fn startProcess() void {
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(allocator);
     @import("interfaces").process_hooks.startHooksForTest();
+    runtime.initializeRuntime(allocator);
 }
 
 fn ignoreReport(_: ?*anyopaque, _: *const engine.ErrorInfo) void {}
@@ -183,6 +189,7 @@ fn waitFor(flag: *const std.atomic.Value(bool), ms: u64) bool {
 
 test "the owner's terminate ends a script spinning on the worker's thread, and the worker ends" {
     startProcess();
+    defer runtime.deinitializeRuntime();
     const owner_sink = try TaskSink.create(allocator);
     defer owner_sink.release();
     const link = try WorkerLink.create(allocator, owner_sink);
@@ -212,6 +219,7 @@ test "the owner's terminate ends a script spinning on the worker's thread, and t
 
 test "terminate wakes a worker blocked in Atomics.wait" {
     startProcess();
+    defer runtime.deinitializeRuntime();
     const owner_sink = try TaskSink.create(allocator);
     defer owner_sink.release();
     const link = try WorkerLink.create(allocator, owner_sink);
@@ -285,6 +293,7 @@ const Probe = struct {
 
 test "a task the owner posts runs on the worker's thread, with its microtasks after it" {
     startProcess();
+    defer runtime.deinitializeRuntime();
     const owner_sink = try TaskSink.create(allocator);
     defer owner_sink.release();
     const link = try WorkerLink.create(allocator, owner_sink);
@@ -308,6 +317,7 @@ test "a task the owner posts runs on the worker's thread, with its microtasks af
 
 test "a worker closed before its loop turns drops its unfired owned timer, and posts after its end are dropped" {
     startProcess();
+    defer runtime.deinitializeRuntime();
     const owner_sink = try TaskSink.create(allocator);
     defer owner_sink.release();
     const link = try WorkerLink.create(allocator, owner_sink);
@@ -327,6 +337,7 @@ test "a worker closed before its loop turns drops its unfired owned timer, and p
 
 test "the Browser's end terminates every worker and joins every thread" {
     startProcess();
+    defer runtime.deinitializeRuntime();
     var scope = runtime.BrowserScope.init(allocator);
     defer scope.deinit();
     const registry = try scope.of(WorkerRegistry);
@@ -368,6 +379,7 @@ test "the Browser's end terminates every worker and joins every thread" {
 test "a microtask a terminated worker's agent never ran is freed with the worker's loop" {
     if (comptime engine.capabilities.script_abort == .unsupported) return error.SkipZigTest;
     startProcess();
+    defer runtime.deinitializeRuntime();
     // The loop's own allocations, counted: what it leaks shows here.
     var counted: std.heap.DebugAllocator(.{}) = .init;
     const loop_allocator = counted.allocator();

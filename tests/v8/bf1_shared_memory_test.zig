@@ -4,6 +4,7 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
 const ffi = @import("v8").ffi;
+const test_process = @import("test_process.zig");
 
 const Host = struct {
     isolated: bool = true,
@@ -133,7 +134,7 @@ fn receiveThread(message: *const engine.SerializedWithTransfer, result: *anyerro
 const Case = enum { sharing, sender_shutdown, policy, dropped_message };
 
 fn check(comptime which: Case) !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     var message: ?engine.SerializedWithTransfer = null;
     defer if (message) |*m| m.deinit(std.testing.allocator);
     {

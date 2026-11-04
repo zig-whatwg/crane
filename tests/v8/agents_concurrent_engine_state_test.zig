@@ -230,16 +230,13 @@ test "two agents restored from the snapshot, on two threads: for-await, Intl, Sh
 
     // The process first - it starts the engine with no snapshot - and
     // then the engine's snapshot (test_process.zig).
-    test_process.start();
-    try protocol.initializeEngine(.{ .snapshot = bytes });
-    defer protocol.deinitializeEngine();
-    test_process.start();
+    try test_process.startSnapshot(bytes);
+    defer test_process.endSnapshot();
     interfaces.process_hooks.startHooksForTest();
     try runBoth(true);
 }
 
 test "two fresh agents on two threads: for-await, Intl, JSON modules and ObservableArray 200 times at once" {
-    try protocol.initializeEngine(.{});
     test_process.start();
     interfaces.process_hooks.startHooksForTest();
     try runBoth(false);

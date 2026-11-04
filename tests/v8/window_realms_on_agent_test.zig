@@ -33,9 +33,8 @@ const WindowHost = struct {
 };
 
 fn setup() !void {
-    try protocol.initializeEngine(.{});
-    interfaces.process_hooks.startHooksForTest();
     test_process.start();
+    interfaces.process_hooks.startHooksForTest();
 }
 
 const no_hooks: protocol.HostHooks = .{};

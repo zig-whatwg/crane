@@ -55,7 +55,7 @@ fn release(completion: engine.Completion) void {
 }
 
 fn check(comptime site_only: bool) !void {
-    try engine.initializeEngine(.{});
+    test_process.start();
     // A standalone runtime of this test's own, the process's given back
     // after (test_process.OwnRuntime). It outlives the agent, whose end
     // tears its realms down.

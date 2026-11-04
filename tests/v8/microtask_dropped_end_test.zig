@@ -65,7 +65,7 @@ fn inRealmEnding(comptime body: fn (*engine.Agent, runtime.Context) anyerror!voi
         }
 
         fn check() !void {
-            try engine.initializeEngine(.{});
+            test_process.start();
             // A standalone runtime of this test's own, the process's given back
             // after (test_process.OwnRuntime).
             const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
