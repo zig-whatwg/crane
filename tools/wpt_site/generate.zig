@@ -1900,6 +1900,8 @@ test "site: a reference run is shown beside Crane's on the same files, never in 
     try expectHas(index, "<tr><th scope=\"row\">Clean files</th><td class=\"n\">1</td><td class=\"n\">3</td></tr>");
     try expectHas(index, "Not compared: <a href=\"chrome.html#only-one\">1 file</a> with a result from Chrome alone, 0 from Crane alone.");
     try expectHas(index, "ran the worklist&rsquo;s 5 test files");
+    // The Crane runner the window timed beside it, by its frozen commit.
+    try expectHas(index, "In the same window Crane&rsquo;s frozen runner, main <a href=\"https://github.com/zig-whatwg/crane/commit/0c228a97aa\"><code>0c228a97aa</code></a>, ran the same files with the same runners.");
     // Where they differ, both directions, on the comparison page.
     try expectHas(index, "<a href=\"chrome.html#ahead-ref\">3 files</a> where Chrome passes subtests Crane does not (4 subtests)");
     try expectHas(index, "<a href=\"chrome.html#ahead-crane\">1 file</a> where Crane passes subtests Chrome does not (2 subtests)");

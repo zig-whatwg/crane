@@ -3403,6 +3403,7 @@ def _check_reference_render():
         plain = open(out).read()
     assert '<h2 class="section" id="versus">Crane and Chrome' in page
     assert 'Chrome <code>150.0.7000.1</code>' in page and 'ChromeDriver <code>150.0.7000.1</code>' in page
+    assert "In the same window Crane&rsquo;s frozen runner, <code>main-0c228a97aa</code>, ran the same files" in page
     assert '<code>56d7fe562b</code>' in page and '2026-11-04' in page
     assert '<tr><td class="area">WPT subtests passing</td><td class="num">5 / 6</td><td class="num">5 / 7</td></tr>' in page
     assert '<tr><td class="area">Blocking files</td><td class="num">1</td><td class="num">0</td></tr>' in page
