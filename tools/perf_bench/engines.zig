@@ -212,7 +212,11 @@ pub const Launch = struct {
     /// there and exits when it closes (as on Ctrl+D), so the page stays live
     /// until the launch ends. Every other engine's stdin is /dev/null.
     stdin_pipe: bool = false,
-    // RED STUB
+    /// The directory it runs in, when not the runner's: a Crane build's own
+    /// (its binary's), where its frozen snapshot is - the console reads
+    /// whatwg_snapshot.bin from its working directory
+    /// (src/browser/process.zig DEFAULT_SNAPSHOT_PATHS), never from beside
+    /// its executable.
     cwd: ?[]const u8 = null,
 };
 
@@ -227,7 +231,7 @@ pub fn launch(arena: Allocator, pin: Pin, url: []const u8, profile: []const u8, 
                 try argv.append(arena, f);
                 try flags.append(arena, f);
             }
-            return .{ .argv = argv.items, .flags = flags.items, .drive = .argv, .stdin_pipe = true };
+            return .{ .argv = argv.items, .flags = flags.items, .drive = .argv, .stdin_pipe = true, .cwd = std.fs.path.dirname(pin.binary) };
         },
         .chrome => {
             try argv.append(arena, pin.binary);

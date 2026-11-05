@@ -399,6 +399,7 @@ pub const Runner = struct {
                 .argv = l.argv,
                 .environ_map = &env,
                 .stdin = if (l.stdin_pipe) .pipe else .ignore,
+                .cwd = if (l.cwd) |dir| .{ .path = dir } else .inherit,
                 .stdout = .{ .file = log_file },
                 .stderr = .{ .file = log_file },
                 .pgid = 0,
