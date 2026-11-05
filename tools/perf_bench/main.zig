@@ -4,7 +4,7 @@
 //!   perf_bench run --suite=<suite.json> --root=<tests/perf> --out=<dir>
 //!                  --round=<n> --runs=<n> --pin=<file> [--pin=<file> ...]
 //!                  [--profiles=<dir>] [--stop-file=<f>] [--only=<text>]
-//!                  [--iterations=<n>] [--warmup=<n>] [--port=<n>]
+//!                  [--iterations=<n>] [--warmup=<n>] [--settle-ms=<n>] [--port=<n>]
 //!       every engine pinned on every page of the suite, <runs> times, in
 //!       alternating order; the journal is <out>/journal.jsonl
 //!   perf_bench check --suite=... --root=... --pin=<file> ...
@@ -130,6 +130,7 @@ pub fn main(init: std.process.Init) !void {
             .only = args.get("only"),
             .iterations = args.int(u32, "iterations", 10),
             .warmup = args.int(u32, "warmup", 3),
+            .settle_ms = args.int(u32, "settle-ms", 500),
             .port = args.int(u16, "port", 0),
         });
         try r.run();

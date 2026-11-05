@@ -17,7 +17,9 @@
 // marks the workload unsupported in this engine (the message says what is missing).
 //
 // The URL's query: perf=<token> (from the runner), iterations, warmup, steps (a chain's
-// length), step (this document's place in the chain).
+// length), step (this document's place in the chain), settle (ms the page is left alone after
+// each timed workload's teardown, and before its done mark, for the steady footprint the runner
+// reads at the `settled` and `done` marks).
 (function () {
   'use strict';
   const params = new URLSearchParams(location.search);
@@ -26,6 +28,8 @@
   const warmup = Math.max(0, +(params.get('warmup') || 3));
   const steps = Math.max(0, +(params.get('steps') || 0));
   const step = Math.max(0, +(params.get('step') || 0));
+  const settle = Math.max(0, +(params.get('settle') || 0));
+  const idle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const workloads = [];
   let chainName = null;
   let chainReady = null;
@@ -88,10 +92,15 @@
     } catch (e) {
       await post('log', { message: w.name + ' teardown: ' + describe(e) });
     }
+    // What the workload kept, once it is over and the page has been idle a while.
+    if (settle > 0) await idle(settle);
+    await post('settled', { workload: w.name });
   }
 
   async function runTimed() {
     for (const w of workloads) await runOne(w);
+    // The settle time was spent after the last workload: the done mark is the page's steady
+    // footprint.
     await post('done', {});
   }
 

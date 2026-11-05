@@ -44,6 +44,9 @@ pub const Config = struct {
     only: ?[]const u8 = null,
     iterations: u32 = 10,
     warmup: u32 = 3,
+    /// How long a page is left alone after each timed workload (and before
+    /// its done mark) for the steady footprint (`footprint_settled`).
+    settle_ms: u32 = 500,
     sample_ms: u32 = 50,
     /// The server's port (0: any).
     port: u16 = 0,
@@ -63,10 +66,23 @@ const Live = struct {
     sampling: std.atomic.Value(bool) = .init(false),
 
     fn reading(self: *Live) proc.Reading {
+        return self.readingOf(true);
+    }
+
+    /// The launched trees alone (no process matched by name): what the
+    /// runner may kill at a launch's end - a WebKit process matched by name
+    /// could still be another app's.
+    fn treeReading(self: *Live) proc.Reading {
+        return self.readingOf(false);
+    }
+
+    fn readingOf(self: *Live, with_names: bool) proc.Reading {
         // One set, or the sum of an instances row's sets (their pids differ).
         var total: proc.Reading = .{};
         for (self.selectors[0..self.selector_count]) |sel| {
-            const r = proc.Reading.take(sel);
+            var s = sel;
+            if (!with_names) s.names = &.{};
+            const r = proc.Reading.take(s);
             for (r.all()) |u| {
                 if (total.count >= proc.max_processes) break;
                 total.usages[total.count] = u;
@@ -336,7 +352,7 @@ pub const Runner = struct {
             // The set as it is before the end, so that what outlives its
             // parent (a helper reparented to launchd) is still found.
             self.live.mutex.lockUncancelable(self.io);
-            const before_end = self.live.reading();
+            const before_end = self.live.treeReading();
             self.live.collector = null;
             self.live.selector_count = 0;
             self.live.mutex.unlock(self.io);
@@ -377,6 +393,7 @@ pub const Runner = struct {
             for (l.env) |kv| try env.put(kv[0], kv[1]);
 
             processes[started] = .{ .child = undefined, .pid = 0, .io = self.io };
+            const launched_abs = proc.absoluteNow();
             const p = &processes[started];
             p.child = std.process.spawn(self.io, .{
                 .argv = l.argv,
@@ -397,7 +414,7 @@ pub const Runner = struct {
             {
                 self.live.mutex.lockUncancelable(self.io);
                 defer self.live.mutex.unlock(self.io);
-                self.live.selectors[self.live.selector_count] = .{ .root = p.pid, .names = l.names };
+                self.live.selectors[self.live.selector_count] = .{ .root = p.pid, .names = l.names, .started_after = launched_abs };
                 self.live.selector_count += 1;
             }
             switch (l.drive) {
@@ -483,8 +500,8 @@ pub const Runner = struct {
     }
 
     fn pageUrl(self: *const Runner, arena: Allocator, page: suite_mod.Page, token: []const u8) ![]const u8 {
-        return std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/{s}?perf={s}&iterations={d}&warmup={d}&steps={d}", .{
-            self.server.port(), page.page, token, self.config.iterations, self.config.warmup, page.steps,
+        return std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/{s}?perf={s}&iterations={d}&warmup={d}&steps={d}&settle={d}", .{
+            self.server.port(), page.page, token, self.config.iterations, self.config.warmup, page.steps, self.config.settle_ms,
         });
     }
 

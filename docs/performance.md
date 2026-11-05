@@ -114,7 +114,11 @@ Those rows stay Crane-only, with their history.
   + system), instructions retired, `phys_footprint` (Activity Monitor's Memory: each page counted
   once) and resident size. It answers only after reading, so the page is idle while it is read.
 - A timed row's CPU and instructions are the set's between its begin and end marks; its memory,
-  the footprints at both and the most a 50 ms sampler saw between them.
+  the footprints at both, the most a 50 ms sampler saw between them, and its **steady** footprint:
+  after the workload's teardown, with the page left alone `--settle-ms` (500 ms by default), at
+  its `settled` mark - what the workload left behind. Each timed page also gets its own row,
+  `page.<file>`: its footprint from its load mark to its done mark (after the settle time) and the
+  launch's peak. The report compares the steady footprint, and shows the peak beside it.
 - Chrome: `--headless=new` with puppeteer's quiet-profile flags; Firefox: `--headless` with a
   profile whose `user.js` turns off first-run pages, telemetry and updates; Lightpanda: `serve`,
   then CDP (browser context, target, flat session, `Page.navigate`); Safari: `safaridriver`, a
@@ -181,7 +185,7 @@ its tests byte for byte; `perf_bench validate` reads journals the same way. The 
 | `status`, `message` | `ok`, `error`, `timeout`, `crash` or `unsupported`, and why |
 | `ops`, `wall_ms` | operations per sample and each sample's time (a chain: each step's load) |
 | `cpu_ms`, `instructions` | the process set's between the workload's marks |
-| `memory` | footprint at start and end, peak, resident at end, processes |
+| `memory` | footprint at start and end, peak, steady (`footprint_settled`), resident at end, processes |
 | `series` | a chain's footprint per step; instances' total with 1..k running |
 | `counters` | Crane-only figures (gc_bench rows) |
 | `launch_ms` | launch to the page's load mark |

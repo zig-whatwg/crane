@@ -121,6 +121,11 @@ pub const Memory = struct {
     resident_end: u64,
     /// How many processes the set had at the last mark.
     processes: u32,
+    /// The footprint once the workload's teardown ran and the page was
+    /// left alone for the settle time (`--settle-ms`): what it kept, steady,
+    /// beside `footprint_end` (right after its last sample) and the peak. For
+    /// a page's own row, at its done mark after the settle time.
+    footprint_settled: ?u64 = null,
 };
 
 pub const Record = struct {

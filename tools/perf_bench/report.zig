@@ -57,6 +57,8 @@ pub const Cell = struct {
     instructions: ?u64 = null,
     /// Median over runs of the footprint at the end (bytes).
     footprint: ?u64 = null,
+    /// ... once the workload was over and the page idle (steady), when read.
+    settled: ?u64 = null,
     peak: ?u64 = null,
     /// chain and instances: bytes per step or per instance (median slope).
     growth: ?f64 = null,
@@ -94,8 +96,17 @@ pub const Cell = struct {
             return if (g > 0) g else null;
         }
         if (c.kind == .startup) return null;
-        const f = c.footprint orelse return null;
+        // Steady where it was read (after the workload and the settle time),
+        // else at the workload's end.
+        const f = c.settled orelse c.footprint orelse return null;
         return @floatFromInt(f);
+    }
+
+    /// The most the process set used during the workload.
+    pub fn peakFigure(c: Cell) ?f64 {
+        if (c.ok == 0 or c.kind == .startup) return null;
+        const p = c.peak orelse return null;
+        return @floatFromInt(p);
     }
 };
 
@@ -169,6 +180,7 @@ fn summarise(arena: Allocator, c: *Cell, runs: []const journal.Record) !void {
     var cpus: std.ArrayList(f64) = .empty;
     var ins: std.ArrayList(u64) = .empty;
     var foot: std.ArrayList(u64) = .empty;
+    var settled: std.ArrayList(u64) = .empty;
     var peak: std.ArrayList(u64) = .empty;
     var growth: std.ArrayList(f64) = .empty;
     var counter_names: std.ArrayList([]const u8) = .empty;
@@ -191,6 +203,7 @@ fn summarise(arena: Allocator, c: *Cell, runs: []const journal.Record) !void {
         if (r.instructions) |v| try ins.append(arena, v);
         if (r.memory) |m| {
             try foot.append(arena, m.footprint_end);
+            if (m.footprint_settled) |v| try settled.append(arena, v);
             try peak.append(arena, m.footprint_peak);
         }
         if (stats.slope(r.series)) |s| try growth.append(arena, s);
@@ -201,6 +214,7 @@ fn summarise(arena: Allocator, c: *Cell, runs: []const journal.Record) !void {
     c.cpu_ms = try stats.median(arena, cpus.items);
     c.instructions = try stats.medianU64(arena, ins.items);
     c.footprint = try stats.medianU64(arena, foot.items);
+    c.settled = try stats.medianU64(arena, settled.items);
     c.peak = try stats.medianU64(arena, peak.items);
     c.growth = try stats.median(arena, growth.items);
     var counters: std.ArrayList(journal.Counter) = .empty;
@@ -233,9 +247,11 @@ pub const Versus = struct {
 
 /// Whether a workload counts in the headline: start-up and the harness's own
 /// floor are rows of their own, so the headline compares engine work, not
-/// launchers or the harness (the integrator, 2026-11-05).
+/// launchers or the harness (the integrator, 2026-11-05); a page's own
+/// memory row sums its workloads' rows, which count already.
 pub fn inHeadline(workload: []const u8) bool {
-    return !std.mem.startsWith(u8, workload, "startup.") and !std.mem.startsWith(u8, workload, "overhead.");
+    for ([_][]const u8{ "startup.", "overhead.", "page." }) |group| if (std.mem.startsWith(u8, workload, group)) return false;
+    return true;
 }
 
 pub fn versus(arena: Allocator, m: *const Model, round: u32, browser: EngineName) !Versus {
@@ -493,13 +509,43 @@ fn writeRatio(w: W, crane: ?f64, other: ?f64) !void {
     try w.print("<td class=\"n {s}\">{d}%</td>", .{ ratioClass(r), percent(r) });
 }
 
+const Measure = enum { time, steady, peak };
+
+fn figureOf(c: *const Cell, measure: Measure) ?f64 {
+    return switch (measure) {
+        .time => c.timeFigure(),
+        .steady => c.memoryFigure(),
+        .peak => c.peakFigure(),
+    };
+}
+
+fn writeMeasureCell(w: W, c: ?*const Cell, measure: Measure) !void {
+    switch (measure) {
+        .time => try writeTimeCell(w, c),
+        .steady => try writeMemoryCell(w, c),
+        .peak => {
+            const cell = c orelse return w.writeAll("<td class=\"n\">&ndash;</td>");
+            if (cell.ok == 0) return writeFailure(w, cell);
+            const v = cell.peakFigure() orelse return w.writeAll("<td class=\"n\">&ndash;</td>");
+            try w.writeAll("<td class=\"n\">");
+            try writeBytes(w, v);
+            try w.writeAll("</td>");
+        },
+    }
+}
+
 fn writeRound(w: W, arena: Allocator, m: *const Model) !void {
     const round = m.latest_round;
     const ws = try m.workloads(arena, round);
     try w.print("<section id=\"round\"><h2>Round {d}, workload by workload</h2>\n", .{round});
     try w.writeAll("<p>Time is per operation for a timed workload (the median sample divided by its operations) and per load for a page load; memory is the engine&rsquo;s whole process set (phys_footprint, summed) when the workload ended, or what each page or instance adds. The percentage beside a browser is Crane&rsquo;s figure as a share of it.</p>\n");
-    for ([_]bool{ true, false }) |is_time| {
-        try w.print("<h3>{s}</h3>\n<div class=\"table-wrap\"><table class=\"listing\"><thead><tr><th scope=\"col\">Workload</th><th scope=\"col\" class=\"n\">Crane</th>", .{if (is_time) "Time" else "Memory"});
+    for ([_]Measure{ .time, .steady, .peak }) |measure| {
+        const is_time = measure == .time;
+        try w.print("<h3>{s}</h3>\n<div class=\"table-wrap\"><table class=\"listing\"><thead><tr><th scope=\"col\">Workload</th><th scope=\"col\" class=\"n\">Crane</th>", .{switch (measure) {
+            .time => "Time",
+            .steady => "Memory, steady (after the workload, the page idle)",
+            .peak => "Memory, peak (the most during the workload)",
+        }});
         for (browsers) |b| try w.print("<th scope=\"col\" class=\"n\">{s}</th><th scope=\"col\" class=\"n\">Crane / {s}</th>", .{ b.label(), b.label() });
         try w.writeAll("</tr></thead><tbody>\n");
         for (ws) |wl| {
@@ -514,12 +560,12 @@ fn writeRound(w: W, arena: Allocator, m: *const Model) !void {
             try w.writeAll("<tr><th scope=\"row\"><code>");
             try html.text(w, wl);
             try w.writeAll("</code></th>");
-            if (is_time) try writeTimeCell(w, c) else try writeMemoryCell(w, c);
-            const cf: ?f64 = if (c) |cc| (if (is_time) cc.timeFigure() else cc.memoryFigure()) else null;
+            try writeMeasureCell(w, c, measure);
+            const cf: ?f64 = if (c) |cc| figureOf(cc, measure) else null;
             for (browsers) |b| {
                 const bc = m.current(round, b, wl);
-                if (is_time) try writeTimeCell(w, bc) else try writeMemoryCell(w, bc);
-                const bf: ?f64 = if (bc) |x| (if (is_time) x.timeFigure() else x.memoryFigure()) else null;
+                try writeMeasureCell(w, bc, measure);
+                const bf: ?f64 = if (bc) |x| figureOf(x, measure) else null;
                 try writeRatio(w, cf, bf);
             }
             try w.writeAll("</tr>\n");
@@ -695,6 +741,21 @@ test "start-up and the harness's floor are their own rows, never in the headline
     const v = try versus(a, &m, 0, .chrome);
     try testing.expectEqual(@as(usize, 1), v.time_n);
     try testing.expectApproxEqAbs(@as(f64, 2.0), v.time_ratio.?, 1e-12);
+}
+
+test "memory compares the steady footprint where it was read, and the peak beside it" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var r = try timed(a, 0, .crane, "abc", "dom.a", 0, 20, 1000);
+    r.memory.?.footprint_settled = 600;
+    r.memory.?.footprint_peak = 1500;
+    const m = try build(a, &.{r});
+    const c = m.current(0, .crane, "dom.a").?;
+    try testing.expectEqual(@as(?f64, 600), c.memoryFigure());
+    try testing.expectEqual(@as(?f64, 1500), c.peakFigure());
+    const page = try render(a, &m, .{});
+    try testing.expect(std.mem.indexOf(u8, page.index_html, "Memory, peak") != null);
 }
 
 test "a browser updated within a round: its newest version is the one compared" {

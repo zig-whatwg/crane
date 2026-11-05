@@ -77,6 +77,13 @@ extern "c" fn proc_listchildpids(ppid: c_int, buffer: ?*anyopaque, buffersize: c
 extern "c" fn proc_listallpids(buffer: ?*anyopaque, buffersize: c_int) c_int;
 extern "c" fn proc_name(pid: c_int, buffer: [*]u8, buffersize: u32) c_int;
 extern "c" fn mach_timebase_info(info: *MachTimebase) c_int;
+extern "c" fn mach_absolute_time() u64;
+
+/// Now, in the clock rusage's `proc_start_abstime` uses.
+pub fn absoluteNow() u64 {
+    if (!supported) return 0;
+    return mach_absolute_time();
+}
 
 /// One process's figures at one moment.
 pub const Usage = struct {
@@ -86,6 +93,8 @@ pub const Usage = struct {
     instructions: u64,
     footprint: u64,
     resident: u64,
+    /// When the process started (mach absolute time).
+    start_abs: u64 = 0,
 };
 
 /// rusage times are mach absolute time units (24 MHz ticks on Apple
@@ -107,6 +116,7 @@ pub fn usageOf(pid: i32) ?Usage {
         .instructions = info.instructions,
         .footprint = info.phys_footprint,
         .resident = info.resident_size,
+        .start_abs = info.proc_start_abstime,
     };
 }
 
@@ -119,8 +129,11 @@ pub const Selector = struct {
     /// The launched process: it and its descendants.
     root: i32,
     /// Processes outside the tree that belong to the engine, by exact
-    /// process name (Safari's: launchd starts them).
+    /// process name (Safari's: launchd starts them) - and only those started
+    /// at or after `started_after` (mach absolute time): another app's WebKit
+    /// processes, there before the launch, are not the engine's.
     names: []const []const u8 = &.{},
+    started_after: u64 = 0,
 };
 
 /// The pids of the set, into `out`; how many.
@@ -160,6 +173,8 @@ pub fn members(sel: Selector, out: []i32) usize {
                 if (len <= 0) continue;
                 const name = name_buf[0..@intCast(len)];
                 for (sel.names) |want| if (std.mem.eql(u8, name, want)) {
+                    const u = usageOf(p) orelse break;
+                    if (u.start_abs < sel.started_after) break;
                     out[n] = p;
                     n += 1;
                     break;
@@ -256,6 +271,22 @@ test "a set: the root and its descendants, with no pid twice" {
     try testing.expect(n >= 1);
     try testing.expectEqual(me, pids[0]);
     for (pids[0..n], 0..) |p, i| try testing.expect(std.mem.indexOfScalar(i32, pids[0..i], p) == null);
+}
+
+test "a process named but started before the launch is not the engine's" {
+    if (!supported) return error.SkipZigTest;
+    // This process's own name, with a launch time after it started: not in
+    // the set; with a launch time of 0: in it.
+    const me: i32 = @intCast(std.c.getpid());
+    var name_buf: [256]u8 = undefined;
+    const len = proc_name(me, &name_buf, name_buf.len);
+    try testing.expect(len > 0);
+    const names = [_][]const u8{name_buf[0..@intCast(len)]};
+    var pids: [max_processes]i32 = undefined;
+    const later = members(.{ .root = 0, .names = &names, .started_after = absoluteNow() }, &pids);
+    for (pids[0..later]) |p| try testing.expect(p != me);
+    const any = members(.{ .root = 0, .names = &names, .started_after = 0 }, &pids);
+    try testing.expect(std.mem.indexOfScalar(i32, pids[0..any], me) != null);
 }
 
 test "a pid that does not exist reads as nothing" {

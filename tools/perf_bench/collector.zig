@@ -176,8 +176,19 @@ pub const Collector = struct {
             });
         } else if (std.mem.eql(u8, t, "log")) {
             try self.note("page: {s}", .{mark.message});
+        } else if (std.mem.eql(u8, t, "settled")) {
+            // The last record of this workload: its steady footprint.
+            var i = self.records.items.len;
+            while (i > 0) {
+                i -= 1;
+                const r = &self.records.items[i];
+                if (!std.mem.eql(u8, r.workload, mark.workload)) continue;
+                if (r.memory) |*m| m.footprint_settled = footprint;
+                break;
+            }
         } else if (std.mem.eql(u8, t, "done")) {
             self.done = true;
+            if (self.page.kind == .timed) try self.pageRow(reading);
         } else {
             try self.note("unknown mark type: {s}", .{t});
         }
@@ -204,6 +215,25 @@ pub const Collector = struct {
         };
         try self.records.append(self.arena, r);
         try self.startup(workload);
+    }
+
+    /// A timed page's own memory row, "page.<file stem>": from its load mark
+    /// to its done mark (taken after the settle time, so steady), and the
+    /// most the sampler saw over the launch.
+    fn pageRow(self: *Collector, done: *const proc.Reading) !void {
+        const loaded = self.loaded_reading orelse return;
+        const stem = std.fs.path.stem(self.base.page);
+        var r = self.record(try std.fmt.allocPrint(self.arena, "page.{s}", .{stem}), .idle);
+        const end = done.footprint();
+        r.memory = .{
+            .footprint_start = loaded.footprint(),
+            .footprint_end = end,
+            .footprint_peak = @max(self.peak_run, @max(end, loaded.footprint())),
+            .resident_end = done.resident(),
+            .processes = @intCast(done.count),
+            .footprint_settled = end,
+        };
+        try self.records.append(self.arena, r);
     }
 
     /// "startup.<name>": launch to the page's load mark, one sample.
@@ -327,7 +357,9 @@ test "timed: begin and end make one record, with the CPU and memory between them
     try c.onMark(.{ .type = "done" }, 332, &fakeReading(9, 12_000_000, 200));
     try testing.expect(c.done);
     const records = try c.finish(.done);
-    try testing.expectEqual(@as(usize, 2), records.len);
+    // dom.a, the page's own row (made at done), dom.b's failure.
+    try testing.expectEqual(@as(usize, 3), records.len);
+    try testing.expectEqualStrings("page.attributes", records[1].workload);
     const r = records[0];
     try journal.validate(r);
     try testing.expectEqualStrings("dom.a", r.workload);
@@ -337,9 +369,9 @@ test "timed: begin and end make one record, with the CPU and memory between them
     try testing.expectEqual(@as(u64, 200), r.memory.?.footprint_end);
     try testing.expectEqual(@as(u64, 400), r.memory.?.footprint_peak);
     try testing.expectEqual(@as(?f64, 300), r.launch_ms);
-    try testing.expectEqual(journal.Status.unsupported, records[1].status);
-    try testing.expectEqualStrings("TypeError: x", records[1].message.?);
-    try journal.validate(records[1]);
+    try testing.expectEqual(journal.Status.unsupported, records[2].status);
+    try testing.expectEqualStrings("TypeError: x", records[2].message.?);
+    try journal.validate(records[2]);
 }
 
 test "a workload the page never ended is a timeout, or a crash when the engine exited" {
@@ -398,6 +430,36 @@ test "idle: the settled footprint, and the startup row beside it" {
     try testing.expectEqual(@as(u64, 9000), records[0].memory.?.footprint_peak);
     try testing.expectEqualStrings("startup.idle-page", records[1].workload);
     try testing.expectEqualSlices(f64, &.{250}, records[1].wall_ms);
+    for (records) |r| try journal.validate(r);
+}
+
+test "steady memory: each workload's settled footprint, and the page's own row" {
+    // The integrator (2026-11-05): Crane's footprint grows within a page, so
+    // round 0 measures memory per workload and per page, steady and peak.
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var c: Collector = .{ .arena = a, .base = test_base, .page = .{ .page = "workloads/attributes.html", .kind = .timed, .workloads = &.{"dom.a"} } };
+    try c.onMark(.{ .type = "loaded", .load_ms = 20 }, 300, &fakeReading(9, 0, 100));
+    try c.onMark(.{ .type = "begin", .workload = "dom.a" }, 310, &fakeReading(9, 0, 150));
+    c.notePeak(900);
+    try c.onMark(.{ .type = "end", .workload = "dom.a", .ops = 10, .wall_ms = &.{1.0} }, 320, &fakeReading(9, 1_000_000, 800));
+    // After the workload's teardown and the settle time: what it kept.
+    try c.onMark(.{ .type = "settled", .workload = "dom.a" }, 330, &fakeReading(9, 1_000_000, 600));
+    try c.onMark(.{ .type = "done" }, 340, &fakeReading(9, 1_000_000, 500));
+    const records = try c.finish(.done);
+    try testing.expectEqual(@as(usize, 2), records.len);
+    try testing.expectEqual(@as(?u64, 600), records[0].memory.?.footprint_settled);
+    try testing.expectEqual(@as(u64, 800), records[0].memory.?.footprint_end);
+    try testing.expectEqual(@as(u64, 900), records[0].memory.?.footprint_peak);
+    // The page's row: loaded -> done (settled), and the whole launch's peak.
+    const page = records[1];
+    try testing.expectEqualStrings("page.attributes", page.workload);
+    try testing.expectEqual(journal.Kind.idle, page.kind);
+    try testing.expectEqual(@as(u64, 100), page.memory.?.footprint_start);
+    try testing.expectEqual(@as(u64, 500), page.memory.?.footprint_end);
+    try testing.expectEqual(@as(?u64, 500), page.memory.?.footprint_settled);
+    try testing.expectEqual(@as(u64, 900), page.memory.?.footprint_peak);
     for (records) |r| try journal.validate(r);
 }
 
