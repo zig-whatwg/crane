@@ -89,8 +89,12 @@ free shows only if something changed the freed bytes:
   tests/infra/test_allocators_test.zig fails a test file that makes one. A
   fault at 0xdddd... is a read of a block a test's DebugAllocator freed.
 - libc's: the launcher runs every test child with `MallocScribble=1` (macOS;
-  `MALLOC_PERTURB_=85` on glibc), so v8_wrapper.cpp's `delete` and
-  `std.heap.c_allocator`'s frees fill with 0x55 as well.
+  `MALLOC_PERTURB_=85` on glibc) for v8_wrapper.cpp's `new`/`delete` and
+  `std.heap.c_allocator`. On the pool's macOS 27 malloc already zeroes a
+  freed block of up to at least 4 KiB (past its free-list header); the
+  scribble fills a freed block of 16 KiB or more with 0x55, which otherwise
+  keeps its bytes, and every new block with 0xaa, so a read before a write
+  reads 0xaa, not 0.
 
 `CRANE_POISON_FREES=0` turns all three off for one run - to see whether a
 failure depends on the poison, never to make a test pass. The launcher passes
