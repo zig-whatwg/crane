@@ -34,6 +34,21 @@ pub const memory_baseline = 504;
 pub const round_x = 206;
 pub const round_baseline = 178;
 
+/// The box base.png's "%" (serif 40px, at right + 4) sits in, from its
+/// column's right edge and its row's baseline.
+const percent_width = 44;
+const percent_height = 36;
+const percent_descent = 8;
+
+/// Paint a box with the paper colour.
+fn blank(img: *png.Image, x0: u32, y0: u32, x1: u32, y1: u32) void {
+    var y = y0;
+    while (y < @min(y1, img.height)) : (y += 1) {
+        var x = x0;
+        while (x < @min(x1, img.width)) : (x += 1) img.at(x, y).* = .{ 0xff, 0xff, 0xff };
+    }
+}
+
 const ink = [3]u8{ 0x20, 0x21, 0x24 };
 const ink_2 = [3]u8{ 0x5a, 0x5e, 0x63 };
 
@@ -53,6 +68,9 @@ pub fn render(gpa: Allocator, f: Figures) ![]u8 {
                 const text = std.fmt.bufPrint(&buf, "{d}", .{n}) catch unreachable;
                 const x = right - wpt_card.measure(wpt_card.of, text);
                 _ = wpt_card.draw(&img, &atlas, wpt_card.of, text, x, cell[1], ink);
+            } else {
+                // No figure: the cell is blank, its "%" too.
+                blank(&img, @intFromFloat(right), cell[1] - percent_height, @intFromFloat(right + percent_width), cell[1] + percent_descent);
             }
         }
     }
@@ -95,10 +113,13 @@ test "the card: 1200x630, a number where each figure is, none where there is non
     const cx0: u32 = @intFromFloat(column_right[0] - 120);
     const cx1: u32 = @intFromFloat(column_right[0]);
     try testing.expect(darkIn(img, cx0, time_baseline - 50, cx1, time_baseline + 5) > darkIn(empty, cx0, time_baseline - 50, cx1, time_baseline + 5) + 50);
-    // Safari has no figure: its cells are as the base has them.
+    // Safari has no figure: its cell is blank, "%" and all.
     const sx0: u32 = @intFromFloat(column_right[2] - 120);
-    const sx1: u32 = @intFromFloat(column_right[2]);
-    try testing.expectEqual(darkIn(empty, sx0, memory_baseline - 50, sx1, memory_baseline + 5), darkIn(img, sx0, memory_baseline - 50, sx1, memory_baseline + 5));
+    const sx1: u32 = @intFromFloat(column_right[2] + percent_width);
+    try testing.expectEqual(@as(usize, 0), darkIn(img, sx0, memory_baseline - 50, sx1, memory_baseline + 5));
+    // A cell with a figure keeps its "%".
+    const px0: u32 = @intFromFloat(column_right[0]);
+    try testing.expect(darkIn(img, px0, time_baseline - percent_height, px0 + percent_width, time_baseline + percent_descent) > 20);
     // Same figures, same bytes.
     const again = try render(testing.allocator, .{ .round = 3, .time = .{ 54, 61, null, 112 }, .memory = .{ 23, 19, null, 88 } });
     defer testing.allocator.free(again);

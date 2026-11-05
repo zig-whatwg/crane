@@ -402,7 +402,9 @@ fn writeEngines(w: W, arena: Allocator, m: *const Model) !void {
     try w.writeAll("<div class=\"table-wrap\"><table class=\"listing\"><thead><tr><th scope=\"col\">Engine</th><th scope=\"col\">Version</th><th scope=\"col\">Build</th><th scope=\"col\">Launch flags</th></tr></thead><tbody>\n");
     var seen: std.ArrayList([]const u8) = .empty;
     for (m.cells) |c| {
-        if (c.round != m.latest_round) continue;
+        // A gc_bench row's engine is gc_bench, its flags gc_bench's: the
+        // engines here are the ones the pages ran in.
+        if (c.round != m.latest_round or c.kind == .gc_bench) continue;
         const key = try std.fmt.allocPrint(arena, "{s}/{s}", .{ @tagName(c.engine), c.version });
         if (containsStr(seen.items, key)) continue;
         try seen.append(arena, key);
@@ -682,7 +684,14 @@ test "the page: headline in the HTML, social metadata, the card, every engine na
     var failed = try timed(a, 0, .lightpanda, "nightly", "dom.a", 0, 1, 1);
     failed.status = .unsupported;
     failed.message = "no TextDecoderStream";
+    // A Crane-only row, read first: the engines table still shows the
+    // flags the pages ran with, not gc_bench's.
+    var gc = try timed(a, 0, .crane, "abc", "gc-bench.getter-loop", 0, 160, 100);
+    gc.kind = .gc_bench;
+    gc.wall_ms = try a.dupe(f64, &.{160});
+    gc.engine.flags = &.{ "100000", "100000", "--gc" };
     const records = [_]journal.Record{
+        gc,
         try timed(a, 0, .crane, "abc", "dom.a", 0, 20, 100),
         try timed(a, 0, .chrome, "157", "dom.a", 0, 10, 400),
         failed,
@@ -697,6 +706,7 @@ test "the page: headline in the HTML, social metadata, the card, every engine na
     try testing.expect(std.mem.indexOf(u8, page, "unsupported") != null);
     try testing.expect(std.mem.indexOf(u8, page, "no TextDecoderStream") != null);
     try testing.expect(std.mem.indexOf(u8, page, "13.1.203 static") != null);
+    try testing.expect(std.mem.indexOf(u8, page, "--gc") == null);
     try testing.expect(std.mem.indexOf(u8, page, "<script") == null);
     // The social metadata is in the head, before the body.
     try testing.expect(std.mem.indexOf(u8, page, "og:image").? < std.mem.indexOf(u8, page, "</head>").?);
