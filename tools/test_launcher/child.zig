@@ -426,7 +426,11 @@ pub const cleared_environment = [_][]const u8{
 /// read after a C++ delete reads poison instead of the old object.
 ///
 /// - macOS libmalloc, `MallocScribble=1` (malloc(3)): a freed block is filled
-///   with 0x55 and a new one with 0xaa.
+///   with 0x55 and a new one with 0xaa. Measured on chat.local (macOS 27.0.1):
+///   its malloc already zeroes a freed block of up to at least 4 KiB beyond
+///   its free-list header, scribble or not, so there the scribble's work is
+///   the larger blocks (16 KiB and up, which keep their bytes without it) and
+///   the 0xaa in every new block (a read before a write reads 0xaa, not 0).
 /// - glibc, `MALLOC_PERTURB_=85` (mallopt(3), M_PERTURB): a freed block is
 ///   filled with 85 (0x55, as macOS) and a new one, except calloc's, with
 ///   its complement (0xaa). Ignored by a libc without it (musl).
@@ -1044,6 +1048,9 @@ test "real processes: a read after a free fails its test by name - it reads the 
     defer md.deinit(gpa);
 
     // Each test, with its first run poisoned and what its output must say.
+    // The libc case needs the launcher's scribble (`malloc_scribble`): with
+    // none on this system the block keeps its bytes and the test passes.
+    const libc_poisoned: sched.Status = if (malloc_scribble != null) .fail else .pass;
     const cases = [_]struct { name: []const u8, poisoned: sched.Status, says: ?[]const u8 }{
         // SafeAllocator's 0x55 read back: expected 0x1122334455667788.
         .{ .name = "std.testing.allocator: reads a field through a pointer kept past its destroy", .poisoned = .fail, .says = "expected 1234605616436508552, found 6148914691236517205" },
@@ -1052,7 +1059,7 @@ test "real processes: a read after a free fails its test by name - it reads the 
         .{ .name = "a test's own DebugAllocator: reads a field through a pointer kept past its destroy", .poisoned = .fail, .says = "expected 1234605616436508552, found 15987178197214944733" },
         .{ .name = "a test's own DebugAllocator: reads a slice's bytes after its free", .poisoned = .fail, .says = "expected 17, found 221" },
         // libc's scribble (malloc_scribble), 0x55, read back.
-        .{ .name = "std.heap.c_allocator: reads a block's bytes after its free", .poisoned = .fail, .says = "expected 17, found 85" },
+        .{ .name = "std.heap.c_allocator: reads a block's bytes after its free", .poisoned = libc_poisoned, .says = if (malloc_scribble != null) "expected 17, found 85" else null },
         .{ .name = "reads only live memory", .poisoned = .pass, .says = null },
     };
     try testing.expectEqual(cases.len, md.names.len);

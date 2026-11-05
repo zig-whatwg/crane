@@ -74,14 +74,19 @@ test "a test's own DebugAllocator: reads a slice's bytes after its free" {
 test "std.heap.c_allocator: reads a block's bytes after its free" {
     // libc's malloc, as v8_wrapper.cpp's new and delete are: what the
     // launcher's MallocScribble=1 (macOS) or MALLOC_PERTURB_=85 (glibc)
-    // poisons with 0x55. A byte well inside the block: libc writes its free
-    // list's links at a freed block's start.
+    // poisons with 0x55. 64 KiB, because macOS 27's malloc already zeroes a
+    // small block when it is freed - measured on chat.local, a freed 64-byte
+    // to 4 KiB block reads back 0 beyond its free-list header with or without
+    // the scribble - and leaves a 16 KiB or larger one as it was, which the
+    // scribble fills with 0x55. A byte well inside the block: libc writes its
+    // own links at a freed block's start.
     const a = std.heap.c_allocator;
-    const bytes = try a.alloc(u8, 64);
+    const len = 64 * 1024;
+    const bytes = try a.alloc(u8, len);
     @memset(bytes, 0x11);
     const kept: [*]volatile u8 = bytes.ptr;
     a.rawFree(bytes, .@"1", @returnAddress());
-    try testing.expectEqual(@as(u8, 0x11), kept[40]);
+    try testing.expectEqual(@as(u8, 0x11), kept[len * 5 / 8]);
 }
 
 test "reads only live memory" {
