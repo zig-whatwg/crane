@@ -5,23 +5,10 @@ const tokens = @import("../tokenizer.zig");
 const properties = @import("../properties.zig");
 const Allocator = std.mem.Allocator;
 
-// This exception must remain off parsing/computation paths. Pin the direct
-// import boundary for every producer and the two style consumers.
-comptime {
-    @setEvalBranchQuota(2_000_000);
-    for (.{
-        @embedFile("../cascade.zig"),
-        @embedFile("../computed_style.zig"),
-        @embedFile("../properties.zig"),
-        @embedFile("../font_variants.zig"),
-        @embedFile("../font_shorthand.zig"),
-        @embedFile("../font_settings.zig"),
-        @embedFile("../decoration_values.zig"),
-    }) |source| {
-        if (std.mem.indexOf(u8, source, "typed_om/text_keywords.zig") != null or std.mem.indexOf(u8, source, "typed_om.text_keywords") != null)
-            @compileError("Typed OM canonical-text inspection must remain off the CSS parsing/computation path");
-    }
-}
+// This exception must remain off parsing/computation paths: no producer and
+// neither style consumer imports it - `zig build lint-css`
+// (tools/lint_css_boundaries.zig, part of `zig build test`) pins the direct
+// import boundary, outside the compiler (lane compiletime1).
 
 pub const Keywords = struct {
     allocator: Allocator,

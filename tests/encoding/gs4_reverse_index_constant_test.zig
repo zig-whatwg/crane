@@ -16,7 +16,7 @@ test "the reverse indexes are compile-time constants" {
         std.debug.assert(reverse_index.euc_kr.findPointer(0xAC00) != null);
         std.debug.assert(reverse_index.gb18030.findPointer(0x4E2D) != null);
         std.debug.assert(reverse_index.big5.findPointer(0x3000) != null);
-        std.debug.assert(reverse_index.jis0212.order.len > 0);
+        std.debug.assert(reverse_index.jis0212.len() > 0);
     }
     try std.testing.expect(@typeInfo(@TypeOf(&reverse_index.jis0208)).pointer.attrs.@"const");
 }
@@ -27,7 +27,7 @@ test "threads that encode at once read the same tables" {
         fn run(found: *[tables.len]?u16) void {
             for (tables, found) |table, *pointer| {
                 // A code point the table maps, from the middle of its order.
-                const code_point = table.index[table.order[table.order.len / 2]];
+                const code_point = table.index[table.pointerAt(table.len() / 2)];
                 pointer.* = table.findPointer(code_point);
             }
         }

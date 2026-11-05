@@ -654,11 +654,7 @@ fn serializeTransition(assigned: []const properties.Assigned, mode: properties.S
     return true;
 }
 
-// Q61: the native concatenation entry is not a parser/computation shortcut.
-comptime {
-    @setEvalBranchQuota(2_000_000);
-    for (.{ @embedFile("properties.zig"), @embedFile("cascade.zig"), @embedFile("computed_style.zig") }) |source| {
-        if (std.mem.indexOf(u8, source, "List.concat(") != null or std.mem.indexOf(u8, source, "List.slice(") != null)
-            @compileError("native animation-list concatenation is a cold Typed OM entry");
-    }
-}
+// Q61: the native concatenation entry is not a parser/computation shortcut:
+// properties.zig, cascade.zig and computed_style.zig never call List.concat(
+// or List.slice( - `zig build lint-css` (tools/lint_css_boundaries.zig, part
+// of `zig build test`) checks it, outside the compiler (lane compiletime1).

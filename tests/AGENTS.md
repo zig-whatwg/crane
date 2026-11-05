@@ -71,6 +71,14 @@ that crashed 7/7 with per-Browser allocators passed 6/6 with the shared one
 A test that needs this build's V8 snapshot imports `test_snapshot` (tests/v8),
 never a path under `zig-out/`.
 
+**Logs in a test executable.** The runner compiles `std.log` at .info and
+prints at .warn while a test runs (`testing.log_level`, which a test may lower
+to read info logs): a Debug build's default would analyse and emit every
+`log.debug` site in every test executable, for output nobody prints (lane
+compiletime1). To read debug logs in a local diagnosis, build with
+`-Dtest-log-level=debug`, which compiles and prints them;
+tests/infra/test_log_level_test.zig pins the defaults.
+
 - **Seeds.** `zig build test` uses a seed hashed from each executable's bytes,
   printed in that suite's summary line, so an unchanged suite keeps its plan
   and Zig's cache skips it (the user, 2026-11-01). `-Dlaunch-seed=random`

@@ -13,6 +13,66 @@ const std = @import("std");
 const Host = @import("host").Host;
 const psl_data = @import("public_suffix_data.zig");
 
+/// The Public Suffix List's rules, sorted bytewise for a binary search: built
+/// once at build time from public_suffix_data.zig by tools/url/psl_table.zig
+/// and embedded (the anonymous import build.zig names `psl_table`; lane
+/// compiletime1). The StaticStringMap in public_suffix_data.zig sorted them
+/// at compile time in every binary that reached this file - 1.3 s of
+/// single-threaded Sema each.
+pub const rules: RuleTable = .{ .bytes = @embedFile("psl_table") };
+
+/// Today's compile-time map, which `rules` is built from - for the test that
+/// compares the two (tests/url/psl_table_test.zig). Referencing it analyses
+/// the map, so nothing else does.
+pub const source_rules = psl_data.PSL_RULES;
+
+/// The table tools/url/psl_table.zig writes. Every integer is a
+/// little-endian u32: count, max_len, offsets[count + 1], then the rules'
+/// bytes back to back - rule i is bytes[offsets[i]..offsets[i + 1]].
+pub const RuleTable = struct {
+    bytes: []const u8,
+
+    const header_len = 8;
+
+    fn int(self: RuleTable, at: usize) u32 {
+        return std.mem.readInt(u32, self.bytes[at..][0..4], .little);
+    }
+
+    /// How many rules the table holds.
+    pub fn count(self: RuleTable) usize {
+        return self.int(0);
+    }
+
+    /// The length of the longest rule.
+    pub fn maxLen(self: RuleTable) usize {
+        return self.int(4);
+    }
+
+    /// The `i`th rule, in bytewise order.
+    pub fn rule(self: RuleTable, i: usize) []const u8 {
+        const base = header_len + 4 * (self.count() + 1);
+        const start = self.int(header_len + 4 * i);
+        const end = self.int(header_len + 4 * (i + 1));
+        return self.bytes[base + start .. base + end];
+    }
+
+    /// Whether `candidate` is a rule.
+    pub fn has(self: RuleTable, candidate: []const u8) bool {
+        if (candidate.len == 0 or candidate.len > self.maxLen()) return false;
+        var left: usize = 0;
+        var right: usize = self.count();
+        while (left < right) {
+            const mid = left + (right - left) / 2;
+            switch (std.mem.order(u8, self.rule(mid), candidate)) {
+                .lt => left = mid + 1,
+                .gt => right = mid,
+                .eq => return true,
+            }
+        }
+        return false;
+    }
+};
+
 /// Get the public suffix of a host (spec lines 311-322)
 ///
 /// Returns null if:
@@ -119,19 +179,19 @@ fn lookupPublicSuffix(domain: []const u8) ?[]const u8 {
     var best = host[start..];
     // Prefixing a rule with ! or *. needs space only for a TABLE entry,
     // not for the input host. Oversized candidates cannot be in the map.
-    var rule: [psl_data.PSL_RULES.max_len]u8 = undefined;
+    var rule: [rules.maxLen()]u8 = undefined;
     while (true) {
         const suffix = host[start..];
         // PSL exception: remove the exception's leftmost label.
         if (suffix.len < rule.len) {
             rule[0] = '!';
             @memcpy(rule[1 .. suffix.len + 1], suffix);
-            if (psl_data.PSL_RULES.has(rule[0 .. suffix.len + 1])) {
+            if (rules.has(rule[0 .. suffix.len + 1])) {
                 const dot = std.mem.indexOfScalar(u8, suffix, '.') orelse return null;
                 return suffix[dot + 1 ..];
             }
         }
-        if (psl_data.PSL_RULES.has(suffix) and suffix.len > best.len) best = suffix;
+        if (rules.has(suffix) and suffix.len > best.len) best = suffix;
         if (start == 0) break;
 
         const before_dot = start - 1;
@@ -142,7 +202,7 @@ fn lookupPublicSuffix(domain: []const u8) ?[]const u8 {
             rule[0] = '*';
             rule[1] = '.';
             @memcpy(rule[2 .. suffix.len + 2], suffix);
-            if (psl_data.PSL_RULES.has(rule[0 .. suffix.len + 2])) best = host[previous..];
+            if (rules.has(rule[0 .. suffix.len + 2])) best = host[previous..];
         }
         start = previous;
     }

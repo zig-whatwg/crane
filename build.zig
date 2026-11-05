@@ -980,6 +980,8 @@ const TestLaunch = struct {
     /// (tests/test_runner/neighbour.zig), so state two instances share shows
     /// up as a failure, or under -Dsanitize-thread as a race.
     many_browsers: bool,
+    /// -Dtest-log-level: the test executables' log level (`useCraneTestRunner`).
+    log_level: ?std.log.Level,
     /// The browser module, which the many-Browsers variant adds to every
     /// test executable that links V8 and lacks it (`addTestRoot`).
     browser_module: ?*std.Build.Module = null,
@@ -1264,7 +1266,7 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
     // Whether this executable can run the many-Browsers variant's busy
     // Browser: -Dmany-browsers, and it links V8 and the browser module. The
     // others run as usual under -Dmany-browsers, and say nothing about it.
-    const many_browsers = useCraneTestRunner(b, test_exe, name, config.state_checks, config.standalone_runtime, groups, launch.many_browsers);
+    const many_browsers = useCraneTestRunner(b, test_exe, name, config.state_checks, config.standalone_runtime, groups, launch.many_browsers, launch.log_level);
     const run = b.addRunArtifact(launch.launcher);
     run.setName(b.fmt("test {s}", .{name}));
     // The build runner speaks the test-runner protocol to the launcher.
@@ -1384,7 +1386,17 @@ fn addGroupArgs(b: *std.Build, run: *std.Build.Step.Run, launch: *const TestLaun
 /// onebin3: tests-v8's .process_start had no per-member path, so its tests
 /// read as leavers in the joined "tests" executable). Empty for an
 /// executable of one suite, which keeps `standalone` for every test.
-fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []const u8, checks: StateChecks, standalone: StandaloneRuntime, members: []const SuiteGroup, many_browsers: bool) bool {
+///
+/// `log_level` (-Dtest-log-level): the runner's `std_options.log_level`, the
+/// level below which every `std.log` call is compiled out, and the level it
+/// prints at while a test runs (`testing.log_level`). Unset, a test
+/// executable compiles its logs at .info - no `log.debug` site is analysed,
+/// though a Debug build's default would compile all of them (lane
+/// compiletime1) - and prints at .warn, as it always has. A test may lower
+/// `testing.log_level` to .info and read info logs; to read debug logs, build
+/// with -Dtest-log-level=debug, which compiles and prints them. The WPT
+/// runner, the library and the tools keep their own levels.
+fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []const u8, checks: StateChecks, standalone: StandaloneRuntime, members: []const SuiteGroup, many_browsers: bool, log_level: ?std.log.Level) bool {
     const root = test_exe.root_module;
     const wf = b.addWriteFiles();
     _ = wf.addCopyDirectory(b.path("tests/test_runner"), "", .{ .include_extensions = &.{".zig"} });
@@ -1399,6 +1411,8 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []
         \\pub const name = "{s}";
         \\pub const Mode = enum {{ off, report, fail }};
         \\pub const mode: Mode = .{t};
+        \\/// -Dtest-log-level, or null: the runner's log levels (runner.zig).
+        \\pub const log_level_option: ?@import("std").log.Level = {s};
         \\/// Who makes the standalone runtime (build.zig's StandaloneRuntime).
         \\pub const StandaloneRuntime = enum {{ per_test, process_start }};
         \\pub const standalone_runtime: StandaloneRuntime = .{t};
@@ -1409,7 +1423,7 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []
         \\pub const Member = struct {{ prefix: []const u8, standalone_runtime: StandaloneRuntime }};
         \\pub const members: []const Member = &.{{
         \\
-    , .{ name, name, checks, standalone }) catch @panic("OOM");
+    , .{ name, name, checks, if (log_level) |level| b.fmt(".{t}", .{level}) else "null", standalone }) catch @panic("OOM");
     for (members) |m| w.print("    .{{ .prefix = \"{s}\", .standalone_runtime = .{t} }},\n", .{ m.prefix, m.config.standalone_runtime }) catch @panic("OOM");
     w.writeAll(
         \\};
@@ -2332,7 +2346,67 @@ const ModuleConfig = struct {
     platform_without: []const []const u8,
     platform_static: []const []const u8,
     platform_module: ?[]const u8,
+    /// Tables computed once by build steps and embedded (`addGeneratedTables`).
+    tables: GeneratedTables,
 };
+
+/// Tables a build step computes once and Zig caches, which modules embed with
+/// `@embedFile` of an anonymous import (lane compiletime1, 2026-11-04). Each
+/// was computed at compile time in every binary that reached it - about 9 s of
+/// single-threaded Sema per test binary (lane onebin2's time report). Their
+/// tools' tests run in `zig build test`; the tables' identity with what the
+/// compile-time code made is pinned by tests/encoding/
+/// reverse_index_table_test.zig and tests/url/psl_table_test.zig.
+const GeneratedTables = struct {
+    /// src/encoding/reverse_index.zig's five tables, by
+    /// `reverse_index_table_names` (tools/encoding/reverse_index_table.zig).
+    reverse_index: [reverse_index_table_names.len]std.Build.LazyPath,
+    /// src/url/public_suffix.zig's rule table (tools/url/psl_table.zig).
+    psl: std.Build.LazyPath,
+    /// The tools' root modules, whose tests `zig build test` runs.
+    reverse_index_tool: *std.Build.Module,
+    psl_tool: *std.Build.Module,
+};
+
+/// The reverse indexes, in the order tools/encoding/reverse_index_table.zig
+/// takes its output paths; each forward index is the tool's module
+/// `<name>_index`, and each table the encoding module's import
+/// `reverse_index_<name>`.
+const reverse_index_table_names = [_][]const u8{ "jis0208", "jis0212", "big5", "gb18030", "euc_kr" };
+const reverse_index_forward_indexes = [_][]const u8{
+    "src/encoding/japanese/jis0208_index.zig",
+    "src/encoding/japanese/jis0212_index.zig",
+    "src/encoding/chinese/big5_index.zig",
+    "src/encoding/chinese/gb18030_index.zig",
+    "src/encoding/korean/euc_kr_index.zig",
+};
+
+/// The generated tables' tools, run once per build (`GeneratedTables`).
+fn addGeneratedTables(b: *std.Build) GeneratedTables {
+    const reverse_index_module = b.createModule(.{
+        .root_source_file = b.path("tools/encoding/reverse_index_table.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    for (reverse_index_table_names, reverse_index_forward_indexes) |name, path| {
+        reverse_index_module.addAnonymousImport(b.fmt("{s}_index", .{name}), .{ .root_source_file = b.path(path) });
+    }
+    const reverse_index_run = b.addRunArtifact(b.addExecutable(.{ .name = "reverse_index_table", .root_module = reverse_index_module }));
+    var reverse_index: [reverse_index_table_names.len]std.Build.LazyPath = undefined;
+    for (reverse_index_table_names, &reverse_index) |name, *table| table.* = reverse_index_run.addOutputFileArg(b.fmt("{s}.bin", .{name}));
+
+    const psl_module = b.createModule(.{
+        .root_source_file = b.path("tools/url/psl_table.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const psl_run = b.addRunArtifact(b.addExecutable(.{ .name = "psl_table", .root_module = psl_module }));
+    psl_run.addFileArg(b.path("src/url/public_suffix_data.zig"));
+    const psl = psl_run.addOutputFileArg("psl_table.bin");
+
+    return .{ .reverse_index = reverse_index, .psl = psl, .reverse_index_tool = reverse_index_module, .psl_tool = psl_module };
+}
 
 /// The platform protocol's modules for one platform (docs/platform-protocol.md
 /// section 1): the facade `platform` (src/platform/protocol.zig), the bound
@@ -2810,6 +2884,7 @@ pub fn build(b: *std.Build) void {
         .platform_without = platform_without,
         .platform_static = platform_static,
         .platform_module = platform_module_path,
+        .tables = addGeneratedTables(b),
     };
     const crane_graph = addCraneModules(b, target, target_platform, module_config);
     const testing_graph = if (target_platform == .testing) crane_graph else addCraneModules(b, target, .testing, module_config);
@@ -2906,6 +2981,7 @@ pub fn build(b: *std.Build) void {
     // checks `test` adds; -Dspec and -Dtest-file select them for both.
     const launch: *const TestLaunch = launch: {
         const many_browsers = b.option(bool, "many-browsers", "The many-Browsers variant: every test runs beside a second, busy Browser on another thread of its process (suites that link V8)") orelse false;
+        const test_log_level = b.option(std.log.Level, "test-log-level", "The test executables' log level: compiled and printed while a test runs (default: compiled at info, printed at warn; debug for a local diagnosis)");
         const launcher_module = b.createModule(.{
             .root_source_file = b.path("tools/test_launcher/main.zig"),
             // Build-time tool: runs on the host, as codegen does.
@@ -2945,7 +3021,7 @@ pub fn build(b: *std.Build) void {
                 },
             }),
         });
-        _ = useCraneTestRunner(b, state_fixture, "test_state_fixture", .fail, .per_test, &.{}, false);
+        _ = useCraneTestRunner(b, state_fixture, "test_state_fixture", .fail, .per_test, &.{}, false, test_log_level);
         launcher_fixture_options.addOptionPath("state_path", state_fixture.getEmittedBin());
         // A joined executable as -Dtest-binaries=v8 makes one (tests/
         // test_runner_fixture/joined_fixture.zig): two members, "start."
@@ -2965,7 +3041,7 @@ pub fn build(b: *std.Build) void {
         _ = useCraneTestRunner(b, joined_fixture, "test_joined_fixture", .fail, .per_test, &.{
             .{ .prefix = "start.", .config = .{ .standalone_runtime = .process_start }, .plain = false },
             .{ .prefix = "held.", .config = .{}, .plain = false },
-        }, false);
+        }, false, test_log_level);
         launcher_fixture_options.addOptionPath("joined_path", joined_fixture.getEmittedBin());
         // A test that races, built with ThreadSanitizer: child.zig's tests
         // check that the launcher's TSAN_OPTIONS make the race a crash of
@@ -2997,7 +3073,7 @@ pub fn build(b: *std.Build) void {
                 }),
             });
             linkV8(b, many_fixture.root_module, v8);
-            _ = useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, .per_test, &.{}, true);
+            _ = useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, .per_test, &.{}, true, test_log_level);
             launcher_fixture_options.addOptionPath("many_browsers_path", many_fixture.getEmittedBin());
         }
         const launcher_test_module = b.createModule(.{
@@ -3023,6 +3099,7 @@ pub fn build(b: *std.Build) void {
             .shuffle = b.option(bool, "launch-shuffle", "true: shuffle every suite's order and batches from the seed; false: index order everywhere (default: each suite's suite_configs row, mostly shuffled)"),
             .sanitize_thread = b.option(bool, "sanitize-thread", "Build every test executable with ThreadSanitizer (Crane's own modules; not the C libraries or the V8 prebuilt) and run it so a race crashes its test (TSAN_OPTIONS=halt_on_error=1)") orelse false,
             .many_browsers = many_browsers,
+            .log_level = test_log_level,
             .browser_module = testing_graph.browser,
             .test_exes = test_exes: {
                 const list = b.allocator.create(std.ArrayList(*std.Build.Step.Compile)) catch @panic("OOM");
@@ -5677,6 +5754,61 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&addSuiteRun(b, launch, lint_tombstones_tests, "tools-lint_tombstones", null).step);
 
     // ========================================================================
+    // LINT: the CSS module's two import boundaries
+    // ========================================================================
+    // Two cold Typed OM entries stay off CSS's parsing and computation paths
+    // (Q61: the native animation-list concatenation; Q59: the canonical-text
+    // inspection). Each was a `comptime {}` block that @embedFile'd and
+    // searched the files it guards - 20 s of single-threaded Sema in every
+    // test binary that reached src/css (lane onebin2's time report).
+    // tools/lint_css_boundaries.zig checks the same files for the same
+    // patterns with the same messages, once per `zig build test` (lane
+    // compiletime1). Not a ratchet: any breach fails.
+    const lint_css_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_css_boundaries.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_css_exe = b.addExecutable(.{
+        .name = "lint_css_boundaries",
+        .root_module = lint_css_module,
+    });
+    const lint_css_step = b.step("lint-css", "Fail when a CSS parsing/computation file reaches a cold Typed OM entry (Q59, Q61)");
+    const lint_css = b.addRunArtifact(lint_css_exe);
+    // It reads src/css, which the build graph does not track.
+    lint_css.has_side_effects = true;
+    lint_css.setCwd(b.path("."));
+    lint_css_step.dependOn(&lint_css.step);
+    test_step.dependOn(&lint_css.step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = lint_css_module }), "tools-lint_css", null).step);
+
+    // The generated tables' tools (`addGeneratedTables`): their own tests.
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = module_config.tables.reverse_index_tool }), "tools-reverse_index_table", null).step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = module_config.tables.psl_tool }), "tools-psl_table", null).step);
+
+    // ========================================================================
+    // The code-size report
+    // ========================================================================
+    // tools/code_size_report.zig groups a binary's functions by generic
+    // family - every instance of `V8Interface(X).constructorCallback` is one
+    // family - from its symbol table, with count and bytes per family: what
+    // LLVM emitted, so what LLVM Emit Object spent its time on (lane
+    // compiletime1; Rust's cargo-llvm-lines). `zig build code-size --
+    // <binary> [--top=N] [--base=<binary>] [--tsv]`.
+    const code_size_module = b.createModule(.{
+        .root_source_file = b.path("tools/code_size_report.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const code_size_run = b.addRunArtifact(b.addExecutable(.{ .name = "code_size_report", .root_module = code_size_module }));
+    code_size_run.has_side_effects = true;
+    code_size_run.setCwd(b.path("."));
+    code_size_run.addPassthruArgs();
+    b.step("code-size", "Group a binary's functions by generic family, with count and bytes (-- <binary> [--top=N] [--base=<binary>] [--tsv])").dependOn(&code_size_run.step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = code_size_module }), "tools-code_size_report", null).step);
+
+    // ========================================================================
     // WPT: the wpt.fyi upload package
     // ========================================================================
     // tools/wpt_upload_package.zig turns a supervised sweep's reports, result
@@ -6799,6 +6931,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
     encoding_mod.addImport("infra", infra_mod);
     encoding_mod.addImport("webidl", webidl_mod);
+    for (reverse_index_table_names, config.tables.reverse_index) |name, table| {
+        encoding_mod.addAnonymousImport(b.fmt("reverse_index_{s}", .{name}), .{ .root_source_file = table });
+    }
     css_mod.addImport("encoding", encoding_mod);
 
     // URL internal modules that generated interfaces need
@@ -6814,6 +6949,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .target = target,
     });
     public_suffix_mod.addImport("host", url_internal_host_mod);
+    public_suffix_mod.addAnonymousImport("psl_table", .{ .root_source_file = config.tables.psl });
     cookiestore_mod.addImport("public_suffix", public_suffix_mod);
 
     const url_internal_path_mod = b.createModule(.{
