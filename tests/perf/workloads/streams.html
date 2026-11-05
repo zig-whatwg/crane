@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Streams</title>
+<!-- The Streams Standard's objects: made, read through, piped (gc_bench's streams rows, timed). -->
+<script src="../harness.js"></script>
+<script>
+function need(name) { if (typeof globalThis[name] !== 'function') throw new perf.Unsupported(name); }
+perf.add('streams.reader', {
+  ops: 20000,
+  setup() { need('ReadableStream'); },
+  run(n) { let k = 0; for (let i = 0; i < n; i++) if (new ReadableStream({ start(c) { c.close(); } }).getReader()) k++; this.sink = k; },
+});
+perf.add('streams.enqueue-read', {
+  ops: 20000,
+  setup() { need('ReadableStream'); },
+  async run(n) {
+    let i = 0;
+    const reader = new ReadableStream({ pull(c) { if (i++ < n) c.enqueue(i); else c.close(); } }, { highWaterMark: 16 }).getReader();
+    let k = 0;
+    for (;;) { const { done, value } = await reader.read(); if (done) break; k += value; }
+    this.sink = k;
+  },
+});
+perf.add('streams.pipe-through-decoder', {
+  ops: 500,
+  setup() { need('TextDecoderStream'); },
+  async run(n) {
+    for (let i = 0; i < n; i++) {
+      const r = new Response('x').body.pipeThrough(new TextDecoderStream()).getReader();
+      while (!(await r.read()).done);
+    }
+  },
+});
+perf.add('streams.transform-chain', {
+  ops: 2000,
+  setup() { need('TransformStream'); need('WritableStream'); },
+  async run(n) {
+    let i = 0, total = 0;
+    const source = new ReadableStream({ pull(c) { if (i++ < n) c.enqueue(i); else c.close(); } });
+    const double = () => new TransformStream({ transform(chunk, c) { c.enqueue(chunk * 2); } });
+    await source.pipeThrough(double()).pipeThrough(double()).pipeThrough(double())
+      .pipeTo(new WritableStream({ write(chunk) { total += chunk; } }));
+    this.sink = total;
+  },
+});
+perf.add('streams.blob-stream', {
+  ops: 2000,
+  setup() { need('Blob'); },
+  async run(n) {
+    let k = 0;
+    for (let i = 0; i < n; i++) {
+      const r = new Blob(['hello ', 'world']).stream().getReader();
+      for (;;) { const { done, value } = await r.read(); if (done) break; k += value.length; }
+    }
+    this.sink = k;
+  },
+});
+</script>

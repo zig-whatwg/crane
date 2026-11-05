@@ -99,6 +99,18 @@ pub fn runnerModes(runner_option: ?Mode, optimize: Mode, optimize_given: bool) R
     };
 }
 
+/// The console's modes (tools/repl.zig, Crane's headless browser).
+/// `release`: -Dwpt-runner-release, which makes the console Crane's release
+/// build - the one the performance suite times beside the browsers'
+/// official releases (tools/perf_bench, docs/performance.md; the user,
+/// 2026-11-04: Crane is timed in its release build) - release_runner's modes
+/// exactly, winning over -Drepl-optimize as it wins over
+/// -Dwpt-runner-optimize. Otherwise the runner's rule (`runnerModes`).
+pub fn consoleModes(release: bool, console_option: ?Mode, optimize: Mode, optimize_given: bool) RunnerModes {
+    if (release) return release_runner;
+    return runnerModes(console_option, optimize, optimize_given);
+}
+
 /// A mode's name as `-Doptimize` spells it, for the runner's banner
 /// (`wpt_runner: ReleaseSafe build (Crane modules Debug, C libraries
 /// ReleaseSafe)`, as AGENTS.md documents it). Zig 0.17 renamed the
@@ -185,6 +197,39 @@ test "the release runner is ReleaseSafe throughout, at ReleaseSafe's own C sanit
     try testing.expectEqual(RunnerAllocator.production, modes.allocator);
     // Its Crane modules are not the shared graph's (built in -Doptimize's mode).
     try testing.expect(modes.ownGraph(.Debug));
+}
+
+test "with -Dwpt-runner-release the console is the release build: release_runner's modes exactly" {
+    // The performance suite times Crane's headless browser, the console
+    // (tools/perf_bench, docs/performance.md), beside the browsers' official
+    // releases - in the release build (the user, 2026-11-04), never the
+    // correctness modes: every part ReleaseSafe, its C libraries too, the C
+    // code at ReleaseSafe's .trap, and libc's malloc, which the console
+    // already allocates from.
+    const modes = consoleModes(true, null, .Debug, false);
+    try testing.expectEqual(release_runner.root, modes.root);
+    try testing.expectEqual(release_runner.crane_modules, modes.crane_modules);
+    try testing.expectEqual(release_runner.c_libraries, modes.c_libraries);
+    try testing.expectEqual(release_runner.sanitize_c, modes.sanitize_c);
+    try testing.expectEqual(RunnerAllocator.production, modes.allocator);
+    // It wins over -Drepl-optimize, as -Dwpt-runner-release wins over
+    // -Dwpt-runner-optimize.
+    try testing.expectEqual(Mode.ReleaseSafe, consoleModes(true, .Debug, .Debug, false).root);
+    // Its Crane modules and C libraries are not the shared graph's: a graph
+    // of its own, whose C libraries are built at its root's sanitizer - the
+    // root links no full UBSan runtime (.trap), so C built with .full would
+    // not link (docs/lessons/workflow-a-release-root-over-debug-c-libraries-
+    // must-link-the-full-sanitizer-runtime.md).
+    try testing.expect(modes.ownGraph(.Debug));
+}
+
+test "without -Dwpt-runner-release the console keeps the runner's rule" {
+    const plain = consoleModes(false, null, .Debug, false);
+    const runner = runnerModes(null, .Debug, false);
+    try testing.expectEqual(runner.root, plain.root);
+    try testing.expectEqual(runner.crane_modules, plain.crane_modules);
+    try testing.expectEqual(runner.sanitize_c, plain.sanitize_c);
+    try testing.expectEqual(Mode.Debug, consoleModes(false, .Debug, .Debug, false).root);
 }
 
 test "every other runner keeps the leak- and double-free-detecting allocator" {

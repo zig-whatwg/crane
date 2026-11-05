@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Selectors: querySelector, querySelectorAll, matches, collections</title>
+<script src="../harness.js"></script>
+<body>
+<div id="root"></div>
+<script>
+// A document of 3,000 elements: 300 cards, each an article with a header, a body and a list.
+(function () {
+  const root = document.getElementById('root');
+  let html = '';
+  for (let i = 0; i < 300; i++) {
+    html += '<article class="card' + (i % 3 === 0 ? ' featured' : '') + '" id="n-' + i + '" data-rank="' + (i % 10) + '">' +
+      '<header><h3 class="title">Card ' + i + '</h3><span class="tag">t' + (i % 7) + '</span></header>' +
+      '<div class="body"><p>Text <em>of</em> card ' + i + '</p><ul class="items"><li class="item"><span class="leaf">a</span></li>' +
+      '<li class="item"><span class="leaf">b</span></li></ul></div></article>';
+  }
+  root.innerHTML = html;
+})();
+perf.add('dom.query-selector', {
+  ops: 20000,
+  run(n) { let k = 0; for (let i = 0; i < n; i++) { const e = document.querySelector('#n-' + (i % 300) + ' .leaf'); if (e) k++; } this.sink = k; },
+});
+perf.add('dom.query-selector-all', {
+  ops: 500,
+  run(n) { let k = 0; for (let i = 0; i < n; i++) k += document.querySelectorAll('article.featured .items > li.item span').length; this.sink = k; },
+});
+perf.add('dom.matches', {
+  ops: 50000,
+  setup() { this.leaves = Array.from(document.querySelectorAll('.leaf')); },
+  run(n) { const leaves = this.leaves; let k = 0; for (let i = 0; i < n; i++) if (leaves[i % leaves.length].matches('article.featured .body li > span')) k++; this.sink = k; },
+});
+perf.add('dom.get-elements-by-class', {
+  ops: 2000,
+  run(n) { let k = 0; for (let i = 0; i < n; i++) { const c = document.getElementsByClassName('tag'); k += c.length + c[i % 300].textContent.length; } this.sink = k; },
+});
+</script>

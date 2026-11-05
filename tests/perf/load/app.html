@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orders | Dashboard</title>
+<link rel="stylesheet" href="site.css">
+<script src="app.js" defer></script>
+<script src="../harness.js"></script>
+</head>
+<body class="app">
+<div id="app"><header class="app-bar"><span class="app-title">Dashboard</span><nav class="tabs"><a class="tab active" href="#orders">Orders</a><a class="tab" href="#customers">Customers</a><a class="tab" href="#reports">Reports</a></nav></header>
+<main class="app-main"><div class="toolbar"><input id="filter" placeholder="Filter orders"><select id="sort"><option value="id">Id</option><option value="price">Price</option><option value="name">Name</option></select></div>
+<div class="summary" id="summary">Loading&hellip;</div>
+<table class="grid" id="grid"><thead><tr><th>Id</th><th>Name</th><th>Price</th><th>Tags</th><th>Status</th></tr></thead><tbody></tbody></table></main></div>
+<script>perf.chain('load.app', () => globalThis.appReady);</script>
+</body>
+</html>

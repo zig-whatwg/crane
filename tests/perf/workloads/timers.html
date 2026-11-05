@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Timers, tasks and microtasks</title>
+<!-- The event loop's queues: timers (scheduled together, so no nesting clamp applies),
+     promise jobs, queueMicrotask, and MessageChannel tasks. -->
+<script src="../harness.js"></script>
+<script>
+perf.add('timers.set-timeout-batch', {
+  ops: 1000,
+  run(n) {
+    return new Promise((resolve) => {
+      let left = n;
+      for (let i = 0; i < n; i++) setTimeout(() => { if (--left === 0) resolve(); }, 0);
+    });
+  },
+});
+perf.add('timers.promise-chain', {
+  ops: 100000,
+  run(n) { let p = Promise.resolve(0); for (let i = 0; i < n; i++) p = p.then((v) => v + 1); return p.then((v) => { this.sink = v; }); },
+});
+perf.add('timers.queue-microtask', {
+  ops: 100000,
+  run(n) {
+    return new Promise((resolve) => {
+      let left = n;
+      const step = () => { if (--left === 0) resolve(); else queueMicrotask(step); };
+      queueMicrotask(step);
+    });
+  },
+});
+perf.add('timers.message-channel', {
+  ops: 2000,
+  setup() { if (typeof MessageChannel !== 'function') throw new perf.Unsupported('MessageChannel'); },
+  run(n) {
+    return new Promise((resolve) => {
+      const ch = new MessageChannel();
+      let left = n;
+      // A round trip per op: port2 -> port1, then port1 -> port2.
+      ch.port1.onmessage = (e) => { if (--left === 0) { ch.port1.close(); resolve(); } else ch.port1.postMessage(e.data + 1); };
+      ch.port2.onmessage = (e) => { ch.port2.postMessage(e.data); };
+      ch.port2.postMessage(0);
+    });
+  },
+});
+</script>

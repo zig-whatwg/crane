@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The HTML parser</title>
+<!-- A 300 KB document parsed three ways: innerHTML of a detached element (the fragment
+     parser), DOMParser (a whole document), and document.write into a document a script
+     opened (a script-created parser that each write resumes, ended by close()). -->
+<script src="../harness.js"></script>
+<script>
+const rand = perf.random(7);
+const words = ['engine', 'platform', 'parser', 'document', 'element', 'stream', 'promise', 'render', 'layout', 'network', 'cache', 'worker'];
+function sentence(n) { let s = ''; for (let i = 0; i < n; i++) s += (i ? ' ' : '') + words[Math.floor(rand() * words.length)]; return s; }
+const parts = [];
+for (let i = 0; i < 400; i++) {
+  parts.push('<div class="post" id="p' + i + '"><h3><a href="/post/' + i + '">' + sentence(5) + '</a></h3>' +
+    '<p>' + sentence(40) + ' <em>' + sentence(3) + '</em> &mdash; ' + sentence(20) + '</p>' +
+    '<ul><li>' + sentence(4) + '</li><li>' + sentence(4) + '</li></ul>' +
+    '<table><tr><td>' + i + '</td><td>' + sentence(2) + '</td></tr></table></div>');
+}
+const body = parts.join('\n');
+const docText = '<!doctype html><html><head><title>Big</title></head><body>' + body + '</body></html>';
+perf.add('parser.inner-html-large', {
+  ops: 3,
+  run(n) { let k = 0; for (let i = 0; i < n; i++) { const d = document.createElement('div'); d.innerHTML = body; k += d.childNodes.length; } this.sink = k; },
+});
+perf.add('parser.dom-parser', {
+  ops: 3,
+  setup() { if (typeof DOMParser !== 'function') throw new perf.Unsupported('DOMParser'); },
+  run(n) { let k = 0; for (let i = 0; i < n; i++) k += new DOMParser().parseFromString(docText, 'text/html').body.childNodes.length; this.sink = k; },
+});
+perf.add('parser.document-write', {
+  ops: 3,
+  run(n) {
+    let k = 0;
+    for (let i = 0; i < n; i++) {
+      const d = document.implementation.createHTMLDocument('');
+      d.open();
+      for (const p of parts) d.write(p);
+      d.close();
+      k += d.body.childNodes.length;
+    }
+    this.sink = k;
+  },
+});
+</script>

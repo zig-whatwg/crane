@@ -13,7 +13,9 @@
 //! in sRGB. Same numbers, same bytes: the PNG encoder writes no timestamps.
 
 const std = @import("std");
-const png = @import("png.zig");
+/// The PNG codec the card draws with (pub: a card drawn by another module
+/// passes images of this type to `draw`).
+pub const png = @import("png.zig");
 const Allocator = std.mem.Allocator;
 
 pub const width = 1200;
@@ -29,14 +31,15 @@ pub const Figures = struct {
     blocking: u64,
 };
 
-const atlas_png = @embedFile("card/atlas.png");
+/// The digit atlas (also /performance/'s card: tools/perf_bench/card.zig).
+pub const atlas_png = @embedFile("card/atlas.png");
 const base_png = @embedFile("card/base.png");
 
 const glyphs = "0123456789,/ ";
 
 /// One cut of the atlas: a row of cells, and the advances measured in
 /// Chrome (getComputedTextLength) for that font, size and weight.
-const Cut = struct {
+pub const Cut = struct {
     row_y: u32,
     cell_w: u32,
     cell_h: u32,
@@ -59,11 +62,11 @@ const Cut = struct {
 };
 
 /// Source Serif 4, 600, 132px: the passing count.
-const big: Cut = .{ .row_y = 0, .cell_w = 110, .cell_h = 170, .ox = 20, .baseline = 135, .digit = 64.40625, .comma = 34.234375, .slash = 42.328125, .space = 26.40625 };
+pub const big: Cut = .{ .row_y = 0, .cell_w = 110, .cell_h = 170, .ox = 20, .baseline = 135, .digit = 64.40625, .comma = 34.234375, .slash = 42.328125, .space = 26.40625 };
 /// Source Serif 4, 400, 60px: " / reported".
-const of: Cut = .{ .row_y = 170, .cell_w = 60, .cell_h = 80, .ox = 10, .baseline = 62, .digit = 28.203125, .comma = 15.484375, .slash = 18.546875, .space = 12.25 };
+pub const of: Cut = .{ .row_y = 170, .cell_w = 60, .cell_h = 80, .ox = 10, .baseline = 62, .digit = 28.203125, .comma = 15.484375, .slash = 18.546875, .space = 12.25 };
 /// Source Serif 4, 600, 40px: the five counts beneath.
-const small: Cut = .{ .row_y = 250, .cell_w = 44, .cell_h = 56, .ox = 8, .baseline = 42, .digit = 20.15625, .comma = 11.1875, .slash = 13.546875, .space = 8.484375 };
+pub const small: Cut = .{ .row_y = 250, .cell_w = 44, .cell_h = 56, .ox = 8, .baseline = 42, .digit = 20.15625, .comma = 11.1875, .slash = 13.546875, .space = 8.484375 };
 
 /// Placements, matching card/source.html's labels.
 const left = 80;
@@ -93,14 +96,14 @@ fn grouped(buf: []u8, n: u64) []const u8 {
     return buf[0..k];
 }
 
-fn measure(cut: Cut, s: []const u8) f64 {
+pub fn measure(cut: Cut, s: []const u8) f64 {
     var w: f64 = 0;
     for (s) |g| w += cut.advance(g);
     return w;
 }
 
 /// Draw `s` in `cut` from pen x `x` on baseline `y`; returns the pen after it.
-fn draw(img: *png.Image, atlas: *const png.Image, cut: Cut, s: []const u8, x: f64, y: i32, color: [3]u8) f64 {
+pub fn draw(img: *png.Image, atlas: *const png.Image, cut: Cut, s: []const u8, x: f64, y: i32, color: [3]u8) f64 {
     var pen = x;
     for (s) |g| {
         const idx = std.mem.indexOfScalar(u8, glyphs, g) orelse continue;
