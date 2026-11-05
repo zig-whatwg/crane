@@ -212,6 +212,8 @@ pub const Launch = struct {
     /// there and exits when it closes (as on Ctrl+D), so the page stays live
     /// until the launch ends. Every other engine's stdin is /dev/null.
     stdin_pipe: bool = false,
+    // RED STUB
+    cwd: ?[]const u8 = null,
 };
 
 pub fn launch(arena: Allocator, pin: Pin, url: []const u8, profile: []const u8, port: u16) Allocator.Error!Launch {
@@ -352,6 +354,30 @@ test "Crane ReleaseFast launches as Crane does: the console, its stdin held open
     // The browsers' stdin is not the page's: nothing to hold open.
     const chrome = try launch(a, .{ .name = .chrome, .version = "157", .build = "b", .binary = "/c/chrome", .sha256 = sha }, url, "/p/1", 0);
     try testing.expect(!chrome.stdin_pipe);
+}
+
+test "each Crane build runs in its own directory, so it restores its own snapshot" {
+    // The console finds whatwg_snapshot.bin from its working directory
+    // (src/browser/process.zig DEFAULT_SNAPSHOT_PATHS: zig-out/bin/ first,
+    // then the directory itself), never beside its executable: started from
+    // the runner's directory, a frozen build would restore whatever snapshot
+    // that directory's last build left (docs/lessons/testing-a-runner-finds-
+    // its-snapshot-from-its-working-directory.md). Each frozen build keeps
+    // its snapshot beside its binary, so it runs there.
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const sha = "abababababababababababababababababababababababababababababababab";
+    const url = "http://127.0.0.1:8000/x.html";
+    const safe = try launch(a, .{ .name = .crane, .version = "v", .build = "b", .binary = "/bins/crane-abc/repl", .sha256 = sha, .commit = "c", .optimize = "o", .v8 = "v8" }, url, "/p", 0);
+    try testing.expectEqualStrings("/bins/crane-abc", safe.cwd.?);
+    const fast = try launch(a, .{ .name = .crane_fast, .version = "v", .build = "b", .binary = "/bins/crane-fast-abc/repl", .sha256 = sha, .commit = "c", .optimize = "o", .v8 = "v8" }, url, "/p", 0);
+    try testing.expectEqualStrings("/bins/crane-fast-abc", fast.cwd.?);
+    // The flags the journal records are unchanged by it.
+    try expectStrings(&crane_flags, fast.flags);
+    // A browser keeps the runner's directory.
+    const chrome = try launch(a, .{ .name = .chrome, .version = "157", .build = "b", .binary = "/c/chrome", .sha256 = sha }, url, "/p/1", 0);
+    try testing.expectEqual(@as(?[]const u8, null), chrome.cwd);
 }
 
 test "each engine's command line, and the flags the journal records" {
