@@ -18,6 +18,12 @@
 //! `log_err_count` do, and the launcher keeps the text of every test that
 //! did not pass.
 //!
+//! Poison on free (poisoning.zig, lane poison2): every test's
+//! std.testing.allocator is made with SafeAllocator's
+//! `check_write_after_free`, which writes 0x55 over what a test frees, and a
+//! test's own DebugAllocator is `poisoning.DebugAllocator`, reached through
+//! this file (`@import("root").poisoning`).
+//!
 //! The many-Browsers variant (CRANE_TEST_MANY_BROWSERS=1, which
 //! tools/test_launcher's --many-browsers sets; build.zig -Dmany-browsers):
 //! from the first test on, a second, busy Browser works on another thread of
@@ -39,6 +45,11 @@ const state = @import("state.zig");
 const neighbour_mod = @import("neighbour.zig");
 const busy_browser = @import("busy_browser.zig");
 const suite = @import("suite.zig");
+
+/// Poison on free, for every allocator a test checks memory with: a test
+/// file reaches it as `@import("root").poisoning` - its `DebugAllocator` is
+/// the one a test makes for itself (a Browser per thread in a race test).
+pub const poisoning = @import("poisoning.zig");
 
 pub const std_options: std.Options = .{
     .logFn = log,
@@ -191,6 +202,18 @@ fn runOne(test_fn: std.lang.TestFn, index: u32) anyerror!void {
     return result;
 }
 
+/// A test's std.testing.allocator, made before each test and checked for
+/// leaks after it: Zig's own runner's SafeAllocator, canary and all, with
+/// `check_write_after_free` - its free writes 0x55 over every allocation in
+/// a bucket and its bucket release checks nothing wrote after. Larger
+/// allocations are unmapped when freed.
+fn initTestAllocator() void {
+    testing.allocator_instance = .init(std.heap.page_allocator, .{
+        .canary = 0xc3a701ba,
+        .check_write_after_free = true,
+    });
+}
+
 fn mainServer(init: std.process.Init.Minimal) !void {
     stdin_reader = .initStreaming(.stdin(), runner_threaded_io, &stdin_buffer);
     stdout_writer = .initStreaming(.stdout(), runner_threaded_io, &stdout_buffer);
@@ -239,10 +262,7 @@ fn mainServer(init: std.process.Init.Minimal) !void {
 
             .run_test => {
                 testing.environ = init.environ;
-                testing.allocator_instance = .init(std.heap.page_allocator, .{
-                    .canary = 0xc3a701ba,
-                    .check_write_after_free = true,
-                });
+                initTestAllocator();
                 testing.io_instance = .init(testing.allocator, .{
                     .argv0 = .init(init.args),
                     .environ = init.environ,
@@ -307,10 +327,7 @@ fn mainTerminal(init: std.process.Init.Minimal) void {
 
     var leaks: usize = 0;
     for (test_fn_list, 0..) |test_fn, i| {
-        testing.allocator_instance = .init(std.heap.page_allocator, .{
-            .canary = 0xc3a701ba,
-            .check_write_after_free = true,
-        });
+        initTestAllocator();
         testing.io_instance = .init(testing.allocator, .{
             .argv0 = .init(init.args),
             .environ = init.environ,

@@ -14,11 +14,15 @@
 //! binary per selection.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const InMessage = std.zig.Server.Message;
 const sched = @import("scheduler.zig");
 const Slots = @import("slots.zig").Slots;
+/// tests/test_runner/poisoning.zig: the CRANE_POISON_FREES switch the Crane
+/// test runner reads, so the launcher reads it the same way.
+const poisoning = @import("poisoning");
 
 pub const Metadata = struct {
     names: [][]const u8,
@@ -415,6 +419,27 @@ pub const cleared_environment = [_][]const u8{
     "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
 };
 
+/// libc's own poisoning of what it frees, set for every test child (lane
+/// poison2): the memory no Zig allocator of a test sees - v8_wrapper.cpp's
+/// new and delete, std.heap.c_allocator - gets what std.testing.allocator's
+/// SafeAllocator does to Zig memory (tests/test_runner/poisoning.zig), so a
+/// read after a C++ delete reads poison instead of the old object.
+///
+/// - macOS libmalloc, `MallocScribble=1` (malloc(3)): a freed block is filled
+///   with 0x55 and a new one with 0xaa.
+/// - glibc, `MALLOC_PERTURB_=85` (mallopt(3), M_PERTURB): a freed block is
+///   filled with 85 (0x55, as macOS) and a new one, except calloc's, with
+///   its complement (0xaa). Ignored by a libc without it (musl).
+///
+/// Off, with the rest of the poisoning, when the launcher's environment has
+/// CRANE_POISON_FREES=0 (`testEnvironment`). Under ThreadSanitizer its own
+/// allocator replaces libc's, so neither variable does anything there.
+pub const malloc_scribble: ?[2][]const u8 = switch (builtin.os.tag) {
+    .macos, .ios, .tvos, .watchos, .visionos => .{ "MallocScribble", "1" },
+    .linux => .{ "MALLOC_PERTURB_", "85" },
+    else => null,
+};
+
 /// The variable that turns on the Crane test runner's many-Browsers variant
 /// (tests/test_runner/neighbour.zig): a second, busy Browser on another
 /// thread of every test process.
@@ -452,13 +477,18 @@ fn tsanOptions(gpa: Allocator, tsan: EnvironmentOptions.SanitizeThread, own: ?[]
 }
 
 /// The environment of every test child: `base` (the launcher's), with
-/// `fixed_environment` set and `cleared_environment` removed, and what
+/// `fixed_environment` set and `cleared_environment` removed, libc's
+/// scribbling (`malloc_scribble`) unless `base` turns poisoning off
+/// (CRANE_POISON_FREES=0, which the child's test runner reads too), and what
 /// `options` adds. The caller owns the result; `base` is not changed.
 pub fn testEnvironment(gpa: Allocator, base: *const std.process.Environ.Map, options: EnvironmentOptions) Allocator.Error!std.process.Environ.Map {
     var env = try base.clone(gpa);
     errdefer env.deinit();
     for (fixed_environment) |pair| try env.put(pair[0], pair[1]);
     for (cleared_environment) |name| _ = env.swapRemove(name);
+    if (malloc_scribble) |pair| {
+        if (poisoning.enabled(base.get(poisoning.env_var))) try env.put(pair[0], pair[1]) else _ = env.swapRemove(pair[0]);
+    }
     if (options.sanitize_thread) |tsan| {
         const value = try tsanOptions(gpa, tsan, base.get("TSAN_OPTIONS"));
         defer gpa.free(value);
@@ -785,6 +815,26 @@ test "the test environment: the launcher's own, with the time zone and locale fi
     try testing.expectEqualStrings("UTC", base.get("TZ").?);
 }
 
+test "the test environment: libc scribbles what it frees, unless CRANE_POISON_FREES=0 turns all poisoning off" {
+    const gpa = testing.allocator;
+    var base: std.process.Environ.Map = .init(gpa);
+    defer base.deinit();
+    const pair = malloc_scribble orelse return error.SkipZigTest;
+    var on = try testEnvironment(gpa, &base, .{});
+    defer on.deinit();
+    try testing.expectEqualStrings(pair[1], on.get(pair[0]).?);
+    try testing.expect(on.get(poisoning.env_var) == null);
+
+    // The one-run off switch: passed through for the child's test runner,
+    // and libc's scribbling off with it - even if the launcher had it set.
+    try base.put(poisoning.env_var, "0");
+    try base.put(pair[0], pair[1]);
+    var off = try testEnvironment(gpa, &base, .{});
+    defer off.deinit();
+    try testing.expect(off.get(pair[0]) == null);
+    try testing.expectEqualStrings("0", off.get(poisoning.env_var).?);
+}
+
 test "the test environment under ThreadSanitizer: a race halts the child, with the suppressions; the launcher's own TSAN_OPTIONS come last and win" {
     const gpa = testing.allocator;
     var base: std.process.Environ.Map = .init(gpa);
@@ -978,6 +1028,59 @@ test "real processes: the Crane test runner fails a test that leaves process sta
         errdefer std.debug.print("test {s}: first {t}\n{s}\n", .{ c.name, rec.first, rec.output });
         try testing.expectEqual(c.first, rec.first);
         if (c.says) |text| try testing.expect(std.mem.indexOf(u8, rec.output, text) != null);
+    }
+}
+
+test "real processes: a read after a free fails its test by name - it reads the poison or faults - and CRANE_POISON_FREES=0 lets it read the old bytes" {
+    // build.zig compiles tests/test_runner_fixture/poison_fixture.zig with
+    // the Crane test runner and passes its path (lane poison2). Without
+    // poisoning a read after a free finds the old bytes, so the off run is
+    // the blind spot this closes: every such test passes there.
+    const fixture = @import("launcher_fixture");
+    const gpa = testing.allocator;
+    const io = testing.io;
+    const argv = [_][]const u8{ fixture.poison_path, "--listen=-", "--seed=0x1" };
+    const md = try queryMetadata(gpa, io, &argv);
+    defer md.deinit(gpa);
+
+    // Each test, with its first run poisoned and what its output must say.
+    const cases = [_]struct { name: []const u8, poisoned: sched.Status, says: ?[]const u8 }{
+        // SafeAllocator's 0x55 read back: expected 0x1122334455667788.
+        .{ .name = "std.testing.allocator: reads a field through a pointer kept past its destroy", .poisoned = .fail, .says = "expected 1234605616436508552, found 6148914691236517205" },
+        .{ .name = "std.testing.allocator: follows a pointer read from a destroyed struct", .poisoned = .crash, .says = "Segmentation fault" },
+        // poisoning.byte, 0xdd, read back.
+        .{ .name = "a test's own DebugAllocator: reads a field through a pointer kept past its destroy", .poisoned = .fail, .says = "expected 1234605616436508552, found 15987178197214944733" },
+        .{ .name = "a test's own DebugAllocator: reads a slice's bytes after its free", .poisoned = .fail, .says = "expected 17, found 221" },
+        .{ .name = "reads only live memory", .poisoned = .pass, .says = null },
+    };
+    try testing.expectEqual(cases.len, md.names.len);
+    var all: [cases.len]u32 = undefined;
+    for (cases, 0..) |c, i| {
+        try testing.expect(std.mem.endsWith(u8, md.names[i], c.name));
+        all[i] = @intCast(i);
+    }
+
+    var base: std.process.Environ.Map = .init(gpa);
+    defer base.deinit();
+    for ([_]bool{ true, false }) |poisoned| {
+        if (!poisoned) try base.put(poisoning.env_var, "0");
+        var env = try testEnvironment(gpa, &base, .{});
+        defer env.deinit();
+        // A process per test: each starts from a fresh process.
+        var plan = try @import("plan.zig").make(gpa, &all, .{ .seed = 1, .shuffle = false, .batch_size = 1 });
+        defer plan.deinit(gpa);
+        var exec = try Executor.init(gpa, io, &argv, 60 * std.time.ns_per_s, 1);
+        defer exec.deinit();
+        exec.environ_map = &env;
+        var run = try sched.Run.init(gpa, io, &plan, md.names.len, exec.executor(), .{ .jobs = 1, .alone_runs = 1 });
+        defer run.deinit();
+        try run.execute();
+        for (cases, 0..) |c, i| {
+            const rec = run.records[i];
+            errdefer std.debug.print("poisoned {}: test {s}: first {t}\n{s}\n", .{ poisoned, c.name, rec.first, rec.output });
+            try testing.expectEqual(if (poisoned) c.poisoned else .pass, rec.first);
+            if (poisoned) if (c.says) |text| try testing.expect(std.mem.indexOf(u8, rec.output, text) != null);
+        }
     }
 }
 
