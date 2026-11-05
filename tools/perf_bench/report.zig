@@ -231,11 +231,19 @@ pub const Versus = struct {
     memory_n: usize = 0,
 };
 
+/// Whether a workload counts in the headline: start-up and the harness's own
+/// floor are rows of their own, so the headline compares engine work, not
+/// launchers or the harness (the integrator, 2026-11-05).
+pub fn inHeadline(workload: []const u8) bool {
+    return !std.mem.startsWith(u8, workload, "startup.") and !std.mem.startsWith(u8, workload, "overhead.");
+}
+
 pub fn versus(arena: Allocator, m: *const Model, round: u32, browser: EngineName) !Versus {
     var v: Versus = .{ .browser = browser };
     var t: std.ArrayList(f64) = .empty;
     var mem: std.ArrayList(f64) = .empty;
     for (try m.workloads(arena, round)) |w| {
+        if (!inHeadline(w)) continue;
         const b = m.current(round, browser, w) orelse continue;
         v.version = b.version;
         const c = m.current(round, .crane, w) orelse continue;
@@ -332,6 +340,7 @@ const style =
     \\.perf .fail { color: var(--fail, #b3261e); }
     \\.perf td.flags code { font-size: 0.78rem; overflow-wrap: anywhere; }
     \\.perf .listing tbody th { width: auto; }
+    \\.perf .listing thead th { padding: 0.32rem 0.75rem; }
     \\</style>
     \\
 ;
@@ -383,7 +392,7 @@ fn ratioClass(r: f64) []const u8 {
 }
 
 fn writeHeadline(w: W, vs: []const Versus) !void {
-    try w.writeAll("<section id=\"headline\"><h2>Crane against each browser</h2>\n<p>Crane&rsquo;s time and memory as a percentage of the browser&rsquo;s: the geometric mean, over the workloads both engines ran, of Crane&rsquo;s figure divided by the browser&rsquo;s. Below 100% Crane uses less.</p>\n");
+    try w.writeAll("<section id=\"headline\"><h2>Crane against each browser</h2>\n<p>Crane&rsquo;s time and memory as a percentage of the browser&rsquo;s: the geometric mean, over the workloads both engines ran, of Crane&rsquo;s figure divided by the browser&rsquo;s. Below 100% Crane uses less. Start-up and the harness&rsquo;s own floor are rows of their own below, not in these figures.</p>\n");
     try w.writeAll("<div class=\"table-wrap\"><table class=\"listing\"><thead><tr><th scope=\"col\">Browser</th><th scope=\"col\">Version</th><th scope=\"col\" class=\"n\">Time</th><th scope=\"col\" class=\"n\">Workloads</th><th scope=\"col\" class=\"n\">Memory</th><th scope=\"col\" class=\"n\">Workloads</th></tr></thead><tbody>\n");
     for (vs) |v| {
         try w.print("<tr><th scope=\"row\">{s}</th><td>", .{v.browser.label()});
@@ -662,6 +671,30 @@ test "the model: medians of runs, and Crane against a browser as a geometric mea
     try testing.expectEqual(@as(u64, 25), percent(v.memory_ratio.?));
     const none = try versus(a, &m, 0, .safari);
     try testing.expectEqual(@as(?f64, null), none.time_ratio);
+}
+
+test "start-up and the harness's floor are their own rows, never in the headline" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var crane_start = try timed(a, 0, .crane, "abc", "startup.idle-page", 0, 70, 100);
+    crane_start.kind = .startup;
+    crane_start.wall_ms = try a.dupe(f64, &.{70});
+    var chrome_start = try timed(a, 0, .chrome, "157", "startup.idle-page", 0, 700, 400);
+    chrome_start.kind = .startup;
+    chrome_start.wall_ms = try a.dupe(f64, &.{700});
+    const records = [_]journal.Record{
+        try timed(a, 0, .crane, "abc", "dom.a", 0, 20, 100),
+        try timed(a, 0, .chrome, "157", "dom.a", 0, 10, 400),
+        crane_start,
+        chrome_start,
+        try timed(a, 0, .crane, "abc", "overhead.empty", 0, 1, 100),
+        try timed(a, 0, .chrome, "157", "overhead.empty", 0, 4, 400),
+    };
+    const m = try build(a, &records);
+    const v = try versus(a, &m, 0, .chrome);
+    try testing.expectEqual(@as(usize, 1), v.time_n);
+    try testing.expectApproxEqAbs(@as(f64, 2.0), v.time_ratio.?, 1e-12);
 }
 
 test "a browser updated within a round: its newest version is the one compared" {

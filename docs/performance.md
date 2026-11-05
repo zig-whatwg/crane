@@ -193,7 +193,7 @@ Journals are kept by round, outside git (`wpt-results/perf/rounds/<round>/...`, 
 
 `perf_bench report` writes `index.html` and `card.png` from every journal below `--journals`:
 the headline (Crane's time and memory as a percentage of each browser's: the geometric mean over
-the workloads both ran), the engines with versions, builds and flags, this round workload by
+the workloads both ran; start-up and `overhead.empty` are rows of their own, never in it), the engines with versions, builds and flags, this round workload by
 workload, each workload's history by round (a browser updated between rounds keeps a row per
 version), the Crane-only rows, and Open Graph and Twitter `summary_large_image` metadata with the
 headline and the 1200x630 card (`tools/perf_bench/card/README.md`). The content is all in the
