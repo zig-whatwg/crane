@@ -3062,6 +3062,9 @@ pub fn build(b: *std.Build) void {
             .root_module = b.createModule(.{
                 .root_source_file = b.path("tests/test_runner_fixture/poison_fixture.zig"),
                 .target = target,
+                // std.heap.c_allocator: libc's malloc, which the launcher's
+                // MallocScribble poisons.
+                .link_libc = true,
             }),
         });
         _ = useCraneTestRunner(b, poison_fixture, "test_poison_fixture", .fail, .per_test, &.{}, false, test_log_level);

@@ -1051,6 +1051,8 @@ test "real processes: a read after a free fails its test by name - it reads the 
         // poisoning.byte, 0xdd, read back.
         .{ .name = "a test's own DebugAllocator: reads a field through a pointer kept past its destroy", .poisoned = .fail, .says = "expected 1234605616436508552, found 15987178197214944733" },
         .{ .name = "a test's own DebugAllocator: reads a slice's bytes after its free", .poisoned = .fail, .says = "expected 17, found 221" },
+        // libc's scribble (malloc_scribble), 0x55, read back.
+        .{ .name = "std.heap.c_allocator: reads a block's bytes after its free", .poisoned = .fail, .says = "expected 17, found 85" },
         .{ .name = "reads only live memory", .poisoned = .pass, .says = null },
     };
     try testing.expectEqual(cases.len, md.names.len);

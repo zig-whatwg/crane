@@ -3,7 +3,8 @@
 //! test - by tools/test_launcher/child.zig's tests (lane poison2): each read
 //! after a free must fail its test by name, reading the poison or faulting
 //! on it, because every allocator a test checks memory with poisons what it
-//! frees (tests/test_runner/poisoning.zig); and with CRANE_POISON_FREES=0,
+//! frees (tests/test_runner/poisoning.zig), libc's malloc included (the
+//! launcher's MallocScribble); and with CRANE_POISON_FREES=0,
 //! the run's off switch, each must read the old bytes and pass - which is
 //! what a read after a free did under a DebugAllocator, the blind spot.
 //! Not part of any suite: build.zig compiles it only for the launcher's tests.
@@ -68,6 +69,19 @@ test "a test's own DebugAllocator: reads a slice's bytes after its free" {
     // would hide what the allocator itself leaves.
     a.rawFree(bytes, .@"1", @returnAddress());
     try testing.expectEqual(@as(u8, 0x11), kept[0]);
+}
+
+test "std.heap.c_allocator: reads a block's bytes after its free" {
+    // libc's malloc, as v8_wrapper.cpp's new and delete are: what the
+    // launcher's MallocScribble=1 (macOS) or MALLOC_PERTURB_=85 (glibc)
+    // poisons with 0x55. A byte well inside the block: libc writes its free
+    // list's links at a freed block's start.
+    const a = std.heap.c_allocator;
+    const bytes = try a.alloc(u8, 64);
+    @memset(bytes, 0x11);
+    const kept: [*]volatile u8 = bytes.ptr;
+    a.rawFree(bytes, .@"1", @returnAddress());
+    try testing.expectEqual(@as(u8, 0x11), kept[40]);
 }
 
 test "reads only live memory" {
