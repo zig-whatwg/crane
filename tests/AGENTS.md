@@ -102,6 +102,17 @@ it to its children; a cached run step does not rerun for it, so add
 `-Dlaunch-seed=random` (or run the test executable or the launcher by hand).
 tests/test_runner_fixture/poison_fixture.zig pins it: each of its reads after a
 free fails by name under the poison and passes with it off.
+
+What it costs (lane poison2, chat.local, alternating pairs, CPU = user + sys):
+a warm `zig build test -Dlaunch-seed=random` with poisoning on against
+`CRANE_POISON_FREES=0` ran wall x1.14 and x1.25, CPU x1.26 and x1.18; the html
+suites alone ran wall x0.99 to x1.25 (median x1.11), CPU x1.02 to x1.20
+(median x1.05); max RSS unchanged. Off also turns off SafeAllocator's check,
+which Zig's own runner turns on, and nearly all of the difference is that
+check (its free memsets 0x55 and its bucket release reads every freed byte
+back, in Debug code): suites that link no V8 and swap no allocator pay the
+same share as the rest. The drop-in and the scribble are memsets; from the
+per-suite split they add about 0-3% over the check alone.
 A test that needs this build's V8 snapshot imports `test_snapshot` (tests/v8),
 never a path under `zig-out/`.
 
