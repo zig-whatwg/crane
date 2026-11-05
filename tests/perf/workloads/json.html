@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>JSON</title>
+<script src="../harness.js"></script>
+<script>
+// A 1 MB JSON document: 5,000 records of mixed types.
+const rand = perf.random(11);
+const records = [];
+for (let i = 0; i < 5000; i++) {
+  records.push({ id: i, name: 'user' + i, email: 'user' + i + '@example.com', active: rand() > 0.5, score: Math.floor(rand() * 1e6) / 100,
+    tags: ['a' + (i % 7), 'b' + (i % 11), 'c' + (i % 13)], address: { street: i + ' Main St', city: 'City ' + (i % 50), zip: String(10000 + i) } });
+}
+const text = JSON.stringify(records);
+perf.add('json.parse', {
+  ops: 5,
+  run(n) { let k = 0; for (let i = 0; i < n; i++) k += JSON.parse(text).length; this.sink = k; },
+});
+perf.add('json.stringify', {
+  ops: 5,
+  run(n) { let k = 0; for (let i = 0; i < n; i++) k += JSON.stringify(records).length; this.sink = k; },
+});
+</script>

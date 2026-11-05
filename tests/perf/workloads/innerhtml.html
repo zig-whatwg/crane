@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>innerHTML churn</title>
+<!-- Setting innerHTML (the fragment parser, then the old children removed) and reading it (the
+     serializer), on fragments the size of a list a page re-renders. -->
+<script src="../harness.js"></script>
+<body>
+<div id="host"></div>
+<script>
+const rand = perf.random(42);
+let fragment = '';
+for (let i = 0; i < 100; i++) {
+  fragment += '<li class="row r' + (i % 5) + '" data-id="' + i + '"><a href="/item/' + i + '">Item ' + i +
+    '</a> <span class="price">' + Math.floor(rand() * 1000) / 100 + '</span> <b>&amp; more</b></li>';
+}
+perf.add('dom.inner-html-set', {
+  ops: 300,
+  setup() { this.box = document.getElementById('host'); },
+  run(n) { for (let i = 0; i < n; i++) this.box.innerHTML = '<ul>' + fragment + '</ul>'; },
+  teardown() { this.box.textContent = ''; },
+});
+perf.add('dom.inner-html-get', {
+  ops: 300,
+  setup() {
+    this.box = document.createElement('div');
+    let html = '';
+    for (let i = 0; i < 10; i++) html += '<ul>' + fragment + '</ul>';
+    this.box.innerHTML = html;
+  },
+  run(n) { let k = 0; for (let i = 0; i < n; i++) k += this.box.innerHTML.length; this.sink = k; },
+});
+perf.add('dom.insert-adjacent-html', {
+  ops: 300,
+  setup() { this.box = document.createElement('div'); },
+  run(n) {
+    for (let i = 0; i < n; i++) {
+      this.box.insertAdjacentHTML('beforeend', '<p class="x">Paragraph <i>' + i + '</i></p>');
+      if (this.box.childNodes.length > 200) this.box.textContent = '';
+    }
+  },
+});
+</script>

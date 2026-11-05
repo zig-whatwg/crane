@@ -1,0 +1,61 @@
+
+=== Phase 6: void (globalThis.h ??= document.createElement('div')).id;, engine GC forced ===
+
+   cycle  resident MB    since start       B/cycle    malloc MB  zig-side MB
+       0         42.3            0.0           0.0          2.7         0.1
+  100000         48.6            6.3          66.2          4.2         0.1
+
+100000 cycles: 6.3 MB total, 66 bytes per element
+  state arena held: 0.0 MB, 0 bytes per element (0% of RSS growth)
+  general allocator, INCLUDING the arena's chunks: 0.0 MB, 0 bytes per element
+  so 0.0 MB of the 6.3 MB is Zig-side; the rest is engine heap and overhead
+  states recycled: 27 of 59 arena allocations
+  wrapper cache entries: 7 (each holds the engine's wrapper for an instance,
+    and the wrapper's death is what frees the instance)
+  instances still live: 10 (slab recycles, so a rising count means
+    instances are never deinit'd - a different bug from state retention)
+  instance->NodeBase entries: 5 (keyed on a RECYCLED address, so a
+    stale entry is inherited by the next object there - M13)
+
+Phase 6 exit wants this flat. Non-zero bytes/element means discarded
+state is retained - see M1: ArenaAllocator.reset() never runs in production.
+
+Engine heap: 4.5 MB used of 5.8 MB, 0.0 MB external, 1 realms
+
+Engine counters (start -> end, per element):
+  live_string_globals                                              +0 ->         +0  (0.00/elem)
+  live_context_globals                                             +1 ->         +1  (0.00/elem)
+  live_object_globals                                              +6 ->         +7  (0.00/elem)
+  live_weak_callback_data                                          +4 ->         +5  (0.00/elem)
+  global_handle_bytes                                          +36352 ->     +36416  (0.00/elem)
+  wrapper_cache_entries                                            +6 ->         +7  (0.00/elem)
+  globals_created                                              +40729 ->    +140802  (1.00/elem)
+  object_globals_from.FunctionCallbackInfo_This                    +0 ->         +2  (0.00/elem)
+  object_globals_from.PropertyCallbackInfo_This                    +0 ->         +0  (0.00/elem)
+  object_globals_from.Context_Global                              +53 ->        +54  (0.00/elem)
+  object_globals_from.GetGlobalPrototype                          +10 ->        +11  (0.00/elem)
+  object_globals_from.FunctionTemplate_GetPrototypeObject          +0 ->         +0  (0.00/elem)
+  object_globals_from.ObjectTemplate_NewInstance                  +12 ->        +13  (0.00/elem)
+  live_agents                                                      +1 ->         +1  (0.00/elem)
+  flag_writes                                                      +0 ->         +0  (0.00/elem)
+  ownership_checks                                                +16 ->        +18  (0.00/elem)
+  ownership_violations                                             +0 ->         +0  (0.00/elem)
+        0.16 real         0.56 user         0.07 sys
+            51118080  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                8301  page reclaims
+                   0  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   0  voluntary context switches
+                8311  involuntary context switches
+          6579293474  instructions retired
+          2444272099  cycles elapsed
+            23937792  peak memory footprint
+rc=0

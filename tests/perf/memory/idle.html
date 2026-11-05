@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>An idle page</title>
+<!-- One small page, loaded and left alone: the engine's footprint with one page open (the
+     runner reads it after the suite's settle time). The launch-to-load time beside it is the
+     startup row. -->
+<script src="../harness.js"></script>
+<body>
+<h1>An idle page</h1>
+<p>A heading, a paragraph and a list: what a small page carries.</p>
+<ul><li>One</li><li>Two</li><li>Three</li></ul>
+<script>perf.idle('memory.idle-page');</script>

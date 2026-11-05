@@ -1,0 +1,84 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DOM creation and mutation</title>
+<!-- Trees built, attached, changed and removed through the DOM's own methods. -->
+<script src="../harness.js"></script>
+<body>
+<div id="host"></div>
+<script>
+// One tree of 1,000 nodes: 10 sections, each a heading and a list of 20 items with text and a link.
+function buildTree(doc) {
+  const root = doc.createElement('div');
+  for (let s = 0; s < 10; s++) {
+    const section = doc.createElement('section');
+    section.className = 'section';
+    const h = doc.createElement('h2');
+    h.appendChild(doc.createTextNode('Section ' + s));
+    section.appendChild(h);
+    const ul = doc.createElement('ul');
+    for (let i = 0; i < 20; i++) {
+      const li = doc.createElement('li');
+      li.setAttribute('data-i', String(i));
+      const a = doc.createElement('a');
+      a.href = '#item-' + s + '-' + i;
+      a.appendChild(doc.createTextNode('Item ' + i));
+      li.appendChild(a);
+      li.appendChild(doc.createTextNode(' details'));
+      ul.appendChild(li);
+    }
+    section.appendChild(ul);
+    root.appendChild(section);
+  }
+  return root;
+}
+perf.add('dom.build-tree', {
+  ops: 20,
+  setup() { this.host = document.getElementById('host'); },
+  run(n) {
+    for (let i = 0; i < n; i++) {
+      const t = buildTree(document);
+      this.host.appendChild(t);
+      this.host.removeChild(t);
+    }
+  },
+});
+perf.add('dom.insert-remove', {
+  ops: 20000,
+  setup() {
+    this.list = document.createElement('ul');
+    for (let i = 0; i < 100; i++) this.list.appendChild(document.createElement('li'));
+    document.getElementById('host').appendChild(this.list);
+  },
+  run(n) {
+    const list = this.list;
+    for (let i = 0; i < n; i++) {
+      const child = list.lastChild;
+      list.removeChild(child);
+      list.insertBefore(child, list.childNodes[(i * 7) % 99]);
+    }
+  },
+  teardown() { this.list.remove(); },
+});
+perf.add('dom.text-content', {
+  ops: 5000,
+  setup() {
+    this.box = document.createElement('div');
+    for (let i = 0; i < 20; i++) this.box.appendChild(document.createElement('span')).textContent = 'word ' + i;
+    document.getElementById('host').appendChild(this.box);
+  },
+  run(n) {
+    let k = 0;
+    for (let i = 0; i < n; i++) {
+      k += this.box.textContent.length;
+      this.box.firstChild.textContent = 'w' + (i & 15);
+    }
+    this.sink = k;
+  },
+  teardown() { this.box.remove(); },
+});
+perf.add('dom.clone-node', {
+  ops: 50,
+  setup() { this.tree = buildTree(document); },
+  run(n) { let k = 0; for (let i = 0; i < n; i++) k += this.tree.cloneNode(true).childNodes.length; this.sink = k; },
+});
+</script>

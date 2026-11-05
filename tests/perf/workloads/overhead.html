@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The harness's own cost</title>
+<!-- A workload that does nothing: what a sample costs the harness itself in each engine (two
+     performance.now() calls and a function call), the floor under every other row. -->
+<script src="../harness.js"></script>
+<script>
+perf.add('overhead.empty', {
+  ops: 1,
+  run() {},
+});
+</script>

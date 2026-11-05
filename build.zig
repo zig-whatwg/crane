@@ -4866,11 +4866,30 @@ pub fn build(b: *std.Build) void {
     // -Doptimize's `builtin.mode`. A Debug console was slow to the point of
     // lag: std's Debug allocator captures a stack trace per allocation and
     // free (tools/repl.zig, main, chooses its own allocator too).
-    const repl_modes = runner_build_mode.runnerModes(
+    // `-Dwpt-runner-release` makes it Crane's release build, the one the
+    // performance suite times beside the browsers (tools/perf_bench,
+    // docs/performance.md): release_runner's modes exactly (build_mode.zig
+    // consoleModes) - its Crane modules and C libraries ReleaseSafe, the C
+    // code at .trap - over a module graph of its own on the console's
+    // platform (the release runner's graph is the testing platform's). Its
+    // C libraries are built at the root's sanitizer: a .trap root links no
+    // full UBSan runtime, so C built with .full would not link
+    // (docs/lessons/workflow-a-release-root-over-debug-c-libraries-must-link-
+    // the-full-sanitizer-runtime.md).
+    const repl_modes = runner_build_mode.consoleModes(
+        runner_release,
         b.option(std.builtin.OptimizeMode, "repl-optimize", "Optimize mode of the browser console (default: ReleaseSafe, or -Doptimize when given; Debug for a diagnosis)"),
         optimize,
         b.user_input_options.contains("optimize") or b.graph.release_mode != .off,
     );
+    const repl_graph = if (runner_release and !use_system_curl) repl_graph: {
+        var repl_config = module_config;
+        repl_config.optimize = repl_modes.crane_modules;
+        repl_config.brotli = buildBrotli(b, target, repl_modes.c_libraries, repl_modes.sanitize_c);
+        repl_config.image_codecs = buildImageCodecs(b, target, repl_modes.c_libraries, repl_modes.sanitize_c);
+        repl_config.static_libcurl = buildStaticLibcurl(b, target, repl_modes.c_libraries, enable_http2, repl_modes.sanitize_c, if (brotli_enabled) repl_config.brotli else null);
+        break :repl_graph addCraneModules(b, target, target_platform, repl_config);
+    } else crane_graph;
     const repl_optimize = repl_modes.root;
     const repl_exe = b.addExecutable(.{
         .name = "repl",
@@ -4879,11 +4898,11 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = repl_optimize,
             .imports = &.{
-                .{ .name = "engine", .module = engine_mod },
-                .{ .name = "browser", .module = browser_mod },
-                .{ .name = "console", .module = console_mod },
+                .{ .name = "engine", .module = repl_graph.engine },
+                .{ .name = "browser", .module = repl_graph.browser },
+                .{ .name = "console", .module = repl_graph.console },
                 // Real time for the console's deadlines (platform.monotonicNow).
-                .{ .name = "platform", .module = platform_mod },
+                .{ .name = "platform", .module = repl_graph.platform },
             },
         }),
     });
@@ -5417,7 +5436,57 @@ pub fn build(b: *std.Build) void {
     wpt_site_after_wpt.step.dependOn(&progress_report.step);
     wpt_step.dependOn(&wpt_site_after_wpt.step);
     const wpt_site_tests = b.addTest(.{ .root_module = wpt_site_module });
-    test_step.dependOn(&addSuiteRun(b, launch, wpt_site_tests, "tools-wpt_site", null).step);
+    const run_wpt_site_tests = addSuiteRun(b, launch, wpt_site_tests, "tools-wpt_site", null);
+    test_step.dependOn(&run_wpt_site_tests.step);
+
+    // ========================================================================
+    // PERFORMANCE: the benchmark suite's runner and /performance/ (tools/perf_bench/)
+    // ========================================================================
+    // tools/perf_bench serves tests/perf/ (the engine-neutral workload
+    // pages), launches each pinned engine on them - Crane's console in its
+    // release build, Chrome, Firefox, Safari, Lightpanda - reads each
+    // engine's process set as the pages report, writes the journal, and
+    // renders /performance/ from journals (docs/performance.md). A tool:
+    // std only (no engine), on the host. Its card reuses the WPT site's
+    // atlas and its page the WPT site's HTML helpers.
+    const perf_bench_module = b.createModule(.{
+        .root_source_file = b.path("tools/perf_bench/main.zig"),
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+        // libproc (proc_pid_rusage) and mach_timebase_info are libSystem's.
+        .link_libc = true,
+        .imports = &.{
+            .{ .name = "site_html", .module = b.createModule(.{ .root_source_file = b.path("tools/wpt_site/html.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
+            .{ .name = "site_card", .module = b.createModule(.{ .root_source_file = b.path("tools/wpt_site/card.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
+        },
+    });
+    const perf_bench_exe = b.addExecutable(.{ .name = "perf_bench", .root_module = perf_bench_module });
+    const install_perf_bench = b.addInstallArtifact(perf_bench_exe, .{});
+    const perf_bench_step = b.step("perf-bench", "Build the benchmark suite's runner and report tool alone (zig-out/bin/perf_bench)");
+    perf_bench_step.dependOn(&install_perf_bench.step);
+    const perf_bench_tests = b.addTest(.{ .root_module = perf_bench_module });
+    const run_perf_bench_tests = addSuiteRun(b, launch, perf_bench_tests, "tools-perf_bench", null);
+    test_step.dependOn(&run_perf_bench_tests.step);
+    // The suite held to its pages: every page there, every workload the
+    // suite lists declared by its page and none declared but unlisted.
+    const perf_suite_check = b.addRunArtifact(perf_bench_exe);
+    perf_suite_check.setCwd(b.path("."));
+    perf_suite_check.addArgs(&.{ "check-suite", "--suite=tests/perf/suite.json", "--root=tests/perf" });
+    perf_suite_check.has_side_effects = true;
+    test_step.dependOn(&perf_suite_check.step);
+    // `zig build perf-bench-test`: the tool's tests and the suite check
+    // alone, with build_mode's (the console's release modes).
+    const perf_bench_test_step = b.step("perf-bench-test", "Run tools/perf_bench's tests, the suite check, the WPT site's tests and the runner build-mode tests alone");
+    perf_bench_test_step.dependOn(&run_perf_bench_tests.step);
+    perf_bench_test_step.dependOn(&perf_suite_check.step);
+    // The WPT site's tests too: /performance/'s card draws with its atlas,
+    // and the site leaves performance/ alone and links to it.
+    perf_bench_test_step.dependOn(&run_wpt_site_tests.step);
+    perf_bench_test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("tests/wpt_runner/build_mode.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    }) }), "perf-build_mode", null).step);
 
     // tools/test_suites.zig: the configure-time check that every tests/<dir>/
     // with test files is a suite (checkEveryTestDirectoryIsASuite), std-only.

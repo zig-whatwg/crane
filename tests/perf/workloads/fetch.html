@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Fetch and bodies</title>
+<!-- Fetch from data: URLs and from the benchmark server on loopback (/__perf/bytes, /__perf/json),
+     bodies read whole and as a stream. -->
+<script src="../harness.js"></script>
+<script>
+perf.add('fetch.data-url-text', {
+  ops: 500,
+  async run(n) { let k = 0; for (let i = 0; i < n; i++) k += (await (await fetch('data:text/plain,x')).text()).length; this.sink = k; },
+});
+perf.add('fetch.response-text', {
+  ops: 5000,
+  async run(n) { let k = 0; for (let i = 0; i < n; i++) k += (await new Response('x').text()).length; this.sink = k; },
+});
+perf.add('fetch.loopback-small', {
+  ops: 200,
+  async run(n) { let k = 0; for (let i = 0; i < n; i++) k += (await (await fetch('/__perf/bytes?n=1024')).text()).length; this.sink = k; },
+});
+perf.add('fetch.loopback-json', {
+  ops: 20,
+  async run(n) { let k = 0; for (let i = 0; i < n; i++) k += (await (await fetch('/__perf/json?n=2000')).json()).length; this.sink = k; },
+});
+perf.add('fetch.loopback-stream', {
+  ops: 3,
+  async run(n) {
+    let k = 0;
+    for (let i = 0; i < n; i++) {
+      const reader = (await fetch('/__perf/bytes?n=4194304')).body.getReader();
+      for (;;) { const { done, value } = await reader.read(); if (done) break; k += value.length; }
+    }
+    this.sink = k;
+  },
+});
+</script>

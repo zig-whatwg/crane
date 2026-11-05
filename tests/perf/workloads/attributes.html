@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Bindings: create, get, set, call, construct</title>
+<!-- The binding paths gc_bench's rows measure in Crane alone (tools/perf_bench/gcbench.zig), as
+     timed workloads every engine runs: the same statements, in a loop of `ops`. Each result is
+     folded into `this.sink`, so no engine can drop the call as unused. -->
+<script src="../harness.js"></script>
+<script>
+perf.add('dom.create-element', {
+  ops: 20000,
+  run(n) { let k = 0; for (let i = 0; i < n; i++) k += document.createElement('div').nodeType; this.sink = k; },
+});
+perf.add('dom.getter-loop', {
+  ops: 200000,
+  setup() { this.el = document.createElement('div'); this.el.id = 'x'; },
+  run(n) { const el = this.el; let k = 0; for (let i = 0; i < n; i++) k += el.id.length; this.sink = k; },
+});
+perf.add('dom.setter-loop', {
+  ops: 200000,
+  setup() { this.el = document.createElement('div'); },
+  run(n) { const el = this.el; for (let i = 0; i < n; i++) el.id = (i & 1) ? 'x' : 'y'; this.sink = el.id; },
+});
+perf.add('dom.method-loop', {
+  ops: 200000,
+  setup() { this.el = document.createElement('div'); this.el.setAttribute('y', '1'); },
+  run(n) { const el = this.el; let k = 0; for (let i = 0; i < n; i++) if (el.hasAttribute('x')) k++; this.sink = k; },
+});
+perf.add('dom.event-ctor', {
+  ops: 50000,
+  run(n) { let k = 0; for (let i = 0; i < n; i++) k += new Event('x').bubbles ? 1 : 0; this.sink = k; },
+});
+perf.add('dom.event-ctor-dict', {
+  ops: 50000,
+  run(n) { let k = 0; for (let i = 0; i < n; i++) k += new Event('x', { bubbles: true, cancelable: true }).bubbles ? 1 : 0; this.sink = k; },
+});
+perf.add('dom.set-get-attribute', {
+  ops: 50000,
+  setup() { this.el = document.createElement('div'); },
+  run(n) { const el = this.el; let k = 0; for (let i = 0; i < n; i++) { el.setAttribute('data-k', 'v' + (i & 7)); k += el.getAttribute('data-k').length; } this.sink = k; },
+});
+perf.add('dom.class-list', {
+  ops: 50000,
+  setup() { this.el = document.createElement('div'); this.el.className = 'a b c'; },
+  run(n) { const list = this.el.classList; let k = 0; for (let i = 0; i < n; i++) if (list.toggle('d')) k++; this.sink = k; },
+});
+</script>
