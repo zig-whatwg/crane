@@ -73,6 +73,17 @@ pub fn call_constructor(ctx: runtime.Context, transformer: webidl.Opt(runtime.JS
     const dict = try st.convertTransformer(realm, ctx.allocator, transformer_object);
     var owned_dict: ?*st.JsTransformer = dict;
     errdefer if (owned_dict) |d| st.JsTransformer.vtable.deinit(d, ctx.allocator);
+    // transformerDict["start"] stays the constructor's, for steps 12-13: the
+    // controller takes the other members over at step 11, and start() itself
+    // may clear them (controller.terminate(), controller.error()), freeing
+    // the dictionary under a call that still used it (lane crashes9). Gecko's
+    // constructor invokes its local transformerDict.mStart with
+    // transformerObj (dom/streams/TransformStream.cpp, step 12); Blink calls
+    // "start" on the transformer object, CallOrNoop1(script_state,
+    // transformer, "start", ...) (core/streams/transform_stream.cc,
+    // InitInternal).
+    const start_callback = dict.takeStart();
+    defer if (start_callback) |f| js.dispose(f);
 
     // Steps 5-8: the two strategies. ExtractSizeAlgorithm takes its
     // callback, and releases it itself if it fails.
@@ -102,10 +113,14 @@ pub fn call_constructor(ctx: runtime.Context, transformer: webidl.Opt(runtime.JS
     owned_dict = null;
     try st.setUpController(realm, instance, controller);
 
-    // Steps 12-13: resolve startPromise with the result of start(), or undefined.
+    // Step 12: If transformerDict["start"] exists, then resolve startPromise
+    // with the result of invoking transformerDict["start"] with argument list
+    // « this.[[controller]] » and callback this value transformer - the
+    // constructor's own values; the dictionary is the controller's now.
+    // Step 13: Otherwise, resolve startPromise with undefined.
     const slots = st.streamOf(instance).?;
-    if (try dict.callStart(realm, controller)) |completion| {
-        switch (completion) {
+    if (start_callback) |start_fn| {
+        switch (try realm.call(start_fn, transformer_object, &.{realm.instanceValue(controller)})) {
             .normal => |v| {
                 defer js.dispose(v);
                 slots.start_promise.?.resolve(realm, v);
