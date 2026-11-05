@@ -65,7 +65,7 @@ const insert_svg =
 ;
 
 fn nonceHiding() !void {
-    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer if (debug.deinit() == .leak) @panic("leaked");
     const browser = try Browser.init(debug.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
     defer browser.deinit();

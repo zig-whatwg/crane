@@ -381,7 +381,7 @@ test "a microtask a terminated worker's agent never ran is freed with the worker
     startProcess();
     defer runtime.deinitializeRuntime();
     // The loop's own allocations, counted: what it leaks shows here.
-    var counted: std.heap.DebugAllocator(.{}) = .init;
+    var counted: @import("root").poisoning.DebugAllocator(.{}) = .init;
     const loop_allocator = counted.allocator();
     {
         const owner_sink = try TaskSink.create(loop_allocator);

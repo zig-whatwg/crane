@@ -1705,7 +1705,7 @@ const LateMicrotask = struct {
     /// On a thread of its own: its agent is that thread's host agent, and
     /// its end takes down only that thread's engine state.
     fn body(self: *LateMicrotask) void {
-        var counted: std.heap.DebugAllocator(.{}) = .init;
+        var counted: @import("root").poisoning.DebugAllocator(.{}) = .init;
         {
             const agent = engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &.{} }) catch {
                 self.failed = true;

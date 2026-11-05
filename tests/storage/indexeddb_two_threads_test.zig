@@ -152,9 +152,9 @@ test "two Browsers on two threads opening one name each see only their own datab
     // A Browser's own leak-checking allocator each: the shared test
     // allocator's lock would make the two threads take turns (lesson
     // testing-a-shared-test-allocator-makes-two-browsers-take-turns).
-    var first_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var first_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(first_allocator.deinit() == .ok) catch @panic("the first Browser leaked");
-    var second_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var second_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(second_allocator.deinit() == .ok) catch @panic("the second Browser leaked");
     var first = idb.IDBServer.init(first_allocator.allocator());
     defer first.deinit();

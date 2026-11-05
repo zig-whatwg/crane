@@ -30,7 +30,7 @@ test "authentication stores isolate Browsers, partitions, realms and path prefix
 
 test "authentication store bounded eviction and concurrent copied reads" {
     if (!@hasField(Network, "auth_entries")) return error.TestUnexpectedResult;
-    var gpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(gpa.deinit() == .ok) catch @panic("leak");
     var context = Network.init(gpa.allocator());
     defer context.deinit();

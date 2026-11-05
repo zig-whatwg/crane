@@ -110,7 +110,7 @@ fn noWindowData(_: *manager_mod.Endpoint, _: std.mem.Allocator) ?manager_mod.Win
 }
 
 test "a register job runs on the job thread, and its realm hears Install and Activate in order" {
-    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.debug.assert(debug_allocator.deinit() == .ok);
     const allocator = debug_allocator.allocator();
 
@@ -166,7 +166,7 @@ test "a register job runs on the job thread, and its realm hears Install and Act
 }
 
 test "an environment that ended hears nothing more, and its unsent deliveries are dropped" {
-    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.debug.assert(debug_allocator.deinit() == .ok);
     const allocator = debug_allocator.allocator();
 
@@ -220,7 +220,7 @@ const stuck_host: manager_mod.Host = .{
 fn stuckDispatch(_: *Manager, _: manager_mod.Started, _: registry.LifecycleEvent, _: u64) void {}
 
 test "an install event that never settles times out: the worker is redundant and the job queue moves on" {
-    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.debug.assert(debug_allocator.deinit() == .ok);
     const allocator = debug_allocator.allocator();
 

@@ -225,7 +225,7 @@ const Side = struct {
     failure: ?anyerror = null,
     /// This Browser's alone: a shared allocator would make the two threads
     /// take turns (AGENTS.md, "Tests come first").
-    debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
+    debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
 
     fn run(self: *Side) void {
         self.steps() catch |err| {

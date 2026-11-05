@@ -183,7 +183,7 @@ const Side = struct {
     const rounds = 300;
 
     fn run(self: *Side) void {
-        var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+        var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
         defer if (debug.deinit() == .leak) {
             self.failed = true;
         };

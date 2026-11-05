@@ -84,7 +84,7 @@ const Side = struct {
     }
 
     fn steps(self: *Side) !void {
-        var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+        var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
         defer if (debug_allocator.deinit() == .leak) {
             self.failed = error.Leaked;
         };
@@ -131,7 +131,7 @@ fn withBrowserOnThread(comptime body: fn (*Browser) anyerror!void) !void {
             };
         }
         fn steps(self: *@This()) !void {
-            var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+            var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
             defer if (debug_allocator.deinit() == .leak) {
                 self.failed = error.Leaked;
             };

@@ -183,7 +183,7 @@ const DepthChecks = if (@hasDecl(css, "image_values")) struct {
 /// native-operation.md).
 fn checkAllAllocationFailuresUntraced(comptime test_fn: anytype) !void {
     try test_fn(testing.allocator);
-    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     const swept = testing.checkAllAllocationFailures(debug.allocator(), test_fn, .{});
     const check = debug.deinit();
     try swept;

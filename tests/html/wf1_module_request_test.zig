@@ -52,7 +52,7 @@ const Run = struct {
         // Per-Browser allocators let both Browser threads run concurrently.
         // Each is leak-checking; sharing std.testing.allocator serializes
         // allocations enough to conceal cross-Browser routing bugs.
-        var gpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+        var gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
         defer if (gpa.deinit() == .leak) {
             self.failure = error.BrowserLeaked;
         };
