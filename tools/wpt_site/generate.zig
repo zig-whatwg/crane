@@ -471,7 +471,7 @@ const Output = struct {
 
     /// Remove every file this run did not write, and the directories left
     /// empty. The top-level `.git` (a worktree's pointer file or a checkout)
-    /// is never touched.
+    /// is never touched, nor `performance/`, which tools/perf_bench writes.
     fn prune(o: *Output) !void {
         var stale: std.ArrayList([]const u8) = .empty;
         var dirs: std.ArrayList([]const u8) = .empty;
@@ -479,6 +479,7 @@ const Output = struct {
         defer walker.deinit();
         while (try walker.next(o.io)) |e| {
             if (e.depth() == 1 and std.mem.eql(u8, e.basename, ".git")) continue;
+            if (e.depth() == 1 and std.mem.eql(u8, e.basename, performance_dir)) continue;
             if (e.kind == .directory) {
                 try dirs.append(o.arena, try o.arena.dupe(u8, e.path));
                 try walker.enter(o.io, e);
@@ -919,6 +920,15 @@ fn detectRevision(arena: Allocator, io: Io, wpt_root: []const u8) Revision {
 
 /// Commit `out` on gh-pages when it is that branch's worktree and something
 /// changed. Never pushes, never creates the branch.
+/// /performance/, beside this site in the same gh-pages tree: tools/perf_bench
+/// writes it (docs/performance.md), so this generator neither prunes it nor
+/// commits it.
+pub const performance_dir = "performance";
+
+/// What a generation's commit stages: everything this generator wrote -
+/// --force, because no ignore rule may decide what ships - but performance/.
+pub const stage_argv = [_][]const u8{ "git", "add", "-A", "--force", "--", ".", ":(exclude)" ++ performance_dir };
+
 fn commitSite(arena: Allocator, io: Io, out: []const u8, summary: Summary) !void {
     Dir.cwd().access(io, try std.fmt.allocPrint(arena, "{s}/.git", .{out}), .{}) catch {
         std.debug.print("wpt-site: {s} is not a git worktree; nothing committed\n", .{out});
@@ -940,7 +950,7 @@ fn commitSite(arena: Allocator, io: Io, out: []const u8, summary: Summary) !void
     // decide what ships. The repository's shared .git/info/exclude applies to every
     // worktree, and its `/data` line (for agent worktrees' data link) silently kept the
     // whole data/ directory out of the first published site (2026-09-30).
-    _ = capture(arena, io, out, &.{ "git", "add", "-A", "--force", "." }) orelse return error.GitFailed;
+    _ = capture(arena, io, out, &stage_argv) orelse return error.GitFailed;
     // `diff --cached --quiet` exits 0 when nothing is staged.
     if (capture(arena, io, out, &.{ "git", "diff", "--cached", "--quiet" }) != null) {
         std.debug.print("wpt-site: gh-pages already current; nothing committed\n", .{});
@@ -1581,6 +1591,39 @@ test "site: a file that leaves the worklist loses its page; .git is never touche
     try testing.expect(exists(&f, "out/.git"));
     try testing.expect(exists(&f, "out/.nojekyll"));
     try testing.expect(exists(&f, "out/dom/b.html/index.html"));
+}
+
+test "site: /performance/ is perf_bench's: a regeneration leaves it alone and never stages it" {
+    // tools/perf_bench writes performance/ into the same gh-pages tree
+    // (docs/performance.md): this generator neither prunes it (it did not
+    // write it) nor sweeps it into a WPT generation's commit.
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixture(gpa, &f, "out", fixture_worklist);
+    try f.tmp.dir.createDirPath(testing.io, "out/performance");
+    try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "out/performance/index.html", .data = "<!doctype html>perf" });
+    try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "out/performance/card.png", .data = "png" });
+    const s = try runFixture(gpa, &f, "out", fixture_worklist);
+    try testing.expectEqual(@as(usize, 0), s.removed);
+    try testing.expect(exists(&f, "out/performance/index.html"));
+    try testing.expect(exists(&f, "out/performance/card.png"));
+    // The commit stages everything but performance/.
+    try testing.expectEqualStrings(":(exclude)" ++ performance_dir, stage_argv[stage_argv.len - 1]);
+}
+
+test "site: the index links to /performance/" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixture(gpa, &f, "out", fixture_worklist);
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<div><dt>Performance</dt><dd><a href=\"performance/\">");
+    // Only the index: the frame every page carries stays as it was.
+    const page = try readOut(gpa, &f, "out/dom/index.html");
+    defer gpa.free(page);
+    try testing.expect(std.mem.indexOf(u8, page, "performance/") == null);
 }
 
 test "site: index.html carries the social card's tags, and the card is a 1200x630 PNG" {
