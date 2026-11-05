@@ -22,7 +22,8 @@
 //! std.testing.allocator is made with SafeAllocator's
 //! `check_write_after_free`, which writes 0x55 over what a test frees, and a
 //! test's own DebugAllocator is `poisoning.DebugAllocator`, reached through
-//! this file (`@import("root").poisoning`).
+//! this file (`@import("root").poisoning`). `CRANE_POISON_FREES=0` turns both
+//! off for a run (`poison_frees`).
 //!
 //! The many-Browsers variant (CRANE_TEST_MANY_BROWSERS=1, which
 //! tools/test_launcher's --many-browsers sets; build.zig -Dmany-browsers):
@@ -50,6 +51,14 @@ const suite = @import("suite.zig");
 /// file reaches it as `@import("root").poisoning` - its `DebugAllocator` is
 /// the one a test makes for itself (a Browser per thread in a race test).
 pub const poisoning = @import("poisoning.zig");
+
+// process-wide: decided once, in `main`, from CRANE_POISON_FREES, before the
+// first test and the first thread, and only read after - by each test's
+// std.testing.allocator (`initTestAllocator`) and by every
+// `poisoning.DebugAllocator` (`poisoning.processPoisons`), the busy Browser's
+// on its own thread included.
+/// Whether this process poisons what its tests free (`poisoning.enabled`).
+pub var poison_frees: bool = poisoning.by_default;
 
 pub const std_options: std.Options = .{
     .logFn = log,
@@ -114,6 +123,7 @@ pub fn main(init: std.process.Init.Minimal) void {
         }
     }
 
+    poison_frees = poisoning.enabled(init.environ.getPosix(poisoning.env_var));
     state.configure(init.environ);
     configureNeighbour(init.environ);
 
@@ -205,12 +215,13 @@ fn runOne(test_fn: std.lang.TestFn, index: u32) anyerror!void {
 /// A test's std.testing.allocator, made before each test and checked for
 /// leaks after it: Zig's own runner's SafeAllocator, canary and all, with
 /// `check_write_after_free` - its free writes 0x55 over every allocation in
-/// a bucket and its bucket release checks nothing wrote after. Larger
-/// allocations are unmapped when freed.
+/// a bucket and its bucket release checks nothing wrote after - unless
+/// CRANE_POISON_FREES=0 (`poison_frees`). Larger allocations are unmapped
+/// when freed either way.
 fn initTestAllocator() void {
     testing.allocator_instance = .init(std.heap.page_allocator, .{
         .canary = 0xc3a701ba,
-        .check_write_after_free = true,
+        .check_write_after_free = poison_frees,
     });
 }
 
