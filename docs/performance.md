@@ -131,9 +131,10 @@ Those rows stay Crane-only, with their history.
   then CDP (browser context, target, flat session, `Page.navigate`); Safari: `safaridriver`, a
   WebDriver session, Navigate To; Crane: `repl <url> --proxy=direct`, its stdin held open (the
   page stays live) and closed at the end (the console exits as on Ctrl+D), started in its build's
-  own directory: the console reads `whatwg_snapshot.bin` from its working directory, so each
-  frozen build runs beside its own snapshot (docs/lessons/testing-a-runner-finds-its-snapshot-
-  from-its-working-directory.md). Every row records the flags exactly (`engines.zig`).
+  own directory: the console restores the `whatwg_snapshot.bin` beside its executable, and only
+  without one searches from its working directory, so even that fallback is the build's own
+  (docs/lessons/testing-a-runner-finds-its-snapshot-from-its-working-directory.md). Every row
+  records the flags exactly (`engines.zig`).
 - The harness's own costs are their own rows: `overhead.empty` (per sample) and
   `startup.idle-page` (launch to first load). No other row includes a launcher's time.
 

@@ -213,10 +213,12 @@ pub const Launch = struct {
     /// until the launch ends. Every other engine's stdin is /dev/null.
     stdin_pipe: bool = false,
     /// The directory it runs in, when not the runner's: a Crane build's own
-    /// (its binary's), where its frozen snapshot is - the console reads
-    /// whatwg_snapshot.bin from its working directory
-    /// (src/browser/process.zig DEFAULT_SNAPSHOT_PATHS), never from beside
-    /// its executable.
+    /// (its binary's), where its frozen snapshot is. The console restores
+    /// the whatwg_snapshot.bin beside its executable (tools/repl.zig, main),
+    /// and only when there is none searches from its working directory
+    /// (src/browser/process.zig DEFAULT_SNAPSHOT_PATHS, zig-out/bin/ first):
+    /// run there, even that fallback is the build's own, never the
+    /// runner's directory's last build.
     cwd: ?[]const u8 = null,
 };
 
@@ -361,13 +363,13 @@ test "Crane ReleaseFast launches as Crane does: the console, its stdin held open
 }
 
 test "each Crane build runs in its own directory, so it restores its own snapshot" {
-    // The console finds whatwg_snapshot.bin from its working directory
-    // (src/browser/process.zig DEFAULT_SNAPSHOT_PATHS: zig-out/bin/ first,
-    // then the directory itself), never beside its executable: started from
-    // the runner's directory, a frozen build would restore whatever snapshot
-    // that directory's last build left (docs/lessons/testing-a-runner-finds-
-    // its-snapshot-from-its-working-directory.md). Each frozen build keeps
-    // its snapshot beside its binary, so it runs there.
+    // The console restores the snapshot beside its executable (tools/repl.zig)
+    // and, when there is none, the first of src/browser/process.zig
+    // DEFAULT_SNAPSHOT_PATHS from its working directory (zig-out/bin/ first):
+    // started from the runner's directory, that fallback would be whatever
+    // snapshot the directory's last build left (docs/lessons/testing-a-runner-
+    // finds-its-snapshot-from-its-working-directory.md). Each frozen build
+    // keeps its snapshot beside its binary, and runs there.
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
