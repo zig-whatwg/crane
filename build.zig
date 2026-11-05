@@ -4884,6 +4884,10 @@ pub fn build(b: *std.Build) void {
     );
     const repl_graph = if (runner_release and !use_system_curl) repl_graph: {
         var repl_config = module_config;
+        // A private graph: crane_graph is the target platform's public one,
+        // whose modules are registered by name (addCraneModules), and a name
+        // is registered once.
+        repl_config.public_platform = if (target_platform == .testing) .darwin else .testing;
         repl_config.optimize = repl_modes.crane_modules;
         repl_config.brotli = buildBrotli(b, target, repl_modes.c_libraries, repl_modes.sanitize_c);
         repl_config.image_codecs = buildImageCodecs(b, target, repl_modes.c_libraries, repl_modes.sanitize_c);

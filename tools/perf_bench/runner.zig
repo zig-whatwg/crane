@@ -91,7 +91,9 @@ const Live = struct {
             return;
         };
         // A mark from another launch (a browser still closing) is not this one's.
-        if (!std.mem.startsWith(u8, mark.token, self.token)) return;
+        // Each instance's token is "<launch token>.<k>".
+        const t = mark.token;
+        if (t.len <= self.token.len or !std.mem.startsWith(u8, t, self.token) or t[self.token.len] != '.') return;
         const r = self.reading();
         c.onMark(mark, self.sinceStart(), &r) catch {};
     }
@@ -514,6 +516,8 @@ const Driver = struct {
     ws: cdp.WebSocket = undefined,
     ws_open: std.atomic.Value(bool) = .init(false),
     safari: ?webdriver.Session = null,
+    /// Set (release) once `safari` is written by the driver thread.
+    safari_ready: std.atomic.Value(bool) = .init(false),
     arena: std.heap.ArenaAllocator = undefined,
 
     fn start(self: *Driver) !void {
@@ -558,6 +562,7 @@ const Driver = struct {
             .webdriver => {
                 const s = webdriver.Session.create(arena, self.io, self.port, 15_000) catch |err| return self.fail("WebDriver New Session: {t}", .{err});
                 self.safari = s;
+                self.safari_ready.store(true, .release);
                 s.navigate(self.url) catch |err| return self.fail("WebDriver Navigate To: {t}", .{err});
             },
         }
@@ -569,7 +574,12 @@ const Driver = struct {
     /// another thread reads is a race on its descriptor).
     fn beginStop(self: *Driver) void {
         self.stop.store(true, .release);
-        if (self.safari) |s| s.delete();
+        if (self.safari_ready.load(.acquire)) {
+            // Not the driver thread's arena: that thread may be in Navigate To.
+            var buf: [64 * 1024]u8 = undefined;
+            var fba = std.heap.FixedBufferAllocator.init(&buf);
+            self.safari.?.delete(fba.allocator());
+        }
         if (self.ws_open.load(.acquire)) self.ws.stream.shutdown(self.io, .both) catch {};
     }
 

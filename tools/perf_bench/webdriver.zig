@@ -125,9 +125,13 @@ pub const Session = struct {
         if (r.status != 200) return error.NavigateFailed;
     }
 
-    pub fn delete(self: *const Session) void {
-        const path = std.fmt.allocPrint(self.gpa, "/session/{s}", .{self.id}) catch return;
-        _ = request(self.gpa, self.io, self.port, "DELETE", path, null) catch {};
+    /// Delete Session, with an allocator of the caller's: it is called
+    /// from another thread than the one navigating with `gpa`.
+    pub fn delete(self: *const Session, gpa: Allocator) void {
+        const path = std.fmt.allocPrint(gpa, "/session/{s}", .{self.id}) catch return;
+        defer gpa.free(path);
+        const r = request(gpa, self.io, self.port, "DELETE", path, null) catch return;
+        gpa.free(r.body);
     }
 };
 
@@ -195,7 +199,7 @@ test "a session against a WebDriver stand-in: new, navigate, delete" {
     const session = try Session.create(arena.allocator(), io, fake.listener.socket.address.getPort(), 1000);
     try testing.expectEqualStrings("S1", session.id);
     try session.navigate("http://127.0.0.1:1/x.html");
-    session.delete();
+    session.delete(testing.allocator);
     fake.thread.join();
     try testing.expectEqualStrings("/session", fake.seen[0][0..fake.seen_len[0]]);
     try testing.expectEqualStrings("/session/S1/url", fake.seen[1][0..fake.seen_len[1]]);
