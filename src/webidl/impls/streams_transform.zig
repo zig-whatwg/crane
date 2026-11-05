@@ -106,10 +106,15 @@ fn streamSlots(instance: *runtime.Instance) *Stream {
 /// of them is present - are values traced from it (js.slot), read for each
 /// call and let go by ClearAlgorithms, as an UnderlyingSource's: a
 /// transformer whose closure keeps its controller kept the whole transform
-/// stream for the realm's life through a strong handle. `start` runs once,
-/// after the setup (the constructor's steps 12-13, `callStart`), with the
-/// values as they are, and is never traced: `attach` leaves it and `this`
-/// owned for it, and `callStart` lets them go.
+/// stream for the realm's life through a strong handle.
+///
+/// `start` is not one of the controller's algorithms: the constructor takes
+/// it out (`takeStart`) before the controller takes the rest over, and
+/// invokes it itself (steps 12-13) with the transformer as `this`. start()
+/// may clear the algorithms - controller.terminate() and controller.error()
+/// run ClearAlgorithms, which frees this dictionary - so nothing of the
+/// constructor's call may live here (lane crashes9: the constructor read
+/// this dictionary after start() had freed it).
 pub const JsTransformer = struct {
     this: ?Value = null,
     start: ?Value = null,
@@ -171,10 +176,11 @@ pub const JsTransformer = struct {
     fn attachErased(ctx: ?*anyopaque, controller: *runtime.Instance) void {
         const self: *JsTransformer = @ptrCast(@alignCast(ctx.?));
         self.controller = controller;
+        // start is the constructor's (`takeStart`), never the controller's.
+        js.disposeOptional(&self.start);
         for ([_]Member{ .transform, .flush, .cancel }) |member| self.traceMember(member);
-        // `this` for the calls that use it; owned a little longer when start
-        // still has to run with it (`callStart`).
-        if (self.start == null) self.settleThis();
+        // `this` for the calls that use it.
+        self.settleThis();
     }
 
     fn traceMember(self: *JsTransformer, member: Member) void {
@@ -196,25 +202,21 @@ pub const JsTransformer = struct {
         allocator.destroy(self);
     }
 
-    /// The constructor's steps 12-13: invoke transformer.start with
-    /// « controller » - null when there is none. It runs once, so the
-    /// controller lets it go here, and settles `this`.
-    pub fn callStart(self: *JsTransformer, realm: Realm, controller: *runtime.Instance) js.Error!?js.Completion {
-        const start_fn = self.start orelse return null;
-        // Taken out first: the call may clear the algorithms (release),
-        // which must find nothing of start or `this` left to let go.
+    /// transformerDict["start"], owned by the caller from here (dispose it):
+    /// the constructor's, for steps 12-13. Taken before the controller takes
+    /// the algorithms over (SetUpTransformStreamDefaultControllerFromTransformer,
+    /// step 11), so that the call to it uses nothing ClearAlgorithms frees.
+    /// Gecko's constructor invokes its local transformerDict.mStart with
+    /// transformerObj (dom/streams/TransformStream.cpp,
+    /// TransformStream::Constructor step 12); Blink calls "start" on the
+    /// transformer object itself, CallOrNoop1(script_state, transformer,
+    /// "start", ...) (core/streams/transform_stream.cc,
+    /// TransformStream::InitInternal) - neither through the controller's
+    /// algorithms.
+    pub fn takeStart(self: *JsTransformer) ?Value {
+        const start_fn = self.start;
         self.start = null;
-        defer js.dispose(start_fn);
-        const this = self.this;
-        self.this = null;
-        defer if (this) |t| js.dispose(t);
-        const completion = try realm.call(start_fn, this, &.{realm.instanceValue(controller)});
-        // Not cleared by the call: `this` stays for the calls that use it.
-        if (self.controller != null and this != null and self.usesThis()) {
-            js.keepTraced(self.controller.?, js.slot.this, this.?);
-            self.traced |= bit(.this);
-        }
-        return completion;
+        return start_fn;
     }
 
     fn transformErased(ctx: ?*anyopaque, realm: Realm, controller: *runtime.Instance, chunk: Value) js.Error!Value {
