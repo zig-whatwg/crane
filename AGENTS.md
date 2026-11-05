@@ -12,6 +12,7 @@ VERIFY that, never a way to scope it.
 - "Framework X does not use this" is never a reason to leave something out, nor to stop halfway through an algorithm: implement what the spec says and let WPT, the judge of conformance, report the gap.
 - Where the spec text and the browsers disagree, golden rule 2 decides: the browsers win, unless they are only behind a newer spec.
 - **Stuck on HOW to implement something?** Read how V8, WebKit, Blink or Gecko did it BEFORE designing a mechanism, and cite it in the commit; take the design, never the code.
+- **No invented paths** (the user, 2026-11-04): every behaviour follows the spec and what browsers do, and reaches the engine through the paths a browser has. That holds for hosts and the repl too: the repl IS the headless browser, so it reaches pages only through a browser's algorithms (browser-UI navigation, traversal, window.open), never a host-only shortcut. A host- or console-only path is a defect to remove, not a place to patch; a fix that keeps a copy in sync instead of reading the spec's source is not a fix.
 
 **Not everything has a spec.** V8 handle ownership, allocator lifetimes and
 teardown order are engine concerns — read the code, not `specs/`.

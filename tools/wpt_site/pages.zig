@@ -1442,6 +1442,38 @@ fn writeMemRow(w: W, label: []const u8, crane: ?f64, ref: ?f64) Error!void {
     try w.writeAll("</tr>\n");
 }
 
+/// A row of what a pool's chunks lost (`field` of reference.Pool): a duration
+/// for a chunked pool, "none: one queue" for a pool without chunks, "not
+/// measured" without a pool.
+fn writePoolRow(w: W, label: []const u8, crane: ?reference_mod.Pool, ref: ?reference_mod.Pool, comptime field: []const u8) Error!void {
+    try w.print("<tr><th scope=\"row\">{s}</th>", .{label});
+    for ([_]?reference_mod.Pool{ crane, ref }) |v| {
+        try w.writeAll("<td class=\"n\">");
+        if (v) |p| {
+            if (p.chunks > 0) try writeDuration(w, @field(p, field)) else try w.writeAll("<span class=\"quiet\">none: one queue</span>");
+        } else try w.writeAll("<span class=\"quiet\">not measured</span>");
+        try w.writeAll("</td>");
+    }
+    try w.writeAll("</tr>\n");
+}
+
+/// How Crane's chunked sweep spends its wall clock, when the window measured it.
+fn writePoolNote(w: W, tm: reference_mod.Timing, name: []const u8) Error!void {
+    const c = tm.crane orelse return;
+    const p = c.pool orelse return;
+    const ref_queue = if (tm.reference.pool) |rp| rp.chunks == 0 else false;
+    if (p.chunks == 0) {
+        try w.writeAll("<p class=\"box-note\">Crane&rsquo;s run is one shared queue: each runner takes the next file when it is free, so no runner waits for another");
+        if (p.files_per_runner > 0) try w.print(", and each runner process runs {d} files before a fresh one takes its place", .{p.files_per_runner});
+        try w.print(". The tests&rsquo; own wall clock is every file&rsquo;s summed over the {d} runners: what a pool that never waits would take.", .{tm.processes});
+        if (ref_queue) try w.print(" {s}&rsquo;s <code>wptrunner</code> feeds its processes from one queue too.", .{name});
+        return w.writeAll("</p>\n");
+    }
+    try w.print("<p class=\"box-note\">Crane&rsquo;s run went in {d} chunks of {d} files, each split into fixed shards of {d} files, one per runner; a chunk ends when its slowest shard does, so the other runners wait for it. The tests&rsquo; own wall clock is every file&rsquo;s summed over the {d} runners: what a pool that never waits would take.", .{ p.chunks, p.chunk_files, p.shard_files, tm.processes });
+    if (ref_queue) try w.print(" {s}&rsquo;s <code>wptrunner</code> feeds its processes from one queue.", .{name});
+    try w.writeAll("</p>\n");
+}
+
 /// "V8 13.1.203" -> "13.1.203" (a prefix, never a set of characters: "V8 8.4" keeps its 8).
 fn withoutV8(s: []const u8) []const u8 {
     return if (std.mem.startsWith(u8, s, "V8 ")) s["V8 ".len..] else s;
@@ -1589,6 +1621,13 @@ fn writeVersus(w: W, site: *const Site) Error!void {
             try w.writeAll("</tr>\n");
         }
         try writeTimeRow(w, "The worklist, wall clock", cw, tm.reference.wall_s);
+        const cpool: ?reference_mod.Pool = if (tm.crane) |c| c.pool else null;
+        const rpool = tm.reference.pool;
+        if (cpool != null or rpool != null) {
+            try writeTimeRow(w, "The tests&rsquo; own wall clock, per runner", if (cpool) |p| p.work_s else null, if (rpool) |p| p.work_s else null);
+            try writePoolRow(w, "Of the wall clock: waiting for a chunk&rsquo;s slowest runner", cpool, rpool, "barrier_s");
+            try writePoolRow(w, "Of the wall clock: chunk start-up", cpool, rpool, "startup_s");
+        }
         try writeTimeRow(w, "CPU, user + system", cc, tm.reference.cpu());
         const cm: ?reference_mod.Memory = if (tm.crane) |c| c.memory else null;
         const rm = tm.reference.memory;
@@ -1600,6 +1639,10 @@ fn writeVersus(w: W, site: *const Site) Error!void {
             };
             try writeMemRow(w, "Memory of the engine, peak", Get.f(cm, "engine_peak_mb"), Get.f(rm, "engine_peak_mb"));
             try writeMemRow(w, "Memory of the engine, mean", Get.f(cm, "engine_mean_mb"), Get.f(rm, "engine_mean_mb"));
+            if (if (tm.crane) |c| c.memory_without else null) |mw| {
+                try writeMemRow(w, "Memory of the engine without the runaway file, peak", mw.engine_peak_mb, Get.f(rm, "engine_peak_mb"));
+                try writeMemRow(w, "Memory of the engine without the runaway file, mean", mw.engine_mean_mb, Get.f(rm, "engine_mean_mb"));
+            }
             try writeMemRow(w, "Memory of the harness, peak", Get.f(cm, "harness_peak_mb"), Get.f(rm, "harness_peak_mb"));
             try writeMemRow(w, "Memory of the harness, mean", Get.f(cm, "harness_mean_mb"), Get.f(rm, "harness_mean_mb"));
             try writeMemRow(w, "One runner&rsquo;s engine, largest peak", Get.f(cm, "group_peak_max_mb"), Get.f(rm, "group_peak_max_mb"));
@@ -1620,7 +1663,21 @@ fn writeVersus(w: W, site: *const Site) Error!void {
                 try writeTimeRow(w, "Of the wall clock: the tests (estimate)", if (cw) |x| @max(x - hc.of(uc), 0) else null, @max(tm.reference.wall_s - hr.of(ur), 0));
             }
         };
-        try w.writeAll("</tbody>\n</table>\n<dl class=\"builds\">");
+        try w.writeAll("</tbody>\n</table>\n");
+        try writePoolNote(w, tm, name);
+        if (if (tm.crane) |c| c.memory_without else null) |mw| {
+            try w.writeAll("<p class=\"box-note\">Crane&rsquo;s engine peak is one file, <code>");
+            try html.text(w, mw.path);
+            try w.writeAll("</code>");
+            if (mw.note.len > 0) {
+                try w.writeAll(": ");
+                try html.text(w, mw.note);
+            }
+            try w.writeAll(". The rows without the runaway file leave out ");
+            try html.text(w, if (mw.excluded.len > 0) mw.excluded else "its samples");
+            try w.print("; {s}&rsquo;s are its whole run.</p>\n", .{name});
+        }
+        try w.writeAll("<dl class=\"builds\">");
         try w.print("<div><dt>{s}</dt><dd>{s} <code>", .{ name, if (std.mem.eql(u8, r.engine, "chrome")) "Chrome for Testing" else name });
         try html.text(w, r.run.browser_version);
         try w.writeAll("</code>");

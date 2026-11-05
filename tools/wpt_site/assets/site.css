@@ -511,7 +511,7 @@ table.versus .n b { font-weight: 600; }
 .builds > div { display: contents; }
 .builds dt { color: var(--ink-2); font-weight: 600; }
 .builds dd { margin: 0; }
-.versus-box .reused { margin: 0; padding: 0 1rem 0.9rem; font-size: 0.85rem; color: var(--ink-2); }
+.versus-box .reused, .versus-box .box-note { margin: 0; padding: 0 1rem 0.9rem; font-size: 0.85rem; color: var(--ink-2); }
 .compare { margin: 0 0 3rem; }
 .compare > p { max-width: var(--measure); }
 .compare h3 { font: 600 1rem/1.3 var(--serif); margin: 1.5rem 0 0.5rem; }
