@@ -279,6 +279,62 @@ pub const Storage = struct {
         return result.toOwnedSlice(allocator);
     }
 
+    /// Handle Fetch step 13.3.3.6-7, a router rule's cache source: for each
+    /// cacheName -> cache of `storage_key`'s name to cache map, in order -
+    /// only the one named `cache_name` when the source names one (7.1) -
+    /// Query Cache with `request_query` and a new CacheQueryOptions (7.2);
+    /// the first entry the first cache with a match gives (7.4.1) - a cache
+    /// with none passes the walk on, as the browsers do (7.3, below). Null:
+    /// the network (8). OWNED.
+    pub fn routerMatch(self: *Storage, browser: *platform.BrowserPlatform, allocator: Allocator, storage_key: []const u8, cache_name: ?[]const u8, request_query: Query) Error!?Entry {
+        // 6. caches: the storage key's name to cache map.
+        const map = try self.caches(browser, allocator, storage_key);
+        defer {
+            for (map) |c| allocator.free(c.name);
+            allocator.free(map);
+        }
+        // 7.
+        for (map) |c| {
+            // 7.1.
+            if (cache_name) |name| if (!std.mem.eql(u8, name, c.name)) continue;
+            // 7.2. Query Cache.
+            const entries = try self.query(browser, allocator, c.cache, request_query, .{});
+            // 7.3 reads "If requestResponses is an empty list, return
+            // timingInfo": the network, from the first cache that lacks the
+            // request, whatever the caches after it hold. The browsers that
+            // ship static routing look on, to the first cache that has a
+            // match, and so does Crane (golden rule 2: no newer spec; the two
+            // shipping browsers agree against the text; integrator ruling
+            // 2026-11-05):
+            // - Chromium: ServiceWorkerCacheStorageMatcher::Run asks Cache
+            //   Storage's Match with MultiCacheQueryOptions and no cache name -
+            //   CacheStorage::MatchAllCachesImpl/MatchAllCachesDidMatchAll:
+            //   every cache in order, a not-found one skipped, the first match;
+            // - WebKit (Safari 27): CacheStorageManager::query with an empty
+            //   name, queryCaches: a cache with no match goes on to index + 1;
+            // - Firefox does not ship addRoutes (bug 1855580).
+            // The spec's editors describe the source so too (w3c/ServiceWorker
+            // #1797: "cache" matches against all cache storages). A named
+            // source reaches only its own cache (7.1), as Chromium's MatchCache
+            // does, so it still ends at that cache's empty list (8).
+            // A literal 7.3 made a cache another page had left behind - first
+            // in the map - hide the one the rule's worker filled (lane flaky5:
+            // generation 203's static-router-no-fetch-handler loss, after
+            // resource-timing-cross-origin-server-timing's "test-cache").
+            if (entries.len == 0) {
+                allocator.free(entries);
+                continue;
+            }
+            // 7.4.1. The first one.
+            const first = entries[0];
+            for (entries[1..]) |*e| e.deinit(allocator);
+            allocator.free(entries);
+            return first;
+        }
+        // 8.
+        return null;
+    }
+
     /// Batch Cache Operations on the cache `cache`: atomic - an error leaves
     /// it as it was. The number of entries the delete operations removed
     /// (what delete() resolves with: true when some were).
