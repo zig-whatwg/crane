@@ -21,13 +21,15 @@ perf.add('dom.inner-html-set', {
 });
 perf.add('dom.inner-html-get', {
   ops: 300,
+  // Two boxes in turn: the same box read twice could be hoisted out of the loop by a JIT that
+  // knows the getter is pure (Gecko marks innerHTML [Pure]).
   setup() {
-    this.box = document.createElement('div');
     let html = '';
     for (let i = 0; i < 10; i++) html += '<ul>' + fragment + '</ul>';
-    this.box.innerHTML = html;
+    this.boxes = [document.createElement('div'), document.createElement('div')];
+    for (const b of this.boxes) b.innerHTML = html;
   },
-  run(n) { let k = 0; for (let i = 0; i < n; i++) k += this.box.innerHTML.length; this.sink = k; },
+  run(n) { let k = 0; for (let i = 0; i < n; i++) k += this.boxes[i & 1].innerHTML.length; this.sink = k; },
 });
 perf.add('dom.insert-adjacent-html', {
   ops: 300,

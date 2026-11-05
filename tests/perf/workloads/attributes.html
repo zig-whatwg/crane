@@ -3,17 +3,21 @@
 <title>Bindings: create, get, set, call, construct</title>
 <!-- The binding paths gc_bench's rows measure in Crane alone (tools/perf_bench/gcbench.zig), as
      timed workloads every engine runs: the same statements, in a loop of `ops`. Each result is
-     folded into `this.sink`, so no engine can drop the call as unused. -->
+     folded into `this.sink`, so no engine can drop the call as unused, and the getter and method
+     loops go round 16 elements, so no JIT can hoist a getter it knows is pure out of the loop
+     (Gecko's [Pure] DOM getters are loop-invariant: one element measured 1 ns per call in
+     Firefox 159 in the dry run of 2026-11-05). -->
 <script src="../harness.js"></script>
 <script>
 perf.add('dom.create-element', {
   ops: 20000,
   run(n) { let k = 0; for (let i = 0; i < n; i++) k += document.createElement('div').nodeType; this.sink = k; },
 });
+function sixteen(init) { const a = []; for (let i = 0; i < 16; i++) { const e = document.createElement('div'); init(e, i); a.push(e); } return a; }
 perf.add('dom.getter-loop', {
   ops: 200000,
-  setup() { this.el = document.createElement('div'); this.el.id = 'x'; },
-  run(n) { const el = this.el; let k = 0; for (let i = 0; i < n; i++) k += el.id.length; this.sink = k; },
+  setup() { this.els = sixteen((e, i) => { e.id = 'x' + i; }); },
+  run(n) { const els = this.els; let k = 0; for (let i = 0; i < n; i++) k += els[i & 15].id.length; this.sink = k; },
 });
 perf.add('dom.setter-loop', {
   ops: 200000,
@@ -22,8 +26,8 @@ perf.add('dom.setter-loop', {
 });
 perf.add('dom.method-loop', {
   ops: 200000,
-  setup() { this.el = document.createElement('div'); this.el.setAttribute('y', '1'); },
-  run(n) { const el = this.el; let k = 0; for (let i = 0; i < n; i++) if (el.hasAttribute('x')) k++; this.sink = k; },
+  setup() { this.els = sixteen((e, i) => { if (i & 1) e.setAttribute('x', '1'); }); },
+  run(n) { const els = this.els; let k = 0; for (let i = 0; i < n; i++) if (els[i & 15].hasAttribute('x')) k++; this.sink = k; },
 });
 perf.add('dom.event-ctor', {
   ops: 50000,

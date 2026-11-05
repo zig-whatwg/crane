@@ -43,9 +43,9 @@ statement, the workload says so: that is its browser equivalent.
 |---|---|---|
 | `overhead.empty` | nothing: the harness's own cost per sample, the floor under every row | |
 | `dom.create-element` | `document.createElement('div')`, discarded | create-element |
-| `dom.getter-loop` | `el.id` (an attribute getter) | getter-loop |
+| `dom.getter-loop` | `el.id` (an attribute getter), over 16 elements in turn so no JIT hoists a getter it knows is pure | getter-loop |
 | `dom.setter-loop` | `el.id = ...` (an attribute setter) | setter-loop |
-| `dom.method-loop` | `el.hasAttribute('x')` (an operation) | method-loop |
+| `dom.method-loop` | `el.hasAttribute('x')` (an operation), over 16 elements in turn | method-loop |
 | `dom.event-ctor` | `new Event('x')` (a constructor) | ctor-loop |
 | `dom.event-ctor-dict` | `new Event('x', {bubbles, cancelable})` (a dictionary argument) | dict-loop |
 | `dom.set-get-attribute` | `setAttribute` then `getAttribute` | |
@@ -59,7 +59,7 @@ statement, the workload says so: that is its browser equivalent.
 | `dom.matches` | `Element.matches` of a descendant/child selector | |
 | `dom.get-elements-by-class` | a live `getElementsByClassName` collection, read | |
 | `dom.inner-html-set` | `innerHTML =` a 100-item list (the fragment parser) | |
-| `dom.inner-html-get` | reading `innerHTML` of 1,000 items (the serializer) | |
+| `dom.inner-html-get` | reading `innerHTML` of 1,000 items (the serializer), two elements in turn | |
 | `dom.insert-adjacent-html` | `insertAdjacentHTML('beforeend', ...)` | |
 | `events.dispatch` | `dispatchEvent` to a target 10 deep, a capture and a bubble listener per level | |
 | `events.add-remove-listener` | `addEventListener` + `removeEventListener` | |
