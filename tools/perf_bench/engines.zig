@@ -39,7 +39,7 @@ pub const Pin = struct {
     installed: ?[]const u8 = null,
 };
 
-pub const PinError = error{ PinMissingKey, PinUnknownEngine, PinBadSha256, PinMissingBuildIdentity, PinMissingWebDriver };
+pub const PinError = error{ PinMissingKey, PinUnknownEngine, PinBadSha256, PinMissingBuildIdentity, PinWrongBuild, PinMissingWebDriver };
 
 pub fn parsePin(arena: Allocator, text: []const u8) (PinError || Allocator.Error)!Pin {
     var name: ?Name = null;
@@ -170,7 +170,7 @@ pub const Drive = enum { argv, cdp, webdriver };
 
 pub fn driveOf(name: Name) Drive {
     return switch (name) {
-        .crane, .chrome, .firefox => .argv,
+        .crane, .crane_fast, .chrome, .firefox => .argv,
         .lightpanda => .cdp,
         .safari => .webdriver,
     };
@@ -189,13 +189,15 @@ pub const Launch = struct {
     names: []const []const u8 = &.{},
     /// Environment additions.
     env: []const [2][]const u8 = &.{},
+    // RED STUB
+    stdin_pipe: bool = false,
 };
 
 pub fn launch(arena: Allocator, pin: Pin, url: []const u8, profile: []const u8, port: u16) Allocator.Error!Launch {
     var argv: std.ArrayList([]const u8) = .empty;
     var flags: std.ArrayList([]const u8) = .empty;
     switch (pin.name) {
-        .crane => {
+        .crane, .crane_fast => {
             try argv.append(arena, pin.binary);
             try argv.append(arena, url);
             for (crane_flags) |f| {
@@ -266,7 +268,7 @@ const crane_pin_text =
     \\version=e7101e588f1
     \\build=release: ReleaseSafe everywhere, C .trap, libc malloc
     \\commit=e7101e588f1
-    \\optimize=-Dwpt-runner-release -Doptimize=ReleaseSafe
+    \\optimize=root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc
     \\v8=13.1.203 static
     \\binary=/x/repl
     \\sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
@@ -288,6 +290,47 @@ test "a pin file: keys, comments, and Crane's build identity" {
     const bad_sha = try std.mem.replaceOwned(u8, a, crane_pin_text, "sha256=0123", "sha256=XYZ");
     try testing.expectError(error.PinBadSha256, parsePin(a, bad_sha));
     try testing.expectError(error.PinMissingWebDriver, parsePin(a, "name=safari\nversion=26.1\nbuild=x\nbinary=/Applications/Safari.app\nsha256=" ++ "abababababababababababababababababababababababababababababababab" ++ "\n"));
+}
+
+test "Crane ReleaseFast's pin: Crane's build identity, in its own mode" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const safe_modes = "optimize=root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc";
+    const fast_modes = "optimize=root ReleaseFast, Crane modules ReleaseFast, C libraries ReleaseFast, sanitize_c off, libc malloc";
+    const named_fast = try std.mem.replaceOwned(u8, a, crane_pin_text, "name=crane\n", "name=crane_fast\n");
+    const fast_text = try std.mem.replaceOwned(u8, a, named_fast, safe_modes, fast_modes);
+    const pin = try parsePin(a, fast_text);
+    try testing.expectEqual(Name.crane_fast, pin.name);
+    try testing.expectEqualStrings(fast_modes["optimize=".len..], pin.optimize.?);
+    // Its build identity is required as Crane's is.
+    const no_v8 = try std.mem.replaceOwned(u8, a, fast_text, "v8=13.1.203 static\n", "");
+    try testing.expectError(error.PinMissingBuildIdentity, parsePin(a, no_v8));
+    // A pin whose modes are not its engine's is refused: the ReleaseSafe
+    // build under Crane ReleaseFast's name, the ReleaseFast build under
+    // Crane's, or the correctness runner under either.
+    try testing.expectError(error.PinWrongBuild, parsePin(a, named_fast));
+    try testing.expectError(error.PinWrongBuild, parsePin(a, try std.mem.replaceOwned(u8, a, crane_pin_text, safe_modes, fast_modes)));
+    try testing.expectError(error.PinWrongBuild, parsePin(a, try std.mem.replaceOwned(u8, a, crane_pin_text, safe_modes, "optimize=root ReleaseSafe, Crane modules Debug, C libraries ReleaseSafe, sanitize_c full")));
+}
+
+test "Crane ReleaseFast launches as Crane does: the console, its stdin held open" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const sha = "abababababababababababababababababababababababababababababababab";
+    const url = "http://127.0.0.1:8000/workloads/dom.html?perf=t";
+    const fast = try launch(a, .{ .name = .crane_fast, .version = "v", .build = "b", .binary = "/f/repl", .sha256 = sha, .commit = "c", .optimize = "o", .v8 = "v8" }, url, "/p", 0);
+    try expectStrings(&.{ "/f/repl", url, "--proxy=direct", "--timeout=900000" }, fast.argv);
+    try expectStrings(&crane_flags, fast.flags);
+    try testing.expectEqual(Drive.argv, fast.drive);
+    try testing.expectEqual(Drive.argv, driveOf(.crane_fast));
+    try testing.expect(fast.stdin_pipe);
+    const crane = try launch(a, .{ .name = .crane, .version = "v", .build = "b", .binary = "/b/repl", .sha256 = sha, .commit = "c", .optimize = "o", .v8 = "v8" }, url, "/p", 0);
+    try testing.expect(crane.stdin_pipe);
+    // The browsers' stdin is not the page's: nothing to hold open.
+    const chrome = try launch(a, .{ .name = .chrome, .version = "157", .build = "b", .binary = "/c/chrome", .sha256 = sha }, url, "/p/1", 0);
+    try testing.expect(!chrome.stdin_pipe);
 }
 
 test "each engine's command line, and the flags the journal records" {

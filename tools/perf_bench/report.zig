@@ -273,6 +273,15 @@ pub fn versus(arena: Allocator, m: *const Model, round: u32, browser: EngineName
     return v;
 }
 
+// RED STUB
+pub fn compare(arena: Allocator, m: *const Model, round: u32, subject: EngineName, other: EngineName) !Versus {
+    _ = arena;
+    _ = m;
+    _ = round;
+    _ = subject;
+    return .{ .browser = other };
+}
+
 /// A ratio as a whole percentage ("54"), for the card and the headline.
 pub fn percent(ratio: f64) u64 {
     return @intFromFloat(@round(ratio * 100.0));
@@ -769,6 +778,63 @@ test "a browser updated within a round: its newest version is the one compared" 
     try testing.expectEqualStrings("158", m.current(0, .chrome, "dom.a").?.version);
     const v = try versus(a, &m, 0, .chrome);
     try testing.expectApproxEqAbs(@as(f64, 2.0), v.time_ratio.?, 1e-12);
+}
+
+test "Crane ReleaseFast: its own column and its own comparison; the headline stays Crane ReleaseSafe" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const records = [_]journal.Record{
+        try timed(a, 0, .crane, "abc", "dom.a", 0, 20, 100),
+        try timed(a, 0, .crane_fast, "abc", "dom.a", 0, 10, 80),
+        try timed(a, 0, .chrome, "157", "dom.a", 0, 10, 400),
+        try timed(a, 0, .crane, "abc", "dom.b", 0, 8, 100),
+        try timed(a, 0, .crane_fast, "abc", "dom.b", 0, 2, 50),
+        try timed(a, 0, .chrome, "157", "dom.b", 0, 8, 400),
+    };
+    const m = try build(a, &records);
+    // Same commit, two builds: two cells, never one.
+    try testing.expectEqual(@as(?f64, 20), m.current(0, .crane, "dom.a").?.time_ms);
+    try testing.expectEqual(@as(?f64, 10), m.current(0, .crane_fast, "dom.a").?.time_ms);
+    // The headline is Crane ReleaseSafe against the browser: 20/10 and 8/8.
+    const v = try versus(a, &m, 0, .chrome);
+    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(2.0)), v.time_ratio.?, 1e-12);
+    // What ReleaseFast buys: its figure over ReleaseSafe's, 10/20 and 2/8;
+    // memory 80/100 and 50/100.
+    const fast = try compare(a, &m, 0, .crane_fast, .crane);
+    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(0.5 * 0.25)), fast.time_ratio.?, 1e-12);
+    try testing.expectEqual(@as(usize, 2), fast.time_n);
+    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(0.8 * 0.5)), fast.memory_ratio.?, 1e-12);
+    try testing.expectEqualStrings("abc", fast.version.?);
+    // And against a browser, beside the headline.
+    const fast_chrome = try compare(a, &m, 0, .crane_fast, .chrome);
+    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(1.0 * 0.25)), fast_chrome.time_ratio.?, 1e-12);
+
+    const out = try render(a, &m, .{});
+    const page = out.index_html;
+    // Its own labelled column in the round's tables, with its ratio to the release build.
+    try testing.expect(std.mem.indexOf(u8, page, "<th scope=\"col\" class=\"n\">Crane ReleaseFast</th>") != null);
+    try testing.expect(std.mem.indexOf(u8, page, "ReleaseFast / ReleaseSafe") != null);
+    try testing.expect(std.mem.indexOf(u8, page, "id=\"release-fast\"") != null);
+    // The headline table and the description stay ReleaseSafe's: 141% of Chrome's time.
+    try testing.expect(std.mem.indexOf(u8, page, "141% of Chrome's time") != null);
+    const headline = page[std.mem.indexOf(u8, page, "id=\"headline\"").?..std.mem.indexOf(u8, page, "id=\"release-fast\"").?];
+    try testing.expect(std.mem.indexOf(u8, headline, "ReleaseFast") == null);
+    // History names it too.
+    const history = page[std.mem.indexOf(u8, page, "id=\"history\"").?..];
+    try testing.expect(std.mem.indexOf(u8, history, "<td>Crane ReleaseFast</td>") != null);
+}
+
+test "a round without Crane ReleaseFast has no column for it" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const records = [_]journal.Record{ try timed(a, 0, .crane, "abc", "dom.a", 0, 20, 100), try timed(a, 0, .chrome, "157", "dom.a", 0, 10, 400) };
+    const m = try build(a, &records);
+    const page = (try render(a, &m, .{})).index_html;
+    try testing.expect(std.mem.indexOf(u8, page, "Crane ReleaseFast</th>") == null);
+    try testing.expect(std.mem.indexOf(u8, page, "ReleaseFast / ReleaseSafe") == null);
+    try testing.expect(std.mem.indexOf(u8, page, "id=\"release-fast\"") == null);
 }
 
 test "the page: headline in the HTML, social metadata, the card, every engine named" {

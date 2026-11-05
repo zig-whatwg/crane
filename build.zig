@@ -4877,7 +4877,7 @@ pub fn build(b: *std.Build) void {
     // (docs/lessons/workflow-a-release-root-over-debug-c-libraries-must-link-
     // the-full-sanitizer-runtime.md).
     const repl_modes = runner_build_mode.consoleModes(
-        runner_release,
+        if (runner_release) .safe else null,
         b.option(std.builtin.OptimizeMode, "repl-optimize", "Optimize mode of the browser console (default: ReleaseSafe, or -Doptimize when given; Debug for a diagnosis)"),
         optimize,
         b.user_input_options.contains("optimize") or b.graph.release_mode != .off,

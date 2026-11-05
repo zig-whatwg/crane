@@ -24,14 +24,20 @@ pub const format_name = "crane-perf/1";
 
 pub const EngineName = enum {
     crane,
+    crane_fast,
     chrome,
     firefox,
     safari,
     lightpanda,
 
+    // RED STUB
+    pub fn isCrane(e: EngineName) bool {
+        return e == .crane;
+    }
+
     pub fn label(e: EngineName) []const u8 {
         return switch (e) {
-            .crane => "Crane",
+            .crane, .crane_fast => "Crane",
             .chrome => "Chrome",
             .firefox => "Firefox",
             .safari => "Safari",
@@ -515,6 +521,28 @@ test "a journal reads line by line and names the line that fails" {
     const bad = try std.mem.concat(a, u8, &.{ line, "\n", "{\"format\":1}\n" });
     try testing.expectError(error.UnexpectedToken, parseJournal(a, bad, &failure));
     try testing.expectEqual(@as(usize, 2), failure.line);
+}
+
+test "Crane ReleaseFast is an engine of its own, with Crane's build identity" {
+    // The user, 2026-11-05 ("yes"): round 0 also times a ReleaseFast Crane,
+    // its own labelled column beside the release build (ReleaseSafe).
+    try testing.expectEqualStrings("Crane ReleaseFast", EngineName.crane_fast.label());
+    try testing.expectEqualStrings("Crane", EngineName.crane.label());
+    try testing.expect(EngineName.crane_fast.isCrane());
+    try testing.expect(EngineName.crane.isCrane());
+    try testing.expect(!EngineName.chrome.isCrane());
+    try testing.expect(!EngineName.lightpanda.isCrane());
+
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const line = try std.mem.replaceOwned(u8, a, std.mem.trimEnd(u8, golden_timed, "\n"), "\"name\":\"crane\"", "\"name\":\"crane_fast\"");
+    const r = try parseLine(a, line);
+    try testing.expectEqual(EngineName.crane_fast, r.engine.name);
+    // Its rows name their build as Crane's do: commit, modes, V8.
+    var no_modes = r;
+    no_modes.engine.optimize = null;
+    try testing.expectError(error.MissingBuildIdentity, validate(no_modes));
 }
 
 test "times are written rounded to the microsecond" {

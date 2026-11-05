@@ -106,9 +106,24 @@ pub fn runnerModes(runner_option: ?Mode, optimize: Mode, optimize_given: bool) R
 /// 2026-11-04: Crane is timed in its release build) - release_runner's modes
 /// exactly, winning over -Drepl-optimize as it wins over
 /// -Dwpt-runner-optimize. Otherwise the runner's rule (`runnerModes`).
-pub fn consoleModes(release: bool, console_option: ?Mode, optimize: Mode, optimize_given: bool) RunnerModes {
-    if (release) return release_runner;
+pub fn consoleModes(release: ?Release, console_option: ?Mode, optimize: Mode, optimize_given: bool) RunnerModes {
+    if (release != null) return release_runner;
     return runnerModes(console_option, optimize, optimize_given);
+}
+
+// RED STUBS (replaced by the implementation in the next commit).
+pub const Release = enum { safe, fast };
+pub fn releaseRunner(release: Release) RunnerModes {
+    _ = release;
+    return release_runner;
+}
+pub fn releaseOption(release: bool, release_fast: bool) error{TwoReleaseBuilds}!?Release {
+    _ = release_fast;
+    return if (release) .safe else null;
+}
+pub fn describe(buf: []u8, modes: RunnerModes) ![]const u8 {
+    _ = modes;
+    return buf[0..0];
 }
 
 /// A mode's name as `-Doptimize` spells it, for the runner's banner
@@ -206,7 +221,7 @@ test "with -Dwpt-runner-release the console is the release build: release_runner
     // correctness modes: every part ReleaseSafe, its C libraries too, the C
     // code at ReleaseSafe's .trap, and libc's malloc, which the console
     // already allocates from.
-    const modes = consoleModes(true, null, .Debug, false);
+    const modes = consoleModes(.safe, null, .Debug, false);
     try testing.expectEqual(release_runner.root, modes.root);
     try testing.expectEqual(release_runner.crane_modules, modes.crane_modules);
     try testing.expectEqual(release_runner.c_libraries, modes.c_libraries);
@@ -214,7 +229,7 @@ test "with -Dwpt-runner-release the console is the release build: release_runner
     try testing.expectEqual(RunnerAllocator.production, modes.allocator);
     // It wins over -Drepl-optimize, as -Dwpt-runner-release wins over
     // -Dwpt-runner-optimize.
-    try testing.expectEqual(Mode.ReleaseSafe, consoleModes(true, .Debug, .Debug, false).root);
+    try testing.expectEqual(Mode.ReleaseSafe, consoleModes(.safe, .Debug, .Debug, false).root);
     // Its Crane modules and C libraries are not the shared graph's: a graph
     // of its own, whose C libraries are built at its root's sanitizer - the
     // root links no full UBSan runtime (.trap), so C built with .full would
@@ -224,12 +239,72 @@ test "with -Dwpt-runner-release the console is the release build: release_runner
 }
 
 test "without -Dwpt-runner-release the console keeps the runner's rule" {
-    const plain = consoleModes(false, null, .Debug, false);
+    const plain = consoleModes(null, null, .Debug, false);
     const runner = runnerModes(null, .Debug, false);
     try testing.expectEqual(runner.root, plain.root);
     try testing.expectEqual(runner.crane_modules, plain.crane_modules);
     try testing.expectEqual(runner.sanitize_c, plain.sanitize_c);
-    try testing.expectEqual(Mode.Debug, consoleModes(false, .Debug, .Debug, false).root);
+    try testing.expectEqual(Mode.Debug, consoleModes(null, .Debug, .Debug, false).root);
+}
+
+test "with -Dwpt-runner-release-fast the console is the release build in ReleaseFast: no C sanitizer, libc malloc" {
+    // The user, 2026-11-05 ("yes"): perf round 0 also times a ReleaseFast
+    // Crane, a column beside the ReleaseSafe release build (the headline).
+    // Every part ReleaseFast - the root (the LLVM pipeline and v8_wrapper.cpp),
+    // Crane's modules (their builtin.mode: no runtime safety) and the C
+    // libraries - with no C sanitizer at all, and the production allocator.
+    const modes = consoleModes(.fast, null, .Debug, false);
+    try testing.expectEqual(Mode.ReleaseFast, modes.root);
+    try testing.expectEqual(Mode.ReleaseFast, modes.crane_modules);
+    try testing.expectEqual(Mode.ReleaseFast, modes.c_libraries);
+    // Off, not null (Zig's default): the build names it, and the C libraries
+    // a ReleaseFast root links are built without one too.
+    try testing.expectEqual(@as(?std.zig.SanitizeC, .off), modes.sanitize_c);
+    try testing.expectEqual(RunnerAllocator.production, modes.allocator);
+    try testing.expect(modes.ownGraph(.Debug));
+    // It wins over -Drepl-optimize, as the ReleaseSafe release build does.
+    try testing.expectEqual(Mode.ReleaseFast, consoleModes(.fast, .Debug, .Debug, false).root);
+}
+
+test "the two release builds differ only in their optimize mode and its C sanitizer" {
+    // "Only the optimize mode differs from -Dwpt-runner-release": the same
+    // allocator, a graph of its own in both, every part in one mode, and the
+    // sanitizer each mode's own (.trap for ReleaseSafe, off for ReleaseFast).
+    const safe = releaseRunner(.safe);
+    const fast = releaseRunner(.fast);
+    try testing.expectEqual(safe.allocator, fast.allocator);
+    try testing.expectEqual(safe.ownGraph(.Debug), fast.ownGraph(.Debug));
+    for ([_]RunnerModes{ safe, fast }) |m| {
+        try testing.expectEqual(m.root, m.crane_modules);
+        try testing.expectEqual(m.root, m.c_libraries);
+    }
+    try testing.expectEqual(Mode.ReleaseSafe, safe.root);
+    try testing.expectEqual(Mode.ReleaseFast, fast.root);
+    // release_runner is the ReleaseSafe one, as -Dwpt-runner-release builds it.
+    try testing.expectEqual(release_runner.root, safe.root);
+    try testing.expectEqual(release_runner.sanitize_c, safe.sanitize_c);
+}
+
+test "the release options name one release build, or none" {
+    try testing.expectEqual(@as(?Release, null), try releaseOption(false, false));
+    try testing.expectEqual(@as(?Release, .safe), try releaseOption(true, false));
+    try testing.expectEqual(@as(?Release, .fast), try releaseOption(false, true));
+    // Both given name two builds: build.zig refuses, never picks one.
+    try testing.expectError(error.TwoReleaseBuilds, releaseOption(true, true));
+}
+
+test "a release build's modes, as a pin's build identity names them" {
+    // The journal's build identity (tools/perf_bench, a Crane pin's
+    // `optimize`) is written from this, so it names exactly what was built.
+    var buf: [160]u8 = undefined;
+    try testing.expectEqualStrings(
+        "root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc",
+        try describe(&buf, releaseRunner(.safe)),
+    );
+    try testing.expectEqualStrings(
+        "root ReleaseFast, Crane modules ReleaseFast, C libraries ReleaseFast, sanitize_c off, libc malloc",
+        try describe(&buf, releaseRunner(.fast)),
+    );
 }
 
 test "every other runner keeps the leak- and double-free-detecting allocator" {
