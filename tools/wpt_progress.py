@@ -241,7 +241,42 @@ LOSS_KEYS = {
     'flake': {'pair.1', 'pair.2', 'pair.3'},
     'user-ruling': {'date', 'decision'},
     'upstream-test-change': {'wpt.before', 'wpt.after'},
+    'fixed': {'commit', 'test', 'repro'},
 }
+
+
+# The `fixed` kind (lane flaky5, 2026-11-05): under the one-flake rule a repeat flake
+# is a bug, and what explains its loss is the bug's fix - a commit of this repository,
+# merged (an ancestor of HEAD), whose own tree holds its red test, with the failure
+# counts under the reproduction before and after it. It explains the loss only in a
+# generation whose head does NOT contain the fix: the same loss once the fix is in is
+# the bug again, and unexplained. Every answer git cannot give is the unexplained one.
+_GIT_ANSWERS = {}
+
+
+def _git_ok(repo, *args):
+    """Whether `git <args>` succeeds in `repo` (cached: the answers name commits)."""
+    key = (repo, args)
+    if key not in _GIT_ANSWERS:
+        try:
+            _GIT_ANSWERS[key] = subprocess.run(['git', *args], cwd=repo, capture_output=True,
+                                               timeout=20).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            _GIT_ANSWERS[key] = False
+    return _GIT_ANSWERS[key]
+
+
+def git_is_commit(commit, repo):
+    return bool(commit) and _git_ok(repo, 'cat-file', '-e', f'{commit}^{{commit}}')
+
+
+def git_contains(head, commit, repo):
+    """True when `head` contains `commit` (is it, or a descendant), False when it does not;
+    None when either is not a commit of `repo` - nothing is known."""
+    if not head or not re.fullmatch(r'[0-9A-Za-z_./-]+', head) or not git_is_commit(head, repo) \
+            or not git_is_commit(commit, repo):
+        return None
+    return _git_ok(repo, 'merge-base', '--is-ancestor', commit, head)
 
 
 # The one-flake rule (the user, 2026-10-31; lane flaky1): a path may carry ONE
@@ -282,13 +317,15 @@ class LossDispositionError(Exception):
     pass
 
 
-def parse_loss_dispositions(text, worklist):
+def parse_loss_dispositions(text, worklist, repo=None):
     """Strict [path] / key = value entries, keyed by (path, generation).
 
     Each kind requires its evidence; a typo must never silently accept a loss.
     Repeating a path is allowed only for a different generation, and a path may
     be a flake only once (FLAKE_GRANDFATHERED lists the exceptions it inherited).
+    A `fixed` entry's commit and test are checked against `repo` (this checkout).
     """
+    repo = repo or REPO
     out, cur = {}, None
     first_flake = {}
     common = {'generation', 'kind', 'why'}
@@ -312,7 +349,7 @@ def parse_loss_dispositions(text, worklist):
         generation = int(values['generation'])
         kind = values['kind']
         if kind not in LOSS_KEYS:
-            error('kind must be flake, user-ruling or upstream-test-change')
+            error('kind must be flake, user-ruling, upstream-test-change or fixed')
         required = common | LOSS_KEYS[kind]
         for key in sorted(required - values.keys()):
             error(f'missing "{key}" for {kind}')
@@ -333,6 +370,27 @@ def parse_loss_dispositions(text, worklist):
                 datetime.date.fromisoformat(values['date'])
             except ValueError:
                 error('date must be a valid YYYY-MM-DD date')
+        elif kind == 'fixed':
+            commit = values['commit']
+            if not re.fullmatch(r'[0-9a-f]{7,40}', commit):
+                error('commit must be the fix\'s commit id (7 to 40 lowercase hex digits)')
+            if not git_is_commit(commit, repo):
+                error(f'commit {commit} is not a commit of this repository')
+            if not git_contains('HEAD', commit, repo):
+                error(f'commit {commit} is not an ancestor of HEAD: a fix explains a loss once it is merged')
+            for test in (t.strip() for t in values['test'].split(',')):
+                if not test or not _git_ok(repo, 'cat-file', '-e', f'{commit}:{test}'):
+                    error(f'test "{test}" is not in the fix commit {commit}: the red test comes with its fix')
+            match = re.fullmatch(r'before (\d+)/(\d+); after (\d+)/(\d+)', values['repro'])
+            if not match:
+                error('repro must read "before <failures>/<runs>; after <failures>/<runs>"')
+            bf, br, af, ar = map(int, match.groups())
+            if bf > br or af > ar or br == 0 or ar == 0:
+                error('repro: failures exceed runs, or no runs')
+            if bf == 0:
+                error('repro: before must show the bug (at least one failure)')
+            if af * br >= bf * ar:
+                error('repro: after must fail less often than before')
         else:
             for key in LOSS_KEYS[kind]:
                 if not re.fullmatch(r'[0-9a-f]{40}', values[key]):
@@ -391,28 +449,35 @@ def load_loss_dispositions(worklist, path=LOSS_DISPOSITIONS_FILE):
         sys.exit(f'wpt_progress: {os.path.relpath(path, REPO)}: {err}')
 
 
-def loss_disposition(generation, loss, dispositions):
+def loss_disposition(generation, loss, dispositions, head=None, repo=None):
+    """The disposition that explains `loss` in `generation` (whose head commit is `head`),
+    or None."""
     entry = dispositions.get((loss['path'], generation))
     if entry and entry['kind'] == 'upstream-test-change':
         # A disposition for different (or unidentified) snapshots explains nothing.
-        if (entry['wpt.before'], entry['wpt.after']) != (loss['before_revision'], loss['after_revision']):
+        if (entry['wpt.before'], entry['wpt.after']) != (loss.get('before_revision'), loss.get('after_revision')):
+            return None
+    if entry and entry['kind'] == 'fixed':
+        # A fix explains only a generation measured without it: one whose head contains
+        # the fix lost the subtest with the fix in, and one git cannot place proves nothing.
+        if git_contains(head, entry['commit'], repo or REPO) is not False:
             return None
     return entry
 
 
-def unexplained_losses(history, dispositions):
+def unexplained_losses(history, dispositions, repo=None):
     """Outstanding file/generation losses; a later generation cannot wash one away."""
     return [(g['n'], loss) for g in history.get('generations', []) for loss in g.get('losses', [])
-            if loss_disposition(g['n'], loss, dispositions) is None]
+            if loss_disposition(g['n'], loss, dispositions, g.get('head'), repo) is None]
 
 
-def render_losses(history, dispositions):
+def render_losses(history, dispositions, repo=None):
     generations = history.get('generations', [])
     latest = generations[-1] if generations else {}
     current, earlier = [], []
     for g in reversed(generations):
         for loss in g.get('losses', []):
-            entry = loss_disposition(g['n'], loss, dispositions)
+            entry = loss_disposition(g['n'], loss, dispositions, g.get('head'), repo)
             status = ('explained: ' + entry['kind']) if entry else 'UNEXPLAINED'
             evidence = '; '.join(f'{k}: {v}' for k, v in entry.items()
                                  if k not in ('kind', 'generation')) if entry else 'No matching disposition.'
@@ -432,7 +497,7 @@ def render_losses(history, dispositions):
     warning = (f'<p class="dim">Previous per-file counts unavailable for {len(missing):,} files; '
                'comparison for those files starts with this generation.</p>') if missing else ''
     return (f'<div class="panel"><h2 class="panelh">Subtests lost since the last generation</h2>'
-            f'<p><b>{len(unexplained_losses(history, dispositions)):,} unexplained subtest losses</b> '
+            f'<p><b>{len(unexplained_losses(history, dispositions, repo)):,} unexplained subtest losses</b> '
             '(file/generation entries, including earlier unresolved losses). '
             'Every loss requires evidence in <code>tools/wpt_loss_dispositions.txt</code>.</p>' +
             (table(current) if current else '<p>No new per-file pass losses in this generation.</p>') + warning +
@@ -2705,8 +2770,9 @@ def main():
         print('Subtests lost since the last generation:')
         current = [(g['n'], loss) for loss in g.get('losses', [])]
         outstanding = [(n, loss) for n, loss in unexplained if n != g['n']]
+        heads = {gen['n']: gen.get('head') for gen in gens}
         for n, loss in current + outstanding:
-            entry = loss_disposition(n, loss, dispositions)
+            entry = loss_disposition(n, loss, dispositions, heads.get(n))
             status = ('explained: ' + entry['kind'] + ' — ' + entry['why']) if entry else 'UNEXPLAINED'
             print(f"  generation {n}: {loss['path']}  {loss['before']} -> {loss['after']} "
                   f"(-{loss['before'] - loss['after']})  {status}")
@@ -3138,6 +3204,100 @@ def _check_loss_dispositions():
     assert parse_loss_dispositions(change, wl)[('a.html', 3)]['wpt.after'] == 'b' * 40
     invalid(change.replace('b' * 40, 'a' * 40), 'different')
     invalid(change.replace('b' * 40, 'unknown'), 'revision')
+
+
+def _fixed_fixture_repo(d):
+    """A git repository for the `fixed` kind's checks: base A, the fix B (which adds
+    its red test), C after it on the main line (HEAD), and D on a branch off A that
+    never took B. Returns the repo and the full ids."""
+    repo = os.path.join(d, 'repo')
+    os.makedirs(os.path.join(repo, 'tests'))
+    env = dict(os.environ, GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t',
+               GIT_COMMITTER_EMAIL='t@t', GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1')
+
+    def git(*args):
+        return subprocess.run(['git', *args], cwd=repo, env=env, check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def commit(path, text, message):
+        with open(os.path.join(repo, path), 'w') as f:
+            f.write(text)
+        git('add', path)
+        git('commit', '-q', '-m', message)
+        return git('rev-parse', 'HEAD')
+
+    git('init', '-q', '-b', 'main')
+    a = commit('README', 'a\n', 'A')
+    b = commit('tests/red_test.zig', 'test "red" {}\n', 'B: the fix and its red test')
+    c = commit('README', 'c\n', 'C')
+    git('checkout', '-q', '-b', 'side', a)
+    d_ = commit('side.txt', 'd\n', 'D')
+    git('checkout', '-q', 'main')
+    return repo, {'A': a, 'B': b, 'C': c, 'D': d_}
+
+
+def _fixed_entry(commit, test='tests/red_test.zig', repro='before 7/200; after 0/200', generation=203):
+    return (f'[a.html]\ngeneration = {generation}\nkind = fixed\n'
+            'why = a repeat flake is a bug: its cause and fix\n'
+            f'commit = {commit}\ntest = {test}\nrepro = {repro}\n')
+
+
+def _check_fixed_disposition():
+    """A fixed bug explains its loss: the fix exists, is merged (an ancestor of HEAD), carries
+    its red test and a before/after reproduction - and explains only generations whose head
+    lacks the fix, so the same loss after the fix is unexplained again."""
+    import tempfile
+    wl = ['a.html']
+    with tempfile.TemporaryDirectory() as d:
+        repo, ids = _fixed_fixture_repo(d)
+        b = ids['B']
+        parsed = parse_loss_dispositions(_fixed_entry(b[:10]), wl, repo=repo)
+        entry = parsed[('a.html', 203)]
+        assert entry['kind'] == 'fixed' and entry['commit'] == b[:10]
+
+        def invalid(text, needle):
+            try:
+                parse_loss_dispositions(text, wl, repo=repo)
+            except LossDispositionError as err:
+                assert needle in str(err), (needle, str(err))
+                return
+            raise AssertionError('accepted invalid fixed disposition: ' + needle)
+
+        for key in ('commit', 'test', 'repro'):
+            invalid('\n'.join(l for l in _fixed_entry(b).splitlines() if not l.startswith(key + ' =')),
+                    f'missing "{key}" for fixed')
+        invalid(_fixed_entry(b) + 'pair.1 = base 1/1; tip 1/1\n', 'not evidence for fixed')
+        invalid(_fixed_entry('not-a-commit'), 'commit must be')
+        invalid(_fixed_entry('0123456789abcdef0123456789abcdef01234567'), 'not a commit of this repository')
+        invalid(_fixed_entry(ids['D']), 'not an ancestor of HEAD')
+        invalid(_fixed_entry(b, test='tests/missing_test.zig'), 'not in the fix commit')
+        # The test must be in the fix's own tree: A predates it.
+        invalid(_fixed_entry(ids['A'], test='tests/red_test.zig'), 'not in the fix commit')
+        invalid(_fixed_entry(b, repro='it passes now'), 'repro must read')
+        invalid(_fixed_entry(b, repro='before 3/2; after 0/2'), 'repro: failures exceed runs')
+        invalid(_fixed_entry(b, repro='before 0/200; after 0/200'), 'before must show the bug')
+        invalid(_fixed_entry(b, repro='before 2/200; after 4/400'), 'after must fail less often')
+        assert parse_loss_dispositions(_fixed_entry(b, repro='before 200/200; after 1/400'), wl, repo=repo)
+
+        # A generation whose head lacks the fix: explained. One that has it - the fix
+        # itself or a later head - is not: the bug came back.
+        loss = {'path': 'a.html', 'before': 3, 'after': 2, 'best': 3}
+        assert loss_disposition(203, loss, parsed, head=ids['A'], repo=repo) == entry
+        assert loss_disposition(203, loss, parsed, head=ids['D'][:10], repo=repo) == entry
+        assert loss_disposition(203, loss, parsed, head=b, repo=repo) is None
+        assert loss_disposition(203, loss, parsed, head=ids['C'], repo=repo) is None
+        # A head the repository cannot resolve proves nothing.
+        for unknown in (None, '?', 'f' * 40):
+            assert loss_disposition(203, loss, parsed, head=unknown, repo=repo) is None, unknown
+        # Through the history: generation 203 (head A) explained, 204 (head C) not.
+        history = {'generations': [{'n': 203, 'head': ids['A'], 'losses': [loss]},
+                                   {'n': 204, 'head': ids['C'], 'losses': [loss]}]}
+        both = dict(parsed)
+        both[('a.html', 204)] = dict(entry, generation='204')
+        assert [n for n, _ in unexplained_losses(history, both, repo=repo)] == [204]
+        assert 'explained: fixed' in render_losses(history, both, repo=repo)
+        # A fixed entry may follow the path's one flake disposition.
+        assert len(parse_loss_dispositions(_LOSS_FIXTURE + _fixed_entry(b), wl, repo=repo)) == 2
 
 
 def _check_flaky_count():
@@ -3657,6 +3817,7 @@ if __name__ == '__main__':
         _check_subtest_losses()
         _check_loss_dispositions()
         _check_one_flake_rule()
+        _check_fixed_disposition()
         _check_flaky_count()
         _check_retry_counts()
         _check_loss_baseline_migration()

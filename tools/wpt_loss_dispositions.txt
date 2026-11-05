@@ -7,7 +7,7 @@
 # beginning with # are ignored. A path can occur in several generations; a
 # (path, generation) pair can occur only once. Unknown, duplicate, empty or
 # missing keys are errors. Every entry needs generation (positive integer),
-# kind (one of the three below), and why (the explanation).
+# kind (one of the four below), and why (the explanation).
 #
 # Flake: three isolated BASE/TIP pairs, each reporting passes/total. State the
 # commands, base/tip revisions and exact failing subtests in why (or link to
@@ -41,6 +41,27 @@
 #   why = what upstream removed or changed, with the upstream commit/PR
 #   wpt.before = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 #   wpt.after = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+#
+# Fixed: the loss was a bug, and this is its fix. Under the one-flake rule a
+# path that flakes again is a bug with an owner; once the owner fixes it, the
+# fix is what explains the losses measured before it. commit is the fix (7 to
+# 40 hex digits): the tool checks that it is a commit of this repository and
+# an ancestor of HEAD (merged). test is the red test, one or more
+# comma-separated repository paths that must be in the fix commit's own tree.
+# repro is the failure count under the reproduction, before and after the fix:
+# before must show the bug (at least one failure) and after must fail less
+# often. The entry explains the loss ONLY for a generation whose head does not
+# contain the fix commit: the same loss in a generation that has the fix is
+# the bug again, unexplained (so is one whose head git cannot place). The
+# loss history keeps the loss itself either way.
+#
+#   [example/test.html]
+#   generation = 173
+#   kind = fixed
+#   why = the cause, the fix, and where the evidence is
+#   commit = 0123456789ab
+#   test = tests/example/red_test.zig
+#   repro = before 12/200; after 0/200
 #
 # Entries:
 
