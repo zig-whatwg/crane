@@ -398,7 +398,7 @@ pub const Runner = struct {
             p.child = std.process.spawn(self.io, .{
                 .argv = l.argv,
                 .environ_map = &env,
-                .stdin = if (pin.name == .crane) .pipe else .ignore,
+                .stdin = if (l.stdin_pipe) .pipe else .ignore,
                 .stdout = .{ .file = log_file },
                 .stderr = .{ .file = log_file },
                 .pgid = 0,

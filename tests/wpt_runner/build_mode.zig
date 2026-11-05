@@ -62,21 +62,74 @@ pub const RunnerModes = struct {
     }
 };
 
-/// `-Dwpt-runner-release`: the runner as a release build of Crane runs - every
-/// part ReleaseSafe (the user, 2026-11-04: "recompile with ReleaseSafe then
-/// re-run the comparison to Chrome"), so Crane's modules leave Debug and its
-/// Debug-only checks (the refcount ledger, the isolate cleanup validation) are
-/// gone; the C code at ReleaseSafe's own sanitizer default, `.trap`, not the
-/// correctness runner's `.full`; and the production allocator. It is the build
-/// to time and measure beside a browser's official release, never one to
-/// sweep or gate with: it reports no leak and no double free.
-pub const release_runner: RunnerModes = .{
-    .root = .ReleaseSafe,
-    .crane_modules = .ReleaseSafe,
-    .c_libraries = .ReleaseSafe,
-    .sanitize_c = .trap,
-    .allocator = .production,
-};
+/// Which release build of Crane: `-Dwpt-runner-release` (ReleaseSafe, the
+/// build every comparison's headline times) or `-Dwpt-runner-release-fast`
+/// (ReleaseFast, the column beside it).
+pub const Release = enum { safe, fast };
+
+/// The runner (and the console, and gc_bench) as a release build of Crane
+/// runs - every part in the release mode, so Crane's modules leave Debug and
+/// its Debug-only checks (the refcount ledger, the isolate cleanup
+/// validation) are gone; the C code at the mode's own sanitizer default; and
+/// the production allocator. The build to time and measure beside a
+/// browser's official release, never one to sweep or gate with: it reports
+/// no leak and no double free.
+///
+/// - `.safe` (the user, 2026-11-04: "recompile with ReleaseSafe then re-run
+///   the comparison to Chrome"): ReleaseSafe throughout, the C code at
+///   ReleaseSafe's `.trap`, not the correctness runner's `.full`.
+/// - `.fast` (the user, 2026-11-05, "yes": perf round 0 also times a
+///   ReleaseFast Crane, an extra column beside the ReleaseSafe build, which
+///   stays the headline): only the mode differs - ReleaseFast throughout
+///   (no runtime safety in Crane's modules), and no C sanitizer at all, named
+///   `.off` rather than left to Zig's default so the build says what it is.
+pub fn releaseRunner(release: Release) RunnerModes {
+    const mode: Mode = switch (release) {
+        .safe => .ReleaseSafe,
+        .fast => .ReleaseFast,
+    };
+    return .{
+        .root = mode,
+        .crane_modules = mode,
+        .c_libraries = mode,
+        .sanitize_c = switch (release) {
+            .safe => .trap,
+            .fast => .off,
+        },
+        .allocator = .production,
+    };
+}
+
+/// `-Dwpt-runner-release`'s build.
+pub const release_runner: RunnerModes = releaseRunner(.safe);
+
+/// `-Dwpt-runner-release` and `-Dwpt-runner-release-fast`: the release build
+/// they name, or none. Both at once name two builds, which build.zig refuses
+/// rather than choosing one.
+pub fn releaseOption(release: bool, release_fast: bool) error{TwoReleaseBuilds}!?Release {
+    if (release and release_fast) return error.TwoReleaseBuilds;
+    if (release_fast) return .fast;
+    if (release) return .safe;
+    return null;
+}
+
+/// `modes` as a Crane pin's build identity names them (tools/perf_bench, the
+/// journal's `engine.optimize`): "root ReleaseSafe, Crane modules
+/// ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc".
+/// build.zig installs it beside a release console (zig-out/bin/repl.modes),
+/// so the pin is written from what was built.
+pub fn describe(buf: []u8, modes: RunnerModes) error{NoSpaceLeft}![]const u8 {
+    return std.fmt.bufPrint(buf, "root {s}, Crane modules {s}, C libraries {s}, sanitize_c {s}, {s}", .{
+        modeName(modes.root),
+        modeName(modes.crane_modules),
+        modeName(modes.c_libraries),
+        if (modes.sanitize_c) |s| @tagName(s) else "default",
+        switch (modes.allocator) {
+            .production => "libc malloc",
+            .debug => "the leak-checking allocator",
+        },
+    });
+}
 
 /// `runner_option`: -Dwpt-runner-optimize, if given. `optimize`: -Doptimize's
 /// value (Debug when not given). `optimize_given`: whether -Doptimize (or
@@ -100,30 +153,16 @@ pub fn runnerModes(runner_option: ?Mode, optimize: Mode, optimize_given: bool) R
 }
 
 /// The console's modes (tools/repl.zig, Crane's headless browser).
-/// `release`: -Dwpt-runner-release, which makes the console Crane's release
-/// build - the one the performance suite times beside the browsers'
-/// official releases (tools/perf_bench, docs/performance.md; the user,
-/// 2026-11-04: Crane is timed in its release build) - release_runner's modes
-/// exactly, winning over -Drepl-optimize as it wins over
-/// -Dwpt-runner-optimize. Otherwise the runner's rule (`runnerModes`).
+/// `release`: -Dwpt-runner-release or -Dwpt-runner-release-fast
+/// (`releaseOption`), which make the console Crane's release build - the one
+/// the performance suite times beside the browsers' official releases
+/// (tools/perf_bench, docs/performance.md; the user, 2026-11-04: Crane is
+/// timed in its release build) - `releaseRunner`'s modes exactly, winning
+/// over -Drepl-optimize as they win over -Dwpt-runner-optimize. Otherwise
+/// the runner's rule (`runnerModes`).
 pub fn consoleModes(release: ?Release, console_option: ?Mode, optimize: Mode, optimize_given: bool) RunnerModes {
-    if (release != null) return release_runner;
+    if (release) |r| return releaseRunner(r);
     return runnerModes(console_option, optimize, optimize_given);
-}
-
-// RED STUBS (replaced by the implementation in the next commit).
-pub const Release = enum { safe, fast };
-pub fn releaseRunner(release: Release) RunnerModes {
-    _ = release;
-    return release_runner;
-}
-pub fn releaseOption(release: bool, release_fast: bool) error{TwoReleaseBuilds}!?Release {
-    _ = release_fast;
-    return if (release) .safe else null;
-}
-pub fn describe(buf: []u8, modes: RunnerModes) ![]const u8 {
-    _ = modes;
-    return buf[0..0];
 }
 
 /// A mode's name as `-Doptimize` spells it, for the runner's banner
@@ -134,6 +173,16 @@ pub fn describe(buf: []u8, modes: RunnerModes) ![]const u8 {
 /// options module declares a copy of the type of its own.
 pub fn displayName(comptime mode: anytype) []const u8 {
     return switch (@field(Mode, @tagName(mode))) {
+        .debug => "Debug",
+        .safe => "ReleaseSafe",
+        .fast => "ReleaseFast",
+        .small => "ReleaseSmall",
+    };
+}
+
+/// `displayName` of a mode known only at run time (build.zig's).
+fn modeName(mode: Mode) []const u8 {
+    return switch (mode) {
         .debug => "Debug",
         .safe => "ReleaseSafe",
         .fast => "ReleaseFast",

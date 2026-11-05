@@ -6,7 +6,8 @@
 //! (the user's rule):
 //!   crane       the console, `repl <url>`: Crane's headless browser
 //!               (docs/console.md), its stdin a pipe held open so the page
-//!               stays live until the runner closes it;
+//!               stays live until the runner closes it; crane_fast is the
+//!               same console from the ReleaseFast release build;
 //!   chrome      `--headless=new <url>` with a fresh --user-data-dir;
 //!   firefox     `--headless --profile <dir> <url>`, the profile's user.js
 //!               turning off first-run pages, telemetry and updates;
@@ -70,9 +71,27 @@ pub fn parsePin(arena: Allocator, text: []const u8) (PinError || Allocator.Error
         .installed = fields.installed,
     };
     if (!journal.isSha256(pin.sha256)) return error.PinBadSha256;
-    if (pin.name == .crane and (pin.commit == null or pin.optimize == null or pin.v8 == null)) return error.PinMissingBuildIdentity;
+    if (pin.name.isCrane()) {
+        if (pin.commit == null or pin.optimize == null or pin.v8 == null) return error.PinMissingBuildIdentity;
+        // The comparison rule: Crane is timed in its release build, never the
+        // correctness runner, and each Crane engine in its own mode - the
+        // modes as build_mode.zig `describe` names them (zig-out/bin/
+        // repl.modes), so a pin cannot put one build under the other's name.
+        if (!std.mem.eql(u8, pin.optimize.?, craneModes(pin.name))) return error.PinWrongBuild;
+    }
     if (pin.name == .safari and pin.webdriver == null) return error.PinMissingWebDriver;
     return pin;
+}
+
+/// The modes a Crane engine's build has, as build_mode.zig `describe`
+/// writes them into zig-out/bin/repl.modes (`releaseRunner(.safe)` and
+/// `releaseRunner(.fast)`; tests/wpt_runner/build_mode.zig pins both).
+pub fn craneModes(name: Name) []const u8 {
+    return switch (name) {
+        .crane => "root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc",
+        .crane_fast => "root ReleaseFast, Crane modules ReleaseFast, C libraries ReleaseFast, sanitize_c off, libc malloc",
+        .chrome, .firefox, .safari, .lightpanda => unreachable,
+    };
 }
 
 /// The SHA-256 of a file, as 64 lowercase hex digits.
@@ -189,7 +208,9 @@ pub const Launch = struct {
     names: []const []const u8 = &.{},
     /// Environment additions.
     env: []const [2][]const u8 = &.{},
-    // RED STUB
+    /// Its stdin a pipe the runner holds open: the console reads its input
+    /// there and exits when it closes (as on Ctrl+D), so the page stays live
+    /// until the launch ends. Every other engine's stdin is /dev/null.
     stdin_pipe: bool = false,
 };
 
@@ -204,7 +225,7 @@ pub fn launch(arena: Allocator, pin: Pin, url: []const u8, profile: []const u8, 
                 try argv.append(arena, f);
                 try flags.append(arena, f);
             }
-            return .{ .argv = argv.items, .flags = flags.items, .drive = .argv };
+            return .{ .argv = argv.items, .flags = flags.items, .drive = .argv, .stdin_pipe = true };
         },
         .chrome => {
             try argv.append(arena, pin.binary);

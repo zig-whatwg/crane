@@ -2903,23 +2903,38 @@ pub fn build(b: *std.Build) void {
     // default sanitizer, libc's malloc - the build to time and measure beside a
     // browser's official release, never one to sweep or gate with (the user,
     // 2026-11-04). It wins over -Dwpt-runner-optimize.
-    const runner_release = b.option(
+    // `-Dwpt-runner-release-fast` is the same release build with only the mode
+    // changed (build_mode.zig `releaseRunner(.fast)`): every part ReleaseFast,
+    // no C sanitizer - the extra column perf round 0 times beside the
+    // ReleaseSafe build, which stays the headline (the user, 2026-11-05).
+    // The two name different builds: both at once is refused.
+    const runner_release_safe = b.option(
         bool,
         "wpt-runner-release",
-        "The release runner, for timing and memory beside a browser's release build: wpt_runner and gc_bench ReleaseSafe throughout (Crane's modules and C libraries too), the C code at ReleaseSafe's default sanitizer, libc's malloc - no leak or double-free detection, so never for sweeps or gates",
+        "The release runner, for timing and memory beside a browser's release build: wpt_runner, gc_bench and the console ReleaseSafe throughout (Crane's modules and C libraries too), the C code at ReleaseSafe's default sanitizer, libc's malloc - no leak or double-free detection, so never for sweeps or gates",
     ) orelse false;
+    const runner_release_fast = b.option(
+        bool,
+        "wpt-runner-release-fast",
+        "-Dwpt-runner-release with only the mode changed: wpt_runner, gc_bench and the console ReleaseFast throughout, no C sanitizer, libc's malloc - for timing beside the ReleaseSafe release build, never for sweeps or gates",
+    ) orelse false;
+    const runner_release = runner_build_mode.releaseOption(runner_release_safe, runner_release_fast) catch {
+        std.debug.print("Error: -Dwpt-runner-release and -Dwpt-runner-release-fast name two release builds; pass one\n", .{});
+        std.process.exit(1);
+    };
     const runner_optimize_option = b.option(
         std.builtin.OptimizeMode,
         "wpt-runner-optimize",
         "Optimize mode of wpt_runner and gc_bench (default: ReleaseSafe, or -Doptimize when given; Debug for a diagnosis)",
     );
-    const runner_modes = if (runner_release) runner_build_mode.release_runner else runner_build_mode.runnerModes(
+    const runner_modes = if (runner_release) |release| runner_build_mode.releaseRunner(release) else runner_build_mode.runnerModes(
         runner_optimize_option,
         optimize,
         b.user_input_options.contains("optimize") or b.graph.release_mode != .off,
     );
     // A graph of its own when its C libraries or its Crane modules differ from
-    // the shared graph's: the release runner's Crane modules are ReleaseFast.
+    // the shared graph's: a release runner's Crane modules are in its release
+    // mode.
     const runner_graph = if (!runner_modes.ownGraph(optimize) or use_system_curl) testing_graph else runner_graph: {
         var runner_config = module_config;
         runner_config.optimize = runner_modes.crane_modules;
@@ -4877,12 +4892,12 @@ pub fn build(b: *std.Build) void {
     // (docs/lessons/workflow-a-release-root-over-debug-c-libraries-must-link-
     // the-full-sanitizer-runtime.md).
     const repl_modes = runner_build_mode.consoleModes(
-        if (runner_release) .safe else null,
+        runner_release,
         b.option(std.builtin.OptimizeMode, "repl-optimize", "Optimize mode of the browser console (default: ReleaseSafe, or -Doptimize when given; Debug for a diagnosis)"),
         optimize,
         b.user_input_options.contains("optimize") or b.graph.release_mode != .off,
     );
-    const repl_graph = if (runner_release and !use_system_curl) repl_graph: {
+    const repl_graph = if (runner_release != null and !use_system_curl) repl_graph: {
         var repl_config = module_config;
         // A private graph: crane_graph is the target platform's public one,
         // whose modules are registered by name (addCraneModules), and a name
@@ -4947,6 +4962,15 @@ pub fn build(b: *std.Build) void {
     const install_repl = b.addInstallArtifact(repl_exe, .{});
     install_repl.step.dependOn(&gen_snapshot.step);
     b.getInstallStep().dependOn(&install_repl.step);
+    // A release console names its modes beside itself (zig-out/bin/
+    // repl.modes, build_mode.zig `describe`): the performance suite's pin
+    // records them as the build's identity, read from what was built.
+    if (runner_release != null) {
+        var modes_buf: [256]u8 = undefined;
+        const modes_text = runner_build_mode.describe(&modes_buf, repl_modes) catch unreachable;
+        const modes_file = b.addWriteFiles().add("repl.modes", b.fmt("{s}\n", .{modes_text}));
+        install_repl.step.dependOn(&b.addInstallBinFile(modes_file, "repl.modes").step);
+    }
 
     // `zig build repl-exe`: the console alone - zig-out/bin/repl and its
     // snapshot - not the install step (19 artifacts, a root-module analysis

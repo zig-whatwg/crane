@@ -23,21 +23,31 @@ const Io = std.Io;
 pub const format_name = "crane-perf/1";
 
 pub const EngineName = enum {
+    /// Crane's release build: ReleaseSafe throughout (-Dwpt-runner-release).
+    /// Every headline compares it.
     crane,
+    /// The same release build with only the optimize mode changed: ReleaseFast
+    /// throughout, no C sanitizer (-Dwpt-runner-release-fast; the user,
+    /// 2026-11-05) - a column of its own beside `crane`, never the headline.
     crane_fast,
     chrome,
     firefox,
     safari,
     lightpanda,
 
-    // RED STUB
+    /// One of Crane's builds: launched as the console, with Crane's build
+    /// identity (commit, modes, V8) in every row.
     pub fn isCrane(e: EngineName) bool {
-        return e == .crane;
+        return switch (e) {
+            .crane, .crane_fast => true,
+            .chrome, .firefox, .safari, .lightpanda => false,
+        };
     }
 
     pub fn label(e: EngineName) []const u8 {
         return switch (e) {
-            .crane, .crane_fast => "Crane",
+            .crane => "Crane",
+            .crane_fast => "Crane ReleaseFast",
             .chrome => "Chrome",
             .firefox => "Firefox",
             .safari => "Safari",
@@ -204,7 +214,7 @@ pub fn validate(r: Record) ValidationError!void {
     if (!isSha256(r.engine.binary_sha256)) return error.BadSha256;
     // Crane's build identity: what the comparison rule requires (the
     // release build, never the correctness runner).
-    if (r.engine.name == .crane) {
+    if (r.engine.name.isCrane()) {
         if (r.engine.commit == null or r.engine.optimize == null or r.engine.v8 == null) return error.MissingBuildIdentity;
     }
     for (r.wall_ms) |v| try nonNegative(v);

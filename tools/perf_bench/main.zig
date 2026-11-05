@@ -13,7 +13,7 @@
 //!       matching its SHA-256
 //!   perf_bench check-suite --suite=... --root=...
 //!       the suite against its pages (zig build test runs it)
-//!   perf_bench gc-bench --gc-bench=<binary> --pin=<crane pin> --out=<dir>
+//!   perf_bench gc-bench --gc-bench=<binary> --pin=<a Crane pin> --out=<dir>
 //!                  --round=<n> --runs=<n> [--rows=a,b,...]
 //!       gc_bench's rows, the Crane-only rows, into <out>/journal.jsonl
 //!   perf_bench validate <journal.jsonl> ...
@@ -246,7 +246,7 @@ fn runGcBench(gpa: Allocator, arena: Allocator, io: Io, args: *const Args) !void
     const bin = args.need("gc-bench");
     const pin_text = Io.Dir.cwd().readFileAlloc(io, args.need("pin"), arena, .limited(64 * 1024)) catch |err| fail("pin: {t}", .{err});
     const pin = engines.parsePin(arena, pin_text) catch |err| fail("pin: {t}", .{err});
-    if (pin.name != .crane) fail("gc-bench rows are Crane's: the pin is {s}'s", .{@tagName(pin.name)});
+    if (!pin.name.isCrane()) fail("gc-bench rows are Crane's: the pin is {s}'s", .{@tagName(pin.name)});
     var gc_hex: [64]u8 = undefined;
     engines.sha256File(io, bin, &gc_hex) catch |err| fail("{s}: {t}", .{ bin, err });
     var rows: std.ArrayList(gcbench.Row) = .empty;
@@ -291,7 +291,7 @@ fn runGcBench(gpa: Allocator, arena: Allocator, io: Io, args: *const Args) !void
                 .round = round,
                 .time = time,
                 .host = host,
-                .engine = .{ .name = .crane, .version = pin.version, .build = pin.build, .commit = pin.commit, .optimize = pin.optimize, .v8 = pin.v8, .binary = bin, .binary_sha256 = &gc_hex, .flags = cmd[3..] },
+                .engine = .{ .name = pin.name, .version = pin.version, .build = pin.build, .commit = pin.commit, .optimize = pin.optimize, .v8 = pin.v8, .binary = bin, .binary_sha256 = &gc_hex, .flags = cmd[3..] },
                 .page = "gc_bench",
                 .workload = try std.fmt.allocPrint(a, "gc-bench.{s}", .{row.name}),
                 .kind = .gc_bench,
