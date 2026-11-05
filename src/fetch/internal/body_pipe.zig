@@ -96,6 +96,15 @@ pub const PipeSource = struct {
     paused: bool = false,
     /// Sees the body without reading it (`Observer`).
     observer: ?Observer = null,
+    /// Deliveries under way (`push`, `finish`, `fail`), each of which holds
+    /// the source until it returns. A reader told of news inside one may let
+    /// its pipe go right there - the last reader, even: a service worker's
+    /// opaque-body pump does when the page's reader went
+    /// (service_worker/fetch_event.zig InternalBodyPump) - and a source left
+    /// with no reader is then freed by the delivery as it returns, never
+    /// under it: the delivery still reads the source after each reader it
+    /// tells (lane crashes8: the release runner's libc malloc faulted there).
+    delivering: u32 = 0,
 
     /// A source with one reader. The producer, if any, is attached next.
     pub fn create(allocator: Allocator) !*PipeSource {
@@ -116,6 +125,8 @@ pub const PipeSource = struct {
     /// More of the body, for every reader.
     pub fn push(self: *PipeSource, bytes: []const u8) void {
         if (self.state != .open) return;
+        self.delivering += 1;
+        defer self.endDelivery();
         if (self.observer) |o| o.data(o.context, bytes);
         // Appended to all first, notified after: a reader's notification may
         // release another reader.
@@ -161,6 +172,8 @@ pub const PipeSource = struct {
     pub fn finish(self: *PipeSource) void {
         self.producer = null;
         if (self.state != .open) return self.freeIfUnused();
+        self.delivering += 1;
+        defer self.endDelivery();
         self.state = .closed;
         // Before the readers hear it: a reader that fetches the same URL on
         // hearing the end finds the body stored.
@@ -169,7 +182,6 @@ pub const PipeSource = struct {
             if (pipe.state == .open) pipe.state = .closed;
         }
         self.notifyAll();
-        self.freeIfUnused();
     }
 
     /// The body ended in error. The producer is done with this source, and
@@ -180,6 +192,8 @@ pub const PipeSource = struct {
             if (failure.reason) |r| if (failure.release_reason) |f| f(r);
             return self.freeIfUnused();
         }
+        self.delivering += 1;
+        defer self.endDelivery();
         self.state = .errored;
         self.failure = failure;
         self.endObserver(false);
@@ -187,6 +201,12 @@ pub const PipeSource = struct {
             if (pipe.state == .open) pipe.state = .errored;
         }
         self.notifyAll();
+    }
+
+    /// A delivery returns: the source is freed now if it holds nothing - no
+    /// reader, no producer, no other delivery.
+    fn endDelivery(self: *PipeSource) void {
+        self.delivering -= 1;
         self.freeIfUnused();
     }
 
@@ -235,7 +255,7 @@ pub const PipeSource = struct {
     }
 
     fn freeIfUnused(self: *PipeSource) void {
-        if (self.branches.items.len > 0 or self.producer != null) return;
+        if (self.branches.items.len > 0 or self.producer != null or self.delivering > 0) return;
         self.endObserver(false);
         if (self.failure) |f| {
             if (f.reason) |r| if (f.release_reason) |release| release(r);

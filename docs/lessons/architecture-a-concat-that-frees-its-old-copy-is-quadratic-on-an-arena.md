@@ -1,0 +1,14 @@
+# Architecture: A concat that frees its old copy is quadratic in memory on an arena
+
+**Date**: 2026-11-04
+**Lesson**: Growing a string by `new = concat(old, piece); free(old); old = new` copies the whole string for every piece - quadratic time with any allocator - and on an ArenaAllocator, where `free` is a no-op, every old copy stays: an n-byte result holds about n^2/2 bytes.
+
+**Why**: AGENTS.md says "`ArenaAllocator.free` is a no-op", and the rule did not catch this, because nothing here looked like a missing free: each step frees its old copy and the code reads as correct, the allocator is a parameter (`ctx.allocator`) set four hundred lines away (`parseFull` makes the arena), and every test input was a short URL, where n^2/2 is a few hundred bytes. The rule tells you what an arena does; it cannot tell you which allocator a function receives.
+
+**What Happened**: The URL parser's opaque path state (src/url/parser/basic_url_parser.zig) appended each code point's encoding with `std.mem.concat` and freed the old path, on the parse's arena. html/cross-origin-embedder-policy/worker-inheritance.sub.https.html starts a worker from `data:application/javascript,` + the URI-encoded testharness.js (~350 KB): each parse of that URL allocated ~60 GB in ~6 s, the run went through six such cycles in 38 s (62 GB phys_footprint, 43 GB max RSS), and the file timed out - on the correctness runner and the release runner alike, the whole 0.1 sweep's memory peak (3.4 GB without it). `sample` at 7 GB named it at once: the main thread 100% in Worker's constructor -> encodingParseAndSerialize -> parseFull -> runStateMachine -> memcpy (lane crashes8).
+
+**Fix**: Build the path in place in a list that grows geometrically (`appendToOpaquePath`: an `ArrayListUnmanaged(u8)` on the same arena; the arena grows its last block in place where it can). The red test parses a ~340 KB data: URL and a non-ASCII opaque path under an allocator that fails past 32x the input (tests/url/c8_opaque_path_growth_test.zig): OutOfMemory at once before, a pass after. A scan of src/ for the shape - `new = concat(.., x, ..)` then `x = new` within a few lines - finds these two sites and no other.
+
+A lint could hold it: flag `x = concat(x, ...)` (or `join`) - an append by whole copy - wherever it is, whatever the allocator; the copy alone makes it quadratic in time, and an arena makes it quadratic in memory. Tracking which calls receive an arena would need data flow a lint does not have, and is not needed: the self-append is the bug in both cases.
+
+**Takeaway**: **Never grow a buffer by concatenating it with a piece and freeing the old one - append to a list. On an arena the "free" is a no-op and the copies all stay: n bytes cost n^2/2. A long input (a data: URL is a whole file) is a spec edge case: test with one.**

@@ -1006,10 +1006,15 @@ const InternalBodyRead = struct {
     fn notify(context: *anyopaque) void {
         const self: *InternalBodyRead = @ptrCast(@alignCast(context));
         if (self.closed != null) return;
+        // `end` may free this read (a realm with no event loop runs its task
+        // at once), so it is the last step of every path: the chunk taken is
+        // freed before it, never by a `defer` after it (lane crashes8, as
+        // fetch_event.zig's InternalBodyPump).
         if (self.pipe.hasBytes()) {
             const chunk = self.pipe.take() catch return self.end(false);
-            defer self.allocator.free(chunk);
-            self.bytes.appendSlice(self.op.allocator, chunk) catch return self.end(false);
+            const kept = if (self.bytes.appendSlice(self.op.allocator, chunk)) |_| true else |_| false;
+            self.allocator.free(chunk);
+            if (!kept) return self.end(false);
         }
         switch (self.pipe.state) {
             .open => {},

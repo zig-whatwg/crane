@@ -282,8 +282,8 @@ pub fn copyResponse(allocator: Allocator, from: *const InternalResponse) Allocat
 /// worker's realm: one read in flight at a time, each chunk written to the
 /// relay - the observable equivalent of piping the body into the potential
 /// response's. The relay's reader gone (the fetch ended), the stream is
-/// canceled.
-const BodyPump = struct {
+/// canceled. Public for its tests (tests/service_worker/c8_body_pump_end_test.zig).
+pub const BodyPump = struct {
     realm: runtime.Context,
     /// The writer's reference.
     relay: *BodyRelay,
@@ -296,8 +296,20 @@ const BodyPump = struct {
     watch: ?*CancelWatch = null,
     /// The stream is being canceled for the reader: its pending read ends it.
     cancelling: bool = false,
+    /// `cancelForReader` holds the pump while it runs. Its cancel calls into
+    /// script - the stream's cancel algorithm is a callback, and the
+    /// microtask checkpoint after it runs the pending read's reaction - and
+    /// that reaction ends the pump (`finish`). The cancel still uses the pump
+    /// after, so a `finish` under the hold leaves the freeing to it
+    /// (docs/lessons/architecture-a-callback-can-end-its-own-environment.md;
+    /// fetch-event-respond-with-readable-stream.https.html, "Cancellation in
+    /// the page", crashed every time on the release runner reading the
+    /// freed pump's realm - lane crashes8).
+    cancel_hold: bool = false,
+    /// `finish` ran under `cancel_hold`: the hold's end frees the pump.
+    finished: bool = false,
 
-    fn start(realm: runtime.Context, stream: *runtime.Instance, relay: *BodyRelay) !void {
+    pub fn start(realm: runtime.Context, stream: *runtime.Instance, relay: *BodyRelay) !void {
         // 10.2.5.1. A reader of the body's stream.
         const reader = switch (try interfaces.ReadableStream.call_getReader(stream, @import("webidl").Opt(@import("dictionaries").ReadableStreamGetReaderOptions).notPassed())) {
             .readable_stream_default_reader => |r| r,
@@ -323,10 +335,19 @@ const BodyPump = struct {
     fn cancelForReader(self: *BodyPump) void {
         if (self.cancelling) return;
         self.cancelling = true;
+        self.cancel_hold = true;
+        defer self.endCancelHold();
         const canceled = interfaces.ReadableStreamDefaultReader.call_cancel(self.reader, @import("webidl").Opt(runtime.JSValue).notPassed()) catch return;
         const held: engine.Owned = .{ .value = canceled };
         engine.markPromiseAsHandled(self.realm, canceled);
         held.release();
+    }
+
+    /// The cancel is done with the pump: free it if its read ended it
+    /// meanwhile.
+    fn endCancelHold(self: *BodyPump) void {
+        self.cancel_hold = false;
+        if (self.finished) self.realm.allocator.destroy(self);
     }
 
     /// 10.2.5.2.2: read a chunk.
@@ -395,6 +416,10 @@ const BodyPump = struct {
         }
         self.relay.release();
         self.reader_hold.release();
+        if (self.cancel_hold) {
+            self.finished = true;
+            return;
+        }
         self.realm.allocator.destroy(self);
     }
 };
@@ -465,13 +490,14 @@ const CancelWatch = struct {
 
 /// An opaque response's internal body, written to the relay on the worker's
 /// thread: its bytes at once, or - still arriving from the network - as its
-/// pipe hears of them, through a reader of its own (a tee).
-const InternalBodyPump = struct {
+/// pipe hears of them, through a reader of its own (a tee). Public for its
+/// tests (tests/service_worker/c8_body_pump_end_test.zig).
+pub const InternalBodyPump = struct {
     allocator: Allocator,
     relay: *BodyRelay,
     pipe: *fetch.internal.BodyPipe,
 
-    fn start(body: *fetch.internal.Body, relay: *BodyRelay) !void {
+    pub fn start(body: *fetch.internal.Body, relay: *BodyRelay) !void {
         const pipe = body.pipe orelse {
             _ = relay.write(body.getBytes());
             relay.close();
@@ -491,10 +517,17 @@ const InternalBodyPump = struct {
 
     fn notify(context: *anyopaque) void {
         const self: *InternalBodyPump = @ptrCast(@alignCast(context));
+        // `finish` frees the pump, so it is the last step of every path and
+        // nothing of the pump is read after it: the bytes taken are freed
+        // before it. (A `defer` freeing them ran after `finish` and read the
+        // freed pump's allocator: fetch-canvas-tainting-video.https.html,
+        // whose page cancels the video's load, crashed every time on the
+        // release runner - lane crashes8.)
         if (self.pipe.hasBytes()) {
             const bytes = self.pipe.take() catch return self.finish(false);
-            defer self.allocator.free(bytes);
-            if (!self.relay.write(bytes)) return self.finish(false);
+            const written = self.relay.write(bytes);
+            self.allocator.free(bytes);
+            if (!written) return self.finish(false);
         }
         switch (self.pipe.state) {
             .open => {},

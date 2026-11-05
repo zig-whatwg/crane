@@ -1533,6 +1533,11 @@ var gpa_traced: runner_allocator.Traced = .{};
 /// allocator, and the log function reaches it to name the file a double free
 /// was reported in.
 var attribution: ?runner_allocator.Attributing = null;
+/// `runner_allocator.Poisoning` in front of gpa_fast or gpa_traced: every
+/// small block overwritten as it is freed, so a read after a free faults
+/// instead of finding the old bytes (on unless `CRANE_POISON_FREES=0`; never
+/// on the release runner, whose libc malloc it would only slow; lane crashes8).
+var poisoning: ?runner_allocator.Poisoning = null;
 
 fn run(init: std.process.Init) !u8 {
     // 0.16 removed std.process.argsAlloc - arguments are no longer process-global.
@@ -1554,7 +1559,9 @@ fn run(init: std.process.Init) !u8 {
     // src/lib_exports.zig's createBrowser gives a host, and thread-safe for the
     // worker and service-worker threads. Nothing is detected: it is for timing.
     const production = comptime wpt_options.production_allocator;
-    const tracked = if (production) std.heap.c_allocator else if (want_traces) gpa_traced.allocator() else gpa_fast.allocator();
+    const debug_allocator = if (want_traces) gpa_traced.allocator() else gpa_fast.allocator();
+    if (!production and runner_allocator.wantsPoison(init.minimal.environ.getPosix("CRANE_POISON_FREES"))) poisoning = .{ .child = debug_allocator };
+    const tracked = if (production) std.heap.c_allocator else if (poisoning) |*p| p.allocator() else debug_allocator;
     if (!production and runner_allocator.wantsAttribution(init.minimal.environ.getPosix("CRANE_LEAK_FILES"))) attribution = runner_allocator.Attributing.init(tracked);
     const allocator = if (attribution) |*a| a.allocator() else tracked;
     defer {
