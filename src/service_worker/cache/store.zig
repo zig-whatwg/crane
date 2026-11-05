@@ -314,7 +314,8 @@ pub const Storage = struct {
             //   name, queryCaches: a cache with no match goes on to index + 1;
             // - Firefox does not ship addRoutes (bug 1855580).
             // The spec's editors describe the source so too (w3c/ServiceWorker
-            // #1797: "cache" matches against all cache storages). A named
+            // #1797: "cache" matches against all cache storages); spec issue
+            // w3c/ServiceWorker#1853 asks for 7.3 to continue. A named
             // source reaches only its own cache (7.1), as Chromium's MatchCache
             // does, so it still ends at that cache's empty list (8).
             // A literal 7.3 made a cache another page had left behind - first
