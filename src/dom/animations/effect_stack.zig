@@ -275,15 +275,35 @@ pub const Commit = struct {
     targeted: std.AutoArrayHashMapUnmanaged(Longhand, void) = .empty,
     /// Their effect values (step 5.4), range-checked. OWNED.
     values: std.AutoArrayHashMapUnmanaged(Longhand, Value) = .empty,
+    /// The custom properties `animation`'s effects set on `target` (step 4:
+    /// "every property", custom properties included), each with its effect
+    /// value once captured (`frame` unused). OWNED.
+    customs: Customs = .empty,
     captured: bool = false,
 
     pub fn deinit(self: *Commit) void {
         for (self.values.values()) |v| v.release();
         self.values.deinit(self.allocator);
         self.targeted.deinit(self.allocator);
+        releaseCustoms(self.allocator, &self.customs);
     }
 
-    fn capture(self: *Commit, composited: *const Composited) Allocator.Error!void {
+    /// Custom property `name` is one `animation`'s effects target.
+    fn targetCustom(self: *Commit, name: *css.custom_properties.Text) Allocator.Error!void {
+        if (customIndex(&self.customs, name.bytes) != null) return;
+        try self.customs.ensureUnusedCapacity(self.allocator, 1);
+        name.retain();
+        self.customs.appendAssumeCapacity(.{ .frame = 0, .name = name, .value = null });
+    }
+
+    fn capture(self: *Commit, composited: *const Composited, composited_customs: *const Customs) Allocator.Error!void {
+        for (self.customs.items) |*custom| {
+            const i = customIndex(composited_customs, custom.name.bytes) orelse continue;
+            const value = composited_customs.items[i].value;
+            if (value) |v| v.retain();
+            if (custom.value) |old| old.release();
+            custom.value = value;
+        }
         self.captured = true;
         for (self.targeted.keys()) |l| {
             const v = composited.get(l) orelse continue;
@@ -353,40 +373,54 @@ pub fn animatedBlock(allocator: Allocator, element: *runtime.Instance, pseudo: ?
     // compute with those animated values in place.
     var early: Composited = .empty;
     defer releaseAll(allocator, &early);
+    // Custom properties composite in the first round too: the later
+    // longhands' keyframes substitute their animated values with var().
+    var customs: Customs = .empty;
+    defer releaseCustoms(allocator, &customs);
     var any = false;
     for (effects) |link| {
         const effect = liveEffect(link) orelse continue;
         if (!samePseudo(effect, pseudo)) continue;
         any = true;
-        try applyEffect(allocator, effect, base, cascader, null, .early, &early);
+        try applyEffect(allocator, effect, base, cascader, null, .early, &early, &customs);
     }
     if (!any) return null;
-    var early_block = try blockOf(allocator, &early);
+    var early_block = try blockOf(allocator, &early, &customs);
     defer if (early_block) |*b| b.deinit();
     var composited: Composited = .empty;
     defer releaseAll(allocator, &composited);
     for (effects) |link| {
         const effect = liveEffect(link) orelse continue;
         if (!samePseudo(effect, pseudo)) continue;
-        try applyEffect(allocator, effect, base, cascader, if (early_block) |*b| b else null, .late, &composited);
+        try applyEffect(allocator, effect, base, cascader, if (early_block) |*b| b else null, .late, &composited, &customs);
     }
     for (early.keys(), early.values()) |l, *v| {
         try composited.put(allocator, l, v.*);
         v.* = .{ .keyword = .none }; // moved
     }
     if (registry_mod.of(element.ctx)) |registry| if (registry.commit) |commit| {
-        if (commit.target == element and pseudo == null) try commit.capture(&composited);
+        if (commit.target == element and pseudo == null) try commit.capture(&composited, &customs);
     };
-    return try blockOf(allocator, &composited);
+    return try blockOf(allocator, &composited, &customs);
 }
 
 /// The composited values as typed declarations, range-checked (Values 4
-/// 3.1); null when there are none. The values move into the block.
-fn blockOf(allocator: Allocator, composited: *Composited) Allocator.Error!?DeclarationBlock {
-    if (composited.count() == 0) return null;
+/// 3.1), and the composited custom properties as custom declarations; null
+/// when there are none. The block takes references of its own.
+fn blockOf(allocator: Allocator, composited: *Composited, customs: *const Customs) Allocator.Error!?DeclarationBlock {
+    if (composited.count() == 0 and customs.items.len == 0) return null;
     var block = DeclarationBlock.init(allocator);
     errdefer block.deinit();
-    try block.entries.ensureTotalCapacity(allocator, composited.count());
+    try block.entries.ensureTotalCapacity(allocator, composited.count() + customs.items.len);
+    for (customs.items) |custom| {
+        // A guaranteed-invalid effect value (an endpoint's) is the initial
+        // value, as the custom property's own invalid value computes.
+        const value: css.custom_properties.Specified = if (custom.value) |text| .{ .text = text } else .{ .css_wide = .initial };
+        _ = block.setValidatedCustom(custom.name.bytes, value) catch |err| switch (err) {
+            error.Invalid => unreachable, // a custom property name, in a style block
+            error.OutOfMemory => return error.OutOfMemory,
+        };
+    }
     for (composited.keys(), composited.values()) |l, *v| {
         v.retain();
         const final = interpolation.clampFinal(l, v.*);
@@ -407,6 +441,8 @@ fn isEarly(l: Longhand) bool {
 
 fn roundDeclares(block: *const DeclarationBlock, round: Round) bool {
     for (block.entries.items) |*entry| {
+        // Custom properties composite in the first round (see applyEffect).
+        if (entry.* == .custom and round == .early) return true;
         if (entry.* != .typed) continue;
         // Logical longhands are never early.
         if (isEarly(entry.typed.longhand) == (round == .early)) return true;
@@ -416,7 +452,7 @@ fn roundDeclares(block: *const DeclarationBlock, round: Round) bool {
 
 /// One effect of the stack (5.4.3): each target property's effect value over
 /// the underlying value so far, which it replaces.
-fn applyEffect(allocator: Allocator, effect: *model.Effect, base: *const ComputedStyle, cascader: Cascader, under: ?*const DeclarationBlock, round: Round, composited: *Composited) Allocator.Error!void {
+fn applyEffect(allocator: Allocator, effect: *model.Effect, base: *const ComputedStyle, cascader: Cascader, under: ?*const DeclarationBlock, round: Round, composited: *Composited, composited_customs: *Customs) Allocator.Error!void {
     const registry = registry_mod.of(effect.instance.ctx);
     const commit = if (registry) |r| r.commit else null;
     const timing = effect.computedWith(commit != null);
@@ -427,6 +463,8 @@ fn applyEffect(allocator: Allocator, effect: *model.Effect, base: *const Compute
         for (computed_values.items) |c| c.value.release();
         computed_values.deinit(allocator);
     }
+    var computed_customs: Customs = .empty;
+    defer releaseCustoms(allocator, &computed_customs);
     for (effect.keyframes.frames.items, 0..) |*frame, frame_index| {
         if (frame.properties.items.len == 0) continue;
         var block = try keyframes_mod.declarationBlock(allocator, frame);
@@ -436,8 +474,20 @@ fn applyEffect(allocator: Allocator, effect: *model.Effect, base: *const Compute
         const style = try cascader.cascadeAbove(cascader.context, under, &block);
         defer style.destroy();
         for (block.entries.items) |*entry| {
-            // TODO(rendering3): custom properties animate discretely (5.2.1);
-            // they need custom entries in the animation block.
+            if (entry.* == .custom) {
+                // Custom properties composite in the first round: a value the
+                // later longhands substitute with var() is a dependency held
+                // by value (5.3.2), as Blink's StyleCascade applies custom
+                // property interpolations before every other.
+                if (round != .early) continue;
+                const name = entry.custom.name;
+                const value = style.customValue(name.bytes);
+                try computed_customs.ensureUnusedCapacity(allocator, 1);
+                name.retain();
+                if (value) |v| v.retain();
+                computed_customs.appendAssumeCapacity(.{ .frame = frame_index, .name = name, .value = value });
+                continue;
+            }
             if (entry.* != .typed) continue;
             const l = style.physical(entry.typed.longhand);
             if (interpolation.animationType(l) == .not_animatable) continue;
@@ -496,4 +546,143 @@ fn applyEffect(allocator: Allocator, effect: *model.Effect, base: *const Compute
         slot.value_ptr.* = result;
         if (commit) |c| if (effect.animationModel() == c.animation) try c.targeted.put(c.allocator, seed.longhand, {});
     }
+    // Each target custom property in turn (5.3.4), combined by its
+    // registered syntax (CSS Properties and Values API 1 2.5), or discretely
+    // when it has none.
+    var custom_keyframes: std.ArrayListUnmanaged(effect_values.PropertyKeyframe(CustomValue)) = .empty;
+    defer custom_keyframes.deinit(allocator);
+    for (computed_customs.items, 0..) |seed, seed_index| {
+        const seen = for (computed_customs.items[0..seed_index]) |earlier| {
+            if (std.mem.eql(u8, earlier.name.bytes, seed.name.bytes)) break true;
+        } else false;
+        if (seen) continue;
+        custom_keyframes.clearRetainingCapacity();
+        for (computed_customs.items) |c| {
+            if (!std.mem.eql(u8, c.name.bytes, seed.name.bytes)) continue;
+            const frame = &effect.keyframes.frames.items[c.frame];
+            try custom_keyframes.append(allocator, .{
+                .offset = frame.computed_offset,
+                .easing = if (frame.easing.value != null) &frame.easing else null,
+                .composite = switch (frame.composite) {
+                    .auto => null,
+                    .replace => .replace,
+                    .add => .add,
+                    .accumulate => .accumulate,
+                },
+                .value = c.value,
+            });
+        }
+        const existing = customIndex(composited_customs, seed.name.bytes);
+        const underlying: CustomValue = if (existing) |i| composited_customs.items[i].value else base.customValue(seed.name.bytes);
+        const ops: CustomOps = .{ .allocator = allocator, .syntax = registeredSyntax(base, seed.name.bytes) };
+        const result = try effect_values.effectValue(CustomValue, ops, custom_keyframes.items, .{
+            .progress = timing.progress,
+            .current_iteration = timing.current_iteration orelse 0,
+            .before_flag = timing.before_flag,
+        }, .{
+            .composite = switch (effect.composite) {
+                .replace => .replace,
+                .add => .add,
+                .accumulate => .accumulate,
+            },
+            .iteration_accumulate = effect.iteration_accumulate,
+        }, underlying) orelse continue;
+        if (existing) |i| {
+            ops.release(composited_customs.items[i].value);
+            composited_customs.items[i].value = result;
+        } else {
+            composited_customs.ensureUnusedCapacity(allocator, 1) catch |err| {
+                ops.release(result);
+                return err;
+            };
+            seed.name.retain();
+            composited_customs.appendAssumeCapacity(.{ .frame = 0, .name = seed.name, .value = result });
+        }
+        if (commit) |c| if (effect.animationModel() == c.animation) try c.targetCustom(seed.name);
+    }
 }
+
+/// A custom property's computed value in the stack: its token text (one
+/// reference per holder), or null for the guaranteed-invalid value.
+const CustomValue = ?*css.custom_properties.Text;
+
+/// One custom property's value: a computed keyframe's (`frame`), or a
+/// composited one. Holds a reference on `name` and on `value`.
+const CustomEntry = struct { frame: usize, name: *css.custom_properties.Text, value: CustomValue };
+
+/// The custom properties composited so far, in first-composited order.
+const Customs = std.ArrayListUnmanaged(CustomEntry);
+
+fn releaseCustoms(allocator: Allocator, customs: *Customs) void {
+    for (customs.items) |c| {
+        c.name.release();
+        if (c.value) |v| v.release();
+    }
+    customs.deinit(allocator);
+}
+
+fn customIndex(customs: *const Customs, name: []const u8) ?usize {
+    for (customs.items, 0..) |c, i| if (std.mem.eql(u8, c.name.bytes, name)) return i;
+    return null;
+}
+
+/// The registered syntax of custom property `name` in `style`'s
+/// registrations; null for an unregistered property or the universal
+/// syntax, which animate discretely.
+fn registeredSyntax(style: *const ComputedStyle, name: []const u8) ?*const css.syntax_definitions.Definition {
+    const snapshot = style.registered orelse return null;
+    const registration = snapshot.find(name) orelse return null;
+    if (registration.syntax.universal) return null;
+    return &registration.syntax;
+}
+
+/// effect_values' ops for a custom property: by its registered syntax
+/// (css.interpolation.combineSyntax over the parsed computed values), else
+/// discrete and not additive (Web Animations 1 5.2: an unregistered custom
+/// property's animation type is discrete).
+const CustomOps = struct {
+    allocator: Allocator,
+    syntax: ?*const css.syntax_definitions.Definition,
+
+    pub fn interpolate(self: CustomOps, a: CustomValue, b: CustomValue, p: f64) Allocator.Error!CustomValue {
+        // "p = 0 produces V_A and p = 1 produces V_B" (Values 4 3).
+        if (p == 0) return self.retain(a);
+        if (p == 1) return self.retain(b);
+        if (try self.combine(a, b, p, .interpolate)) |v| return v;
+        return self.retain(if (p < 0.5) a else b);
+    }
+    pub fn add(self: CustomOps, underlying: CustomValue, value: CustomValue) Allocator.Error!CustomValue {
+        if (try self.combine(underlying, value, 1, .add)) |v| return v;
+        return self.retain(value);
+    }
+    pub fn accumulate(self: CustomOps, underlying: CustomValue, value: CustomValue) Allocator.Error!CustomValue {
+        if (try self.combine(underlying, value, 1, .accumulate)) |v| return v;
+        return self.retain(value);
+    }
+    pub fn retain(_: CustomOps, v: CustomValue) CustomValue {
+        if (v) |text| text.retain();
+        return v;
+    }
+    pub fn release(_: CustomOps, v: CustomValue) void {
+        if (v) |text| text.release();
+    }
+
+    /// The combination as computed text, or null when the syntax has no
+    /// smooth combination for the pair.
+    fn combine(self: CustomOps, a: CustomValue, b: CustomValue, p: f64, op: interpolation.SyntaxOp) Allocator.Error!CustomValue {
+        const definition = self.syntax orelse return null;
+        const ta = a orelse return null;
+        const tb = b orelse return null;
+        const options: css.properties.ParseOptions = .{ .allocator = self.allocator };
+        var va = (try css.syntax_values.parse(definition, options, ta.bytes)) orelse return null;
+        defer va.deinit();
+        var vb = (try css.syntax_values.parse(definition, options, tb.bytes)) orelse return null;
+        defer vb.deinit();
+        var result = (try interpolation.combineSyntax(self.allocator, &va, &vb, p, op)) orelse return null;
+        defer result.deinit();
+        var text: std.ArrayList(u8) = .empty;
+        defer text.deinit(self.allocator);
+        try result.serialize(&text, self.allocator);
+        return try css.custom_properties.Text.create(self.allocator, text.items);
+    }
+};

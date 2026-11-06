@@ -2022,14 +2022,6 @@ pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionarie
     return error.NotImplemented;
 }
 
-/// Operation: getAnimations (Web Animations 1 6.8): the relevant animations
-/// for this element, or with `subtree` for its subtree, in composite order.
-/// Spec: https://drafts.csswg.org/web-animations-1/#dom-animatable-getanimations
-pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetAnimationsOptions)) anyerror!runtime.JSValue {
-    const given = options.getOrDefault(.{});
-    return @import("dom").animations.elementAnimations(instance, given.subtree orelse false, if (given.pseudoElement) |p| p.asSlice() else null);
-}
-
 /// Operation: getElementsByClassName
 /// DOM §4.10.5 - Returns HTMLCollection of descendants with all given class names
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getelementsbyclassname
@@ -2208,13 +2200,6 @@ pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(d
     // Fullscreen requires browser integration - return undefined
     // TODO: Should return a rejected Promise with TypeError
     return runtime.JSValue.jsUndefined;
-}
-
-/// Operation: animate (Web Animations 1 6.8): a new KeyframeEffect and
-/// Animation for this element, played.
-/// Spec: https://drafts.csswg.org/web-animations-1/#dom-animatable-animate
-pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    return @import("dom").animations.animate(instance, keyframes, if (options.was_passed) options.value else null);
 }
 
 /// Operation: getHTML

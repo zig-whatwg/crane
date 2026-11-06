@@ -70,8 +70,10 @@ pub fn constructKeyframeEffect(effect_instance: *runtime.Instance, target: ?*run
     effect.pseudo = try options.parsePseudoElement(effect.allocator, converted.pseudo_element);
     // 4-5.
     try options.updateTiming(effect, converted.timing);
-    // 6.
+    // 6. Web Animations 2 amends step 5: the iterationComposite and composite
+    // properties, from options.
     effect.composite = converted.composite;
+    effect.iteration_accumulate = converted.iteration_accumulate;
     // 7.
     try setKeyframes(effect, keyframe_input);
 }
@@ -87,7 +89,8 @@ pub fn setKeyframes(effect: *model.Effect, keyframe_input: ?JSValue) !void {
 }
 
 /// KeyframeEffect(source): a copy of `source`'s target, keyframes,
-/// composite operation and specified timing.
+/// composite operation and specified timing, and (Web Animations 2) its
+/// iteration composite operation.
 pub fn copyKeyframeEffect(effect_instance: *runtime.Instance, source_instance: *runtime.Instance) !void {
     const effect = hooks.effectOf(effect_instance) orelse return error.InvalidStateError;
     const source = hooks.effectOf(source_instance) orelse return error.TypeError;
@@ -95,6 +98,7 @@ pub fn copyKeyframeEffect(effect_instance: *runtime.Instance, source_instance: *
     effect.setTarget(source.targetElement());
     if (source.pseudo) |pseudo| effect.pseudo = try effect.allocator.dupe(u8, pseudo);
     effect.composite = source.composite;
+    effect.iteration_accumulate = source.iteration_accumulate;
     effect.timing.deinit(effect.allocator);
     effect.timing = try source.timing.clone(effect.allocator);
     effect.keyframes.deinit(effect.allocator);
@@ -244,7 +248,7 @@ pub fn commitStyles(animation: *model.Animation) !void {
     loop_registry.commit = null;
     registry.valuesChanged(target.ctx);
     _ = try read;
-    if (commit.values.count() == 0) return;
+    if (commit.values.count() == 0 and commit.customs.items.len == 0) return;
     // 3, 5.5-5.6.
     const declaration = switch (kind) {
         .html => try interfaces.HTMLElement.get_style(target),
@@ -257,5 +261,11 @@ pub fn commitStyles(animation: *model.Animation) !void {
         text.clearRetainingCapacity();
         try css.properties.serializeValue(l, v, &text, target.ctx.allocator);
         try interfaces.CSSStyleDeclaration.call_setProperty(declaration, runtime.DOMString.initInterned(l.name()), runtime.DOMString.initInterned(text.items), webidl.Opt(runtime.DOMString).notPassed());
+    }
+    // 5.5 for a custom property: its effect value is its computed token
+    // text; a guaranteed-invalid one has no serialization and is skipped.
+    for (commit.customs.items) |custom| {
+        const value = custom.value orelse continue;
+        try interfaces.CSSStyleDeclaration.call_setProperty(declaration, runtime.DOMString.initInterned(custom.name.bytes), runtime.DOMString.initInterned(value.bytes), webidl.Opt(runtime.DOMString).notPassed());
     }
 }

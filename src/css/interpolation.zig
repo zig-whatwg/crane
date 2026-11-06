@@ -47,6 +47,9 @@ const position_values = @import("position_values.zig");
 const box_shadow_values = @import("box_shadow_values.zig");
 const filter_values = @import("filter_values.zig");
 const Number = @import("numeric_values.zig").Number;
+const syntax_values = @import("syntax_values.zig");
+const syntax_definitions = @import("syntax_definitions.zig");
+const transform_functions = @import("transform_functions.zig");
 
 const Longhand = properties.Longhand;
 const Value = values.Value;
@@ -231,6 +234,294 @@ pub fn accumulate(allocator: Allocator, l: Longhand, underlying: Value, value: V
         if (try mixFilters(allocator, a, b, 1, .accumulate)) |sum| return sum;
     };
     return add(allocator, l, underlying, value);
+}
+
+// ============================================================================
+// Registered custom properties (CSS Properties and Values API 1 2.5)
+// ============================================================================
+
+/// Which of Values 4 3's three operations `combineSyntax` performs.
+pub const SyntaxOp = enum { interpolate, add, accumulate };
+
+/// CSS Properties and Values API 1 2.5 "Animation Behavior": a registered
+/// custom property's computed values "interpolate by computed value, in
+/// accordance with the type that they parsed as". So:
+/// - a list (`+`, `#`) combines as a simple list, item by item, and has no
+///   smooth combination when the lengths differ;
+/// - a <transform-list> and a <transform-function>+ combine "as per the
+///   transform property" (Transforms 2 14-15: same functions argument by
+///   argument; addition appends the lists; accumulation adds each argument,
+///   one-based ones as a + b - 1);
+/// - a single <transform-function> combines argument by argument (its
+///   addition is its accumulation: a single function cannot hold a list);
+/// - a number, length, percentage, length-percentage, integer, angle, time
+///   or resolution as its numeric type (lengths and percentages mix into a
+///   calc(); an integer interpolates as a real and rounds half up, Values 4
+///   5.1); a legacy color in premultiplied sRGB, as the color properties.
+/// `p` is the interpolation's (any real); addition and accumulation ignore
+/// it. Null when the pair has no smooth combination - `*`, an ident, a
+/// string, an image or url, mismatched lists, different transform functions
+/// (which need matrices, Transforms 2 13) - for the caller to combine
+/// discretely. The result is OWNED by the caller; inputs are borrowed.
+///
+/// Engines (designs only): Blink CSSInterpolationTypesMap picks a
+/// CSSInterpolationType per registered syntax component, lists through
+/// CSSCustomListInterpolationType, transforms through
+/// CSSTransformInterpolationType; Gecko's properties_and_values
+/// ComputedValue implements Animate item by item.
+///
+/// Spec: https://drafts.css-houdini.org/css-properties-values-api-1/#animation-behavior-of-custom-properties
+pub fn combineSyntax(allocator: Allocator, a: *const syntax_values.Value, b: *const syntax_values.Value, p: f64, op: SyntaxOp) Allocator.Error!?syntax_values.Value {
+    switch (a.data) {
+        .universal => return null,
+        .single => |x| {
+            if (b.data != .single) return null;
+            const item = (try combineItem(allocator, x, b.data.single, p, op)) orelse return null;
+            return .{ .allocator = allocator, .data = .{ .single = item } };
+        },
+        .list => |la| {
+            if (b.data != .list) return null;
+            const lb = b.data.list;
+            if (la.separator != lb.separator) return null;
+            const transforms = la.separator == .space and allTransforms(la.items) and allTransforms(lb.items);
+            if (transforms) {
+                if (op == .add) return try concatItems(allocator, la.items, lb.items);
+                return try combineTransformLists(allocator, la.items, lb.items, p, op);
+            }
+            if (la.items.len != lb.items.len) return null;
+            const items = try allocator.alloc(syntax_values.Item, la.items.len);
+            var made: usize = 0;
+            errdefer {
+                for (items[0..made]) |*item| item.deinit(allocator);
+                allocator.free(items);
+            }
+            for (la.items, lb.items) |x, y| {
+                items[made] = (try combineItem(allocator, x, y, p, op)) orelse {
+                    for (items[0..made]) |*item| item.deinit(allocator);
+                    allocator.free(items);
+                    return null;
+                };
+                made += 1;
+            }
+            return .{ .allocator = allocator, .data = .{ .list = .{ .separator = la.separator, .items = items } } };
+        },
+    }
+}
+
+fn allTransforms(items: []const syntax_values.Item) bool {
+    for (items) |item| if (item != .transform) return false;
+    return true;
+}
+
+/// Transforms 2 15: "V_result is equal to V_b appended to V_a".
+fn concatItems(allocator: Allocator, a: []const syntax_values.Item, b: []const syntax_values.Item) Allocator.Error!syntax_values.Value {
+    const items = try allocator.alloc(syntax_values.Item, a.len + b.len);
+    var made: usize = 0;
+    errdefer {
+        for (items[0..made]) |*item| item.deinit(allocator);
+        allocator.free(items);
+    }
+    for ([_][]const syntax_values.Item{ a, b }) |list| for (list) |item| {
+        items[made] = .{ .transform = try copyFunction(allocator, item.transform) };
+        made += 1;
+    };
+    return .{ .allocator = allocator, .data = .{ .list = .{ .separator = .space, .items = items } } };
+}
+
+/// Transforms 1 9 (interpolation) and Transforms 2 15 (accumulation) of two
+/// transform lists: the shorter list extended with "the identity transform
+/// function matching the function at the corresponding position in the
+/// longer list", then each pair of functions combined. A pair of different
+/// functions combines as matrices (Transforms 1 11: pending here, so null).
+fn combineTransformLists(allocator: Allocator, a: []const syntax_values.Item, b: []const syntax_values.Item, p: f64, op: SyntaxOp) Allocator.Error!?syntax_values.Value {
+    const ka: f64, const kb: f64 = if (op == .interpolate) .{ 1 - p, p } else .{ 1, 1 };
+    const n = @max(a.len, b.len);
+    const items = try allocator.alloc(syntax_values.Item, n);
+    var made: usize = 0;
+    errdefer {
+        for (items[0..made]) |*item| item.deinit(allocator);
+        allocator.free(items);
+    }
+    for (0..n) |i| {
+        var pad: ?transform_functions.Function = null;
+        defer if (pad) |*f| f.deinit();
+        if (i >= a.len) pad = try identityFunction(allocator, b[i].transform) else if (i >= b.len) pad = try identityFunction(allocator, a[i].transform);
+        const x = if (i < a.len) a[i].transform else pad.?;
+        const y = if (i < b.len) b[i].transform else pad.?;
+        const function = (try combineFunction(allocator, x, y, ka, kb, op)) orelse {
+            for (items[0..made]) |*item| item.deinit(allocator);
+            allocator.free(items);
+            return null;
+        };
+        items[made] = .{ .transform = function };
+        made += 1;
+    }
+    return .{ .allocator = allocator, .data = .{ .list = .{ .separator = .space, .items = items } } };
+}
+
+/// Transforms 2 "identity transform function": the function of `like`'s
+/// kind that changes nothing - zero translations, rotations and skews, unit
+/// scales, rotate3d() about the same axis by 0, the identity matrix, and
+/// perspective(none). OWNED.
+fn identityFunction(allocator: Allocator, like: transform_functions.Function) Allocator.Error!transform_functions.Function {
+    const arguments = try allocator.alloc(Number, like.arguments.len);
+    errdefer allocator.free(arguments);
+    const px: Number = .{ .literal = .{ .value = 0, .unit = .px } };
+    for (arguments, 0..) |*argument, index| {
+        argument.* = switch (like.kind) {
+            .translate, .translateX, .translateY, .translateZ, .translate3d => px,
+            .scale, .scaleX, .scaleY, .scaleZ, .scale3d => Number.scalar(1),
+            .rotate, .rotateX, .rotateY, .rotateZ, .skew, .skewX, .skewY => zeroDegrees(),
+            .rotate3d => if (index < 3) blk: {
+                like.arguments[index].ref();
+                break :blk like.arguments[index];
+            } else zeroDegrees(),
+            // matrix(1, 0, 0, 1, 0, 0) and the 4x4 identity.
+            .matrix => Number.scalar(if (index == 0 or index == 3) 1 else 0),
+            .matrix3d => Number.scalar(if (index % 5 == 0) 1 else 0),
+            // perspective(none) has no argument; one given pads as none too.
+            .perspective => px,
+        };
+    }
+    if (like.kind == .perspective) {
+        allocator.free(arguments);
+        return .{ .allocator = allocator, .kind = .perspective, .arguments = &.{}, .computed = true };
+    }
+    return .{ .allocator = allocator, .kind = like.kind, .arguments = arguments, .computed = true };
+}
+
+fn copyFunction(allocator: Allocator, f: transform_functions.Function) Allocator.Error!transform_functions.Function {
+    const arguments = try allocator.dupe(Number, f.arguments);
+    for (arguments) |argument| argument.ref();
+    return .{ .allocator = allocator, .kind = f.kind, .arguments = arguments, .computed = f.computed };
+}
+
+fn combineItem(allocator: Allocator, a: syntax_values.Item, b: syntax_values.Item, p: f64, op: SyntaxOp) Allocator.Error!?syntax_values.Item {
+    const ka: f64, const kb: f64 = if (op == .interpolate) .{ 1 - p, p } else .{ 1, 1 };
+    switch (a) {
+        .numeric => |x| {
+            if (b != .numeric or b.numeric.data_type != x.data_type) return null;
+            const kind = numericKind(x.data_type) orelse return null;
+            var number = (try mixNumbers(allocator, x.number, ka, b.numeric.number, kb, kind)) orelse return null;
+            // Values 4 5.1: an interpolated <integer> rounds, halfway values
+            // towards positive infinity.
+            if (x.data_type == .integer) if (literal(number)) |n| {
+                number.unref();
+                number = .{ .literal = .{ .value = @floatFromInt(roundInteger(n.value)), .unit = n.unit } };
+            };
+            return .{ .numeric = .{ .data_type = x.data_type, .number = number } };
+        },
+        .color => |x| {
+            if (b != .color) return null;
+            const ca = legacyRgba(x) orelse return null;
+            const cb = legacyRgba(b.color) orelse return null;
+            return .{ .color = .{ .rgba = if (op == .interpolate) mixPremultiplied(ca, cb, p) else addPremultiplied(ca, cb) } };
+        },
+        .transform => |x| {
+            if (b != .transform) return null;
+            const function = (try combineFunction(allocator, x, b.transform, ka, kb, op)) orelse return null;
+            return .{ .transform = function };
+        },
+        .image, .url, .ident, .string => return null,
+    }
+}
+
+fn numericKind(data_type: syntax_definitions.DataType) ?math.Kind {
+    return switch (data_type) {
+        .length => .length,
+        .number => .number,
+        .percentage => .percentage,
+        .length_percentage => .length_percentage,
+        .integer => .integer,
+        .angle => .angle,
+        .time => .time,
+        .resolution => .resolution,
+        else => null,
+    };
+}
+
+/// Transforms 2 14: "two transform functions with the same name and the
+/// same number of arguments are interpolated numerically", except matrix(),
+/// matrix3d() and perspective(), and a rotate3d() about another axis, which
+/// interpolate as matrices (Transforms 2 13: pending here, so null). Two
+/// different functions convert to a common primitive or a matrix: pending,
+/// null. Accumulation (15) adds each argument, a one-based one (a scale
+/// factor) as a + b - 1.
+fn combineFunction(allocator: Allocator, a: transform_functions.Function, b: transform_functions.Function, ka: f64, kb: f64, op: SyntaxOp) Allocator.Error!?transform_functions.Function {
+    if (a.kind != b.kind or a.arguments.len != b.arguments.len) return null;
+    switch (a.kind) {
+        .matrix, .matrix3d, .perspective => return null,
+        .rotate3d => for (a.arguments[0..3], b.arguments[0..3]) |x, y| if (!x.eql(y)) return null,
+        else => {},
+    }
+    const one_based = switch (a.kind) {
+        .scale, .scaleX, .scaleY, .scaleZ, .scale3d => op != .interpolate,
+        else => false,
+    };
+    const arguments = try allocator.alloc(Number, a.arguments.len);
+    var made: usize = 0;
+    errdefer {
+        for (arguments[0..made]) |argument| argument.unref();
+        allocator.free(arguments);
+    }
+    for (a.arguments, b.arguments, 0..) |x, y, index| {
+        if (a.kind == .rotate3d and index < 3) {
+            x.ref();
+            arguments[made] = x;
+            made += 1;
+            continue;
+        }
+        const kind = functionArgumentKind(a.kind, index);
+        var mixed = (try mixNumbers(allocator, x, ka, y, kb, kind)) orelse {
+            for (arguments[0..made]) |argument| argument.unref();
+            allocator.free(arguments);
+            return null;
+        };
+        if (one_based) if (literal(mixed)) |n| {
+            mixed.unref();
+            mixed = .{ .literal = .{ .value = n.value - 1, .unit = n.unit } };
+        };
+        arguments[made] = mixed;
+        made += 1;
+    }
+    return .{ .allocator = allocator, .kind = a.kind, .arguments = arguments, .computed = true };
+}
+
+/// A transform function argument's numeric kind (Transforms 1 7, 2 12).
+fn functionArgumentKind(kind: transform_functions.Kind, index: usize) math.Kind {
+    return switch (kind) {
+        .translate, .translateX, .translateY => .length_percentage,
+        .translateZ, .perspective => .length,
+        .translate3d => if (index == 2) .length else .length_percentage,
+        .scale, .scaleX, .scaleY, .scaleZ, .scale3d => .number_percentage,
+        .rotate, .rotateX, .rotateY, .rotateZ, .skew, .skewX, .skewY => .angle,
+        .rotate3d => if (index == 3) .angle else .number,
+        .matrix, .matrix3d => .number,
+    };
+}
+
+/// `a` * `ka` + `b` * `kb` of two computed numbers of `kind`: a literal when
+/// both are of one unit (a zero length or percentage takes the other's),
+/// else a computed calc() mix (lengths with percentages). Null when the mix
+/// does not parse as `kind`. OWNED.
+fn mixNumbers(allocator: Allocator, a: Number, ka: f64, b: Number, kb: f64, kind: math.Kind) Allocator.Error!?Number {
+    if (mixNumeric(a, ka, b, kb)) |n| return .{ .literal = n };
+    var text: std.ArrayList(u8) = .empty;
+    defer text.deinit(allocator);
+    try text.appendSlice(allocator, "calc((");
+    try a.serialize(&text, allocator);
+    try text.print(allocator, ") * {d} + (", .{ka});
+    try b.serialize(&text, allocator);
+    try text.print(allocator, ") * {d})", .{kb});
+    const parsed = (try math.parse(allocator, text.items, .{ .kind = kind })) orelse return null;
+    defer parsed.expression.unref();
+    const computed = try parsed.expression.compute(allocator, .{});
+    // A mix whose percentage part cancelled is a plain number again.
+    if (computed.computedNumber()) |n| {
+        computed.unref();
+        return .{ .literal = n };
+    }
+    return .{ .calculation = computed };
 }
 
 // ============================================================================
