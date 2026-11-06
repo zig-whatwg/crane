@@ -308,7 +308,36 @@ pub const Options = struct {
     site_url: []const u8 = "https://zig-whatwg.github.io/crane/",
     /// How the page reaches the WPT site's stylesheet and fonts.
     assets: []const u8 = "../",
+    /// A re-measurement (`perf_bench report --control=<dir>`), when the
+    /// round's rows of some engines come from a second window.
+    remeasured: ?Remeasured = null,
 };
+
+// RED STUB
+pub const Remeasured = struct {
+    engines: []const EngineName,
+    control: *const Model,
+};
+
+// RED STUB
+pub const Drift = struct {
+    engine: EngineName,
+    time_ratio: ?f64 = null,
+    time_n: usize = 0,
+    memory_ratio: ?f64 = null,
+    memory_n: usize = 0,
+    outside: usize = 0,
+    within: bool = false,
+};
+
+// RED STUB
+pub fn drift(arena: Allocator, m: *const Model, control: *const Model, round: u32, engine: EngineName) !Drift {
+    _ = arena;
+    _ = m;
+    _ = control;
+    _ = round;
+    return .{ .engine = engine };
+}
 
 /// Every file of /performance/ for `m`: name -> bytes.
 pub const Output = struct {
@@ -879,6 +908,57 @@ test "a round without Crane ReleaseFast has no column for it" {
     try testing.expect(std.mem.indexOf(u8, page, "Crane ReleaseFast</th>") == null);
     try testing.expect(std.mem.indexOf(u8, page, "ReleaseFast / ReleaseSafe") == null);
     try testing.expect(std.mem.indexOf(u8, page, "id=\"release-fast\"") == null);
+}
+
+test "a re-measured engine: Crane's drift control against the first window, within noise or not" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // The round as published: Crane from the first window, Safari from the second.
+    const records = [_]journal.Record{
+        try timed(a, 0, .crane, "abc", "dom.a", 0, 20, 100),
+        try timed(a, 0, .crane, "abc", "dom.b", 0, 8, 200),
+        try timed(a, 0, .safari, "27.2", "dom.a", 0, 10, 50),
+        try timed(a, 0, .safari, "27.2", "dom.b", 0, 8, 50),
+    };
+    const m = try build(a, &records);
+    // The second window's Crane rows: the drift control, never the round's.
+    const steady = [_]journal.Record{
+        try timed(a, 0, .crane, "abc", "dom.a", 0, 21, 102),
+        try timed(a, 0, .crane, "abc", "dom.b", 0, 8, 200),
+    };
+    const control = try build(a, &steady);
+    const d = try drift(a, &m, &control, 0, .crane);
+    // time sqrt(21/20 * 8/8); memory sqrt(1.02 * 1)
+    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(1.05)), d.time_ratio.?, 1e-12);
+    try testing.expectEqual(@as(usize, 2), d.time_n);
+    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(1.02)), d.memory_ratio.?, 1e-12);
+    try testing.expect(d.within);
+    try testing.expectEqual(@as(usize, 0), d.outside);
+    // The control's rows change nothing in the round: Crane's cell is the first window's.
+    try testing.expectEqual(@as(?f64, 20), m.current(0, .crane, "dom.a").?.time_ms);
+
+    const page = (try render(a, &m, .{ .remeasured = .{ .engines = &.{.safari}, .control = &control } })).index_html;
+    const i = std.mem.indexOf(u8, page, "id=\"remeasured\"").?;
+    const section = page[i .. i + std.mem.indexOf(u8, page[i..], "</section>").?];
+    try testing.expect(std.mem.indexOf(u8, section, "Safari") != null);
+    try testing.expect(std.mem.indexOf(u8, section, "within noise") != null);
+    try testing.expect(std.mem.indexOf(u8, section, "not within noise") == null);
+    try testing.expect(std.mem.indexOf(u8, section, "<code>dom.a</code>") != null);
+    // Without a re-measurement, no such section.
+    try testing.expect(std.mem.indexOf(u8, (try render(a, &m, .{})).index_html, "id=\"remeasured\"") == null);
+
+    // A control that drifted: Crane 50% slower in the second window.
+    const drifted = [_]journal.Record{
+        try timed(a, 0, .crane, "abc", "dom.a", 0, 30, 100),
+        try timed(a, 0, .crane, "abc", "dom.b", 0, 12, 200),
+    };
+    const bad = try build(a, &drifted);
+    const dd = try drift(a, &m, &bad, 0, .crane);
+    try testing.expect(!dd.within);
+    try testing.expectEqual(@as(usize, 2), dd.outside);
+    const bad_page = (try render(a, &m, .{ .remeasured = .{ .engines = &.{.safari}, .control = &bad } })).index_html;
+    try testing.expect(std.mem.indexOf(u8, bad_page, "not within noise") != null);
 }
 
 test "the page: headline in the HTML, social metadata, the card, every engine named" {

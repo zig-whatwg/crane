@@ -206,6 +206,8 @@ pub const Launch = struct {
     drive: Drive,
     /// Processes outside the launched tree that belong to the engine.
     names: []const []const u8 = &.{},
+    // RED STUB
+    app_names: []const []const u8 = &.{},
     /// Environment additions.
     env: []const [2][]const u8 = &.{},
     /// Its stdin a pipe the runner holds open: the console reads its input
@@ -416,6 +418,31 @@ test "each engine's command line, and the flags the journal records" {
     try expectStrings(&.{ "/usr/bin/safaridriver", "-p", "4444" }, safari.argv);
     try testing.expectEqual(@as(usize, 4), safari.names.len);
     try testing.expectEqual(Drive.webdriver, safari.drive);
+}
+
+test "Safari's app is its launch's own: none running before it, and ended after it" {
+    // safaridriver starts Safari (--automation) for a session and, on
+    // Safari 27.2, leaves it running after Delete Session: the next launch
+    // reused it, and its app, Networking and GPU processes - started before
+    // that launch - were not counted (perf round 0, 2026-11-06). Safari's
+    // app is named so that the runner refuses a launch while one runs and
+    // ends the one its launch started, by exact pid.
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const sha = "abababababababababababababababababababababababababababababababab";
+    const url = "http://127.0.0.1:8000/x.html";
+    const safari = try launch(a, .{ .name = .safari, .version = "27.2", .build = "b", .binary = "/Applications/Safari.app/Contents/MacOS/Safari", .sha256 = sha, .webdriver = "/usr/bin/safaridriver" }, url, "/p", 4444);
+    try expectStrings(&.{"Safari"}, safari.app_names);
+    // The app is one of the set's names: counted while the launch runs.
+    try testing.expect(for (safari.names) |n| {
+        if (std.mem.eql(u8, n, "Safari")) break true;
+    } else false);
+    // Every other engine's processes are its launched tree.
+    const chrome = try launch(a, .{ .name = .chrome, .version = "157", .build = "b", .binary = "/c/chrome", .sha256 = sha }, url, "/p/1", 0);
+    try testing.expectEqual(@as(usize, 0), chrome.app_names.len);
+    const crane = try launch(a, .{ .name = .crane, .version = "v", .build = "b", .binary = "/b/repl", .sha256 = sha, .commit = "c", .optimize = "o", .v8 = "v8" }, url, "/p", 0);
+    try testing.expectEqual(@as(usize, 0), crane.app_names.len);
 }
 
 test "a file's SHA-256" {
