@@ -16,6 +16,7 @@ const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
 const runtime = @import("runtime");
+const interfaces = @import("interfaces");
 const engine = @import("engine");
 const fetch = @import("fetch");
 
@@ -70,7 +71,13 @@ fn droppedSlotThenGone() !void {
     // The load started in its microtask and its fetch is in flight.
     try expectTrue(browser, "image.complete === false");
 
-    // A teardown that frees the slot without the element's own deinit.
+    // A teardown that frees the slot without the image's own deinit. Its
+    // base levels' states (HTMLElement, Element, Node, EventTarget) live in
+    // the element's own State (runtime.OwnState, lane perf2 batch 2), which
+    // no sweep reaches once its slot is gone, so their teardown runs first;
+    // HTMLImageElement's state - the one this case is about, with its fetch
+    // in flight - is left behind, keyed by the freed address.
+    interfaces.HTMLElement.deinitChain(element);
     runtime.BrowserScope.ofInstance(element).slab.free(element);
     // The fetch layer finds its client gone: terminates the fetch, and
     // `gone` destroys it.
