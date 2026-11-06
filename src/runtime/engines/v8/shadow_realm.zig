@@ -200,15 +200,12 @@ fn shadowRealmContextCallback(initiator_context_ptr: ?*anyopaque) callconv(.c) ?
 }
 
 /// Give the ShadowRealm's context `shadow` the security token of its
-/// initiator context `initiator` (both BORROWED).
+/// initiator context `initiator` (both BORROWED). The token goes across in
+/// the adapter's C++ and no handle is made: read through
+/// v8_Context_GetSecurityToken, it was a Global<Value> per ShadowRealm that
+/// nothing released (tests/v8/perf3_security_token_copy_test.zig).
 pub fn inheritSecurityToken(shadow: *ffi.Context, initiator: *ffi.Context) void {
-    if (ffi.v8_Context_GetSecurityToken(initiator)) |token| {
-        ffi.v8_Context_SetSecurityToken(shadow, token);
-        std.log.debug("[ShadowRealm] Set security token from initiator context", .{});
-    } else {
-        std.log.warn("[ShadowRealm] Initiator context has no security token, using default", .{});
-        ffi.v8_Context_UseDefaultSecurityToken(shadow);
-    }
+    ffi.v8_Context_InheritSecurityToken(shadow, initiator);
 }
 
 /// Dispose a ShadowRealm's context handle - a Global<Context> that
