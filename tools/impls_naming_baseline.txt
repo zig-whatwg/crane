@@ -109,8 +109,6 @@ src/webidl/impls/ARIAMixin.zig set_ariaValueText 1
 src/webidl/impls/ARIAMixin.zig set_role 1
 src/webidl/impls/AbstractWorker.zig get_onerror 1
 src/webidl/impls/AbstractWorker.zig set_onerror 1
-src/webidl/impls/Animatable.zig call_animate 1
-src/webidl/impls/Animatable.zig call_getAnimations 1
 src/webidl/impls/AnimationFrameProvider.zig call_cancelAnimationFrame 1
 src/webidl/impls/AnimationFrameProvider.zig call_requestAnimationFrame 1
 src/webidl/impls/Body.zig call_arrayBuffer 1
