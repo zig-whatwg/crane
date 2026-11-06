@@ -1,9 +1,13 @@
 //! InstanceRegistry - an impl's internal state for each of its instances, in
 //! the instance's Browser's side table (instances B1, docs/instances.md).
 //!
-//! An impl that keeps per-instance state outside the generated State (most
-//! DOM types: Node, Element, HTMLElement, ...) registers it here, keyed by the
-//! instance's address. The table is its Browser's - a side table of the
+//! An impl that keeps per-instance state outside the generated State and must
+//! enumerate its instances while their Browser runs (HTMLInputElement,
+//! HTMLImageElement, HTMLScriptElement, HTMLFormElement, FontFace, ...: "every
+//! img of the document") registers it here, keyed by the instance's address.
+//! A type read on every call and enumerated only at its Browser's end keeps
+//! its state in its own generated State instead (runtime.OwnState: Node,
+//! Element, HTMLElement, the CharacterData types, ...), with no table. The table is its Browser's - a side table of the
 //! instance's `BrowserScope` (`BrowserScope.Table`), found from the instance's
 //! address - so a Browser's entries are its own, its end takes them with it,
 //! and another Browser's end never reaches them.
@@ -11,7 +15,7 @@
 //! ## Usage
 //!
 //! ```zig
-//! const Registry = runtime.InstanceRegistry(.node, InternalState);
+//! const Registry = runtime.InstanceRegistry(.html_input_element, InternalState);
 //!
 //! // In init (the block from the instance's arena, owned by the registry):
 //! const internal = try Registry.createIn(instance, runtime.arenaOf(instance));

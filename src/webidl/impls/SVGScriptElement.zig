@@ -32,8 +32,8 @@ pub const ImplError = error{
 /// The element's script element state (HTML § 4.12.1.1): parser-inserted and
 /// already started.
 ///
-/// A block of the Browser's runtime arena kept in the registry, as
-/// HTMLScriptElement's is: an SVG script removed from its tree while script
+/// A block of the Browser's runtime arena, kept in the element's own State
+/// (runtime.OwnState): an SVG script removed from its tree while script
 /// held no wrapper of it - innerHTML = '' over one, a sanitizer's removal -
 /// is an orphan nothing deinits (dom.teardown_sweeps), and its state's one
 /// exit is then the sweep at its Browser's end. A block of its own
@@ -47,7 +47,7 @@ pub const InternalState = struct {
     }
 };
 
-const Registry = runtime.InstanceRegistry(.svg_script_element, InternalState);
+const Registry = runtime.OwnState(State, InternalState);
 
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
@@ -95,25 +95,19 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     _ = allocator;
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = .{};
-    instance.getState(State).own._internal = internal;
 }
 
 /// SVGScriptElement's own teardown: the generated chain runs SVGElement's after it.
 pub fn deinitOwn(instance: *runtime.Instance) void {
-    if (instance.stateAs(State)) |state| {
-        if (state.own._internal) |internal| {
-            internal.deinit();
-            state.own._internal = null;
-            Registry.remove(instance);
-        }
-    }
+    const internal = Registry.get(instance) orelse return;
+    internal.deinit();
+    Registry.remove(instance);
 }
 
 /// dom.script_elements: `element`'s script element state, if it is an SVG
 /// script element.
 fn flagsOf(element: *runtime.Instance) ?*ScriptFlags {
-    const state = element.stateAs(State) orelse return null;
-    const internal = state.own._internal orelse return null;
+    const internal = Registry.get(element) orelse return null;
     return &internal.flags;
 }
 

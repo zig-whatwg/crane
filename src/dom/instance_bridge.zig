@@ -3,10 +3,16 @@
 //! This module provides the bridge layer that allows WebIDL impls (using runtime.Instance)
 //! to delegate tree operations to src/dom (using NodeBase).
 //!
-//! Design Decision: Option D - NodeBase embedding
-//! - NodeBase is stored inside InternalState, making it the source of truth for tree structure
-//! - Bidirectional conversion: Instance <-> NodeBase in O(1)
-//! - Compatible with existing src/dom algorithms and XPath/selectors
+//! - NodeBase -> Instance: a field of the node (`NodeBase.owner_instance`).
+//! - Instance -> NodeBase: the node's own state, read through the hook Node
+//!   installs (`install`, `node_base_of`): Node keeps its NodeBase in its
+//!   InternalState, which lives in the instance's own generated State
+//!   (runtime.OwnState). No table and no lock: lane perf2, batch 2
+//!   (tmp/plans/perf2b2-design.md) retired the per-Browser map, its mutex
+//!   and its direct-mapped cache, which took 1-6% of the DOM rows it served
+//!   (insert per node made, lookup per call, remove per node freed). Blink
+//!   and WebKit hold the tree in the node object itself; so does Crane's
+//!   NodeBase, and the instance reaches it through its own state.
 //!
 //! Usage:
 //! ```zig
@@ -21,13 +27,14 @@
 //!     try dom.mutation.insert(node_base, parent_base, child_base, false);
 //! }
 //! ```
+//!
+//! lint-impls: hook for Node
 
 const std = @import("std");
 const NodeBase = @import("node_base.zig").NodeBase;
 const refcount_audit = @import("refcount_audit.zig");
 const runtime = @import("runtime");
-const tombstones = @import("webidl").utils.tombstones;
-const address_map = @import("infra").address_map;
+const Hook = @import("hook.zig").Hook;
 
 /// Placeholder type for the bridge context
 /// This will be populated when Node.zig InternalState is updated
@@ -38,42 +45,17 @@ pub const BridgeContext = struct {
     instance: *anyopaque,
 };
 
-/// One Browser's map from runtime.Instance pointers to their NodeBase: a side
-/// table of its runtime.BrowserScope (`.node_bases`, instances B1), so a
-/// Browser's nodes are its own and their entries end with it.
+/// One Browser's bridge: its counts (a side table of its runtime.BrowserScope,
+/// `.node_bases`, instances B1). The Instance -> NodeBase answer is the node's
+/// own (`getNodeBase`); what is left here is counted.
 ///
-/// Nodes are a window's, but the map is READ for every platform object of
-/// every thread of the Browser: the wrapper cache and the template registry
-/// ask it whether an object is a node (wrapper_cache.zig,
-/// template_registry.zig), and a worker's objects live on the worker's own
-/// thread (docs/instances.md). So every access takes `mutex`.
+/// Read from every thread of the Browser - the wrapper cache asks
+/// `getNodeBase` about every platform object, a worker's included - so the
+/// counts are atomic.
 pub const Bridge = struct {
-    /// Protects `map`, `guard` and `cache`; held for one map operation, never
-    /// across a call out of this file.
-    mutex: std.Io.Mutex = .init,
-    map: address_map.AddressHashMap(*anyopaque, *NodeBase),
-    /// A direct-mapped cache in front of `map`, for getNodeBase - which
-    /// wrapping asks once per object handed to script: every `list[i]`
-    /// (template_registry.wrapInstanceAsV8Object). A map lookup hashes the
-    /// address (wyhash) and probes; in the Debug build that was ~22% of a
-    /// NodeList index read (gc_bench profile, 2026-10-11).
-    ///
-    /// The cache answers exactly what the map would. An entry records the
-    /// instance, the slab generation it was written under, and the map's
-    /// answer then. Only register and unregister change the map, and each
-    /// writes or clears the entry for its address; the slab never reissues
-    /// a generation. So an entry whose instance and generation both match
-    /// the instance's live slot was written after the last map change for
-    /// that address, and holds the map's current answer. Anything else - a
-    /// collision, a freed slot (dead generation), a slot reused without an
-    /// unregister (its entry's generation is the old occupant's) - asks the
-    /// map and caches its answer under the current generation.
-    cache: [cache_slots]CacheEntry = @as([cache_slots]CacheEntry, @splat(.{})),
-    /// Every node a page makes enters this map and leaves it when the page
-    /// ends; the guard rehashes before an insert once the tombstones those
-    /// removals leave could take half the free slots
-    /// (webidl.utils.tombstones).
-    guard: tombstones.TombstoneGuard = .{},
+    /// How many nodes are registered: made and not yet torn down
+    /// (`entryCount`).
+    live: std.atomic.Value(usize) = .init(0),
     /// How many `getNodeBase` calls asked about a slot that was freed: a
     /// caller that still holds a pointer to an instance gone from the slab.
     /// The slab is the Browser's, shared by its window thread and its
@@ -82,37 +64,31 @@ pub const Bridge = struct {
     /// read the slot of an instance it had just freed while the window thread
     /// reissued it). Single-threaded the read answers null and is invisible,
     /// so tests count it (`deadSlotLookups`).
-    dead_slot_lookups: usize = 0,
+    dead_slot_lookups: std.atomic.Value(usize) = .init(0),
 
     pub fn init(allocator: std.mem.Allocator) Bridge {
-        return .{ .map = address_map.AddressHashMap(*anyopaque, *NodeBase).init(allocator) };
+        _ = allocator;
+        return .{};
     }
 
     pub fn deinit(self: *Bridge) void {
-        self.map.deinit();
-    }
-
-    fn lock(self: *Bridge) void {
-        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-    }
-
-    fn unlock(self: *Bridge) void {
-        std.Io.Threaded.mutexUnlock(&self.mutex);
-    }
-
-    const cache_slots = 1024;
-
-    const CacheEntry = struct {
-        instance: ?*anyopaque = null,
-        generation: u64 = runtime.SlabAllocator.dead_generation,
-        node_base: ?*NodeBase = null,
-    };
-
-    /// `instance`'s cache entry: by address, a slab slot being 32 bytes.
-    fn cacheEntry(self: *Bridge, instance: *anyopaque) *CacheEntry {
-        return &self.cache[(@intFromPtr(instance) >> 5) & (cache_slots - 1)];
+        self.* = undefined;
     }
 };
+
+/// What Node supplies: a node's NodeBase, from its own state.
+pub const Implementation = struct {
+    /// `instance`'s NodeBase, or null when it is no node or its NodeBase is
+    /// gone (torn down). Reads only `instance`; no lock, no allocation.
+    node_base_of: *const fn (instance: *runtime.Instance) ?*NodeBase,
+};
+
+var implementation: Hook(?Implementation) = .init(null);
+
+/// Called by Node's installHooks, once, at process start.
+pub fn install(impl: Implementation) void {
+    implementation.install(impl);
+}
 
 /// The slab generation of `instance`'s slot: `dead_generation` once freed.
 fn generationOf(instance: *anyopaque) u64 {
@@ -134,71 +110,56 @@ fn bridgeOf(instance: *anyopaque) ?*Bridge {
 /// after the free.
 pub fn deadSlotLookups(scope: *runtime.BrowserScope) usize {
     const bridge = scope.existingTable(.node_bases, Bridge) orelse return 0;
-    bridge.lock();
-    defer bridge.unlock();
-    return bridge.dead_slot_lookups;
+    return bridge.dead_slot_lookups.load(.monotonic);
 }
 
-/// How many (instance -> NodeBase) entries `scope`'s Browser has.
+/// How many nodes `scope`'s Browser has registered and not torn down.
 ///
-/// Exposed for the Phase 6 memory benchmark. This map is keyed on the instance
-/// ADDRESS and the slab recycles addresses, so an entry that outlives its instance
-/// is not merely a leak - it is silently inherited by the next object at that
-/// address. A count that rises with created-and-discarded nodes is the symptom.
+/// Exposed for the memory benchmarks and the agent's end
+/// (refcount_teardown.agentEnded): a count that rises with created-and-
+/// discarded nodes is nodes nothing tears down.
 pub fn entryCount(scope: *runtime.BrowserScope) usize {
     const bridge = scope.existingTable(.node_bases, Bridge) orelse return 0;
-    bridge.lock();
-    defer bridge.unlock();
-    return bridge.map.count();
+    return bridge.live.load(.monotonic);
 }
 
-/// Call `visit` with each live node's NodeBase of `scope`'s Browser, at most
-/// `limit` of them (diagnostics: refcount_teardown.agentEnded). The bridge
-/// stays locked while it walks: `visit` must not reach the bridge.
+/// Call `visit` with each registered node's NodeBase of `scope`'s Browser, at
+/// most `limit` of them (diagnostics: refcount_teardown.agentEnded): a walk of
+/// the Browser's slab, so only where no other thread makes or frees objects
+/// (SlabAllocator.forEachLive). `visit` must not make objects.
 pub fn visitNodes(scope: *runtime.BrowserScope, limit: usize, context: anytype, comptime visit: fn (@TypeOf(context), *NodeBase) void) void {
-    const bridge = scope.existingTable(.node_bases, Bridge) orelse return;
-    bridge.lock();
-    defer bridge.unlock();
-    var it = bridge.map.valueIterator();
-    var seen: usize = 0;
-    while (it.next()) |node| : (seen += 1) {
-        if (seen == limit) return;
-        visit(context, node.*);
-    }
+    const Walk = struct {
+        context: @TypeOf(context),
+        limit: usize,
+        seen: usize = 0,
+        fn each(self: *@This(), instance: *runtime.Instance) void {
+            if (self.seen == self.limit) return;
+            const node_base = getNodeBaseUnaudited(instance) orelse return;
+            if (node_base.owner_instance == null) return;
+            self.seen += 1;
+            visit(self.context, node_base);
+        }
+    };
+    var walk: Walk = .{ .context = context, .limit = limit };
+    scope.slab.forEachLive(&walk, Walk.each);
 }
 
-/// The table's slots by state (free, live, capacity), for the churn test and
-/// measurements: every node a page makes enters and leaves this map, so its
-/// free slots are what keeps registering the next page's nodes cheap - see
-/// webidl.utils.tombstones.
-pub fn tableSlots(scope: *runtime.BrowserScope) tombstones.SlotCounts {
-    const bridge = scope.existingTable(.node_bases, Bridge) orelse return .{};
-    bridge.lock();
-    defer bridge.unlock();
-    return tombstones.slotCounts(&bridge.map);
-}
-
-/// Register a bidirectional mapping between a runtime.Instance and its NodeBase
+/// Register a node: its NodeBase names its instance, and the Browser counts
+/// it - its node count and its DOM memory.
 ///
-/// This should be called during Node initialization when both the Instance
-/// and its NodeBase are created.
+/// Called once, by Node's initOwn, when both the Instance and its NodeBase
+/// exist (the NodeBase is in Node's state from then on: `getNodeBase`).
 pub fn register(instance: *anyopaque, node_base: *NodeBase) !void {
     const scope = scopeOf(instance);
     const bridge = try scope.table(.node_bases, Bridge);
-    const fresh = fresh: {
-        bridge.lock();
-        defer bridge.unlock();
-        bridge.guard.beforeInsert(&bridge.map);
-        const replaced = try bridge.map.fetchPut(instance, node_base);
-        bridge.cacheEntry(instance).* = .{ .instance = instance, .generation = generationOf(instance), .node_base = node_base };
-        // Reverse direction lives on the node itself - see NodeBase.owner_instance.
-        node_base.owner_instance = instance;
-        break :fresh replaced == null;
-    };
-    // The Browser's DOM grew by the node's storage, once per node (an
-    // instance registered again is already counted): its window agent's
-    // engine is told (runtime.gc.ExternalMemory).
-    if (fresh) scope.dom_memory.add(storageBytes(@ptrCast(@alignCast(instance))));
+    // An instance registered again is already counted.
+    const fresh = node_base.owner_instance != instance;
+    node_base.owner_instance = instance;
+    if (!fresh) return;
+    _ = bridge.live.fetchAdd(1, .monotonic);
+    // The Browser's DOM grew by the node's storage, once per node: its window
+    // agent's engine is told (runtime.gc.ExternalMemory).
+    scope.dom_memory.add(storageBytes(@ptrCast(@alignCast(instance))));
 }
 
 /// The native storage a registered node holds for as long as it lives, as
@@ -213,33 +174,27 @@ pub fn storageBytes(instance: *const runtime.Instance) usize {
         @sizeOf(NodeBase);
 }
 
-/// Unregister a mapping when a Node is destroyed
+/// Unregister a node being torn down: what `register` counted goes back, and
+/// its NodeBase no longer names it.
 ///
-/// This should be called during Node deinitialization.
+/// Called by Node's teardown while its state still holds the NodeBase, just
+/// before the NodeBase is freed.
 pub fn unregister(instance: *anyopaque) void {
     const scope = scopeOf(instance);
     const bridge = scope.existingTable(.node_bases, Bridge) orelse return;
-    const removed = removed: {
-        bridge.lock();
-        defer bridge.unlock();
-        if (bridge.map.get(instance)) |node_base| {
-            // Not strictly required - the field dies with the node - but clearing it
-            // keeps a freed instance from being observable through a resurrected node.
-            node_base.owner_instance = null;
-        }
-        const was_mapped = bridge.map.remove(instance);
-        if (was_mapped) bridge.guard.noteRemoval(&bridge.map);
-        const entry = bridge.cacheEntry(instance);
-        if (entry.instance == instance) entry.* = .{};
-        break :removed was_mapped;
-    };
-    // What `register` counted goes back: the node is being freed.
-    if (removed) scope.dom_memory.sub(storageBytes(@ptrCast(@alignCast(instance))));
+    const node_base = getNodeBaseUnaudited(instance) orelse return;
+    if (node_base.owner_instance != instance) return;
+    // Not strictly required - the field dies with the node - but clearing it
+    // keeps a freed instance from being observable through a resurrected node.
+    node_base.owner_instance = null;
+    _ = bridge.live.fetchSub(1, .monotonic);
+    scope.dom_memory.sub(storageBytes(@ptrCast(@alignCast(instance))));
 }
 
 /// Get the NodeBase for a runtime.Instance
 ///
-/// Returns null if the instance is not registered or has no NodeBase.
+/// Returns null if the instance is no node, its NodeBase is gone, or its
+/// slot was freed.
 pub fn getNodeBase(instance: *anyopaque) ?*NodeBase {
     const found = getNodeBaseUnaudited(instance);
     // Refcount step 6: a read of a node step 7 would have freed is reported.
@@ -250,21 +205,14 @@ pub fn getNodeBase(instance: *anyopaque) ?*NodeBase {
 /// `getNodeBase` without the zombie audit's report: the reference counting's
 /// own walks (dom.refcount, dom.refcount_audit).
 pub fn getNodeBaseUnaudited(instance: *anyopaque) ?*NodeBase {
-    const bridge = bridgeOf(instance) orelse return null;
-    bridge.lock();
-    defer bridge.unlock();
-    // The cache's answer is the map's (Bridge.cache says why).
-    const generation = generationOf(instance);
-    if (generation == runtime.SlabAllocator.dead_generation) bridge.dead_slot_lookups += 1;
-    const entry = bridge.cacheEntry(instance);
-    if (entry.instance == instance and entry.generation == generation and generation != runtime.SlabAllocator.dead_generation) {
-        return entry.node_base;
+    // A freed slot's first word is the slab's free-list pointer, not a
+    // vtable: answer null without reading it, and count the read.
+    if (generationOf(instance) == runtime.SlabAllocator.dead_generation) {
+        if (bridgeOf(instance)) |bridge| _ = bridge.dead_slot_lookups.fetchAdd(1, .monotonic);
+        return null;
     }
-    const found = bridge.map.get(instance);
-    if (generation != runtime.SlabAllocator.dead_generation) {
-        entry.* = .{ .instance = instance, .generation = generation, .node_base = found };
-    }
-    return found;
+    const impl = implementation.get() orelse return null;
+    return impl.node_base_of(@ptrCast(@alignCast(instance)));
 }
 
 /// Get the runtime.Instance for a NodeBase
@@ -307,26 +255,5 @@ pub fn getInstanceTyped(comptime T: type, node_base: *NodeBase) ?*T {
     const ptr = getInstance(node_base) orelse return null;
     return @ptrCast(@alignCast(ptr));
 }
-
-// ============================================================================
-// Future: Direct Embedding Pattern
-// ============================================================================
-//
-// Once Node.zig InternalState is updated to embed NodeBase, these functions
-// can be optimized to use @fieldParentPtr instead of the hash maps:
-//
-// pub fn getNodeBaseDirect(instance: *runtime.Instance) ?*NodeBase {
-//     const internal = NodeImpl.getInternal(instance) orelse return null;
-//     return &internal.node_base;
-// }
-//
-// pub fn getInstanceDirect(node_base: *NodeBase) ?*runtime.Instance {
-//     // This requires NodeBase to be the first field, or use @fieldParentPtr
-//     const internal: *NodeImpl.InternalState = @fieldParentPtr("node_base", node_base);
-//     return internal.instance;
-// }
-//
-// The registry approach is kept as a fallback for nodes that may have
-// different storage patterns (e.g., XPath namespace nodes).
 
 // Tests: tests/dom/instance_bridge_test.zig.
