@@ -28,9 +28,9 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-// Use shared InstanceRegistry utility for internal state management
+// Its internal state, in its own generated State (`own._internal`): runtime.OwnState.
 const utils = @import("webidl").utils;
-const Registry = runtime.InstanceRegistry(.html_area_element, InternalState);
+const Registry = runtime.OwnState(State, InternalState);
 
 /// Internal state for HTMLAreaElement implementation
 pub const InternalState = struct {
@@ -54,8 +54,8 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     _ = allocator;
     _ = StateType;
     _ = args;
-    // Initialize HTMLAreaElement's own internal state in registry
-    // The registry owns this block, so `Registry.remove` returns it to the
+    // Initialize HTMLAreaElement's own internal state in its own State (runtime.OwnState)
+    // The block is the arena's, and `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
@@ -64,7 +64,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 
 /// HTMLAreaElement's own teardown: the generated chain runs HTMLElement's after it.
 pub fn deinitOwn(instance: *runtime.Instance) void {
-    // Clean up from registry
+    // Clean up its internal state
     if (Registry.get(instance)) |internal| {
         internal.deinit();
     }

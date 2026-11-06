@@ -33,31 +33,31 @@ pub const InternalState = struct {
     }
 };
 
-// Use shared InstanceRegistry utility for internal state management
+// Its internal state, in its own generated State (`own._internal`): runtime.OwnState.
 const utils = @import("webidl").utils;
-const Registry = runtime.InstanceRegistry(.comment, InternalState);
+const Registry = runtime.OwnState(State, InternalState);
 
 /// Comment's own construction steps: the generated chain runs CharacterData's first.
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = StateType;
     _ = args;
 
-    // Initialize Comment internal state in global registry
-    // The registry owns this block, so `Registry.remove` returns it to the
+    // Initialize Comment internal state in its own State (runtime.OwnState)
+    // The block is the arena's, and `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
 }
 
-/// Get Comment's internal state from the registry
+/// Get Comment's internal state
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
 /// Comment's own teardown: the generated chain runs CharacterData's after it.
 pub fn deinitOwn(instance: *runtime.Instance) void {
-    // Clean up from registry
+    // Clean up its internal state
     if (Registry.get(instance)) |internal| {
         internal.deinit();
     }

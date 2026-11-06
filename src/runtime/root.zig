@@ -37,6 +37,7 @@ pub const TypeId = @import("instance.zig").TypeId;
 pub const typeId = @import("instance.zig").typeId;
 pub const Ancestor = @import("instance.zig").Ancestor;
 pub const ancestorsOf = @import("instance.zig").ancestorsOf;
+pub const depthOf = @import("instance.zig").depthOf;
 
 // Runtime context and logging
 pub const Context = @import("context.zig").Context;
@@ -268,8 +269,12 @@ pub const CrossThreadTask = task_sink.CrossThreadTask;
 /// the realm (ContextData.browser_scope; docs/instances.md rule 2).
 pub const BrowserScope = @import("browser_scope.zig").BrowserScope;
 /// An impl's internal state per instance, in the instance's Browser's side
-/// table (instances B1).
+/// table (instances B1) - for the types enumerated while their Browser runs.
 pub const InstanceRegistry = @import("instance_registry.zig").InstanceRegistry;
+/// An impl's internal state in its instance's own generated State
+/// (`own._internal`): no table, found from the object itself.
+pub const OwnState = @import("own_state.zig").OwnState;
+pub const ownStateCount = @import("own_state.zig").countSet;
 
 // Typed callback wrappers for type-safe callback handling
 // Replaces *anyopaque user data with typed alternatives

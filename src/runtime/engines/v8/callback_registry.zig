@@ -24,11 +24,44 @@ const protocol_agents = @import("protocol_agents.zig");
 /// (protocol_agents.AgentRecord.callbacks). A wrapper belongs to the agent of
 /// its isolate (`CallbackWrapper.isolate`), and is made and freed on that
 /// agent's thread. It was a `threadlocal`, every agent's on the thread in one
-/// set; its storage is page_allocator's, freed whenever its last wrapper goes
-/// (each page's end brings that, cleanupForContext) and at the agent's end
-/// (`endAgent`).
-// tombstones: freed (clearAndFree) whenever its last wrapper goes, which each page's end brings (cleanupForContext), and at its agent's end: a 1,069-file runner sample found it empty at every sampled insert
-pub const Live = std.AutoHashMapUnmanaged(*CallbackWrapper, void);
+/// set.
+///
+/// Its storage is the agent's allocator's (AgentOptions.allocator, taken at
+/// the first wrapper) and goes at the agent's end (`endAgent`). It KEEPS its
+/// capacity when its last wrapper leaves: every addEventListener and
+/// removeEventListener converts its callback argument into a wrapper that
+/// joins the set and leaves it again, so a set that freed its storage
+/// whenever it emptied - as this one did, on page_allocator - mapped and
+/// unmapped a page per call (80% of events.add-remove-listener, lane perf2
+/// batch 2). WTF's HashTable never frees a table its last entry leaves
+/// either: it shrinks only while it is larger than its minimum (WebKit
+/// Source/WTF/wtf/HashTable.h `shouldShrink`, `tableSize >
+/// KeyTraits::minimumTableSize`; Blink platform/wtf/hash_table.h
+/// `ShouldShrink`; minimum 8 in both), and only `clear()` or its end frees it.
+pub const Live = struct {
+    // tombstones: cleared whenever its last wrapper goes (clearRetainingCapacity resets every slot), which an add/remove pair and each page's end bring; a 1,069-file runner sample found it empty at every sampled insert
+    set: std.AutoHashMapUnmanaged(*CallbackWrapper, void) = .empty,
+    /// The agent's allocator, from its first wrapper on.
+    allocator: ?std.mem.Allocator = null,
+
+    pub const empty: Live = .{};
+
+    /// How many wrappers the agent tracks.
+    pub fn count(self: *const Live) usize {
+        return self.set.count();
+    }
+
+    /// How many the storage holds without growing.
+    pub fn capacity(self: *const Live) usize {
+        return self.set.capacity();
+    }
+
+    /// Forget every wrapper and keep the storage: an empty table has no
+    /// tombstones.
+    fn emptied(self: *Live) void {
+        if (self.set.count() == 0) self.set.clearRetainingCapacity();
+    }
+};
 
 /// Track `wrapper` on its agent. Idempotent. Called by the wrapper's
 /// constructors. A wrapper of an isolate createAgent did not make (a test's
@@ -37,14 +70,19 @@ pub const Live = std.AutoHashMapUnmanaged(*CallbackWrapper, void);
 /// any wrapper.
 pub fn register(wrapper: *CallbackWrapper) void {
     const live = protocol_agents.callbacksOf(wrapper.isolate) orelse return;
-    live.put(std.heap.page_allocator, wrapper, {}) catch {};
+    const allocator = live.allocator orelse allocator: {
+        const record = protocol_agents.recordOf(wrapper.isolate) orelse return;
+        live.allocator = record.allocator;
+        break :allocator record.allocator;
+    };
+    live.set.put(allocator, wrapper, {}) catch {};
 }
 
 /// Stop tracking `wrapper`. Called by `CallbackWrapper.deinit`.
 pub fn unregister(wrapper: *CallbackWrapper) void {
     const live = protocol_agents.callbacksOf(wrapper.isolate) orelse return;
-    _ = live.remove(wrapper);
-    if (live.count() == 0) live.clearAndFree(std.heap.page_allocator);
+    _ = live.set.remove(wrapper);
+    live.emptied();
 }
 
 /// Release the handles of every wrapper the current agent made for the
@@ -56,26 +94,28 @@ pub fn cleanupForContext(context_raw_addr: ?*anyopaque) void {
     const addr = context_raw_addr orelse return;
     const isolate = v8.v8_Isolate_GetCurrent() orelse return;
     const live = protocol_agents.callbacksOf(isolate) orelse return;
+    // A set with no allocator has never held a wrapper.
+    const allocator = live.allocator orelse return;
     var matched: std.ArrayListUnmanaged(*CallbackWrapper) = .empty;
-    defer matched.deinit(std.heap.page_allocator);
-    var it = live.keyIterator();
+    defer matched.deinit(allocator);
+    var it = live.set.keyIterator();
     while (it.next()) |wrapper| {
         if (wrapper.*.callback_context_raw_addr == addr) {
-            matched.append(std.heap.page_allocator, wrapper.*) catch return;
+            matched.append(allocator, wrapper.*) catch return;
         }
     }
     for (matched.items) |wrapper| {
         wrapper.releaseHandles();
-        _ = live.remove(wrapper);
+        _ = live.set.remove(wrapper);
     }
-    if (live.count() == 0) live.clearAndFree(std.heap.page_allocator);
+    live.emptied();
 }
 
 /// The agent's end, once its realms have ended (protocol_agents.removeAgent):
 /// the set's storage goes. A wrapper still in it outlived every realm of its
 /// agent untracked by them; its owner still frees it.
 pub fn endAgent(live: *Live) void {
-    live.deinit(std.heap.page_allocator);
+    if (live.allocator) |allocator| live.set.deinit(allocator);
     live.* = .empty;
 }
 

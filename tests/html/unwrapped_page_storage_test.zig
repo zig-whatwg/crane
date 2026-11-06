@@ -25,6 +25,7 @@ const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
 const runtime = @import("runtime");
+const interfaces = @import("interfaces");
 const helpers = @import("edges_node_holders_helpers.zig");
 
 const Counts = struct {
@@ -40,8 +41,8 @@ fn countsOf(browser: *browser_mod.Browser) Counts {
     var counts: Counts = .{
         .node_slots = 0,
         .other_slots = 0,
-        .nodes = runtime.InstanceRegistry(.node, u8).count(browser.scope),
-        .elements = runtime.InstanceRegistry(.element, u8).count(browser.scope),
+        .nodes = runtime.ownStateCount(interfaces.Node.State, browser.scope),
+        .elements = runtime.ownStateCount(interfaces.Element.State, browser.scope),
     };
     var slab = browser.scope.slab.slabs;
     while (slab) |each| : (slab = each.next) {
