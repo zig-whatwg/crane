@@ -217,6 +217,11 @@ fn checkInputs(arena: Allocator, io: Io, args: *const Args) !Inputs {
         std.debug.print("perf_bench: {s} {s}: {s} (sha256 OK)\n", .{ @tagName(pin.name), pin.version, pin.binary });
         try pins.append(arena, pin);
     }
+    engines.checkPinSet(pins.items) catch |err| switch (err) {
+        error.PinDuplicateEngine => fail("two pins for one engine", .{}),
+        error.PinsSameCommit => fail("a Crane base and another Crane pin of the same commit compare nothing", .{}),
+        error.PinBaseWithoutTip => fail("a crane_base pin needs the crane pin it is the base of", .{}),
+    };
     std.debug.print("perf_bench: {d} engines pinned\n", .{pins.items.len});
     return .{ .suite = s, .pins = pins.items };
 }
@@ -367,6 +372,23 @@ fn writeReport(arena: Allocator, io: Io, args: *const Args) !void {
         const d = try report.drift(arena, &model, &control, model.latest_round, .crane);
         std.debug.print("perf_bench: drift control: time {d:.3}, memory {d:.3} (over {d} and {d} workloads), {d} outside their band: {s}\n", .{ d.time_ratio orelse 0, d.memory_ratio orelse 0, d.time_n, d.memory_n, d.outside, if (d.within) "within noise" else "NOT within noise" });
     } else if (args.get("remeasured") != null) fail("--remeasured needs --control=<dir>", .{});
+    // A Crane-only window (crane against crane_base): its comparison, and
+    // every workload outside its band, on stderr as well as on the page.
+    if (try report.baseTip(arena, &model, model.latest_round)) |bt| {
+        // --base-drift=<dir>: the base's earlier rows (its own round, named
+        // `crane` there), which the window's base rows must be within
+        // noise of before the tip's rows are published.
+        if (args.get("base-drift")) |dir| {
+            const earlier = try report.build(arena, try readJournals(arena, io, dir));
+            const d = try report.driftBetween(arena, &earlier, earlier.latest_round, .crane, &model, model.latest_round, .crane_base);
+            std.debug.print("perf_bench: base drift (crane_base here / crane in {s}, round {d}): time {d:.3}, memory {d:.3} (over {d} and {d} workloads), {d} outside their band: {s}\n", .{ dir, earlier.latest_round, d.time_ratio orelse 0, d.memory_ratio orelse 0, d.time_n, d.memory_n, d.outside, if (d.within) "within noise" else "NOT within noise" });
+        }
+        std.debug.print("perf_bench: Crane {s} against its base {s}: time {d:.3}, memory {d:.3} (geometric means over {d} and {d} workloads), {d} outside their band\n", .{ bt.tip_version, bt.base_version, bt.time_ratio orelse 0, bt.memory_ratio orelse 0, bt.time_n, bt.memory_n, bt.outside.len });
+        for (bt.rows) |row| {
+            if (!row.outside) continue;
+            std.debug.print("perf_bench:   moved {s}: time {d:.3}, steady {d:.3}, peak {d:.3} (band {d:.2})\n", .{ row.workload, row.time orelse 0, row.steady orelse 0, row.peak orelse 0, row.band });
+        }
+    }
     const out = try report.render(arena, &model, .{ .site_url = args.get("site-url") orelse "https://zig-whatwg.github.io/crane/", .remeasured = remeasured });
     const out_dir = args.need("out");
     try Io.Dir.cwd().createDirPath(io, out_dir);

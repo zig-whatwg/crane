@@ -13,6 +13,9 @@
 //!     and each browser, below the headline, and its own column in the
 //!     round's tables (the user, 2026-11-05: an extra column, the headline
 //!     stays ReleaseSafe);
+//!   - a Crane-only window's comparison (`crane` against `crane_base`, lane
+//!     perf2), where a round has a base: per workload, time and memory,
+//!     with noise bands and two geometric means;
 //!   - the engines: each one's version, build and launch flags;
 //!   - this round, workload by workload: each engine's median time and
 //!     memory, and Crane's ratio to each browser;
@@ -352,12 +355,21 @@ pub fn noiseBand(a: *const Cell, b: *const Cell) f64 {
 }
 
 pub fn drift(arena: Allocator, m: *const Model, control: *const Model, round: u32, engine: EngineName) !Drift {
-    var d: Drift = .{ .engine = engine };
+    return driftBetween(arena, m, round, engine, control, round, engine);
+}
+
+/// `drift` between differently named rows: `control`'s `control_engine`
+/// in `control_round` over `m`'s `engine` in `round`. A Crane-only
+/// window's base (`crane_base` in the new round) against the same build's
+/// rows in the round it came from (`crane` there): the drift control the
+/// user's rule asks for before the tip's rows are published (lane perf2).
+pub fn driftBetween(arena: Allocator, m: *const Model, round: u32, engine: EngineName, control: *const Model, control_round: u32, control_engine: EngineName) !Drift {
+    var d: Drift = .{ .engine = control_engine };
     var t: std.ArrayList(f64) = .empty;
     var mem: std.ArrayList(f64) = .empty;
-    for (try control.workloads(arena, round)) |w| {
+    for (try control.workloads(arena, control_round)) |w| {
         if (!inHeadline(w)) continue;
-        const c = control.current(round, engine, w) orelse continue;
+        const c = control.current(control_round, control_engine, w) orelse continue;
         const r = m.current(round, engine, w) orelse continue;
         const band = noiseBand(c, r);
         var out = false;
@@ -383,6 +395,93 @@ pub fn drift(arena: Allocator, m: *const Model, control: *const Model, round: u3
     }.f;
     d.within = ok(d.time_ratio) and ok(d.memory_ratio);
     return d;
+}
+
+/// A Crane-only window (the user, 2026-11-06: a re-measurement runs only
+/// Crane; lane perf2): the new Crane (`crane`, the tip) alternating with a
+/// frozen earlier one (`crane_base`) in one round. Per workload both ran,
+/// the tip's figure over the base's for time, steady memory and peak
+/// memory, against drift()'s noise band (`noiseBand`: 10%, or three times
+/// the runs' spread; memory never under 10%), and the two geometric means
+/// - time and steady memory - over the headline's workloads.
+pub const BaseTipRow = struct {
+    workload: []const u8,
+    base: *const Cell,
+    tip: *const Cell,
+    time: ?f64 = null,
+    steady: ?f64 = null,
+    peak: ?f64 = null,
+    band: f64,
+    /// Any of the three ratios outside its band.
+    outside: bool = false,
+};
+
+pub const BaseTip = struct {
+    base_version: []const u8,
+    tip_version: []const u8,
+    rows: []const BaseTipRow,
+    time_ratio: ?f64 = null,
+    time_n: usize = 0,
+    memory_ratio: ?f64 = null,
+    memory_n: usize = 0,
+    /// The workloads outside their bands, in the round's order.
+    outside: []const []const u8,
+};
+
+/// The tip against its base in `round`; null when the round has no base.
+pub fn baseTip(arena: Allocator, m: *const Model, round: u32) !?BaseTip {
+    if (!hasEngine(m, round, .crane_base)) return null;
+    var rows: std.ArrayList(BaseTipRow) = .empty;
+    var outside: std.ArrayList([]const u8) = .empty;
+    var t: std.ArrayList(f64) = .empty;
+    var mem: std.ArrayList(f64) = .empty;
+    var base_version: []const u8 = "";
+    var tip_version: []const u8 = "";
+    for (try m.workloads(arena, round)) |w| {
+        const b = m.current(round, .crane_base, w) orelse continue;
+        const c = m.current(round, .crane, w) orelse continue;
+        if (b.kind == .gc_bench) continue;
+        base_version = b.version;
+        tip_version = c.version;
+        const band = noiseBand(b, c);
+        var row: BaseTipRow = .{ .workload = w, .base = b, .tip = c, .band = band };
+        row.time = ratioOf(c.timeFigure(), b.timeFigure());
+        row.steady = ratioOf(c.memoryFigure(), b.memoryFigure());
+        row.peak = ratioOf(c.peakFigure(), b.peakFigure());
+        const memory_band = @max(0.10, band);
+        if (row.time) |r| if (@abs(r - 1.0) > band) {
+            row.outside = true;
+        };
+        if (row.steady) |r| if (@abs(r - 1.0) > memory_band) {
+            row.outside = true;
+        };
+        if (row.peak) |r| if (@abs(r - 1.0) > memory_band) {
+            row.outside = true;
+        };
+        if (row.outside) try outside.append(arena, w);
+        if (inHeadline(w)) {
+            if (row.time) |r| try t.append(arena, r);
+            if (row.steady) |r| try mem.append(arena, r);
+        }
+        try rows.append(arena, row);
+    }
+    return .{
+        .base_version = base_version,
+        .tip_version = tip_version,
+        .rows = rows.items,
+        .time_ratio = stats.geometricMean(t.items),
+        .time_n = t.items.len,
+        .memory_ratio = stats.geometricMean(mem.items),
+        .memory_n = mem.items.len,
+        .outside = outside.items,
+    };
+}
+
+fn ratioOf(subject: ?f64, other: ?f64) ?f64 {
+    const s = subject orelse return null;
+    const o = other orelse return null;
+    if (o <= 0) return null;
+    return s / o;
 }
 
 /// Every file of /performance/ for `m`: name -> bytes.
@@ -436,6 +535,7 @@ fn writePage(w: W, arena: Allocator, m: *const Model, vs: []const Versus, o: Opt
     try w.print(" <a href=\"{s}\">WPT results</a>.</p>\n</header>\n", .{o.assets});
 
     try writeHeadline(w, vs);
+    try writeBaseTip(w, arena, m);
     if (o.remeasured) |rm| try writeRemeasured(w, arena, m, rm);
     try writeReleaseFast(w, arena, m);
     try writeEngines(w, arena, m);
@@ -568,6 +668,37 @@ fn writeRemeasured(w: W, arena: Allocator, m: *const Model, rm: Remeasured) !voi
         try writeMemoryCell(w, c);
         try writeRatio(w, c.memoryFigure(), if (r) |x| x.memoryFigure() else null);
         try w.writeAll("</tr>\n");
+    }
+    try w.writeAll("</tbody></table></div></section>\n");
+}
+
+/// A Crane-only window's comparison (`baseTip`), where the round has a
+/// base: each workload's tip / base ratio for time, steady and peak memory,
+/// its noise band, and the two geometric means.
+fn writeBaseTip(w: W, arena: Allocator, m: *const Model) !void {
+    const bt = (try baseTip(arena, m, m.latest_round)) orelse return;
+    try w.writeAll("<section id=\"base-tip\"><h2>Crane against its base</h2>\n<p>A Crane-only window: Crane at <code>");
+    try html.text(w, bt.tip_version);
+    try w.writeAll("</code> alternating with the earlier Crane at <code>");
+    try html.text(w, bt.base_version);
+    try w.writeAll("</code>, the same release build (ReleaseSafe), in the same runs. Its time was ");
+    if (bt.time_ratio) |r| try w.print("{d:.1}%", .{r * 100}) else try w.writeAll("&ndash;");
+    try w.writeAll(" and its memory ");
+    if (bt.memory_ratio) |r| try w.print("{d:.1}%", .{r * 100}) else try w.writeAll("&ndash;");
+    try w.print(" of the base&rsquo;s (geometric means over {d} and {d} workloads); {d} workload{s} outside {s} band of 10% or three times the runs&rsquo; spread.</p>\n", .{ bt.time_n, bt.memory_n, bt.outside.len, if (bt.outside.len == 1) "" else "s", if (bt.outside.len == 1) "its" else "their" });
+    try w.writeAll("<div class=\"table-wrap\"><table class=\"listing\"><thead><tr><th scope=\"col\">Workload</th><th scope=\"col\" class=\"n\">Time, base</th><th scope=\"col\" class=\"n\">Time, tip</th><th scope=\"col\" class=\"n\">Tip / base</th><th scope=\"col\" class=\"n\">Steady, base</th><th scope=\"col\" class=\"n\">Steady, tip</th><th scope=\"col\" class=\"n\">Tip / base</th><th scope=\"col\" class=\"n\">Peak, base</th><th scope=\"col\" class=\"n\">Peak, tip</th><th scope=\"col\" class=\"n\">Tip / base</th><th scope=\"col\" class=\"n\">Band</th></tr></thead><tbody>\n");
+    for (bt.rows) |row| {
+        try w.writeAll("<tr><th scope=\"row\"><code>");
+        try html.text(w, row.workload);
+        try w.writeAll("</code>");
+        if (row.outside) try w.writeAll(" <span class=\"fail\" title=\"outside its noise band\">moved</span>");
+        try w.writeAll("</th>");
+        for ([_]Measure{ .time, .steady, .peak }) |measure| {
+            try writeMeasureCell(w, row.base, measure);
+            try writeMeasureCell(w, row.tip, measure);
+            try writeRatio(w, figureOf(row.tip, measure), figureOf(row.base, measure));
+        }
+        try w.print("<td class=\"n\">&plusmn;{d:.0}%</td></tr>\n", .{row.band * 100});
     }
     try w.writeAll("</tbody></table></div></section>\n");
 }
@@ -710,6 +841,7 @@ fn writeRound(w: W, arena: Allocator, m: *const Model) !void {
     const round = m.latest_round;
     const ws = try m.workloads(arena, round);
     const with_fast = hasEngine(m, round, .crane_fast);
+    const with_base = hasEngine(m, round, .crane_base);
     try w.print("<section id=\"round\"><h2>Round {d}, workload by workload</h2>\n", .{round});
     try w.writeAll("<p>Time is per operation for a timed workload (the median sample divided by its operations) and per load for a page load; memory is the engine&rsquo;s whole process set (phys_footprint, summed) when the workload ended, or what each page or instance adds. The percentage beside a browser is Crane&rsquo;s figure as a share of it.</p>\n");
     for ([_]Measure{ .time, .steady, .peak }) |measure| {
@@ -719,6 +851,7 @@ fn writeRound(w: W, arena: Allocator, m: *const Model) !void {
             .steady => "Memory, steady (after the workload, the page idle)",
             .peak => "Memory, peak (the most during the workload)",
         }});
+        if (with_base) try w.writeAll("<th scope=\"col\" class=\"n\">Crane base</th><th scope=\"col\" class=\"n\">Crane / base</th>");
         if (with_fast) try w.writeAll("<th scope=\"col\" class=\"n\">Crane ReleaseFast</th><th scope=\"col\" class=\"n\">ReleaseFast / ReleaseSafe</th>");
         for (browsers) |b| try w.print("<th scope=\"col\" class=\"n\">{s}</th><th scope=\"col\" class=\"n\">Crane / {s}</th>", .{ b.label(), b.label() });
         try w.writeAll("</tr></thead><tbody>\n");
@@ -736,6 +869,11 @@ fn writeRound(w: W, arena: Allocator, m: *const Model) !void {
             try w.writeAll("</code></th>");
             try writeMeasureCell(w, c, measure);
             const cf: ?f64 = if (c) |cc| figureOf(cc, measure) else null;
+            if (with_base) {
+                const bc = m.current(round, .crane_base, wl);
+                try writeMeasureCell(w, bc, measure);
+                try writeRatio(w, cf, if (bc) |x| figureOf(x, measure) else null);
+            }
             if (with_fast) {
                 const fc = m.current(round, .crane_fast, wl);
                 try writeMeasureCell(w, fc, measure);
@@ -760,7 +898,7 @@ fn writeHistory(w: W, arena: Allocator, m: *const Model) !void {
     var all: std.ArrayList([]const u8) = .empty;
     for (m.rounds) |r| for (try m.workloads(arena, r)) |wl| if (!containsStr(all.items, wl)) try all.append(arena, wl);
     for (all.items) |wl| {
-        for ([_]EngineName{ .crane, .crane_fast, .chrome, .firefox, .safari, .lightpanda }) |e| {
+        for ([_]EngineName{ .crane, .crane_base, .crane_fast, .chrome, .firefox, .safari, .lightpanda }) |e| {
             for (m.cells) |*c| {
                 if (c.engine != e or !std.mem.eql(u8, c.workload, wl) or c.kind == .gc_bench) continue;
                 try w.writeAll("<tr><th scope=\"row\"><code>");
@@ -791,7 +929,11 @@ fn writeCraneOnly(w: W, arena: Allocator, m: *const Model) !void {
         if (c.kind != .gc_bench) continue;
         try w.writeAll("<tr><th scope=\"row\"><code>");
         try html.text(w, c.workload);
-        try w.print("</code></th><td class=\"n\">{d}</td><td>{s}</td><td><code>", .{ c.round, if (c.engine == .crane_fast) "ReleaseFast" else "ReleaseSafe" });
+        try w.print("</code></th><td class=\"n\">{d}</td><td>{s}</td><td><code>", .{ c.round, switch (c.engine) {
+            .crane_fast => "ReleaseFast",
+            .crane_base => "ReleaseSafe (base)",
+            else => "ReleaseSafe",
+        } });
         try html.text(w, c.version);
         try w.writeAll("</code></td>");
         if (c.ok == 0) {
@@ -840,10 +982,10 @@ fn engineOf(name: EngineName, version: []const u8) journal.Engine {
     return .{
         .name = name,
         .version = version,
-        .build = if (name == .crane) "release" else "stable",
-        .commit = if (name == .crane) "abc" else null,
-        .optimize = if (name == .crane) "ReleaseSafe" else null,
-        .v8 = if (name == .crane) "13.1.203 static" else null,
+        .build = if (name.isCrane()) "release" else "stable",
+        .commit = if (name.isCrane()) version else null,
+        .optimize = if (name.isCrane()) "ReleaseSafe" else null,
+        .v8 = if (name.isCrane()) "13.1.203 static" else null,
         .binary = "b",
         .binary_sha256 = "abababababababababababababababababababababababababababababababab",
         .flags = &.{"--headless=new"},
@@ -1073,6 +1215,93 @@ test "a re-measured engine: Crane's drift control against the first window, with
     const one_page = (try render(a, &m, .{ .remeasured = .{ .engines = &.{.safari}, .control = &one } })).index_html;
     try testing.expect(std.mem.indexOf(u8, one_page, "1 workload outside") != null);
     try testing.expect(std.mem.indexOf(u8, one_page, "1 workloads") == null);
+}
+
+test "a Crane-only window: the tip against its base per workload, time, steady and peak, with noise bands" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // dom.a: the tip 4x faster, memory the same; dom.b: unchanged (within
+    // noise); dom.c: memory 30% lower, peak lower; startup: its own row.
+    var records: std.ArrayList(journal.Record) = .empty;
+    for ([_]u32{ 0, 1, 2 }) |run| {
+        try records.append(a, try timed(a, 1, .crane_base, "9b0f1b1f382", "dom.a", run, 40, 100));
+        try records.append(a, try timed(a, 1, .crane, "d0d8be54612", "dom.a", run, 10, 100));
+        try records.append(a, try timed(a, 1, .crane_base, "9b0f1b1f382", "dom.b", run, 10, 100));
+        try records.append(a, try timed(a, 1, .crane, "d0d8be54612", "dom.b", run, 10.5, 101));
+        var cb = try timed(a, 1, .crane_base, "9b0f1b1f382", "dom.c", run, 10, 1000);
+        cb.memory.?.footprint_peak = 2000;
+        var ct = try timed(a, 1, .crane, "d0d8be54612", "dom.c", run, 10, 700);
+        ct.memory.?.footprint_peak = 1000;
+        try records.append(a, cb);
+        try records.append(a, ct);
+    }
+    var sb = try timed(a, 1, .crane_base, "9b0f1b1f382", "startup.idle-page", 0, 100, 100);
+    sb.kind = .startup;
+    sb.wall_ms = try a.dupe(f64, &.{100});
+    var st = try timed(a, 1, .crane, "d0d8be54612", "startup.idle-page", 0, 200, 100);
+    st.kind = .startup;
+    st.wall_ms = try a.dupe(f64, &.{200});
+    try records.append(a, sb);
+    try records.append(a, st);
+    const m = try build(a, records.items);
+    const bt = (try baseTip(a, &m, 1)).?;
+    try testing.expectEqualStrings("9b0f1b1f382", bt.base_version);
+    try testing.expectEqualStrings("d0d8be54612", bt.tip_version);
+    try testing.expectEqual(@as(usize, 4), bt.rows.len);
+    const ra = bt.rows[0];
+    try testing.expectEqualStrings("dom.a", ra.workload);
+    try testing.expectApproxEqAbs(@as(f64, 0.25), ra.time.?, 1e-12);
+    try testing.expectApproxEqAbs(@as(f64, 1.0), ra.steady.?, 1e-12);
+    try testing.expectApproxEqAbs(@as(f64, 0.10), ra.band, 1e-12);
+    try testing.expect(ra.outside);
+    try testing.expect(!bt.rows[1].outside);
+    const rc = bt.rows[2];
+    try testing.expectApproxEqAbs(@as(f64, 0.7), rc.steady.?, 1e-12);
+    try testing.expectApproxEqAbs(@as(f64, 0.5), rc.peak.?, 1e-12);
+    try testing.expect(rc.outside);
+    // Start-up is a row, outside its band, but in neither geometric mean.
+    try testing.expectEqualStrings("startup.idle-page", bt.rows[3].workload);
+    try testing.expect(bt.rows[3].outside);
+    // The two geometric means over the headline's workloads: time
+    // (0.25 * 1.05 * 1)^(1/3), memory (1 * 1.01 * 0.7)^(1/3).
+    try testing.expectApproxEqAbs(std.math.pow(f64, 0.25 * 1.05, 1.0 / 3.0), bt.time_ratio.?, 1e-12);
+    try testing.expectEqual(@as(usize, 3), bt.time_n);
+    try testing.expectApproxEqAbs(std.math.pow(f64, 1.01 * 0.7, 1.0 / 3.0), bt.memory_ratio.?, 1e-12);
+    try testing.expectEqual(@as(usize, 3), bt.memory_n);
+    try testing.expectEqual(@as(usize, 3), bt.outside.len);
+    try testing.expectEqualStrings("dom.a", bt.outside[0]);
+
+    const page = (try render(a, &m, .{})).index_html;
+    const i = std.mem.indexOf(u8, page, "id=\"base-tip\"").?;
+    const section = page[i .. i + std.mem.indexOf(u8, page[i..], "</section>").?];
+    try testing.expect(std.mem.indexOf(u8, section, "<code>9b0f1b1f382</code>") != null);
+    try testing.expect(std.mem.indexOf(u8, section, "<code>d0d8be54612</code>") != null);
+    try testing.expect(std.mem.indexOf(u8, section, "3 workloads outside") != null);
+    try testing.expect(std.mem.indexOf(u8, section, "<code>dom.a</code>") != null);
+    try testing.expect(std.mem.indexOf(u8, section, "Peak") != null);
+    // Its own column in the round's tables, beside Crane's.
+    try testing.expect(std.mem.indexOf(u8, page, "<th scope=\"col\" class=\"n\">Crane base</th>") != null);
+    try testing.expect(std.mem.indexOf(u8, page, "Crane / base") != null);
+    // The base against its own earlier rows (round 0, named `crane` there):
+    // within noise when both means are within 5%.
+    const earlier_rows = [_]journal.Record{
+        try timed(a, 0, .crane, "9b0f1b1f382", "dom.a", 0, 41, 100),
+        try timed(a, 0, .crane, "9b0f1b1f382", "dom.b", 0, 10, 100),
+        try timed(a, 0, .crane, "9b0f1b1f382", "dom.c", 0, 10, 1000),
+    };
+    const earlier = try build(a, &earlier_rows);
+    const bd = try driftBetween(a, &earlier, 0, .crane, &m, 1, .crane_base);
+    try testing.expectEqual(@as(usize, 3), bd.time_n);
+    try testing.expectApproxEqAbs(std.math.pow(f64, 40.0 / 41.0, 1.0 / 3.0), bd.time_ratio.?, 1e-12);
+    try testing.expect(bd.within);
+    try testing.expectEqual(@as(usize, 0), bd.outside);
+
+    // A round without a base has no such section.
+    const plain = [_]journal.Record{ try timed(a, 0, .crane, "abc", "dom.a", 0, 20, 100), try timed(a, 0, .chrome, "157", "dom.a", 0, 10, 400) };
+    const pm = try build(a, &plain);
+    try testing.expect((try baseTip(a, &pm, 0)) == null);
+    try testing.expect(std.mem.indexOf(u8, (try render(a, &pm, .{})).index_html, "id=\"base-tip\"") == null);
 }
 
 test "the page: headline in the HTML, social metadata, the card, every engine named" {

@@ -42,6 +42,33 @@ pub const Pin = struct {
 
 pub const PinError = error{ PinMissingKey, PinUnknownEngine, PinBadSha256, PinMissingBuildIdentity, PinWrongBuild, PinMissingWebDriver };
 
+pub const PinSetError = error{ PinDuplicateEngine, PinsSameCommit, PinBaseWithoutTip };
+
+/// What a run's pins must be together: one pin per engine; a Crane base
+/// (`crane_base`) only beside the Crane it is the base of (`crane`), and
+/// never of the same commit as another Crane pin - the base and the tip of
+/// one commit compare nothing (lane perf2's Crane-only window). ReleaseFast
+/// beside ReleaseSafe of one commit is round 0's pair, and allowed.
+pub fn checkPinSet(pins: []const Pin) PinSetError!void {
+    for (pins, 0..) |p, i| {
+        for (pins[i + 1 ..]) |q| {
+            if (p.name == q.name) return error.PinDuplicateEngine;
+            const base_pair = p.name == .crane_base or q.name == .crane_base;
+            if (base_pair and p.name.isCrane() and q.name.isCrane()) {
+                if (p.commit != null and q.commit != null and std.mem.eql(u8, p.commit.?, q.commit.?)) return error.PinsSameCommit;
+            }
+        }
+    }
+    var base = false;
+    var tip = false;
+    for (pins) |p| switch (p.name) {
+        .crane_base => base = true,
+        .crane => tip = true,
+        else => {},
+    };
+    if (base and !tip) return error.PinBaseWithoutTip;
+}
+
 pub fn parsePin(arena: Allocator, text: []const u8) (PinError || Allocator.Error)!Pin {
     var name: ?Name = null;
     var fields: struct { version: ?[]const u8 = null, build: ?[]const u8 = null, binary: ?[]const u8 = null, sha256: ?[]const u8 = null, commit: ?[]const u8 = null, optimize: ?[]const u8 = null, v8: ?[]const u8 = null, webdriver: ?[]const u8 = null, installed: ?[]const u8 = null } = .{};
@@ -88,7 +115,8 @@ pub fn parsePin(arena: Allocator, text: []const u8) (PinError || Allocator.Error
 /// `releaseRunner(.fast)`; tests/wpt_runner/build_mode.zig pins both).
 pub fn craneModes(name: Name) []const u8 {
     return switch (name) {
-        .crane => "root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc",
+        // The base is an earlier build of the same release build.
+        .crane, .crane_base => "root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc",
         .crane_fast => "root ReleaseFast, Crane modules ReleaseFast, C libraries ReleaseFast, sanitize_c off, libc malloc",
         .chrome, .firefox, .safari, .lightpanda => unreachable,
     };
@@ -181,7 +209,7 @@ pub const safari_app_names = [_][]const u8{"Safari"};
 pub fn appNames(name: Name) []const []const u8 {
     return switch (name) {
         .safari => &safari_app_names,
-        .crane, .crane_fast, .chrome, .firefox, .lightpanda => &.{},
+        .crane, .crane_fast, .crane_base, .chrome, .firefox, .lightpanda => &.{},
     };
 }
 
@@ -189,7 +217,7 @@ pub fn appNames(name: Name) []const []const u8 {
 pub fn setNames(name: Name) []const []const u8 {
     return switch (name) {
         .safari => &safari_process_names,
-        .crane, .crane_fast, .chrome, .firefox, .lightpanda => &.{},
+        .crane, .crane_fast, .crane_base, .chrome, .firefox, .lightpanda => &.{},
     };
 }
 
@@ -208,7 +236,7 @@ pub const Drive = enum { argv, cdp, webdriver };
 
 pub fn driveOf(name: Name) Drive {
     return switch (name) {
-        .crane, .crane_fast, .chrome, .firefox => .argv,
+        .crane, .crane_fast, .crane_base, .chrome, .firefox => .argv,
         .lightpanda => .cdp,
         .safari => .webdriver,
     };
@@ -252,7 +280,7 @@ pub fn launch(arena: Allocator, pin: Pin, url: []const u8, profile: []const u8, 
     var argv: std.ArrayList([]const u8) = .empty;
     var flags: std.ArrayList([]const u8) = .empty;
     switch (pin.name) {
-        .crane, .crane_fast => {
+        .crane, .crane_fast, .crane_base => {
             try argv.append(arena, pin.binary);
             try argv.append(arena, url);
             for (crane_flags) |f| {
@@ -478,4 +506,42 @@ test "a file's SHA-256" {
     var hex: [64]u8 = undefined;
     try sha256File(testing.io, path, &hex);
     try testing.expectEqualStrings("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", &hex);
+}
+
+test "a Crane base pin: the ReleaseSafe build's modes, launched as the console from its own directory" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const base_text = try std.mem.replaceOwned(u8, a, crane_pin_text, "name=crane\n", "name=crane_base\n");
+    const pin = try parsePin(a, base_text);
+    try testing.expectEqual(Name.crane_base, pin.name);
+    // A ReleaseFast build is no base under the ReleaseSafe build's name.
+    const fast_modes = try std.mem.replaceOwned(u8, a, base_text, craneModes(.crane), craneModes(.crane_fast));
+    try testing.expectError(error.PinWrongBuild, parsePin(a, fast_modes));
+    const sha = "abababababababababababababababababababababababababababababababab";
+    const url = "http://127.0.0.1:8000/p.html";
+    const base = try launch(a, .{ .name = .crane_base, .version = "v", .build = "b", .binary = "/bins/crane-9b0f1b1f382/repl", .sha256 = sha, .commit = "9b0f1b1f382", .optimize = "o", .v8 = "v8" }, url, "/p", 0);
+    try testing.expect(base.stdin_pipe);
+    try testing.expectEqualStrings("/bins/crane-9b0f1b1f382", base.cwd.?);
+    try testing.expectEqual(Drive.argv, driveOf(.crane_base));
+    try expectStrings(&crane_flags, base.flags);
+}
+
+test "a pin set: one pin per engine, and no two Crane pins of one commit" {
+    const sha = "abababababababababababababababababababababababababababababababab";
+    const tip: Pin = .{ .name = .crane, .version = "d0d8be54612", .build = "b", .binary = "/t/repl", .sha256 = sha, .commit = "d0d8be54612", .optimize = "o", .v8 = "v8" };
+    const base: Pin = .{ .name = .crane_base, .version = "9b0f1b1f382", .build = "b", .binary = "/b/repl", .sha256 = sha, .commit = "9b0f1b1f382", .optimize = "o", .v8 = "v8" };
+    const chrome: Pin = .{ .name = .chrome, .version = "157", .build = "b", .binary = "/c", .sha256 = sha };
+    try checkPinSet(&.{ tip, base, chrome });
+    try testing.expectError(error.PinDuplicateEngine, checkPinSet(&.{ tip, base, tip }));
+    // The base and the tip built from one commit compare nothing.
+    var same = base;
+    same.commit = tip.commit;
+    try testing.expectError(error.PinsSameCommit, checkPinSet(&.{ tip, same }));
+    // ReleaseFast beside ReleaseSafe of one commit is the round-0 pair, and allowed.
+    var fast = tip;
+    fast.name = .crane_fast;
+    try checkPinSet(&.{ tip, fast });
+    // A base needs a tip to be the base of.
+    try testing.expectError(error.PinBaseWithoutTip, checkPinSet(&.{base}));
 }
