@@ -29,6 +29,7 @@ pub const css_events = @import("css_events.zig");
 
 pub const Registry = registry.Registry;
 pub const updateAnimationsAndSendEvents = registry.updateAnimationsAndSendEvents;
+pub const commitPendingAnimations = registry.commitPendingAnimations;
 pub const defaultTimeline = registry.defaultTimeline;
 
 const Allocator = std.mem.Allocator;

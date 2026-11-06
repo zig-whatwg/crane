@@ -455,6 +455,39 @@ pub fn updateAnimationsAndSendEvents(document: *runtime.Instance, frame: update_
     sendEvents(document);
 }
 
+/// HTML update the rendering step 16, after the style update (the step's
+/// owner, update_the_rendering.styleAndLayout, part 3): every animation
+/// `document` times whose pending play or pause task is still waiting is
+/// ready now, and completes it with the timeline's current time - THIS
+/// rendering update's, set at step 11 and constant until the next one.
+///
+/// Web Animations 1 4.5.6 leaves "as soon as possible" to the user agent.
+/// The browsers give an animation made during a rendering update (in its
+/// rAF callbacks or their microtasks, in an animation event listener, or by
+/// the update's own style change event) that update's timeline time: Blink
+/// PendingAnimations::Update after the lifecycle's style update
+/// (NotifyReady with the timeline's current time), WebKit since 294049@main
+/// (bug 290993, processPendingAnimations with the update's cached time).
+/// Chrome, Firefox and Safari pass
+/// web-animations/timing-model/animations/start-time-compat.html. An
+/// animation made in a task between two updates still completes at the next
+/// update's step 11 (`updateAnimationsAndSendEvents`).
+pub fn commitPendingAnimations(document: *runtime.Instance) void {
+    const registry = of(document.ctx) orelse return;
+    if (registry.animations.items.len == 0) return;
+    // Snapshot first: resolving the ready promise can reach script (a
+    // `then` getter on the animation).
+    var snapshot = animationsTimedBy(registry, document) catch return;
+    defer snapshot.deinit(registry.allocator);
+    for (snapshot.items) |link| {
+        const instance = link.get() orelse continue;
+        const animation = hooks.animationOf(instance) orelse continue;
+        if (animation.documentForTiming() != document or !animation.hasPendingTask()) continue;
+        animation.runPendingTasks();
+        animation.settle();
+    }
+}
+
 fn animationsTimedBy(registry: *Registry, document: *runtime.Instance) !std.ArrayListUnmanaged(Link) {
     var list: std.ArrayListUnmanaged(Link) = .empty;
     errdefer list.deinit(registry.allocator);

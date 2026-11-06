@@ -50,7 +50,9 @@ pub const Step = enum(u5) {
     context_lost = 13,
     /// 14. Run the animation frame callbacks.
     animation_frame_callbacks = 14,
-    /// 16. Style and layout, content-visibility proximity, ResizeObserver.
+    /// 16. Style and layout, content-visibility proximity, ResizeObserver:
+    /// ONE owner, `styleAndLayout` below, which the list calls directly and
+    /// which runs the step's parts in their order. Never an installed hook.
     style_and_layout = 16,
     /// 17. The focus fixup.
     focus_fixup = 17,
@@ -208,6 +210,38 @@ pub fn focusedAreaChanged(document: *runtime.Instance, element: ?*runtime.Instan
 /// The focus fixup ran and an element is still focused: watch again.
 pub fn watchFocusedArea(document: *runtime.Instance) void {
     refcount.watchRendering(document, true);
+}
+
+// ============================================================================
+// Step 16: style and layout
+// ============================================================================
+
+/// HTML "update the rendering" step 16 for `document` (one doc of docs):
+/// the step's one owner. Crane lays nothing out (layout is the host's), so
+/// of "recalculate styles and update layout for doc" (16.2.1) what remains
+/// is the style half and what the browsers do in the same lifecycle update,
+/// in this order:
+///
+/// 1. The used CSS resources: the images and fonts the styles now use are
+///    selected (dom.style resource_loading), after the animation frame
+///    callbacks and their microtasks, never by a style getter.
+/// 2. The pending animations: every animation `document` times whose play
+///    or pause task still waits completes it with this update's timeline
+///    time (dom.animations.commitPendingAnimations; Blink
+///    PendingAnimations::Update after the style and layout update).
+///
+/// 16.2.2-16.2.4 (content-visibility proximity) and 16.2.5-16.3
+/// (ResizeObserver) join this sequence in the spec's order when Crane has
+/// them. The steps may run script (a ready promise's `then` getter): the
+/// list checks every document again before the next one.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#update-the-rendering
+pub fn styleAndLayout(document: *runtime.Instance, frame: Frame) void {
+    _ = frame;
+    // 1.
+    @import("style/resource_loading.zig").updateRendering(document);
+    // 2.
+    animations.commitPendingAnimations(document);
 }
 
 /// Run `step` for `document`, if its owner installed it. The loop's.
