@@ -32,6 +32,10 @@ These are the user's (2026-11-02 and 2026-11-04) and the runner enforces what it
   (`releaseRunner(.fast)`), the same allocator, V8 and snapshot - timed in the same runs,
   alternating like any other engine (journal engine `crane_fast`). The two options name two
   builds, and the build refuses both at once.
+- **Crane is built for one fixed CPU, `-Dcpu=apple_m1`** (the user, 2026-11-06), never its
+  build host's: every Crane build a published round times - ReleaseSafe, ReleaseFast, a base -
+  is compiled with `-Dcpu=apple_m1`, the CPU every Apple Silicon Mac runs, as the browsers ship
+  one build for all of them. See "The CPU target" below.
 - **Browsers launch headless, in the background, never taking focus.** Safari has no headless
   mode: it runs through `safaridriver` in chat.local's console session, one session at a time.
   Lightpanda runs through its CDP server.
@@ -146,24 +150,55 @@ Check benchmark noise before explaining a difference: the same binary against it
 (docs/lessons/testing-check-benchmark-noise-with-identical-binaries.md). The report prints each
 cell's spread (the runs' relative median absolute deviation) when it is 5% or more.
 
+## The CPU target
+
+`build.zig` calls `b.standardTargetOptions(.{})`, which has no default: without `-Dcpu`, a build
+is compiled for the CPU of the host that builds it. The pool's hosts differ (chat.local is an
+M4 Pro, `apple_m4` to Zig; chat2 an M2, `apple_a15`), and two builds of one source for two CPUs
+are two code layouts: on 2026-11-06 a console of lane perf2's tip built on chat2 was 12.6% slower
+on `dom.getter-loop` than the same tip built on chat.local, with the same instructions retired
+(docs/lessons/testing-a-frozen-console-is-one-builds-layout.md). Round 0's Crane was built that
+way, natively on chat.local. So, since round 1:
+
+- **Every Crane build a round times is built with `-Dcpu=apple_m1`**, in one build session on the
+  timing host (the SDK and linker differ between hosts too).
+- **The build records its target.** A release console's `zig-out/bin/repl.modes` is its build
+  identity in the pin's own `key=value` lines (`tests/wpt_runner/build_mode.zig`,
+  `writeModesFile`): `optimize=` its modes and `target_cpu=` the CPU its code is for, as `-Dcpu`
+  spells it - the model, then `+feature` / `-feature` for each feature added to or removed from
+  the model's own, and ` (native)` when no `-Dcpu` was given. It is the CPU Zig resolved, not the
+  model asked for: `std.zig.system.resolveTargetQuery` drops `fuse_aes` from every Apple Silicon
+  model (a workaround for ziglang/zig#37215), so `-Dcpu=apple_m1` records
+  `target_cpu=apple_m1-fuse_aes`, and round 0's native build on chat.local was
+  `apple_m4-fuse_aes (native)`. A window checks the model and that it is not native, never an
+  exact string, and `perf_bench` holds the builds it compares to one target string.
+- **The pin and every journal row carry it** (`target_cpu`): a `crane`, `crane_fast` or
+  `crane_base` pin without one is refused (`PinMissingBuildIdentity`), and so is a set of pins
+  whose Crane builds name different targets (`PinWrongTarget`). The drift control
+  (`crane_control`, below) is exempt: it is an earlier round's binary, as that round built it.
+- **The page names it**: the subtitle, the engines table and the method say which CPU Crane is
+  built for.
+
 ## Running it
 
 On the measuring host, from a checkout with the engines pinned:
 
 ```bash
 zig build perf-bench -j2                     # zig-out/bin/perf_bench (std only; seconds)
-zig build repl-exe -j2 -Dwpt-runner-release      # Crane's release build (+ zig-out/bin/repl.modes)
+zig build repl-exe -j2 -Dwpt-runner-release -Dcpu=apple_m1      # Crane's release build (+ zig-out/bin/repl.modes)
+grep -qE '^target_cpu=apple_m1([+-][a-z0-9_]+)*$' zig-out/bin/repl.modes  # the model it is for, never native
 # copy zig-out/bin/{repl,whatwg_snapshot.bin,repl.modes} to <safe>/ before the next build replaces them
-zig build repl-exe -j2 -Dwpt-runner-release-fast # the ReleaseFast column; copy the same three to <fast>/
+zig build repl-exe -j2 -Dwpt-runner-release-fast -Dcpu=apple_m1 # the ReleaseFast column; copy the same three to <fast>/
 
 # Crane's pins (the browsers' pins are written by their setup scripts on the host); `optimize`
-# is the build's own repl.modes. For the ReleaseFast build: name=crane_fast, <fast>/.
+# and `target_cpu` are the build's own repl.modes lines. For the ReleaseFast build:
+# name=crane_fast, <fast>/.
 cat > crane.pin <<PIN
 name=crane
 version=$(git rev-parse --short=11 HEAD)
 commit=$(git rev-parse --short=11 HEAD)
-build=release: -Dwpt-runner-release (ReleaseSafe everywhere, C .trap, libc malloc)
-optimize=$(cat <safe>/repl.modes)
+build=release: -Dwpt-runner-release -Dcpu=apple_m1 (ReleaseSafe everywhere, C .trap, libc malloc)
+$(cat <safe>/repl.modes)
 v8=13.1.203 static
 binary=<safe>/repl
 sha256=$(shasum -a 256 <safe>/repl | cut -d' ' -f1)
@@ -183,11 +218,11 @@ zig-out/bin/perf_bench report --journals=<journals> --out=<gh-pages>/performance
 launches. `perf_bench serve --root=tests/perf` serves the pages alone, to open one by hand.
 
 The `.pin` files are `key=value` lines: `name`, `version`, `build`, `binary`, `sha256`; Crane's
-also `commit`, `optimize`, `v8`; Safari's `webdriver` (`/usr/bin/safaridriver`). `check` and
-`run` refuse a binary whose SHA-256 is not its pin's, and a Crane pin whose `optimize` is not its
-engine's modes as `build_mode.zig` `describe` writes them (`crane`: root ReleaseSafe ...;
-`crane_fast`: root ReleaseFast ...): the correctness runner, or one build under the other's name,
-is never timed.
+also `commit`, `optimize`, `target_cpu`, `v8`; Safari's `webdriver` (`/usr/bin/safaridriver`).
+`check` and `run` refuse a binary whose SHA-256 is not its pin's, a Crane pin whose `optimize` is
+not its engine's modes as `build_mode.zig` `describe` writes them (`crane`: root ReleaseSafe ...;
+`crane_fast`: root ReleaseFast ...) - the correctness runner, or one build under the other's name,
+is never timed - and Crane builds of different CPU targets ("The CPU target").
 
 ## The journal
 
@@ -200,7 +235,7 @@ its tests byte for byte; `perf_bench validate` reads journals the same way. The 
 | `format` | `crane-perf/1` |
 | `round`, `time` | the perf round (0: the baseline), and the launch's UTC time |
 | `host` | name, OS, arch, CPU, cores, memory |
-| `engine` | name (`crane`, `crane_fast`, `crane_base`, `chrome`, `firefox`, `safari`, `lightpanda`), version, build; Crane's commit, optimize modes and V8; the binary, its SHA-256, the launch flags |
+| `engine` | name (`crane`, `crane_fast`, `crane_base`, `crane_control`, `chrome`, `firefox`, `safari`, `lightpanda`), version, build; Crane's commit, optimize modes, CPU target (`target_cpu`, absent from round 0's rows) and V8; the binary, its SHA-256, the launch flags |
 | `page`, `workload`, `kind`, `run` | what ran: `timed`, `chain`, `idle`, `startup`, `instances`, `gc_bench` |
 | `status`, `message` | `ok`, `error`, `timeout`, `crash` or `unsupported`, and why |
 | `ops`, `wall_ms` | operations per sample and each sample's time (a chain: each step's load) |
@@ -264,14 +299,36 @@ workloads. Before the tip's rows are set beside the browsers' last ones, the bas
 noise of its own earlier rows: compare the window's `crane_base` rows with the earlier round's
 Crane rows as the drift control above does, with both geometric means within 5% of 100%.
 
+**The browsers' rows stand; the drift control decides whether Crane's may stand beside them.** A
+Crane-only round has no browser rows of its own: each browser's rows are its latest earlier
+round's (`report.zig` `Model.standing`; a Crane build's rows never stand for a later round), and
+the page says so where it shows them. Before the new Crane rows are set beside them, the host must
+be shown not to have moved since: the window also runs **the binary the earlier round measured as
+`crane`, unchanged**, as engine `crane_control` (its pin is that round's, renamed). The report
+finds that round by the control's SHA-256, compares the control's rows with that round's Crane
+rows (`controlDrift`, `driftBetween`: page workloads only, never gc_bench's), and prints a "Drift
+control" section. `perf_bench report` refuses to write a round whose browsers' rows are carried
+when it has no such control, or when the control is not within noise (both geometric means within
+5% of 100%). Where the window also has a base of the control's commit built for the fixed target
+(round 1: round 0's source for `apple_m1`), the base over the control is what the CPU target alone
+did (`targetAlone`), and "Crane, round by round" splits each workload's change into the code's
+(the tip over the base, one target) and the target's (the base over the control, one source).
+
+```bash
+# round 1: the tip and ReleaseFast for apple_m1, round 0's source for apple_m1, round 0's binary
+zig-out/bin/perf_bench run --suite=tests/perf/suite.json --root=tests/perf --out=<dir> --round=1 --runs=7 \
+  --pin=crane.pin --pin=crane_fast.pin --pin=crane_base.pin --pin=crane_control.pin --stop-file=<STOP>
+zig-out/bin/perf_bench report --journals=<round 0's journals + <dir>> --out=<scratch>
+```
+
 **A micro row is one build's layout.** A sub-microsecond row can swing by about 15% between two
 builds of the same source, with instructions retired equal within 0.5%: code placement. Builds on
 different pool hosts also differ in code, because each targets its host's CPU. On 2026-11-06,
 dom.getter-loop was +12.6% for a tip console built on chat2 and -0.6% for the same tip built on
 chat.local; main built on chat2 was +0.6%
 (docs/lessons/testing-a-frozen-console-is-one-builds-layout.md). So:
-- every console of a timed comparison is built on the host that times it, in one build session
-  (or with the one pinned `-Dcpu` the published rounds use);
+- every console of a timed comparison is built on the host that times it, in one build session,
+  with the one pinned `-Dcpu` the published rounds use ("The CPU target");
 - a surprising micro-row change is first re-checked with a second build, both sides rebuilt on the
   timing host, and with instructions retired (page minus a 0-iteration control) - only a change
   that survives both is chased.
@@ -289,6 +346,27 @@ version), the Crane-only rows, and Open Graph and Twitter `summary_large_image` 
 headline and the 1200x630 card (`tools/perf_bench/card/README.md`). The content is all in the
 HTML; the page uses the WPT site's stylesheet (`../site.css`) and lives at gh-pages
 `performance/`, which the WPT site's generator leaves alone and links to.
+
+**Progress over time** (the user, 2026-11-06: the page shows the progress Crane makes over
+time), from the second round on, all of it from the rounds' journals:
+- **Progress**, right after the headline: Crane's headline round by round (`report.zig`
+  `progress`) - its time and memory as a percentage of each browser's, each point against each
+  browser's rows as they stood then (its last-measured rows) - as a chart and a table each for
+  time and memory. Each point is labelled with its round, date, Crane commit, CPU target and what
+  the round changed. Where a round rebuilt an earlier round's source for its own CPU target (round
+  1: round 0's source for `apple_m1`), that build is a hollow point before the round's: the dashed
+  step into it is the target's, the step out of it the code's.
+- **Crane, round by round**: each workload's time and steady memory at every point, its change
+  since the first round (split into the code's and the target's where the round has both), and a
+  sparkline per measure.
+- **The card and the description** name the progress: Crane's time and memory against its first
+  round's (`sinceFirst`), beside the gap to each browser.
+- The charts are inline SVG the tool draws (`tools/perf_bench/chart.zig`), on the WPT site's chart
+  classes, with a native tooltip per point; the numbers are in the tables beside them, and no
+  script is needed. The series colours are the first four categorical slots of the dataviz
+  reference palette, with their own steps for dark (`report.zig` `style`).
+- **What each round changed** is one line in `report.zig` `round_notes`, written when the round is
+  published (a test holds every round to one); every figure beside it is the journals'.
 
 ## The browsers on chat.local
 

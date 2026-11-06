@@ -25,6 +25,7 @@ const NS = "http://www.w3.org/2000/svg";
 // card.zig's constants.
 const COLUMN_RIGHT = [498, 688, 878, 1078];
 const TIME_BASELINE = 404, MEMORY_BASELINE = 504;
+const ROUND_BASELINE = 178, SINCE_TIME_RIGHT = 862, SINCE_MEMORY_RIGHT = 1078;
 function svg(w, h) {
   const s = document.createElementNS(NS, "svg");
   s.setAttribute("width", w); s.setAttribute("height", h); s.setAttribute("viewBox", `0 0 ${w} ${h}`);
@@ -52,7 +53,14 @@ document.fonts.load('600 40px "Source Serif 4"').then(() => document.fonts.load(
   const b = document.createElementNS(NS, "tspan"); b.textContent = "Performance"; b.setAttribute("font-weight", 380);
   title.append(a, b);
   // "Round" and its number (composited at round_x = 206 on round_baseline = 178, the small cut: serif 600 40px).
-  text(s, 80, 178, "Round", "serif", 40, 400, "#5a5e63");
+  text(s, 80, ROUND_BASELINE, "Round", "serif", 40, 400, "#5a5e63");
+  // The progress line (card.zig since_time_right, since_memory_right, on the round's baseline): its
+  // numbers composited in the small cut, right-aligned at each edge, each with its "%". A first
+  // round's card blanks the whole line (card.zig since_box: x 455..1125, y 140..190).
+  text(s, 460, ROUND_BASELINE, "Since round 0:", "serif", 40, 400, "#5a5e63");
+  text(s, SINCE_TIME_RIGHT - 70, ROUND_BASELINE, "time", "sans", 24, 500, "#5a5e63", { "text-anchor": "end" });
+  text(s, SINCE_MEMORY_RIGHT - 70, ROUND_BASELINE, "memory", "sans", 24, 500, "#5a5e63", { "text-anchor": "end" });
+  for (const right of [SINCE_TIME_RIGHT, SINCE_MEMORY_RIGHT]) text(s, right + 4, ROUND_BASELINE, "%", "serif", 40, 400, "#5a5e63");
   text(s, 80, 236, "CRANE’S TIME AND MEMORY AS A PERCENTAGE OF EACH BROWSER’S", "sans", 21, 600, "#5a5e63", { "letter-spacing": "1.7" });
   const rule = (y) => { const l = document.createElementNS(NS, "rect"); l.setAttribute("x", 80); l.setAttribute("y", y); l.setAttribute("width", 1040); l.setAttribute("height", 1); l.setAttribute("fill", "#d9dce0"); s.append(l); };
   ["Chrome", "Firefox", "Safari", "Lightpanda"].forEach((l, i) => text(s, COLUMN_RIGHT[i] + 34, 316, l, "sans", 22, 600, "#202124", { "text-anchor": "end" }));
