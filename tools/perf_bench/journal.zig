@@ -23,15 +23,31 @@ const Io = std.Io;
 pub const format_name = "crane-perf/1";
 
 pub const EngineName = enum {
+    /// Crane's release build: ReleaseSafe throughout (-Dwpt-runner-release).
+    /// Every headline compares it.
     crane,
+    /// The same release build with only the optimize mode changed: ReleaseFast
+    /// throughout, no C sanitizer (-Dwpt-runner-release-fast; the user,
+    /// 2026-11-05) - a column of its own beside `crane`, never the headline.
+    crane_fast,
     chrome,
     firefox,
     safari,
     lightpanda,
 
+    /// One of Crane's builds: launched as the console, with Crane's build
+    /// identity (commit, modes, V8) in every row.
+    pub fn isCrane(e: EngineName) bool {
+        return switch (e) {
+            .crane, .crane_fast => true,
+            .chrome, .firefox, .safari, .lightpanda => false,
+        };
+    }
+
     pub fn label(e: EngineName) []const u8 {
         return switch (e) {
             .crane => "Crane",
+            .crane_fast => "Crane ReleaseFast",
             .chrome => "Chrome",
             .firefox => "Firefox",
             .safari => "Safari",
@@ -198,7 +214,7 @@ pub fn validate(r: Record) ValidationError!void {
     if (!isSha256(r.engine.binary_sha256)) return error.BadSha256;
     // Crane's build identity: what the comparison rule requires (the
     // release build, never the correctness runner).
-    if (r.engine.name == .crane) {
+    if (r.engine.name.isCrane()) {
         if (r.engine.commit == null or r.engine.optimize == null or r.engine.v8 == null) return error.MissingBuildIdentity;
     }
     for (r.wall_ms) |v| try nonNegative(v);
@@ -515,6 +531,28 @@ test "a journal reads line by line and names the line that fails" {
     const bad = try std.mem.concat(a, u8, &.{ line, "\n", "{\"format\":1}\n" });
     try testing.expectError(error.UnexpectedToken, parseJournal(a, bad, &failure));
     try testing.expectEqual(@as(usize, 2), failure.line);
+}
+
+test "Crane ReleaseFast is an engine of its own, with Crane's build identity" {
+    // The user, 2026-11-05 ("yes"): round 0 also times a ReleaseFast Crane,
+    // its own labelled column beside the release build (ReleaseSafe).
+    try testing.expectEqualStrings("Crane ReleaseFast", EngineName.crane_fast.label());
+    try testing.expectEqualStrings("Crane", EngineName.crane.label());
+    try testing.expect(EngineName.crane_fast.isCrane());
+    try testing.expect(EngineName.crane.isCrane());
+    try testing.expect(!EngineName.chrome.isCrane());
+    try testing.expect(!EngineName.lightpanda.isCrane());
+
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const line = try std.mem.replaceOwned(u8, a, std.mem.trimEnd(u8, golden_timed, "\n"), "\"name\":\"crane\"", "\"name\":\"crane_fast\"");
+    const r = try parseLine(a, line);
+    try testing.expectEqual(EngineName.crane_fast, r.engine.name);
+    // Its rows name their build as Crane's do: commit, modes, V8.
+    var no_modes = r;
+    no_modes.engine.optimize = null;
+    try testing.expectError(error.MissingBuildIdentity, validate(no_modes));
 }
 
 test "times are written rounded to the microsecond" {

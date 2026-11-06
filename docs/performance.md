@@ -24,7 +24,14 @@ These are the user's (2026-11-02 and 2026-11-04) and the runner enforces what it
   built with `zig build repl-exe -Dwpt-runner-release` - every part
   ReleaseSafe (Crane's modules, the C libraries, the root), the C code at ReleaseSafe's `.trap`
   sanitizer, libc's malloc, V8 linked statically (`tests/wpt_runner/build_mode.zig`,
-  `consoleModes`). Never the correctness runner, whose Crane modules are Debug.
+  `consoleModes`). Never the correctness runner, whose Crane modules are Debug. Every headline
+  compares this build (journal engine `crane`).
+- **Crane ReleaseFast is a column beside it, never the headline** (the user, 2026-11-05): the
+  same release build with only the optimize mode changed, built with `-Dwpt-runner-release-fast`
+  - Crane's modules, the C libraries and the root ReleaseFast, no C sanitizer
+  (`releaseRunner(.fast)`), the same allocator, V8 and snapshot - timed in the same runs,
+  alternating like any other engine (journal engine `crane_fast`). The two options name two
+  builds, and the build refuses both at once.
 - **Browsers launch headless, in the background, never taking focus.** Safari has no headless
   mode: it runs through `safaridriver` in chat.local's console session, one session at a time.
   Lightpanda runs through its CDP server.
@@ -122,9 +129,16 @@ Those rows stay Crane-only, with their history.
 - Chrome: `--headless=new` with puppeteer's quiet-profile flags; Firefox: `--headless` with a
   profile whose `user.js` turns off first-run pages, telemetry and updates; Lightpanda: `serve`,
   then CDP (browser context, target, flat session, `Page.navigate`); Safari: `safaridriver`, a
-  WebDriver session, Navigate To; Crane: `repl <url> --proxy=direct`, its stdin held open (the
-  page stays live) and closed at the end (the console exits as on Ctrl+D). Every row records the
-  flags exactly (`engines.zig`).
+  WebDriver session, Navigate To, and a Safari of the launch's own - the runner refuses a launch
+  while a Safari runs and, when the launch ends, ends the automation Safari it started by exact
+  pid (safaridriver leaves it running after Delete Session on Safari 27.2: in round 0's first
+  window every launch reused one Safari, whose app, Networking and GPU processes were outside
+  the set); Crane: `repl <url> --proxy=direct`, its stdin held open (the
+  page stays live) and closed at the end (the console exits as on Ctrl+D), started in its build's
+  own directory: the console restores the `whatwg_snapshot.bin` beside its executable, and only
+  without one searches from its working directory, so even that fallback is the build's own
+  (docs/lessons/testing-a-runner-finds-its-snapshot-from-its-working-directory.md). Every row
+  records the flags exactly (`engines.zig`).
 - The harness's own costs are their own rows: `overhead.empty` (per sample) and
   `startup.idle-page` (launch to first load). No other row includes a launcher's time.
 
@@ -138,24 +152,27 @@ On the measuring host, from a checkout with the engines pinned:
 
 ```bash
 zig build perf-bench -j2                     # zig-out/bin/perf_bench (std only; seconds)
-zig build repl-exe -j2 -Dwpt-runner-release      # Crane's release build
+zig build repl-exe -j2 -Dwpt-runner-release      # Crane's release build (+ zig-out/bin/repl.modes)
+# copy zig-out/bin/{repl,whatwg_snapshot.bin,repl.modes} to <safe>/ before the next build replaces them
+zig build repl-exe -j2 -Dwpt-runner-release-fast # the ReleaseFast column; copy the same three to <fast>/
 
-# Crane's pin (the browsers' pins are written by their setup scripts on the host)
+# Crane's pins (the browsers' pins are written by their setup scripts on the host); `optimize`
+# is the build's own repl.modes. For the ReleaseFast build: name=crane_fast, <fast>/.
 cat > crane.pin <<PIN
 name=crane
 version=$(git rev-parse --short=11 HEAD)
 commit=$(git rev-parse --short=11 HEAD)
-build=release: ReleaseSafe everywhere, C .trap, libc malloc
-optimize=-Dwpt-runner-release (root, Crane modules, C libraries ReleaseSafe; C .trap)
+build=release: -Dwpt-runner-release (ReleaseSafe everywhere, C .trap, libc malloc)
+optimize=$(cat <safe>/repl.modes)
 v8=13.1.203 static
-binary=$PWD/zig-out/bin/repl
-sha256=$(shasum -a 256 zig-out/bin/repl | cut -d' ' -f1)
+binary=<safe>/repl
+sha256=$(shasum -a 256 <safe>/repl | cut -d' ' -f1)
 PIN
 
 zig-out/bin/perf_bench check --suite=tests/perf/suite.json --root=tests/perf --pin=crane.pin --pin=chrome.pin ...
 zig-out/bin/perf_bench run --suite=tests/perf/suite.json --root=tests/perf --out=<dir> \
-  --round=0 --runs=5 --pin=crane.pin --pin=chrome.pin --pin=firefox.pin --pin=safari.pin \
-  --pin=lightpanda.pin --stop-file=<STOP>
+  --round=0 --runs=5 --pin=crane.pin --pin=crane_fast.pin --pin=chrome.pin --pin=firefox.pin \
+  --pin=safari.pin --pin=lightpanda.pin --stop-file=<STOP>
 zig-out/bin/perf_bench gc-bench --gc-bench=zig-out/bin/gc_bench --pin=crane.pin --out=<dir2> --round=0 --runs=5
 zig-out/bin/perf_bench validate <dir>/journal.jsonl <dir2>/journal.jsonl
 zig-out/bin/perf_bench report --journals=<journals> --out=<gh-pages>/performance
@@ -167,7 +184,10 @@ launches. `perf_bench serve --root=tests/perf` serves the pages alone, to open o
 
 The `.pin` files are `key=value` lines: `name`, `version`, `build`, `binary`, `sha256`; Crane's
 also `commit`, `optimize`, `v8`; Safari's `webdriver` (`/usr/bin/safaridriver`). `check` and
-`run` refuse a binary whose SHA-256 is not its pin's.
+`run` refuse a binary whose SHA-256 is not its pin's, and a Crane pin whose `optimize` is not its
+engine's modes as `build_mode.zig` `describe` writes them (`crane`: root ReleaseSafe ...;
+`crane_fast`: root ReleaseFast ...): the correctness runner, or one build under the other's name,
+is never timed.
 
 ## The journal
 
@@ -180,7 +200,7 @@ its tests byte for byte; `perf_bench validate` reads journals the same way. The 
 | `format` | `crane-perf/1` |
 | `round`, `time` | the perf round (0: the baseline), and the launch's UTC time |
 | `host` | name, OS, arch, CPU, cores, memory |
-| `engine` | name, version, build; Crane's commit, optimize modes and V8; the binary, its SHA-256, the launch flags |
+| `engine` | name (`crane`, `crane_fast`, `chrome`, `firefox`, `safari`, `lightpanda`), version, build; Crane's commit, optimize modes and V8; the binary, its SHA-256, the launch flags |
 | `page`, `workload`, `kind`, `run` | what ran: `timed`, `chain`, `idle`, `startup`, `instances`, `gc_bench` |
 | `status`, `message` | `ok`, `error`, `timeout`, `crash` or `unsupported`, and why |
 | `ops`, `wall_ms` | operations per sample and each sample's time (a chain: each step's load) |
@@ -193,11 +213,34 @@ its tests byte for byte; `perf_bench validate` reads journals the same way. The 
 Journals are kept by round, outside git (`wpt-results/perf/rounds/<round>/...`, two levels below
 `wpt-results/` so the WPT progress report never reads them as WPT journals).
 
+## Re-measuring an engine
+
+When one engine's rows of a round turn out wrong (round 0: Safari's process set), that engine
+runs again in a second window, alternating with Crane ReleaseSafe as a **drift control**. The
+round is then window 1's rows without that engine's, plus window 2's rows of it; window 2's
+Crane rows never join the round's, they are compared with them:
+
+```bash
+grep -v '"engine":{"name":"safari"' <w1>/pages.jsonl > <round>/pages.jsonl   # a line's engine object starts with its name
+grep '"engine":{"name":"safari"' <w2>/journal.jsonl > <round>/safari.jsonl
+grep '"engine":{"name":"crane"' <w2>/journal.jsonl > <control>/crane.jsonl
+zig-out/bin/perf_bench report --journals=<round> --control=<control> --remeasured=safari --out=<gh-pages>/performance
+```
+
+`report` prints the drift and the page gets a "Re-measured" section: the control's time and
+memory over the round's (geometric means, and each workload's ratio), **within noise** when both
+means are within 5% of 100%, with the workloads outside their own band (10%, or three times the
+runs' spread) counted. A control that is not within noise means the host moved between the
+windows: the re-measured rows are not comparable with the round's, and are not published.
+
 ## /performance/
 
 `perf_bench report` writes `index.html` and `card.png` from every journal below `--journals`:
 the headline (Crane's time and memory as a percentage of each browser's: the geometric mean over
-the workloads both ran; start-up and `overhead.empty` are rows of their own, never in it), the engines with versions, builds and flags, this round workload by
+the workloads both ran; start-up and `overhead.empty` are rows of their own, never in it; always
+Crane's ReleaseSafe build), where a round has it the Crane ReleaseFast section (the same means of
+the ReleaseFast build against the ReleaseSafe one and each browser) and its own column in the
+round's tables, the engines with versions, builds and flags, this round workload by
 workload, each workload's history by round (a browser updated between rounds keeps a row per
 version), the Crane-only rows, and Open Graph and Twitter `summary_large_image` metadata with the
 headline and the 1200x630 card (`tools/perf_bench/card/README.md`). The content is all in the

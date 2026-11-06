@@ -6,7 +6,13 @@
 //! What the page shows, from the journals alone:
 //!   - the headline: this round's Crane against each browser, time and
 //!     memory, as the geometric mean over the workloads both ran of Crane's
-//!     figure as a percentage of the browser's (lower is better for Crane);
+//!     figure as a percentage of the browser's (lower is better for Crane).
+//!     Crane is its release build, ReleaseSafe (journal `crane`);
+//!   - Crane ReleaseFast (journal `crane_fast`), where a round has it: the
+//!     same comparison of the ReleaseFast build against the ReleaseSafe one
+//!     and each browser, below the headline, and its own column in the
+//!     round's tables (the user, 2026-11-05: an extra column, the headline
+//!     stays ReleaseSafe);
 //!   - the engines: each one's version, build and launch flags;
 //!   - this round, workload by workload: each engine's median time and
 //!     memory, and Crane's ratio to each browser;
@@ -254,15 +260,24 @@ pub fn inHeadline(workload: []const u8) bool {
     return true;
 }
 
+/// The headline's comparison: Crane's release build (ReleaseSafe) against
+/// `browser`.
 pub fn versus(arena: Allocator, m: *const Model, round: u32, browser: EngineName) !Versus {
-    var v: Versus = .{ .browser = browser };
+    return compare(arena, m, round, .crane, browser);
+}
+
+/// `subject` against `other` in `round`: the geometric mean, over the
+/// headline's workloads both ran, of `subject`'s figure over `other`'s
+/// (`browser` and `version` name `other`).
+pub fn compare(arena: Allocator, m: *const Model, round: u32, subject: EngineName, other: EngineName) !Versus {
+    var v: Versus = .{ .browser = other };
     var t: std.ArrayList(f64) = .empty;
     var mem: std.ArrayList(f64) = .empty;
     for (try m.workloads(arena, round)) |w| {
         if (!inHeadline(w)) continue;
-        const b = m.current(round, browser, w) orelse continue;
+        const b = m.current(round, other, w) orelse continue;
         v.version = b.version;
-        const c = m.current(round, .crane, w) orelse continue;
+        const c = m.current(round, subject, w) orelse continue;
         if (c.timeFigure()) |ct| if (b.timeFigure()) |bt| if (bt > 0) try t.append(arena, ct / bt);
         if (c.memoryFigure()) |cm| if (b.memoryFigure()) |bm| if (bm > 0) try mem.append(arena, cm / bm);
     }
@@ -271,6 +286,12 @@ pub fn versus(arena: Allocator, m: *const Model, round: u32, browser: EngineName
     v.memory_ratio = stats.geometricMean(mem.items);
     v.memory_n = mem.items.len;
     return v;
+}
+
+/// Whether `round` has any row of `engine`.
+pub fn hasEngine(m: *const Model, round: u32, engine: EngineName) bool {
+    for (m.cells) |c| if (c.round == round and c.engine == engine) return true;
+    return false;
 }
 
 /// A ratio as a whole percentage ("54"), for the card and the headline.
@@ -287,7 +308,82 @@ pub const Options = struct {
     site_url: []const u8 = "https://zig-whatwg.github.io/crane/",
     /// How the page reaches the WPT site's stylesheet and fonts.
     assets: []const u8 = "../",
+    /// A re-measurement (`perf_bench report --control=<dir>`), when the
+    /// round's rows of some engines come from a second window.
+    remeasured: ?Remeasured = null,
 };
+
+/// Some engines' rows of a round come from a second window: the engines,
+/// and the control - the second window's rows of an engine the round
+/// already has (Crane ReleaseSafe), run alternating with them so that a
+/// drift of the host between the windows shows (the integrator,
+/// 2026-11-06). The control's rows never enter the round's cells.
+pub const Remeasured = struct {
+    engines: []const EngineName,
+    control: *const Model,
+    /// The engine both windows ran.
+    engine: EngineName = .crane,
+};
+
+/// The control against the round, for one engine: per workload the
+/// control's figure over the round's, and their geometric means.
+pub const Drift = struct {
+    engine: EngineName,
+    time_ratio: ?f64 = null,
+    time_n: usize = 0,
+    memory_ratio: ?f64 = null,
+    memory_n: usize = 0,
+    /// Workloads whose time or memory ratio is outside its noise band
+    /// (`noiseBand`).
+    outside: usize = 0,
+    /// Both geometric means within `drift_limit` of 1.
+    within: bool = false,
+};
+
+/// How far the control's geometric means may stray from 1 and still be
+/// within noise: 5%.
+pub const drift_limit = 0.05;
+
+/// A workload's noise band: 10%, or three times the runs' spread (the
+/// larger of the two cells' relative MAD) where that is wider.
+pub fn noiseBand(a: *const Cell, b: *const Cell) f64 {
+    const s = @max(a.spread orelse 0, b.spread orelse 0);
+    return @max(0.10, 3.0 * s);
+}
+
+pub fn drift(arena: Allocator, m: *const Model, control: *const Model, round: u32, engine: EngineName) !Drift {
+    var d: Drift = .{ .engine = engine };
+    var t: std.ArrayList(f64) = .empty;
+    var mem: std.ArrayList(f64) = .empty;
+    for (try control.workloads(arena, round)) |w| {
+        if (!inHeadline(w)) continue;
+        const c = control.current(round, engine, w) orelse continue;
+        const r = m.current(round, engine, w) orelse continue;
+        const band = noiseBand(c, r);
+        var out = false;
+        if (c.timeFigure()) |ct| if (r.timeFigure()) |rt| if (rt > 0) {
+            try t.append(arena, ct / rt);
+            if (@abs(ct / rt - 1.0) > band) out = true;
+        };
+        if (c.memoryFigure()) |cm| if (r.memoryFigure()) |rm| if (rm > 0) {
+            try mem.append(arena, cm / rm);
+            if (@abs(cm / rm - 1.0) > @max(0.10, band)) out = true;
+        };
+        if (out) d.outside += 1;
+    }
+    d.time_ratio = stats.geometricMean(t.items);
+    d.time_n = t.items.len;
+    d.memory_ratio = stats.geometricMean(mem.items);
+    d.memory_n = mem.items.len;
+    const ok = struct {
+        fn f(x: ?f64) bool {
+            const v = x orelse return false;
+            return @abs(v - 1.0) <= drift_limit;
+        }
+    }.f;
+    d.within = ok(d.time_ratio) and ok(d.memory_ratio);
+    return d;
+}
 
 /// Every file of /performance/ for `m`: name -> bytes.
 pub const Output = struct {
@@ -329,6 +425,7 @@ fn writePage(w: W, arena: Allocator, m: *const Model, vs: []const Versus, o: Opt
     try w.writeAll(style);
     try w.writeAll("</head>\n<body>\n<main class=\"doc perf\" id=\"main\">\n<header class=\"head\">\n<h1>Crane <span class=\"h1-rest\">Performance</span></h1>\n");
     try w.print("<p class=\"subtitle\">Round {d}: Crane beside Chrome, Firefox, Safari and Lightpanda, the same pages in every engine, CPU and memory.", .{m.latest_round});
+    if (hasEngine(m, m.latest_round, .crane_fast)) try w.writeAll(" Crane is its release build, ReleaseSafe; a ReleaseFast build runs beside it as a column of its own.");
     if (hostOf(m)) |h| {
         try w.writeAll(" Measured on ");
         try html.text(w, h.cpu);
@@ -339,11 +436,13 @@ fn writePage(w: W, arena: Allocator, m: *const Model, vs: []const Versus, o: Opt
     try w.print(" <a href=\"{s}\">WPT results</a>.</p>\n</header>\n", .{o.assets});
 
     try writeHeadline(w, vs);
+    if (o.remeasured) |rm| try writeRemeasured(w, arena, m, rm);
+    try writeReleaseFast(w, arena, m);
     try writeEngines(w, arena, m);
     try writeRound(w, arena, m);
     try writeHistory(w, arena, m);
     try writeCraneOnly(w, arena, m);
-    try writeMethod(w);
+    try writeMethod(w, hasEngine(m, m.latest_round, .crane_fast));
     try w.writeAll("<footer class=\"foot\"><p>Written as HTML by <code>tools/perf_bench</code> from the benchmark journals (docs/performance.md).</p></footer>\n</main>\n</body>\n</html>\n");
 }
 
@@ -412,6 +511,79 @@ fn writeHeadline(w: W, vs: []const Versus) !void {
     try w.writeAll("<div class=\"table-wrap\"><table class=\"listing\"><thead><tr><th scope=\"col\">Browser</th><th scope=\"col\">Version</th><th scope=\"col\" class=\"n\">Time</th><th scope=\"col\" class=\"n\">Workloads</th><th scope=\"col\" class=\"n\">Memory</th><th scope=\"col\" class=\"n\">Workloads</th></tr></thead><tbody>\n");
     for (vs) |v| {
         try w.print("<tr><th scope=\"row\">{s}</th><td>", .{v.browser.label()});
+        if (v.version) |ver| try html.text(w, ver) else try w.writeAll("not run");
+        try w.writeAll("</td>");
+        if (v.time_ratio) |r| try w.print("<td class=\"n {s}\">{d}%</td>", .{ ratioClass(r), percent(r) }) else try w.writeAll("<td class=\"n\">&ndash;</td>");
+        try w.print("<td class=\"n\">{d}</td>", .{v.time_n});
+        if (v.memory_ratio) |r| try w.print("<td class=\"n {s}\">{d}%</td>", .{ ratioClass(r), percent(r) }) else try w.writeAll("<td class=\"n\">&ndash;</td>");
+        try w.print("<td class=\"n\">{d}</td></tr>\n", .{v.memory_n});
+    }
+    try w.writeAll("</tbody></table></div></section>\n");
+}
+
+/// An engine as its build: Crane's release build is "Crane ReleaseSafe"
+/// where another Crane build could be meant; the rest are their labels.
+fn buildName(e: EngineName) []const u8 {
+    return switch (e) {
+        .crane => "Crane ReleaseSafe",
+        else => e.label(),
+    };
+}
+
+/// Which engines a re-measurement covers, and how the control compares:
+/// the page says so, with each workload's ratio.
+fn writeRemeasured(w: W, arena: Allocator, m: *const Model, rm: Remeasured) !void {
+    const round = m.latest_round;
+    const d = try drift(arena, m, rm.control, round, rm.engine);
+    try w.writeAll("<section id=\"remeasured\"><h2>Re-measured</h2>\n<p>");
+    for (rm.engines, 0..) |e, i| {
+        if (i > 0) try w.writeAll(if (i + 1 == rm.engines.len) " and " else ", ");
+        try w.writeAll(e.label());
+    }
+    const control_name = buildName(rm.engine);
+    try w.print(" ran again in a second window, alternating with {s} as a drift control; this round&rsquo;s rows of ", .{control_name});
+    for (rm.engines, 0..) |e, i| {
+        if (i > 0) try w.writeAll(if (i + 1 == rm.engines.len) " and " else ", ");
+        try w.writeAll(e.label());
+    }
+    try w.print(" are that window&rsquo;s, and {s}&rsquo;s are the first window&rsquo;s. In the second window {s}&rsquo;s time was ", .{ control_name, control_name });
+    if (d.time_ratio) |r| try w.print("{d:.1}%", .{r * 100}) else try w.writeAll("&ndash;");
+    try w.print(" and its memory ", .{});
+    if (d.memory_ratio) |r| try w.print("{d:.1}%", .{r * 100}) else try w.writeAll("&ndash;");
+    try w.print(" of the first window&rsquo;s (geometric means over {d} and {d} workloads): ", .{ d.time_n, d.memory_n });
+    try w.writeAll(if (d.within) "<strong>within noise</strong>" else "<strong class=\"fail\">not within noise</strong>");
+    try w.print(" (both means within {d:.0}% of 100%; {d} workload{s} outside {s} own band of 10% or three times the runs&rsquo; spread).</p>\n", .{ drift_limit * 100, d.outside, if (d.outside == 1) "" else "s", if (d.outside == 1) "its" else "their" });
+    try w.print("<div class=\"table-wrap\"><table class=\"listing\"><thead><tr><th scope=\"col\">Workload</th><th scope=\"col\" class=\"n\">Time, first window</th><th scope=\"col\" class=\"n\">Time, control</th><th scope=\"col\" class=\"n\">Control / first</th><th scope=\"col\" class=\"n\">Memory, first window</th><th scope=\"col\" class=\"n\">Memory, control</th><th scope=\"col\" class=\"n\">Control / first</th></tr></thead><tbody>\n", .{});
+    for (try rm.control.workloads(arena, round)) |wl| {
+        if (!inHeadline(wl)) continue;
+        const c = rm.control.current(round, rm.engine, wl) orelse continue;
+        const r = m.current(round, rm.engine, wl);
+        try w.writeAll("<tr><th scope=\"row\"><code>");
+        try html.text(w, wl);
+        try w.writeAll("</code></th>");
+        try writeTimeCell(w, r);
+        try writeTimeCell(w, c);
+        try writeRatio(w, c.timeFigure(), if (r) |x| x.timeFigure() else null);
+        try writeMemoryCell(w, r);
+        try writeMemoryCell(w, c);
+        try writeRatio(w, c.memoryFigure(), if (r) |x| x.memoryFigure() else null);
+        try w.writeAll("</tr>\n");
+    }
+    try w.writeAll("</tbody></table></div></section>\n");
+}
+
+/// Crane ReleaseFast against the release build (ReleaseSafe) and each
+/// browser, where the round has it: what the ReleaseFast build buys. Never
+/// the headline, which stays the ReleaseSafe build's.
+fn writeReleaseFast(w: W, arena: Allocator, m: *const Model) !void {
+    const round = m.latest_round;
+    if (!hasEngine(m, round, .crane_fast)) return;
+    try w.writeAll("<section id=\"release-fast\"><h2>Crane ReleaseFast</h2>\n<p>The same release build with only the optimize mode changed: Crane&rsquo;s Zig code and its C libraries ReleaseFast, no runtime safety checks and no C sanitizer, the same V8 and snapshot. Its time and memory as a percentage of the release build&rsquo;s (ReleaseSafe) and of each browser&rsquo;s, the same geometric means as above. The comparison above stays the release build&rsquo;s.</p>\n");
+    try w.writeAll("<div class=\"table-wrap\"><table class=\"listing\"><thead><tr><th scope=\"col\">Against</th><th scope=\"col\">Version</th><th scope=\"col\" class=\"n\">Time</th><th scope=\"col\" class=\"n\">Workloads</th><th scope=\"col\" class=\"n\">Memory</th><th scope=\"col\" class=\"n\">Workloads</th></tr></thead><tbody>\n");
+    const others = [_]EngineName{.crane} ++ browsers;
+    for (others) |o| {
+        const v = try compare(arena, m, round, .crane_fast, o);
+        try w.print("<tr><th scope=\"row\">{s}</th><td>", .{if (o == .crane) "Crane ReleaseSafe" else o.label()});
         if (v.version) |ver| try html.text(w, ver) else try w.writeAll("not run");
         try w.writeAll("</td>");
         if (v.time_ratio) |r| try w.print("<td class=\"n {s}\">{d}%</td>", .{ ratioClass(r), percent(r) }) else try w.writeAll("<td class=\"n\">&ndash;</td>");
@@ -537,6 +709,7 @@ fn writeMeasureCell(w: W, c: ?*const Cell, measure: Measure) !void {
 fn writeRound(w: W, arena: Allocator, m: *const Model) !void {
     const round = m.latest_round;
     const ws = try m.workloads(arena, round);
+    const with_fast = hasEngine(m, round, .crane_fast);
     try w.print("<section id=\"round\"><h2>Round {d}, workload by workload</h2>\n", .{round});
     try w.writeAll("<p>Time is per operation for a timed workload (the median sample divided by its operations) and per load for a page load; memory is the engine&rsquo;s whole process set (phys_footprint, summed) when the workload ended, or what each page or instance adds. The percentage beside a browser is Crane&rsquo;s figure as a share of it.</p>\n");
     for ([_]Measure{ .time, .steady, .peak }) |measure| {
@@ -546,6 +719,7 @@ fn writeRound(w: W, arena: Allocator, m: *const Model) !void {
             .steady => "Memory, steady (after the workload, the page idle)",
             .peak => "Memory, peak (the most during the workload)",
         }});
+        if (with_fast) try w.writeAll("<th scope=\"col\" class=\"n\">Crane ReleaseFast</th><th scope=\"col\" class=\"n\">ReleaseFast / ReleaseSafe</th>");
         for (browsers) |b| try w.print("<th scope=\"col\" class=\"n\">{s}</th><th scope=\"col\" class=\"n\">Crane / {s}</th>", .{ b.label(), b.label() });
         try w.writeAll("</tr></thead><tbody>\n");
         for (ws) |wl| {
@@ -562,6 +736,11 @@ fn writeRound(w: W, arena: Allocator, m: *const Model) !void {
             try w.writeAll("</code></th>");
             try writeMeasureCell(w, c, measure);
             const cf: ?f64 = if (c) |cc| figureOf(cc, measure) else null;
+            if (with_fast) {
+                const fc = m.current(round, .crane_fast, wl);
+                try writeMeasureCell(w, fc, measure);
+                try writeRatio(w, if (fc) |x| figureOf(x, measure) else null, cf);
+            }
             for (browsers) |b| {
                 const bc = m.current(round, b, wl);
                 try writeMeasureCell(w, bc, measure);
@@ -581,7 +760,7 @@ fn writeHistory(w: W, arena: Allocator, m: *const Model) !void {
     var all: std.ArrayList([]const u8) = .empty;
     for (m.rounds) |r| for (try m.workloads(arena, r)) |wl| if (!containsStr(all.items, wl)) try all.append(arena, wl);
     for (all.items) |wl| {
-        for ([_]EngineName{ .crane, .chrome, .firefox, .safari, .lightpanda }) |e| {
+        for ([_]EngineName{ .crane, .crane_fast, .chrome, .firefox, .safari, .lightpanda }) |e| {
             for (m.cells) |*c| {
                 if (c.engine != e or !std.mem.eql(u8, c.workload, wl) or c.kind == .gc_bench) continue;
                 try w.writeAll("<tr><th scope=\"row\"><code>");
@@ -607,12 +786,12 @@ fn writeCraneOnly(w: W, arena: Allocator, m: *const Model) !void {
     };
     if (!any) return;
     try w.writeAll("<section id=\"crane-only\"><h2>Crane-only rows</h2>\n<p>gc_bench&rsquo;s rows: the statements the workloads above run in every engine, measured as no browser can be - one process each, instructions retired, a full collection forced between batches (what is retained, not how fast), and the engine adapter&rsquo;s own counters.</p>\n");
-    try w.writeAll("<div class=\"table-wrap\"><table class=\"listing\"><thead><tr><th scope=\"col\">Row</th><th scope=\"col\" class=\"n\">Round</th><th scope=\"col\">Version</th><th scope=\"col\" class=\"n\">Instructions</th><th scope=\"col\" class=\"n\">Wall</th><th scope=\"col\" class=\"n\">Peak footprint</th><th scope=\"col\">Counters</th></tr></thead><tbody>\n");
+    try w.writeAll("<div class=\"table-wrap\"><table class=\"listing\"><thead><tr><th scope=\"col\">Row</th><th scope=\"col\" class=\"n\">Round</th><th scope=\"col\">Build</th><th scope=\"col\">Version</th><th scope=\"col\" class=\"n\">Instructions</th><th scope=\"col\" class=\"n\">Wall</th><th scope=\"col\" class=\"n\">Peak footprint</th><th scope=\"col\">Counters</th></tr></thead><tbody>\n");
     for (m.cells) |*c| {
         if (c.kind != .gc_bench) continue;
         try w.writeAll("<tr><th scope=\"row\"><code>");
         try html.text(w, c.workload);
-        try w.print("</code></th><td class=\"n\">{d}</td><td><code>", .{c.round});
+        try w.print("</code></th><td class=\"n\">{d}</td><td>{s}</td><td><code>", .{ c.round, if (c.engine == .crane_fast) "ReleaseFast" else "ReleaseSafe" });
         try html.text(w, c.version);
         try w.writeAll("</code></td>");
         if (c.ok == 0) {
@@ -639,13 +818,14 @@ fn writeCraneOnly(w: W, arena: Allocator, m: *const Model) !void {
     try w.writeAll("</tbody></table></div></section>\n");
 }
 
-fn writeMethod(w: W) !void {
+fn writeMethod(w: W, with_fast: bool) !void {
     try w.writeAll(
         \\<section id="method"><h2>How it is measured</h2>
         \\<p>Every engine opens the same pages from <code>tests/perf/</code>, served from loopback with cross-origin isolation (so every engine&rsquo;s clock is at its finest), each launch a fresh process with a fresh profile, the engines in alternating order on one quiet host. A page times each workload itself (<code>performance.now()</code> around a fixed number of operations, after warm-up runs) and reports through the benchmark server, which reads the engine&rsquo;s whole process set when each mark arrives: CPU time and instructions between a workload&rsquo;s first and last mark, phys_footprint (Activity Monitor&rsquo;s Memory) at each, and the peak a 50 ms sampler saw between them. Start-up - from launch to the first page&rsquo;s load - is its own row, so no other row includes it. Crane is its release build: ReleaseSafe throughout, libc malloc, V8 linked statically; rendering and layout are not Crane&rsquo;s, so no workload measures them. The full method is in <code>docs/performance.md</code>.</p>
-        \\</section>
         \\
     );
+    if (with_fast) try w.writeAll("<p>Crane ReleaseFast is that build with only the optimize mode changed (<code>-Dwpt-runner-release-fast</code>: ReleaseFast throughout, no C sanitizer, the same V8 and snapshot), launched the same way and alternating with the other engines in the same runs.</p>\n");
+    try w.writeAll("</section>\n");
 }
 
 // ============================================================================
@@ -769,6 +949,130 @@ test "a browser updated within a round: its newest version is the one compared" 
     try testing.expectEqualStrings("158", m.current(0, .chrome, "dom.a").?.version);
     const v = try versus(a, &m, 0, .chrome);
     try testing.expectApproxEqAbs(@as(f64, 2.0), v.time_ratio.?, 1e-12);
+}
+
+test "Crane ReleaseFast: its own column and its own comparison; the headline stays Crane ReleaseSafe" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const records = [_]journal.Record{
+        try timed(a, 0, .crane, "abc", "dom.a", 0, 20, 100),
+        try timed(a, 0, .crane_fast, "abc", "dom.a", 0, 10, 80),
+        try timed(a, 0, .chrome, "157", "dom.a", 0, 10, 400),
+        try timed(a, 0, .crane, "abc", "dom.b", 0, 8, 100),
+        try timed(a, 0, .crane_fast, "abc", "dom.b", 0, 2, 50),
+        try timed(a, 0, .chrome, "157", "dom.b", 0, 8, 400),
+    };
+    const m = try build(a, &records);
+    // Same commit, two builds: two cells, never one.
+    try testing.expectEqual(@as(?f64, 20), m.current(0, .crane, "dom.a").?.time_ms);
+    try testing.expectEqual(@as(?f64, 10), m.current(0, .crane_fast, "dom.a").?.time_ms);
+    // The headline is Crane ReleaseSafe against the browser: 20/10 and 8/8.
+    const v = try versus(a, &m, 0, .chrome);
+    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(2.0)), v.time_ratio.?, 1e-12);
+    // What ReleaseFast buys: its figure over ReleaseSafe's, 10/20 and 2/8;
+    // memory 80/100 and 50/100.
+    const fast = try compare(a, &m, 0, .crane_fast, .crane);
+    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(0.5 * 0.25)), fast.time_ratio.?, 1e-12);
+    try testing.expectEqual(@as(usize, 2), fast.time_n);
+    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(0.8 * 0.5)), fast.memory_ratio.?, 1e-12);
+    try testing.expectEqualStrings("abc", fast.version.?);
+    // And against a browser, beside the headline.
+    const fast_chrome = try compare(a, &m, 0, .crane_fast, .chrome);
+    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(1.0 * 0.25)), fast_chrome.time_ratio.?, 1e-12);
+
+    const out = try render(a, &m, .{});
+    const page = out.index_html;
+    // Its own labelled column in the round's tables, with its ratio to the release build.
+    try testing.expect(std.mem.indexOf(u8, page, "<th scope=\"col\" class=\"n\">Crane ReleaseFast</th>") != null);
+    try testing.expect(std.mem.indexOf(u8, page, "ReleaseFast / ReleaseSafe") != null);
+    try testing.expect(std.mem.indexOf(u8, page, "id=\"release-fast\"") != null);
+    // The headline table and the description stay ReleaseSafe's: 141% of Chrome's time.
+    try testing.expect(std.mem.indexOf(u8, page, "141% of Chrome's time") != null);
+    const headline = page[std.mem.indexOf(u8, page, "id=\"headline\"").?..std.mem.indexOf(u8, page, "id=\"release-fast\"").?];
+    try testing.expect(std.mem.indexOf(u8, headline, "ReleaseFast") == null);
+    // History names it too.
+    const history = page[std.mem.indexOf(u8, page, "id=\"history\"").?..];
+    try testing.expect(std.mem.indexOf(u8, history, "<td>Crane ReleaseFast</td>") != null);
+}
+
+test "a round without Crane ReleaseFast has no column for it" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const records = [_]journal.Record{ try timed(a, 0, .crane, "abc", "dom.a", 0, 20, 100), try timed(a, 0, .chrome, "157", "dom.a", 0, 10, 400) };
+    const m = try build(a, &records);
+    const page = (try render(a, &m, .{})).index_html;
+    try testing.expect(std.mem.indexOf(u8, page, "Crane ReleaseFast</th>") == null);
+    try testing.expect(std.mem.indexOf(u8, page, "ReleaseFast / ReleaseSafe") == null);
+    try testing.expect(std.mem.indexOf(u8, page, "id=\"release-fast\"") == null);
+}
+
+test "a re-measured engine: Crane's drift control against the first window, within noise or not" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // The round as published: Crane from the first window, Safari from the second.
+    const records = [_]journal.Record{
+        try timed(a, 0, .crane, "abc", "dom.a", 0, 20, 100),
+        try timed(a, 0, .crane, "abc", "dom.b", 0, 8, 200),
+        try timed(a, 0, .safari, "27.2", "dom.a", 0, 10, 50),
+        try timed(a, 0, .safari, "27.2", "dom.b", 0, 8, 50),
+    };
+    const m = try build(a, &records);
+    // The second window's Crane rows: the drift control, never the round's.
+    const steady = [_]journal.Record{
+        try timed(a, 0, .crane, "abc", "dom.a", 0, 21, 102),
+        try timed(a, 0, .crane, "abc", "dom.b", 0, 8, 200),
+    };
+    const control = try build(a, &steady);
+    const d = try drift(a, &m, &control, 0, .crane);
+    // time sqrt(21/20 * 8/8); memory sqrt(1.02 * 1)
+    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(1.05)), d.time_ratio.?, 1e-12);
+    try testing.expectEqual(@as(usize, 2), d.time_n);
+    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(1.02)), d.memory_ratio.?, 1e-12);
+    try testing.expect(d.within);
+    try testing.expectEqual(@as(usize, 0), d.outside);
+    // The control's rows change nothing in the round: Crane's cell is the first window's.
+    try testing.expectEqual(@as(?f64, 20), m.current(0, .crane, "dom.a").?.time_ms);
+
+    const page = (try render(a, &m, .{ .remeasured = .{ .engines = &.{.safari}, .control = &control } })).index_html;
+    const i = std.mem.indexOf(u8, page, "id=\"remeasured\"").?;
+    const section = page[i .. i + std.mem.indexOf(u8, page[i..], "</section>").?];
+    try testing.expect(std.mem.indexOf(u8, section, "Safari") != null);
+    // The control is named as the build it is, never a bare "Crane".
+    try testing.expect(std.mem.indexOf(u8, section, "alternating with Crane ReleaseSafe as a drift control") != null);
+    try testing.expect(std.mem.indexOf(u8, section, "Crane&rsquo;s") == null);
+    try testing.expect(std.mem.indexOf(u8, section, "0 workloads outside") != null);
+    try testing.expect(std.mem.indexOf(u8, section, "within noise") != null);
+    try testing.expect(std.mem.indexOf(u8, section, "not within noise") == null);
+    try testing.expect(std.mem.indexOf(u8, section, "<code>dom.a</code>") != null);
+    // Without a re-measurement, no such section.
+    try testing.expect(std.mem.indexOf(u8, (try render(a, &m, .{})).index_html, "id=\"remeasured\"") == null);
+
+    // A control that drifted: Crane 50% slower in the second window.
+    const drifted = [_]journal.Record{
+        try timed(a, 0, .crane, "abc", "dom.a", 0, 30, 100),
+        try timed(a, 0, .crane, "abc", "dom.b", 0, 12, 200),
+    };
+    const bad = try build(a, &drifted);
+    const dd = try drift(a, &m, &bad, 0, .crane);
+    try testing.expect(!dd.within);
+    try testing.expectEqual(@as(usize, 2), dd.outside);
+    const bad_page = (try render(a, &m, .{ .remeasured = .{ .engines = &.{.safari}, .control = &bad } })).index_html;
+    try testing.expect(std.mem.indexOf(u8, bad_page, "not within noise") != null);
+    try testing.expect(std.mem.indexOf(u8, bad_page, "2 workloads outside") != null);
+
+    // One workload outside its band: "1 workload", singular.
+    const one_off = [_]journal.Record{
+        try timed(a, 0, .crane, "abc", "dom.a", 0, 30, 100),
+        try timed(a, 0, .crane, "abc", "dom.b", 0, 8, 200),
+    };
+    const one = try build(a, &one_off);
+    try testing.expectEqual(@as(usize, 1), (try drift(a, &m, &one, 0, .crane)).outside);
+    const one_page = (try render(a, &m, .{ .remeasured = .{ .engines = &.{.safari}, .control = &one } })).index_html;
+    try testing.expect(std.mem.indexOf(u8, one_page, "1 workload outside") != null);
+    try testing.expect(std.mem.indexOf(u8, one_page, "1 workloads") == null);
 }
 
 test "the page: headline in the HTML, social metadata, the card, every engine named" {

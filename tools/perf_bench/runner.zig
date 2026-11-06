@@ -327,6 +327,17 @@ pub const Runner = struct {
             try self.writeRecords(try collector.finish(.done));
             return;
         }
+        // The engine's app must be this launch's own: one already running
+        // (a session's left over, or another's) would serve the page with
+        // processes started before the launch, outside the set.
+        const app_names = engines.appNames(pin.name);
+        if (appRunning(app_names)) |pid| {
+            const text = try std.fmt.allocPrint(collector.arena, "{s} is already running (pid {d}): its processes would not be this launch's - end it first", .{ app_names[0], pid });
+            try self.writeRecords(try collector.finish(.{ .driver = text }));
+            std.debug.print("perf_bench: {s} {s} run {d}: refused, {s}\n", .{ @tagName(pin.name), page.page, run_index, text });
+            return;
+        }
+        const launch_abs = proc.absoluteNow();
 
         var processes: [max_instances]Process = undefined;
         var started: usize = 0;
@@ -362,6 +373,22 @@ pub const Runner = struct {
             for (&drivers) |*d| if (d.*) |*dr| dr.beginStop();
             for (processes[0..started]) |*p| p.end();
             for (&drivers) |*d| if (d.*) |*dr| dr.join();
+            // The app the launch started (Safari stays after Delete Session),
+            // by exact pid: started at or after the launch.
+            var app_pids: [8]i32 = undefined;
+            const n_app = proc.named(app_names, launch_abs, &app_pids);
+            if (n_app > 0) {
+                const killed = endProcesses(self.io, app_pids[0..n_app], 5000);
+                // Its WebKit processes end with it; the next launch's set
+                // counts only processes started after that launch.
+                var rest: [max_rest]i32 = undefined;
+                var waited: u32 = 0;
+                while (waited < 5000 and proc.named(engines.setNames(pin.name), launch_abs, &rest) > 0) : (waited += 50) {
+                    Io.sleep(self.io, .fromMilliseconds(50), .awake) catch {};
+                }
+                const left = proc.named(engines.setNames(pin.name), launch_abs, &rest);
+                log_file.writeStreamingAll(self.io, std.fmt.allocPrint(arena, "perf_bench: ended {d} app process(es) of the launch ({d} by SIGKILL); {d} of its named processes still running {d} ms after\n", .{ n_app, killed, left, waited }) catch "") catch {};
+            }
             for (before_end.all()) |u| if (proc.usageOf(u.pid) != null) {
                 std.posix.kill(u.pid, .KILL) catch {};
             };
@@ -398,7 +425,8 @@ pub const Runner = struct {
             p.child = std.process.spawn(self.io, .{
                 .argv = l.argv,
                 .environ_map = &env,
-                .stdin = if (pin.name == .crane) .pipe else .ignore,
+                .stdin = if (l.stdin_pipe) .pipe else .ignore,
+                .cwd = if (l.cwd) |dir| .{ .path = dir } else .inherit,
                 .stdout = .{ .file = log_file },
                 .stderr = .{ .file = log_file },
                 .pgid = 0,
@@ -517,6 +545,48 @@ pub const Runner = struct {
     }
 };
 
+/// Ends `pids` by exact pid: SIGTERM to each, then SIGKILL to any still
+/// there after `grace_ms`. How many needed SIGKILL. Never by name: a name
+/// is not a process (crane_guard's rule, and Safari's WebKit processes may
+/// be another app's).
+pub fn endProcesses(io: Io, pids: []const i32, grace_ms: u32) usize {
+    for (pids) |p| std.posix.kill(p, .TERM) catch {};
+    var waited: u32 = 0;
+    while (waited < grace_ms) : (waited += 20) {
+        const left = for (pids) |p| {
+            if (proc.usageOf(p) != null) break true;
+        } else false;
+        if (!left) return 0;
+        Io.sleep(io, .fromMilliseconds(20), .awake) catch {};
+    }
+    var killed: usize = 0;
+    for (pids) |p| if (proc.usageOf(p) != null) {
+        std.posix.kill(p, .KILL) catch continue;
+        killed += 1;
+    };
+    // Until the kernel has taken them (a KILLed process is gone at once
+    // unless it is a zombie its parent has not reaped).
+    var after: u32 = 0;
+    while (after < 2000) : (after += 20) {
+        const left = for (pids) |p| {
+            if (proc.usageOf(p) != null) break true;
+        } else false;
+        if (!left) break;
+        Io.sleep(io, .fromMilliseconds(20), .awake) catch {};
+    }
+    return killed;
+}
+
+const max_rest = 32;
+
+/// The pid of a running process of the engine's app, if any: a launch
+/// would not be the only one using it.
+pub fn appRunning(names: []const []const u8) ?i32 {
+    var pids: [8]i32 = undefined;
+    const n = proc.named(names, 0, &pids);
+    return if (n > 0) pids[0] else null;
+}
+
 /// The protocol side of a launch: Lightpanda's CDP session, Safari's
 /// WebDriver session, on a thread of their own (each blocks while the page
 /// runs), with the error that ended it if one did.
@@ -610,3 +680,45 @@ const Driver = struct {
         self.arena.deinit();
     }
 };
+
+const testing = std.testing;
+
+test "ending processes by exact pid: TERM first, KILL after the grace time" {
+    if (!proc.supported) return error.SkipZigTest;
+    const io = testing.io;
+    // One that ends on TERM, one that ignores it.
+    var polite = try std.process.spawn(io, .{ .argv = &.{ "/bin/sleep", "30" }, .stdin = .ignore, .stdout = .ignore, .stderr = .ignore });
+    var stubborn = try std.process.spawn(io, .{ .argv = &.{ "/bin/sh", "-c", "trap '' TERM; while :; do sleep 0.1; done" }, .stdin = .ignore, .stdout = .ignore, .stderr = .ignore });
+    // Reap each as it ends, as launchd does for Safari: a zombie still reads.
+    const Reaper = struct {
+        fn run(c: *std.process.Child, i: Io) void {
+            _ = c.wait(i) catch {};
+        }
+    };
+    const t1 = try std.Thread.spawn(.{}, Reaper.run, .{ &polite, io });
+    const t2 = try std.Thread.spawn(.{}, Reaper.run, .{ &stubborn, io });
+    // Let the shell install its trap.
+    Io.sleep(io, .fromMilliseconds(300), .awake) catch {};
+    const pids = [_]i32{ polite.id.?, stubborn.id.? };
+    const killed = endProcesses(io, &pids, 1000);
+    const gone = [2]bool{ proc.usageOf(pids[0]) == null, proc.usageOf(pids[1]) == null };
+    // Whatever endProcesses did, the test leaves nothing behind (a failing
+    // version must fail, not hang on a child that ignores TERM).
+    for (pids) |p| std.posix.kill(p, .KILL) catch {};
+    t1.join();
+    t2.join();
+    // Only the one that ignored TERM needed KILL; both were gone when it returned.
+    try testing.expectEqual(@as(usize, 1), killed);
+    try testing.expect(gone[0] and gone[1]);
+}
+
+test "a launch is refused while its engine's app is already running" {
+    if (!proc.supported) return error.SkipZigTest;
+    // This test's own process stands in for a Safari left running.
+    const me: i32 = @intCast(std.c.getpid());
+    var name_buf: [256]u8 = undefined;
+    const name = try proc.nameOf(me, &name_buf);
+    try testing.expect(appRunning(&.{name}) != null);
+    try testing.expectEqual(@as(?i32, null), appRunning(&.{"no-such-process-perf0b"}));
+    try testing.expectEqual(@as(?i32, null), appRunning(&.{}));
+}

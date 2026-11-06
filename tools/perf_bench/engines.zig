@@ -6,7 +6,8 @@
 //! (the user's rule):
 //!   crane       the console, `repl <url>`: Crane's headless browser
 //!               (docs/console.md), its stdin a pipe held open so the page
-//!               stays live until the runner closes it;
+//!               stays live until the runner closes it; crane_fast is the
+//!               same console from the ReleaseFast release build;
 //!   chrome      `--headless=new <url>` with a fresh --user-data-dir;
 //!   firefox     `--headless --profile <dir> <url>`, the profile's user.js
 //!               turning off first-run pages, telemetry and updates;
@@ -39,7 +40,7 @@ pub const Pin = struct {
     installed: ?[]const u8 = null,
 };
 
-pub const PinError = error{ PinMissingKey, PinUnknownEngine, PinBadSha256, PinMissingBuildIdentity, PinMissingWebDriver };
+pub const PinError = error{ PinMissingKey, PinUnknownEngine, PinBadSha256, PinMissingBuildIdentity, PinWrongBuild, PinMissingWebDriver };
 
 pub fn parsePin(arena: Allocator, text: []const u8) (PinError || Allocator.Error)!Pin {
     var name: ?Name = null;
@@ -70,9 +71,27 @@ pub fn parsePin(arena: Allocator, text: []const u8) (PinError || Allocator.Error
         .installed = fields.installed,
     };
     if (!journal.isSha256(pin.sha256)) return error.PinBadSha256;
-    if (pin.name == .crane and (pin.commit == null or pin.optimize == null or pin.v8 == null)) return error.PinMissingBuildIdentity;
+    if (pin.name.isCrane()) {
+        if (pin.commit == null or pin.optimize == null or pin.v8 == null) return error.PinMissingBuildIdentity;
+        // The comparison rule: Crane is timed in its release build, never the
+        // correctness runner, and each Crane engine in its own mode - the
+        // modes as build_mode.zig `describe` names them (zig-out/bin/
+        // repl.modes), so a pin cannot put one build under the other's name.
+        if (!std.mem.eql(u8, pin.optimize.?, craneModes(pin.name))) return error.PinWrongBuild;
+    }
     if (pin.name == .safari and pin.webdriver == null) return error.PinMissingWebDriver;
     return pin;
+}
+
+/// The modes a Crane engine's build has, as build_mode.zig `describe`
+/// writes them into zig-out/bin/repl.modes (`releaseRunner(.safe)` and
+/// `releaseRunner(.fast)`; tests/wpt_runner/build_mode.zig pins both).
+pub fn craneModes(name: Name) []const u8 {
+    return switch (name) {
+        .crane => "root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc",
+        .crane_fast => "root ReleaseFast, Crane modules ReleaseFast, C libraries ReleaseFast, sanitize_c off, libc malloc",
+        .chrome, .firefox, .safari, .lightpanda => unreachable,
+    };
 }
 
 /// The SHA-256 of a file, as 64 lowercase hex digits.
@@ -155,6 +174,25 @@ pub const crane_flags = [_][]const u8{ "--proxy=direct", "--timeout=900000" };
 
 pub const firefox_flags = [_][]const u8{ "--headless", "--no-remote" };
 
+/// Safari's app: one per launch (`Launch.app_names`).
+pub const safari_app_names = [_][]const u8{"Safari"};
+
+/// `name`'s app, outside its launched tree (`Launch.app_names`).
+pub fn appNames(name: Name) []const []const u8 {
+    return switch (name) {
+        .safari => &safari_app_names,
+        .crane, .crane_fast, .chrome, .firefox, .lightpanda => &.{},
+    };
+}
+
+/// The process names `name`'s set adds to its launched tree (`Launch.names`).
+pub fn setNames(name: Name) []const []const u8 {
+    return switch (name) {
+        .safari => &safari_process_names,
+        .crane, .crane_fast, .chrome, .firefox, .lightpanda => &.{},
+    };
+}
+
 /// The process names Safari's set adds to safaridriver's tree: the browser
 /// and the WebKit processes launchd starts for it.
 pub const safari_process_names = [_][]const u8{
@@ -170,7 +208,7 @@ pub const Drive = enum { argv, cdp, webdriver };
 
 pub fn driveOf(name: Name) Drive {
     return switch (name) {
-        .crane, .chrome, .firefox => .argv,
+        .crane, .crane_fast, .chrome, .firefox => .argv,
         .lightpanda => .cdp,
         .safari => .webdriver,
     };
@@ -187,22 +225,41 @@ pub const Launch = struct {
     drive: Drive,
     /// Processes outside the launched tree that belong to the engine.
     names: []const []const u8 = &.{},
+    /// The engine's own app, outside the launched tree (Safari: launchd
+    /// starts it for safaridriver): the runner refuses the launch while one
+    /// runs - started before the launch, its processes would be outside the
+    /// set - and ends the one the launch started, by exact pid, when the
+    /// launch ends. safaridriver leaves it running after Delete Session
+    /// (Safari 27.2; perf round 0, 2026-11-06).
+    app_names: []const []const u8 = &.{},
     /// Environment additions.
     env: []const [2][]const u8 = &.{},
+    /// Its stdin a pipe the runner holds open: the console reads its input
+    /// there and exits when it closes (as on Ctrl+D), so the page stays live
+    /// until the launch ends. Every other engine's stdin is /dev/null.
+    stdin_pipe: bool = false,
+    /// The directory it runs in, when not the runner's: a Crane build's own
+    /// (its binary's), where its frozen snapshot is. The console restores
+    /// the whatwg_snapshot.bin beside its executable (tools/repl.zig, main),
+    /// and only when there is none searches from its working directory
+    /// (src/browser/process.zig DEFAULT_SNAPSHOT_PATHS, zig-out/bin/ first):
+    /// run there, even that fallback is the build's own, never the
+    /// runner's directory's last build.
+    cwd: ?[]const u8 = null,
 };
 
 pub fn launch(arena: Allocator, pin: Pin, url: []const u8, profile: []const u8, port: u16) Allocator.Error!Launch {
     var argv: std.ArrayList([]const u8) = .empty;
     var flags: std.ArrayList([]const u8) = .empty;
     switch (pin.name) {
-        .crane => {
+        .crane, .crane_fast => {
             try argv.append(arena, pin.binary);
             try argv.append(arena, url);
             for (crane_flags) |f| {
                 try argv.append(arena, f);
                 try flags.append(arena, f);
             }
-            return .{ .argv = argv.items, .flags = flags.items, .drive = .argv };
+            return .{ .argv = argv.items, .flags = flags.items, .drive = .argv, .stdin_pipe = true, .cwd = std.fs.path.dirname(pin.binary) };
         },
         .chrome => {
             try argv.append(arena, pin.binary);
@@ -246,7 +303,7 @@ pub fn launch(arena: Allocator, pin: Pin, url: []const u8, profile: []const u8, 
             const port_text = try std.fmt.allocPrint(arena, "{d}", .{port});
             try argv.appendSlice(arena, &.{ pin.webdriver.?, "-p", port_text });
             try flags.appendSlice(arena, &.{ "safaridriver", "-p", "<port>" });
-            return .{ .argv = argv.items, .flags = flags.items, .drive = .webdriver, .names = &safari_process_names };
+            return .{ .argv = argv.items, .flags = flags.items, .drive = .webdriver, .names = setNames(.safari), .app_names = appNames(.safari) };
         },
     }
 }
@@ -266,7 +323,7 @@ const crane_pin_text =
     \\version=e7101e588f1
     \\build=release: ReleaseSafe everywhere, C .trap, libc malloc
     \\commit=e7101e588f1
-    \\optimize=-Dwpt-runner-release -Doptimize=ReleaseSafe
+    \\optimize=root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc
     \\v8=13.1.203 static
     \\binary=/x/repl
     \\sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
@@ -288,6 +345,71 @@ test "a pin file: keys, comments, and Crane's build identity" {
     const bad_sha = try std.mem.replaceOwned(u8, a, crane_pin_text, "sha256=0123", "sha256=XYZ");
     try testing.expectError(error.PinBadSha256, parsePin(a, bad_sha));
     try testing.expectError(error.PinMissingWebDriver, parsePin(a, "name=safari\nversion=26.1\nbuild=x\nbinary=/Applications/Safari.app\nsha256=" ++ "abababababababababababababababababababababababababababababababab" ++ "\n"));
+}
+
+test "Crane ReleaseFast's pin: Crane's build identity, in its own mode" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const safe_modes = "optimize=root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc";
+    const fast_modes = "optimize=root ReleaseFast, Crane modules ReleaseFast, C libraries ReleaseFast, sanitize_c off, libc malloc";
+    const named_fast = try std.mem.replaceOwned(u8, a, crane_pin_text, "name=crane\n", "name=crane_fast\n");
+    const fast_text = try std.mem.replaceOwned(u8, a, named_fast, safe_modes, fast_modes);
+    const pin = try parsePin(a, fast_text);
+    try testing.expectEqual(Name.crane_fast, pin.name);
+    try testing.expectEqualStrings(fast_modes["optimize=".len..], pin.optimize.?);
+    // Its build identity is required as Crane's is.
+    const no_v8 = try std.mem.replaceOwned(u8, a, fast_text, "v8=13.1.203 static\n", "");
+    try testing.expectError(error.PinMissingBuildIdentity, parsePin(a, no_v8));
+    // A pin whose modes are not its engine's is refused: the ReleaseSafe
+    // build under Crane ReleaseFast's name, the ReleaseFast build under
+    // Crane's, or the correctness runner under either.
+    try testing.expectError(error.PinWrongBuild, parsePin(a, named_fast));
+    try testing.expectError(error.PinWrongBuild, parsePin(a, try std.mem.replaceOwned(u8, a, crane_pin_text, safe_modes, fast_modes)));
+    try testing.expectError(error.PinWrongBuild, parsePin(a, try std.mem.replaceOwned(u8, a, crane_pin_text, safe_modes, "optimize=root ReleaseSafe, Crane modules Debug, C libraries ReleaseSafe, sanitize_c full")));
+}
+
+test "Crane ReleaseFast launches as Crane does: the console, its stdin held open" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const sha = "abababababababababababababababababababababababababababababababab";
+    const url = "http://127.0.0.1:8000/workloads/dom.html?perf=t";
+    const fast = try launch(a, .{ .name = .crane_fast, .version = "v", .build = "b", .binary = "/f/repl", .sha256 = sha, .commit = "c", .optimize = "o", .v8 = "v8" }, url, "/p", 0);
+    try expectStrings(&.{ "/f/repl", url, "--proxy=direct", "--timeout=900000" }, fast.argv);
+    try expectStrings(&crane_flags, fast.flags);
+    try testing.expectEqual(Drive.argv, fast.drive);
+    try testing.expectEqual(Drive.argv, driveOf(.crane_fast));
+    try testing.expect(fast.stdin_pipe);
+    const crane = try launch(a, .{ .name = .crane, .version = "v", .build = "b", .binary = "/b/repl", .sha256 = sha, .commit = "c", .optimize = "o", .v8 = "v8" }, url, "/p", 0);
+    try testing.expect(crane.stdin_pipe);
+    // The browsers' stdin is not the page's: nothing to hold open.
+    const chrome = try launch(a, .{ .name = .chrome, .version = "157", .build = "b", .binary = "/c/chrome", .sha256 = sha }, url, "/p/1", 0);
+    try testing.expect(!chrome.stdin_pipe);
+}
+
+test "each Crane build runs in its own directory, so it restores its own snapshot" {
+    // The console restores the snapshot beside its executable (tools/repl.zig)
+    // and, when there is none, the first of src/browser/process.zig
+    // DEFAULT_SNAPSHOT_PATHS from its working directory (zig-out/bin/ first):
+    // started from the runner's directory, that fallback would be whatever
+    // snapshot the directory's last build left (docs/lessons/testing-a-runner-
+    // finds-its-snapshot-from-its-working-directory.md). Each frozen build
+    // keeps its snapshot beside its binary, and runs there.
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const sha = "abababababababababababababababababababababababababababababababab";
+    const url = "http://127.0.0.1:8000/x.html";
+    const safe = try launch(a, .{ .name = .crane, .version = "v", .build = "b", .binary = "/bins/crane-abc/repl", .sha256 = sha, .commit = "c", .optimize = "o", .v8 = "v8" }, url, "/p", 0);
+    try testing.expectEqualStrings("/bins/crane-abc", safe.cwd.?);
+    const fast = try launch(a, .{ .name = .crane_fast, .version = "v", .build = "b", .binary = "/bins/crane-fast-abc/repl", .sha256 = sha, .commit = "c", .optimize = "o", .v8 = "v8" }, url, "/p", 0);
+    try testing.expectEqualStrings("/bins/crane-fast-abc", fast.cwd.?);
+    // The flags the journal records are unchanged by it.
+    try expectStrings(&crane_flags, fast.flags);
+    // A browser keeps the runner's directory.
+    const chrome = try launch(a, .{ .name = .chrome, .version = "157", .build = "b", .binary = "/c/chrome", .sha256 = sha }, url, "/p/1", 0);
+    try testing.expectEqual(@as(?[]const u8, null), chrome.cwd);
 }
 
 test "each engine's command line, and the flags the journal records" {
@@ -320,6 +442,31 @@ test "each engine's command line, and the flags the journal records" {
     try expectStrings(&.{ "/usr/bin/safaridriver", "-p", "4444" }, safari.argv);
     try testing.expectEqual(@as(usize, 4), safari.names.len);
     try testing.expectEqual(Drive.webdriver, safari.drive);
+}
+
+test "Safari's app is its launch's own: none running before it, and ended after it" {
+    // safaridriver starts Safari (--automation) for a session and, on
+    // Safari 27.2, leaves it running after Delete Session: the next launch
+    // reused it, and its app, Networking and GPU processes - started before
+    // that launch - were not counted (perf round 0, 2026-11-06). Safari's
+    // app is named so that the runner refuses a launch while one runs and
+    // ends the one its launch started, by exact pid.
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const sha = "abababababababababababababababababababababababababababababababab";
+    const url = "http://127.0.0.1:8000/x.html";
+    const safari = try launch(a, .{ .name = .safari, .version = "27.2", .build = "b", .binary = "/Applications/Safari.app/Contents/MacOS/Safari", .sha256 = sha, .webdriver = "/usr/bin/safaridriver" }, url, "/p", 4444);
+    try expectStrings(&.{"Safari"}, safari.app_names);
+    // The app is one of the set's names: counted while the launch runs.
+    try testing.expect(for (safari.names) |n| {
+        if (std.mem.eql(u8, n, "Safari")) break true;
+    } else false);
+    // Every other engine's processes are its launched tree.
+    const chrome = try launch(a, .{ .name = .chrome, .version = "157", .build = "b", .binary = "/c/chrome", .sha256 = sha }, url, "/p/1", 0);
+    try testing.expectEqual(@as(usize, 0), chrome.app_names.len);
+    const crane = try launch(a, .{ .name = .crane, .version = "v", .build = "b", .binary = "/b/repl", .sha256 = sha, .commit = "c", .optimize = "o", .v8 = "v8" }, url, "/p", 0);
+    try testing.expectEqual(@as(usize, 0), crane.app_names.len);
 }
 
 test "a file's SHA-256" {

@@ -161,26 +161,47 @@ pub fn members(sel: Selector, out: []i32) usize {
         }
     }
     if (sel.names.len > 0) {
-        var all: [4096]c_int = undefined;
-        const got = proc_listallpids(&all, @intCast(@sizeOf(@TypeOf(all))));
-        if (got > 0) {
-            const count: usize = @min(@as(usize, @intCast(got)), all.len);
-            for (all[0..count]) |p| {
-                if (p <= 0 or n >= out.len) continue;
-                if (std.mem.indexOfScalar(i32, out[0..n], p) != null) continue;
-                var name_buf: [256]u8 = undefined;
-                const len = proc_name(p, &name_buf, name_buf.len);
-                if (len <= 0) continue;
-                const name = name_buf[0..@intCast(len)];
-                for (sel.names) |want| if (std.mem.eql(u8, name, want)) {
-                    const u = usageOf(p) orelse break;
-                    if (u.start_abs < sel.started_after) break;
-                    out[n] = p;
-                    n += 1;
-                    break;
-                };
-            }
+        var by_name: [max_processes]i32 = undefined;
+        const got = named(sel.names, sel.started_after, &by_name);
+        for (by_name[0..got]) |p| {
+            if (n >= out.len) break;
+            if (std.mem.indexOfScalar(i32, out[0..n], p) != null) continue;
+            out[n] = p;
+            n += 1;
         }
+    }
+    return n;
+}
+
+/// A process's name (proc_name: its executable's, at most 2 * MAXCOMLEN).
+pub fn nameOf(pid: i32, buf: []u8) error{NoSuchProcess}![]const u8 {
+    if (!supported) return error.NoSuchProcess;
+    const len = proc_name(pid, buf.ptr, @intCast(buf.len));
+    if (len <= 0) return error.NoSuchProcess;
+    return buf[0..@intCast(len)];
+}
+
+/// The pids of every process with one of `names` (exact process names)
+/// started at or after `started_after` (mach absolute time; 0: any), into
+/// `out`; how many.
+pub fn named(names: []const []const u8, started_after: u64, out: []i32) usize {
+    if (!supported or names.len == 0) return 0;
+    var all: [4096]c_int = undefined;
+    const got = proc_listallpids(&all, @intCast(@sizeOf(@TypeOf(all))));
+    if (got <= 0) return 0;
+    const count: usize = @min(@as(usize, @intCast(got)), all.len);
+    var n: usize = 0;
+    for (all[0..count]) |p| {
+        if (p <= 0 or n >= out.len) continue;
+        var name_buf: [256]u8 = undefined;
+        const name = nameOf(p, &name_buf) catch continue;
+        for (names) |want| if (std.mem.eql(u8, name, want)) {
+            const u = usageOf(p) orelse break;
+            if (u.start_abs < started_after) break;
+            out[n] = p;
+            n += 1;
+            break;
+        };
     }
     return n;
 }
@@ -287,6 +308,24 @@ test "a process named but started before the launch is not the engine's" {
     for (pids[0..later]) |p| try testing.expect(p != me);
     const any = members(.{ .root = 0, .names = &names, .started_after = 0 }, &pids);
     try testing.expect(std.mem.indexOfScalar(i32, pids[0..any], me) != null);
+}
+
+test "the processes of a name: every one, or only those started after a time" {
+    if (!supported) return error.SkipZigTest;
+    // This process, by its own name: found with no start bound, not found
+    // when only processes started from now on count.
+    const me: i32 = @intCast(std.c.getpid());
+    var name_buf: [256]u8 = undefined;
+    const len = proc_name(me, &name_buf, name_buf.len);
+    try testing.expect(len > 0);
+    const names = [_][]const u8{name_buf[0..@intCast(len)]};
+    var pids: [max_processes]i32 = undefined;
+    const any = named(&names, 0, &pids);
+    try testing.expect(std.mem.indexOfScalar(i32, pids[0..any], me) != null);
+    const later = named(&names, absoluteNow(), &pids);
+    for (pids[0..later]) |p| try testing.expect(p != me);
+    // A name no process has.
+    try testing.expectEqual(@as(usize, 0), named(&.{"no-such-process-perf0b"}, 0, &pids));
 }
 
 test "a pid that does not exist reads as nothing" {
