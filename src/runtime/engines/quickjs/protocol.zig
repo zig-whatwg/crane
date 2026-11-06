@@ -57,6 +57,7 @@ pub const capabilities: engine.Capabilities = .{
     // QuickJS has top-level await for global code (JS_EVAL_FLAG_ASYNC, its
     // own REPL's), not wired: no engine is linked yet.
     .repl_mode = .unsupported,
+    .external_memory = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.

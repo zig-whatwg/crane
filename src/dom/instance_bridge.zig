@@ -183,31 +183,58 @@ pub fn tableSlots(scope: *runtime.BrowserScope) tombstones.SlotCounts {
 /// This should be called during Node initialization when both the Instance
 /// and its NodeBase are created.
 pub fn register(instance: *anyopaque, node_base: *NodeBase) !void {
-    const bridge = try scopeOf(instance).table(.node_bases, Bridge);
-    bridge.lock();
-    defer bridge.unlock();
-    bridge.guard.beforeInsert(&bridge.map);
-    try bridge.map.put(instance, node_base);
-    bridge.cacheEntry(instance).* = .{ .instance = instance, .generation = generationOf(instance), .node_base = node_base };
-    // Reverse direction lives on the node itself - see NodeBase.owner_instance.
-    node_base.owner_instance = instance;
+    const scope = scopeOf(instance);
+    const bridge = try scope.table(.node_bases, Bridge);
+    const fresh = fresh: {
+        bridge.lock();
+        defer bridge.unlock();
+        bridge.guard.beforeInsert(&bridge.map);
+        const replaced = try bridge.map.fetchPut(instance, node_base);
+        bridge.cacheEntry(instance).* = .{ .instance = instance, .generation = generationOf(instance), .node_base = node_base };
+        // Reverse direction lives on the node itself - see NodeBase.owner_instance.
+        node_base.owner_instance = instance;
+        break :fresh replaced == null;
+    };
+    // The Browser's DOM grew by the node's storage, once per node (an
+    // instance registered again is already counted): its window agent's
+    // engine is told (runtime.gc.ExternalMemory).
+    if (fresh) scope.dom_memory.add(storageBytes(@ptrCast(@alignCast(instance))));
+}
+
+/// The native storage a registered node holds for as long as it lives, as
+/// its Browser's DOM memory counts it (runtime.BrowserScope.dom_memory): its
+/// slab slot, its state block as the arena holds it (the block of its
+/// type's state size) and its NodeBase - the allocations every node makes;
+/// what hangs off them (attribute values, text data, lists) is not counted.
+/// Exact sizes, read from the allocators and the node's type.
+pub fn storageBytes(instance: *const runtime.Instance) usize {
+    return runtime.SlabAllocator.slot_bytes +
+        runtime.ArenaAllocator.heldBytes(instance.vtable.state_size, instance.vtable.state_align) +
+        @sizeOf(NodeBase);
 }
 
 /// Unregister a mapping when a Node is destroyed
 ///
 /// This should be called during Node deinitialization.
 pub fn unregister(instance: *anyopaque) void {
-    const bridge = bridgeOf(instance) orelse return;
-    bridge.lock();
-    defer bridge.unlock();
-    if (bridge.map.get(instance)) |node_base| {
-        // Not strictly required - the field dies with the node - but clearing it
-        // keeps a freed instance from being observable through a resurrected node.
-        node_base.owner_instance = null;
-    }
-    if (bridge.map.remove(instance)) bridge.guard.noteRemoval(&bridge.map);
-    const entry = bridge.cacheEntry(instance);
-    if (entry.instance == instance) entry.* = .{};
+    const scope = scopeOf(instance);
+    const bridge = scope.existingTable(.node_bases, Bridge) orelse return;
+    const removed = removed: {
+        bridge.lock();
+        defer bridge.unlock();
+        if (bridge.map.get(instance)) |node_base| {
+            // Not strictly required - the field dies with the node - but clearing it
+            // keeps a freed instance from being observable through a resurrected node.
+            node_base.owner_instance = null;
+        }
+        const was_mapped = bridge.map.remove(instance);
+        if (was_mapped) bridge.guard.noteRemoval(&bridge.map);
+        const entry = bridge.cacheEntry(instance);
+        if (entry.instance == instance) entry.* = .{};
+        break :removed was_mapped;
+    };
+    // What `register` counted goes back: the node is being freed.
+    if (removed) scope.dom_memory.sub(storageBytes(@ptrCast(@alignCast(instance))));
 }
 
 /// Get the NodeBase for a runtime.Instance

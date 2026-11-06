@@ -581,6 +581,98 @@ pub const DeferredTeardown = struct {
     }
 };
 
+/// Native memory that a host's objects keep alive beside an agent's engine
+/// heap, which the engine's collector cannot see: a Browser's DOM - every
+/// node's slab slot, state block and NodeBase (runtime.BrowserScope.
+/// dom_memory, counted by dom.instance_bridge as nodes are made and freed).
+///
+/// The engine collects when ITS heap grows. A wrapper is a few dozen bytes
+/// of it and keeps a whole native tree alive (a dropped cloneNode(true) of
+/// 840 nodes is ~2.5 MB native and 200 bytes of engine heap), so a script
+/// that makes and drops trees ran no collection at all and kept every one
+/// (lane perf1: 650 clones, 548,150 nodes, 1.7 GB). The host keeps `live`;
+/// the agent's adapter tells its collector how it changed
+/// (engine.AgentOptions.external_memory) at its safe points, in steps of
+/// `report_step`. Blink did the same before its DOM moved into the
+/// collector's heap: V8GCController::reportDOMMemoryUsageToV8 passed the
+/// change of the DOM partition's size to Isolate::
+/// AdjustAmountOfExternalAllocatedMemory after every task (Chromium 45,
+/// Source/bindings/core/v8/V8GCController.cpp); since its unified heap V8
+/// counts the DOM's bytes itself (CppHeap's allocated size, against V8's
+/// global limit).
+///
+/// One per Browser, written and read only on its window agent's thread: a
+/// node is made and freed on the thread of its window agent (workers have no
+/// nodes), and only the window agent is given it. Debug builds check the
+/// thread once an agent has claimed it (`claim`).
+pub const ExternalMemory = struct {
+    /// Bytes alive now.
+    live: usize = 0,
+    /// `live` has left the window around what the engine was last told
+    /// (`low`..`high`, `report_step` either side): the adapter's next safe
+    /// point tells it. Set here, where the figure moves - once per node made
+    /// or freed - so the safe point, every binding exit back into script,
+    /// reads one flag.
+    due: bool = false,
+    low: usize = 0,
+    high: usize = report_step,
+    /// The thread of the agent it was given to (Debug only; `claim`): every
+    /// later change must come from it. Null while no agent has it - a
+    /// Browser-less scope's nodes (unit tests) are counted unchecked.
+    thread: if (debug_checks) ?std.Thread.Id else void = if (debug_checks) null else {},
+
+    const debug_checks = @import("builtin").mode == std.builtin.OptimizeMode.Debug;
+
+    /// The change an adapter waits for before it tells its engine: 128 KB,
+    /// V8's own step - it re-checks its external memory limits every
+    /// kExternalAllocationLimitForInterrupt (128 KB) of growth (V8 13.1
+    /// src/heap/heap.h, ExternalMemoryAccounting), and cppgc reports the
+    /// unified heap's allocations to it every kIncrementalMarkingCheckInterval
+    /// (128 KB; src/heap/cppgc-js/cpp-heap.cc). A smaller step would only
+    /// cost calls; a larger one would let the engine see the growth late.
+    pub const report_step: usize = 128 * 1024;
+
+    /// An agent takes it, on its own thread (the adapter's createAgent): its
+    /// engine has been told nothing yet.
+    pub fn claim(self: *ExternalMemory) void {
+        if (debug_checks) self.thread = std.Thread.getCurrentId();
+        self.low = 0;
+        self.high = report_step;
+        self.due = self.live > self.high;
+    }
+
+    /// The agent ended: it no longer has it.
+    pub fn release(self: *ExternalMemory) void {
+        if (debug_checks) self.thread = null;
+        self.due = false;
+    }
+
+    pub fn add(self: *ExternalMemory, bytes: usize) void {
+        self.checkThread();
+        self.live += bytes;
+        if (self.live > self.high) self.due = true;
+    }
+
+    pub fn sub(self: *ExternalMemory, bytes: usize) void {
+        self.checkThread();
+        self.live -|= bytes;
+        if (self.live < self.low) self.due = true;
+    }
+
+    /// The adapter told its engine `live`: the window moves around it.
+    pub fn markReported(self: *ExternalMemory, live: usize) void {
+        self.low = live -| report_step;
+        self.high = live +| report_step;
+        self.due = false;
+    }
+
+    fn checkThread(self: *const ExternalMemory) void {
+        if (!debug_checks) return;
+        const owner = self.thread orelse return;
+        if (owner != std.Thread.getCurrentId()) @panic("a Browser's DOM memory was counted on a thread other than its window agent's");
+    }
+};
+
 /// Error type for GC integration operations
 pub const GCError = error{
     /// registerCallbacks was called but no JS engine implementation is available
