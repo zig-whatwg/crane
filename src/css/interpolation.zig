@@ -121,6 +121,25 @@ pub fn interpolate(allocator: Allocator, l: Longhand, from: Value, to: Value, p:
     return discrete(from, to, p);
 }
 
+/// CSS Transitions 1 section 3 "transitionable": the animation type of the
+/// pair `from`, `to` of `l` is neither not animatable nor discrete - the
+/// property's type, and for a "by computed value" property whether this pair
+/// has a smooth combination (box-shadow's `inset` against no `inset` has
+/// none: "[0px 0px black] and [inset 10px 10px black] are not
+/// transitionable"). A value kind Crane combines discretely for now
+/// (`pendingKinds`) is not transitionable until it interpolates.
+pub fn transitionable(allocator: Allocator, l: Longhand, from: Value, to: Value) Allocator.Error!bool {
+    switch (animationType(l)) {
+        .not_animatable, .discrete => return false,
+        // Visibility: discrete unless one of the values is `visible`.
+        .visibility => return (from == .keyword and from.keyword == .visible) or (to == .keyword and to.keyword == .visible),
+        .by_computed_value => {},
+    }
+    const combined = (try smooth(allocator, from, to, 0.5)) orelse return false;
+    combined.release();
+    return true;
+}
+
 /// Discrete: V_start for p < 0.5, V_end otherwise (Web Animations 5.2).
 pub fn discrete(from: Value, to: Value, p: f64) Value {
     const chosen = if (p < 0.5) from else to;
