@@ -1,0 +1,12 @@
+dictionary EffectTiming {
+  double delay = 0;
+};
+dictionary ComputedEffectTiming : EffectTiming {
+  double? progress;
+  unrestricted double? currentIteration;
+  double? localTime;
+  double endTime;
+};
+dictionary OtherNullable {
+  double? value;
+};

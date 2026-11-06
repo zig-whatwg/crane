@@ -2907,6 +2907,14 @@ fn writeDictionaryMemberType(allocator: std.mem.Allocator, w: anytype, idl_type:
 fn dictionaryMemberKeepsPresence(dictionary_name: []const u8, member: types.DictionaryMember) bool {
     if (member.required or !member.idlType.nullable) return false;
     if (std.mem.eql(u8, dictionary_name, "ShadowRootInit") and std.mem.eql(u8, member.name, "customElementRegistry")) return true;
+    // A dictionary the platform RETURNS whose steps set a nullable member to
+    // null: the object script gets has the property, valued null (WebIDL
+    // 3.2.18 converts every present member). getComputedTiming() (Web
+    // Animations 1 6.5.5) sets progress, currentIteration and localTime.
+    // TODO(anim1): the general rule - every optional nullable member with no
+    // default keeps its presence - reaches 82 members of 50 dictionaries and
+    // their impls; queued in tmp/plans/lane-anim1-handoff.md.
+    if (std.mem.eql(u8, dictionary_name, "ComputedEffectTiming")) return true;
     return if (member.default) |value| value != .null else false;
 }
 

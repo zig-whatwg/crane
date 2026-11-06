@@ -153,10 +153,15 @@ pub fn call_getComputedTiming(instance: *runtime.Instance) anyerror!dictionaries
             .easing = runtime.DOMString.initInterned(t.easing.text),
             .playbackRate = 1,
         },
+        // Web Animations 2 4.6: the effect's start time, the time its parent
+        // group schedules it at; with no group (Crane has none) it is 0.
+        .startTime = .{ .double = 0 },
         .endTime = .{ .double = t.endTime() },
         .activeDuration = .{ .double = t.activeDuration() },
-        .localTime = if (has_animation) (if (effect.localTime()) |local| typedefs.CSSNumberish{ .double = local } else null) else null,
-        .progress = computed.progress,
-        .currentIteration = computed.current_iteration,
+        // The method steps set these three, null included: present members
+        // (WebIDL converts a present null to null).
+        .localTime = .passed(if (has_animation) (if (effect.localTime()) |local| typedefs.CSSNumberish{ .double = local } else null) else null),
+        .progress = .passed(computed.progress),
+        .currentIteration = .passed(computed.current_iteration),
     };
 }
