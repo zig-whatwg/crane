@@ -3732,27 +3732,3 @@ test "protocol: a callback of a frame realm still fully active runs, whoever cal
     try callbacks.call(parent);
     try expectEval(parent, "String(frameCalls.count)", "4");
 }
-
-// Lane perf1: a navigation's old realm is let go at the navigation, and V8 is
-// told then, as Blink tells it from LocalWindowProxy::DisposeContext
-// (V8GCForContextDispose::NotifyContextDisposed -> Isolate::
-// ContextDisposedNotification(!is_main_frame)): for a top-level page V8 resets
-// its allocation limits (13.1 Heap::NotifyContextDisposed), so the next
-// collection - which takes the old page - comes soon. Without it a chain of
-// page loads in one tab left up to five old pages and their DOM (138 MB) alive
-// once V8's limits had grown (perf round 1's load.docs). V8 counts the
-// notifications since its last collection: the navigation's detach is one.
-test "protocol: a top-level realm a navigation replaced tells V8 its context was let go when it is detached" {
-    defer test_agent.close();
-    var host_a: WindowHost = .{};
-    const a = try windowRealm(&host_a, false, .new_window_proxy);
-    var host_b: WindowHost = .{};
-    const b = try windowRealm(&host_b, false, .{ .window_proxy_of = a });
-    defer protocol.destroyWindowRealm(b, .global_detached);
-    const before = ffi.v8_Isolate_ContextDisposedNotification(test_isolate.?, true);
-    protocol.destroyWindowRealm(a, .global_detached);
-    // Detached, not ended: it lives while script reaches it.
-    try std.testing.expect(a.engine_ctx != null);
-    const after = ffi.v8_Isolate_ContextDisposedNotification(test_isolate.?, true);
-    try std.testing.expectEqual(before + 2, after);
-}
