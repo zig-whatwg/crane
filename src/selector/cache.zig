@@ -1,7 +1,7 @@
 //! CSS Selector Caching
 //!
 //! Provides caching infrastructure for parsed CSS selectors, inspired by
-//! browser implementations (WebKit caches up to 512 selectors).
+//! browser implementations (Blink keeps 256 per document, WebKit 512).
 //!
 //! ## Why Cache?
 //!
@@ -11,7 +11,7 @@
 //!
 //! ## Cache Types
 //!
-//! - `SelectorQueryCache` - LRU cache for parsed SelectorList by string key
+//! - `SelectorQueryCache` - a document's parsed selectors by their text (Blink's bound and eviction)
 //! - `NthIndexCache` - Cache for :nth-child() index calculations per element
 //! - `HasSelectorCache` - Cache for :has() match results per element+selector
 //!
@@ -29,178 +29,94 @@ const SelectorList = parser.SelectorList;
 // Selector Query Cache
 // ============================================================================
 
-/// LRU cache for parsed CSS selectors.
+/// A document's parsed selectors, by their text (lane perf2): Blink's
+/// SelectorQueryCache (third_party/blink/renderer/core/css/
+/// selector_query.cc, SelectorQueryCache::Add), which querySelector,
+/// querySelectorAll, matches() and closest() parse through, so a selector a
+/// page queries in a loop is parsed once.
 ///
-/// Caches parsed `SelectorList` objects by their source string, avoiding
-/// redundant parsing for frequently-used selectors.
-///
-/// Capacity: 512 entries (matching WebKit)
+/// - Keyed by the selector's text alone, as Blink's is: parsing a
+///   querySelector argument reads nothing of the document (no namespace
+///   prefixes, no nesting), and what matching needs of it - the document
+///   being an HTML document, its mode - is read at match time.
+/// - Only a valid selector is kept: an invalid one throws each time it is
+///   asked for (Blink parses again and throws again).
+/// - At most `max_entries` (Blink's kMaximumSelectorQueryCacheSize, 256).
+///   Full, it removes the FIRST entry its table iterates before adding
+///   (Blink: `entries_.erase(entries_.begin())` - its HashMap's first, an
+///   arbitrary entry, not the least recently used one).
+/// - Each entry OWNS the text its list was parsed from: a SelectorList's
+///   names are slices of its source (docs/lessons/
+///   debugging-a-parsed-selector-borrows-its-source-text.md), so the entry
+///   parses its own copy, never the caller's string.
+/// - Entries are heap blocks: a `*const SelectorList` from `getOrParse` is
+///   valid until the next `getOrParse` of a text not kept (which may evict
+///   it) or `deinit`. Matching runs no script, so no query starts another
+///   while it holds one.
 pub const SelectorQueryCache = struct {
     allocator: Allocator,
-    entries: std.StringHashMap(CacheEntry),
-    lru_head: ?*CacheEntry = null,
-    lru_tail: ?*CacheEntry = null,
-    size: usize = 0,
+    /// By the entry's own text (the key slices `Entry.source`).
+    // tombstones: removals are evictions, one per insert past the bound, so the table never holds more than max_entries + its tombstones; std rehashes on growth
+    entries: std.StringHashMapUnmanaged(*Entry) = .empty,
 
-    const Self = @This();
-    const MAX_ENTRIES: usize = 512;
+    /// Blink's kMaximumSelectorQueryCacheSize.
+    pub const max_entries: usize = 256;
 
-    /// A cached selector entry with LRU tracking.
-    pub const CacheEntry = struct {
-        key: []const u8, // Owned copy of selector string
-        selector_list: SelectorList,
-        prev: ?*CacheEntry = null,
-        next: ?*CacheEntry = null,
+    pub const Entry = struct {
+        /// The selector's text, owned: the key, and what `list` borrows.
+        source: []u8,
+        list: SelectorList,
     };
 
-    /// Create a new selector query cache.
-    pub fn init(allocator: Allocator) Self {
-        return .{
-            .allocator = allocator,
-            .entries = std.StringHashMap(CacheEntry).init(allocator),
-        };
+    pub fn init(allocator: Allocator) SelectorQueryCache {
+        return .{ .allocator = allocator };
     }
 
-    /// Clean up the cache, freeing all entries.
-    pub fn deinit(self: *Self) void {
-        var iter = self.entries.iterator();
-        while (iter.next()) |entry| {
-            var selector_list = entry.value_ptr.selector_list;
-            selector_list.deinit();
-            self.allocator.free(entry.value_ptr.key);
-        }
-        self.entries.deinit();
+    pub fn deinit(self: *SelectorQueryCache) void {
+        var it = self.entries.valueIterator();
+        while (it.next()) |entry| self.destroyEntry(entry.*);
+        self.entries.deinit(self.allocator);
+        self.entries = .empty;
     }
 
-    /// Get a cached selector list by string, returning null if not cached.
-    ///
-    /// Moves the entry to the front of the LRU list if found.
-    pub fn get(self: *Self, selector_string: []const u8) ?*const SelectorList {
-        if (self.entries.getPtr(selector_string)) |entry| {
-            self.moveToFront(entry);
-            return &entry.selector_list;
-        }
-        return null;
+    fn destroyEntry(self: *SelectorQueryCache, entry: *Entry) void {
+        entry.list.deinit();
+        self.allocator.free(entry.source);
+        self.allocator.destroy(entry);
     }
 
-    /// Add a parsed selector list to the cache.
-    ///
-    /// The cache takes ownership of the selector list. If the cache is full,
-    /// the least recently used entry is evicted.
-    pub fn put(self: *Self, selector_string: []const u8, selector_list: SelectorList) !void {
-        // Check if already cached
-        if (self.entries.contains(selector_string)) {
-            // Update existing entry
-            const entry = self.entries.getPtr(selector_string).?;
-            entry.selector_list.deinit();
-            entry.selector_list = selector_list;
-            self.moveToFront(entry);
-            return;
-        }
-
-        // Evict LRU if at capacity
-        if (self.size >= MAX_ENTRIES) {
-            try self.evictLRU();
-        }
-
-        // Create owned copy of key
-        const owned_key = try self.allocator.dupe(u8, selector_string);
-        errdefer self.allocator.free(owned_key);
-
-        // Create new entry
-        const entry = CacheEntry{
-            .key = owned_key,
-            .selector_list = selector_list,
-        };
-
-        try self.entries.put(owned_key, entry);
-        self.size += 1;
-
-        // Add to front of LRU list
-        const entry_ptr = self.entries.getPtr(owned_key).?;
-        self.addToFront(entry_ptr);
+    /// The kept parse of `source`, or `source` parsed now and kept. A parse
+    /// error is returned and nothing is kept.
+    pub fn getOrParse(self: *SelectorQueryCache, source: []const u8) parser.ParserError!*const SelectorList {
+        if (self.entries.get(source)) |entry| return &entry.list;
+        const entry = try self.allocator.create(Entry);
+        errdefer self.allocator.destroy(entry);
+        const owned = try self.allocator.dupe(u8, source);
+        errdefer self.allocator.free(owned);
+        entry.* = .{ .source = owned, .list = try parser.parseSelectorList(self.allocator, owned) };
+        errdefer entry.list.deinit();
+        if (self.entries.count() >= max_entries) self.evictFirst();
+        try self.entries.putNoClobber(self.allocator, owned, entry);
+        return &entry.list;
     }
 
-    /// Get the number of cached entries.
-    pub fn count(self: *const Self) usize {
-        return self.size;
+    /// Blink's eviction: the entry the table lists first.
+    fn evictFirst(self: *SelectorQueryCache) void {
+        var it = self.entries.iterator();
+        const first = it.next() orelse return;
+        const entry = first.value_ptr.*;
+        self.entries.removeByPtr(first.key_ptr);
+        self.destroyEntry(entry);
     }
 
-    /// Clear all cached entries.
-    pub fn clear(self: *Self) void {
-        var iter = self.entries.iterator();
-        while (iter.next()) |entry| {
-            var selector_list = entry.value_ptr.selector_list;
-            selector_list.deinit();
-            self.allocator.free(entry.value_ptr.key);
-        }
-        self.entries.clearRetainingCapacity();
-        self.lru_head = null;
-        self.lru_tail = null;
-        self.size = 0;
+    /// Whether `source` is kept.
+    pub fn contains(self: *const SelectorQueryCache, source: []const u8) bool {
+        return self.entries.contains(source);
     }
 
-    // ========================================================================
-    // LRU List Operations
-    // ========================================================================
-
-    fn moveToFront(self: *Self, entry: *CacheEntry) void {
-        if (self.lru_head == entry) return; // Already at front
-
-        // Remove from current position
-        self.removeFromList(entry);
-
-        // Add to front
-        self.addToFront(entry);
-    }
-
-    fn addToFront(self: *Self, entry: *CacheEntry) void {
-        entry.prev = null;
-        entry.next = self.lru_head;
-
-        if (self.lru_head) |head| {
-            head.prev = entry;
-        }
-        self.lru_head = entry;
-
-        if (self.lru_tail == null) {
-            self.lru_tail = entry;
-        }
-    }
-
-    fn removeFromList(self: *Self, entry: *CacheEntry) void {
-        if (entry.prev) |prev| {
-            prev.next = entry.next;
-        } else {
-            self.lru_head = entry.next;
-        }
-
-        if (entry.next) |next| {
-            next.prev = entry.prev;
-        } else {
-            self.lru_tail = entry.prev;
-        }
-
-        entry.prev = null;
-        entry.next = null;
-    }
-
-    fn evictLRU(self: *Self) !void {
-        const tail = self.lru_tail orelse return;
-
-        // Remove from LRU list
-        self.removeFromList(tail);
-
-        // Free resources
-        var selector_list = tail.selector_list;
-        selector_list.deinit();
-        const key = tail.key;
-
-        // Remove from hash map
-        _ = self.entries.remove(key);
-        self.allocator.free(key);
-
-        self.size -= 1;
+    /// The number of kept selectors.
+    pub fn count(self: *const SelectorQueryCache) usize {
+        return self.entries.count();
     }
 };
 
@@ -418,13 +334,42 @@ pub const HasSelectorCache = struct {
 
 const testing = std.testing;
 
-test "SelectorQueryCache - basic operations" {
-    const allocator = testing.allocator;
-    var cache = SelectorQueryCache.init(allocator);
+test "SelectorQueryCache parses a text once and keeps only valid selectors" {
+    var cache = SelectorQueryCache.init(testing.allocator);
     defer cache.deinit();
-
     try testing.expectEqual(@as(usize, 0), cache.count());
-    try testing.expect(cache.get("div") == null);
+    const first = try cache.getOrParse("div > .a");
+    try testing.expectEqual(first, try cache.getOrParse("div > .a"));
+    try testing.expectEqual(@as(usize, 1), cache.count());
+    try testing.expectEqual(@as(usize, 1), first.selectors.len);
+    // Invalid: an error each time, nothing kept.
+    for (0..2) |_| {
+        if (cache.getOrParse("a[")) |_| return error.TestUnexpectedResult else |_| {}
+    }
+    try testing.expectEqual(@as(usize, 1), cache.count());
+}
+
+test "SelectorQueryCache keeps its own copy of the text it parsed" {
+    var cache = SelectorQueryCache.init(testing.allocator);
+    defer cache.deinit();
+    const text = try testing.allocator.dupe(u8, "#main .item");
+    const list = try cache.getOrParse(text);
+    // The caller's string goes (the test allocator overwrites it): the kept
+    // list still names #main and .item.
+    testing.allocator.free(text);
+    const compound = list.selectors[0].compound;
+    try testing.expectEqualStrings("item", compound.simple_selectors[0].Class.class_name);
+    try testing.expect(cache.contains("#main .item"));
+}
+
+test "SelectorQueryCache keeps at most Blink's 256, one evicted per new text past it" {
+    var cache = SelectorQueryCache.init(testing.allocator);
+    defer cache.deinit();
+    var buffer: [32]u8 = undefined;
+    for (0..300) |i| _ = try cache.getOrParse(try std.fmt.bufPrint(&buffer, ".c{d}", .{i}));
+    try testing.expectEqual(SelectorQueryCache.max_entries, cache.count());
+    // The newest is always kept.
+    try testing.expect(cache.contains(".c299"));
 }
 
 test "NthIndexCache - basic operations" {
