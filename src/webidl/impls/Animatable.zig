@@ -1,25 +1,23 @@
-//! Implementation for Animatable interface
+//! Implementation for the Animatable mixin (Web Animations 1 6.8):
+//! animate() and getAnimations(). Element includes Animatable and inherits
+//! both members by alias (codegen/inherited_mixins.zig); the steps are
+//! dom.animations' (src/dom/animations/root.zig).
+//!
+//! Spec: https://drafts.csswg.org/web-animations-1/#the-animatable-interface-mixin
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const animations = @import("dom").animations;
 const Animatable = interfaces.Animatable;
 
 pub const State = Animatable.State;
 
-pub const ImplError = error{
-    NotImplemented,
-};
+pub const ImplError = error{};
 
 /// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
 /// Initialize instance (creates the instance)
@@ -29,28 +27,25 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+    return runtime.Instance.init(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Operation: animate
+/// Operation: animate (6.8): a new KeyframeEffect and Animation for this
+/// element, played.
+/// Spec: https://drafts.csswg.org/web-animations-1/#dom-animatable-animate
 pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = keyframes;
-    _ = options;
-    return error.NotImplemented;
+    return animations.animate(instance, keyframes, if (options.was_passed) options.value else null);
 }
 
-/// Operation: getAnimations
+/// Operation: getAnimations (6.8): the relevant animations for this
+/// element, or with `subtree` for its subtree, in composite order.
+/// Spec: https://drafts.csswg.org/web-animations-1/#dom-animatable-getanimations
 pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetAnimationsOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
+    const given = options.getOrDefault(.{});
+    return animations.elementAnimations(instance, given.subtree orelse false, if (given.pseudoElement) |p| p.asSlice() else null);
 }

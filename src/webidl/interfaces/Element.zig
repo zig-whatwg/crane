@@ -2084,9 +2084,7 @@ pub const Element = struct {
 
     pub const call_querySelector = mixins.ParentNode.call_querySelector;
 
-    pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-        return try ElementImpl.call_animate(instance, keyframes, options);
-    }
+    pub const call_animate = mixins.Animatable.call_animate;
 
     /// Extended attributes: [CEReactions]
     pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, force: webidl.Opt(bool)) anyerror!bool {
@@ -2230,9 +2228,7 @@ pub const Element = struct {
         return try ElementImpl.call_attachShadow(instance, init_data);
     }
 
-    pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAnimationsOptions)) anyerror!runtime.JSValue {
-        return try ElementImpl.call_getAnimations(instance, options);
-    }
+    pub const call_getAnimations = mixins.Animatable.call_getAnimations;
 
     pub fn call_releasePointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!void {
         return try ElementImpl.call_releasePointerCapture(instance, pointerId);
