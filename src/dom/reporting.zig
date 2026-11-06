@@ -369,6 +369,122 @@ pub fn generate(global: *runtime.Instance, kind: []const u8, destination: []cons
     loop.queueTask(.{ .callback = DeliveryTask.run, .context = task, .drop = DeliveryTask.drop });
 }
 
+/// A report made for a URL with no settings object: what the queue for an
+/// endpoint list (`queueForEndpoint`) takes. Every field is borrowed for
+/// the call.
+pub const Detached = struct {
+    /// The report type ("coop", "csp-violation").
+    type: []const u8,
+    /// The URL the report is made for - the policy's document's, or its
+    /// response's - unstripped: the report's url is its stripping
+    /// (Reporting "generate a report" step 4) and the upload's origin its
+    /// origin (§3.5.1 step 3.2).
+    url: []const u8,
+    /// The endpoint name (the report's destination).
+    destination: []const u8,
+    body_json: []const u8,
+    /// The endpoint list `destination` names an endpoint in: the
+    /// Reporting-Endpoints of the policy's response or document. Null, or a
+    /// list without the name: nothing is queued.
+    endpoints: ?*fetch.internal.policy_container.Endpoints,
+    /// Start the upload as a request its agent keeps from the start
+    /// (keepalive_fetch.startKept): the sender's document may be going -
+    /// the document a navigation report describes is being navigated away
+    /// from. Chromium sends these from the network service
+    /// (NetworkContext::QueueReport), whatever becomes of the document.
+    kept: bool = false,
+};
+
+/// HTML's "queue body as type for endpoint with url" - a report of a
+/// policy whose global does not exist or is going, with no settings object
+/// (COOP's navigation reports, 7.1.3.3; CSP's response-policy violations,
+/// csp_violations.reportNavigationResponse). Reporting no longer defines
+/// that form: it renamed "queue a report" to "generate and queue a report"
+/// (w3c/reporting 334a96b9, 2022) and removed generate-a-report's optional
+/// URL (57e73b58, 2026-01-02). The engines resolve the endpoint name
+/// against the policy's document's endpoints and send from outside the
+/// document: Chromium NetworkContext::QueueReport(type, endpoint, url,
+/// reporting_source), WebKit Document::sendReportToEndpoints(coopURL, {},
+/// tokens). So does this: the endpoint is resolved now, against `report`'s
+/// list; the report (§2.1.3's fields, its url stripped) is uploaded by a
+/// task queued on `sender`'s event loop with §3.5.2's client-null request -
+/// `sender` gives transport only (its Browser's network and cookie jar),
+/// never report data. Not visible to ReportingObservers: there is no
+/// settings object to notify. Nothing is queued without a matching
+/// endpoint or an event loop.
+pub fn queueForEndpoint(sender: *runtime.Instance, report: Detached) !void {
+    const endpoints = report.endpoints orelse return;
+    const endpoint = endpoints.find(report.destination) orelse return;
+    const loop = sender.ctx.getOptionalEventLoop() orelse return;
+    const allocator = sender.ctx.allocator;
+    const task = try allocator.create(DetachedTask);
+    task.* = .{ .allocator = allocator, .sender = Link.of(sender), .kept = report.kept };
+    errdefer task.deinit();
+    task.endpoint_url = try allocator.dupe(u8, endpoint.url);
+    task.origin = try fetch.internal.origins.serializedOriginOf(allocator, report.url);
+    const url = try csp.violation_events.stripUrlForReports(allocator, report.url);
+    defer allocator.free(url);
+    task.record = try Record.create(allocator, .{
+        .type = report.type,
+        .destination = report.destination,
+        .url = url,
+        .body_json = report.body_json,
+        .timestamp_ms = platform.wallMillis(),
+        .user_agent = if (@import("browser_state.zig").networkOf(sender.ctx)) |network| network.userAgent() else fetch.internal.user_agent.default_user_agent,
+    });
+    loop.queueTask(.{ .callback = DetachedTask.run, .context = task, .drop = DetachedTask.drop });
+}
+
+/// `queueForEndpoint`'s upload: Reporting §3.5.2 for one report, its
+/// endpoint and origin copied when it was queued.
+const DetachedTask = struct {
+    allocator: std.mem.Allocator,
+    sender: Link,
+    kept: bool,
+    endpoint_url: []const u8 = "",
+    origin: []const u8 = "",
+    record: ?*Record = null,
+
+    fn deinit(self: *DetachedTask) void {
+        const allocator = self.allocator;
+        allocator.free(self.endpoint_url);
+        allocator.free(self.origin);
+        if (self.record) |record| record.release();
+        allocator.destroy(self);
+    }
+    fn drop(data: ?*anyopaque) void {
+        const self: *DetachedTask = @ptrCast(@alignCast(data.?));
+        self.deinit();
+    }
+    fn run(data: ?*anyopaque) void {
+        const self: *DetachedTask = @ptrCast(@alignCast(data.?));
+        defer self.deinit();
+        if (!self.sender.isLive() or !self.sender.instance.ctx.hasEngine()) return;
+        engine.runTaskInRealm(self.sender.instance.ctx, steps, self) catch {};
+    }
+    fn steps(data: ?*anyopaque) void {
+        const self: *DetachedTask = @ptrCast(@alignCast(data.?));
+        self.send() catch {};
+    }
+    fn send(self: *DetachedTask) !void {
+        const record = self.record orelse return;
+        const sender = self.sender.instance;
+        const bytes = try serializeReports(self.allocator, &.{record}, platform.wallMillis());
+        defer self.allocator.free(bytes);
+        const request = try modernRequest(self.allocator, self.endpoint_url, self.origin, bytes);
+        // Client-null reports still use their Browser's network
+        // configuration and cookie jar, as the delivery task does.
+        request.cookie_jar = global_settings.cookieJarOf(sender);
+        request.network = @import("browser_state.zig").networkOf(sender.ctx);
+        // Both take the request on every path.
+        if (self.kept) {
+            try keepalive_fetch.startKept(sender, request, .ping);
+        } else {
+            _ = try keepalive_fetch.send(sender, request, .{ .load = .ping });
+        }
+    }
+};
+
 pub fn reportDestination(directive: *const csp.Directive) []const u8 {
     // Browser deviation from CSP §6.5.2's single-token grammar: Chromium
     // ParseReportDirective and Gecko nsCSPParser::reportGroup use the first

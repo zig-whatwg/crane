@@ -326,6 +326,22 @@ pub const BrowsingContext = struct {
     /// Contexts with the same ID are in the same group.
     virtual_group_id: u64,
 
+    /// HTML 7.3.2's "virtual browsing context group ID" - not the group
+    /// (`virtual_group_id` is that): "used by opener policy reporting, to
+    /// keep track of the browsing context group switches that would have
+    /// happened if the report-only policy had been enforced". Read from a
+    /// top-level context only ("check if an access between two browsing
+    /// contexts should be reported" step 8). Copied from the opener's or
+    /// the creator's top-level context ("create a new auxiliary browsing
+    /// context and document" step 8, "create a new browsing context and
+    /// document" step 5.3), renewed by "obtain a browsing context to use for
+    /// a navigation response" step 9.1 (`startVirtualGroup`). A context made
+    /// with no creator, and every group switch, takes a new unique one, as
+    /// Chromium's CrossOriginOpenerPolicyStatus::EnforceCOOP does on a
+    /// BrowsingInstance swap (HTML leaves such a context's at its initial 0,
+    /// which no access across groups can observe).
+    virtual_browsing_context_group_id: u64 = 0,
+
     /// Whether this context is closed
     is_closed: bool,
 
@@ -495,7 +511,14 @@ pub const BrowsingContext = struct {
     pub fn initTopLevel(allocator: Allocator, navigables: *Navigables) !*BrowsingContext {
         const ctx = try init(allocator, navigables);
         ctx.virtual_group_id = @atomicRmw(u64, &next_group_id, .Add, 1, .monotonic);
+        ctx.virtual_browsing_context_group_id = newVirtualGroupId();
         return ctx;
+    }
+
+    /// A new unique virtual browsing context group ID. Drawn from the group
+    /// counter: both only need uniqueness.
+    fn newVirtualGroupId() u64 {
+        return @atomicRmw(u64, &next_group_id, .Add, 1, .monotonic);
     }
 
     /// Create a new child browsing context with the given parent, on its
@@ -505,6 +528,9 @@ pub const BrowsingContext = struct {
         errdefer ctx.deinit();
         ctx.parent = parent_ctx;
         ctx.virtual_group_id = parent_ctx.virtual_group_id;
+        // "Create a new browsing context and document" step 5.3: the
+        // creator's top-level browsing context's virtual group ID.
+        ctx.virtual_browsing_context_group_id = parent_ctx.getTop().virtual_browsing_context_group_id;
         ctx.cross_origin_isolation_mode = parent_ctx.cross_origin_isolation_mode;
         try parent_ctx.children.append(parent_ctx.allocator, ctx);
         return ctx;
@@ -529,6 +555,9 @@ pub const BrowsingContext = struct {
         // be openerBrowsingContext's top-level browsing context's group",
         // which the new context joins.
         ctx.virtual_group_id = opener_ctx.getTop().virtual_group_id;
+        // Step 8: "Set browsingContext's virtual browsing context group ID to
+        // openerTopLevelBrowsingContext's virtual browsing context group ID."
+        ctx.virtual_browsing_context_group_id = opener_ctx.getTop().virtual_browsing_context_group_id;
         ctx.cross_origin_isolation_mode = opener_ctx.getTop().cross_origin_isolation_mode;
         ctx.opener = opener_ctx;
         ctx.is_popup = is_popup_flag;
@@ -824,6 +853,7 @@ pub const BrowsingContext = struct {
     /// top-level browsing context and document" step 1).
     pub fn startOwnGroup(self: *BrowsingContext) void {
         self.virtual_group_id = @atomicRmw(u64, &next_group_id, .Add, 1, .monotonic);
+        self.virtual_browsing_context_group_id = newVirtualGroupId();
         // "Create a new browsing context group": its cross-origin isolation
         // mode is initially "none".
         self.cross_origin_isolation_mode = .none;
@@ -860,6 +890,29 @@ pub const BrowsingContext = struct {
                 if (other != self and other.opener == self) other.opener = null;
             }
         }
+    }
+
+    /// HTML "obtain a browsing context to use for a navigation response"
+    /// step 9.1, for this top-level context, which keeps its group: "If
+    /// coopEnforcementResult's would need a browsing context group switch due
+    /// to report-only is true, set browsingContext's virtual browsing context
+    /// group ID to a new unique identifier."
+    pub fn startVirtualGroup(self: *BrowsingContext) void {
+        self.virtual_browsing_context_group_id = newVirtualGroupId();
+    }
+
+    /// HTML "enforce a response's opener policy" steps 4.2 and 5.2: whether
+    /// "browsingContext's group's browsing context set's size is greater
+    /// than 1" - another live top-level context (the set holds top-level
+    /// ones only) is in this context's group. Chromium's EnforceCOOP asks
+    /// the same (has_other_window_in_browsing_context_group).
+    pub fn groupHoldsOthers(self: *const BrowsingContext) bool {
+        const navigables = self.navigables orelse return false;
+        for (navigables.contexts()) |other| {
+            if (other == self or other.parent != null or other.is_closed) continue;
+            if (other.virtual_group_id == self.virtual_group_id) return true;
+        }
+        return false;
     }
 
     /// Whether this context's group is cross-origin isolated ("logical" or
