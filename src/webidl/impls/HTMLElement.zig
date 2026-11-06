@@ -114,11 +114,11 @@ pub const InternalState = struct {
     }
 };
 
-// Use shared InstanceRegistry utility for internal state management
+// Its internal state, in its own generated State (`own._internal`): runtime.OwnState.
 const utils = @import("webidl").utils;
-const Registry = runtime.InstanceRegistry(.html_element, InternalState);
+const Registry = runtime.OwnState(State, InternalState);
 
-/// Get HTMLElement's internal state from the registry
+/// Get HTMLElement's internal state
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
@@ -127,8 +127,8 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = StateType;
     _ = args;
-    // Initialize HTMLElement's own internal state in registry
-    // The registry owns this block, so `Registry.remove` returns it to the
+    // Initialize HTMLElement's own internal state in its own State (runtime.OwnState)
+    // The block is the arena's, and `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
@@ -137,7 +137,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 
 /// HTMLElement's own teardown: the generated chain runs Element's after it.
 pub fn deinitOwn(instance: *runtime.Instance) void {
-    // Clean up from registry
+    // Clean up its internal state
     if (Registry.get(instance)) |internal| {
         if (internal.internals_traced) @import("engine").forgetTracedChild(instance, .{ .name = "elementInternals" });
         if (!internal.internals_traced) if (internal.element_internals) |internals| runtime.Instance.deinit(internals);

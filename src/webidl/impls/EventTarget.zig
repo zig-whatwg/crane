@@ -199,11 +199,13 @@ const LazyEntry = struct {
     generation: u64,
 };
 
-/// Get the internal state from an instance
-fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return if (@hasField(@TypeOf(state.own), "_internal")) state.own._internal else null;
-}
+/// The internal state of an EventTarget whose impl chains EventTarget's
+/// init - every node, and every other type whose chain runs `initOwn` - in
+/// the instance's own State (`own._internal`, runtime.OwnState): read on
+/// every listener call and every dispatch, it is a field of the object, not
+/// an entry of a locked table (lane perf2, batch 2). The `Registry` below
+/// keeps only the entries made lazily (`LazyEntry`).
+const Own = runtime.OwnState(State, InternalState);
 
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
@@ -235,14 +237,20 @@ pub fn installHooks() void {
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = StateType;
     _ = args;
-    // Initialize EventTarget internal state in registry
+    // Its internal state, in its own State.
     _ = try initInternal(instance, allocator);
 }
 
 /// EventTarget's own teardown, the last of every EventTarget's destruction
 /// chain. The slot itself is the collector's to free, or the queue's.
 pub fn deinitOwn(instance: *runtime.Instance) void {
-    // Clean up internal state from registry
+    if (Own.get(instance)) |internal| {
+        internal.deinit();
+        Own.remove(instance);
+        return;
+    }
+    // An entry made lazily for it after its own state went (a listener added
+    // to a torn-down target).
     if (getInternalFromRegistry(instance)) |internal| {
         internal.deinit();
         removeFromRegistry(instance);
@@ -255,31 +263,29 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     const instance = try EventTarget.init(ctx.allocator, ctx);
     errdefer EventTarget.deinit(instance);
 
-    // Note: EventTarget.State.own is empty struct, so no _internal field
-    // For now, we'll manage internal state separately
-    // TODO: Add _internal field to State via codegen
-
     return instance;
 }
 
-/// Initialize an EventTarget with internal state
-/// This is called by subclasses (like Node) to set up the internal state
-pub fn initInternal(instance: *runtime.Instance, allocator: std.mem.Allocator) !*InternalState {
-    const internal = try runtime.arenaOf(instance).create(InternalState);
+/// Initialize an EventTarget's internal state, in its own State: a block of
+/// its Browser's arena (runtime.OwnState), returned by `deinitOwn`.
+fn initInternal(instance: *runtime.Instance, allocator: std.mem.Allocator) !*InternalState {
+    // The table's end releases what no deinit and no sweep reached - a scope
+    // with no Browser (runtime.initializeRuntime's) runs no sweeps - so it
+    // must exist, and know its scope, once a state is made here.
+    const registry = try registryFor(instance);
+    if (registry.scope.load(.monotonic) == null) registry.scope.store(runtime.BrowserScope.ofInstance(instance), .release);
+    const internal = try Own.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
-
-    // Store internal state in registry (ensure it's initialized first)
-    try setInternalInRegistry(instance, internal);
-
     return internal;
 }
 
-/// One Browser's EventTarget states - a side table of its runtime.BrowserScope
-/// (`.event_targets`, instances B1): a Browser's entries are its own, its end
-/// takes them with it, and no other Browser's end reaches them. (A
-/// workaround until the codegen adds the _internal field to State.)
+/// One Browser's lazily made EventTarget states (`LazyEntry`) - a side table
+/// of its runtime.BrowserScope (`.event_targets`, instances B1): a Browser's
+/// entries are its own, its end takes them with it, and no other Browser's
+/// end reaches them. Every other EventTarget's state is in its own State
+/// (`Own`).
 ///
-/// Every EventTarget of every thread of the Browser is here - its window
+/// Every lazy entry of every thread of the Browser is here - its window
 /// thread and each of its workers' (docs/instances.md) - so the map is
 /// reached only under `mutex`. A value is a block its instance's thread
 /// allocated and frees, so a pointer read under the lock stays good after it;
@@ -291,11 +297,15 @@ pub const Registry = struct {
     mutex: std.Io.Mutex = .init,
     map: ?infra.address_map.AddressHashMap(usize, *InternalState) = null,
     allocator: std.mem.Allocator,
-    /// Every EventTarget - every node - a page makes enters the registry and
-    /// leaves it; the guard rehashes before an insert once the tombstones
-    /// those removals leave could take half the free slots
-    /// (webidl.utils.tombstones).
+    /// A lazy entry leaves the registry at its realm's end, or when its
+    /// instance's state is torn down; the guard rehashes before an insert
+    /// once the tombstones those removals leave could take half the free
+    /// slots (webidl.utils.tombstones).
     guard: webidl.utils.tombstones.TombstoneGuard = .{},
+    /// The scope this table is a side table of, recorded by the first state
+    /// made in it (`initInternal`): its end walks the scope's slab for the
+    /// chained states left, as it releases the lazy entries left.
+    scope: std.atomic.Value(?*runtime.BrowserScope) = .init(null),
 
     pub fn init(allocator: std.mem.Allocator) Registry {
         return .{ .allocator = allocator };
@@ -305,6 +315,13 @@ pub const Registry = struct {
     /// sweep (`sweepRemaining`) still hold is released without the engine,
     /// which is gone. Their blocks go with the Browser's arena.
     pub fn deinit(self: *Registry) void {
+        // The chained states left (Own): a walk of the scope's slab, which
+        // ends after its tables. Without the engine, which is gone.
+        if (self.scope.load(.acquire)) |scope| Own.sweep(scope, {}, struct {
+            fn visit(_: void, _: *runtime.Instance, internal: *InternalState) void {
+                internal.deinitEx(false);
+            }
+        }.visit);
         var map = self.takeAll() orelse return;
         var iter = map.valueIterator();
         while (iter.next()) |internal_ptr| internal_ptr.*.deinitEx(false);
@@ -359,6 +376,14 @@ fn registryOf(instance: *runtime.Instance) ?*Registry {
 /// event handlers) - BEFORE its agent ends (Browser.deinit), and after every
 /// worker of the Browser has ended, so every entry left is this thread's.
 fn sweepRemaining(scope: *runtime.BrowserScope) void {
+    // The chained EventTargets no deinit reached: a walk of the Browser's
+    // slab (runtime.OwnState.sweep), each field cleared after.
+    Own.sweep(scope, {}, struct {
+        fn visit(_: void, _: *runtime.Instance, internal: *InternalState) void {
+            internal.deinitEx(true); // the agent is alive: release its values
+        }
+    }.visit);
+    // Then the lazy entries.
     const registry = scope.existingTable(.event_targets, Registry) orelse return;
     registry.lock();
     var taken = registry.takeAll();
@@ -373,6 +398,9 @@ fn sweepRemaining(scope: *runtime.BrowserScope) void {
 }
 
 fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
+    // A chained EventTarget's state: a field of the object.
+    if (Own.get(instance)) |internal| return internal;
+    // Otherwise an entry made lazily, if any.
     const registry = registryOf(instance) orelse return null;
     registry.lock();
     const map = registry.ensure();
@@ -477,9 +505,9 @@ fn removeFromRegistry(instance: *runtime.Instance) void {
     registry.lock();
     const taken = registry.take(@intFromPtr(instance));
     registry.unlock();
-    // Return the block, not just the map entry. EventTarget keeps its own registry
-    // rather than using InstanceRegistry, so it needs its own release - and it is on
-    // every DOM node, so leaving it out keeps the leak on the hottest path there is.
+    // Return the block, not just the map entry: EventTarget keeps its own
+    // registry of lazy entries rather than using InstanceRegistry, so it needs
+    // its own release.
     if (taken) |internal| {
         runtime.arenaOf(instance).destroy(InternalState, internal);
     }

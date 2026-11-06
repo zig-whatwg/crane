@@ -70,7 +70,31 @@ pub const Instance = struct {
     /// Null is also returned when the ancestry table is empty, i.e. before codegen has
     /// emitted one for this interface. Callers must treat null as "cannot answer", never
     /// fall back to the pun.
+    ///
+    /// One entry is read, not the table scanned (lane perf2, batch 2): `T`'s place in
+    /// ANY instance's ancestry is fixed by `T` alone. The table lists the instance's own
+    /// state, then each `base` down to the root, so the entries after `T`'s are exactly
+    /// `T`'s own base chain - `T` sits `depthOf(T)` entries from the end, a comptime
+    /// number. That entry's id is the brand check, as it was for the scan; a Debug build
+    /// also scans and asserts the two agree (`stateByScan`). It serves every
+    /// `getState`/`stateAs` site - every impl's `_internal` read and runtime.OwnState.
     pub inline fn stateAs(self: *const Instance, comptime T: type) ?*T {
+        const depth = comptime depthOf(T);
+        const ancestors = self.vtable.ancestors;
+        const found: ?*T = found: {
+            if (ancestors.len <= depth) break :found null;
+            const a = ancestors[ancestors.len - 1 - depth];
+            if (a.id != typeId(T)) break :found null;
+            const bytes: [*]u8 = @ptrCast(self.state);
+            break :found @ptrCast(@alignCast(bytes + a.offset));
+        };
+        if (@import("builtin").mode == .debug) std.debug.assert(found == self.stateByScan(T));
+        return found;
+    }
+
+    /// `stateAs` by scanning the whole ancestry: the oracle a Debug build checks the
+    /// one-entry read against.
+    fn stateByScan(self: *const Instance, comptime T: type) ?*T {
         const want = typeId(T);
         for (self.vtable.ancestors) |a| {
             if (a.id == want) {
@@ -235,6 +259,13 @@ pub const Ancestor = struct {
 /// `@offsetOf(.., "base")` of the level above. This is what retires the
 /// derived-to-base pun: `getState` assumed every one of these offsets was 0, which
 /// auto layout does not guarantee (see tests/dom/state_layout_test.zig).
+/// How many levels lie below `State` in its own ancestry: its `base`, that one's
+/// `base`, ... down to the root. `State` sits this many entries from the END of every
+/// ancestry it appears in (`Instance.stateAs`).
+pub fn depthOf(comptime State: type) usize {
+    return comptime ancestorsOf(State).len - 1;
+}
+
 pub fn ancestorsOf(comptime State: type) []const Ancestor {
     comptime {
         var list: []const Ancestor = &.{};

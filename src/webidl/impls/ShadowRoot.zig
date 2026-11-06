@@ -125,9 +125,9 @@ pub const InternalState = struct {
     }
 };
 
-// Use shared InstanceRegistry utility for internal state management
+// Its internal state, in its own generated State (`own._internal`): runtime.OwnState.
 const utils = @import("webidl").utils;
-const Registry = runtime.InstanceRegistry(.shadow_root, InternalState);
+const Registry = runtime.OwnState(State, InternalState);
 
 /// This shadow root's state, or null once it has been torn down. Every member
 /// then answers InvalidStateError rather than read freed state.

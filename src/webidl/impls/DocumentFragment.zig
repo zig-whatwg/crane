@@ -55,9 +55,9 @@ pub const InternalState = struct {
     }
 };
 
-// Use shared InstanceRegistry utility for internal state management
+// Its internal state, in its own generated State (`own._internal`): runtime.OwnState.
 const utils = @import("webidl").utils;
-const Registry = runtime.InstanceRegistry(.document_fragment, InternalState);
+const Registry = runtime.OwnState(State, InternalState);
 
 pub fn installHooks() void {
     // Its states left at its Browser's end (Browser.deinit).
@@ -100,7 +100,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     _ = StateType;
     _ = args;
     // Initialize DocumentFragment's own internal state and register it
-    // The registry owns this block, so `Registry.remove` returns it to the
+    // The block is the arena's, and `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));

@@ -138,9 +138,9 @@ pub const InternalState = struct {
     }
 };
 
-// Use shared InstanceRegistry utility for internal state management
+// Its internal state, in its own generated State (`own._internal`): runtime.OwnState.
 const utils = @import("webidl").utils;
-const Registry = runtime.InstanceRegistry(.node, InternalState);
+const Registry = runtime.OwnState(State, InternalState);
 
 /// Get the internal state from an instance
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
@@ -155,6 +155,9 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn installHooks() void {
     // Its states and NodeBases left at its Browser's end (Browser.deinit).
     dom_module.teardown_sweeps.install(.nodes, &sweepRemaining);
+    // dom.instance_bridge reaches a node's NodeBase through its state here,
+    // before any node exists.
+    instance_bridge.install(.{ .node_base_of = &nodeBaseOf });
     // Every other node creator sets a node document through
     // `dom.node_document`, never through this impl. The hook is installed
     // here, before anything can hold this node to set its document.
@@ -171,6 +174,13 @@ pub fn installHooks() void {
     // A realm's end frees the orphans its removals recorded (dom.mutation's
     // orphanRemoved), each through its own teardown as a tree frees a child.
     runtime.orphan_roots.install(.{ .still_orphan = &stillOrphan, .free = &deinitNodeByType });
+}
+
+/// dom.instance_bridge's `node_base_of`: the NodeBase in `instance`'s own
+/// Node state, or null when it is no node or its NodeBase is gone.
+fn nodeBaseOf(instance: *runtime.Instance) ?*NodeBase {
+    const internal = Registry.get(instance) orelse return null;
+    return internal.node_base;
 }
 
 /// runtime.orphan_roots' check, for a recorded root whose generation and
@@ -192,15 +202,14 @@ fn stillOrphan(instance: *runtime.Instance) bool {
 /// ...)`, and its `nodeType()` is not virtual. No creation path sets it
 /// afterwards.
 ///
-/// IMPORTANT: Due to state hierarchy complexity, internal state is stored
-/// in a global registry rather than in the State struct. This allows
-/// proper inheritance without type conflicts.
+/// Its internal state is a block of its Browser's arena, kept in this level's
+/// own State field (`own._internal`, runtime.OwnState).
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = args;
     const node_type = comptime nodeTypeOf(StateType);
 
-    // Initialize Node internal state in global registry
-    // The registry owns this block, so `Registry.remove` returns it to the arena.
+    // Initialize Node internal state in its own State (runtime.OwnState)
+    // The block is the arena's, and `Registry.remove` returns it to the arena.
     // Node is the hottest path here - every element is a Node - and with `set` the
     // block was dropped from the map and held to process exit.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
@@ -257,7 +266,7 @@ fn nodeTypeOf(comptime StateType: type) u16 {
     return nodeTypeOf(@FieldType(StateType, "base"));
 }
 
-/// Get Node's internal state from the registry
+/// Get Node's internal state
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     const internal = Registry.get(instance) orelse return null;
     // Refcount step 6: a read of a node step 7 would have freed is reported.
@@ -401,7 +410,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.deinit();
     }
 
-    // Clean up from registry
+    // Clean up its internal state
     Registry.remove(instance);
 
     // Record that cleanup is complete - and keep recording it. While the
@@ -2186,32 +2195,28 @@ fn freeNodeName(internal: *InternalState, node_base: *NodeBase) void {
 /// 2. InternalState owned strings
 /// 3. Unregisters from instance_bridge
 fn sweepRemaining(scope: *runtime.BrowserScope) void {
-    // Get an iterator over all remaining entries
-    var iter = Registry.iterator(scope) orelse return;
+    // Every node of the Browser whose state no deinit removed (a slab walk,
+    // runtime.OwnState.sweep), its field cleared after.
+    Registry.sweep(scope, {}, sweepOne);
+}
 
-    while (iter.next()) |entry| {
-        const instance: *runtime.Instance = @ptrCast(@alignCast(entry.instance));
-        const internal = entry.internal;
+fn sweepOne(_: void, instance: *runtime.Instance, internal: *InternalState) void {
+    // Free NodeBase if present
+    if (internal.node_base) |node_base| {
+        // Clean up NodeBase resources
+        node_base.child_nodes.deinit();
+        dom_module.observer_registrations.releaseList(instance, &node_base.registered_observers);
+        dom_module.node_holds.nodeReleased(node_base);
+        freeNodeName(internal, node_base);
 
-        // Free NodeBase if present
-        if (internal.node_base) |node_base| {
-            // Clean up NodeBase resources
-            node_base.child_nodes.deinit();
-            dom_module.observer_registrations.releaseList(instance, &node_base.registered_observers);
-            dom_module.node_holds.nodeReleased(node_base);
-            freeNodeName(internal, node_base);
+        // Unregister from instance_bridge
+        instance_bridge.unregister(instance);
 
-            // Unregister from instance_bridge
-            instance_bridge.unregister(instance);
-
-            // Free the NodeBase
-            internal.allocator.destroy(node_base);
-        }
-
-        // Clean up InternalState owned strings
-        internal.deinit();
+        // Free the NodeBase
+        internal.allocator.destroy(node_base);
+        internal.node_base = null;
     }
 
-    // Clear the registry
-    Registry.clear(scope);
+    // Clean up InternalState owned strings
+    internal.deinit();
 }
