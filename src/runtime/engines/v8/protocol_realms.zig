@@ -40,6 +40,9 @@ const WindowRealmState = struct {
     /// access checks on this realm's WindowProxy and Locations
     /// (cross_origin.zig) on every access from another realm.
     is_platform_object_same_origin: ?*const fn (host: ?*anyopaque, current: Context, object: *engine.Instance) bool,
+    /// HTML's access report check, as the host supplied it: asked by the
+    /// bindings of this realm's Window (`reportWindowAccess`).
+    report_window_access: ?*const fn (host: ?*anyopaque, accessor: Context, window: *engine.Instance, property: []const u8) void,
     host: ?*anyopaque,
     /// A later realm was built around this one's WindowProxy (a navigation
     /// that made a new Window): the proxy is that realm's now, so this one's
@@ -387,6 +390,7 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         .isolate = isolate,
         .entered_isolate = entered_isolate or takes_isolate_entry,
         .is_platform_object_same_origin = options.is_platform_object_same_origin,
+        .report_window_access = options.report_window_access,
         .host = options.host,
         .parent = options.parent,
         .auxiliary = options.auxiliary and options.parent != null,
@@ -590,6 +594,23 @@ pub const SameOriginCheck = struct {
     is_platform_object_same_origin: *const fn (host: ?*anyopaque, current: Context, object: *engine.Instance) bool,
     host: ?*anyopaque,
 };
+
+/// HTML 7.1.3.3 "check if an access between two browsing contexts should be
+/// reported" [window_access_reporting]: script used `property` of `window`
+/// - a Window this adapter made a realm for - which the binding of a
+/// CrossOriginProperties(Window) member, the indexed or named getter or the
+/// opener setter says before the member's steps (Chromium's
+/// DOMWindow::ReportCoopAccess, which those bindings call: make_report_coop_access
+/// in bind_gen/interface.py). The accessor is the incumbent realm, as
+/// Chromium's IncumbentDOMWindow; a use from `window`'s own realm reports
+/// nothing and asks no host. Runs no script.
+pub fn reportWindowAccess(window: *engine.Instance, property: []const u8) void {
+    const state = stateOf(window.ctx) orelse return;
+    const report = state.report_window_access orelse return;
+    const accessor = incumbentRealm() orelse return;
+    if (accessor == window.ctx) return;
+    report(state.host, accessor, window, property);
+}
 
 pub fn sameOriginCheckOf(realm: Context) ?SameOriginCheck {
     const state = stateOf(realm) orelse return null;

@@ -2263,6 +2263,25 @@ pub fn V8Interface(comptime Interface: type) type {
             return comptime cross_origin.acceptsAnyReceiver(interface_name, js_name, use);
         }
 
+        /// The property name HTML's access report check is told for `use`
+        /// of member `js_name` (cross_origin.windowAccessProperty), or null.
+        fn windowAccess(comptime js_name: []const u8, comptime use: cross_origin.Use) ?[]const u8 {
+            return comptime cross_origin.windowAccessProperty(interface_name, js_name, use);
+        }
+
+        /// `windowAccess` for the operation whose impl function is
+        /// `zig_name`, found by its name in `methods`.
+        fn windowAccessOfOperation(comptime zig_name: []const u8) ?[]const u8 {
+            comptime {
+                @setEvalBranchQuota(100_000);
+                if (!std.mem.eql(u8, interface_name, "Window")) return null;
+                for (methods) |method| {
+                    if (std.mem.eql(u8, method[1], zig_name)) return windowAccess(method[0], .operation);
+                }
+                return null;
+            }
+        }
+
         /// Whether operation `zig_name`'s function lets V8 run its security
         /// check: every checked one but those returning a promise, whose
         /// SecurityError the binding rejects with (MethodCallback,
@@ -3925,6 +3944,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     .implements = implementsInterface,
                     .read = if (kind == .instance) read else null,
                     .read_constant = if (kind == .constant) readConstant else null,
+                    .window_access = if (kind == .instance) windowAccess(prop_name, .getter) else null,
                 };
 
                 /// A constant's value, as a long.
@@ -4170,6 +4190,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     .required_arguments = requiredArguments(zig_name),
                     .implements = implementsOperationInterface,
                     .invoke = invoke,
+                    .window_access = windowAccessOfOperation(zig_name),
                 };
 
                 /// An overloaded operation is installed as its FIRST
@@ -7755,6 +7776,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     .global_interface = is_global_interface,
                     .implements = implementsInterface,
                     .write = write,
+                    .window_access = windowAccess(prop_name, .setter),
                 };
 
                 /// The attribute's own steps for `instance`: its value

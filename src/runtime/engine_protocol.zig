@@ -849,6 +849,19 @@ pub const WindowRealmOptions = struct {
     /// domain changes at any time. Null: every realm reaches this one's
     /// WindowProxy and Location as a same-origin one would.
     is_platform_object_same_origin: ?*const fn (host: ?*anyopaque, current: Context, object: *Instance) bool = null,
+    /// HTML 7.1.3.3 "check if an access between two browsing contexts should
+    /// be reported" [window_access_reporting], where Chromium runs it
+    /// (DOMWindow::ReportCoopAccess, from the bindings of Window's
+    /// [CrossOrigin] members - make_report_coop_access - its anonymous
+    /// indexed and named getters and its opener setter): script in realm
+    /// `accessor`, the incumbent realm, used `property` of `window`, this
+    /// realm's Window - the name of a CrossOriginProperties(Window) member,
+    /// or "indexed", "named" or "opener". Asked on each such use from
+    /// another realm, same origin or not, before the member's steps run. The
+    /// host only queues reports: it must not run script or throw. `window`
+    /// is BORROWED for the call and `property` is static. Null: no access is
+    /// reported.
+    report_window_access: ?*const fn (host: ?*anyopaque, accessor: Context, window: *Instance, property: []const u8) void = null,
     host: ?*anyopaque = null,
     /// Whether the realm's environment settings object is a secure context
     /// (HTML 8.1.3.5), as the host decides it for the document the realm is
@@ -951,6 +964,14 @@ pub const Capabilities = struct {
     /// or Location is reached as a same-origin one would be. A
     /// security-relevant difference, declared.
     cross_origin_objects: Support,
+    /// HTML 7.1.3.3 access reports: the engine calls
+    /// WindowRealmOptions.report_window_access when script in another realm
+    /// uses one of a Window's cross-origin accessible members, its indexed
+    /// or named getter, or its opener setter (Chromium's
+    /// DOMWindow::ReportCoopAccess). Unsupported: no access is reported -
+    /// Cross-Origin-Opener-Policy-Report-Only makes no access reports and no
+    /// "coop-access-violation" report reaches a ReportingObserver.
+    window_access_reporting: Support,
     /// WebAssembly Web API section 2, "Streaming Module Compilation and
     /// Instantiation": the engine defines `WebAssembly.compileStreaming` and
     /// `WebAssembly.instantiateStreaming` in the realms of an agent with

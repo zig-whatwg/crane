@@ -71,6 +71,9 @@ pub const capabilities: engine.Capabilities = .{
     // callbacks (getProperty, setProperty, deleteProperty, getPropertyNames,
     // hasProperty) except for [[GetPrototypeOf]], which no callback reaches.
     .cross_origin_objects = .unsupported,
+    // Without cross_origin_objects no binding tells another realm's use of
+    // a Window's members apart; nothing calls report_window_access.
+    .window_access_reporting = .unsupported,
     // No streaming hook in the public C API: WebKit's compileStreaming and
     // instantiateStreaming are JSGlobalObject's private
     // GlobalObjectMethodTable entries, so the two functions are absent.
