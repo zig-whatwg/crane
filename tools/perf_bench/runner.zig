@@ -308,6 +308,7 @@ pub const Runner = struct {
                     .build = pin.build,
                     .commit = pin.commit,
                     .optimize = pin.optimize,
+                    .target_cpu = pin.target_cpu,
                     .v8 = pin.v8,
                     .binary = pin.binary,
                     .binary_sha256 = pin.sha256,
