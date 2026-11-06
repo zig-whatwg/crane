@@ -116,8 +116,9 @@ pub fn releaseOption(release: bool, release_fast: bool) error{TwoReleaseBuilds}!
 /// `modes` as a Crane pin's build identity names them (tools/perf_bench, the
 /// journal's `engine.optimize`): "root ReleaseSafe, Crane modules
 /// ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc".
-/// build.zig installs it beside a release console (zig-out/bin/repl.modes),
-/// so the pin is written from what was built.
+/// build.zig installs it beside a release console, as the `optimize` line of
+/// zig-out/bin/repl.modes (`writeModesFile`), so the pin is written from
+/// what was built.
 pub fn describe(buf: []u8, modes: RunnerModes) error{NoSpaceLeft}![]const u8 {
     return std.fmt.bufPrint(buf, "root {s}, Crane modules {s}, C libraries {s}, sanitize_c {s}, {s}", .{
         modeName(modes.root),
@@ -129,6 +130,62 @@ pub fn describe(buf: []u8, modes: RunnerModes) error{NoSpaceLeft}![]const u8 {
             .debug => "the leak-checking allocator",
         },
     });
+}
+
+/// Whether a target query takes its CPU from the build host: no `-Dcpu`, and
+/// no `-Dtarget` naming an architecture - Zig then detects the host's CPU
+/// (std.zig.system.resolveTargetQuery: `.native`, or `.determined_by_arch_os`
+/// with no architecture). `zig build` with neither option is native: build.zig's
+/// `standardTargetOptions(.{})` has no default (lane perf2b, 2026-11-06).
+pub fn cpuIsNative(query: std.Target.Query) bool {
+    return switch (query.cpu_model) {
+        .native => true,
+        .determined_by_arch_os => query.cpu_arch == null,
+        .baseline, .explicit => false,
+    };
+}
+
+/// The CPU a build's code is generated for - its resolved target CPU - as
+/// `-Dcpu` spells it: the model's name, then `+name` for each feature the
+/// build has beyond the model's own (with their dependencies) and `-name`
+/// for each of the model's it lacks, in the architecture's feature order
+/// ("apple_m1", "apple_m1-aes+sm4"; Zig resolves `-Dcpu=apple_m1` to
+/// "apple_m1-fuse_aes", see the test). `native` (`cpuIsNative`): the build
+/// took its build host's CPU, so the same command builds other code on
+/// another host; the text ends " (native)".
+///
+/// Why it is recorded (the user, 2026-11-06: Crane's published numbers use a
+/// FIXED CPU target, `-Dcpu=apple_m1`): two builds of one source are two code
+/// layouts, and a sub-microsecond row can move about 15% between them; a
+/// console built natively on chat2 (an M2, apple_a15 to Zig) was another
+/// layout than one built on chat.local (an M4 Pro, apple_m4), and nothing
+/// said which a frozen console was (docs/lessons/testing-a-frozen-console-is-
+/// one-builds-layout.md).
+pub fn writeCpu(w: *std.Io.Writer, cpu: std.Target.Cpu, native: bool) std.Io.Writer.Error!void {
+    try w.writeAll(cpu.model.name);
+    const own = cpu.model.toCpu(cpu.arch).features;
+    for (cpu.arch.allFeaturesList()) |feature| {
+        const has = cpu.features.isEnabled(feature.index);
+        if (has == own.isEnabled(feature.index)) continue;
+        try w.writeByte(if (has) '+' else '-');
+        try w.writeAll(feature.name);
+    }
+    if (native) try w.writeAll(" (native)");
+}
+
+/// zig-out/bin/repl.modes: a release console's build identity in its pin's
+/// own `key=value` lines (tools/perf_bench/engines.zig, `parsePin`) -
+/// `optimize`, its modes (`describe`), and `target_cpu`, the CPU its code
+/// was generated for (`writeCpu`) - so a window script writes those lines of
+/// the pin from what was built (`cat repl.modes`) and checks the target
+/// there (`-Dcpu=apple_m1` records `target_cpu=apple_m1-fuse_aes`: the model,
+/// then Zig's own diff, see its test).
+pub fn writeModesFile(w: *std.Io.Writer, modes: RunnerModes, cpu: std.Target.Cpu, native: bool) std.Io.Writer.Error!void {
+    var buf: [160]u8 = undefined;
+    const text = describe(&buf, modes) catch return error.WriteFailed;
+    try w.print("optimize={s}\ntarget_cpu=", .{text});
+    try writeCpu(w, cpu, native);
+    try w.writeByte('\n');
 }
 
 /// `runner_option`: -Dwpt-runner-optimize, if given. `optimize`: -Doptimize's
@@ -353,6 +410,79 @@ test "a release build's modes, as a pin's build identity names them" {
     try testing.expectEqualStrings(
         "root ReleaseFast, Crane modules ReleaseFast, C libraries ReleaseFast, sanitize_c off, libc malloc",
         try describe(&buf, releaseRunner(.fast)),
+    );
+}
+
+test "a build with neither -Dcpu nor -Dtarget takes its build host's CPU" {
+    // Pins the DEFAULT: build.zig's standardTargetOptions(.{}) has no default
+    // target, so a bare `zig build` is tuned to whichever pool host built it.
+    try testing.expect(cpuIsNative(.{}));
+    try testing.expect(cpuIsNative(try std.Target.Query.parse(.{ .cpu_features = "native" })));
+    // -Dcpu=apple_m1 (the published rounds' fixed target) is not native.
+    try testing.expect(!cpuIsNative(try std.Target.Query.parse(.{ .arch_os_abi = "aarch64-macos", .cpu_features = "apple_m1" })));
+    try testing.expect(!cpuIsNative(.{ .cpu_model = .{ .explicit = &std.Target.aarch64.cpu.apple_m1 } }));
+    // A -Dtarget naming the architecture alone takes its baseline CPU, not the host's.
+    try testing.expect(!cpuIsNative(try std.Target.Query.parse(.{ .arch_os_abi = "aarch64-macos" })));
+    try testing.expect(!cpuIsNative(.{ .cpu_model = .baseline }));
+}
+
+test "a build's CPU target as -Dcpu spells it: the model, each feature it adds or lacks, and whether it was the host's" {
+    var buf: [4096]u8 = undefined;
+    const aarch64 = std.Target.aarch64;
+    // -Dcpu=apple_m1: the model alone, its own features.
+    var w: std.Io.Writer = .fixed(&buf);
+    try writeCpu(&w, aarch64.cpu.apple_m1.toCpu(.aarch64), false);
+    try testing.expectEqualStrings("apple_m1", w.buffered());
+    // The model Zig detects on chat.local (an M4 Pro), taken natively.
+    w = .fixed(&buf);
+    try writeCpu(&w, aarch64.cpu.apple_m4.toCpu(.aarch64), true);
+    try testing.expectEqualStrings("apple_m4 (native)", w.buffered());
+    // A feature the model lacks, added, and one of its own, removed: in the
+    // architecture's feature order (aes before sm4), as -Dcpu takes them.
+    var cpu = aarch64.cpu.apple_m1.toCpu(.aarch64);
+    try testing.expect(!cpu.features.isEnabled(@backingInt(aarch64.Feature.sm4)));
+    cpu.features.addFeature(@backingInt(aarch64.Feature.sm4));
+    cpu.features.removeFeature(@backingInt(aarch64.Feature.aes));
+    w = .fixed(&buf);
+    try writeCpu(&w, cpu, false);
+    try testing.expectEqualStrings("apple_m1-aes+sm4", w.buffered());
+    // Two models are two targets, whatever host built them.
+    w = .fixed(&buf);
+    try writeCpu(&w, aarch64.cpu.apple_a15.toCpu(.aarch64), true);
+    try testing.expectEqualStrings("apple_a15 (native)", w.buffered());
+}
+
+test "-Dcpu=apple_m1 builds for apple_m1 without fuse_aes: the record is the resolved CPU, not the model" {
+    // std.zig.system.resolveTargetQuery drops fuse_aes from every Apple
+    // Silicon model (apple_m1..apple_m5; a workaround for ziglang/zig#37215),
+    // so a console built with -Dcpu=apple_m1 - and a native one on an M4 -
+    // is compiled for the model minus that feature, and its repl.modes says so
+    // (perf round 1's first build session, 2026-11-06). A window checks the
+    // model and the absence of " (native)", never an exact "apple_m1".
+    var buf: [4096]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    const query = try std.Target.Query.parse(.{ .arch_os_abi = "aarch64-macos", .cpu_features = "apple_m1" });
+    const resolved = try std.zig.system.resolveTargetQuery(testing.io, query);
+    try writeCpu(&w, resolved.cpu, cpuIsNative(query));
+    try testing.expectEqualStrings("apple_m1-fuse_aes", w.buffered());
+}
+
+test "repl.modes: the release console's build identity in its pin's own key=value lines" {
+    // The pin is written from what was built: `optimize` (the modes) and
+    // `target_cpu` (the CPU its code is for), one line each, so a window
+    // script copies the lines into the pin and checks the target's model.
+    var buf: [512]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try writeModesFile(&w, releaseRunner(.safe), std.Target.aarch64.cpu.apple_m1.toCpu(.aarch64), false);
+    try testing.expectEqualStrings(
+        "optimize=root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc\ntarget_cpu=apple_m1\n",
+        w.buffered(),
+    );
+    w = .fixed(&buf);
+    try writeModesFile(&w, releaseRunner(.fast), std.Target.aarch64.cpu.apple_m4.toCpu(.aarch64), true);
+    try testing.expectEqualStrings(
+        "optimize=root ReleaseFast, Crane modules ReleaseFast, C libraries ReleaseFast, sanitize_c off, libc malloc\ntarget_cpu=apple_m4 (native)\n",
+        w.buffered(),
     );
 }
 
