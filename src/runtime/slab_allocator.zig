@@ -282,6 +282,32 @@ pub const SlabAllocator = struct {
         self.total_freed += 1;
     }
 
+    /// Call `visit(context, instance)` with every Instance this allocator has
+    /// issued and not freed - every slot whose generation is live - slab by
+    /// slab. The enumeration of a Browser's objects that runtime.OwnState's
+    /// sweeps and counts walk, in place of a side table of their addresses.
+    ///
+    /// Only where no other thread makes or frees objects of this allocator
+    /// meanwhile (a Browser's end, after every worker has ended; a test): the
+    /// slab list is read under the lock, the slots are not. `visit` may free
+    /// objects of this allocator - each slot's stamp is read as the walk
+    /// reaches it - but must not make any: a slot issued during the walk may
+    /// or may not be visited.
+    pub fn forEachLive(self: *SlabAllocator, context: anytype, comptime visit: fn (@TypeOf(context), *Instance) void) void {
+        const first = first: {
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.mutex);
+            break :first self.slabs;
+        };
+        var current = first;
+        while (current) |slab| : (current = slab.next) {
+            for (&slab.slots) |*slot| {
+                if (slot.loadStamp() & generation_mask == dead_generation) continue;
+                visit(context, slot.asInstance());
+            }
+        }
+    }
+
     /// Get allocation statistics
     pub fn stats(self: *SlabAllocator) Stats {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);

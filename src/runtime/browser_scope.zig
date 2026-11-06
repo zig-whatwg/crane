@@ -86,26 +86,18 @@ pub const BrowserScope = struct {
         option_states,
         textarea_states,
         /// runtime.InstanceRegistry's tables, one per impl that keeps one
-        /// (its InternalState).
-        node,
-        character_data,
-        text,
-        comment,
+        /// (its InternalState). The node types read on every DOM call and
+        /// enumerated only at their Browser's end keep theirs in their own
+        /// State instead (runtime.OwnState: Node, CharacterData, Text,
+        /// Comment, DocumentFragment, DocumentType, ShadowRoot, Element,
+        /// HTMLElement, HTMLAnchorElement, HTMLAreaElement,
+        /// HTMLTemplateElement, SVGScriptElement, HTMLSlotElement).
         document,
-        document_fragment,
-        document_type,
-        shadow_root,
-        element,
-        html_element,
         svg_element,
-        html_anchor_element,
-        html_area_element,
         html_form_element,
         html_image_element,
         html_input_element,
         html_script_element,
-        svg_script_element,
-        html_slot_element,
         // dom.orphan_states (lane orphanleak): the states of these node
         // types, so an orphan's has an exit at its Browser's end.
         attr,
@@ -119,7 +111,6 @@ pub const BrowserScope = struct {
         html_select_element,
         html_source_element,
         html_track_element,
-        html_template_element,
         canvas_rendering_context_2d,
         css_style_declaration,
         dom_string_map,

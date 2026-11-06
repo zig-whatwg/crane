@@ -17,9 +17,14 @@ blob URL store; rejection tracking lives on each agent's host (`AgentHost.reject
 B1's allocator half (2026-10-11, lane inst4): the BrowserScope owns the slab and arena every platform
 object of its Browser comes from (`Instance.init` allocates from the realm's scope; an object's Browser is
 read from its address, `BrowserScope.ofInstance` / `runtime.arenaOf`), and every address-keyed side table
-the DOM keeps (InstanceRegistry, EventTarget's, the NodeBase bridge, internal_state, StaticRange's, the
-option and textarea maps) is a `BrowserScope.Table` of it; a Browser's end sweeps only its own tables
-(dom.teardown_sweeps). Two whole Browsers run at once on two threads. `runtime.initializeRuntime` makes the
+the DOM keeps (InstanceRegistry, EventTarget's lazy entries, internal_state, StaticRange's, the option and
+textarea maps) is a `BrowserScope.Table` of it; a Browser's end sweeps only its own tables
+(dom.teardown_sweeps). The node types read on every DOM call and enumerated only at their Browser's end
+(Node, CharacterData, Text, Comment, DocumentFragment, DocumentType, ShadowRoot, Element, HTMLElement,
+HTMLAnchorElement, HTMLAreaElement, HTMLTemplateElement, SVGScriptElement, HTMLSlotElement, chained
+EventTargets) keep their state in their own generated State instead (`runtime.OwnState`, lane perf2
+batch 2): a field of the object, no table, no lock; their Browser-end sweep walks the Browser's slab
+(`SlabAllocator.forEachLive`), and dom.instance_bridge reads a node's NodeBase through Node's hook. Two whole Browsers run at once on two threads. `runtime.initializeRuntime` makes the
 standalone scope for tests and runtime-only hosts.
 B3's rest (2026-10-12, lane inst5): each Browser's browsing contexts are its own
 (`html.window.Navigables`, a BrowserScope side table; every context carries its list, lookups go
