@@ -1986,10 +1986,26 @@ fn runBeforeUnload(list: *Navigables, id: u64) void {
 
     if (activeDocumentOf(integration)) |document| {
         var canceled = false;
+        // Whether a beforeunload handler ran: then the navigation's start -
+        // the new document's time origin - moves to the moment beforeunload
+        // ended, so the handlers' time is not counted before fetchStart.
+        // Chrome: NavigationRequest::UpdateNavigationStartTime when the
+        // beforeunload it dispatched (only to a frame with beforeunload
+        // handlers) completes; WebKit marks DocumentLoadTiming's start in
+        // startLoadingMainResource, after FrameLoader's shouldClose; Firefox
+        // does not (wpt.fyi hr-time/navigation-start-post-before-unload.html,
+        // "timeOrigin should be set after beforeunload": Chrome and Safari
+        // pass, Firefox fails with fetchStart 3000).
+        var handlers_ran = false;
         var documents = dom_module.navigables.inclusiveDescendantDocuments(document, integration.allocator);
         defer documents.deinit(integration.allocator);
         for (documents.items) |entry| {
             if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+            if (!handlers_ran) {
+                if (interfaces.Document.get_defaultView(entry.document) catch null) |window| {
+                    handlers_ran = dom_module.event_listener_types.hasListenersOfType(window, "beforeunload");
+                }
+            }
             if (document_lifecycle.fireBeforeUnload(entry.document).canceled) canceled = true;
         }
         // The handlers ran script: a later navigation replaces this one -
@@ -2000,6 +2016,7 @@ fn runBeforeUnload(list: *Navigables, id: u64) void {
             endLoadDelay(again.integration);
             return;
         }
+        if (handlers_ran) again.navigation_start = fetch_mod.algorithms.http_fetch.getCurrentTimeMs();
         // Step 24.3: "Queue a global task ... to abort a document and its
         // descendants given navigable's active document." Deviation, stated,
         // for a navigation a document started: done now, not from a task -
