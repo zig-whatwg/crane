@@ -966,6 +966,9 @@ const Navigation = struct {
     /// The user navigated from the browser's UI (userInvolvement "browser
     /// UI"), which no self-referential URL bound applies to.
     browser_initiated: bool = false,
+    /// When `navigate` was entered (the unsafe shared current time, ms): the
+    /// time origin of the document the navigation makes.
+    navigation_start: f64 = 0,
     /// A POST resource's request body and content-type, fetched with POST.
     /// Owned; the fetch borrows the body until it ends.
     post_body: ?[]u8 = null,
@@ -1500,6 +1503,12 @@ fn documentOriginOf(document: *runtime.Instance, allocator: std.mem.Allocator) ?
 /// navigation (1-7), deferred fetch quota (22), WebDriver BiDi, and lazy
 /// loading (11). Step 21's navigate event has no form data entry list.
 pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: NavigateOptions) void {
+    // The navigation's start: the moment navigate is entered, which the new
+    // document's time origin becomes (performance_timeline's
+    // createNavigationTimingEntry states the browsers it follows) - read
+    // before any step runs, as Chrome's NavigationRequest takes its
+    // navigation_start when it is made.
+    const navigation_start = fetch_mod.algorithms.http_fetch.getCurrentTimeMs();
     // A navigable that is going, or never came: nothing to navigate.
     if (integration.state == .discarded) return;
     const browsing_context = integration.browsing_context orelse return;
@@ -1637,6 +1646,7 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         .traversal_from = options.traversal_from,
         .traversal_wait = TraversalWait.of(integration, options.traversal_waiter),
         .browser_initiated = options.user_involvement == .browser_ui,
+        .navigation_start = navigation_start,
         .csp_navigation_type = options.csp_navigation_type,
         // Step 8: "Let targetSnapshotParams be the result of snapshotting
         // target snapshot params given navigable": its sandboxing flags.
@@ -1976,10 +1986,26 @@ fn runBeforeUnload(list: *Navigables, id: u64) void {
 
     if (activeDocumentOf(integration)) |document| {
         var canceled = false;
+        // Whether a beforeunload handler ran: then the navigation's start -
+        // the new document's time origin - moves to the moment beforeunload
+        // ended, so the handlers' time is not counted before fetchStart.
+        // Chrome: NavigationRequest::UpdateNavigationStartTime when the
+        // beforeunload it dispatched (only to a frame with beforeunload
+        // handlers) completes; WebKit marks DocumentLoadTiming's start in
+        // startLoadingMainResource, after FrameLoader's shouldClose; Firefox
+        // does not (wpt.fyi hr-time/navigation-start-post-before-unload.html,
+        // "timeOrigin should be set after beforeunload": Chrome and Safari
+        // pass, Firefox fails with fetchStart 3000).
+        var handlers_ran = false;
         var documents = dom_module.navigables.inclusiveDescendantDocuments(document, integration.allocator);
         defer documents.deinit(integration.allocator);
         for (documents.items) |entry| {
             if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+            if (!handlers_ran) {
+                if (interfaces.Document.get_defaultView(entry.document) catch null) |window| {
+                    handlers_ran = dom_module.event_listener_types.hasListenersOfType(window, "beforeunload");
+                }
+            }
             if (document_lifecycle.fireBeforeUnload(entry.document).canceled) canceled = true;
         }
         // The handlers ran script: a later navigation replaces this one -
@@ -1990,6 +2016,7 @@ fn runBeforeUnload(list: *Navigables, id: u64) void {
             endLoadDelay(again.integration);
             return;
         }
+        if (handlers_ran) again.navigation_start = fetch_mod.algorithms.http_fetch.getCurrentTimeMs();
         // Step 24.3: "Queue a global task ... to abort a document and its
         // descendants given navigable's active document." Deviation, stated,
         // for a navigation a document started: done now, not from a task -
@@ -4088,6 +4115,8 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
             };
             dom_module.performance_timeline.createNavigationTimingEntry(realm, .{
                 .report = &report,
+                // The navigation's start: the document's time origin.
+                .navigation_start = record.navigation_start,
                 .unload_event_start = timing.unload_event_start,
                 .unload_event_end = timing.unload_event_end,
                 // The response's service worker timing info (fetch copied

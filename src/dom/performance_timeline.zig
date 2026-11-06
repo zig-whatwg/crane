@@ -1393,6 +1393,10 @@ pub const NavigationRecord = struct {
     report: *const fetch.internal.TimingReport,
     redirect_count: u16,
     navigation_type: NavigationType,
+    /// When the navigation started - its navigate algorithm was entered -
+    /// the unsafe shared current time in ms; 0 when it was not recorded. The
+    /// document's time origin (see createNavigationTimingEntry).
+    navigation_start: f64 = 0,
     /// The previous document's unload event start and end times, unsafe
     /// shared current time in ms (HTML "unload a document" steps 11/13); 0
     /// when there was none, or it was not same origin.
@@ -1431,13 +1435,46 @@ pub const NavigationServiceWorkerTiming = struct {
 pub fn createNavigationTimingEntry(realm: runtime.Context, record: NavigationRecord) !void {
     const timeline = timelineOf(realm) orelse return;
     const impl = hooks.read().navigation_timings orelse return error.NotSupported;
-    // HTML "create and initialize a Document object": the load timing
-    // info's navigation start time is the response's timing info's start
-    // time, and it is the settings object's time origin - so it is set
-    // first, and every time below is relative to it. (The Window, made
-    // earlier or later than the fetch, recorded its creation as a stand-in.)
-    if (record.report.timing_info.start_time != 0) {
-        if (hooks.read().performances) |performances_impl| performances_impl.set_navigation_start(realm, record.report.timing_info.start_time);
+    // The load timing info's navigation start time - the settings object's
+    // time origin (HTML: the Window's time origin is it), so it is set first
+    // and every time below is relative to it. (The Window, made earlier or
+    // later than the fetch, recorded its creation as a stand-in.)
+    //
+    // Golden rule 2 - the browsers, not the spec text. HTML "create and
+    // initialize a Document object" step 8 makes it the navigation
+    // response's timing info's start time, the moment Fetch's "fetch" began:
+    // then fetchStart is 0 for every navigation without redirects, and a
+    // reused connection - whose connection times are all fetchStart (Fetch
+    // "clamp and coarsen connection timing info" step 1, as Blink's
+    // PerformanceResourceTiming::secureConnectionStart (did_reuse_connection),
+    // Gecko's SecureConnectionStartHighRes and WebKit's
+    // reusedTLSConnectionSentinel all return) - says secureConnectionStart 0.
+    // Chrome and Safari take the time origin when the navigation starts,
+    // before its fetch: Chrome's NavigationRequest navigation_start, made
+    // with the request (moved past beforeunload when handlers ran:
+    // UpdateNavigationStartTime), with fetch_start marked later, in
+    // OnStartChecksComplete; WebKit's DocumentLoadTiming::startTime
+    // (DocumentLoader::startLoadingMainResource), with fetchStart measured
+    // later in the network process. Navigation Timing's navigationStart -
+    // "authors can use timeOrigin to obtain an equivalent timestamp" - comes
+    // before fetchStart too. wpt.fyi (15 runs each, 2026-11-06):
+    // navigation-timing/secure-connection-start-non-zero.https.html Chrome
+    // 15/15, Safari 15/15, Firefox 1/15 ("got 0": its fetchStart lies within
+    // 1 ms of its origin); nav2-test-redirect-server.html (startTime <
+    // redirectStart) Chrome and Safari pass, Firefox fails 2 of 3. No newer
+    // spec is involved: the majority's. (Lane flaky6; the integrator's ruling
+    // of 2026-11-06.)
+    // 1. The navigation's start, when the navigation recorded it - never
+    //    after its fetch's start, which it precedes.
+    // 2. Otherwise the fetch's start time (a document a navigation made
+    //    without recording it).
+    const fetch_start = record.report.timing_info.start_time;
+    const navigation_start = if (record.navigation_start != 0 and (fetch_start == 0 or record.navigation_start <= fetch_start))
+        record.navigation_start
+    else
+        fetch_start;
+    if (navigation_start != 0) {
+        if (hooks.read().performances) |performances_impl| performances_impl.set_navigation_start(realm, navigation_start);
     }
     // A new document: a new load timing info, made with readiness
     // "loading"; only the current document's entry is in the timeline.
