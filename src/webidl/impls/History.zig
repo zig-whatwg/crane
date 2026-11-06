@@ -40,6 +40,7 @@ const traversal_queue = html_core.navigation.traversal_queue;
 const apply_history_step = html_core.navigation.apply_history_step;
 const basic_parser = @import("basic_parser");
 const url_serializer = @import("url_serializer");
+const UserInvolvement = @import("dom").history_traversal.UserInvolvement;
 const engine = @import("engine");
 const navigation_entries = @import("navigation_entries.zig");
 const log = std.log.scoped(.history);
@@ -358,21 +359,36 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
 /// document is unloading (reload step 1). `cause`: script, history.go(0)
 /// (the reload rules in call_go) or a declarative refresh.
 fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext, cause: apply_history_step.ReloadCause) void {
-    reloadNavigableWithNavigationApiState(window, bc, null, cause);
+    reloadNavigableWithNavigationApiState(window, bc, null, .none, cause);
 }
 
-fn reloadNavigableWithNavigationApiState(window: *runtime.Instance, bc: *BrowsingContext, navigation_api_state: ?joint_history.SerializedState, cause: apply_history_step.ReloadCause) void {
+fn reloadNavigableWithNavigationApiState(window: *runtime.Instance, bc: *BrowsingContext, navigation_api_state: ?joint_history.SerializedState, user_involvement: UserInvolvement, cause: apply_history_step.ReloadCause) void {
     const document = interfaces.Window.get_document(window) catch return;
     if (@import("dom").document_lifecycle.isUnloading(document)) return;
     const history = ensureEntries(bc) catch return;
     const entry = history.currentEntry(bc.id) orelse return;
-    // "Reload" step 1: no navigation here is "browser UI", so: "Let continue
-    // be the result of firing a push/replace/reload navigate event at
-    // navigation with navigationType set to "reload", isSameDocument set to
-    // false, destinationURL set to navigable's active session history
-    // entry's URL, and navigationAPIState set to destinationNavigationAPIState
-    // ... If continue is false, then return." Copied: the event's handlers
-    // can change the history.
+    // "Reload" step 1: "If userInvolvement is not "browser UI"": "Let
+    // continue be the result of firing a push/replace/reload navigate event
+    // at navigation with navigationType set to "reload", isSameDocument set
+    // to false, userInvolvement set to userInvolvement, destinationURL set to
+    // navigable's active session history entry's URL, and navigationAPIState
+    // set to destinationNavigationAPIState ... If continue is false, then
+    // return." The browser's own reload (its reload button, the console's
+    // `.reload`) skips it: the page can neither see nor cancel it - as in
+    // Gecko (nsDocShell::Reload calls ReloadNavigable with
+    // UserNavigationInvolvement::BrowserUI, which fires
+    // FirePushReplaceReloadNavigateEvent only when the involvement is not
+    // BrowserUI), Chromium (a browser-initiated reload commits through
+    // NavigationRequest, which asks the renderer for a navigate event only
+    // for a cross-document traversal; FrameLoader::StartNavigation fires it
+    // for renderer-initiated loads) and WebKit (WebPage::reload ->
+    // FrameLoader::reload never dispatches it; location.reload() goes
+    // through loadURL, which does).
+    if (user_involvement == .browser_ui) {
+        apply_history_step.reload(bc, bc.allocator, entry.id, null, cause);
+        return;
+    }
+    // Copied: the event's handlers can change the history.
     const allocator = bc.allocator;
     const url = allocator.dupe(u8, entry.url) catch return;
     defer allocator.free(url);
@@ -389,6 +405,7 @@ fn reloadNavigableWithNavigationApiState(window: *runtime.Instance, bc: *Browsin
         .navigation_type = .reload,
         .destination_url = url,
         .is_same_document = false,
+        .user_involvement = user_involvement,
         .navigation_api_state = api_state,
     })) return;
     // The handlers ran script: the navigable may be gone.
@@ -402,10 +419,12 @@ fn reloadNavigableWithNavigationApiState(window: *runtime.Instance, bc: *Browsin
     apply_history_step.reload(bc, allocator, entry_id, if (navigation_api_state != null) api_state else null, cause);
 }
 
-/// dom.history_traversal: reload `window`'s navigable.
-fn reloadWindow(window: *runtime.Instance) void {
+/// dom.history_traversal: HTML "reload" `window`'s navigable given
+/// `user_involvement` - "none" for location.reload(), "browser UI" for the
+/// browser's own reload.
+fn reloadWindow(window: *runtime.Instance, user_involvement: UserInvolvement) void {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
-    reloadNavigable(window, bc, .reload);
+    reloadNavigableWithNavigationApiState(window, bc, null, user_involvement, .reload);
 }
 
 /// dom.history_traversal: the reload of `window`'s navigable that its
@@ -420,7 +439,7 @@ fn reloadWindowForDeclarativeRefresh(window: *runtime.Instance) void {
 /// dom.history_traversal: navigation.reload()'s borrowed serialized state.
 fn reloadWindowWithNavigationApiState(window: *runtime.Instance, state: joint_history.SerializedState) void {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
-    reloadNavigableWithNavigationApiState(window, bc, state, .reload);
+    reloadNavigableWithNavigationApiState(window, bc, state, .none, .reload);
 }
 
 /// dom.history_traversal: queue a traversal of `window`'s traversable to

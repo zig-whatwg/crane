@@ -186,10 +186,23 @@ pub fn get_index(instance: *runtime.Instance) anyerror!i64 {
 /// 2. If document is not fully active, then return false. 3. Return true if
 /// this's session history entry's document equals document, and false
 /// otherwise."
+///
+/// Step 3 reads the session history entry's document as the history has it
+/// now, as `get_url` does - not the copy made with this object. An entry
+/// handed out while its document was being made (an inline script reading
+/// navigation.currentEntry during the parse) was copied before the document
+/// was its entry's, and answered false for the document's whole life
+/// (navigation-api/navigation-history-entry/sameDocument-after-fragment-
+/// navigate.html, which passes in Chrome, Firefox and Safari). The copy is
+/// only for an entry the history no longer has.
 pub fn get_sameDocument(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Steps 1-2.
     const scope = scopeOf(internal) orelse return false;
-    const document = internal.document orelse return false;
+    // Step 3.
+    const live = scope.history.entryById(internal.entry_id);
+    const she_document = if (live) |entry| entry.document else internal.document;
+    const document = she_document orelse return false;
     return document == @as(*anyopaque, @ptrCast(scope.document));
 }
 

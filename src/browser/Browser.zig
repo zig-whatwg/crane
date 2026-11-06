@@ -475,24 +475,25 @@ pub const Browser = struct {
 
     /// Navigation options
     pub const NavigateOptions = struct {
-        /// If true, skip loading the page (caller will load manually)
+        /// Leave the new traversable on its initial about:blank document:
+        /// the caller loads it (Context.loadPage, Context.loadHTML).
         skip_load: bool = false,
-        /// Optional script loader for external scripts during HTML parsing
+        /// The embedder's answer for the external classic scripts of the
+        /// document the load commits (Context.LoadPageOptions).
         script_loader: ?Context.ScriptLoader = null,
     };
 
-    /// Navigate to a URL
-    ///
-    /// This destroys the current V8 context (if any) and creates a new one.
-    /// Storage persists across navigations.
-    ///
-    /// Navigation flow:
-    /// 1. Destroy current V8 context (if any)
-    /// 2. Create new V8 context
-    /// 3. Register browser globals (skipped if using snapshot)
-    /// 4. Fetch URL content via HTTP
-    /// 5. Parse HTML and execute scripts
-    /// 6. Fire DOMContentLoaded and load events
+    /// Open `url` in a FRESH top-level traversable - a new tab, the page
+    /// before it closed: the Browser's page ends (its realm, its traversable)
+    /// and a new one is made, as HTML "create a fresh top-level traversable"
+    /// does: "create a new top-level traversable" - a browsing context and
+    /// its initial about:blank document of a new opaque origin, in a realm of
+    /// its own (Context.init) - then HTML "navigate" of it to `url` with user
+    /// involvement "browser UI" (Context.loadPage), waited for until the
+    /// page's document has committed and its parser has run as far as it
+    /// can (Context.loadByNavigating). Storage, cookies and the
+    /// HTTP cache are the Browser's and persist. To navigate the page the
+    /// Browser shows instead - its session history kept - `navigateInPlace`.
     pub fn navigate(self: *Browser, url: []const u8, context_type: context_mod.ContextType) !void {
         return self.navigateWithOptions(url, context_type, .{});
     }
@@ -554,14 +555,11 @@ pub const Browser = struct {
             self.used_snapshot,
             self.scope,
         );
-        errdefer {
-            ctx.deinit();
-            self.allocator.destroy(ctx);
-        }
-
+        // The new traversable is the Browser's page from here, whatever its
+        // first navigation does: one that fails leaves it on that
+        // navigation's error page, as a browser's tab does, and the error
+        // says so (CDP's Page.navigate errorText).
         self.current_context = ctx;
-
-        // Navigation loading is handled by Context.loadPage()
         if (!options.skip_load) {
             try ctx.loadPageWithOptions(.{
                 .script_loader = options.script_loader,
@@ -575,9 +573,14 @@ pub const Browser = struct {
     /// runs as tasks, so run the event loop for it). With no page yet, the
     /// first one is opened (`navigate`). `navigate` itself opens a FRESH
     /// traversable each time - what the WPT runner wants for each file.
+    ///
+    /// A page with no traversable record (error.NoTraversable: a worker's
+    /// page, or a record that could not be made) cannot be navigated, and
+    /// says so: it is not replaced by a fresh traversable behind the
+    /// caller's back, which no browser's address bar does (lane loadpath1).
     pub fn navigateInPlace(self: *Browser, url: []const u8) !void {
         const ctx = self.current_context orelse return self.navigate(url, .window);
-        ctx.navigate(url) catch return self.navigate(url, .window);
+        try ctx.navigate(url);
     }
 
     /// `url` parsed with the basic URL parser and serialized; null when it
@@ -586,17 +589,6 @@ pub const Browser = struct {
         var record = @import("basic_parser").parse(allocator, url, null) catch return null;
         defer record.deinit();
         return @constCast(@import("url_serializer").serialize(allocator, &record, false) catch return null);
-    }
-
-    /// Reload the current page
-    ///
-    /// Re-navigates to the current URL, destroying and recreating the context.
-    pub fn reload(self: *Browser) !void {
-        const ctx = self.current_context orelse return error.NoContext;
-        const url = try self.allocator.dupe(u8, ctx.url);
-        const context_type = ctx.context_type;
-        defer self.allocator.free(url);
-        try self.navigate(url, context_type);
     }
 
     /// Evaluate JavaScript in the current context: its completion value,
@@ -663,18 +655,10 @@ pub const Browser = struct {
 
     /// The condition `spinEventLoopUntil` waits for: `met(context)` is asked
     /// between turns of the event loop. It must not run script.
-    pub const SpinGoal = struct {
-        context: *anyopaque,
-        met: *const fn (context: *anyopaque) bool,
-    };
+    pub const SpinGoal = context_mod.SpinGoal;
 
     /// How `spinEventLoopUntil` ended.
-    pub const SpinOutcome = enum {
-        /// The goal was met.
-        met,
-        /// `timeout_ms` passed first.
-        timed_out,
-    };
+    pub const SpinOutcome = context_mod.SpinOutcome;
 
     /// HTML "spin the event loop" until `goal` is met (8.1.7.3), for a host
     /// that waits from outside any task - the browser console waiting for an
@@ -700,18 +684,7 @@ pub const Browser = struct {
     /// which runOnceBlocking refuses.
     pub fn spinEventLoopUntil(self: *Browser, goal: SpinGoal, timeout_ms: u64) !SpinOutcome {
         const event_loop = self.event_loop orelse return error.NotInitialized;
-        if (event_loop.in_run_once) return error.Reentrant;
-        // Real time, whatever the Browser's clock: a virtual clock stands
-        // still while nothing is due, and a goal nothing will meet must still
-        // end (lesson architecture-a-clock-that-stands-still-must-be-woken-
-        // to-the-exact-deadline.md).
-        const deadline_ns = platform.monotonicNow().ns +| timeout_ms *| std.time.ns_per_ms;
-        while (true) {
-            if (goal.met(goal.context)) return .met;
-            const now_ns = platform.monotonicNow().ns;
-            if (now_ns >= deadline_ns) return .timed_out;
-            _ = event_loop.runOnceBlocking(std.math.divCeil(u64, deadline_ns - now_ns, std.time.ns_per_ms) catch 1);
-        }
+        return context_mod.spinEventLoopUntil(event_loop, goal, timeout_ms);
     }
 
     // ========================================================================
@@ -929,14 +902,19 @@ pub const Browser = struct {
         defer self.allocator.free(serialized);
         if (self.isHostTraversable(bc)) return self.navigateInPlace(serialized);
         const integration = integrationOf(bc) orelse return error.NoSuchTraversable;
-        integration.navigate(serialized, .{});
+        // A "browser UI" navigation: no sourceDocument, the user's own
+        // (navigate step 5) - as the host page's address bar navigates.
+        integration.navigate(serialized, .{ .browser_ui = true });
     }
 
     /// HTML "reload" traversable `id`'s navigable, as the browser's reload
-    /// button does (History's reload steps for its active window).
+    /// button does: with userInvolvement "browser UI", so "reload" step 1 -
+    /// the navigation API's navigate event, which the page could cancel - is
+    /// skipped (History's reload steps for its active window). The page's
+    /// own location.reload() is "none" and fires it.
     pub fn reloadTraversable(self: *Browser, id: u64) !void {
         const window = self.traversableWindow(id) orelse return error.NoSuchTraversable;
-        @import("dom").history_traversal.reload(window);
+        @import("dom").history_traversal.reloadWithUserInvolvement(window, .browser_ui);
     }
 
     /// HTML "traverse the history by a delta" for traversable `id`, as a

@@ -120,7 +120,7 @@ const ScriptHolds = enum { first_page, nothing };
 const first_page_held =
     \\<!doctype html><body><div id=first>one</div>
     \\<script>globalThis.firstDoc = document; globalThis.firstDiv = document.getElementById('first');
-    \\for (const type of ['pagehide', 'unload']) addEventListener(type, () => { window.name += type + ';'; });</script>
+    \\for (const type of ['load', 'pagehide', 'unload']) addEventListener(type, () => { window.name += type + ';'; });</script>
     \\<script src="reload.js"></script>
     \\<div id=after>after</div>
     \\<script>globalThis.firstPageWentOn = true;</script>
@@ -161,8 +161,16 @@ fn reentrantLoad(holds: ScriptHolds) !void {
     try testing.expect(!reloader.destroyed_under_parser);
     try testing.expect(second != first);
     try testing.expect(page.window_instance.? != reloader.first_window.?);
-    // The first page never finished loading: destroyed, like Chrome and
-    // Safari, with no unload events.
+    // The load is a navigation (lane loadpath1): HTML "navigate" runs its
+    // steps after "in parallel" as tasks - beforeunload, the abort of the
+    // document it leaves (step 24.3, queued for the browser's own
+    // navigation), the commit - so the first page's parser, which asked for
+    // it, ran to its end first, and the page's load event's task ran before
+    // the commit. A page whose load event ran is unloaded when the next
+    // document commits: pagehide and unload, then destroyed ("unload a
+    // document"). (The embedder's synchronous load replaced it the moment
+    // the outermost parse returned, before its load event: it was destroyed
+    // silently.)
     try testing.expect(dom.document_internals.getInternal(first).?.destroyed);
 
     try expose(page, "heldFirstDoc", reloader.first_hold.?);
@@ -174,13 +182,13 @@ fn reentrantLoad(holds: ScriptHolds) !void {
         \\if (document.getElementById('first') !== null) throw new Error('first page content in the second document');
         \\if (document.getElementById('after') !== null) throw new Error('first parser wrote into the second document');
         \\if (typeof firstPageWentOn !== 'undefined') throw new Error('the first page\'s globals reached the second page\'s Window');
-        \\if (window.name !== '') throw new Error('a page that never loaded got ' + window.name);
         \\// The first page's parser ran to its end, in its own document.
         \\if (heldFirstDoc.getElementById('after')?.textContent !== 'after') throw new Error('the first parse stopped early');
         \\if (heldFirstDoc.defaultView !== null) throw new Error('the replaced document keeps its window');
     );
     switch (holds) {
         .first_page => try page.runScript(
+            \\if (window.name !== 'load;pagehide;unload;') throw new Error('the first page heard ' + window.name);
             \\TestUtils.gc();
             \\TestUtils.gc();
             \\const firstDiv = heldFirstDoc.getElementById('first');
@@ -234,6 +242,10 @@ fn sequentialLoads() !void {
         \\  throw new Error('initial about:blank is not populated with html/head/body');
         \\if (document.contentType !== 'text/html') throw new Error('initial about:blank content type ' + document.contentType);
     );
+    // Held across the load: the first page's script runs in a Window of its
+    // own (below), which reaches it from here.
+    const held_initial = try hold(page, "initialDoc");
+    defer held_initial.release();
 
     try page.loadHTML(
         \\<!doctype html><body><div id=one>first</div>
@@ -242,10 +254,14 @@ fn sequentialLoads() !void {
         \\</body>
     , .{ .base_url = "http://example.test/first" });
     const first = page.document_instance orelse return error.TestUnexpectedResult;
-    // The first load replaces the initial about:blank document, and keeps
-    // its Window (step 6).
+    // The first load replaces the initial about:blank document, in a Window
+    // of its own: step 6 keeps the initial about:blank's Window only for a
+    // document same origin-domain with it, and an embedder's traversable's
+    // is opaque (lane loadpath1).
     try testing.expect(first != initial);
-    try testing.expectEqual(initial_window, page.window_instance.?);
+    try testing.expect(initial_window != page.window_instance.?);
+    const first_window = page.window_instance.?;
+    try expose(page, "initialDoc", held_initial);
     try page.runScript(
         \\if (!firstSawWindowDoc) throw new Error('the first page script saw another document');
         \\if (document === initialDoc) throw new Error('the first load kept the initial document');
@@ -265,9 +281,10 @@ fn sequentialLoads() !void {
     const second = page.document_instance orelse return error.TestUnexpectedResult;
     try testing.expect(second != first);
     // Step 7: the first page was no initial about:blank document.
-    try testing.expect(page.window_instance.? != initial_window);
-    // It had not loaded (no task ran since its load): destroyed, silently,
-    // by the load - no parser of it was on the stack.
+    try testing.expect(page.window_instance.? != first_window);
+    // Destroyed by the second load's commit - no parser of it was on the
+    // stack. (Its load event's task runs in the navigation's turns before
+    // the commit: the load is a navigation, lane loadpath1.)
     try testing.expect(dom.document_internals.getInternal(first).?.destroyed);
     try testing.expect(dom.document_internals.getInternal(initial).?.destroyed);
     try testing.expect(!dom.document_internals.getInternal(second).?.destroyed);
@@ -308,21 +325,33 @@ fn unloadOrder() !void {
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.TestUnexpectedResult;
     const initial = page.document_instance orelse return error.TestUnexpectedResult;
-    // The initial about:blank document's Window is the first page's too
-    // (step 6), so its listeners hear both documents unload. What they log
-    // goes in window.name - the browsing context's target name, which every
-    // Window of the page reports - so the next Window's script reads it.
+    // The initial about:blank document's own listeners log into an array
+    // held across the load: the first page has a Window of its own (step 7 -
+    // the initial about:blank is opaque), and its first navigation, to
+    // another origin, clears the browsing context's target name ("finalize
+    // a cross-document navigation" step 4).
     try page.runScript(
-        \\for (const type of ['pagehide', 'unload']) addEventListener(type, () => { window.name += type + '@' + document.URL + ','; });
-        \\document.addEventListener('visibilitychange', () => { window.name += 'initial:' + document.visibilityState + ','; });
+        \\globalThis.initialLog = [];
+        \\for (const type of ['pagehide', 'unload']) addEventListener(type, () => { initialLog.push(type + '@' + document.URL); });
+        \\document.addEventListener('visibilitychange', () => { initialLog.push('initial:' + document.visibilityState); });
     );
+    const held_log = try hold(page, "initialLog");
+    defer held_log.release();
+    // Each page's listeners log in window.name - the browsing context's
+    // target name, which every Window of the page reports - so the next
+    // Window's script reads it.
     try page.loadHTML(
         \\<!doctype html><body><script>window.name += 'first-script,';
+        \\for (const type of ['pagehide', 'unload']) addEventListener(type, () => { window.name += type + '@' + document.URL + ','; });
         \\document.addEventListener('visibilitychange', () => { window.name += 'first:' + document.visibilityState + ','; });</script></body>
     , .{ .base_url = "http://example.test/first" });
     // The initial about:blank had loaded: it was unloaded, and destroyed,
     // before the first page's script ran.
     try testing.expect(dom.document_internals.getInternal(initial).?.destroyed);
+    try expose(page, "initialLog", held_log);
+    try page.runScript(
+        \\if (initialLog.join() !== 'pagehide@about:blank,initial:hidden,unload@about:blank') throw new Error('initial: ' + initialLog.join());
+    );
     const first = page.document_instance orelse return error.TestUnexpectedResult;
     _ = try browser.runEventLoopBlocking(20);
     try page.runScript(
@@ -336,7 +365,7 @@ fn unloadOrder() !void {
     try testing.expect(dom.document_internals.getInternal(first).?.destroyed);
     try expose(page, "firstDoc", held_first);
     try page.runScript(
-        \\const expected = 'pagehide@about:blank,initial:hidden,unload@about:blank,first-script,' +
+        \\const expected = 'first-script,' +
         \\  'pagehide@http://example.test/first,first:hidden,unload@http://example.test/first,second-script';
         \\if (window.name !== expected) throw new Error('events: ' + window.name);
         \\if (firstDoc.visibilityState !== 'hidden' || document.visibilityState !== 'visible') throw new Error('visibility');

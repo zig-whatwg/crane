@@ -171,9 +171,10 @@ test "holdAllViews holds every navigable the history has" {
 // running traversal and lists its entry after that apply's step 20, and its
 // own "apply the push/replace history step" sets the current step at ITS
 // step 20 - this test FLIPPED the C2 deviation ("a cross-document commit made
-// while an apply runs settles it first"), which now holds only for an
-// embedder's own synchronous load (top_level_traversables.recordLoad, the
-// next test).
+// while an apply runs settles it first"), which now holds only for a commit
+// still made inline - a javascript: URL's result (the next test). (An
+// embedder's load of the host page made one too until lane loadpath1 made it
+// a navigation like any other.)
 test "a cross-document finalize lists its entry after the running apply ends, and sets the step at its own step 20" {
     var h = joint.JointHistory.init(testing.allocator);
     defer h.deinit();
@@ -244,13 +245,13 @@ test "a cross-document finalize's replace takes the navigable's current entry's 
     try testing.expectEqual(@as(usize, 1), h.entryCount(other));
 }
 
-// Stated deviation (lane nav2 C2; since F1 only an embedder's own load): an
-// embedder's synchronous load of the host page (top_level_traversables
-// .recordLoad) is no navigation and is not queued, so one made while an
-// apply runs settles it first - the step moves to the apply's target and
+// Stated deviation (lane nav2 C2; since F1 only a commit made inline - a
+// javascript: URL's result; since lane loadpath1 no longer an embedder's
+// load, which is a navigation): a commit that is not queued, made while an
+// apply runs, settles it first - the step moves to the apply's target and
 // the non-changing documents' views are released - and the push lands after
 // the target.
-test "STATED DEVIATION (embedder loads): a commit made inline while an apply runs settles it first" {
+test "STATED DEVIATION (inline commits): a commit made inline while an apply runs settles it first" {
     var h = joint.JointHistory.init(testing.allocator);
     defer h.deinit();
     try twoFrames(&h);

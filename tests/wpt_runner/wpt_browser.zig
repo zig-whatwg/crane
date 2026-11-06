@@ -37,7 +37,6 @@ const std = @import("std");
 const browser_mod = @import("browser");
 const Browser = browser_mod.Browser;
 const Context = browser_mod.Context;
-const navigation = browser_mod.navigation;
 
 const test_harness = @import("test_harness.zig");
 const test_driver = @import("test_driver.zig");
@@ -307,7 +306,10 @@ pub const WptBrowser = struct {
         // Each test file starts with an empty cookie jar, as runTest's do.
         self.browser.cookie_jar.clear();
 
-        // Navigate to test URL with skip_load so we can inject testharness first
+        // A fresh top-level traversable for the file, on its initial
+        // about:blank (HTML "create a new top-level traversable"), loaded
+        // below by navigating it to the test URL - as wptrunner opens each
+        // test in a browser's window.
         try self.browser.navigateWithOptions(test_url, context_type, .{
             .skip_load = true,
         });
@@ -317,30 +319,33 @@ pub const WptBrowser = struct {
 
         // Get the context
         const ctx = self.browser.current_context orelse return error.NoContext;
-        const realm = ctx.realm orelse return error.NoContext;
         const explicit_timeout = config.explicitTimeoutForMillis(timeout_ms);
         // The harness loads where the page includes it, as in a browser
-        // (`HarnessLoad`); a page that includes none gets it first.
+        // (`HarnessLoad`); a page that includes none gets it after its load.
         const harness_load = self.harnessLoadOf(test_path);
         // The harness can finish while parsing still waits on a sheet. The
         // run and the persistent parser hold independent context references.
         const loader_ctx = try self.allocator.create(ScriptLoaderContext);
-        loader_ctx.* = .{ .allocator = self.allocator, .wpt_browser = self, .realm = realm, .harness_load = harness_load, .explicit_timeout = explicit_timeout };
+        loader_ctx.* = .{ .allocator = self.allocator, .wpt_browser = self, .harness_load = harness_load, .explicit_timeout = explicit_timeout };
         defer ScriptLoaderContext.release(loader_ctx);
 
-        switch (harness_load) {
-            // The fresh realm holds nothing of the previous file's harness;
-            // the page's own includes load this one.
-            .at_include => try self.checkFreshRealm(ctx),
-            // No include to load it at: testharness.js BEFORE the page, so
-            // its globals are there when the page's scripts run.
-            .before_page => try self.loadTestHarness(ctx, explicit_timeout),
-        }
+        // The fresh realm holds nothing of the previous file's harness. The
+        // page's own includes load this one; a page with none gets it once
+        // it has loaded (below). The page's document gets a Window of its
+        // own when its navigation commits ("create and initialize a
+        // Document object" step 7: the initial about:blank's origin is
+        // opaque), so nothing put in the initial about:blank's realm would
+        // reach the page - no browser keeps it either.
+        try self.checkFreshRealm(ctx);
 
         const nav_ms = lapMs(&phase);
 
-        // Now load the page via HTTP - this will fetch, parse HTML, and execute scripts
-        // The script loader handles external script loading (also via HTTP for absolute URLs)
+        // The page's load: HTML "navigate" of the traversable to the test
+        // URL with user involvement "browser UI" - the fetch, the commit and
+        // the parse, with its scripts, as the navigation's tasks, waited for
+        // within the run's ceiling. The script loader answers for the
+        // harness's includes in the page's document (scriptLoaderCallback).
+        const left_ms: u64 = @intCast(@max(1, deadline - clock.monotonicMillis()));
         ctx.loadPageWithOptions(.{
             .script_loader = .{
                 .context = loader_ctx,
@@ -348,11 +353,12 @@ pub const WptBrowser = struct {
                 .retain = &ScriptLoaderContext.retain,
                 .release = &ScriptLoaderContext.release,
             },
+            .timeout_ms = left_ms,
         }) catch |err| {
-            // A load its ceiling aborted is a run that timed out: the wait
-            // below lets the harness report what ran. Any other failure is
-            // the page's.
-            if (!self.script_deadline.abortedThisRun()) {
+            // A load its ceiling aborted, or one still in flight when the
+            // ceiling came, is a run that timed out: the wait below lets the
+            // harness report what ran. Any other failure is the page's.
+            if (!self.script_deadline.abortedThisRun() and err != error.NavigationTimedOut) {
                 var result = try test_harness.TestResult.init(self.allocator, test_path);
                 result.status = .@"error";
                 result.message = try std.fmt.allocPrint(self.allocator, "Page load error: {}", .{err});
@@ -365,11 +371,11 @@ pub const WptBrowser = struct {
         const load_ms = lapMs(&phase);
 
         // A page whose parse reached no testharnessreport.js include - one
-        // that names the harness without including it, or includes only
-        // testharness.js - has the runner's hook installed now, before the
-        // harness can complete (it completes after the load event, from a
-        // task).
-        if (harness_load == .at_include and !self.harnessHookInstalled(ctx)) {
+        // that names the harness without including it, includes only
+        // testharness.js, or names none (`before_page`) - has the runner's
+        // hook installed now, before the harness can complete (it completes
+        // after the load event, from a task).
+        if (!self.harnessHookInstalled(ctx)) {
             self.installHarnessLate(ctx, explicit_timeout) catch |err| {
                 log.warn("runHTMLTest: could not install the harness after the page: {}", .{err});
             };
@@ -417,15 +423,19 @@ pub const WptBrowser = struct {
     /// script against the parser.
     ///
     /// `before_page`: a page whose source names no testharness.js - one the
-    /// runner still runs as a testharness test - gets the harness before the
-    /// page, as every page once did.
+    /// runner still runs as a testharness test - gets the harness once its
+    /// load has parsed it (`installHarnessLate`). It got it before the page
+    /// until lane loadpath1, in the realm of the traversable's initial
+    /// about:blank document, which the page's own document now replaces with
+    /// a Window of its own ("create and initialize a Document object" step
+    /// 7), as in every browser. No worklist file is one: the seven whose
+    /// source has no ASCII "testharness.js" name it in UTF-16 (2026-11-05).
     const HarnessLoad = test_harness.HarnessLoad;
 
     /// Script loader context for HTML parsing
     const ScriptLoaderContext = struct {
         allocator: std.mem.Allocator,
         wpt_browser: *WptBrowser,
-        realm: runtime.Context,
         /// Where this run's harness loads.
         harness_load: HarnessLoad,
         /// Whether the run's budget is the runner's (`runnerReportSource`).
@@ -450,9 +460,10 @@ pub const WptBrowser = struct {
     ///
     /// A run whose harness loads at the page's include (`HarnessLoad`) gets
     /// the cached testharness.js at the first, and the runner's own report
-    /// at the second. A run whose harness `loadTestHarness` already ran
-    /// before the page gets empty scripts for both: running them again would
-    /// make a new Tests object and lose the runner's completion callback.
+    /// at the second. A `before_page` run gets empty scripts for both: its
+    /// harness is the runner's to load, once (`installHarnessLate`) - running
+    /// it twice would make a new Tests object and lose the runner's
+    /// completion callback.
     ///
     /// Every other script returns null, so the engine fetches it with HTML's
     /// "fetch a classic script": a request with destination "script", the
@@ -465,8 +476,12 @@ pub const WptBrowser = struct {
     /// WebIDLParser.js -> webidl2.js rewrite it applied is wpt serve's own.)
     fn scriptLoaderCallback(ctx_ptr: ?*anyopaque, url: []const u8) ?[]const u8 {
         const loader_ctx: *const ScriptLoaderContext = @ptrCast(@alignCast(ctx_ptr orelse return null));
-        if (!loader_ctx.realm.hasEngine()) return null;
         const self = loader_ctx.wpt_browser;
+        // The realm of the document whose parser asks: the page's, as its
+        // navigation's commit made it - read now, not when the run began
+        // (the page's document has a Window of its own).
+        const realm = (self.browser.current_context orelse return null).realm orelse return null;
+        if (!realm.hasEngine()) return null;
 
         const is_harness = std.mem.eql(u8, url, "/resources/testharness.js");
         const is_report = std.mem.eql(u8, url, "/resources/testharnessreport.js");
@@ -486,7 +501,7 @@ pub const WptBrowser = struct {
         // testdriver.js's vendor hook: Crane's, with its natives defined on
         // the test realm first (test_driver.zig).
         if (std.mem.eql(u8, url, test_driver.vendor_path)) {
-            self.test_driver.defineNatives(loader_ctx.realm);
+            self.test_driver.defineNatives(realm);
             return self.allocator.dupe(u8, test_driver.vendor_js) catch null;
         }
         return null;
