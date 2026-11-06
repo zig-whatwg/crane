@@ -157,7 +157,10 @@ host's struct. Where
 moved, at its safe points - the outermost binding exit back into script and
 each microtask checkpoint outside a DOM algorithm - once it moved
 `ExternalMemory.report_step` (128 KB, V8's own re-check step), and the agent's
-end takes back all it reported. V8: Isolate::AdjustAmountOfExternalAllocatedMemory
+end takes back all it reported. The binding exit pays nothing for it: the host
+owes the report on the claiming agent's queue (`DeferredTeardown.Owed.report`),
+and the exit's one check of what the queue owes runs the adapter's
+`report_steps`. V8: Isolate::AdjustAmountOfExternalAllocatedMemory
 (external_memory.zig), as Blink's V8GCController::reportDOMMemoryUsageToV8 did
 before its unified heap. A worker's agent is given none: workers have no nodes.
 
