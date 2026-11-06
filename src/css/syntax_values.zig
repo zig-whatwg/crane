@@ -30,7 +30,7 @@ pub const Item = union(enum) {
     string: []const u8,
     transform: transforms.Function,
 
-    fn deinit(self: *Item, allocator: Allocator) void {
+    pub fn deinit(self: *Item, allocator: Allocator) void {
         switch (self.*) {
             .numeric => |n| n.number.unref(),
             .color => |c| c.release(),
