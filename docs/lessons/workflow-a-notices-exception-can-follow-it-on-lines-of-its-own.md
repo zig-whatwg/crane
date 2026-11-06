@@ -13,5 +13,6 @@ A second trap came with the STOP file: the watcher touched `~/crane-work/<mirror
 1. On a new notice line, sleep about 20 s, then re-read EVERY line written since the watcher started: the notice lines and every line that begins with `EXCEPTION`. Match the exceptions against the pids in `remote-pids` (`<host> <pid>`) before killing anything.
 2. Write a host-named STOP (`STOP-<host>`), and have every script check `STOP` and `STOP-$(hostname -s).local`. A STOP then stops jobs only on the host the notice closed, even after the `-bins` follow the mirror.
 3. Re-arm the watcher every time it exits.
+4. An exemption covers the STOP file too. At 21:51 the fixed watcher read the EXCEPTION for perf2's running final gate and killed nothing, but it still touched `STOP-chat.local`. The gate script checks that file between its steps, so the exempt gate would have ended at its next step. The lane removed the file in time. When an EXCEPTION names the lane, the watcher now writes no host STOP either.
 
-**Takeaway**: **A notice and its exceptions are a block, not a line: wait a moment after a notice and read every line written since, and name STOP files after their host so they cannot follow a mirror to a host that is still open.**
+**Takeaway**: **A notice and its exceptions are a block, not a line: wait a moment after a notice and read every line written since. Name STOP files after their host so they cannot follow a mirror to a host that is still open. An exemption must also cover the STOP file the exempt job checks between its steps.**
