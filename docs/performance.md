@@ -129,7 +129,11 @@ Those rows stay Crane-only, with their history.
 - Chrome: `--headless=new` with puppeteer's quiet-profile flags; Firefox: `--headless` with a
   profile whose `user.js` turns off first-run pages, telemetry and updates; Lightpanda: `serve`,
   then CDP (browser context, target, flat session, `Page.navigate`); Safari: `safaridriver`, a
-  WebDriver session, Navigate To; Crane: `repl <url> --proxy=direct`, its stdin held open (the
+  WebDriver session, Navigate To, and a Safari of the launch's own - the runner refuses a launch
+  while a Safari runs and, when the launch ends, ends the automation Safari it started by exact
+  pid (safaridriver leaves it running after Delete Session on Safari 27.2: in round 0's first
+  window every launch reused one Safari, whose app, Networking and GPU processes were outside
+  the set); Crane: `repl <url> --proxy=direct`, its stdin held open (the
   page stays live) and closed at the end (the console exits as on Ctrl+D), started in its build's
   own directory: the console restores the `whatwg_snapshot.bin` beside its executable, and only
   without one searches from its working directory, so even that fallback is the build's own
@@ -208,6 +212,26 @@ its tests byte for byte; `perf_bench validate` reads journals the same way. The 
 
 Journals are kept by round, outside git (`wpt-results/perf/rounds/<round>/...`, two levels below
 `wpt-results/` so the WPT progress report never reads them as WPT journals).
+
+## Re-measuring an engine
+
+When one engine's rows of a round turn out wrong (round 0: Safari's process set), that engine
+runs again in a second window, alternating with Crane ReleaseSafe as a **drift control**. The
+round is then window 1's rows without that engine's, plus window 2's rows of it; window 2's
+Crane rows never join the round's, they are compared with them:
+
+```bash
+grep -v '"engine":{"name":"safari"' <w1>/pages.jsonl > <round>/pages.jsonl   # a line's engine object starts with its name
+grep '"engine":{"name":"safari"' <w2>/journal.jsonl > <round>/safari.jsonl
+grep '"engine":{"name":"crane"' <w2>/journal.jsonl > <control>/crane.jsonl
+zig-out/bin/perf_bench report --journals=<round> --control=<control> --remeasured=safari --out=<gh-pages>/performance
+```
+
+`report` prints the drift and the page gets a "Re-measured" section: the control's time and
+memory over the round's (geometric means, and each workload's ratio), **within noise** when both
+means are within 5% of 100%, with the workloads outside their own band (10%, or three times the
+runs' spread) counted. A control that is not within noise means the host moved between the
+windows: the re-measured rows are not comparable with the round's, and are not published.
 
 ## /performance/
 
