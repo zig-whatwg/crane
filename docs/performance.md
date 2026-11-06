@@ -264,6 +264,18 @@ workloads. Before the tip's rows are set beside the browsers' last ones, the bas
 noise of its own earlier rows: compare the window's `crane_base` rows with the earlier round's
 Crane rows as the drift control above does, with both geometric means within 5% of 100%.
 
+**A micro row is one build's layout.** A sub-microsecond row can swing by about 15% between two
+builds of the same source, with instructions retired equal within 0.5%: code placement. Builds on
+different pool hosts also differ in code, because each targets its host's CPU. On 2026-11-06,
+dom.getter-loop was +12.6% for a tip console built on chat2 and -0.6% for the same tip built on
+chat.local; main built on chat2 was +0.6%
+(docs/lessons/testing-a-frozen-console-is-one-builds-layout.md). So:
+- every console of a timed comparison is built on the host that times it, in one build session
+  (or with the one pinned `-Dcpu` the published rounds use);
+- a surprising micro-row change is first re-checked with a second build, both sides rebuilt on the
+  timing host, and with instructions retired (page minus a 0-iteration control) - only a change
+  that survives both is chased.
+
 ## /performance/
 
 `perf_bench report` writes `index.html` and `card.png` from every journal below `--journals`:
