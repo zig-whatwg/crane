@@ -923,6 +923,20 @@ pub const FetchJob = struct {
                 ((request.currentUrlIsSameOrigin() catch false) and
                     (request.redirectTaintIsSameOrigin() catch false));
             facts.response_status = if (opaque_response or !navigation_status_visible) 0 else response.status;
+            // The content encoding is a response detail too: hidden with the
+            // status for a navigation to another origin or back through one,
+            // as Chromium hides it - NavigationRequest gives such a
+            // navigation ParentResourceTimingAccess::
+            // kReportWithoutResponseDetails, DocumentLoader then reports an
+            // opaque response for the parent, and CreateResourceTimingInfo
+            // (resource_timing_utils.cc) sets response_status, content_type
+            // and content_encoding only when allow_response_details. Chrome
+            // 157 is the one engine that ships contentEncoding: 29/29 on
+            // resource-timing/content-encoding.https.html (Firefox 159 0/29,
+            // Safari 27.2 NOTRUN), whose "content-encoding should be empty
+            // for iframes having cross origin redirects" Crane lost once a
+            // streamed response had its content encoding (lane loadpath1).
+            if (!navigation_status_visible) facts.body_info.content_encoding = "";
             if (!opaque_response) {
                 if (@import("../internal/mime.zig").extractMimeType(self.allocator, &response.header_list) catch null) |mime_type| {
                     var parsed = mime_type;
@@ -931,6 +945,10 @@ pub const FetchJob = struct {
                     if (facts.content_type) |c| facts.body_info.content_type = c;
                 }
             }
+        } else {
+            // A navigation whose response is redirect-tainted: no response
+            // details, its content encoding included (above).
+            facts.body_info.content_encoding = "";
         }
         return facts;
     }

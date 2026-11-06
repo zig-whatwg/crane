@@ -1,0 +1,12 @@
+# Architecture: A host-only load path hides its bugs from the suite that uses it
+
+**Date**: 2026-11-04
+**Lesson**: Crane put a page into a Window two ways - the embedder's own load (Context.createLoadDocument) and HTML navigation - and each kept state the other did not, so the WPT runner, which took only the first, never saw what broke on the second.
+
+**Why**: A browser has one way to load a page into a tab: the tab is a top-level traversable whose first document is its initial about:blank, and every page after it is a navigation (Blink's DocumentLoader::CommitNavigation, Gecko's nsGlobalWindowOuter::SetNewDocument, WebKit's DocumentWriter::begin all decide the Window there). The embedder-only path set a copy of the page's origin on its Window (window_globals.setOrigin), kept the initial about:blank's Window whatever the origins, and carried its own copies of the COOP, agent-cluster, timing, policy-container and history steps. window.open read that Window copy as its creator origin.
+
+**What Happened**: the console loaded pages by navigation, whose new Window never got the copy: `w = window.open(sameOrigin); w.onload = ...` never fired - the popup's initial about:blank was opaque, its same-origin navigation made a new Window, and the handler sat on the old one. A frame that navigated to another origin had the same bug (its Window kept its first container's origin). The WPT runner loaded every test page through the embedder path, where the copy happened to be right, so no WPT file showed it. The first fix set the copy on the second path too; the user rejected it (2026-11-04: "you cannot start creating new paths that don't exist anywhere else").
+
+**Fix**: lane loadpath1. The embedder's load IS HTML navigate: Context.init is "create a new top-level traversable" (its initial about:blank of a new opaque origin), loadPage/loadHTML navigate it with user involvement "browser UI" (loadHTML's markup as navigate's `response`, as WebKit's loadHTMLString and Chromium's LoadDataWithBaseURL), and the host waits until the traversable settles. createLoadDocument and every copy it kept are deleted; window.open takes creatorOrigin from the opener's active document's origin record; the Window keeps no origin of its own.
+
+**Takeaway**: **A host- or tool-only way into an engine algorithm is a fork the suite that uses it can never test: when two paths reach the same spec step, delete the one no browser has instead of keeping their copies in sync - and make the test harness take the path the console and the browsers take.**

@@ -17,6 +17,8 @@ const html_core = @import("html_core");
 const joint_history = html_core.navigation.joint_history;
 const BrowsingContext = html_core.window.BrowsingContext;
 const Navigables = html_core.window.Navigables;
+/// HTML's user navigation involvement, as the navigation API's events take it.
+pub const UserInvolvement = @import("navigation_api.zig").UserInvolvement;
 
 /// A task for `queueTask`: run once with `context`, or dropped - `drop`
 /// called instead - when its loop ends first.
@@ -47,8 +49,10 @@ pub const Implementation = struct {
     /// Queue a traversal of `window`'s traversable to `step` - for the
     /// navigation API, with its key's checks (`api`, taken).
     traverse_to_step: *const fn (window: *runtime.Instance, step: u32, api: ?ApiTraversal) void,
-    /// Reload `window`'s navigable ("reload"), if the engine can.
-    reload: *const fn (window: *runtime.Instance) void,
+    /// HTML "reload" `window`'s navigable given userInvolvement
+    /// `user_involvement`, if the engine can: step 1 - the navigation API's
+    /// navigate event - only when it is not "browser UI".
+    reload: *const fn (window: *runtime.Instance, user_involvement: UserInvolvement) void,
     /// The navigation API's reload with an explicit serialized state.
     /// `state` is borrowed for this synchronous call.
     reload_with_navigation_api_state: ?*const fn (window: *runtime.Instance, state: joint_history.SerializedState) void = null,
@@ -123,10 +127,18 @@ pub fn traverseToStep(window: *runtime.Instance, step: u32, api: ?ApiTraversal) 
     impl.traverse_to_step(window, step, api);
 }
 
-/// Reload `window`'s navigable.
+/// Reload `window`'s navigable as its script does - location.reload(), with
+/// userInvolvement "none" (HTML "reload"'s default).
 pub fn reload(window: *runtime.Instance) void {
+    reloadWithUserInvolvement(window, .none);
+}
+
+/// HTML "reload" `window`'s navigable given `user_involvement`: "browser UI"
+/// for the browser's own reload (its reload button; the console's
+/// `.reload`), which fires no navigate event at the page (step 1).
+pub fn reloadWithUserInvolvement(window: *runtime.Instance, user_involvement: UserInvolvement) void {
     const impl = implementation.get() orelse return;
-    impl.reload(window);
+    impl.reload(window, user_involvement);
 }
 
 /// Reload `window`'s navigable for its document's declarative refresh
@@ -137,7 +149,7 @@ pub fn reloadForDeclarativeRefresh(window: *runtime.Instance) void {
     if (impl.reload_for_declarative_refresh) |reload_for_refresh| {
         reload_for_refresh(window);
     } else {
-        impl.reload(window);
+        impl.reload(window, .none);
     }
 }
 
@@ -148,7 +160,7 @@ pub fn reloadWithNavigationApiState(window: *runtime.Instance, state: joint_hist
     if (impl.reload_with_navigation_api_state) |reload_with_state| {
         reload_with_state(window, state);
     } else {
-        impl.reload(window);
+        impl.reload(window, .none);
     }
 }
 

@@ -34,9 +34,6 @@ pub const Implementation = struct {
     /// another owner keeps), its active window from here on, freeing the one
     /// Window.init made for it.
     adopt_browsing_context: *const fn (window: *runtime.Instance, browsing_context: *anyopaque) void,
-    /// Set the Window's origin, serialized ("null" for an opaque one) - the
-    /// one its storage is keyed by until its document says otherwise.
-    set_origin: *const fn (window: *runtime.Instance, origin: []const u8) anyerror!void,
     /// The popups `from` opened (window.open's auxiliary navigables, which a
     /// Window keeps) are `to`'s from here, and the realm their realms are
     /// made under is `to`'s: a navigation gave the opener's navigable the new
@@ -81,12 +78,6 @@ pub fn releaseBrowsingContext(window: *runtime.Instance) ?*anyopaque {
 pub fn adoptBrowsingContext(window: *runtime.Instance, browsing_context: *anyopaque) void {
     const impl = implementation.get() orelse return;
     impl.adopt_browsing_context(window, browsing_context);
-}
-
-/// Set `window`'s origin: see Implementation.set_origin.
-pub fn setOrigin(window: *runtime.Instance, origin: []const u8) !void {
-    const impl = implementation.get() orelse return;
-    try impl.set_origin(window, origin);
 }
 
 /// See Implementation.move_auxiliary_navigables.

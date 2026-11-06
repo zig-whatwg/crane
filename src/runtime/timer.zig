@@ -105,6 +105,14 @@ pub const TimerVTable = struct {
     /// suspension takes as "due now" (the timer runs as soon as it resumes).
     remainingMs: ?*const fn (ctx: *anyopaque, id: TimerId) ?u64 = null,
 
+    /// A new id from the ids `setTimeout` gives, naming no timer: for work
+    /// that is due at once and is queued, not armed - a zero-delay window
+    /// timer's task, queued at the setTimeout call as Chromium and Gecko
+    /// queue it (lane loadpath1) - so that its id and an armed timer's never
+    /// coincide. 0 when none could be given; null for an implementation
+    /// that has none to give (`TimerInterface.reserveId`).
+    reserveId: ?*const fn (ctx: *anyopaque) TimerId = null,
+
     /// Cancel a pending timer.
     ///
     /// Returns true only if a live timer with this id was found and cancelled.
@@ -157,6 +165,14 @@ pub const TimerInterface = struct {
     pub fn setTimeoutOwned(self: Self, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: TimerDrop) TimerId {
         const owned = self.vtable.setTimeoutOwned orelse return 0;
         return owned(self.ctx, ms, callback, user_data, drop);
+    }
+
+    /// A new id naming no timer (TimerVTable.reserveId); null when the
+    /// implementation has none to give or could not give one.
+    pub fn reserveId(self: Self) ?TimerId {
+        const reserve = self.vtable.reserveId orelse return null;
+        const id = reserve(self.ctx);
+        return if (id == 0) null else id;
     }
 
     /// Cancel a pending timer.

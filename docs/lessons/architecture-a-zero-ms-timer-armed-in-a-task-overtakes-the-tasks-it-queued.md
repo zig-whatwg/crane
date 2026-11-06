@@ -1,6 +1,7 @@
 # Architecture: A 0 ms timer armed in a task overtakes the tasks that task queued
 
 **Date**: 2026-09-29
+**Status** (2026-11-06): SUPERSEDED. Window timers are tasks (212dcdf7360), and a 0 ms timer's task is queued at the setTimeout call (lane loadpath1 batch 3): "queue a task, then arm a 0 ms timer" now runs the task first, as in Chromium and Gecko. See spec-compliance-a-zero-delay-timer-is-queued-at-the-call.md.
 **Lesson**: In one turn of Crane's event loop, the timers run after the tasks that were queued before the turn began. A task queued during the turn waits for the next one. So a task that queues task A and then arms a 0 ms timer B sees B run first, in the same turn, and A only on the next turn.
 
 **Why**: `browser/event_loop.zig` `runOnceBlocking` does step 2, then step 4. Step 2 (`runQueuedTasks`) runs only the tasks queued before the turn: a drain bounded by the queue length on entry, as HTML's event loop runs one task per iteration. Step 4 (`pollBlocking`) fires every timer that is due. A 0 ms timer armed during step 2 is due by step 4. A task queued during step 2 is not run until step 2 of the next turn.

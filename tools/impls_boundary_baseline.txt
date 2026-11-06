@@ -29,7 +29,6 @@ src/webidl/impls/HTMLIFrameElement.zig Node.setLocalName 1
 src/webidl/impls/HTMLIFrameElement.zig Window.getInternal 1
 src/webidl/impls/HTMLIFrameElement.zig Window.replaceBrowsingContext 1
 src/webidl/impls/HTMLIFrameElement.zig Window.setDocument 2
-src/webidl/impls/HTMLIFrameElement.zig Window.setOrigin 1
 src/webidl/impls/Window.zig History.State 1
 src/webidl/impls/Window.zig History.getInternal 1
 src/webidl/impls/Window.zig History.init 1
