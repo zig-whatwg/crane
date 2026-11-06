@@ -1,0 +1,230 @@
+body { margin: 0; font: 16px/1.5 Georgia, serif; color: #202124; background: #fff; }
+.site-header { display: flex; align-items: center; gap: 2rem; padding: 0.5rem 2rem; border-bottom: 1px solid #ddd; }
+.nav { display: flex; list-style: none; gap: 1rem; margin: 0; padding: 0; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 2rem; max-width: 1200px; margin: 0 auto; padding: 2rem; }
+.story h1 { font-size: 2.4rem; line-height: 1.1; } .byline { color: #5a5e63; } figure img { width: 100%; height: auto; }
+.comments { grid-column: 1 / -1; } .comment { border-top: 1px solid #eee; padding: 0.75rem 0; } .comment .meta { color: #666; font-size: 0.85rem; }
+.site-footer { display: grid; grid-template-columns: repeat(4, 1fr); padding: 2rem; background: #f7f8f9; }
+.docs-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); } pre { background: #f6f8fa; padding: 1rem; overflow: auto; }
+.tok-kw { color: #a626a4; } .tok-str { color: #50a14f; } .tok-num { color: #986801; } .toc a { display: block; }
+.grid { width: 100%; border-collapse: collapse; } .grid td, .grid th { padding: 4px 8px; border-bottom: 1px solid #eee; } .grid tr.inactive { color: #999; }
+nav ul li:nth-child(1) { color: #7c9752; margin: 5px 9px; font-size: 17px; }
+#id1 { color: #5c8e8c; margin: 15px 23px; font-size: 24px; }
+.story p.x2 { color: #52b211; margin: 17px 15px; font-size: 13px; }
+.layout .c3 > a { color: #064922; margin: 2px 14px; font-size: 15px; }
+.rail .related li:hover a.k4 { color: #4f116e; margin: 5px 11px; font-size: 12px; }
+.layout .c5 > a { color: #9afad4; margin: 3px 18px; font-size: 13px; }
+.layout .c6 > a { color: #b2465a; margin: 2px 18px; font-size: 15px; }
+nav ul li:nth-child(1) { color: #5a96d0; margin: 16px 24px; font-size: 17px; }
+#id8 { color: #fbce81; margin: 8px 21px; font-size: 19px; }
+nav ul li:nth-child(3) { color: #163357; margin: 12px 9px; font-size: 16px; }
+.rail .related li:hover a.k10 { color: #4bf080; margin: 0px 22px; font-size: 21px; }
+.rail .related li:hover a.k11 { color: #888d4a; margin: 23px 5px; font-size: 12px; }
+.rail .related li:hover a.k12 { color: #b87bc2; margin: 19px 15px; font-size: 14px; }
+[data-i='13'] { color: #20afcd; margin: 14px 10px; font-size: 12px; }
+.story p.x14 { color: #71fdd9; margin: 22px 20px; font-size: 19px; }
+.layout .c15 > a { color: #a6cb98; margin: 16px 12px; font-size: 20px; }
+[data-i='16'] { color: #3a398f; margin: 13px 10px; font-size: 24px; }
+#id17 { color: #0a617b; margin: 0px 24px; font-size: 15px; }
+#id18 { color: #35584e; margin: 20px 3px; font-size: 20px; }
+[data-i='19'] { color: #b5e39b; margin: 22px 3px; font-size: 22px; }
+nav ul li:nth-child(7) { color: #41ac10; margin: 2px 4px; font-size: 18px; }
+.story p.x21 { color: #d7d56d; margin: 5px 15px; font-size: 22px; }
+.c22 { color: #d448da; margin: 1px 13px; font-size: 18px; }
+[data-i='23'] { color: #b72881; margin: 13px 23px; font-size: 16px; }
+.story p.x24 { color: #299e7a; margin: 17px 19px; font-size: 13px; }
+nav ul li:nth-child(5) { color: #ccea56; margin: 9px 17px; font-size: 23px; }
+.story p.x26 { color: #b0532d; margin: 8px 22px; font-size: 23px; }
+[data-i='27'] { color: #9c3f2e; margin: 16px 6px; font-size: 17px; }
+.story p.x28 { color: #9b10db; margin: 2px 8px; font-size: 17px; }
+#id29 { color: #ac0302; margin: 15px 24px; font-size: 19px; }
+[data-i='30'] { color: #ae72aa; margin: 2px 14px; font-size: 21px; }
+.story p.x31 { color: #ed9ec5; margin: 19px 12px; font-size: 19px; }
+.layout .c32 > a { color: #c1ccc7; margin: 23px 23px; font-size: 20px; }
+.layout .c33 > a { color: #b85ad8; margin: 3px 4px; font-size: 12px; }
+#id34 { color: #f82f85; margin: 17px 0px; font-size: 24px; }
+#id35 { color: #e670d2; margin: 6px 23px; font-size: 19px; }
+#id36 { color: #bee431; margin: 0px 9px; font-size: 16px; }
+#id37 { color: #2fe27d; margin: 15px 0px; font-size: 18px; }
+.rail .related li:hover a.k38 { color: #22b1dc; margin: 16px 0px; font-size: 24px; }
+#id39 { color: #082014; margin: 14px 18px; font-size: 18px; }
+[data-i='40'] { color: #a2ffdd; margin: 2px 8px; font-size: 24px; }
+.story p.x41 { color: #b52f2b; margin: 17px 24px; font-size: 17px; }
+nav ul li:nth-child(1) { color: #abcaa8; margin: 17px 22px; font-size: 15px; }
+.c43 { color: #348813; margin: 17px 16px; font-size: 15px; }
+.rail .related li:hover a.k44 { color: #a05ba2; margin: 11px 8px; font-size: 14px; }
+nav ul li:nth-child(4) { color: #b7d605; margin: 3px 22px; font-size: 24px; }
+.rail .related li:hover a.k46 { color: #82cbe4; margin: 17px 8px; font-size: 23px; }
+#id47 { color: #271787; margin: 14px 2px; font-size: 16px; }
+[data-i='48'] { color: #a0a728; margin: 9px 23px; font-size: 19px; }
+.story p.x49 { color: #5c2d40; margin: 2px 11px; font-size: 17px; }
+.story p.x50 { color: #7008e4; margin: 0px 18px; font-size: 19px; }
+.rail .related li:hover a.k51 { color: #1977fb; margin: 18px 19px; font-size: 17px; }
+.c52 { color: #b7b44d; margin: 16px 0px; font-size: 22px; }
+.story p.x53 { color: #b9c2d2; margin: 4px 21px; font-size: 15px; }
+.story p.x54 { color: #1e05b0; margin: 13px 24px; font-size: 18px; }
+[data-i='55'] { color: #075881; margin: 11px 0px; font-size: 24px; }
+#id56 { color: #8ff5ce; margin: 19px 3px; font-size: 23px; }
+.c57 { color: #41a434; margin: 22px 7px; font-size: 19px; }
+#id58 { color: #f37faf; margin: 1px 3px; font-size: 14px; }
+nav ul li:nth-child(4) { color: #226964; margin: 22px 7px; font-size: 15px; }
+.rail .related li:hover a.k60 { color: #803c9d; margin: 3px 20px; font-size: 17px; }
+[data-i='61'] { color: #2929f7; margin: 11px 7px; font-size: 15px; }
+.c62 { color: #c46717; margin: 2px 11px; font-size: 19px; }
+nav ul li:nth-child(1) { color: #0e1173; margin: 9px 5px; font-size: 13px; }
+#id64 { color: #439c67; margin: 13px 6px; font-size: 13px; }
+nav ul li:nth-child(3) { color: #37a33b; margin: 20px 21px; font-size: 22px; }
+nav ul li:nth-child(4) { color: #fba9af; margin: 0px 2px; font-size: 17px; }
+.story p.x67 { color: #013612; margin: 8px 14px; font-size: 14px; }
+.story p.x68 { color: #f132dd; margin: 15px 0px; font-size: 22px; }
+[data-i='69'] { color: #edada1; margin: 8px 3px; font-size: 12px; }
+#id70 { color: #3df5f3; margin: 20px 23px; font-size: 13px; }
+.layout .c71 > a { color: #731a4e; margin: 18px 0px; font-size: 21px; }
+#id72 { color: #ac60dc; margin: 18px 22px; font-size: 16px; }
+[data-i='73'] { color: #89018a; margin: 15px 20px; font-size: 13px; }
+nav ul li:nth-child(5) { color: #e07643; margin: 22px 2px; font-size: 17px; }
+.story p.x75 { color: #e1e758; margin: 4px 24px; font-size: 12px; }
+.story p.x76 { color: #9490c0; margin: 3px 14px; font-size: 22px; }
+.rail .related li:hover a.k77 { color: #f07b18; margin: 6px 16px; font-size: 17px; }
+#id78 { color: #df9aa8; margin: 8px 21px; font-size: 24px; }
+nav ul li:nth-child(3) { color: #ef327a; margin: 9px 13px; font-size: 13px; }
+.story p.x80 { color: #d67117; margin: 19px 7px; font-size: 18px; }
+.c81 { color: #ce1aec; margin: 14px 5px; font-size: 23px; }
+.rail .related li:hover a.k82 { color: #05ecb3; margin: 17px 0px; font-size: 21px; }
+nav ul li:nth-child(7) { color: #88614d; margin: 20px 0px; font-size: 14px; }
+.story p.x84 { color: #4e3cc0; margin: 14px 0px; font-size: 19px; }
+.c85 { color: #a0f58f; margin: 22px 9px; font-size: 18px; }
+[data-i='86'] { color: #25321e; margin: 22px 18px; font-size: 19px; }
+[data-i='87'] { color: #e45f10; margin: 16px 19px; font-size: 18px; }
+nav ul li:nth-child(5) { color: #eda926; margin: 6px 23px; font-size: 15px; }
+[data-i='89'] { color: #ffb693; margin: 10px 5px; font-size: 20px; }
+.story p.x90 { color: #789ec0; margin: 7px 3px; font-size: 13px; }
+#id91 { color: #60f612; margin: 24px 17px; font-size: 22px; }
+.c92 { color: #eb93b2; margin: 16px 0px; font-size: 21px; }
+.layout .c93 > a { color: #b8a2eb; margin: 15px 6px; font-size: 22px; }
+#id94 { color: #37814e; margin: 8px 15px; font-size: 19px; }
+nav ul li:nth-child(5) { color: #b312a9; margin: 4px 17px; font-size: 17px; }
+#id96 { color: #2d7385; margin: 23px 13px; font-size: 21px; }
+.layout .c97 > a { color: #22a0a8; margin: 22px 24px; font-size: 20px; }
+.story p.x98 { color: #d796e3; margin: 8px 23px; font-size: 18px; }
+#id99 { color: #073cde; margin: 4px 11px; font-size: 19px; }
+[data-i='100'] { color: #ee5aa3; margin: 16px 4px; font-size: 16px; }
+#id101 { color: #afb6d5; margin: 18px 6px; font-size: 20px; }
+[data-i='102'] { color: #3494cf; margin: 13px 6px; font-size: 17px; }
+[data-i='103'] { color: #76b3ce; margin: 14px 2px; font-size: 20px; }
+nav ul li:nth-child(7) { color: #cb32b6; margin: 23px 24px; font-size: 15px; }
+#id105 { color: #566454; margin: 21px 5px; font-size: 14px; }
+.rail .related li:hover a.k106 { color: #98480a; margin: 2px 5px; font-size: 21px; }
+#id107 { color: #b0a497; margin: 3px 20px; font-size: 18px; }
+.layout .c108 > a { color: #7db500; margin: 9px 13px; font-size: 16px; }
+.c109 { color: #3ec67b; margin: 6px 21px; font-size: 14px; }
+#id110 { color: #744fa7; margin: 5px 17px; font-size: 18px; }
+.c111 { color: #e7c209; margin: 4px 9px; font-size: 24px; }
+.story p.x112 { color: #4196b5; margin: 4px 23px; font-size: 18px; }
+#id113 { color: #5e1581; margin: 14px 4px; font-size: 24px; }
+.rail .related li:hover a.k114 { color: #d037bd; margin: 2px 10px; font-size: 12px; }
+[data-i='115'] { color: #b190b1; margin: 6px 4px; font-size: 23px; }
+.rail .related li:hover a.k116 { color: #e2a974; margin: 3px 19px; font-size: 24px; }
+nav ul li:nth-child(6) { color: #88d198; margin: 10px 10px; font-size: 13px; }
+#id118 { color: #847376; margin: 10px 22px; font-size: 14px; }
+[data-i='119'] { color: #d82e47; margin: 23px 1px; font-size: 20px; }
+[data-i='120'] { color: #1f0643; margin: 10px 12px; font-size: 22px; }
+.layout .c121 > a { color: #0df03b; margin: 4px 3px; font-size: 24px; }
+.c122 { color: #253f53; margin: 21px 10px; font-size: 12px; }
+.rail .related li:hover a.k123 { color: #9da70a; margin: 20px 6px; font-size: 19px; }
+.story p.x124 { color: #954afe; margin: 5px 14px; font-size: 22px; }
+.rail .related li:hover a.k125 { color: #23faf4; margin: 7px 17px; font-size: 22px; }
+[data-i='126'] { color: #e4eacf; margin: 1px 4px; font-size: 14px; }
+.c127 { color: #f80db2; margin: 10px 2px; font-size: 22px; }
+.rail .related li:hover a.k128 { color: #cab717; margin: 17px 5px; font-size: 12px; }
+[data-i='129'] { color: #6c2f0b; margin: 4px 16px; font-size: 23px; }
+.c130 { color: #054b98; margin: 12px 18px; font-size: 16px; }
+#id131 { color: #369b60; margin: 15px 4px; font-size: 17px; }
+.c132 { color: #b84795; margin: 12px 14px; font-size: 15px; }
+.rail .related li:hover a.k133 { color: #32b21a; margin: 14px 3px; font-size: 23px; }
+nav ul li:nth-child(2) { color: #5d6f97; margin: 9px 18px; font-size: 15px; }
+.layout .c135 > a { color: #28902f; margin: 24px 20px; font-size: 22px; }
+[data-i='136'] { color: #14f1bc; margin: 6px 8px; font-size: 22px; }
+.c137 { color: #f7b620; margin: 5px 17px; font-size: 20px; }
+.layout .c138 > a { color: #49465e; margin: 14px 17px; font-size: 19px; }
+[data-i='139'] { color: #7309e0; margin: 1px 16px; font-size: 21px; }
+#id140 { color: #a7d8a3; margin: 22px 7px; font-size: 24px; }
+nav ul li:nth-child(2) { color: #c8344f; margin: 19px 13px; font-size: 21px; }
+.rail .related li:hover a.k142 { color: #baa48a; margin: 15px 8px; font-size: 13px; }
+nav ul li:nth-child(4) { color: #eee38f; margin: 23px 12px; font-size: 14px; }
+#id144 { color: #1aec3c; margin: 24px 0px; font-size: 19px; }
+.c145 { color: #f13287; margin: 14px 10px; font-size: 23px; }
+nav ul li:nth-child(7) { color: #e7320f; margin: 1px 19px; font-size: 21px; }
+#id147 { color: #23560a; margin: 7px 12px; font-size: 17px; }
+.story p.x148 { color: #73b9de; margin: 14px 8px; font-size: 20px; }
+#id149 { color: #b24be1; margin: 19px 23px; font-size: 24px; }
+#id150 { color: #c9788d; margin: 6px 13px; font-size: 18px; }
+#id151 { color: #b8deca; margin: 16px 5px; font-size: 20px; }
+.c152 { color: #d48580; margin: 19px 3px; font-size: 20px; }
+nav ul li:nth-child(7) { color: #c8c866; margin: 8px 11px; font-size: 22px; }
+#id154 { color: #3fbbd2; margin: 12px 22px; font-size: 24px; }
+.layout .c155 > a { color: #1a55cc; margin: 22px 20px; font-size: 22px; }
+.c156 { color: #b554b3; margin: 0px 14px; font-size: 16px; }
+.story p.x157 { color: #873f1d; margin: 13px 21px; font-size: 12px; }
+.layout .c158 > a { color: #143b82; margin: 6px 24px; font-size: 18px; }
+nav ul li:nth-child(6) { color: #6c2f0a; margin: 23px 14px; font-size: 22px; }
+.story p.x160 { color: #a9fbad; margin: 2px 15px; font-size: 21px; }
+.story p.x161 { color: #94c7ca; margin: 21px 14px; font-size: 19px; }
+#id162 { color: #ff5e57; margin: 7px 11px; font-size: 13px; }
+.c163 { color: #191ceb; margin: 7px 10px; font-size: 16px; }
+.c164 { color: #232da9; margin: 7px 18px; font-size: 19px; }
+nav ul li:nth-child(5) { color: #157afe; margin: 10px 2px; font-size: 20px; }
+#id166 { color: #769eb3; margin: 11px 12px; font-size: 16px; }
+#id167 { color: #4687c2; margin: 21px 8px; font-size: 16px; }
+.c168 { color: #baaf7a; margin: 14px 2px; font-size: 21px; }
+#id169 { color: #1fe56d; margin: 21px 2px; font-size: 12px; }
+nav ul li:nth-child(3) { color: #af43bf; margin: 16px 23px; font-size: 17px; }
+.layout .c171 > a { color: #174567; margin: 11px 8px; font-size: 21px; }
+.layout .c172 > a { color: #57f36c; margin: 12px 4px; font-size: 14px; }
+.rail .related li:hover a.k173 { color: #41bba2; margin: 7px 19px; font-size: 24px; }
+.rail .related li:hover a.k174 { color: #34241d; margin: 15px 20px; font-size: 24px; }
+.story p.x175 { color: #7c3a1a; margin: 21px 17px; font-size: 20px; }
+.layout .c176 > a { color: #9c1aca; margin: 17px 6px; font-size: 21px; }
+[data-i='177'] { color: #0393a5; margin: 10px 13px; font-size: 23px; }
+#id178 { color: #57e864; margin: 7px 1px; font-size: 16px; }
+nav ul li:nth-child(5) { color: #b53fad; margin: 14px 18px; font-size: 22px; }
+#id180 { color: #9f2fdf; margin: 17px 3px; font-size: 19px; }
+.c181 { color: #494c02; margin: 11px 18px; font-size: 20px; }
+.story p.x182 { color: #f31b62; margin: 15px 4px; font-size: 18px; }
+[data-i='183'] { color: #bc03b4; margin: 15px 18px; font-size: 15px; }
+nav ul li:nth-child(3) { color: #c67d62; margin: 22px 22px; font-size: 13px; }
+.layout .c185 > a { color: #35703e; margin: 6px 8px; font-size: 22px; }
+.rail .related li:hover a.k186 { color: #f2fa23; margin: 21px 15px; font-size: 15px; }
+.layout .c187 > a { color: #90839d; margin: 23px 7px; font-size: 21px; }
+#id188 { color: #11049c; margin: 13px 9px; font-size: 22px; }
+[data-i='189'] { color: #13666a; margin: 24px 24px; font-size: 17px; }
+.story p.x190 { color: #887d8a; margin: 20px 11px; font-size: 23px; }
+.rail .related li:hover a.k191 { color: #4bd1bb; margin: 23px 20px; font-size: 19px; }
+[data-i='192'] { color: #822dc5; margin: 12px 1px; font-size: 15px; }
+.c193 { color: #7b5c85; margin: 16px 18px; font-size: 24px; }
+[data-i='194'] { color: #0ce97e; margin: 12px 7px; font-size: 24px; }
+[data-i='195'] { color: #7fe52b; margin: 21px 10px; font-size: 24px; }
+.c196 { color: #7b9be9; margin: 22px 11px; font-size: 24px; }
+[data-i='197'] { color: #61db5a; margin: 11px 8px; font-size: 16px; }
+.rail .related li:hover a.k198 { color: #8a5e58; margin: 5px 22px; font-size: 24px; }
+.c199 { color: #6989c4; margin: 21px 11px; font-size: 12px; }
+.c200 { color: #b863ed; margin: 6px 12px; font-size: 13px; }
+#id201 { color: #f9fb79; margin: 6px 8px; font-size: 22px; }
+.c202 { color: #e6acb2; margin: 11px 16px; font-size: 24px; }
+nav ul li:nth-child(1) { color: #88c1cb; margin: 21px 9px; font-size: 16px; }
+.c204 { color: #9fbf3c; margin: 13px 9px; font-size: 17px; }
+nav ul li:nth-child(3) { color: #09dea4; margin: 22px 22px; font-size: 21px; }
+.story p.x206 { color: #54fdfa; margin: 5px 6px; font-size: 23px; }
+nav ul li:nth-child(5) { color: #ad483b; margin: 7px 1px; font-size: 23px; }
+.layout .c208 > a { color: #2a1f9c; margin: 15px 13px; font-size: 14px; }
+.c209 { color: #53f417; margin: 21px 3px; font-size: 17px; }
+[data-i='210'] { color: #ee977f; margin: 24px 1px; font-size: 24px; }
+[data-i='211'] { color: #8c5a9f; margin: 4px 9px; font-size: 22px; }
+.rail .related li:hover a.k212 { color: #a1e7f2; margin: 6px 2px; font-size: 15px; }
+#id213 { color: #2239d9; margin: 10px 0px; font-size: 24px; }
+[data-i='214'] { color: #92c3b2; margin: 9px 6px; font-size: 24px; }
+.layout .c215 > a { color: #a216c4; margin: 8px 23px; font-size: 14px; }
+.rail .related li:hover a.k216 { color: #83b78d; margin: 8px 8px; font-size: 19px; }
+.story p.x217 { color: #d172ca; margin: 7px 9px; font-size: 23px; }
+.layout .c218 > a { color: #e25268; margin: 20px 15px; font-size: 15px; }
+.story p.x219 { color: #1d6a7f; margin: 18px 16px; font-size: 15px; }

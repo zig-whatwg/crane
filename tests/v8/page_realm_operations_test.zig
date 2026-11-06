@@ -2474,7 +2474,7 @@ test "a window's indexedDB, when making its IDBFactory fails at any allocation, 
     // which fails the test); it is never deinit'd - a Window torn down
     // unwrapped leaves state its realm's end would free, which this test does
     // not measure.
-    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+    var debug_allocator: @import("root").poisoning.DebugAllocator(.{}) = .init;
     var k: usize = 0;
     while (k < 8) : (k += 1) {
         var failing = std.testing.FailingAllocator.init(debug_allocator.allocator(), .{});

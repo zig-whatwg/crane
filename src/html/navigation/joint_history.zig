@@ -631,8 +631,8 @@ pub const JointHistory = struct {
     }
 
     /// Stated deviation (integrator, 2026-10-28; since lane nav2 E and F1
-    /// only for the commits that are still made inline - an embedder's own
-    /// load, top_level_traversables.recordLoad; a javascript: URL's result;
+    /// only for the commits that are still made inline - a javascript: URL's
+    /// result;
     /// a commit that found no queue to append its finalize to): HTML queues
     /// "finalize a cross-document navigation" on the traversal queue, so it
     /// never runs inside an apply (`listCrossDocument` is the queued one). A

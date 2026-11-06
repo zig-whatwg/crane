@@ -171,9 +171,10 @@ test "Browsers in sequence each hold the network for their life, and the next fi
     for (0..2) |_| {
         const browser = try Browser.init(allocator, .{});
         defer browser.deinit();
-        // A fetch that reaches curl: a refused connection is a network
-        // error, not a crash.
-        try std.testing.expectError(error.NetworkError, browser_mod.navigation.fetchUrl(allocator, "http://127.0.0.1:9/", .{}));
+        // A navigation whose fetch reaches curl: a refused connection is a
+        // network error - its error page commits, and the load says so -
+        // not a crash.
+        try std.testing.expectError(error.NetworkError, browser.navigate("http://127.0.0.1:9/", .window));
     }
 }
 

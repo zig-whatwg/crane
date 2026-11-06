@@ -22,7 +22,7 @@ test "permission targets re-evaluate repeated overrides after an earlier inactiv
             if (self.active) self.state = next;
         }
     };
-    var gpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(gpa.deinit() == .ok) catch @panic("permission target leaked");
     const allocator = gpa.allocator();
     var scope = runtime.BrowserScope.init(allocator);

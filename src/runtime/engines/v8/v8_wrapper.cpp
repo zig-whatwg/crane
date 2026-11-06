@@ -2943,6 +2943,27 @@ void v8_Isolate_GetHeapUsage(Isolate* isolate, size_t* used, size_t* total,
     if (external) *external = stats.external_memory();
 }
 
+// The host's native memory its objects keep alive changed (engine.AgentOptions.
+// external_memory, src/runtime/engines/v8/external_memory.zig): V8 counts it
+// toward its collection schedule - past the low-water mark since the last
+// mark-compact + 64 MB it starts incremental marking (V8 13.1 heap.cc
+// Heap::HandleExternalMemoryInterrupt), as Blink's V8GCController::
+// reportDOMMemoryUsageToV8 told it about the DOM partition (Chromium 45).
+int64_t v8_Isolate_AdjustAmountOfExternalAllocatedMemory(Isolate* isolate, int64_t change_in_bytes) {
+    return isolate->AdjustAmountOfExternalAllocatedMemory(change_in_bytes);
+}
+
+// All the external memory V8 counts toward its collections: ArrayBuffer backing
+// stores (its ArrayBufferSweeper reports them through the same accounting) and
+// what the host reported. HeapStatistics::external_memory() is the backing
+// stores alone in 13.1 (api.cc: backing_store_bytes()), so it never shows the
+// host's figure. A change of zero reads the total and starts nothing (13.1
+// api.cc: "if (change_in_bytes <= 0) return amount;").
+size_t v8_Isolate_GetExternalMemory(Isolate* isolate) {
+    const int64_t amount = isolate->AdjustAmountOfExternalAllocatedMemory(0);
+    return amount < 0 ? 0 : static_cast<size_t>(amount);
+}
+
 // Native contexts alive in the heap - one per window, frame, worker and
 // ShadowRealm still reachable - and how many of them V8 counts as detached
 // (their global proxy was detached, yet something still retains them).

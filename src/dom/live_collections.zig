@@ -303,6 +303,75 @@ pub fn rootOf(collection: *runtime.Instance) ?*runtime.Instance {
     return (implementation.get() orelse return null).root(collection);
 }
 
+/// One of DOM's element lists by argument (4.2.6): what getElementsByClassName,
+/// getElementsByTagName and getElementsByTagNameNS return for a root.
+pub const Query = union(enum) {
+    /// "the list of elements with class names `classNames`" (a non-empty
+    /// set of classes: the empty set's list is no live list).
+    class_names: []const u8,
+    /// "the list of elements with qualified name `qualifiedName`".
+    qualified_name: []const u8,
+    /// "the list of elements with namespace `namespace` and local name
+    /// `localName`" (step 1, "" as null, is the list's own).
+    namespace_local_name: struct { namespace: ?[]const u8, local_name: []const u8 },
+};
+
+/// What getElementsByClassName, getElementsByTagName and
+/// getElementsByTagNameNS return for `root` (lane perf2): the live
+/// collection made for this root and argument before, while it lives, else
+/// a new one, kept. DOM 4.2.6: "When invoked with the same argument[s], the
+/// same HTMLCollection object may be returned as returned by an earlier
+/// call" (for the qualified-name list, "as long as root's node document's
+/// type has not changed": the list is kept under the root's CURRENT node
+/// document, so an adopted root gets one of its new document's). All three
+/// browsers do: Blink and WebKit keep each list in the root's
+/// NodeListsNodeData (EnsureCachedCollection<ClassCollection /
+/// TagCollection / TagCollectionNS>, keyed by type and name, weakly), Gecko
+/// in nsContentList's hashtables (NS_GetContentList,
+/// GetFuncStringContentList). The cache is weak (dom.tree_ordered_map
+/// `cachedList`): the wrapper owns the collection, as for a new one.
+///
+/// So the caller hands it to script and NEVER frees it: another caller may
+/// hold the same object. A native step that reads a list and lets it go
+/// makes its own with `newCollection`.
+pub fn collectionFor(root: *runtime.Instance, query: Query) !*runtime.Instance {
+    const tree_ordered_map = @import("tree_ordered_map.zig");
+    const document = nodeDocument(root) orelse return newCollection(root, query);
+    const key: tree_ordered_map.ListKey = switch (query) {
+        .class_names => |names| .{ .kind = .class_names, .root = root, .root_generation = runtime.SlabAllocator.generationOf(root), .name = names },
+        .qualified_name => |name| .{ .kind = .qualified_name, .root = root, .root_generation = runtime.SlabAllocator.generationOf(root), .name = name },
+        .namespace_local_name => |q| blk: {
+            // Step 1, "If namespace is the empty string, then set it to
+            // null", before the key: ("", x) and (null, x) are one list, as
+            // in Blink's getElementsByTagNameNS.
+            const namespace: ?[]const u8 = if (q.namespace) |ns| (if (ns.len == 0) null else ns) else null;
+            break :blk .{ .kind = .namespace_local_name, .root = root, .root_generation = runtime.SlabAllocator.generationOf(root), .has_namespace = namespace != null, .namespace = namespace orelse "", .name = q.local_name };
+        },
+    };
+    if (tree_ordered_map.cachedList(document, key)) |kept| return kept;
+    const collection = try newCollection(root, query);
+    tree_ordered_map.rememberList(document, key, collection);
+    return collection;
+}
+
+/// A NEW live collection for `query` over `root`, the caller's own: no one
+/// else is handed it, and the caller frees it (a native step that reads a
+/// list and lets it go, or a [SameObject] attribute whose collection HTML
+/// defines with a filter of its own - Blink's HTMLDataListOptionsCollection,
+/// its kMapAreas collection). Script's getElementsBy* calls get the kept one
+/// instead (`collectionFor`).
+pub fn newCollection(root: *runtime.Instance, query: Query) !*runtime.Instance {
+    const interfaces = @import("interfaces");
+    const collection = try interfaces.HTMLCollection.init(root.ctx.getAllocator(), root.ctx);
+    errdefer interfaces.HTMLCollection.deinit(collection);
+    switch (query) {
+        .class_names => |names| try elementsWithClassNames(collection, root, names),
+        .qualified_name => |name| try elementsWithQualifiedName(collection, root, name),
+        .namespace_local_name => |q| try elementsWithNamespaceAndLocalName(collection, root, q.namespace, q.local_name),
+    }
+    return collection;
+}
+
 test "elementChildren without an installed implementation reports NotSupported" {
     const std = @import("std");
     const override = implementation.overrideForTest(null);

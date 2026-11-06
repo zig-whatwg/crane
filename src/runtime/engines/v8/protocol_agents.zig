@@ -592,6 +592,9 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     // The queue the "DOM algorithm active" depth is counted on, one load
     // from the isolate (dom_algorithm.zig; refcount design 9, risk 4).
     @import("dom_algorithm.zig").install(isolate, options.deferred_teardown);
+    // [external_memory]: the host's native memory the agent's objects keep
+    // alive, reported to V8 at the same safe points (external_memory.zig).
+    @import("external_memory.zig").install(isolate, options.external_memory, options.deferred_teardown);
 
     // The hooks the host supplied, and only those: a hook left null is the
     // host's choice to have no such behaviour.
@@ -712,6 +715,10 @@ pub fn endAgent(agent: *Agent) void {
         // No binding entry counts on it from here on.
         @import("dom_algorithm.zig").install(entered.isolate, null);
     }
+    // [external_memory]: V8's count goes back to where it was before the
+    // agent reported, and the host's figure is no longer the agent's -
+    // before the storage it lives on goes with the templates (cleanupAll).
+    @import("external_memory.zig").uninstall(entered.isolate);
     // This agent's ShadowRealms, whichever kind of agent it is: they were
     // every agent's once, cleared by whichever host agent ended first.
     if (shadow_realms) |data| shadow_realm.deinitializeShadowRealmSupport(data);
@@ -758,6 +765,11 @@ pub fn performMicrotaskCheckpoint(agent: *Agent) void {
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
     ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
+    // A safe point after every task (the host's checkpoint after it): V8 is
+    // told how the agent's DOM memory moved - not inside a DOM algorithm,
+    // whose own binding exit tells it (external_memory.zig).
+    const in_algorithm = if (deferredTeardownOf(entered.isolate)) |queue| queue.inAlgorithm() else false;
+    if (!in_algorithm) @import("external_memory.zig").reportIfMovedOn(entered.isolate);
 }
 
 /// A queued microtask's steps and their data, until the microtask runs.

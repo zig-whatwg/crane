@@ -72,6 +72,16 @@ pub const Page = struct {
         var buffer: [512]u8 = undefined;
         const html = try std.fmt.bufPrint(&buffer, "<!doctype html><body>{s}</body>", .{body_markup});
         try page.loadHTML(html, .{ .base_url = "about:blank" });
+        // The load gave the page a Window of its own (HTML "create and
+        // initialize a Document object" step 7: the initial about:blank's
+        // origin is opaque, lane loadpath1): the initial about:blank's realm
+        // and its document are the collector's, and their instances go from
+        // the deferred teardown queue between tasks - before the baseline,
+        // or the count drops by them mid-test.
+        for (0..3) |_| {
+            try page.runScript("TestUtils.gc(); TestUtils.gc();");
+            _ = try browser.runEventLoopBlocking(20);
+        }
         try page.runScript("TestUtils.gc(); TestUtils.gc();");
         const slab = &browser.scope.slab;
         return .{ .browser = browser, .slab = slab, .baseline = slab.stats().currently_allocated };

@@ -78,6 +78,10 @@ pub const NavigateRequest = struct {
     /// Navigate's "referrerPolicy": "no-referrer" for window.open()'s
     /// noreferrer; the empty string defers to the policy container's.
     referrer_policy: @import("fetch").internal.ReferrerPolicy = .empty,
+    /// Navigate's userInvolvement "browser UI": the user agent's own
+    /// navigation - an address bar, the embedder's - with no sourceDocument
+    /// (navigate step 5 asserts one implies the other).
+    browser_ui: bool = false,
 };
 
 /// An engine context this integration made for a content navigable it no
@@ -196,11 +200,32 @@ fn percentDecode(allocator: Allocator, input: []const u8) ![]u8 {
 pub const HostRealms = struct {
     /// The host's state. BORROWED: the host outlives the record.
     context: *anyopaque,
-    /// HTML "create and initialize a Document object" steps 6-7 for a
-    /// document of the given origin; null keeps the active window.
-    realm_for_document: ?*const fn (*anyopaque, Origin) bool,
-    /// A navigation committed the given document (an `*runtime.Instance`).
-    committed: ?*const fn (*anyopaque, *anyopaque) void = null,
+    /// HTML "create and initialize a Document object" step 7 for a document
+    /// of the given origin: the realm of a new Window whose global this is
+    /// the traversable's WindowProxy. Step 6 - keeping the initial
+    /// about:blank's Window - is the record's, as for every navigable. False
+    /// when no realm could be made; null keeps the active window.
+    create_window_realm: ?*const fn (*anyopaque, Origin, []const u8) bool,
+    /// A navigation's document (an `*runtime.Instance`) became its Window's
+    /// associated Document, before its parser runs.
+    document_created: ?*const fn (*anyopaque, *anyopaque) void = null,
+    /// A navigation committed the given document (an `*runtime.Instance`);
+    /// true when it is a network error's error page.
+    committed: ?*const fn (*anyopaque, *anyopaque, bool) void = null,
+};
+
+/// An embedder's answer for the external classic scripts that the parser of
+/// a document its own navigation commits prepares - the WPT runner's
+/// testharnessreport.js, as wptrunner's server answers that path for a
+/// browser (dom.top_level_traversables.NavigateOptions). The shape of
+/// html.scripted_parser.ScriptLoader: `load` answers the source of the
+/// script at a src (null: fetch it as usual), and the parser that keeps it
+/// holds its own reference (`retain`/`release`).
+pub const EmbedderScriptLoader = struct {
+    context: ?*anyopaque,
+    load: *const fn (?*anyopaque, []const u8) ?[]const u8,
+    retain: *const fn (?*anyopaque) void,
+    release: *const fn (?*anyopaque) void,
 };
 
 pub const IFrameIntegration = struct {
@@ -259,6 +284,11 @@ pub const IFrameIntegration = struct {
 
     /// Origin of the container document (for same-origin checks)
     container_origin: Origin,
+    /// A popup's creator origin, serialized - its opener's active document's
+    /// origin when window.open() made it - which `container_origin`'s host
+    /// points into, owned here: the creator document, and with it its origin
+    /// record, may go before the popup does (`setCreatorOrigin`).
+    creator_origin: ?[]u8 = null,
 
     /// HTML's iframe sandboxing flag set: what the iframe's sandbox
     /// attribute says, parsed ("parse a sandboxing directive") whenever it
@@ -436,6 +466,15 @@ pub const IFrameIntegration = struct {
     /// the record asks it rather than making a frame's. Null for an iframe's
     /// navigable or a popup's.
     host_realms: ?HostRealms = null,
+    /// The embedder's script loader for the document the committing
+    /// navigation makes (EmbedderScriptLoader): set around the commit by the
+    /// engine, read by its parser. BORROWED from the navigation.
+    next_script_loader: ?EmbedderScriptLoader = null,
+    /// The URL of the document the committing navigation makes, while its
+    /// realm is chosen ("create and initialize a Document object" steps
+    /// 6-7): the host makes a new Window's realm for it (HostRealms), whose
+    /// creation URL it is. BORROWED from the navigation.
+    next_document_url: ?[]const u8 = null,
 
     /// The origin (serialized) the navigable's Windows are created with - the
     /// creator's - or null for an opaque one. Owned.
@@ -466,6 +505,15 @@ pub const IFrameIntegration = struct {
     /// cleared after the commit. One reference, owned until taken; null
     /// leaves the document an origin of its own.
     next_origin: ?*OriginRecord = null,
+
+    /// The session history entry's document state (its id in the joint
+    /// history) the next document this navigable makes is the document of:
+    /// "attempt to populate the history entry's document" sets the entry's
+    /// document to the loaded document before any of its parser's tasks run,
+    /// so the document is its entry's from its creation - before its inline
+    /// scripts read navigation.currentEntry (lane loadpath1). Set just
+    /// before a commit, taken when the document is made, cleared after.
+    next_document_state: ?u64 = null,
 
     /// The referrer the next document this navigable makes is created with:
     /// for a fetched response, its request's referrer as main fetch left it
@@ -559,6 +607,7 @@ pub const IFrameIntegration = struct {
         if (self.document_origin_host) |host| {
             self.allocator.free(host);
         }
+        if (self.creator_origin) |origin| self.allocator.free(origin);
         if (self.srcdoc_content) |content| {
             self.allocator.free(content);
         }
@@ -778,6 +827,24 @@ pub const IFrameIntegration = struct {
         const policy = self.next_iframe_referrer_policy;
         self.next_iframe_referrer_policy = null;
         return policy;
+    }
+
+    /// A popup's creator origin (`creator_origin`, serialized), copied, as
+    /// its `container_origin` from here on.
+    pub fn setCreatorOrigin(self: *IFrameIntegration, serialized: []const u8) !void {
+        const copy = try self.allocator.dupe(u8, serialized);
+        if (self.creator_origin) |old| self.allocator.free(old);
+        self.creator_origin = copy;
+        self.container_origin = parseSerializedOrigin(copy);
+    }
+
+    /// An origin's serialization ("null", or "scheme://host[:port]" for an
+    /// http(s) tuple origin) as an Origin borrowing `serialized`; anything
+    /// else is opaque.
+    fn parseSerializedOrigin(serialized: []const u8) Origin {
+        if (std.mem.startsWith(u8, serialized, "https://")) return authorityOrigin("https", serialized[8..], 443);
+        if (std.mem.startsWith(u8, serialized, "http://")) return authorityOrigin("http", serialized[7..], 80);
+        return Origin.createOpaque();
     }
 
     /// Record the origin the navigable's Windows are created with.

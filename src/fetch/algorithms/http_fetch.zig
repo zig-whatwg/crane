@@ -1285,6 +1285,16 @@ pub fn httpNetworkFetchFinish(
             return HttpFetchError.OutOfMemory;
         };
     }
+    // Step 18.1.1.1.2-7: "If one or more bytes have been transmitted from
+    // response's message body": codings from `Content-Encoding`, filtered,
+    // set as the body info's content encoding - a value of the header list
+    // alone, so set once, here, for a body handed on whole and for one still
+    // arriving alike (the response is handed on at its headers, step 20, and
+    // Navigation Timing's entry for a navigation's document is made from it
+    // then). Stated deviation: a body with no bytes at all keeps the coding,
+    // where the spec leaves the empty string - Crane cannot know at the
+    // headers that none will come.
+    response.body_info.content_encoding = filteredContentCoding(&response.header_list);
 
     // HTTP-network-or-cache fetch step 13: "Set response's
     // request-includes-credentials to includeCredentials" (the cross-origin
@@ -1325,9 +1335,8 @@ pub fn httpNetworkFetchFinish(
         // body's are not known here.)
         response.body_info.encoded_size = body_bytes.len;
         response.body_info.decoded_size = body_bytes.len;
-        // HTTP-network fetch's body steps 1.2-1.7: the body info's content
-        // encoding, the filtered coding of `Content-Encoding`.
-        response.body_info.content_encoding = filteredContentCoding(&response.header_list);
+        // (The body info's content encoding was set from the header list
+        // above, step 18.1.1.1.7.)
     }
 
     // Step 4: Record timing information - the network's own measurements,

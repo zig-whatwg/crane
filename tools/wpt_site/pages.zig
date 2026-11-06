@@ -735,7 +735,9 @@ pub fn writeIndex(w: W, site: *const Site) Error!void {
     try writeRuns(w, site);
     try w.writeAll("</dd></div>\n<div><dt>WPT revision</dt><dd>");
     try writeRevision(w, site.wpt);
-    try w.writeAll("</dd></div>\n<div class=\"head-history\"><dt>History</dt><dd><a class=\"spark-link\" href=\"#history\">");
+    // The benchmark report beside this one (tools/perf_bench): on the index
+    // only, so the frame every page carries stays as it was.
+    try w.writeAll("</dd></div>\n<div><dt>Performance</dt><dd><a href=\"performance/\">Crane beside Chrome, Firefox, Safari and Lightpanda</a></dd></div>\n<div class=\"head-history\"><dt>History</dt><dd><a class=\"spark-link\" href=\"#history\">");
     try chart.draw(w, site.history, .{ .width = 168, .height = 30, .spark = true, .class = "spark" });
     try w.writeAll("<span class=\"spark-text\">");
     try html.plural(w, site.history.len, "generation", "generations");

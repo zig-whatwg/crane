@@ -1027,18 +1027,14 @@ fn effectiveDomain(document: *runtime.Instance, internal: *InternalState, alloca
     return try allocator.dupe(u8, host);
 }
 
-/// `document`'s origin, serialized - its window's (the relevant settings
-/// object's) when it has one; else its origin record's, for a document made
-/// with another's origin (new Document(), createHTMLDocument(), a clone);
-/// else its URL's - or null for an opaque origin. OWNED by `allocator`.
+/// `document`'s origin, serialized: its origin record's - which every
+/// document a navigation, a browsing context's creation or another document
+/// made was given ("determining the origin", decided once) - else, for a
+/// record made unresolved, its URL's; null for an opaque origin. OWNED by
+/// `allocator`. Never its window's: the window's origin is this document's
+/// (Window.effectiveOrigin reads it here), and asking it back read the copy
+/// the window kept of the origin it was created with (lane loadpath1).
 fn serializedOrigin(document: *runtime.Instance, internal: *InternalState, allocator: std.mem.Allocator) !?[]u8 {
-    if (internal.default_view) |window| {
-        // The getter's string is the window realm's to free.
-        const serialized = try interfaces.Window.get_origin(window);
-        defer window.ctx.allocator.free(serialized);
-        if (std.mem.eql(u8, serialized, "null")) return null;
-        return try allocator.dupe(u8, serialized);
-    }
     if (internal.origin) |record| {
         if (record.serialized) |serialized| {
             if (std.mem.eql(u8, serialized, "null")) return null;
@@ -2857,12 +2853,10 @@ pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: runtime
 /// Operation: getElementsByTagNameNS
 pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!*runtime.Instance {
     // DOM: "return the list of elements with namespace namespace and local
-    // name localName for this" - a LIVE collection (dom.live_collections).
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
-    errdefer interfaces.HTMLCollection.deinit(collection);
-    try live_collections.elementsWithNamespaceAndLocalName(collection, instance, if (namespace) |ns| ns.asSlice() else null, localName.asSlice());
-    return collection;
+    // name localName for this" - a LIVE collection, the same one for the
+    // same arguments while it lives (dom.live_collections.collectionFor).
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return live_collections.collectionFor(instance, .{ .namespace_local_name = .{ .namespace = if (namespace) |ns| ns.asSlice() else null, .local_name = localName.asSlice() } });
 }
 
 /// Operation: elementsFromPoint
@@ -3052,17 +3046,15 @@ pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runt
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const class_names = classNames.asSlice();
 
-    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
-    errdefer interfaces.HTMLCollection.deinit(collection);
-
     // Steps 1-2: the ordered set parser's tokens are the pieces between ASCII
     // whitespace; none means the empty set, and the empty collection.
     var tokens = std.mem.tokenizeAny(u8, class_names, "\t\n\x0C\r ");
-    if (tokens.next() == null) return collection;
+    if (tokens.next() == null) return interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
 
-    // Step 3.
-    try live_collections.elementsWithClassNames(collection, instance, class_names);
-    return collection;
+    // Step 3, the same collection for the same argument while it lives
+    // (dom.live_collections.collectionFor: "the same HTMLCollection object
+    // may be returned as returned by an earlier call").
+    return live_collections.collectionFor(instance, .{ .class_names = class_names });
 }
 
 /// Operation: getElementsByTagName
@@ -3074,11 +3066,10 @@ pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runt
 /// design 5h). It was a snapshot that compared local names ignoring case for
 /// every element of an HTML document.
 pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
-    errdefer interfaces.HTMLCollection.deinit(collection);
-    try live_collections.elementsWithQualifiedName(collection, instance, qualifiedName.asSlice());
-    return collection;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    // The same collection for the same argument while it lives and this
+    // document's type is unchanged (dom.live_collections.collectionFor).
+    return live_collections.collectionFor(instance, .{ .qualified_name = qualifiedName.asSlice() });
 }
 
 /// Operation: evaluate
@@ -3347,12 +3338,12 @@ pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instanc
 ///
 /// HTML's live NodeList contains HTML elements with an identical name.
 /// A fresh list owns the query string; root retention is a refcount follow-up.
+/// The same list for the same argument while it lives (node_lists
+/// elementsByNameFor: "the user agent may return the same as the object
+/// returned by the earlier call").
 pub fn call_getElementsByName(instance: *runtime.Instance, elementName: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const list = try interfaces.NodeList.init(internal.allocator, instance.ctx);
-    errdefer interfaces.NodeList.deinit(list);
-    try @import("dom").node_lists.elementsByName(list, instance, elementName.asSlice());
-    return list;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return @import("dom").node_lists.elementsByNameFor(instance, elementName.asSlice());
 }
 
 /// Operation: writeln
@@ -4639,6 +4630,23 @@ fn lifecycleTaskSteps(data: ?*anyopaque) void {
         // Step 6.1-6.3: the DOM content loaded event start time; "Fire an
         // event named DOMContentLoaded at the Document object, with its
         // bubbles attribute initialized to true"; its end time.
+        //
+        // In a QUEUED task, as "the end" step 6 says, though all three
+        // engines fire it synchronously at the end of the parse: Blink's
+        // Document::FinishedParsing ("FIXME: DOMContentLoaded is dispatched
+        // synchronously, but this should be dispatched in a queued task, see
+        // https://crbug.com/961428"), WebKit's Document::finishedParsing
+        // ("FIXME: Schedule a task to fire DOMContentLoaded event instead. See
+        // webkit.org/b/82931"), and Gecko's Document::UnblockDOMContentLoaded
+        // through a script runner while dom.document.domcontentloaded_
+        // synchronous.enabled is set (a runnable otherwise). Two of the three
+        // mark their dispatch a bug against the spec: they lag it, so the spec
+        // decides (golden rule 2; integrator ruling 2026-11-06). Observable
+        // through a zero-delay timer set by a defer script, whose task is
+        // queued at its call (Context.zig queueAtCall), ahead of this one:
+        // html/syntax/parsing/DOMContentLoaded-defer.html passes here and
+        // fails in Chrome 157, Firefox 159 and Safari 27.2, and its tentative
+        // twin DOMContentLoaded-defer-task-order.tentative.html the reverse.
         .dom_content_loaded => {
             // (The timeline keeps the load timing info of the document a
             // window shows; a windowless document's is not recorded.)

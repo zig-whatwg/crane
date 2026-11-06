@@ -89,6 +89,7 @@ pub const capabilities: engine.Capabilities = .{
     // No REPL mode in the public C API (JSEvaluateScript is a classic
     // script's evaluation; Web Inspector's console evaluation is private).
     .repl_mode = .unsupported,
+    .external_memory = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.

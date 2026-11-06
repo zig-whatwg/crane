@@ -98,7 +98,7 @@ const Side = struct {
     }
 
     fn run(self: *Side) !void {
-        var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+        var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
         defer if (debug.deinit() != .ok) {
             self.failure = error.Leaked;
         };
@@ -136,7 +136,7 @@ test "hc1 two Browsers: each answers its second fetch from its own HTTP cache, n
 test "hc1 one Browser: a dedicated worker's fetch is answered from what its page stored" {
     const server = try http.Server.start(std.testing.allocator, &routes);
     defer server.stop();
-    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(debug.deinit() == .ok) catch @panic("leaked");
     const browser = try startBrowser(debug.allocator(), server);
     defer browser.deinit();
@@ -188,7 +188,7 @@ const open_popup_twice =
 fn navigateTwice(comptime source: []const u8, path: []const u8, want: []const u8, max_bytes: usize) !u32 {
     const server = try http.Server.start(std.testing.allocator, &routes);
     defer server.stop();
-    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(debug.deinit() == .ok) catch @panic("leaked");
     const browser = try startBrowserWith(debug.allocator(), server, .{ .max_bytes = max_bytes });
     defer browser.deinit();
@@ -218,7 +218,7 @@ test "hc1 one Browser: a service worker's own fetches are keyed and answered fro
     // the server saw both fetches. http://localhost is a secure context.
     const server = try http.Server.start(std.testing.allocator, &routes);
     defer server.stop();
-    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(debug.deinit() == .ok) catch @panic("leaked");
     const browser = try startBrowserAt(debug.allocator(), server, .{}, "http://localhost/page.html");
     defer browser.deinit();

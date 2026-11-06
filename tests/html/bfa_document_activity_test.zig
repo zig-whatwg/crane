@@ -77,12 +77,18 @@ const Probe = struct {
     }
 
     fn task(self: *Probe, document: *runtime.Instance) runtime.EventLoopTask {
+        return self.taskFor(document, runtime.SlabAllocator.generationOf(document));
+    }
+
+    /// A task of `document` as it was at `generation` - queued by something
+    /// that recorded the document while it lived.
+    fn taskFor(self: *Probe, document: *runtime.Instance, generation: u64) runtime.EventLoopTask {
         return .{
             .callback = &run,
             .context = self,
             .drop = &drop,
             .document = document,
-            .document_generation = runtime.SlabAllocator.generationOf(document),
+            .document_generation = generation,
         };
     }
 };
@@ -98,15 +104,20 @@ test "gone: a document a load replaced before it loaded - its task is dropped at
     // Not loaded yet: its load event's task is still queued.
     const first = try instanceOf(browser, "globalThis.bfaFirst = document");
     try testing.expectEqual(Activity.fully_active, activityOf(first));
-    var probe: Probe = .{};
-    loop.eventLoop().queueTask(probe.task(first));
+    const generation = runtime.SlabAllocator.generationOf(first);
 
-    // A load replaces it before it loaded: no unload events, and the load
-    // destroys it at once - no parser of it is on the stack - in a Window no
+    // A load replaces it, and destroys it at its commit, in a Window no
     // navigable shows any more (the load gave the page a new one: HTML
-    // "create and initialize a Document object" step 7).
+    // "create and initialize a Document object" step 7). The load is a
+    // navigation (lane loadpath1): its own tasks run first, and a task of
+    // the first document queued before it ran then, while that document was
+    // still fully active, as it would in any browser. So the task is one
+    // that recorded the document while it lived and reaches the queue after
+    // it is gone.
     try context.loadHTML("<!doctype html><p>second", .{ .base_url = page_url });
-    try testing.expectEqual(Activity.gone, activityOf(first));
+    try testing.expectEqual(Activity.gone, dom.document_activity.activity(first, generation));
+    var probe: Probe = .{};
+    loop.eventLoop().queueTask(probe.taskFor(first, generation));
     _ = loop.runOnceBlocking(0);
     try testing.expectEqual(@as(u32, 0), probe.ran);
     try testing.expectEqual(@as(u32, 1), probe.dropped);

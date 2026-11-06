@@ -248,6 +248,13 @@ pub const Maps = struct {
     /// The size at which remembering a collection first sweeps out the names
     /// whose collections are all gone.
     sweep_at: u32 = 16,
+    /// A document's query caches (`QueryCaches`), made when script first
+    /// asks for a list or a selector: one pointer here keeps the Document's
+    /// state in its allocation class (tests/html/document_size_class.zig),
+    /// and a document that never queries pays nothing - Blink makes its
+    /// NodeListsNodeData (node rare data) and its SelectorQueryCache on first
+    /// use too. A Document's only; a ShadowRoot's maps keep none.
+    query_caches: ?*QueryCaches = null,
     /// How many of `map`'s keys no element has any more (kept for reuse;
     /// `remove` says how long).
     empty_slots: u32 = 0,
@@ -267,6 +274,11 @@ pub const Maps = struct {
         while (names.next()) |name| self.allocator.free(name.*);
         self.collections.deinit(self.allocator);
         self.collections = .empty;
+        if (self.query_caches) |caches| {
+            caches.deinit(self.allocator);
+            self.allocator.destroy(caches);
+            self.query_caches = null;
+        }
         self.map = .empty;
         self.ended = true;
         self.degraded = true;
@@ -699,6 +711,34 @@ pub fn elementById(scope_root: *runtime.Instance, id: []const u8) ById {
     return .{ .found = answer.first };
 }
 
+/// What a selector query's ID path (dom.selector_matching `IdPlan`, lane
+/// perf2) reads of one ID in a tree scope: how many of its elements have the
+/// ID, the first in tree order, and - asked for, with several - all of them
+/// in tree order (Blink's TreeScope GetAllElementsById), borrowed until the
+/// maps next change.
+pub const IdElements = struct {
+    count: u32 = 0,
+    first: ?*runtime.Instance = null,
+    ordered: []const Link = &.{},
+};
+
+/// `IdElements` for `id` in the tree scope whose root is `root` (a
+/// Document's or a ShadowRoot's). Null when `root` is no tree scope's root
+/// or its maps cannot answer exactly (degraded, or found inexact on the
+/// way): the caller walks the tree, as every reader does.
+pub fn idElements(root: *NodeBase, id: []const u8, all: bool) ?IdElements {
+    if (root.parent_node != null or id.len == 0) return null;
+    const maps = mapsOfRoot(root) orelse return null;
+    if (!maps.rebuild(root)) return null;
+    const entry = maps.entryOf(.id, id) orelse return .{};
+    if (all and entry.count > 1) {
+        const list = orderedFrom(maps, root, .id, id) orelse return null;
+        return .{ .count = @intCast(list.len), .first = list[0].get(), .ordered = list };
+    }
+    const answer = answerFrom(maps, root, .id, id, true) orelse return null;
+    return .{ .count = answer.count, .first = answer.first };
+}
+
 /// The named elements (`.document`) or named-object elements (`.window`) of
 /// `document`'s tree named `name`: how many, and the element when there is
 /// exactly one.
@@ -894,6 +934,173 @@ pub fn cachedCollectionNames(document: *runtime.Instance) usize {
 }
 
 // =============================================================================
+// The getElementsBy* lists and the parsed selectors a document keeps (lane perf2)
+// =============================================================================
+
+/// Which of DOM's and HTML's lists by argument a kept list is: Blink's
+/// CollectionType / NodeListType in NodeListsNodeData's key.
+pub const ListKind = enum(u8) {
+    /// getElementsByClassName (Blink kClassCollectionType).
+    class_names,
+    /// getElementsByTagName (kTagCollectionType).
+    qualified_name,
+    /// getElementsByTagNameNS (kTagCollectionNSType).
+    namespace_local_name,
+    /// getElementsByName (kNameNodeListType): a NodeList.
+    elements_by_name,
+};
+
+/// A kept list's key: its kind, its root (by link: an address reissued to
+/// another node is another key) and its argument. Blink's
+/// NodeListsNodeData keys (type, name) on the root node itself; a document
+/// keeps every root's here, under its current node document (so a root
+/// adopted elsewhere starts over there, as DOM's "as long as root's node
+/// document's type has not changed" allows).
+pub const ListKey = struct {
+    kind: ListKind,
+    root: *runtime.Instance,
+    root_generation: u64,
+    /// getElementsByTagNameNS's namespace after DOM 4.2.6 step 1 ("" is
+    /// null): `namespace` is meaningful only with `has_namespace`.
+    has_namespace: bool = false,
+    namespace: []const u8 = "",
+    name: []const u8,
+};
+
+const ListKeyContext = struct {
+    pub fn hash(_: ListKeyContext, key: ListKey) u64 {
+        var hasher = std.hash.Wyhash.init(@backingInt(key.kind));
+        std.hash.autoHash(&hasher, @intFromPtr(key.root));
+        std.hash.autoHash(&hasher, key.root_generation);
+        std.hash.autoHash(&hasher, key.has_namespace);
+        hasher.update(key.namespace);
+        // Lengths keep ("ab", "c") apart from ("a", "bc").
+        std.hash.autoHash(&hasher, key.namespace.len);
+        hasher.update(key.name);
+        return hasher.final();
+    }
+
+    pub fn eql(_: ListKeyContext, a: ListKey, b: ListKey) bool {
+        return a.kind == b.kind and a.root == b.root and a.root_generation == b.root_generation and
+            a.has_namespace == b.has_namespace and std.mem.eql(u8, a.namespace, b.namespace) and
+            std.mem.eql(u8, a.name, b.name);
+    }
+};
+
+/// A document's query caches (`Maps.query_caches`).
+pub const QueryCaches = struct {
+    /// The getElementsBy* lists by root and argument, each by link: a WEAK
+    /// cache, as Blink's NodeListsNodeData (WeakMember) and Gecko's
+    /// nsContentList hashtables are. The wrapper cache owns a list; a link
+    /// that no longer reads its list (collected, its slot freed) answers
+    /// nothing and is dropped. Keys own their strings.
+    // tombstones: written only when script asks for a (root, argument) whose list is gone or was never made, and swept only past twice what stayed (`lists_sweep_at`)
+    lists: std.HashMapUnmanaged(ListKey, Link, ListKeyContext, std.hash_map.default_max_load_percentage) = .empty,
+    /// The size at which keeping a list first sweeps out the gone ones.
+    lists_sweep_at: u32 = 16,
+    /// The parsed selectors, by their text: Blink's SelectorQueryCache.
+    selectors: @import("selector").SelectorQueryCache,
+
+    fn deinit(self: *QueryCaches, allocator: std.mem.Allocator) void {
+        var keys = self.lists.keyIterator();
+        while (keys.next()) |key| freeKeyStrings(allocator, key.*);
+        self.lists.deinit(allocator);
+        self.selectors.deinit();
+    }
+};
+
+fn freeKeyStrings(allocator: std.mem.Allocator, key: ListKey) void {
+    allocator.free(key.name);
+    if (key.namespace.len != 0) allocator.free(key.namespace);
+}
+
+/// `document`'s query caches, made on first use; null for no live document
+/// (or one whose teardown began), or out of memory: the caller does without.
+fn queryCaches(document: *runtime.Instance) ?*QueryCaches {
+    const maps = documentMaps(document) orelse return null;
+    if (maps.query_caches) |caches| return caches;
+    const caches = maps.allocator.create(QueryCaches) catch return null;
+    caches.* = .{ .selectors = .init(maps.allocator) };
+    maps.query_caches = caches;
+    return caches;
+}
+
+/// The list `document` keeps for `key`, while it lives; null for none (a
+/// gone one's entry is dropped). `document` is the root's node document.
+pub fn cachedList(document: *runtime.Instance, key: ListKey) ?*runtime.Instance {
+    const maps = documentMaps(document) orelse return null;
+    const caches = maps.query_caches orelse return null;
+    const entry = caches.lists.getEntry(key) orelse return null;
+    if (entry.value_ptr.get()) |list| return list;
+    const owned = entry.key_ptr.*;
+    caches.lists.removeByPtr(entry.key_ptr);
+    freeKeyStrings(maps.allocator, owned);
+    return null;
+}
+
+/// Keep `list` as `document`'s list for `key`. When the cache has grown to
+/// its sweep size, the gone lists (and those of gone roots) go first, and
+/// the next sweep waits for twice what stays (never under 16). Out of
+/// memory, it is not kept: the next call makes another.
+pub fn rememberList(document: *runtime.Instance, key: ListKey, list: *runtime.Instance) void {
+    const caches = queryCaches(document) orelse return;
+    const allocator = documentMaps(document).?.allocator;
+    if (caches.lists.count() >= caches.lists_sweep_at) sweepLists(caches, allocator);
+    const gop = caches.lists.getOrPut(allocator, key) catch return;
+    if (!gop.found_existing) {
+        const name = allocator.dupe(u8, key.name) catch {
+            caches.lists.removeByPtr(gop.key_ptr);
+            return;
+        };
+        const namespace: []const u8 = if (key.namespace.len == 0) "" else allocator.dupe(u8, key.namespace) catch {
+            allocator.free(name);
+            caches.lists.removeByPtr(gop.key_ptr);
+            return;
+        };
+        gop.key_ptr.* = key;
+        gop.key_ptr.name = name;
+        gop.key_ptr.namespace = namespace;
+    }
+    gop.value_ptr.* = Link.to(list);
+}
+
+fn sweepLists(caches: *QueryCaches, allocator: std.mem.Allocator) void {
+    var gone: std.ArrayList(ListKey) = .empty;
+    defer gone.deinit(allocator);
+    var it = caches.lists.iterator();
+    while (it.next()) |kv| {
+        const root_live = runtime.SlabAllocator.generationOf(kv.key_ptr.root) == kv.key_ptr.root_generation;
+        if (!root_live or kv.value_ptr.get() == null) gone.append(allocator, kv.key_ptr.*) catch break;
+    }
+    for (gone.items) |key| {
+        _ = caches.lists.remove(key);
+        freeKeyStrings(allocator, key);
+    }
+    caches.lists_sweep_at = @max(16, 2 * caches.lists.count());
+}
+
+/// How many getElementsBy* lists `document` keeps (tests).
+pub fn cachedLiveCollections(document: *runtime.Instance) usize {
+    const maps = documentMaps(document) orelse return 0;
+    const caches = maps.query_caches orelse return 0;
+    return caches.lists.count();
+}
+
+/// `document`'s parsed-selector cache, made on first use; null when it has
+/// none to give (the caller parses for the one call).
+pub fn selectorCache(document: *runtime.Instance) ?*@import("selector").SelectorQueryCache {
+    const caches = queryCaches(document) orelse return null;
+    return &caches.selectors;
+}
+
+/// How many parsed selectors `document` keeps (tests).
+pub fn cachedSelectors(document: *runtime.Instance) usize {
+    const maps = documentMaps(document) orelse return 0;
+    const caches = maps.query_caches orelse return 0;
+    return caches.selectors.count();
+}
+
+// =============================================================================
 // What tests read
 // =============================================================================
 
@@ -937,7 +1144,7 @@ pub fn inspectTable(scope_root: *runtime.Instance) ?TableInspection {
 pub fn useAllocatorForTest(scope_root: *runtime.Instance, allocator: std.mem.Allocator) void {
     const root = instance_bridge.getNodeBase(scope_root) orelse return;
     const maps = mapsOfRoot(root) orelse return;
-    std.debug.assert(maps.map.count() == 0 and maps.collections.count() == 0);
+    std.debug.assert(maps.map.count() == 0 and maps.collections.count() == 0 and maps.query_caches == null);
     maps.map.deinit(maps.allocator);
     maps.map = .empty;
     maps.collections.deinit(maps.allocator);

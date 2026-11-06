@@ -86,7 +86,7 @@ const Shared = struct {
     }
 
     fn side(self: *Shared, index: usize) void {
-        var gpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+        var gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
         defer if (gpa.deinit() == .leak) {
             self.errors[index] = error.MemoryLeak;
         };

@@ -273,7 +273,7 @@ const CountingAllocator = struct {
 };
 
 test "with no subscription anywhere, a cookie change costs the manager one load: nothing allocated, nothing posted" {
-    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.debug.assert(debug_allocator.deinit() == .ok);
     const allocator = debug_allocator.allocator();
     var counting: CountingAllocator = .{ .child = allocator };
@@ -302,7 +302,7 @@ test "with no subscription anywhere, a cookie change costs the manager one load:
 }
 
 test "a subscribed registration's worker gets one cookiechange per observed change, its lists prepared" {
-    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.debug.assert(debug_allocator.deinit() == .ok);
     const allocator = debug_allocator.allocator();
 
@@ -380,7 +380,7 @@ test "a subscribed registration's worker gets one cookiechange per observed chan
 }
 
 test "a change made before subscribe()'s steps run never matches what they append: one FIFO" {
-    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.debug.assert(debug_allocator.deinit() == .ok);
     const allocator = debug_allocator.allocator();
 
@@ -426,7 +426,7 @@ test "a change made before subscribe()'s steps run never matches what they appen
 }
 
 test "a subscription url that failed its check rejects, after the entries before it were applied" {
-    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.debug.assert(debug_allocator.deinit() == .ok);
     const allocator = debug_allocator.allocator();
 
@@ -485,7 +485,7 @@ const Changer = struct {
 };
 
 test "the manager's end races a stream of cookie changes from another thread: none lost before, none reaches it after" {
-    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.debug.assert(debug_allocator.deinit() == .ok);
     const allocator = debug_allocator.allocator();
 

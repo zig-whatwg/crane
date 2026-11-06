@@ -2903,23 +2903,38 @@ pub fn build(b: *std.Build) void {
     // default sanitizer, libc's malloc - the build to time and measure beside a
     // browser's official release, never one to sweep or gate with (the user,
     // 2026-11-04). It wins over -Dwpt-runner-optimize.
-    const runner_release = b.option(
+    // `-Dwpt-runner-release-fast` is the same release build with only the mode
+    // changed (build_mode.zig `releaseRunner(.fast)`): every part ReleaseFast,
+    // no C sanitizer - the extra column perf round 0 times beside the
+    // ReleaseSafe build, which stays the headline (the user, 2026-11-05).
+    // The two name different builds: both at once is refused.
+    const runner_release_safe = b.option(
         bool,
         "wpt-runner-release",
-        "The release runner, for timing and memory beside a browser's release build: wpt_runner and gc_bench ReleaseSafe throughout (Crane's modules and C libraries too), the C code at ReleaseSafe's default sanitizer, libc's malloc - no leak or double-free detection, so never for sweeps or gates",
+        "The release runner, for timing and memory beside a browser's release build: wpt_runner, gc_bench and the console ReleaseSafe throughout (Crane's modules and C libraries too), the C code at ReleaseSafe's default sanitizer, libc's malloc - no leak or double-free detection, so never for sweeps or gates",
     ) orelse false;
+    const runner_release_fast = b.option(
+        bool,
+        "wpt-runner-release-fast",
+        "-Dwpt-runner-release with only the mode changed: wpt_runner, gc_bench and the console ReleaseFast throughout, no C sanitizer, libc's malloc - for timing beside the ReleaseSafe release build, never for sweeps or gates",
+    ) orelse false;
+    const runner_release = runner_build_mode.releaseOption(runner_release_safe, runner_release_fast) catch {
+        std.debug.print("Error: -Dwpt-runner-release and -Dwpt-runner-release-fast name two release builds; pass one\n", .{});
+        std.process.exit(1);
+    };
     const runner_optimize_option = b.option(
         std.builtin.OptimizeMode,
         "wpt-runner-optimize",
         "Optimize mode of wpt_runner and gc_bench (default: ReleaseSafe, or -Doptimize when given; Debug for a diagnosis)",
     );
-    const runner_modes = if (runner_release) runner_build_mode.release_runner else runner_build_mode.runnerModes(
+    const runner_modes = if (runner_release) |release| runner_build_mode.releaseRunner(release) else runner_build_mode.runnerModes(
         runner_optimize_option,
         optimize,
         b.user_input_options.contains("optimize") or b.graph.release_mode != .off,
     );
     // A graph of its own when its C libraries or its Crane modules differ from
-    // the shared graph's: the release runner's Crane modules are ReleaseFast.
+    // the shared graph's: a release runner's Crane modules are in its release
+    // mode.
     const runner_graph = if (!runner_modes.ownGraph(optimize) or use_system_curl) testing_graph else runner_graph: {
         var runner_config = module_config;
         runner_config.optimize = runner_modes.crane_modules;
@@ -2982,11 +2997,20 @@ pub fn build(b: *std.Build) void {
     const launch: *const TestLaunch = launch: {
         const many_browsers = b.option(bool, "many-browsers", "The many-Browsers variant: every test runs beside a second, busy Browser on another thread of its process (suites that link V8)") orelse false;
         const test_log_level = b.option(std.log.Level, "test-log-level", "The test executables' log level: compiled and printed while a test runs (default: compiled at info, printed at warn; debug for a local diagnosis)");
+        // The CRANE_POISON_FREES switch the launcher reads for libc's
+        // scribbling in every test child (child.zig, `malloc_scribble`), as
+        // the Crane test runner reads it (lane poison2): std only.
+        const launcher_poisoning = b.createModule(.{
+            .root_source_file = b.path("tests/test_runner/poisoning.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+        });
         const launcher_module = b.createModule(.{
             .root_source_file = b.path("tools/test_launcher/main.zig"),
             // Build-time tool: runs on the host, as codegen does.
             .target = b.graph.host,
             .optimize = .Debug,
+            .imports = &.{.{ .name = "poisoning", .module = launcher_poisoning }},
         });
         const launcher = b.addExecutable(.{ .name = "test_launcher", .root_module = launcher_module });
         const launch_step = b.step("test-launch", "Run the selected test executables through tools/test_launcher, without test's lints and checks (-Dspec=<dir> -Dlaunch-batch=B -Dlaunch-seed=S|random)");
@@ -3043,6 +3067,23 @@ pub fn build(b: *std.Build) void {
             .{ .prefix = "held.", .config = .{}, .plain = false },
         }, false, test_log_level);
         launcher_fixture_options.addOptionPath("joined_path", joined_fixture.getEmittedBin());
+        // Reads after a free, through std.testing.allocator and through a
+        // test's own allocator (tests/test_runner_fixture/poison_fixture.zig):
+        // child.zig's tests check that each fails by its name - it reads the
+        // poison, or faults on it - and that CRANE_POISON_FREES=0 lets it
+        // read the old bytes and pass (lane poison2).
+        const poison_fixture = b.addTest(.{
+            .name = "test_poison_fixture",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tests/test_runner_fixture/poison_fixture.zig"),
+                .target = target,
+                // std.heap.c_allocator: libc's malloc, which the launcher's
+                // MallocScribble poisons.
+                .link_libc = true,
+            }),
+        });
+        _ = useCraneTestRunner(b, poison_fixture, "test_poison_fixture", .fail, .per_test, &.{}, false, test_log_level);
+        launcher_fixture_options.addOptionPath("poison_path", poison_fixture.getEmittedBin());
         // A test that races, built with ThreadSanitizer: child.zig's tests
         // check that the launcher's TSAN_OPTIONS make the race a crash of
         // its process, blamed on that test (-Dsanitize-thread's contract).
@@ -3080,7 +3121,10 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tools/test_launcher/main.zig"),
             .target = b.graph.host,
             .optimize = .Debug,
-            .imports = &.{.{ .name = "launcher_fixture", .module = launcher_fixture_options.createModule() }},
+            .imports = &.{
+                .{ .name = "launcher_fixture", .module = launcher_fixture_options.createModule() },
+                .{ .name = "poisoning", .module = launcher_poisoning },
+            },
         });
         const own_tests = b.addTest(.{ .name = "test_launcher", .root_module = launcher_test_module });
         const launcher_tests = b.addRunArtifact(own_tests);
@@ -3140,6 +3184,28 @@ pub fn build(b: *std.Build) void {
         const run_neighbour_tests = addSuiteRun(b, launch, neighbour_tests, "test_runner-neighbour", null);
         if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) test_step.dependOn(&run_neighbour_tests.step);
         b.top_level_steps.get("test-launcher").?.step.dependOn(&run_neighbour_tests.step);
+    }
+
+    // Poison on free (tests/test_runner/poisoning.zig, lane poison2): the
+    // Poisoning front, the DebugAllocator a test makes for itself, and the
+    // CRANE_POISON_FREES switch - std only, under the Crane test runner it
+    // serves (its `poison_frees` decides). Part of `test` and of
+    // `test-launcher`.
+    {
+        const poisoning_tests = b.addTest(.{
+            .name = "test_runner-poisoning",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tests/test_runner/poisoning.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
+        });
+        const run_poisoning_tests = addSuiteRun(b, launch, poisoning_tests, "test_runner-poisoning", null);
+        // -Dverify-files=tests/test_runner/poisoning.zig: its tests live in
+        // the module, as the WPT runner's harness modules' do.
+        addTestVerify(b, launch, poisoning_tests, "test_runner-poisoning", "tests/test_runner", &.{"poisoning.zig"});
+        if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) test_step.dependOn(&run_poisoning_tests.step);
+        b.top_level_steps.get("test-launcher").?.step.dependOn(&run_poisoning_tests.step);
     }
 
     // The V8 snapshot the tests/v8 snapshot tests restore: THIS build's,
@@ -4866,11 +4932,34 @@ pub fn build(b: *std.Build) void {
     // -Doptimize's `builtin.mode`. A Debug console was slow to the point of
     // lag: std's Debug allocator captures a stack trace per allocation and
     // free (tools/repl.zig, main, chooses its own allocator too).
-    const repl_modes = runner_build_mode.runnerModes(
+    // `-Dwpt-runner-release` makes it Crane's release build, the one the
+    // performance suite times beside the browsers (tools/perf_bench,
+    // docs/performance.md): release_runner's modes exactly (build_mode.zig
+    // consoleModes) - its Crane modules and C libraries ReleaseSafe, the C
+    // code at .trap - over a module graph of its own on the console's
+    // platform (the release runner's graph is the testing platform's). Its
+    // C libraries are built at the root's sanitizer: a .trap root links no
+    // full UBSan runtime, so C built with .full would not link
+    // (docs/lessons/workflow-a-release-root-over-debug-c-libraries-must-link-
+    // the-full-sanitizer-runtime.md).
+    const repl_modes = runner_build_mode.consoleModes(
+        runner_release,
         b.option(std.builtin.OptimizeMode, "repl-optimize", "Optimize mode of the browser console (default: ReleaseSafe, or -Doptimize when given; Debug for a diagnosis)"),
         optimize,
         b.user_input_options.contains("optimize") or b.graph.release_mode != .off,
     );
+    const repl_graph = if (runner_release != null and !use_system_curl) repl_graph: {
+        var repl_config = module_config;
+        // A private graph: crane_graph is the target platform's public one,
+        // whose modules are registered by name (addCraneModules), and a name
+        // is registered once.
+        repl_config.public_platform = if (target_platform == .testing) .darwin else .testing;
+        repl_config.optimize = repl_modes.crane_modules;
+        repl_config.brotli = buildBrotli(b, target, repl_modes.c_libraries, repl_modes.sanitize_c);
+        repl_config.image_codecs = buildImageCodecs(b, target, repl_modes.c_libraries, repl_modes.sanitize_c);
+        repl_config.static_libcurl = buildStaticLibcurl(b, target, repl_modes.c_libraries, enable_http2, repl_modes.sanitize_c, if (brotli_enabled) repl_config.brotli else null);
+        break :repl_graph addCraneModules(b, target, target_platform, repl_config);
+    } else crane_graph;
     const repl_optimize = repl_modes.root;
     const repl_exe = b.addExecutable(.{
         .name = "repl",
@@ -4879,11 +4968,11 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = repl_optimize,
             .imports = &.{
-                .{ .name = "engine", .module = engine_mod },
-                .{ .name = "browser", .module = browser_mod },
-                .{ .name = "console", .module = console_mod },
+                .{ .name = "engine", .module = repl_graph.engine },
+                .{ .name = "browser", .module = repl_graph.browser },
+                .{ .name = "console", .module = repl_graph.console },
                 // Real time for the console's deadlines (platform.monotonicNow).
-                .{ .name = "platform", .module = platform_mod },
+                .{ .name = "platform", .module = repl_graph.platform },
             },
         }),
     });
@@ -4924,6 +5013,15 @@ pub fn build(b: *std.Build) void {
     const install_repl = b.addInstallArtifact(repl_exe, .{});
     install_repl.step.dependOn(&gen_snapshot.step);
     b.getInstallStep().dependOn(&install_repl.step);
+    // A release console names its modes beside itself (zig-out/bin/
+    // repl.modes, build_mode.zig `describe`): the performance suite's pin
+    // records them as the build's identity, read from what was built.
+    if (runner_release != null) {
+        var modes_buf: [256]u8 = undefined;
+        const modes_text = runner_build_mode.describe(&modes_buf, repl_modes) catch unreachable;
+        const modes_file = b.addWriteFiles().add("repl.modes", b.fmt("{s}\n", .{modes_text}));
+        install_repl.step.dependOn(&b.addInstallBinFile(modes_file, "repl.modes").step);
+    }
 
     // `zig build repl-exe`: the console alone - zig-out/bin/repl and its
     // snapshot - not the install step (19 artifacts, a root-module analysis
@@ -5107,6 +5205,14 @@ pub fn build(b: *std.Build) void {
     // WPT (Web Platform Tests) RUNNER
     // ========================================================================
 
+    // Poison on free, std only: the sweep allocator's front
+    // (runner_allocator.zig), shared with the Crane test runner, which
+    // imports the same file as one beside it (lane poison2).
+    const poisoning_module = b.createModule(.{
+        .root_source_file = b.path("tests/test_runner/poisoning.zig"),
+        .target = target,
+    });
+
     // Unit tests for the runner's pure-Zig support modules. These import only
     // std, so they build and run without V8 or libuv - which means the parts of
     // the harness that decide *which* tests exist and *which* are in scope are
@@ -5151,6 +5257,8 @@ pub fn build(b: *std.Build) void {
                         .{ .name = "host", .module = testing_graph.host },
                         .{ .name = "xml", .module = testing_graph.xml },
                         .{ .name = "xml_document_encoding", .module = testing_graph.xml_document_encoding },
+                        // runner_allocator.zig's Poisoning (lane poison2).
+                        .{ .name = "poisoning", .module = poisoning_module },
                     },
                 }),
             });
@@ -5196,6 +5304,9 @@ pub fn build(b: *std.Build) void {
 
     // WPT Runner executable for running Web Platform Tests
     const wpt_runner_imports = [_]std.Build.Module.Import{
+        // The sweep allocator's poisoning front (runner_allocator.zig), shared
+        // with the Crane test runner (lane poison2).
+        .{ .name = "poisoning", .module = poisoning_module },
         .{ .name = "clock", .module = runner_graph.clock },
         .{ .name = "host", .module = runner_graph.host },
         .{ .name = "xml", .module = runner_graph.xml },
@@ -5417,7 +5528,57 @@ pub fn build(b: *std.Build) void {
     wpt_site_after_wpt.step.dependOn(&progress_report.step);
     wpt_step.dependOn(&wpt_site_after_wpt.step);
     const wpt_site_tests = b.addTest(.{ .root_module = wpt_site_module });
-    test_step.dependOn(&addSuiteRun(b, launch, wpt_site_tests, "tools-wpt_site", null).step);
+    const run_wpt_site_tests = addSuiteRun(b, launch, wpt_site_tests, "tools-wpt_site", null);
+    test_step.dependOn(&run_wpt_site_tests.step);
+
+    // ========================================================================
+    // PERFORMANCE: the benchmark suite's runner and /performance/ (tools/perf_bench/)
+    // ========================================================================
+    // tools/perf_bench serves tests/perf/ (the engine-neutral workload
+    // pages), launches each pinned engine on them - Crane's console in its
+    // release build, Chrome, Firefox, Safari, Lightpanda - reads each
+    // engine's process set as the pages report, writes the journal, and
+    // renders /performance/ from journals (docs/performance.md). A tool:
+    // std only (no engine), on the host. Its card reuses the WPT site's
+    // atlas and its page the WPT site's HTML helpers.
+    const perf_bench_module = b.createModule(.{
+        .root_source_file = b.path("tools/perf_bench/main.zig"),
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+        // libproc (proc_pid_rusage) and mach_timebase_info are libSystem's.
+        .link_libc = true,
+        .imports = &.{
+            .{ .name = "site_html", .module = b.createModule(.{ .root_source_file = b.path("tools/wpt_site/html.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
+            .{ .name = "site_card", .module = b.createModule(.{ .root_source_file = b.path("tools/wpt_site/card.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
+        },
+    });
+    const perf_bench_exe = b.addExecutable(.{ .name = "perf_bench", .root_module = perf_bench_module });
+    const install_perf_bench = b.addInstallArtifact(perf_bench_exe, .{});
+    const perf_bench_step = b.step("perf-bench", "Build the benchmark suite's runner and report tool alone (zig-out/bin/perf_bench)");
+    perf_bench_step.dependOn(&install_perf_bench.step);
+    const perf_bench_tests = b.addTest(.{ .root_module = perf_bench_module });
+    const run_perf_bench_tests = addSuiteRun(b, launch, perf_bench_tests, "tools-perf_bench", null);
+    test_step.dependOn(&run_perf_bench_tests.step);
+    // The suite held to its pages: every page there, every workload the
+    // suite lists declared by its page and none declared but unlisted.
+    const perf_suite_check = b.addRunArtifact(perf_bench_exe);
+    perf_suite_check.setCwd(b.path("."));
+    perf_suite_check.addArgs(&.{ "check-suite", "--suite=tests/perf/suite.json", "--root=tests/perf" });
+    perf_suite_check.has_side_effects = true;
+    test_step.dependOn(&perf_suite_check.step);
+    // `zig build perf-bench-test`: the tool's tests and the suite check
+    // alone, with build_mode's (the console's release modes).
+    const perf_bench_test_step = b.step("perf-bench-test", "Run tools/perf_bench's tests, the suite check, the WPT site's tests and the runner build-mode tests alone");
+    perf_bench_test_step.dependOn(&run_perf_bench_tests.step);
+    perf_bench_test_step.dependOn(&perf_suite_check.step);
+    // The WPT site's tests too: /performance/'s card draws with its atlas,
+    // and the site leaves performance/ alone and links to it.
+    perf_bench_test_step.dependOn(&run_wpt_site_tests.step);
+    perf_bench_test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("tests/wpt_runner/build_mode.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    }) }), "perf-build_mode", null).step);
 
     // tools/test_suites.zig: the configure-time check that every tests/<dir>/
     // with test files is a suite (checkEveryTestDirectoryIsASuite), std-only.

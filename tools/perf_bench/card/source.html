@@ -1,0 +1,70 @@
+<!doctype html>
+<!--
+/performance/'s card without its numbers: base.png (1200x630), drawn once in the WPT site's faces.
+The numbers are composited onto it by tools/perf_bench/card.zig from the WPT site's own digit atlas
+(tools/wpt_site/card/atlas.png). The positions below are card.zig's constants (column_right,
+time_baseline, memory_baseline, round_x, round_baseline): change both together.
+How it was made, and how to remake it: README.md beside this file.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: "Source Serif 4"; font-weight: 200 900; src: url(../../wpt_site/assets/fonts/source-serif-4-latin.woff2) format("woff2"); }
+@font-face { font-family: "Public Sans"; font-weight: 100 900; src: url(../../wpt_site/assets/fonts/public-sans-latin.woff2) format("woff2"); }
+html, body { margin: 0; padding: 0; background: #fff; }
+svg { display: block; }
+text { font-kerning: none; font-variant-numeric: tabular-nums lining-nums; }
+.serif { font-family: "Source Serif 4"; }
+.sans { font-family: "Public Sans"; }
+</style>
+</head>
+<body>
+<script>
+const NS = "http://www.w3.org/2000/svg";
+// card.zig's constants.
+const COLUMN_RIGHT = [498, 688, 878, 1078];
+const TIME_BASELINE = 404, MEMORY_BASELINE = 504;
+function svg(w, h) {
+  const s = document.createElementNS(NS, "svg");
+  s.setAttribute("width", w); s.setAttribute("height", h); s.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  document.body.append(s);
+  return s;
+}
+function text(s, x, y, str, cls, size, weight, fill, extra = {}) {
+  const t = document.createElementNS(NS, "text");
+  t.setAttribute("x", x); t.setAttribute("y", y); t.setAttribute("class", cls);
+  t.setAttribute("font-size", size); t.setAttribute("font-weight", weight); t.setAttribute("fill", fill);
+  for (const [k, v] of Object.entries(extra)) t.setAttribute(k, v);
+  t.textContent = str;
+  s.append(t);
+  return t;
+}
+document.fonts.load('600 40px "Source Serif 4"').then(() => document.fonts.load('400 40px "Source Serif 4"'))
+  .then(() => document.fonts.load('400 20px "Public Sans"')).then(() => document.fonts.ready).then(() => {
+  // Tokens: paper #ffffff, ink #202124, ink-2 #5a5e63, rule #d9dce0 (the WPT site's, light).
+  const s = svg(1200, 630);
+  const bg = document.createElementNS(NS, "rect");
+  bg.setAttribute("width", 1200); bg.setAttribute("height", 630); bg.setAttribute("fill", "#ffffff");
+  s.append(bg);
+  const title = text(s, 80, 112, "", "serif", 46, 620, "#202124");
+  const a = document.createElementNS(NS, "tspan"); a.textContent = "Crane ";
+  const b = document.createElementNS(NS, "tspan"); b.textContent = "Performance"; b.setAttribute("font-weight", 380);
+  title.append(a, b);
+  // "Round" and its number (composited at round_x = 206 on round_baseline = 178, the small cut: serif 600 40px).
+  text(s, 80, 178, "Round", "serif", 40, 400, "#5a5e63");
+  text(s, 80, 236, "CRANE’S TIME AND MEMORY AS A PERCENTAGE OF EACH BROWSER’S", "sans", 21, 600, "#5a5e63", { "letter-spacing": "1.7" });
+  const rule = (y) => { const l = document.createElementNS(NS, "rect"); l.setAttribute("x", 80); l.setAttribute("y", y); l.setAttribute("width", 1040); l.setAttribute("height", 1); l.setAttribute("fill", "#d9dce0"); s.append(l); };
+  ["Chrome", "Firefox", "Safari", "Lightpanda"].forEach((l, i) => text(s, COLUMN_RIGHT[i] + 34, 316, l, "sans", 22, 600, "#202124", { "text-anchor": "end" }));
+  rule(336);
+  text(s, 80, TIME_BASELINE, "Time", "sans", 26, 500, "#202124");
+  text(s, 80, MEMORY_BASELINE, "Memory", "sans", 26, 500, "#202124");
+  for (const right of COLUMN_RIGHT) for (const y of [TIME_BASELINE, MEMORY_BASELINE]) text(s, right + 4, y, "%", "serif", 40, 400, "#5a5e63");
+  rule(548);
+  text(s, 80, 590, "zig-whatwg.github.io/crane/performance", "sans", 21, 500, "#202124");
+  text(s, 1120, 590, "Lower is better; geometric means over the workloads both ran", "sans", 19, 400, "#5a5e63", { "text-anchor": "end" });
+  document.title = "ready";
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Event dispatch</title>
+<script src="../harness.js"></script>
+<body>
+<script>
+// A target ten levels deep, a capturing and a bubbling listener on every level.
+function deepTarget() {
+  let node = document.body.appendChild(document.createElement('div'));
+  const top = node;
+  for (let d = 0; d < 9; d++) node = node.appendChild(document.createElement('div'));
+  return { top, target: node };
+}
+perf.add('events.dispatch', {
+  ops: 20000,
+  setup() {
+    const t = deepTarget();
+    this.top = t.top;
+    this.target = t.target;
+    this.count = 0;
+    const onCapture = () => { this.count++; };
+    const onBubble = (e) => { this.count += e.eventPhase; };
+    for (let n = this.target; n !== document.body; n = n.parentNode) {
+      n.addEventListener('ping', onCapture, true);
+      n.addEventListener('ping', onBubble);
+    }
+  },
+  run(n) { const target = this.target; for (let i = 0; i < n; i++) target.dispatchEvent(new Event('ping', { bubbles: true })); },
+  teardown() { this.top.remove(); },
+});
+perf.add('events.add-remove-listener', {
+  ops: 50000,
+  setup() { this.el = document.createElement('div'); this.fns = [() => {}, () => {}, () => {}, () => {}]; },
+  run(n) {
+    const el = this.el, fns = this.fns;
+    for (let i = 0; i < n; i++) { const f = fns[i & 3]; el.addEventListener('click', f); el.removeEventListener('click', f); }
+  },
+});
+perf.add('events.custom-event', {
+  ops: 20000,
+  setup() { this.el = document.createElement('div'); this.total = 0; this.el.addEventListener('data', (e) => { this.total += e.detail.n; }); },
+  run(n) { const el = this.el; for (let i = 0; i < n; i++) el.dispatchEvent(new CustomEvent('data', { detail: { n: i } })); },
+});
+</script>

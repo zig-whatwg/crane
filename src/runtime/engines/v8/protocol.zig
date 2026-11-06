@@ -111,6 +111,13 @@ pub const capabilities: engine.Capabilities = .{
     // does - V8's REPL scripts (v8::debug::EvaluateGlobal's repl mode) are
     // public only through the inspector.
     .repl_mode = .native,
+    // AgentOptions.external_memory: the change of the host's figure goes to
+    // Isolate::AdjustAmountOfExternalAllocatedMemory at the outermost binding
+    // exit and each microtask checkpoint (external_memory.zig); V8 starts
+    // incremental marking past its low-water mark + 64 MB and collects in
+    // full past half its old-generation limit (V8 13.1 heap.cc
+    // HandleExternalMemoryInterrupt).
+    .external_memory = .native,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.
@@ -1029,7 +1036,11 @@ pub const keepOpaqueRoot = @import("wrapper_cache.zig").keepOpaqueRoot;
 pub fn heapStatistics(agent: *Agent) engine.HeapStatistics {
     const isolate = isolateOf(agent);
     var statistics: engine.HeapStatistics = .{ .used = 0, .total = 0, .external = 0, .realm_count = 0, .detached_realm_count = 0 };
-    ffi.v8_Isolate_GetHeapUsage(isolate, &statistics.used, &statistics.total, &statistics.external);
+    ffi.v8_Isolate_GetHeapUsage(isolate, &statistics.used, &statistics.total, null);
+    // External: all V8 counts toward its collections - its ArrayBuffers'
+    // backing stores and the host's DOM it was told about (external_memory.zig) -
+    // not HeapStatistics' figure, which is the backing stores alone in 13.1.
+    statistics.external = ffi.v8_Isolate_GetExternalMemory(isolate);
     ffi.v8_Isolate_GetContextCounts(isolate, &statistics.realm_count, &statistics.detached_realm_count);
     return statistics;
 }

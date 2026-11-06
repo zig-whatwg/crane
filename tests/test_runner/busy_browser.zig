@@ -2,9 +2,10 @@
 //! (neighbour.zig) runs beside every test, one Browser per iteration.
 //!
 //! Each iteration makes a Browser with an allocator of its own - a leak-
-//! checking DebugAllocator, never the shared std.testing.allocator, whose
-//! lock would make the two Browsers take turns (docs/lessons/testing-a-
-//! shared-test-allocator-makes-two-browsers-take-turns.md) - and loads two
+//! checking DebugAllocator that poisons what it frees (poisoning.zig), never
+//! the shared std.testing.allocator, whose lock would make the two Browsers
+//! take turns (docs/lessons/testing-a-shared-test-allocator-makes-two-
+//! browsers-take-turns.md) - and loads two
 //! pages in it, each a navigation and a parse with scripts: DOM churn (nodes
 //! made, moved, removed, a live range emptying a subtree, a MutationObserver
 //! watching it all), timers (a setInterval nesting to its clamp, a timeout),
@@ -22,6 +23,7 @@
 const std = @import("std");
 const Io = std.Io;
 const suite = @import("suite.zig");
+const poisoning = @import("poisoning.zig");
 
 /// The first page: DOM churn, timers and microtasks.
 const churn_page =
@@ -89,7 +91,7 @@ pub fn iterate(_: ?*anyopaque, why: *Io.Writer) anyerror!void {
 }
 
 fn iterateWith(comptime browser_mod: type, why: *Io.Writer) anyerror!void {
-    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug_allocator: poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     {
         errdefer _ = debug_allocator.deinit();
         try runPages(browser_mod, debug_allocator.allocator(), why);

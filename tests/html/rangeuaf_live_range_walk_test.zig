@@ -103,7 +103,7 @@ const Side = struct {
     leaked: bool = false,
 
     fn run(self: *Side) void {
-        var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+        var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
         defer self.leaked = debug_allocator.deinit() == .leak;
         runPage(debug_allocator.allocator(), removal_script ++ split_script) catch |err| {
             self.failure = err;

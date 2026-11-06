@@ -36,7 +36,7 @@ const Side = struct {
     shared: *Shared,
     failure: ?anyerror = null,
     // Per Browser, never std.testing.allocator: its shared lock masks races.
-    debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
+    debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
 
     fn entry(self: *Side) void {
         self.steps() catch |err| {
@@ -103,7 +103,7 @@ test "two Browsers on two threads own open WebSockets independently through tear
 }
 
 fn workerEnds() !void {
-    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(debug.deinit() == .ok) catch @panic("worker Browser leaked");
     var server: Server = undefined;
     try server.start();

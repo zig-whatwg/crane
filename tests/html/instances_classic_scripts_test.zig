@@ -167,7 +167,7 @@ const Side = struct {
     shared: *Shared,
     failure: ?anyerror = null,
     /// This Browser's alone (the file's comment says why).
-    debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
+    debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
 
     fn run(self: *Side) void {
         self.steps() catch |err| {

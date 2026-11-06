@@ -247,7 +247,7 @@ fn runScenario(browser: *browser_mod.Browser, scope: []const u8) !void {
 test "a third-party frame's registration is its partition's; the registry's storage keys are the settings objects' own" {
     const server = try http.Server.start(testing.allocator, &routes);
     defer server.stop();
-    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer testing.expect(debug.deinit() == .ok) catch @panic("leaked");
     const browser = try startBrowser(debug.allocator(), server);
     defer browser.deinit();
@@ -263,7 +263,7 @@ test "a frame's navigation is matched in its container's partition, a popup's in
     // the frame's partitioned service worker does not handle it.
     const server = try http.Server.start(testing.allocator, &routes);
     defer server.stop();
-    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer testing.expect(debug.deinit() == .ok) catch @panic("leaked");
     const browser = try startBrowser(debug.allocator(), server);
     defer browser.deinit();
@@ -314,7 +314,7 @@ const Side = struct {
     }
 
     fn run(self: *Side) !void {
-        var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+        var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
         defer if (debug.deinit() != .ok) {
             self.failure = error.Leaked;
         };

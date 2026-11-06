@@ -88,6 +88,11 @@ pub const SlabAllocator = struct {
         }
     };
 
+    /// The bytes one Instance holds in its slab: its slot, the Instance and
+    /// its stamp (what a Browser's DOM memory counts for a node's handle,
+    /// dom.instance_bridge.storageBytes).
+    pub const slot_bytes: usize = @sizeOf(Slot);
+
     const generation_bits = 56;
     const generation_mask: u64 = (@as(u64, 1) << generation_bits) - 1;
 
@@ -501,4 +506,15 @@ test "SlabAllocator: lifecycle bits live in the slot, survive its free and clear
     try testing.expectEqual(inst, again);
     try testing.expectEqual(@as(u8, 0), SlabAllocator.lifecycleBitsOf(again));
     try testing.expect(SlabAllocator.generationOf(again) > generation);
+}
+
+test "slot_bytes is the stride of a slab's slots" {
+    var slab_allocator = SlabAllocator.init(testing.allocator);
+    defer slab_allocator.deinit();
+    const a = try slab_allocator.alloc(&test_vtable);
+    const b = try slab_allocator.alloc(&test_vtable);
+    const distance = if (@intFromPtr(b) > @intFromPtr(a)) @intFromPtr(b) - @intFromPtr(a) else @intFromPtr(a) - @intFromPtr(b);
+    try testing.expectEqual(SlabAllocator.slot_bytes, distance);
+    slab_allocator.free(b);
+    slab_allocator.free(a);
 }

@@ -70,7 +70,7 @@ test "two Browser network contexts never share preflight entries" {
 
 test "preflight store tolerates simultaneous native clients" {
     if (!@hasDecl(Cache, "allows")) return error.TestUnexpectedResult;
-    var gpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(gpa.deinit() == .ok) catch @panic("store leaked");
     var cache = Cache.init(gpa.allocator());
     defer cache.deinit();
@@ -125,7 +125,7 @@ test "a failed preflight insertion preserves the count and the entry it would ev
 }
 
 test "preflight matches can race with insertion and clearing without lost counts" {
-    var gpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(gpa.deinit() == .ok) catch @panic("store leaked");
     var cache = Cache.init(gpa.allocator());
     defer cache.deinit();

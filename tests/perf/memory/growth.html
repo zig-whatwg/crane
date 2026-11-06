@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Page after page</title>
+<!-- A chain of documents in one tab, each building a medium page (2,000 elements, listeners,
+     a few objects held by closures), then navigating to the next: what the engine keeps per
+     page it has left (the footprint's slope over the chain). -->
+<script src="../harness.js"></script>
+<body>
+<div id="page"></div>
+<script>
+(function () {
+  const root = document.getElementById('page');
+  let html = '';
+  for (let i = 0; i < 200; i++) {
+    html += '<section class="s"><h2>Section ' + i + '</h2><p>Text of section ' + i + ' with <a href="#s' + i + '">a link</a>.</p>' +
+      '<ul><li>a</li><li>b</li><li>c</li></ul><button type="button">More</button></section>';
+  }
+  root.innerHTML = html;
+  const state = [];
+  for (const b of root.querySelectorAll('button')) {
+    const data = { clicks: 0, label: b.textContent, payload: new Array(16).fill(b.textContent) };
+    state.push(data);
+    b.addEventListener('click', () => { data.clicks++; });
+  }
+  globalThis.pageState = state;
+})();
+perf.chain('memory.page-growth');
+</script>

@@ -27,16 +27,47 @@ pub const Host = struct {
     /// The host's own state, handed back to each callback. BORROWED: the host
     /// outlives the record.
     context: *anyopaque,
-    /// HTML "create and initialize a Document object" steps 6-7 for a
-    /// document of `origin` about to become the traversable's active document:
-    /// keep the active window (step 6), or make the realm of a new Window
-    /// whose global this is the traversable's WindowProxy (step 7). False when
-    /// no realm could be made. Null: the active window is always kept.
-    realm_for_document: ?*const fn (context: *anyopaque, origin: Origin) bool = null,
+    /// HTML "create and initialize a Document object" step 7 for a document
+    /// of `origin` about to become the traversable's active document: make
+    /// the realm of a new Window whose global this is the traversable's
+    /// WindowProxy. Step 6 - keeping the initial about:blank's Window when
+    /// its origin is same origin-domain with the new document's - is the
+    /// record's, as for every navigable. `url` is the new document's - the
+    /// realm's creation URL. False when no realm could be made. Null: the
+    /// active window is always kept.
+    create_window_realm: ?*const fn (context: *anyopaque, origin: Origin, url: []const u8) bool = null,
+    /// HTML "create and initialize a Document object" step 10 made
+    /// `document` (an `*runtime.Instance`) its Window's associated Document -
+    /// the traversable's active document, before its parser or any of its
+    /// script runs: the host's names for the page's document follow it from
+    /// here, so what the parser's scripts and the embedder's script loader
+    /// see is the document being parsed.
+    document_created: ?*const fn (context: *anyopaque, document: *anyopaque) void = null,
     /// A navigation of the traversable committed `document` (an
     /// `*runtime.Instance`), now its active document - the host keeps what
-    /// names the page's document in step with it.
-    committed: ?*const fn (context: *anyopaque, document: *anyopaque) void = null,
+    /// names the page's document in step with it. `error_page`: the
+    /// navigation's response was a network error, and `document` its error
+    /// page.
+    committed: ?*const fn (context: *anyopaque, document: *anyopaque, error_page: bool) void = null,
+};
+
+/// An embedder's answer for the external classic scripts of the document a
+/// navigation commits (html_core's EmbedderScriptLoader).
+pub const ScriptLoader = @import("html_core").window.iframe_integration.EmbedderScriptLoader;
+
+/// What the embedder's "browser UI" navigation carries besides its URL.
+pub const NavigateOptions = struct {
+    /// HTML navigate's `response` argument: the document's markup, supplied
+    /// by the embedder rather than fetched - as WebKit's loadHTMLString
+    /// (SubstituteData) and Chromium's LoadDataWithBaseURL give theirs. The
+    /// document is made from it at the navigation's URL, and its session
+    /// history entry keeps it, so a traversal back re-creates the document
+    /// from it. BORROWED for the call.
+    markup: ?[]const u8 = null,
+    /// The embedder's answer for the external classic scripts the committed
+    /// document's parser prepares (not its frames'). The navigation holds a
+    /// reference until it ends.
+    script_loader: ?ScriptLoader = null,
 };
 
 /// What HTMLIFrameElement supplies.
@@ -53,35 +84,15 @@ pub const Implementation = struct {
     /// "create and initialize a Document object" step 7): the record's
     /// navigations and documents go in it from here on.
     attach_realm: *const fn (record: *anyopaque, realm: runtime.Context) void,
-    /// HTML "unload a document and its descendants" for the traversable's
-    /// active document - children first; the unloading document cleanup steps
-    /// for each (its window's timers, its blob URLs, ...); its child
-    /// navigables destroyed - before a load replaces it. With `fire_events`
-    /// false - a document whose load event never ran, which Blink
-    /// (Document::DispatchUnloadEvents, kLoadEventNotRun) and WebKit
-    /// (FrameLoader::dispatchUnloadEvents, m_didCallImplicitClose) unload
-    /// without pagehide or unload - the documents are destroyed silently.
-    unload_active_document: *const fn (record: *anyopaque, fire_events: bool) void,
-    /// The host committed a document of `origin` (serialized; "null" for an
-    /// opaque one) without the record's navigation - an embedder's load: the
-    /// origin the next navigation compares with (its unload timing, its
-    /// navigable target name, step 6's window reuse).
-    set_active_origin: *const fn (record: *anyopaque, origin: []const u8) void,
     /// HTML "navigate" the traversable to `url` (serialized, absolute) as the
     /// user agent's own "browser UI" navigation - the embedder's address
-    /// bar: beforeunload, the fetch and the commit run as the navigation's
-    /// tasks on the page's event loop.
-    navigate: *const fn (record: *anyopaque, url: []const u8) void,
-    /// The traversable's session history has its entries, the active
-    /// document's among them - before a host's own load replaces it.
-    prepare_history: *const fn (record: *anyopaque) void,
-    /// HTML "finalize a cross-document navigation" steps 5-10 for a document
-    /// the host committed itself (an embedder's load): an entry for
-    /// `document` (an `*runtime.Instance`) at `url`, of `origin`, pushed - or
-    /// put in place of the active entry with `replace` - whose document
-    /// state's resource is `markup` (the embedder's markup, from which a
-    /// traversal re-creates the document) or null (refetched from `url`).
-    record_load: *const fn (record: *anyopaque, document: *anyopaque, url: []const u8, origin: []const u8, markup: ?[]const u8, replace: bool) void,
+    /// bar, or its load of a page it supplies: beforeunload, the fetch and
+    /// the commit run as the navigation's tasks on the page's event loop.
+    navigate: *const fn (record: *anyopaque, url: []const u8, options: NavigateOptions) void,
+    /// Whether the traversable has a navigation in flight: its ongoing
+    /// navigation is set. An embedder waiting for its navigation stops when
+    /// it commits or this goes false.
+    is_navigating: *const fn (record: *anyopaque) bool,
 };
 
 // process-wide: immutable function pointers HTMLIFrameElement installs once at process start (process_start.zig), identical for every Browser and thread; all mutable state is on the records they make, each owned by one Context of one Browser on that Browser's thread
@@ -113,34 +124,16 @@ pub fn attachRealm(record: *anyopaque, realm: runtime.Context) void {
     impl.attach_realm(record, realm);
 }
 
-/// See Implementation.unload_active_document.
-pub fn unloadActiveDocument(record: *anyopaque, fire_events: bool) void {
-    const impl = implementation.get() orelse return;
-    impl.unload_active_document(record, fire_events);
-}
-
-/// See Implementation.set_active_origin.
-pub fn setActiveOrigin(record: *anyopaque, origin: []const u8) void {
-    const impl = implementation.get() orelse return;
-    impl.set_active_origin(record, origin);
-}
-
 /// See Implementation.navigate.
-pub fn navigate(record: *anyopaque, url: []const u8) void {
+pub fn navigate(record: *anyopaque, url: []const u8, options: NavigateOptions) void {
     const impl = implementation.get() orelse return;
-    impl.navigate(record, url);
+    impl.navigate(record, url, options);
 }
 
-/// See Implementation.prepare_history.
-pub fn prepareHistory(record: *anyopaque) void {
-    const impl = implementation.get() orelse return;
-    impl.prepare_history(record);
-}
-
-/// See Implementation.record_load.
-pub fn recordLoad(record: *anyopaque, document: *anyopaque, url: []const u8, origin: []const u8, markup: ?[]const u8, replace: bool) void {
-    const impl = implementation.get() orelse return;
-    impl.record_load(record, document, url, origin, markup, replace);
+/// See Implementation.is_navigating. False with no owner installed.
+pub fn isNavigating(record: *anyopaque) bool {
+    const impl = implementation.get() orelse return false;
+    return impl.is_navigating(record);
 }
 
 /// See Implementation.destroy.
