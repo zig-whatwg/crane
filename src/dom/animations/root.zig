@@ -248,7 +248,7 @@ pub fn commitStyles(animation: *model.Animation) !void {
     loop_registry.commit = null;
     registry.valuesChanged(target.ctx);
     _ = try read;
-    if (commit.values.count() == 0) return;
+    if (commit.values.count() == 0 and commit.customs.items.len == 0) return;
     // 3, 5.5-5.6.
     const declaration = switch (kind) {
         .html => try interfaces.HTMLElement.get_style(target),
@@ -261,5 +261,11 @@ pub fn commitStyles(animation: *model.Animation) !void {
         text.clearRetainingCapacity();
         try css.properties.serializeValue(l, v, &text, target.ctx.allocator);
         try interfaces.CSSStyleDeclaration.call_setProperty(declaration, runtime.DOMString.initInterned(l.name()), runtime.DOMString.initInterned(text.items), webidl.Opt(runtime.DOMString).notPassed());
+    }
+    // 5.5 for a custom property: its effect value is its computed token
+    // text; a guaranteed-invalid one has no serialization and is skipped.
+    for (commit.customs.items) |custom| {
+        const value = custom.value orelse continue;
+        try interfaces.CSSStyleDeclaration.call_setProperty(declaration, runtime.DOMString.initInterned(custom.name.bytes), runtime.DOMString.initInterned(value.bytes), webidl.Opt(runtime.DOMString).notPassed());
     }
 }
