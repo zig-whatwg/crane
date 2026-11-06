@@ -19,6 +19,7 @@
 const std = @import("std");
 
 pub const names = [_][]const u8{
+    "Animatable",
     "BluetoothDeviceEventHandlers",
     "CanvasCompositing",
     "CanvasDrawImage",

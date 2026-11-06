@@ -115,6 +115,9 @@ pub const EffectOptions = struct {
     /// OWNED: the easing string `timing.easing` borrows.
     easing_text: ?[]u8 = null,
     composite: model.Composite = .replace,
+    /// Web Animations 2's iterationComposite member: whether the effect's
+    /// iteration composite operation is accumulate ("replace" by default).
+    iteration_accumulate: bool = false,
     /// The pseudoElement member as given (null: none). OWNED.
     pseudo_element: ?[]u8 = null,
     /// KeyframeAnimationOptions only.
@@ -211,7 +214,7 @@ pub fn effectOptions(realm: runtime.Context, options: ?JSValue, allocator: Alloc
     }
     if (try reader.get("iterationComposite")) |m| {
         defer m.release();
-        _ = try enumOf(enum { replace, accumulate }, realm, m.borrow(), &.{ "replace", "accumulate" });
+        out.iteration_accumulate = try enumOf(enum { replace, accumulate }, realm, m.borrow(), &.{ "replace", "accumulate" }) == .accumulate;
     }
     if (try reader.get("pseudoElement")) |m| {
         defer m.release();
