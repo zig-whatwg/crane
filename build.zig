@@ -5013,13 +5013,18 @@ pub fn build(b: *std.Build) void {
     const install_repl = b.addInstallArtifact(repl_exe, .{});
     install_repl.step.dependOn(&gen_snapshot.step);
     b.getInstallStep().dependOn(&install_repl.step);
-    // A release console names its modes beside itself (zig-out/bin/
-    // repl.modes, build_mode.zig `describe`): the performance suite's pin
-    // records them as the build's identity, read from what was built.
+    // A release console names its build beside itself (zig-out/bin/
+    // repl.modes, build_mode.zig `writeModesFile`): its modes and the CPU
+    // its code is for (-Dcpu, or the build host's when none is given), in
+    // the pin's own key=value lines, so the performance suite's pin records
+    // the build's identity from what was built. The user, 2026-11-06:
+    // published Crane numbers use a FIXED CPU target, -Dcpu=apple_m1 -
+    // standardTargetOptions has no default, so without it a console is
+    // tuned to whichever pool host built it (docs/performance.md).
     if (runner_release != null) {
-        var modes_buf: [256]u8 = undefined;
-        const modes_text = runner_build_mode.describe(&modes_buf, repl_modes) catch unreachable;
-        const modes_file = b.addWriteFiles().add("repl.modes", b.fmt("{s}\n", .{modes_text}));
+        var modes_text: std.Io.Writer.Allocating = .init(b.allocator);
+        runner_build_mode.writeModesFile(&modes_text.writer, repl_modes, target.result.cpu, runner_build_mode.cpuIsNative(target.query)) catch @panic("OOM");
+        const modes_file = b.addWriteFiles().add("repl.modes", modes_text.written());
         install_repl.step.dependOn(&b.addInstallBinFile(modes_file, "repl.modes").step);
     }
 

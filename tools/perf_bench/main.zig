@@ -23,7 +23,10 @@
 //!       write /performance/ (index.html, card.png) from every *.jsonl
 //!       below <dir>; with --control, the named engines' rows came from a
 //!       second window whose Crane rows (below <control>) are its drift
-//!       control, shown and compared on the page
+//!       control, shown and compared on the page. A Crane-only round (the
+//!       browsers' rows an earlier round's) is written only with a drift
+//!       control within noise: crane_control, the binary that round
+//!       measured as crane (docs/performance.md, "Re-measuring Crane")
 //!   perf_bench serve --root=<tests/perf> [--port=<n>]
 //!       the pages alone, for a person to open in a browser
 
@@ -45,6 +48,7 @@ pub const runner = @import("runner.zig");
 pub const gcbench = @import("gcbench.zig");
 pub const report = @import("report.zig");
 pub const card = @import("card.zig");
+pub const chart = @import("chart.zig");
 
 const usage =
     \\usage: perf_bench run|check|check-suite|gc-bench|validate|report|serve [options]
@@ -214,13 +218,19 @@ fn checkInputs(arena: Allocator, io: Io, args: *const Args) !Inputs {
         if (!std.mem.eql(u8, &hex, pin.sha256)) fail("{s}: {s} is not the pinned binary (sha256 {s}, pinned {s})", .{ path, pin.binary, &hex, pin.sha256 });
         if (pin.webdriver) |wd| Io.Dir.cwd().access(io, wd, .{}) catch fail("{s}: webdriver {s} missing", .{ path, wd });
         for (pins.items) |p| if (p.name == pin.name) fail("two pins for {s}", .{@tagName(pin.name)});
-        std.debug.print("perf_bench: {s} {s}: {s} (sha256 OK)\n", .{ @tagName(pin.name), pin.version, pin.binary });
+        std.debug.print("perf_bench: {s} {s}: {s} (sha256 OK){s}{s}\n", .{ @tagName(pin.name), pin.version, pin.binary, if (pin.target_cpu != null) ", for " else "", pin.target_cpu orelse "" });
         try pins.append(arena, pin);
     }
     engines.checkPinSet(pins.items) catch |err| switch (err) {
         error.PinDuplicateEngine => fail("two pins for one engine", .{}),
         error.PinsSameCommit => fail("a Crane base and another Crane pin of the same commit compare nothing", .{}),
         error.PinBaseWithoutTip => fail("a crane_base pin needs the crane pin it is the base of", .{}),
+        // The user, 2026-11-06: one fixed CPU target for every Crane build
+        // compared (docs/performance.md, "The CPU target").
+        error.PinWrongTarget => {
+            for (pins.items) |p| if (p.name.isCrane() and p.name != .crane_control) std.debug.print("perf_bench:   {s}: target_cpu {s}\n", .{ @tagName(p.name), p.target_cpu orelse "(none)" });
+            fail("the Crane builds compared are built for different CPU targets: rebuild them with one -Dcpu", .{});
+        },
     };
     std.debug.print("perf_bench: {d} engines pinned\n", .{pins.items.len});
     return .{ .suite = s, .pins = pins.items };
@@ -299,7 +309,7 @@ fn runGcBench(gpa: Allocator, arena: Allocator, io: Io, args: *const Args) !void
                 .round = round,
                 .time = time,
                 .host = host,
-                .engine = .{ .name = pin.name, .version = pin.version, .build = pin.build, .commit = pin.commit, .optimize = pin.optimize, .v8 = pin.v8, .binary = bin, .binary_sha256 = &gc_hex, .flags = cmd[3..] },
+                .engine = .{ .name = pin.name, .version = pin.version, .build = pin.build, .commit = pin.commit, .optimize = pin.optimize, .target_cpu = pin.target_cpu, .v8 = pin.v8, .binary = bin, .binary_sha256 = &gc_hex, .flags = cmd[3..] },
                 .page = "gc_bench",
                 .workload = try std.fmt.allocPrint(a, "gc-bench.{s}", .{row.name}),
                 .kind = .gc_bench,
@@ -389,6 +399,23 @@ fn writeReport(arena: Allocator, io: Io, args: *const Args) !void {
             std.debug.print("perf_bench:   moved {s}: time {d:.3}, steady {d:.3}, peak {d:.3} (band {d:.2})\n", .{ row.workload, row.time orelse 0, row.steady orelse 0, row.peak orelse 0, row.band });
         }
     }
+    // A Crane-only round (crane_control): its drift control against the
+    // round that measured the same binary, and what the CPU target alone did.
+    if (try report.controlDrift(arena, &model, model.latest_round)) |cd| {
+        if (cd.earlier_round) |r| {
+            std.debug.print("perf_bench: drift control (crane_control {s} here / crane in round {d}): time {d:.3}, memory {d:.3} (over {d} and {d} workloads), {d} outside their band: {s}\n", .{ cd.version, r, cd.drift.time_ratio orelse 0, cd.drift.memory_ratio orelse 0, cd.drift.time_n, cd.drift.memory_n, cd.drift.outside, if (cd.drift.within) "within noise" else "NOT within noise" });
+        } else std.debug.print("perf_bench: crane_control {s}: no earlier round measured its binary (sha256 {s})\n", .{ cd.version, cd.sha256 });
+    }
+    if (try report.targetAlone(arena, &model, model.latest_round)) |t| {
+        std.debug.print("perf_bench: the CPU target alone (crane_base for {s} / crane_control for {s}): time {d:.3}, memory {d:.3} (over {d} and {d} workloads)\n", .{ t.base_target, t.control_target, t.versus.time_ratio orelse 0, t.versus.memory_ratio orelse 0, t.versus.time_n, t.versus.memory_n });
+    }
+    // The user's rule (2026-11-06): a Crane-only round's rows stand beside
+    // the browsers' earlier rows only with a drift control within noise.
+    switch (try report.standingOf(arena, &model, model.latest_round)) {
+        .measured_together, .carried_within_noise => {},
+        .carried_without_control => fail("round {d} sets Crane beside the browsers' rows from an earlier round, with no drift control (crane_control: the binary that round measured as crane): not published", .{model.latest_round}),
+        .carried_drifted => fail("round {d}'s drift control is not within noise: the host moved since the browsers' rows were measured; not published", .{model.latest_round}),
+    }
     const out = try report.render(arena, &model, .{ .site_url = args.get("site-url") orelse "https://zig-whatwg.github.io/crane/", .remeasured = remeasured });
     const out_dir = args.need("out");
     try Io.Dir.cwd().createDirPath(io, out_dir);
@@ -421,4 +448,5 @@ test {
     _ = gcbench;
     _ = report;
     _ = card;
+    _ = chart;
 }
