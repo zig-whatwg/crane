@@ -157,13 +157,7 @@ fn shadowRealmContextCallback(initiator_context_ptr: ?*anyopaque) callconv(.c) ?
     // Note: This still maintains ShadowRealm isolation for cross-realm function
     // wrapping because V8's GetWrappedValue handles that separately.
     if (initiator_context) |ctx| {
-        if (ffi.v8_Context_GetSecurityToken(ctx)) |token| {
-            ffi.v8_Context_SetSecurityToken(context, token);
-            std.log.debug("[ShadowRealm] Set security token from initiator context", .{});
-        } else {
-            std.log.warn("[ShadowRealm] Initiator context has no security token, using default", .{});
-            ffi.v8_Context_UseDefaultSecurityToken(context);
-        }
+        inheritSecurityToken(context, ctx);
     } else {
         // No initiator context - use default token for isolation
         ffi.v8_Context_UseDefaultSecurityToken(context);
@@ -203,6 +197,18 @@ fn shadowRealmContextCallback(initiator_context_ptr: ?*anyopaque) callconv(.c) ?
     std.log.info("[ShadowRealm] Created ShadowRealm #{d} (initiator raw addr: {?})", .{ data.total_created, initiator_raw_addr });
 
     return global_context;
+}
+
+/// Give the ShadowRealm's context `shadow` the security token of its
+/// initiator context `initiator` (both BORROWED).
+pub fn inheritSecurityToken(shadow: *ffi.Context, initiator: *ffi.Context) void {
+    if (ffi.v8_Context_GetSecurityToken(initiator)) |token| {
+        ffi.v8_Context_SetSecurityToken(shadow, token);
+        std.log.debug("[ShadowRealm] Set security token from initiator context", .{});
+    } else {
+        std.log.warn("[ShadowRealm] Initiator context has no security token, using default", .{});
+        ffi.v8_Context_UseDefaultSecurityToken(shadow);
+    }
 }
 
 /// Dispose a ShadowRealm's context handle - a Global<Context> that
