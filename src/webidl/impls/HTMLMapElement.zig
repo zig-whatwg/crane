@@ -38,6 +38,12 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// existing HTMLCollection implementation retains the root and tracks mutations.
 /// WebKit uses the same rooted collection design in HTMLMapElement::areas:
 /// https://github.com/WebKit/WebKit/blob/main/Source/WebCore/html/HTMLMapElement.cpp
+///
+/// It is the map's OWN collection, not the one getElementsByTagNameNS keeps
+/// for the same filter (dom.live_collections.newCollection, lane perf2):
+/// Blink's areas() is EnsureCachedCollection<HTMLCollection>(kMapAreas), a
+/// collection type of its own, and in all three browsers
+/// `map.areas !== map.getElementsByTagNameNS(HTML, "area")`.
 pub fn get_areas(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return interfaces.Element.call_getElementsByTagNameNS(instance, runtime.DOMString.initInterned("http://www.w3.org/1999/xhtml"), .initInterned("area"));
+    return @import("dom").live_collections.newCollection(instance, .{ .namespace_local_name = .{ .namespace = "http://www.w3.org/1999/xhtml", .local_name = "area" } });
 }

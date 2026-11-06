@@ -1965,14 +1965,12 @@ pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionari
 /// DOM §4.10.5 - Returns HTMLCollection of descendants with matching namespace and local name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getelementsbytagnamens
 pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
 
     // DOM: "return the list of elements with namespace namespace and local
-    // name localName for this" - a LIVE collection (dom.live_collections).
-    const collection = interfaces.HTMLCollection.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
-    errdefer interfaces.HTMLCollection.deinit(collection);
-    try dom.live_collections.elementsWithNamespaceAndLocalName(collection, instance, if (namespace) |ns| ns.asSlice() else null, localName.asSlice());
-    return collection;
+    // name localName for this" - a LIVE collection, the same one for the
+    // same arguments while it lives (dom.live_collections.collectionFor).
+    return dom.live_collections.collectionFor(instance, .{ .namespace_local_name = .{ .namespace = if (namespace) |ns| ns.asSlice() else null, .local_name = localName.asSlice() } });
 }
 
 /// Operation: getRegionFlowRanges
@@ -2039,20 +2037,13 @@ pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runt
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const names_slice = classNames.asSlice();
 
-    // Create HTMLCollection
-    const collection = interfaces.HTMLCollection.init(
-        internal.allocator,
-        instance.ctx,
-    ) catch return error.OutOfMemory;
-    errdefer interfaces.HTMLCollection.deinit(collection);
-
     // DOM "list of elements with class names", steps 1–3: an empty
-    // ordered set gives an empty list; otherwise filter live descendants.
+    // ordered set gives an empty list; otherwise the live list of this
+    // element's descendants, the same one for the same argument while it
+    // lives (dom.live_collections.collectionFor).
     var classes = std.mem.tokenizeAny(u8, names_slice, "\t\n\x0c\r ");
-    if (classes.next() != null)
-        try @import("dom").live_collections.elementsWithClassNames(collection, instance, names_slice);
-
-    return collection;
+    if (classes.next() == null) return interfaces.HTMLCollection.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    return dom.live_collections.collectionFor(instance, .{ .class_names = names_slice });
 }
 
 /// Operation: insertAdjacentElement
@@ -2102,11 +2093,10 @@ pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: enums.Spat
 /// design 5h). It was a snapshot, which neither saw later mutations nor
 /// kept its root (crane/hd-retention-tagname.html).
 pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const collection = interfaces.HTMLCollection.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
-    errdefer interfaces.HTMLCollection.deinit(collection);
-    try dom.live_collections.elementsWithQualifiedName(collection, instance, qualifiedName.asSlice());
-    return collection;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    // The same collection for the same argument while it lives and this
+    // element's node document's type is unchanged (collectionFor).
+    return dom.live_collections.collectionFor(instance, .{ .qualified_name = qualifiedName.asSlice() });
 }
 
 /// Operation: closest

@@ -30,6 +30,12 @@ pub const EngineName = enum {
     /// throughout, no C sanitizer (-Dwpt-runner-release-fast; the user,
     /// 2026-11-05) - a column of its own beside `crane`, never the headline.
     crane_fast,
+    /// An earlier Crane release build (ReleaseSafe, as `crane`), frozen: the
+    /// base a Crane-only window times the new Crane (`crane`) against,
+    /// alternating with it like any other engine. The user, 2026-11-06: a
+    /// re-measurement runs ONLY Crane, beside the previous Crane; the
+    /// browsers keep their rows. Its rows name its own commit and modes.
+    crane_base,
     chrome,
     firefox,
     safari,
@@ -39,7 +45,7 @@ pub const EngineName = enum {
     /// identity (commit, modes, V8) in every row.
     pub fn isCrane(e: EngineName) bool {
         return switch (e) {
-            .crane, .crane_fast => true,
+            .crane, .crane_fast, .crane_base => true,
             .chrome, .firefox, .safari, .lightpanda => false,
         };
     }
@@ -48,6 +54,7 @@ pub const EngineName = enum {
         return switch (e) {
             .crane => "Crane",
             .crane_fast => "Crane ReleaseFast",
+            .crane_base => "Crane base",
             .chrome => "Chrome",
             .firefox => "Firefox",
             .safari => "Safari",
@@ -553,6 +560,29 @@ test "Crane ReleaseFast is an engine of its own, with Crane's build identity" {
     var no_modes = r;
     no_modes.engine.optimize = null;
     try testing.expectError(error.MissingBuildIdentity, validate(no_modes));
+}
+
+test "Crane's base is an engine of its own: an earlier Crane release build, with its build identity" {
+    // The user, 2026-11-06: a re-measurement runs ONLY Crane - the new
+    // Crane alternating with the frozen previous one as the comparison base
+    // (lane perf2's Crane-only window). The base is a Crane build, its own
+    // engine and column, and its rows name its commit and modes.
+    try testing.expectEqualStrings("Crane base", EngineName.crane_base.label());
+    try testing.expect(EngineName.crane_base.isCrane());
+
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const named = try std.mem.replaceOwned(u8, a, std.mem.trimEnd(u8, golden_timed, "\n"), "\"name\":\"crane\"", "\"name\":\"crane_base\"");
+    const line = try std.mem.replaceOwned(u8, a, named, "e7101e588f1", "9b0f1b1f382");
+    const r = try parseLine(a, line);
+    try testing.expectEqual(EngineName.crane_base, r.engine.name);
+    try testing.expectEqualStrings("9b0f1b1f382", r.engine.commit.?);
+    try testing.expect(std.mem.startsWith(u8, r.engine.optimize.?, "root ReleaseSafe"));
+    try validate(r);
+    var no_commit = r;
+    no_commit.engine.commit = null;
+    try testing.expectError(error.MissingBuildIdentity, validate(no_commit));
 }
 
 test "times are written rounded to the microsecond" {

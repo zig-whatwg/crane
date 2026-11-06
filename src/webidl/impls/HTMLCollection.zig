@@ -129,22 +129,24 @@ fn makeDocumentElements(collection: *runtime.Instance, document: *runtime.Instan
 
 fn refillDocumentElements(collection: *runtime.Instance, document: *runtime.Instance) bool {
     const internal = getInternal(collection) orelse return false;
-    var node = interfaces.Node.get_firstChild(document) catch return false;
-    while (node) |element| : (node = nextInTreeOrder(element, document)) {
-        if (matchesDocumentFilter(element, internal.document_filter) catch return false)
+    // By the tree's own links, each element's names read in place
+    // (dom.element_data), not copied out through Element's getters.
+    const root_base = dom.instance_bridge.getNodeBase(@ptrCast(document)) orelse return false;
+    var current = root_base.first_child;
+    while (current) |node| : (current = nextBaseInTreeOrder(node, root_base)) {
+        if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
+        const element = instanceOfBase(node) orelse continue;
+        if (matchesDocumentFilter(element, internal.document_filter))
             addElement(collection, element) catch return false;
     }
     return true;
 }
 
-fn matchesDocumentFilter(element: *runtime.Instance, filter: live_collections.DocumentFilter) !bool {
-    if ((try interfaces.Node.get_nodeType(element)) != interfaces.Node.get_ELEMENT_NODE()) return false;
-    var namespace = (try interfaces.Element.get_namespaceURI(element)) orelse return false;
-    defer namespace.deinit(element.ctx.allocator);
-    if (!std.mem.eql(u8, namespace.asSlice(), "http://www.w3.org/1999/xhtml")) return false;
-    var name = try interfaces.Element.get_localName(element);
-    defer name.deinit(element.ctx.allocator);
-    const local = name.asSlice();
+fn matchesDocumentFilter(element: *runtime.Instance, filter: live_collections.DocumentFilter) bool {
+    const data = dom.element_data.of(element) orelse return false;
+    const namespace = data.namespaceSlice() orelse return false;
+    if (!std.mem.eql(u8, namespace, "http://www.w3.org/1999/xhtml")) return false;
+    const local = data.local_name.asSlice();
     const matched = switch (filter) {
         .images => std.mem.eql(u8, local, "img"),
         .embeds => std.mem.eql(u8, local, "embed"),
@@ -161,9 +163,7 @@ fn matchesDocumentFilter(element: *runtime.Instance, filter: live_collections.Do
         .anchors => "name",
         else => return true,
     };
-    var value = try interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned(attribute));
-    defer if (value) |*present| present.deinit(element.ctx.allocator);
-    return value != null;
+    return dom.element_data.hasAttribute(data, attribute);
 }
 
 /// domindex1: HTML 3.1.7 / 7.2.2.3 step 4's collection, "rooted at the
@@ -284,18 +284,21 @@ fn refillFormControls(collection: *runtime.Instance, owner: *runtime.Instance) b
     return true;
 }
 
-/// The element children of `root`, in tree order - read through the Node
-/// interface, which is the only way this impl may see another type's state.
+/// The element children of `root`, in tree order - by the tree's own links
+/// (NodeBase), as `refillNames` walks: a Node interface read per child is a
+/// state-table lookup each (lane perf2's profile).
 fn refillElementChildren(collection: *runtime.Instance, root: *runtime.Instance) bool {
-    const element_node = interfaces.Node.get_ELEMENT_NODE();
-    var child = interfaces.Node.get_firstChild(root) catch return false;
-    while (child) |c| {
-        if ((interfaces.Node.get_nodeType(c) catch 0) == element_node) {
-            addElement(collection, c) catch return false;
-        }
-        child = interfaces.Node.get_nextSibling(c) catch return false;
+    const root_base = dom.instance_bridge.getNodeBase(@ptrCast(root)) orelse return false;
+    var child = root_base.first_child;
+    while (child) |node| : (child = node.next_sibling) {
+        if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
+        addElement(collection, instanceOfBase(node) orelse continue) catch return false;
     }
     return true;
+}
+
+fn instanceOfBase(node: *dom.NodeBase) ?*runtime.Instance {
+    return @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return null));
 }
 
 /// The filters of DOM's "list of elements with qualified name" and "list of
@@ -488,46 +491,71 @@ fn makeClassNames(collection: *runtime.Instance, root: *runtime.Instance, class_
 /// done in an ASCII case-insensitive manner if root's node document's mode is
 /// "quirks"; otherwise in an identical to manner" - read at each refill, as
 /// the comparison is made.
+///
+/// The walk follows the tree's own links and reads each element's classes in
+/// place (dom.element_data's `class_name`: DOM's "classes" come from the
+/// class attribute in no namespace, which the attribute change steps keep
+/// there, as the class selector reads them), and the wanted classes are the
+/// set's tokens, split once per refill. Through the Node and Element
+/// interfaces, a refill of a 3,000-element document read four state-table
+/// lookups and an attribute scan per node: 97% of a getElementsByClassName
+/// call (lane perf2's profile).
 fn refillClassNames(collection: *runtime.Instance, root: *runtime.Instance) bool {
     const internal = getInternal(collection) orelse return false;
     const class_names = if (internal.filter_class) |c| c.asSlice() else return false;
     const quirks = isQuirksMode(root);
-    const element_node = interfaces.Node.get_ELEMENT_NODE();
+    var wanted: WantedClasses = .{};
+    wanted.split(class_names);
 
     // Tree order over root's descendants (root itself is not one).
-    var node = interfaces.Node.get_firstChild(root) catch return false;
-    while (node) |n| {
-        if ((interfaces.Node.get_nodeType(n) catch 0) == element_node and (hasAllClasses(n, class_names, quirks) catch return false)) {
-            addElement(collection, n) catch return false;
+    const root_base = dom.instance_bridge.getNodeBase(@ptrCast(root)) orelse return false;
+    var current = root_base.first_child;
+    while (current) |node| : (current = nextBaseInTreeOrder(node, root_base)) {
+        if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
+        const element = instanceOfBase(node) orelse continue;
+        const data = dom.element_data.of(element) orelse continue;
+        if (!wanted.allIn(data.class_name.asSlice(), quirks)) continue;
+        addElement(collection, element) catch return false;
+    }
+    return true;
+}
+
+/// The class names' tokens (the ordered set parser's pieces), split once:
+/// up to `inline_count` kept, more read from the text again per element.
+const WantedClasses = struct {
+    const inline_count = 8;
+    names: [inline_count][]const u8 = undefined,
+    len: usize = 0,
+    /// More tokens than fit: `allIn` splits `text` for each element.
+    overflow: bool = false,
+    text: []const u8 = "",
+
+    fn split(self: *WantedClasses, class_names: []const u8) void {
+        self.text = class_names;
+        var it = std.mem.tokenizeAny(u8, class_names, ascii_whitespace);
+        while (it.next()) |name| {
+            if (self.len == inline_count) {
+                self.overflow = true;
+                return;
+            }
+            self.names[self.len] = name;
+            self.len += 1;
         }
-        node = nextInTreeOrder(n, root);
     }
-    return true;
-}
 
-/// The node after `node` in tree order within `root`'s descendants, or null.
-fn nextInTreeOrder(node: *runtime.Instance, root: *runtime.Instance) ?*runtime.Instance {
-    if (interfaces.Node.get_firstChild(node) catch null) |child| return child;
-    var current = node;
-    while (current != root) {
-        if (interfaces.Node.get_nextSibling(current) catch null) |sibling| return sibling;
-        current = (interfaces.Node.get_parentNode(current) catch null) orelse return null;
+    /// Whether every wanted class is one of `classes` (an element's class
+    /// attribute value).
+    fn allIn(self: *const WantedClasses, classes: []const u8, quirks: bool) bool {
+        if (classes.len == 0) return false;
+        if (self.overflow) {
+            var it = std.mem.tokenizeAny(u8, self.text, ascii_whitespace);
+            while (it.next()) |name| if (!hasClass(classes, name, quirks)) return false;
+            return true;
+        }
+        for (self.names[0..self.len]) |name| if (!hasClass(classes, name, quirks)) return false;
+        return true;
     }
-    return null;
-}
-
-/// Whether `element`'s classes - its class attribute's value run through the
-/// ordered set parser - include every token of `class_names`.
-fn hasAllClasses(element: *runtime.Instance, class_names: []const u8, quirks: bool) !bool {
-    // A borrowed view of the attribute's value.
-    const value = (try interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("class"))) orelse return false;
-    const classes = value.asSlice();
-    var wanted = std.mem.tokenizeAny(u8, class_names, ascii_whitespace);
-    while (wanted.next()) |name| {
-        if (!hasClass(classes, name, quirks)) return false;
-    }
-    return true;
-}
+};
 
 fn hasClass(classes: []const u8, name: []const u8, quirks: bool) bool {
     var it = std.mem.tokenizeAny(u8, classes, ascii_whitespace);

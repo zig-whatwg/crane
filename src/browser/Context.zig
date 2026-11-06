@@ -2366,11 +2366,12 @@ pub const Context = struct {
     fn initializeIframeBrowsingContexts(self: *Context, document: *runtime.Instance) !void {
         _ = self;
 
-        // Get all iframe elements using getElementsByTagName
-        const iframes = try interfaces.Document.call_getElementsByTagName(
-            document,
-            runtime.DOMString.initInterned("iframe"),
-        );
+        // Every iframe element: DOM's "list of elements with qualified name
+        // iframe", a collection of this step's OWN (dom.live_collections
+        // newCollection). Not getElementsByTagName's: that one is kept for
+        // the document and may be the object script holds (lane perf2), so
+        // freeing it here would free script's.
+        const iframes = try dom_mod.live_collections.newCollection(document, .{ .qualified_name = "iframe" });
         // Made here and never handed to script, so nothing else will free it:
         // its teardown AND its storage (runtime.Instance.deinit). The
         // interface's deinit alone - a destructor, not a free - left every

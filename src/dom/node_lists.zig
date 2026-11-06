@@ -83,6 +83,27 @@ pub fn elementsByName(list: *runtime.Instance, document: *runtime.Instance, name
     try (implementation.get() orelse return error.NotSupported).elements_by_name(list, document, name);
 }
 
+/// What getElementsByName returns (lane perf2): the live NodeList made for
+/// `document` and `name` before, while it lives, else a new one, kept.
+/// HTML 3.1.3: "When the method is invoked on a Document object again with
+/// the same argument, the user agent may return the same as the object
+/// returned by the earlier call." Blink and WebKit keep it in the
+/// document's NodeListsNodeData (kNameNodeListType), Gecko in
+/// nsContentList's function-string hashtable (GetFuncStringContentList),
+/// weakly, as dom.tree_ordered_map's `cachedList` does. The caller hands it
+/// to script and never frees it.
+pub fn elementsByNameFor(document: *runtime.Instance, name: []const u8) !*runtime.Instance {
+    const tree_ordered_map = @import("tree_ordered_map.zig");
+    const key: tree_ordered_map.ListKey = .{ .kind = .elements_by_name, .root = document, .root_generation = runtime.SlabAllocator.generationOf(document), .name = name };
+    if (tree_ordered_map.cachedList(document, key)) |kept| return kept;
+    const interfaces = @import("interfaces");
+    const list = try interfaces.NodeList.init(document.ctx.getAllocator(), document.ctx);
+    errdefer interfaces.NodeList.deinit(list);
+    try elementsByName(list, document, name);
+    tree_ordered_map.rememberList(document, key, list);
+    return list;
+}
+
 test "setStatic without an installed implementation reports NotSupported" {
     const std = @import("std");
     const override = implementation.overrideForTest(null);

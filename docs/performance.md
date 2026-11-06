@@ -200,7 +200,7 @@ its tests byte for byte; `perf_bench validate` reads journals the same way. The 
 | `format` | `crane-perf/1` |
 | `round`, `time` | the perf round (0: the baseline), and the launch's UTC time |
 | `host` | name, OS, arch, CPU, cores, memory |
-| `engine` | name (`crane`, `crane_fast`, `chrome`, `firefox`, `safari`, `lightpanda`), version, build; Crane's commit, optimize modes and V8; the binary, its SHA-256, the launch flags |
+| `engine` | name (`crane`, `crane_fast`, `crane_base`, `chrome`, `firefox`, `safari`, `lightpanda`), version, build; Crane's commit, optimize modes and V8; the binary, its SHA-256, the launch flags |
 | `page`, `workload`, `kind`, `run` | what ran: `timed`, `chain`, `idle`, `startup`, `instances`, `gc_bench` |
 | `status`, `message` | `ok`, `error`, `timeout`, `crash` or `unsupported`, and why |
 | `ops`, `wall_ms` | operations per sample and each sample's time (a chain: each step's load) |
@@ -232,6 +232,49 @@ memory over the round's (geometric means, and each workload's ratio), **within n
 means are within 5% of 100%, with the workloads outside their own band (10%, or three times the
 runs' spread) counted. A control that is not within noise means the host moved between the
 windows: the re-measured rows are not comparable with the round's, and are not published.
+
+## Re-measuring Crane: Crane-only windows
+
+**The user's rule (2026-11-06): re-measuring /performance/ runs ONLY Crane** (ReleaseSafe, and
+ReleaseFast where the round has it). Chrome, Firefox, Safari and Lightpanda keep their last
+rows. A browser runs again only when it updates, and then only that browser.
+
+A Crane-only window alternates the new Crane (`crane`, the tip) with the frozen previous Crane as
+its base (`crane_base`: round 0's is chat.local `~/crane-work/perf0-bins/crane-9b0f1b1f382/`).
+The base is an engine of its own: the same release build's modes (a pin whose `optimize` is not
+ReleaseSafe's is refused), its own column in the round's tables, and its own commit in every row.
+It runs in the run order like any other engine. `run` and `check` refuse a set of pins with:
+- two pins for one engine;
+- a `crane_base` without a `crane`;
+- a `crane_base` of the same commit as another Crane pin, which would compare nothing.
+
+```bash
+# crane_base.pin: crane.pin's keys for the frozen base, with name=crane_base
+zig-out/bin/perf_bench run --suite=tests/perf/suite.json --root=tests/perf --out=<dir> \
+  --round=<n> --runs=7 --pin=crane.pin --pin=crane_base.pin --stop-file=<STOP>
+zig-out/bin/perf_bench report --journals=<dir> --out=<scratch>
+```
+
+`report` prints the comparison and the page gets a "Crane against its base" section. Per
+workload both ran it gives the tip's figure over the base's for time, steady memory and peak
+memory. Each ratio has a noise band: 10%, or three times the runs' spread where that is wider
+(memory never under 10%). A workload with any ratio outside its band has moved, and every one
+that moved is listed. Two geometric means, time and steady memory, are taken over the headline's
+workloads. Before the tip's rows are set beside the browsers' last ones, the base must be within
+noise of its own earlier rows: compare the window's `crane_base` rows with the earlier round's
+Crane rows as the drift control above does, with both geometric means within 5% of 100%.
+
+**A micro row is one build's layout.** A sub-microsecond row can swing by about 15% between two
+builds of the same source, with instructions retired equal within 0.5%: code placement. Builds on
+different pool hosts also differ in code, because each targets its host's CPU. On 2026-11-06,
+dom.getter-loop was +12.6% for a tip console built on chat2 and -0.6% for the same tip built on
+chat.local; main built on chat2 was +0.6%
+(docs/lessons/testing-a-frozen-console-is-one-builds-layout.md). So:
+- every console of a timed comparison is built on the host that times it, in one build session
+  (or with the one pinned `-Dcpu` the published rounds use);
+- a surprising micro-row change is first re-checked with a second build, both sides rebuilt on the
+  timing host, and with instructions retired (page minus a 0-iteration control) - only a change
+  that survives both is chased.
 
 ## /performance/
 
