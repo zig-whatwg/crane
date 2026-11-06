@@ -51,6 +51,13 @@ fn waitForComplete(browser: *browser_mod.Browser) !void {
 /// time is the fetch's post-redirect start: clamp and coarsen connection
 /// timing info, step 1).
 fn navigateOnReusedConnection(browser: *browser_mod.Browser, url: []const u8, navigation_start: f64, fetch_start: f64) !void {
+    return navigateWithRedirects(browser, url, navigation_start, fetch_start, 0);
+}
+
+/// navigateOnReusedConnection, after `redirect_count` same-origin redirects
+/// that began with the fetch (its redirect start time is its start time)
+/// and ended 1 ms later.
+fn navigateWithRedirects(browser: *browser_mod.Browser, url: []const u8, navigation_start: f64, fetch_start: f64, redirect_count: u16) !void {
     try browser.navigateWithOptions(url, .window, .{ .skip_load = true });
     const context = browser.current_context orelse return error.NoPage;
     try context.loadHTML("<!doctype html><body>reused", .{ .base_url = url });
@@ -60,7 +67,11 @@ fn navigateOnReusedConnection(browser: *browser_mod.Browser, url: []const u8, na
     var timing_info: fetch.internal.FetchTimingInfo = .{ .allocator = testing.allocator, .server_timing_headers = .empty };
     defer timing_info.deinit();
     timing_info.start_time = fetch_start;
-    timing_info.post_redirect_start_time = fetch_start;
+    timing_info.post_redirect_start_time = if (redirect_count > 0) fetch_start + 1 else fetch_start;
+    if (redirect_count > 0) {
+        timing_info.redirect_start_time = fetch_start;
+        timing_info.redirect_end_time = fetch_start + 1;
+    }
     timing_info.final_connection_timing_info = fetch.internal.ConnectionTimingInfo.forReusedConnection(fetch_start);
     timing_info.final_connection_timing_info.?.alpn_negotiated_protocol = "http/1.1";
     timing_info.final_network_request_start_time = fetch_start + 1;
@@ -76,7 +87,7 @@ fn navigateOnReusedConnection(browser: *browser_mod.Browser, url: []const u8, na
     };
     try dom.performance_timeline.createNavigationTimingEntry(realm, .{
         .report = &report,
-        .redirect_count = 0,
+        .redirect_count = redirect_count,
         .navigation_type = .navigate,
         .navigation_start = navigation_start,
     });
@@ -107,4 +118,33 @@ test "a navigation with no recorded start keeps its fetch's start as its time or
     // No navigation start (0): the time origin is the fetch's start time, as
     // HTML's "create and initialize a Document object" step 8 reads.
     try testing.expectEqual(@as(f64, 0), try evaluateNumber(browser, "performance.getEntriesByType('navigation')[0].fetchStart"));
+}
+
+test "a same-origin redirect at the time origin keeps its legacy redirectStart" {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    // The navigation started and its first fetch began in the same
+    // coarsening tick: its entry's redirectStart is a relative 0 - a moment
+    // that happened, at the time origin, as fetchStart's 0 is.
+    const start = fetch.algorithms.http_fetch.getCurrentTimeMs();
+    try navigateWithRedirects(browser, "https://flaky6-redirect.test/page.html", start, start, 1);
+    try testing.expectEqual(@as(f64, 0), try evaluateNumber(browser, "performance.getEntriesByType('navigation')[0].redirectStart"));
+    // Navigation Timing's legacy redirectStart, with same-origin redirects,
+    // is the start time of the fetch that began them - the origin's epoch
+    // time - not 0, which means there were none
+    // (navigation-timing/test-timing-server-redirect.html: redirectStart > 0,
+    // >= navigationStart).
+    const navigation_start = try evaluateNumber(browser, "performance.timing.navigationStart");
+    try testing.expect(navigation_start > 0);
+    try testing.expectEqual(navigation_start, try evaluateNumber(browser, "performance.timing.redirectStart"));
+    try testing.expect(try evaluateNumber(browser, "performance.timing.redirectEnd") >= navigation_start);
+}
+
+test "a navigation without redirects keeps legacy redirectStart and redirectEnd at 0" {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    const start = fetch.algorithms.http_fetch.getCurrentTimeMs();
+    try navigateWithRedirects(browser, "https://flaky6-no-redirect.test/page.html", start, start, 0);
+    try testing.expectEqual(@as(f64, 0), try evaluateNumber(browser, "performance.timing.redirectStart"));
+    try testing.expectEqual(@as(f64, 0), try evaluateNumber(browser, "performance.timing.redirectEnd"));
 }
