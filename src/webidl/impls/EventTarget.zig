@@ -269,6 +269,11 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// Initialize an EventTarget's internal state, in its own State: a block of
 /// its Browser's arena (runtime.OwnState), returned by `deinitOwn`.
 fn initInternal(instance: *runtime.Instance, allocator: std.mem.Allocator) !*InternalState {
+    // The table's end releases what no deinit and no sweep reached - a scope
+    // with no Browser (runtime.initializeRuntime's) runs no sweeps - so it
+    // must exist, and know its scope, once a state is made here.
+    const registry = try registryFor(instance);
+    if (registry.scope.load(.monotonic) == null) registry.scope.store(runtime.BrowserScope.ofInstance(instance), .release);
     const internal = try Own.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
     return internal;
@@ -297,6 +302,10 @@ pub const Registry = struct {
     /// once the tombstones those removals leave could take half the free
     /// slots (webidl.utils.tombstones).
     guard: webidl.utils.tombstones.TombstoneGuard = .{},
+    /// The scope this table is a side table of, recorded by the first state
+    /// made in it (`initInternal`): its end walks the scope's slab for the
+    /// chained states left, as it releases the lazy entries left.
+    scope: std.atomic.Value(?*runtime.BrowserScope) = .init(null),
 
     pub fn init(allocator: std.mem.Allocator) Registry {
         return .{ .allocator = allocator };
@@ -306,6 +315,13 @@ pub const Registry = struct {
     /// sweep (`sweepRemaining`) still hold is released without the engine,
     /// which is gone. Their blocks go with the Browser's arena.
     pub fn deinit(self: *Registry) void {
+        // The chained states left (Own): a walk of the scope's slab, which
+        // ends after its tables. Without the engine, which is gone.
+        if (self.scope.load(.acquire)) |scope| Own.sweep(scope, {}, struct {
+            fn visit(_: void, _: *runtime.Instance, internal: *InternalState) void {
+                internal.deinitEx(false);
+            }
+        }.visit);
         var map = self.takeAll() orelse return;
         var iter = map.valueIterator();
         while (iter.next()) |internal_ptr| internal_ptr.*.deinitEx(false);
