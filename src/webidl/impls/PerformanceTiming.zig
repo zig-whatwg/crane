@@ -83,14 +83,33 @@ pub fn get_navigationStart(instance: *runtime.Instance) anyerror!u64 {
     return @intFromFloat(timestamp);
 }
 
-/// Getter for redirectStart
+/// Getter for redirectStart: with same-origin redirects, "the starting time
+/// of the fetch that initiates the redirect", else 0 (Navigation Timing,
+/// PerformanceTiming redirectStart).
 pub fn get_redirectStart(instance: *runtime.Instance) anyerror!u64 {
-    return fromEntry(instance, interfaces.PerformanceResourceTiming.get_redirectStart);
+    return redirectTime(instance, interfaces.PerformanceResourceTiming.get_redirectStart);
 }
 
-/// Getter for redirectEnd
+/// Getter for redirectEnd: with same-origin redirects, the time the last
+/// one's response arrived, else 0.
 pub fn get_redirectEnd(instance: *runtime.Instance) anyerror!u64 {
-    return fromEntry(instance, interfaces.PerformanceResourceTiming.get_redirectEnd);
+    return redirectTime(instance, interfaces.PerformanceResourceTiming.get_redirectEnd);
+}
+
+/// A redirect time of the navigation entry. Its redirectCount says whether
+/// there were redirects (it counts only same-origin chains, Navigation Timing
+/// 3.2, as the entry's redirect times do): then a relative 0 is the moment
+/// the first fetch began, at the time origin - a time, not "none" - and the
+/// legacy attribute is its epoch time, as Blink's PerformanceTiming
+/// redirectStart reads its redirect_start whenever it is set. Before, a
+/// redirect that began in the time origin's coarsening tick read 0, and
+/// navigation-timing/test-timing-server-redirect.html's "redirectStart > 0"
+/// failed whenever the navigation's start and its fetch's shared a tick
+/// (lane flaky6).
+fn redirectTime(instance: *runtime.Instance, comptime getter: fn (*runtime.Instance) anyerror!f64) !u64 {
+    const entry = performance_timeline.navigationEntryOf(instance.ctx) orelse return 0;
+    if (try interfaces.PerformanceNavigationTiming.get_redirectCount(entry) == 0) return 0;
+    return alwaysFromEntry(instance, getter);
 }
 
 /// Getter for fetchStart

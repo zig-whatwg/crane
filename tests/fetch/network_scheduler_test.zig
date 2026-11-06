@@ -427,6 +427,9 @@ const StreamRecord = struct {
     content_type_seen: bool = false,
     /// The head's word on its connection: one the transfer reused.
     connection_reused: ?bool = null,
+    /// Whether the head measured a TCP connect time (ms after the transfer
+    /// started) above 0.
+    connect_measured: ?bool = null,
     head_at_ms: i64 = 0,
     chunks: usize = 0,
     bytes: std.ArrayListUnmanaged(u8) = .empty,
@@ -447,6 +450,7 @@ const StreamRecord = struct {
         if (self.ended or self.chunks > 0) self.order_ok = false;
         self.status = r.status;
         self.connection_reused = r.connection_reused;
+        self.connect_measured = r.connect_time_ms > 0;
         self.head_at_ms = clock.monotonicMillis();
         for (r.headers) |h| {
             if (std.ascii.eqlIgnoreCase(h.name, "content-type")) self.content_type_seen = true;
@@ -543,6 +547,32 @@ test "a streamed transfer's head says whether its connection was reused" {
     try testing.expectEqual(@as(?NetworkError, null), second.end_error);
     try testing.expectEqualStrings("ok", second.bytes.items);
     try testing.expectEqual(@as(?bool, true), second.connection_reused);
+}
+
+test "a fresh connection's connect time keeps its fraction of a millisecond" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    // A loopback connect takes tens to hundreds of microseconds. curl
+    // measures it to the microsecond (CURLINFO_CONNECT_TIME); floored to
+    // whole milliseconds it was 0, so a fresh connection's
+    // secureConnectionStart was the transfer's start - the tick fetchStart
+    // is in: navigation-timing/secure-connection-start-non-zero.https.html
+    // failed 28 of 30 runs after a file whose connections had closed (lane
+    // flaky6).
+    var url_buf: [256]u8 = undefined;
+    const request = get(try urlFor(&url_buf, server, "/keep-alive"));
+    var record: StreamRecord = .{};
+    defer record.deinit();
+    _ = try scheduler.startStreaming(testing.allocator, &request, record.client());
+    _ = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &record);
+    try testing.expectEqual(@as(?NetworkError, null), record.end_error);
+    try testing.expectEqual(@as(?bool, false), record.connection_reused);
+    try testing.expectEqual(@as(?bool, true), record.connect_measured);
 }
 
 test "a connection is not reused after a bodyless response that announced a body" {

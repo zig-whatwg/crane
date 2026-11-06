@@ -545,14 +545,16 @@ fn buildResponse(allocator: Allocator, handle: *curl.CURL, ctx: *ConnectionPool.
         .body = body,
         .final_url = final_url,
         .total_time_ms = @intFromFloat(total_time * 1000),
-        .time_to_first_byte_ms = @intFromFloat(starttransfer_time * 1000),
+        .time_to_first_byte_ms = starttransfer_time * 1000,
         .redirect_count = @intCast(redirect_count),
         .remote_ip = remote_ip,
         .remote_port = if (primary_port > 0) @intCast(primary_port) else null,
-        .dns_lookup_time_ms = @intFromFloat(namelookup_time * 1000),
-        .connect_time_ms = @intFromFloat(connect_time * 1000),
-        .app_connect_time_ms = @intFromFloat(appconnect_time * 1000),
-        .pretransfer_time_ms = @intFromFloat(pretransfer_time * 1000),
+        // Fractional milliseconds, as curl measured them (backend.zig's
+        // Resource Timing fields).
+        .dns_lookup_time_ms = namelookup_time * 1000,
+        .connect_time_ms = connect_time * 1000,
+        .app_connect_time_ms = appconnect_time * 1000,
+        .pretransfer_time_ms = pretransfer_time * 1000,
         .redirect_time_ms = @intFromFloat(redirect_time * 1000),
         .connection_reused = (num_connects == 0),
     };

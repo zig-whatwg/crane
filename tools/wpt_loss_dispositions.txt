@@ -7,7 +7,7 @@
 # beginning with # are ignored. A path can occur in several generations; a
 # (path, generation) pair can occur only once. Unknown, duplicate, empty or
 # missing keys are errors. Every entry needs generation (positive integer),
-# kind (one of the four below), and why (the explanation).
+# kind (one of the five below), and why (the explanation).
 #
 # Flake: three isolated BASE/TIP pairs, each reporting passes/total. State the
 # commands, base/tip revisions and exact failing subtests in why (or link to
@@ -62,6 +62,35 @@
 #   commit = 0123456789ab
 #   test = tests/example/red_test.zig
 #   repro = before 12/200; after 0/200
+#
+# Timing-bound (the user, 2026-11-06): the file's result provably depends on
+# whether a gap shorter than Crane's coarsening tick crosses a tick - two
+# marks the spec takes back to back, floored to the 125 us grid
+# (src/hr_time/coarsen.zig). tick_us is that tick (a positive integer);
+# gap_us is the measured gap, "min <us> / p50 <us> / max <us>", whose median
+# must be below tick_us; pass_rate is "<passes>/<runs>" under the condition,
+# with both outcomes seen (0 < passes < runs); condition says what exposes
+# it; measured_at is the commit measured (7 to 40 hex digits), which the
+# tool checks is a commit of this repository and an ancestor of HEAD; paths
+# lists the code the gap runs through, comma-separated, each in measured_at's
+# tree. The entry explains the path's losses in its generation AND every
+# later one (a later exact entry for the path wins), so a flip no longer
+# blocks publication, and it puts the file on the progress page's
+# timing-bound watch list with its evidence. A commit after measured_at that
+# touches a listed path makes the entry STALE: a warning on the page and
+# from the tool, never a block - re-measure the gap. It is not a flake: the
+# one-flake rule does not count it, and it takes no isolated pairs.
+#
+#   [example/test.html]
+#   generation = 205
+#   kind = timing-bound
+#   why = what the gap is, between which spec steps, and the evidence
+#   tick_us = 125
+#   gap_us = min 63 / p50 76 / max 100
+#   pass_rate = 17/30
+#   condition = what makes the gap decide the result
+#   measured_at = 0123456789ab
+#   paths = src/example/one.zig, src/example/two.zig
 #
 # Entries:
 
@@ -697,3 +726,14 @@ why = a bug, not load: Cache Storage survives across files in a runner process, 
 commit = 5dc2f99ba44
 test = tests/service_worker/cache_store_test.zig
 repro = before 200/200; after 0/200
+
+[navigation-timing/secure-connection-start-non-zero.https.html]
+generation = 205
+kind = timing-bound
+why = Not load and not a flake: on a connection reused from an earlier https file in the runner process (gen 205: navigation-timing/content-encoding.https.html six files earlier in shard6-s29), every connection time is fetchStart (Fetch "clamp and coarsen connection timing info" step 1; Blink, Gecko and WebKit return fetchStart too), so secureConnectionStart > 0 only when the navigation's fetch starts in a later 125 us tick than its time origin. Lane flaky6: (A, fd60e46bb21) curl's phase times are now fractional ms - a fresh sub-ms connection went 28/30 -> 0/30 failing; (B, 2b0d53262c7 + afa4019e0cc) the time origin is the navigation's start (navigate() entry, moved past beforeunload when a handler ran: Chrome NavigationRequest navigation_start / UpdateNavigationStartTime, WebKit DocumentLoadTiming::startTime; wpt.fyi Chrome 15/15, Safari 15/15, Firefox 1/15); (C, afe7cdffce9) legacy redirect times. The navigate() -> fetch-start gap is below one tick, so the reuse case passes only when it crosses one. Before (frozen main-ba98b89087, reuse condition): 100/100 and 30/30 fail; after: 17/30 fail at afe7cdffce9 (22/30 at 2b0d53262c7; 23/30 on the gap diagnostic), interleaved on chat.local. The user ruled the timing-bound kind on 2026-11-06.
+tick_us = 125
+gap_us = min 38 / p50 41 / max 52
+pass_rate = 13/30
+condition = a connection to web-platform.test:8443 reused from an earlier https file in the same runner process
+measured_at = afe7cdffce9
+paths = src/webidl/impls/HTMLIFrameElement.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/dom/performance_timeline.zig
