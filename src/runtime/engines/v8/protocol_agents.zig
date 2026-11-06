@@ -594,7 +594,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     @import("dom_algorithm.zig").install(isolate, options.deferred_teardown);
     // [external_memory]: the host's native memory the agent's objects keep
     // alive, reported to V8 at the same safe points (external_memory.zig).
-    @import("external_memory.zig").install(isolate, options.external_memory);
+    @import("external_memory.zig").install(isolate, options.external_memory, options.deferred_teardown);
 
     // The hooks the host supplied, and only those: a hook left null is the
     // host's choice to have no such behaviour.

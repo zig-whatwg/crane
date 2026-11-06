@@ -24,8 +24,11 @@
 //! microtask checkpoint outside a DOM algorithm - after every task, Blink's
 //! point. A report is made only once the figure moved `report_step` (128 KB,
 //! V8's own step), which the host flags where the figure moves
-//! (ExternalMemory.due): the binding exit pays a load and a branch. The
-//! agent's end takes back all it reported.
+//! (ExternalMemory.due) and owes on the agent's queue
+//! (DeferredTeardown.Owed.report): the binding exit pays nothing for it -
+//! its one check of what the queue owes, the same compare as before, covers
+//! it, and the queue's report steps run the report there. The agent's end
+//! takes back all it reported.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -35,16 +38,25 @@ const isolate_templates = @import("isolate_templates.zig");
 const ExternalMemory = runtime.gc.ExternalMemory;
 const Storage = isolate_templates.IsolateTemplates;
 
-/// createAgent: the agent's figure, claimed for its thread, on its isolate.
-/// A storage that cannot be made (out of memory) leaves the agent
-/// unreported - V8 then sees its own heap alone, as before.
-pub fn install(isolate: *ffi.Isolate, memory: ?*ExternalMemory) void {
+/// createAgent: the agent's figure, claimed for its thread, on its isolate,
+/// and reported at its queue's safe points (the queue's report steps, which
+/// the binding exit's check of what the queue owes reaches). A storage that
+/// cannot be made (out of memory) leaves the agent unreported - V8 then sees
+/// its own heap alone, as before.
+pub fn install(isolate: *ffi.Isolate, memory: ?*ExternalMemory, queue: ?*runtime.gc.DeferredTeardown) void {
     const given = memory orelse return;
     const storage = isolate_templates.storageFor(isolate) orelse return;
-    given.claim();
     storage.external_memory = given;
     storage.external_reported = 0;
     storage.external_isolate = isolate;
+    if (queue) |q| q.report_steps = .{ .run = reportStep, .data = storage };
+    given.claim(queue);
+}
+
+/// The queue's report steps: its safe point owed a report.
+fn reportStep(data: ?*anyopaque) void {
+    const storage: *Storage = @ptrCast(@alignCast(data orelse return));
+    reportIfMoved(storage);
 }
 
 /// The agent's end, its isolate entered: V8's count goes back to what it was
@@ -57,6 +69,7 @@ pub fn uninstall(isolate: *ffi.Isolate) void {
         _ = ffi.v8_Isolate_AdjustAmountOfExternalAllocatedMemory(isolate, -@as(i64, @intCast(storage.external_reported)));
         storage.external_reported = 0;
     }
+    if (memory.queue) |queue| queue.report_steps = null;
     memory.release();
     storage.external_memory = null;
     storage.external_isolate = null;
@@ -64,7 +77,7 @@ pub fn uninstall(isolate: *ffi.Isolate) void {
 
 /// A safe point on the agent's thread, its isolate entered: tell V8 once the
 /// figure moved `report_step` from what it was last told (the host's flag,
-/// set where the figure moves: a load and a branch here).
+/// set where the figure moves).
 pub inline fn reportIfMoved(storage: *Storage) void {
     const memory = storage.external_memory orelse return;
     if (!memory.due) return;

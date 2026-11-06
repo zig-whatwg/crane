@@ -24,45 +24,35 @@ const std = @import("std");
 const runtime = @import("runtime");
 const v8 = @import("ffi.zig");
 const isolate_templates = @import("isolate_templates.zig");
-const external_memory = @import("external_memory.zig");
 
 const DeferredTeardown = runtime.gc.DeferredTeardown;
 
-/// What `enter` hands its `leave`: the isolate's adapter storage, which
-/// carries the agent's queue (and its DOM memory figure, external_memory.zig),
-/// or null - no queue, nothing counted.
-pub const Algorithm = ?*isolate_templates.IsolateTemplates;
-
-/// A DOM algorithm begins: its depth raised on the agent's queue, or null (an
+/// A DOM algorithm begins: the agent's queue, its depth raised, or null (an
 /// isolate createAgent did not make, or after its agent's end).
-pub inline fn enter(isolate: *v8.Isolate) Algorithm {
+pub inline fn enter(isolate: *v8.Isolate) ?*DeferredTeardown {
     const storage = isolate_templates.getTemplateStorage(isolate) orelse return null;
     const queue = storage.deferred_teardown orelse return null;
     queue.enterAlgorithm();
-    return storage;
+    return queue;
 }
 
 /// `enter` for a callback invoked in `realm`: null for a realm with no agent.
-pub inline fn enterRealm(realm: runtime.Context) Algorithm {
+pub inline fn enterRealm(realm: runtime.Context) ?*DeferredTeardown {
     const agent = realm.agent orelse return null;
     return enter(@ptrCast(@alignCast(agent)));
 }
 
-/// A binding returns into script: at depth zero the queue runs what it owes,
-/// and V8 is told how the agent's DOM memory moved (external_memory.zig) -
-/// both at the safe point with no DOM frame below.
-pub inline fn leaveToScript(algorithm: Algorithm) void {
-    const storage = algorithm orelse return;
-    const queue = storage.deferred_teardown orelse return;
-    queue.leaveAlgorithmToScript();
-    if (queue.inAlgorithm()) return;
-    external_memory.reportIfMoved(storage);
+/// A binding returns into script: at depth zero the queue runs what it owes -
+/// a relief, a drain, and the report of the agent's DOM memory to V8
+/// (external_memory.zig, through the queue's report steps) - all behind the
+/// one check of what is owed.
+pub inline fn leaveToScript(queue: ?*DeferredTeardown) void {
+    if (queue) |q| q.leaveAlgorithmToScript();
 }
 
 /// A callback returns into its native caller: nothing runs.
-pub inline fn leaveToNative(algorithm: Algorithm) void {
-    const storage = algorithm orelse return;
-    if (storage.deferred_teardown) |q| q.leaveAlgorithmToNative();
+pub inline fn leaveToNative(queue: ?*DeferredTeardown) void {
+    if (queue) |q| q.leaveAlgorithmToNative();
 }
 
 /// Set (or, null, clear) the agent's queue on its isolate. On the agent's
