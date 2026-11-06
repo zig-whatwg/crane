@@ -36,6 +36,14 @@ pub const EngineName = enum {
     /// re-measurement runs ONLY Crane, beside the previous Crane; the
     /// browsers keep their rows. Its rows name its own commit and modes.
     crane_base,
+    /// The frozen binary an earlier round measured as `crane`, run again
+    /// unchanged in a later window as its drift control: its rows are
+    /// compared with that round's, never with the window's other Crane
+    /// builds, so the host's drift between the rounds shows before the new
+    /// Crane rows are set beside rows the browsers kept from an earlier round
+    /// (the user, 2026-11-06). Its build is whatever that round's was -
+    /// round 0's was tuned to its build host's CPU (`target_cpu`).
+    crane_control,
     chrome,
     firefox,
     safari,
@@ -45,7 +53,7 @@ pub const EngineName = enum {
     /// identity (commit, modes, V8) in every row.
     pub fn isCrane(e: EngineName) bool {
         return switch (e) {
-            .crane, .crane_fast, .crane_base => true,
+            .crane, .crane_fast, .crane_base, .crane_control => true,
             .chrome, .firefox, .safari, .lightpanda => false,
         };
     }
@@ -55,6 +63,7 @@ pub const EngineName = enum {
             .crane => "Crane",
             .crane_fast => "Crane ReleaseFast",
             .crane_base => "Crane base",
+            .crane_control => "Crane control",
             .chrome => "Chrome",
             .firefox => "Firefox",
             .safari => "Safari",
@@ -123,6 +132,12 @@ pub const Engine = struct {
     /// Crane: the optimize modes (root, Crane modules, C libraries, C
     /// sanitizer).
     optimize: ?[]const u8 = null,
+    /// Crane: the CPU its code was generated for, as `-Dcpu` spells it
+    /// ("apple_m1"; "apple_m4 (native)" for a build that took its build
+    /// host's CPU) - tests/wpt_runner/build_mode.zig `writeCpu`, read from
+    /// the build's repl.modes into its pin. Absent from rows written before
+    /// it was recorded (round 0).
+    target_cpu: ?[]const u8 = null,
     /// Crane: the V8 it links ("13.1.203 static").
     v8: ?[]const u8 = null,
     /// The executable launched.
@@ -583,6 +598,40 @@ test "Crane's base is an engine of its own: an earlier Crane release build, with
     var no_commit = r;
     no_commit.engine.commit = null;
     try testing.expectError(error.MissingBuildIdentity, validate(no_commit));
+}
+
+test "a Crane row names its build's CPU target, and a row written before it was recorded still reads" {
+    // The user, 2026-11-06: the published Crane numbers use one fixed CPU
+    // target (-Dcpu=apple_m1), and the build identity says which.
+    var r = sampleTimed();
+    r.engine.target_cpu = "apple_m1";
+    var out: Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try writeLine(&out.writer, r);
+    const want = try std.mem.replaceOwned(u8, testing.allocator, golden_timed, "sanitize_c trap\",\"v8\"", "sanitize_c trap\",\"target_cpu\":\"apple_m1\",\"v8\"");
+    defer testing.allocator.free(want);
+    try testing.expectEqualStrings(want, out.written());
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const back = try parseLine(arena.allocator(), std.mem.trimEnd(u8, want, "\n"));
+    try testing.expectEqualStrings("apple_m1", back.engine.target_cpu.?);
+    // Round 0's rows have none: they read, with none.
+    const old = try parseLine(arena.allocator(), std.mem.trimEnd(u8, golden_timed, "\n"));
+    try testing.expectEqual(@as(?[]const u8, null), old.engine.target_cpu);
+}
+
+test "Crane's control is an engine of its own: an earlier round's binary, with its build identity" {
+    try testing.expectEqualStrings("Crane control", EngineName.crane_control.label());
+    try testing.expect(EngineName.crane_control.isCrane());
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const line = try std.mem.replaceOwned(u8, a, std.mem.trimEnd(u8, golden_timed, "\n"), "\"name\":\"crane\"", "\"name\":\"crane_control\"");
+    const r = try parseLine(a, line);
+    try testing.expectEqual(EngineName.crane_control, r.engine.name);
+    var no_v8 = r;
+    no_v8.engine.v8 = null;
+    try testing.expectError(error.MissingBuildIdentity, validate(no_v8));
 }
 
 test "times are written rounded to the microsecond" {

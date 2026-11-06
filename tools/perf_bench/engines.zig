@@ -24,7 +24,7 @@ const journal = @import("journal.zig");
 pub const Name = journal.EngineName;
 
 /// A pin file: `key=value` lines. Required: name, version, build, binary,
-/// sha256. Crane's also: commit, optimize, v8. Safari's: webdriver.
+/// sha256. Crane's also: commit, optimize, v8, target_cpu. Safari's: webdriver.
 pub const Pin = struct {
     name: Name,
     version: []const u8,
@@ -33,6 +33,9 @@ pub const Pin = struct {
     sha256: []const u8,
     commit: ?[]const u8 = null,
     optimize: ?[]const u8 = null,
+    /// The CPU the build's code is for (repl.modes `target_cpu`,
+    /// build_mode.zig `writeCpu`): "apple_m1".
+    target_cpu: ?[]const u8 = null,
     v8: ?[]const u8 = null,
     /// safaridriver (Safari).
     webdriver: ?[]const u8 = null,
@@ -42,20 +45,37 @@ pub const Pin = struct {
 
 pub const PinError = error{ PinMissingKey, PinUnknownEngine, PinBadSha256, PinMissingBuildIdentity, PinWrongBuild, PinMissingWebDriver };
 
-pub const PinSetError = error{ PinDuplicateEngine, PinsSameCommit, PinBaseWithoutTip };
+pub const PinSetError = error{ PinDuplicateEngine, PinsSameCommit, PinBaseWithoutTip, PinWrongTarget };
 
 /// What a run's pins must be together: one pin per engine; a Crane base
 /// (`crane_base`) only beside the Crane it is the base of (`crane`), and
 /// never of the same commit as another Crane pin - the base and the tip of
 /// one commit compare nothing (lane perf2's Crane-only window). ReleaseFast
 /// beside ReleaseSafe of one commit is round 0's pair, and allowed.
+///
+/// The Crane builds a run compares - `crane`, `crane_fast`, `crane_base` -
+/// share one CPU target (`PinWrongTarget`; the user, 2026-11-06: published
+/// numbers use a fixed target, -Dcpu=apple_m1): two targets are two code
+/// layouts, so a tip against a base built for another CPU measures the
+/// target, not the change (lane perf2b: a chat2-built tip, +12.6% on a
+/// sub-microsecond row against a chat.local-built base). The drift control
+/// (`crane_control`) is exempt from both rules: it is an earlier round's
+/// binary as that round built it, compared only with that round's rows, and
+/// beside a base of its own commit rebuilt for the fixed target it is what
+/// isolates the target change.
 pub fn checkPinSet(pins: []const Pin) PinSetError!void {
     for (pins, 0..) |p, i| {
         for (pins[i + 1 ..]) |q| {
             if (p.name == q.name) return error.PinDuplicateEngine;
+            if (p.name == .crane_control or q.name == .crane_control) continue;
             const base_pair = p.name == .crane_base or q.name == .crane_base;
             if (base_pair and p.name.isCrane() and q.name.isCrane()) {
                 if (p.commit != null and q.commit != null and std.mem.eql(u8, p.commit.?, q.commit.?)) return error.PinsSameCommit;
+            }
+            if (p.name.isCrane() and q.name.isCrane()) {
+                const pt = p.target_cpu orelse return error.PinWrongTarget;
+                const qt = q.target_cpu orelse return error.PinWrongTarget;
+                if (!std.mem.eql(u8, pt, qt)) return error.PinWrongTarget;
             }
         }
     }
@@ -71,7 +91,7 @@ pub fn checkPinSet(pins: []const Pin) PinSetError!void {
 
 pub fn parsePin(arena: Allocator, text: []const u8) (PinError || Allocator.Error)!Pin {
     var name: ?Name = null;
-    var fields: struct { version: ?[]const u8 = null, build: ?[]const u8 = null, binary: ?[]const u8 = null, sha256: ?[]const u8 = null, commit: ?[]const u8 = null, optimize: ?[]const u8 = null, v8: ?[]const u8 = null, webdriver: ?[]const u8 = null, installed: ?[]const u8 = null } = .{};
+    var fields: struct { version: ?[]const u8 = null, build: ?[]const u8 = null, binary: ?[]const u8 = null, sha256: ?[]const u8 = null, commit: ?[]const u8 = null, optimize: ?[]const u8 = null, target_cpu: ?[]const u8 = null, v8: ?[]const u8 = null, webdriver: ?[]const u8 = null, installed: ?[]const u8 = null } = .{};
     var lines = std.mem.splitScalar(u8, text, '\n');
     while (lines.next()) |raw| {
         const line = std.mem.trim(u8, raw, " \t\r");
@@ -93,6 +113,7 @@ pub fn parsePin(arena: Allocator, text: []const u8) (PinError || Allocator.Error
         .sha256 = fields.sha256 orelse return error.PinMissingKey,
         .commit = fields.commit,
         .optimize = fields.optimize,
+        .target_cpu = fields.target_cpu,
         .v8 = fields.v8,
         .webdriver = fields.webdriver,
         .installed = fields.installed,
@@ -100,6 +121,13 @@ pub fn parsePin(arena: Allocator, text: []const u8) (PinError || Allocator.Error
     if (!journal.isSha256(pin.sha256)) return error.PinBadSha256;
     if (pin.name.isCrane()) {
         if (pin.commit == null or pin.optimize == null or pin.v8 == null) return error.PinMissingBuildIdentity;
+        // The CPU the build's code is for (repl.modes `target_cpu`): a build
+        // identity without it does not say which code was timed - two
+        // builds of one source for two CPUs are two layouts (docs/lessons/
+        // testing-a-frozen-console-is-one-builds-layout.md). The drift
+        // control is an earlier round's binary, pinned as that round pinned
+        // it: round 0's recorded none.
+        if (pin.target_cpu == null and pin.name != .crane_control) return error.PinMissingBuildIdentity;
         // The comparison rule: Crane is timed in its release build, never the
         // correctness runner, and each Crane engine in its own mode - the
         // modes as build_mode.zig `describe` names them (zig-out/bin/
@@ -116,7 +144,7 @@ pub fn parsePin(arena: Allocator, text: []const u8) (PinError || Allocator.Error
 pub fn craneModes(name: Name) []const u8 {
     return switch (name) {
         // The base is an earlier build of the same release build.
-        .crane, .crane_base => "root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc",
+        .crane, .crane_base, .crane_control => "root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc",
         .crane_fast => "root ReleaseFast, Crane modules ReleaseFast, C libraries ReleaseFast, sanitize_c off, libc malloc",
         .chrome, .firefox, .safari, .lightpanda => unreachable,
     };
@@ -209,7 +237,7 @@ pub const safari_app_names = [_][]const u8{"Safari"};
 pub fn appNames(name: Name) []const []const u8 {
     return switch (name) {
         .safari => &safari_app_names,
-        .crane, .crane_fast, .crane_base, .chrome, .firefox, .lightpanda => &.{},
+        .crane, .crane_fast, .crane_base, .crane_control, .chrome, .firefox, .lightpanda => &.{},
     };
 }
 
@@ -217,7 +245,7 @@ pub fn appNames(name: Name) []const []const u8 {
 pub fn setNames(name: Name) []const []const u8 {
     return switch (name) {
         .safari => &safari_process_names,
-        .crane, .crane_fast, .crane_base, .chrome, .firefox, .lightpanda => &.{},
+        .crane, .crane_fast, .crane_base, .crane_control, .chrome, .firefox, .lightpanda => &.{},
     };
 }
 
@@ -236,7 +264,7 @@ pub const Drive = enum { argv, cdp, webdriver };
 
 pub fn driveOf(name: Name) Drive {
     return switch (name) {
-        .crane, .crane_fast, .crane_base, .chrome, .firefox => .argv,
+        .crane, .crane_fast, .crane_base, .crane_control, .chrome, .firefox => .argv,
         .lightpanda => .cdp,
         .safari => .webdriver,
     };
@@ -280,7 +308,7 @@ pub fn launch(arena: Allocator, pin: Pin, url: []const u8, profile: []const u8, 
     var argv: std.ArrayList([]const u8) = .empty;
     var flags: std.ArrayList([]const u8) = .empty;
     switch (pin.name) {
-        .crane, .crane_fast, .crane_base => {
+        .crane, .crane_fast, .crane_base, .crane_control => {
             try argv.append(arena, pin.binary);
             try argv.append(arena, url);
             for (crane_flags) |f| {
@@ -352,6 +380,7 @@ const crane_pin_text =
     \\build=release: ReleaseSafe everywhere, C .trap, libc malloc
     \\commit=e7101e588f1
     \\optimize=root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc
+    \\target_cpu=apple_m1
     \\v8=13.1.203 static
     \\binary=/x/repl
     \\sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
@@ -529,8 +558,8 @@ test "a Crane base pin: the ReleaseSafe build's modes, launched as the console f
 
 test "a pin set: one pin per engine, and no two Crane pins of one commit" {
     const sha = "abababababababababababababababababababababababababababababababab";
-    const tip: Pin = .{ .name = .crane, .version = "d0d8be54612", .build = "b", .binary = "/t/repl", .sha256 = sha, .commit = "d0d8be54612", .optimize = "o", .v8 = "v8" };
-    const base: Pin = .{ .name = .crane_base, .version = "9b0f1b1f382", .build = "b", .binary = "/b/repl", .sha256 = sha, .commit = "9b0f1b1f382", .optimize = "o", .v8 = "v8" };
+    const tip: Pin = .{ .name = .crane, .version = "d0d8be54612", .build = "b", .binary = "/t/repl", .sha256 = sha, .commit = "d0d8be54612", .optimize = "o", .v8 = "v8", .target_cpu = "apple_m1" };
+    const base: Pin = .{ .name = .crane_base, .version = "9b0f1b1f382", .build = "b", .binary = "/b/repl", .sha256 = sha, .commit = "9b0f1b1f382", .optimize = "o", .v8 = "v8", .target_cpu = "apple_m1" };
     const chrome: Pin = .{ .name = .chrome, .version = "157", .build = "b", .binary = "/c", .sha256 = sha };
     try checkPinSet(&.{ tip, base, chrome });
     try testing.expectError(error.PinDuplicateEngine, checkPinSet(&.{ tip, base, tip }));
@@ -544,4 +573,74 @@ test "a pin set: one pin per engine, and no two Crane pins of one commit" {
     try checkPinSet(&.{ tip, fast });
     // A base needs a tip to be the base of.
     try testing.expectError(error.PinBaseWithoutTip, checkPinSet(&.{base}));
+}
+
+test "a Crane pin names the CPU its build's code is for, as repl.modes records it" {
+    // The user, 2026-11-06: published Crane numbers use one fixed CPU target
+    // (-Dcpu=apple_m1). The build writes it into repl.modes (build_mode.zig
+    // writeModesFile), the pin copies it, and every journal row carries it.
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const pin = try parsePin(a, crane_pin_text);
+    try testing.expectEqualStrings("apple_m1", pin.target_cpu.?);
+    const untargeted = try std.mem.replaceOwned(u8, a, crane_pin_text, "target_cpu=apple_m1\n", "");
+    // Without one, a tip, a ReleaseFast build or a base has no build identity:
+    // two builds of one source are two layouts, and a build from another host
+    // another CPU (docs/lessons/testing-a-frozen-console-is-one-builds-layout.md).
+    try testing.expectError(error.PinMissingBuildIdentity, parsePin(a, untargeted));
+    const fast = try std.mem.replaceOwned(u8, a, try std.mem.replaceOwned(u8, a, untargeted, "name=crane\n", "name=crane_fast\n"), craneModes(.crane), craneModes(.crane_fast));
+    try testing.expectError(error.PinMissingBuildIdentity, parsePin(a, fast));
+    try testing.expectEqualStrings("apple_m1", (try parsePin(a, try std.mem.concat(a, u8, &.{ fast, "\ntarget_cpu=apple_m1\n" }))).target_cpu.?);
+    const base = try std.mem.replaceOwned(u8, a, untargeted, "name=crane\n", "name=crane_base\n");
+    try testing.expectError(error.PinMissingBuildIdentity, parsePin(a, base));
+}
+
+test "a Crane control pin: an earlier round's binary, as that round pinned it" {
+    // The drift control is the frozen binary an earlier round measured as
+    // `crane`, run unchanged; round 0's was built before the target was
+    // recorded, so its pin may name none. It is ReleaseSafe's build.
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const control_text = try std.mem.replaceOwned(u8, a, try std.mem.replaceOwned(u8, a, crane_pin_text, "target_cpu=apple_m1\n", ""), "name=crane\n", "name=crane_control\n");
+    const pin = try parsePin(a, control_text);
+    try testing.expectEqual(Name.crane_control, pin.name);
+    try testing.expectEqual(@as(?[]const u8, null), pin.target_cpu);
+    try testing.expectEqualStrings("apple_m4 (native)", (try parsePin(a, try std.mem.concat(a, u8, &.{ control_text, "\ntarget_cpu=apple_m4 (native)\n" }))).target_cpu.?);
+    try testing.expectError(error.PinWrongBuild, parsePin(a, try std.mem.replaceOwned(u8, a, control_text, craneModes(.crane), craneModes(.crane_fast))));
+    // Launched as every Crane build is: the console, from its own directory.
+    const sha = "abababababababababababababababababababababababababababababababab";
+    const control = try launch(a, .{ .name = .crane_control, .version = "9b0f1b1f382", .build = "b", .binary = "/bins/crane-9b0f1b1f382/repl", .sha256 = sha, .commit = "9b0f1b1f382", .optimize = "o", .v8 = "v8" }, "http://127.0.0.1:8000/p.html", "/p", 0);
+    try testing.expect(control.stdin_pipe);
+    try testing.expectEqualStrings("/bins/crane-9b0f1b1f382", control.cwd.?);
+    try testing.expectEqual(Drive.argv, driveOf(.crane_control));
+}
+
+test "a pin set's Crane builds share one CPU target; the drift control keeps its own" {
+    const sha = "abababababababababababababababababababababababababababababababab";
+    const tip: Pin = .{ .name = .crane, .version = "1111111", .build = "b", .binary = "/t/repl", .sha256 = sha, .commit = "1111111", .optimize = "o", .v8 = "v8", .target_cpu = "apple_m1" };
+    var fast = tip;
+    fast.name = .crane_fast;
+    const base: Pin = .{ .name = .crane_base, .version = "9b0f1b1f382", .build = "b", .binary = "/b/repl", .sha256 = sha, .commit = "9b0f1b1f382", .optimize = "o", .v8 = "v8", .target_cpu = "apple_m1" };
+    try checkPinSet(&.{ tip, fast, base });
+    // A base built for another CPU: the comparison would be the target's,
+    // not the code's (lane perf2's getter-loop: a chat2-built tip against a
+    // chat.local-built base).
+    var native_base = base;
+    native_base.target_cpu = "apple_m4 (native)";
+    try testing.expectError(error.PinWrongTarget, checkPinSet(&.{ tip, native_base }));
+    var other_fast = fast;
+    other_fast.target_cpu = "apple_m1+sm4";
+    try testing.expectError(error.PinWrongTarget, checkPinSet(&.{ tip, other_fast }));
+    // The control is the earlier round's binary: whatever it was built for,
+    // and of the base's commit too (round 0's source rebuilt for the fixed
+    // target, beside the round-0 binary, is what isolates the target).
+    const control: Pin = .{ .name = .crane_control, .version = "9b0f1b1f382", .build = "b", .binary = "/c/repl", .sha256 = sha, .commit = "9b0f1b1f382", .optimize = "o", .v8 = "v8" };
+    try checkPinSet(&.{ tip, fast, base, control });
+    var native_control = control;
+    native_control.target_cpu = "apple_m4 (native)";
+    try checkPinSet(&.{ tip, fast, base, native_control });
+    // Still one pin per engine.
+    try testing.expectError(error.PinDuplicateEngine, checkPinSet(&.{ tip, control, control }));
 }
