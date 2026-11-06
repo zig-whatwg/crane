@@ -40,6 +40,13 @@ pub fn init(
     return instance;
 }
 
+/// Installed once at process start: a destroyed document's (or ended
+/// worker's) observers stop being registered and kept
+/// (reporting.endRegistrations).
+pub fn installHooks() void {
+    @import("dom").unloading_cleanup.install(&reporting.endRegistrations);
+}
+
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);

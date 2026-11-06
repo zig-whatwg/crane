@@ -84,6 +84,10 @@ pub const State = struct {
     buffer: std.ArrayListUnmanaged(*Record) = .empty,
     delivery_queued: bool = false,
     observers: std.ArrayListUnmanaged(*Observer) = .empty,
+    /// The environment's unloading document cleanup steps ran (its document
+    /// was destroyed, or its worker ended: `endRegistrations`). Nothing
+    /// keeps an observer for it from then on.
+    ended: bool = false,
 
     pub fn deinit(self: *State, allocator: std.mem.Allocator) void {
         for (self.pending.items) |record| record.release();
@@ -127,6 +131,34 @@ pub fn globalOf(ctx: runtime.Context) ?*runtime.Instance {
     return @ptrCast(@alignCast(realm.global_object orelse return null));
 }
 
+/// An unloading document cleanup step (dom.unloading_cleanup; the
+/// ReportingObserver impl installs it), which also runs when a worker's
+/// global scope ends: `environment`'s document is destroyed, so its
+/// registered observers stop being registered and their keeps end, while
+/// its realm's wrapper cache can still count them. The Reporting spec
+/// defines no such step; the engines end the hold there. Blink: the
+/// ActiveScriptWrappableManager keeps no wrapper whose ExecutionContext is
+/// destroyed, "even if HasPendingActivity() returns true"
+/// (active_script_wrappable_manager.cc ScriptWrappableIsActive), and
+/// ReportingObserver::HasPendingActivity is its registration; Gecko clears
+/// the global's mReportingObservers (nsIGlobalObject::UnlinkObjectsInGlobal);
+/// WebKit's ReportingObserver::virtualHasPendingActivity reads its
+/// ReportingScope through a WeakPtr. Nothing reports into a destroyed
+/// environment, so no delivery is lost; observers registered later are not
+/// kept (`State.ended`).
+pub fn endRegistrations(environment: runtime.Context) void {
+    const global = globalOf(environment) orelse return;
+    const state = global_settings.reportingOf(global) orelse return;
+    state.ended = true;
+    var observers = state.observers;
+    state.observers = .empty;
+    defer observers.deinit(environment.allocator);
+    for (observers.items) |observer| {
+        observer.registered_on = null;
+        observer.endKeep();
+    }
+}
+
 /// Reporting §4: owned by ReportingObserver's impl, borrowed by its
 /// global's registration list. The callback and native queue are owned.
 pub const Observer = struct {
@@ -137,9 +169,24 @@ pub const Observer = struct {
     buffered: bool = false,
     queue: std.ArrayListUnmanaged(*Record) = .empty,
     registered_on: ?Link = null,
+    /// observe() kept the observer's wrapper (engine.keepPlatformObjectAlive)
+    /// and nothing has ended that keep yet. Separate from `registered_on`:
+    /// an observer registered after its environment ended holds none
+    /// (`observe`), and only a keep this says was taken is released.
+    kept: bool = false,
     exception_reporter: *const fn (?*anyopaque, *const engine.ErrorInfo) void,
 
+    /// The instance's teardown. It runs only once the observer's wrapper is
+    /// gone - collected, or with its realm's end - and the keep, counted on
+    /// that wrapper's cache entry, went with it: in a detached realm the
+    /// keep is an edge from the global object (WrapperCache.detach), and
+    /// the collector takes the observer with its global. So the teardown
+    /// leaves the registration list and releases nothing. Releasing here
+    /// ended a keep that no longer existed ("releasePlatformObject on
+    /// ReportingObserver ... with no keepPlatformObjectAlive left to end",
+    /// dozens of times per COEP reporting file in the Debug runner).
     pub fn deinit(self: *Observer) void {
+        self.kept = false;
         self.disconnect();
         if (self.callback) |callback| callback.release();
         self.emptyQueue();
@@ -154,7 +201,17 @@ pub const Observer = struct {
         if (self.registered_on == null) {
             try state.observers.append(self.allocator, self);
             self.registered_on = Link.of(global);
+        }
+        // The registration keeps the observer (Blink ReportingObserver::
+        // HasPendingActivity is `registered_`) - while its environment
+        // lives: Blink's ActiveScriptWrappableManager keeps nothing of a
+        // destroyed ExecutionContext (ScriptWrappableIsActive:
+        // IsContextDestroyed). One keep however often observe() runs, taken
+        // on the wrapper script called this on, whose cache entry counts it
+        // (docs/lessons/architecture-a-keep-on-an-unwrapped-object-can-fail-silently.md).
+        if (!self.kept and !state.ended and engine.hasWrapper(self.instance)) {
             engine.keepPlatformObjectAlive(self.instance);
+            self.kept = true;
         }
         if (!self.buffered) return;
         self.buffered = false;
@@ -173,18 +230,26 @@ pub const Observer = struct {
     }
 
     pub fn disconnect(self: *Observer) void {
-        const global = self.registered_on orelse return;
-        self.registered_on = null;
-        if (global.isLive()) {
-            if (global_settings.reportingOf(global.instance)) |state| {
-                for (state.observers.items, 0..) |observer, index| {
-                    if (observer != self) continue;
-                    _ = state.observers.orderedRemove(index);
-                    break;
+        if (self.registered_on) |global| {
+            self.registered_on = null;
+            if (global.isLive()) {
+                if (global_settings.reportingOf(global.instance)) |state| {
+                    for (state.observers.items, 0..) |observer, index| {
+                        if (observer != self) continue;
+                        _ = state.observers.orderedRemove(index);
+                        break;
+                    }
                 }
             }
         }
         // Reporting disconnect leaves the native report queue intact.
+        self.endKeep();
+    }
+
+    /// End the one keep observe() took, if this observer holds it.
+    fn endKeep(self: *Observer) void {
+        if (!self.kept) return;
+        self.kept = false;
         engine.releasePlatformObject(self.instance);
     }
 
