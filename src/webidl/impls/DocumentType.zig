@@ -57,9 +57,9 @@ pub const InternalState = struct {
     }
 };
 
-// Use shared InstanceRegistry utility for internal state management
+// Its internal state, in its own generated State (`own._internal`): runtime.OwnState.
 const utils = @import("webidl").utils;
-const Registry = runtime.InstanceRegistry(.document_type, InternalState);
+const Registry = runtime.OwnState(State, InternalState);
 
 /// Get the internal state from an instance
 /// Made public for use by HTMLParser when creating DOCTYPE nodes.
@@ -87,8 +87,8 @@ pub const construction_args = .{ "name", "public_id", "system_id" };
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = StateType;
 
-    // Initialize DocumentType internal state in global registry
-    // The registry owns this block, so `Registry.remove` returns it to the
+    // Initialize DocumentType internal state in its own State (runtime.OwnState)
+    // The block is the arena's, and `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
@@ -112,7 +112,7 @@ fn setIdsHook(doctype: *runtime.Instance, name: ?[]const u8, public_id: ?[]const
 
 /// DocumentType's own teardown: the generated chain runs Node's after it.
 pub fn deinitOwn(instance: *runtime.Instance) void {
-    // Clean up from registry
+    // Clean up its internal state
     if (Registry.get(instance)) |internal| {
         internal.deinit();
     }

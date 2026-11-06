@@ -40,7 +40,7 @@ pub const InternalState = struct {
 };
 
 const utils = @import("webidl").utils;
-const Registry = runtime.InstanceRegistry(.html_slot_element, InternalState);
+const Registry = runtime.OwnState(State, InternalState);
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
@@ -97,7 +97,7 @@ pub fn init(
     const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
     errdefer interfaces.HTMLElement.deinit(instance);
 
-    // The registry owns this block, so `Registry.remove` returns it to the
+    // The block is the arena's, and `Registry.remove` returns it to the
     // arena.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = InternalState.init(allocator);
