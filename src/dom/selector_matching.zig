@@ -62,7 +62,246 @@ pub const Error = error{ SyntaxError, OutOfMemory };
 
 /// DOM querySelector(selectors): the first element, in tree order, among
 /// `scope`'s descendants that scope-matches `selectors`; null when none.
+///
+/// The selector comes parsed from the document's cache (`Selectors`), and
+/// one with an ID selector finds its candidates through the tree scope's ID
+/// map (`IdPlan`): the general walk's answer, without walking the tree.
 pub fn querySelector(scope: *runtime.Instance, selectors: []const u8) Error!?*runtime.Instance {
+    const scope_node = instance_bridge.getNodeBase(scope) orelse return querySelectorGeneral(scope, selectors);
+    var matcher = Matcher.init(scope_node, scope);
+    // DOM "scope-match a selectors string" steps 1-2: parse, or throw.
+    var parsed = try Selectors.get(matcher.document, scope.ctx.getAllocator(), selectors);
+    defer parsed.deinit();
+    const list = parsed.list();
+    var nth_cache = NthIndexCache{ .allocator = scope.ctx.getAllocator() };
+    defer nth_cache.deinit();
+    matcher.nth_cache = &nth_cache;
+    const fast = FastPath.of(list);
+    var first: ?*NodeBase = null;
+    const Sink = struct {
+        fn take(out: *?*NodeBase, node: *NodeBase) error{OutOfMemory}!bool {
+            out.* = node;
+            return false;
+        }
+    };
+    if (try forEachById(&matcher, scope_node, list, fast, &first, Sink.take)) return if (first) |node| instanceOf(node) else null;
+    var walk = Walk.init(scope_node);
+    while (walk.next()) |node| {
+        if (matcher.matchesForQuery(node, list, fast)) return instanceOf(node);
+    }
+    return null;
+}
+
+/// DOM querySelectorAll(selectors): every element among `scope`'s
+/// descendants that scope-matches `selectors`, in tree order, appended to
+/// `out` as tree nodes. Parsed and searched as `querySelector` is.
+pub fn querySelectorAll(allocator: std.mem.Allocator, scope: *runtime.Instance, selectors: []const u8, out: *std.ArrayList(*NodeBase)) Error!void {
+    const scope_node = instance_bridge.getNodeBase(scope) orelse return querySelectorAllGeneral(allocator, scope, selectors, out);
+    var matcher = Matcher.init(scope_node, scope);
+    var parsed = try Selectors.get(matcher.document, scope.ctx.getAllocator(), selectors);
+    defer parsed.deinit();
+    const list = parsed.list();
+    var nth_cache = NthIndexCache{ .allocator = allocator };
+    defer nth_cache.deinit();
+    matcher.nth_cache = &nth_cache;
+    const fast = FastPath.of(list);
+    const Sink = struct {
+        list: *std.ArrayList(*NodeBase),
+        allocator: std.mem.Allocator,
+        fn take(self: *const @This(), node: *NodeBase) error{OutOfMemory}!bool {
+            try self.list.append(self.allocator, node);
+            return true;
+        }
+    };
+    const sink: Sink = .{ .list = out, .allocator = allocator };
+    if (try forEachById(&matcher, scope_node, list, fast, &sink, Sink.take)) return;
+    var walk = Walk.init(scope_node);
+    while (walk.next()) |node| {
+        if (matcher.matchesForQuery(node, list, fast)) try out.append(allocator, node);
+    }
+}
+
+/// DOM matches(selectors) / webkitMatchesSelector(selectors): whether
+/// `element` matches, with `element` the scoping root. Parsed through the
+/// document's cache.
+pub fn matches(element: *runtime.Instance, selectors: []const u8) Error!bool {
+    const node = instance_bridge.getNodeBase(element) orelse return matchesGeneral(element, selectors);
+    const matcher = Matcher.init(node, element);
+    // Steps 1-2: parse, or throw a SyntaxError.
+    var parsed = try Selectors.get(matcher.document, element.ctx.getAllocator(), selectors);
+    defer parsed.deinit();
+    if (node.node_type != ELEMENT_NODE) return false;
+    // Step 3: match against this, with scoping root this.
+    return matcher.matchesList(.{ .node = node }, parsed.list());
+}
+
+/// DOM closest(selectors): the first of `element`'s inclusive ancestor
+/// elements, nearest first, that matches, with `element` the scoping root.
+/// Parsed through the document's cache.
+pub fn closest(element: *runtime.Instance, selectors: []const u8) Error!?*runtime.Instance {
+    const node = instance_bridge.getNodeBase(element) orelse return closestGeneral(element, selectors);
+    const matcher = Matcher.init(node, element);
+    var parsed = try Selectors.get(matcher.document, element.ctx.getAllocator(), selectors);
+    defer parsed.deinit();
+    const list = parsed.list();
+    // Steps 3-4: "this's inclusive ancestors that are elements, in reverse
+    // tree order".
+    var current: ?*NodeBase = node;
+    while (current) |candidate| : (current = candidate.parent_node) {
+        if (candidate.node_type != ELEMENT_NODE) continue;
+        if (matcher.matchesList(.{ .node = candidate }, list)) return instanceOf(candidate);
+    }
+    return null;
+}
+
+/// A query's parsed selector: the one `document` keeps for the text
+/// (dom.tree_ordered_map's `selectorCache`: Blink's SelectorQueryCache,
+/// selector_query.cc SelectorQueryCache::Add - 256 per document, keyed by
+/// the text alone), or, when the document keeps none (none at all, or one
+/// whose teardown began), a parse of this call's own. Parse errors are DOM's
+/// SyntaxError either way, and are never kept.
+const Selectors = struct {
+    kept: ?*const SelectorList = null,
+    own: SelectorList = undefined,
+
+    fn get(document: ?*runtime.Instance, allocator: std.mem.Allocator, text: []const u8) Error!Selectors {
+        if (document) |doc| if (@import("tree_ordered_map.zig").selectorCache(doc)) |cache| {
+            const kept = cache.getOrParse(text) catch |err| return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                else => error.SyntaxError,
+            };
+            return .{ .kept = kept };
+        };
+        return .{ .own = try parse(allocator, text) };
+    }
+
+    /// Borrowed until `deinit`; a kept one until the document's cache next
+    /// takes a text it does not keep (no query starts while this one runs:
+    /// matching runs no script).
+    fn list(self: *const Selectors) *const SelectorList {
+        return self.kept orelse &self.own;
+    }
+
+    fn deinit(self: *Selectors) void {
+        if (self.kept == null) self.own.deinit();
+    }
+};
+
+/// The ID path of querySelector and querySelectorAll (lane perf2), after
+/// Blink's SelectorQuery (third_party/blink/renderer/core/css/
+/// selector_query.cc, Execute's ID lookup; before its 2025 rewrite,
+/// SelectorQuery::ExecuteWithId and CanUseIdLookup): a one-selector list
+/// with an ID selector in a compound needs its candidates only from where
+/// the element with that ID is, which the tree scope's ID map
+/// (dom.tree_ordered_map) knows without walking the tree. The subject is
+/// matched by the full matcher either way, so the answer is the general
+/// walk's (tests/dom/perf2_query_fast_paths_test.zig).
+///
+/// Blink's conditions, all of them:
+/// - one complex selector in the list, not relative;
+/// - not quirks mode: IDs then match ASCII case-insensitively and the map's
+///   keys are exact (Blink: "querySelector is case-insensitive" there);
+/// - the scope is in a tree scope (Blink IsInTreeScope): its tree's root is
+///   a Document or a ShadowRoot, whose map holds every element of that tree
+///   with the ID;
+/// - the ID is the RIGHTMOST compound's that has one (Blink
+///   last_compound_with_id_selector_, "the one on the lowest level").
+/// Then:
+/// - ID in the subject compound: the elements with the ID, in tree order,
+///   that are descendants of the scope - one through the map's first, several
+///   through its ordered list (Blink GetAllElementsById);
+/// - ID in an earlier compound: with several elements that ID, the general
+///   walk (Blink: nested same-ID elements make it a trap); with one, E, every
+///   match descends from E - or, when the combinator right of E's compound
+///   is a sibling combinator, from E's parent - so the walk is of that
+///   subtree when E is in the scope (Blink's older ExecuteWithId, its
+///   selector_id_affected_by_sibling_combinator_ start at the parent), and
+///   of the whole scope otherwise; with none, nothing matches.
+/// `forEachById` returns false when the ID path does not apply, and the
+/// caller walks.
+const IdPlan = struct {
+    id: []const u8,
+    subject: bool,
+    sibling: bool,
+
+    fn of(list: *const SelectorList, matcher: *const Matcher) ?IdPlan {
+        if (matcher.quirks) return null;
+        if (list.selectors.len != 1) return null;
+        const complex = &list.selectors[0];
+        if (complex.is_relative) return null;
+        if (idIn(&complex.compound)) |id| return .{ .id = id, .subject = true, .sibling = false };
+        for (complex.combinators, 0..) |*pair, i| {
+            if (idIn(&pair.compound)) |id| {
+                // The combinator between this compound and the one on its right.
+                const right = complex.combinators[i].combinator;
+                return .{ .id = id, .subject = false, .sibling = right == .NextSibling or right == .SubsequentSibling };
+            }
+        }
+        return null;
+    }
+
+    /// The compound's own ID selector (not one inside a pseudo-class's
+    /// argument): every element the compound matches has that ID.
+    fn idIn(compound: *const CompoundSelector) ?[]const u8 {
+        for (compound.simple_selectors) |*simple| switch (simple.*) {
+            .Id => |id| return id.id,
+            else => {},
+        };
+        return null;
+    }
+};
+
+/// Run `take(context, node)` on each match the ID path finds, in tree
+/// order, until it returns false; true when the ID path applied (the caller
+/// is done), false when the caller must walk (`IdPlan`).
+fn forEachById(matcher: *const Matcher, scope_node: *NodeBase, list: *const SelectorList, fast: FastPath, context: anytype, comptime take: anytype) error{OutOfMemory}!bool {
+    const plan = IdPlan.of(list, matcher) orelse return false;
+    const tree_ordered_map = @import("tree_ordered_map.zig");
+    const elements = tree_ordered_map.idElements(rootOf(scope_node), plan.id, plan.subject) orelse return false;
+    if (elements.count == 0) return true;
+    if (plan.subject) {
+        if (elements.count == 1) {
+            const node = instance_bridge.getNodeBase(elements.first orelse return false) orelse return false;
+            if (isDescendant(node, scope_node) and matcher.matchesForQuery(node, list, fast)) _ = try take(context, node);
+            return true;
+        }
+        // The maps checked every link when they handed the list out
+        // (tree_ordered_map orderedFrom), and matching changes no tree.
+        for (elements.ordered) |link| {
+            const node = instance_bridge.getNodeBase(link.get() orelse continue) orelse continue;
+            if (!isDescendant(node, scope_node) or !matcher.matchesForQuery(node, list, fast)) continue;
+            if (!try take(context, node)) return true;
+        }
+        return true;
+    }
+    if (elements.count > 1) return false;
+    const id_node = instance_bridge.getNodeBase(elements.first orelse return false) orelse return false;
+    var start = scope_node;
+    if (isDescendant(id_node, scope_node)) {
+        start = if (plan.sibling) id_node.parent_node.? else id_node;
+    }
+    var walk = Walk.init(start);
+    while (walk.next()) |node| {
+        if (matcher.matchesForQuery(node, list, fast) and !try take(context, node)) return true;
+    }
+    return true;
+}
+
+/// Whether `node` is a descendant of `ancestor` (not `ancestor` itself).
+fn isDescendant(node: *NodeBase, ancestor: *NodeBase) bool {
+    var at = node.parent_node;
+    while (at) |parent| : (at = parent.parent_node) {
+        if (parent == ancestor) return true;
+    }
+    return false;
+}
+
+// The general paths: a fresh parse, and every descendant of the scope
+// walked. What the fast paths answer exactly as (tests/dom/
+// perf2_query_fast_paths_test.zig compares them on the same inputs).
+
+/// querySelector by the general path.
+pub fn querySelectorGeneral(scope: *runtime.Instance, selectors: []const u8) Error!?*runtime.Instance {
     const scope_node = instance_bridge.getNodeBase(scope) orelse return null;
     // DOM "scope-match a selectors string" steps 1-2. The parsed selector
     // lives for this call only: parse it on the stack while it fits.
@@ -82,10 +321,8 @@ pub fn querySelector(scope: *runtime.Instance, selectors: []const u8) Error!?*ru
     return null;
 }
 
-/// DOM querySelectorAll(selectors): every element among `scope`'s
-/// descendants that scope-matches `selectors`, in tree order, appended to
-/// `out` as tree nodes.
-pub fn querySelectorAll(allocator: std.mem.Allocator, scope: *runtime.Instance, selectors: []const u8, out: *std.ArrayList(*NodeBase)) Error!void {
+/// querySelectorAll by the general path.
+pub fn querySelectorAllGeneral(allocator: std.mem.Allocator, scope: *runtime.Instance, selectors: []const u8, out: *std.ArrayList(*NodeBase)) Error!void {
     const scope_node = instance_bridge.getNodeBase(scope) orelse return;
     var parse_memory_buffer: [parse_stack_bytes]u8 = undefined;
     var parse_memory: std.heap.BufferFirstAllocator = .init(&parse_memory_buffer, scope.ctx.getAllocator());
@@ -102,9 +339,8 @@ pub fn querySelectorAll(allocator: std.mem.Allocator, scope: *runtime.Instance, 
     }
 }
 
-/// DOM matches(selectors) / webkitMatchesSelector(selectors): whether
-/// `element` matches, with `element` the scoping root.
-pub fn matches(element: *runtime.Instance, selectors: []const u8) Error!bool {
+/// matches() by the general path.
+pub fn matchesGeneral(element: *runtime.Instance, selectors: []const u8) Error!bool {
     // Steps 1-2: parse, or throw a SyntaxError.
     var parse_memory_buffer: [parse_stack_bytes]u8 = undefined;
     var parse_memory: std.heap.BufferFirstAllocator = .init(&parse_memory_buffer, element.ctx.getAllocator());
@@ -117,9 +353,8 @@ pub fn matches(element: *runtime.Instance, selectors: []const u8) Error!bool {
     return matcher.matchesList(.{ .node = node }, &list);
 }
 
-/// DOM closest(selectors): the first of `element`'s inclusive ancestor
-/// elements, nearest first, that matches, with `element` the scoping root.
-pub fn closest(element: *runtime.Instance, selectors: []const u8) Error!?*runtime.Instance {
+/// closest() by the general path.
+pub fn closestGeneral(element: *runtime.Instance, selectors: []const u8) Error!?*runtime.Instance {
     var parse_memory_buffer: [parse_stack_bytes]u8 = undefined;
     var parse_memory: std.heap.BufferFirstAllocator = .init(&parse_memory_buffer, element.ctx.getAllocator());
     var list = try parse(parse_memory.allocator(), selectors);
