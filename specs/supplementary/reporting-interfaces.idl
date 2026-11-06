@@ -1,0 +1,205 @@
+// Crane supplementary IDL - not in webref.
+// Origin: lane coi2 batch 2 (2026-11-06), the user's ruling of 2026-11-05 (coi2
+// Ruling 2): Report, ReportBody and the report bodies are INTERFACES with a
+// toJSON() operation, as Chrome, Firefox and Safari ship them, over the
+// Reporting spec's dictionaries (w3c/reporting#284 turned them into
+// dictionaries; none of the three ships that, no engine bug tracks it, WPT
+// was not updated, and r.toJSON() - which the html/cross-origin-embedder-
+// policy reporting files call - exists only on the interfaces).
+// Each definition here replaces the pinned webref dictionary of the same name
+// (src/webidl/codegen/duplicates.zig names this file their definer).
+//
+// Decided by golden rule 2, mechanism by mechanism (no newer spec than the
+// browsers' shape is involved for exposure and toJSON: the browsers' majority):
+// - Exposure. Report: Chromium [LegacyNoInterfaceObject]
+//   (third_party/blink/renderer/core/frame/report.idl), Firefox
+//   [LegacyNoInterfaceObject] "Not exposed to Window for webcompat reasons"
+//   (dom/webidl/Reporting.webidl), WebKit exposed
+//   (Source/WebCore/Modules/reporting/Report.idl): no interface object.
+//   ReportBody: exposed to Window and Worker in all three (Chromium
+//   report_body.idl, Firefox Reporting.webidl, WebKit ReportBody.idl).
+//   CSPViolationReportBody: Exposed=Window in all three (Chromium
+//   csp/csp_violation_report_body.idl, Firefox, WebKit page/csp/).
+//   IntegrityViolationReportBody: Exposed=Window in Chromium
+//   (integrity_violation_report_body.idl) and Firefox.
+//   DeprecationReportBody: [LegacyNoInterfaceObject] in Chromium and Firefox.
+//   InterventionReportBody, PermissionsPolicyViolationReportBody,
+//   CoopAccessViolationReportBody: Chromium alone ships them,
+//   [LegacyNoInterfaceObject]. CORPViolationReportBody and
+//   COEPInheritenceViolationReportBody: WebKit alone names COEP's bodies
+//   (Source/WebCore/loader/*.idl), [LegacyNoInterfaceObject].
+//   CrashReportBody, ScriptingPolicyReportBody and
+//   ConnectionAllowlistViolationReport: no browser ships them as interfaces
+//   (and Crane makes no such report); they become interfaces only because a
+//   dictionary cannot inherit from the ReportBody interface, with no interface
+//   object, so nothing of them is observable until one is reported.
+// - toJSON: Report's is Chromium's hand-written one (report.cc
+//   Report::toJSON: type, url, and the body's JSON - body()->BuildJSONValue
+//   - as a plain object), not [Default] (Firefox, WebKit), whose body member
+//   is the ReportBody platform object itself (WebIDL "default toJSON
+//   steps"), which structured clone refuses: the COEP reporting files post
+//   r.toJSON() from a worker (html/cross-origin-embedder-policy/resources/
+//   reporting-worker.js), which only a plain body survives. [Default] on
+//   every body but
+//   CoopAccessViolationReportBody (Firefox, WebKit; a
+//   body's toJSON in Chromium, ReportBody::toJSON -> BuildJSONValue, writes
+//   the body's attributes). ReportBody's own toJSON is hand-written in
+//   Chromium (report_body.idl: [CallWith=ScriptState] object toJSON(optional
+//   DOMString key)) and WebKit ([Custom] object toJSON()), [Default] in
+//   Firefox: the majority's plain operation, which gives an object with no
+//   member - ReportBody has no attribute - as all three do; each body's
+//   [Default] toJSON writes its own attributes.
+// - Attribute types: the specs' dictionary member types, except where the
+//   engines agree otherwise (CSPViolationReportBody as in all three).
+
+[Exposed=(Window,Worker)]
+interface ReportBody {
+  object toJSON();
+};
+
+[Exposed=(Window,Worker), LegacyNoInterfaceObject]
+interface Report {
+  object toJSON();
+  readonly attribute DOMString type;
+  readonly attribute DOMString url;
+  readonly attribute ReportBody? body;
+};
+
+// CSP 3 §5.2 (the spec's CSPViolationReportBody dictionary).
+[Exposed=Window]
+interface CSPViolationReportBody : ReportBody {
+  [Default] object toJSON();
+  readonly attribute USVString documentURL;
+  readonly attribute USVString? referrer;
+  readonly attribute USVString? blockedURL;
+  readonly attribute DOMString effectiveDirective;
+  readonly attribute DOMString originalPolicy;
+  readonly attribute USVString? sourceFile;
+  readonly attribute DOMString? sample;
+  readonly attribute SecurityPolicyViolationEventDisposition disposition;
+  readonly attribute unsigned short statusCode;
+  readonly attribute unsigned long? lineNumber;
+  readonly attribute unsigned long? columnNumber;
+};
+
+// Subresource Integrity (the spec's IntegrityViolationReportBody dictionary).
+[Exposed=Window]
+interface IntegrityViolationReportBody : ReportBody {
+  [Default] object toJSON();
+  readonly attribute USVString documentURL;
+  readonly attribute USVString blockedURL;
+  readonly attribute USVString destination;
+  readonly attribute boolean reportOnly;
+};
+
+// Permissions Policy §9 (the spec's PermissionsPolicyViolationReportBody).
+[Exposed=Window, LegacyNoInterfaceObject]
+interface PermissionsPolicyViolationReportBody : ReportBody {
+  [Default] object toJSON();
+  readonly attribute DOMString featureId;
+  readonly attribute DOMString? sourceFile;
+  readonly attribute long? lineNumber;
+  readonly attribute long? columnNumber;
+  readonly attribute DOMString disposition;
+  readonly attribute DOMString? allowAttribute;
+  readonly attribute DOMString? srcAttribute;
+};
+
+// Deprecation Reporting (the spec's DeprecationReportBody dictionary).
+[Exposed=(Window,Worker), LegacyNoInterfaceObject]
+interface DeprecationReportBody : ReportBody {
+  [Default] object toJSON();
+  readonly attribute DOMString id;
+  readonly attribute object? anticipatedRemoval;
+  readonly attribute DOMString message;
+  readonly attribute DOMString? sourceFile;
+  readonly attribute unsigned long? lineNumber;
+  readonly attribute unsigned long? columnNumber;
+};
+
+// Intervention Reporting (the spec's InterventionReportBody dictionary).
+[Exposed=(Window,Worker), LegacyNoInterfaceObject]
+interface InterventionReportBody : ReportBody {
+  [Default] object toJSON();
+  readonly attribute DOMString id;
+  readonly attribute DOMString message;
+  readonly attribute DOMString? sourceFile;
+  readonly attribute unsigned long? lineNumber;
+  readonly attribute unsigned long? columnNumber;
+};
+
+// Crash Reporting (the spec's CrashReportBody dictionary).
+[Exposed=Window, LegacyNoInterfaceObject]
+interface CrashReportBody : ReportBody {
+  [Default] object toJSON();
+  readonly attribute DOMString reason;
+  readonly attribute DOMString stack;
+  readonly attribute boolean is_top_level;
+  readonly attribute DocumentVisibilityState visibility_state;
+  readonly attribute object crash_report_api;
+};
+
+// Scripting Policy (the spec's ScriptingPolicyReportBody dictionary).
+[Exposed=Window, LegacyNoInterfaceObject]
+interface ScriptingPolicyReportBody : ReportBody {
+  [Default] object toJSON();
+  readonly attribute DOMString violationType;
+  readonly attribute USVString? violationURL;
+  readonly attribute USVString? violationSample;
+  readonly attribute unsigned long lineno;
+  readonly attribute unsigned long colno;
+};
+
+// Connection Allowlists (the spec's ConnectionAllowlistViolationReport
+// dictionary; Chromium and Firefox call their interface
+// ConnectionAllowlistViolationReportBody).
+[Exposed=Window, LegacyNoInterfaceObject]
+interface ConnectionAllowlistViolationReport : ReportBody {
+  [Default] object toJSON();
+  readonly attribute USVString url;
+  readonly attribute USVString connection;
+  readonly attribute FrozenArray<DOMString> allowlist;
+  readonly attribute ConnectionAllowlistDisposition disposition;
+};
+
+// HTML 7.1.4 COEP's "corp" violation report body (WebKit
+// Source/WebCore/loader/CORPViolationReportBody.idl).
+[Exposed=(Window,Worker), LegacyNoInterfaceObject]
+interface CORPViolationReportBody : ReportBody {
+  [Default] object toJSON();
+  readonly attribute DOMString disposition;
+  readonly attribute DOMString type;
+  readonly attribute USVString blockedURL;
+  readonly attribute RequestDestination destination;
+};
+
+// HTML 7.1.4 COEP's "navigation" and "worker initialization" violation report
+// body (WebKit Source/WebCore/loader/COEPInheritenceViolationReportBody.idl,
+// its spelling).
+[Exposed=(Window,Worker), LegacyNoInterfaceObject]
+interface COEPInheritenceViolationReportBody : ReportBody {
+  [Default] object toJSON();
+  readonly attribute DOMString disposition;
+  readonly attribute DOMString type;
+  readonly attribute USVString blockedURL;
+};
+
+// HTML 7.1.3 COOP's access report body, as Chromium queues it on the
+// accessing document's ReportingObserver (third_party/blink/renderer/core/
+// frame/coop_access_violation_report_body.idl).
+[Exposed=Window, LegacyNoInterfaceObject]
+interface CoopAccessViolationReportBody : ReportBody {
+  // Not [Default]: Chromium's toJSON (CoopAccessViolationReportBody::
+  // BuildJSONValue) writes openeeURL, openerURL and otherDocumentURL only
+  // when the report has one; access-reporting/reporting-observer.html reads
+  // the other two as undefined after JSON.stringify.
+  object toJSON();
+  readonly attribute DOMString? sourceFile;
+  readonly attribute unsigned long? lineNumber;
+  readonly attribute unsigned long? columnNumber;
+  readonly attribute DOMString type;
+  readonly attribute DOMString property;
+  readonly attribute DOMString? openeeURL;
+  readonly attribute DOMString? openerURL;
+  readonly attribute DOMString? otherDocumentURL;
+};

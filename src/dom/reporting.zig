@@ -88,6 +88,20 @@ pub const State = struct {
     /// was destroyed, or its worker ended: `endRegistrations`). Nothing
     /// keeps an observer for it from then on.
     ended: bool = false,
+    /// The opener policy access monitors this window used (dom.coop_reporting
+    /// .checkAccess): one per accessing top-level window and direction, as
+    /// Chromium's one-shot CoopAccessMonitor ("used once and destroyed").
+    access_monitors_used: std.ArrayListUnmanaged(AccessMonitor) = .empty,
+
+    /// An accessing top-level window - by slab generation, so a window
+    /// freed and its slot reissued is a new one - and which side's report.
+    pub const AccessMonitor = struct {
+        accessor: *runtime.Instance,
+        generation: u64,
+        direction: Direction,
+
+        pub const Direction = enum { from_coop_page, to_coop_page };
+    };
 
     pub fn deinit(self: *State, allocator: std.mem.Allocator) void {
         for (self.pending.items) |record| record.release();
@@ -95,7 +109,20 @@ pub const State = struct {
         self.pending.deinit(allocator);
         self.buffer.deinit(allocator);
         self.observers.deinit(allocator);
+        self.access_monitors_used.deinit(allocator);
         self.* = .{};
+    }
+
+    /// Use this window's monitor for accesses from `accessor` (the accessing
+    /// top-level window) in `direction`: true the first time, false once it
+    /// was used.
+    pub fn useAccessMonitor(self: *State, allocator: std.mem.Allocator, accessor: *runtime.Instance, direction: AccessMonitor.Direction) error{OutOfMemory}!bool {
+        const generation = runtime.SlabAllocator.generationOf(accessor);
+        for (self.access_monitors_used.items) |used| {
+            if (used.accessor == accessor and used.generation == generation and used.direction == direction) return false;
+        }
+        try self.access_monitors_used.append(allocator, .{ .accessor = accessor, .generation = generation, .direction = direction });
+        return true;
     }
 
     pub fn bufferReport(self: *State, allocator: std.mem.Allocator, record: *Record) !void {
@@ -346,34 +373,166 @@ const ObserverTask = struct {
     }
 };
 
-/// The single native-report → script conversion point. The pinned webref
-/// currently models Report/ReportBody as dictionaries; an eventual interface
-/// implementation replaces this function, not the queues or delivery path.
-fn reportToScript(realm: runtime.Context, record: *const Record) !engine.Owned {
-    const body = try engine.parseJsonToValue(realm, record.body_json);
-    defer body.release();
-    return engine.createDictionaryObject(realm, &.{
-        .{ .name = "type", .value = .{ .string = .{ .data = record.type, .owned = false } } },
-        .{ .name = "url", .value = .{ .string = .{ .data = record.url, .owned = false } } },
-        .{ .name = "body", .value = body.value },
-    });
-}
-
+/// The single native-report -> script conversion point: a Report platform
+/// object of `realm` for each record (the user's ruling of 2026-11-05: the
+/// browsers' Report and ReportBody interfaces, specs/supplementary/
+/// reporting-interfaces.idl), as a new Array. A Report holds its record; its
+/// body is made from the record when script first reads it (`makeBody`).
 fn reportsToScript(realm: runtime.Context, records: []const *Record) !engine.Owned {
     const values = try realm.allocator.alloc(runtime.JSValue, records.len);
     defer realm.allocator.free(values);
-    var converted: std.ArrayListUnmanaged(engine.Owned) = .empty;
-    defer {
-        for (converted.items) |value| value.release();
-        converted.deinit(realm.allocator);
-    }
-    try converted.ensureTotalCapacity(realm.allocator, records.len);
-    for (records, values) |record, *value| {
-        const object = try reportToScript(realm, record);
-        converted.appendAssumeCapacity(object);
-        value.* = object.value;
+    const generations = try realm.allocator.alloc(u64, records.len);
+    defer realm.allocator.free(generations);
+    var made: usize = 0;
+    // A report the Array did not take - one made before a failure - goes;
+    // one it wrapped is its wrapper's.
+    defer for (values[0..made], generations[0..made]) |value, generation| value.instance.releaseIfUnwrapped(generation);
+    for (records, values, generations) |record, *value, *generation| {
+        const report = try interfaces.Report.initWith(realm.allocator, realm, .{ .record = record });
+        value.* = .{ .instance = report };
+        generation.* = runtime.SlabAllocator.generationOf(report);
+        made += 1;
     }
     return engine.createSequenceOfValues(realm, values);
+}
+
+/// A report's body as the interface its type names, made in `realm` from
+/// `record` (which it retains); null for a report type with no body
+/// interface. The interfaces are the engines' (specs/supplementary/
+/// reporting-interfaces.idl): "coep" reports take WebKit's two
+/// (CORPViolationReportBody for "corp", COEPInheritenceViolationReportBody
+/// for "navigation" and "worker initialization"; Source/WebCore/loader/
+/// CrossOriginEmbedderPolicy.cpp), "coop-access-violation" Chromium's
+/// CoopAccessViolationReportBody.
+pub fn makeBody(realm: runtime.Context, record: *Record) !?*runtime.Instance {
+    const args = .{ .record = record };
+    const allocator = realm.allocator;
+    const kind = record.type;
+    if (std.mem.eql(u8, kind, "csp-violation")) return try interfaces.CSPViolationReportBody.initWith(allocator, realm, args);
+    if (std.mem.eql(u8, kind, "integrity-violation")) return try interfaces.IntegrityViolationReportBody.initWith(allocator, realm, args);
+    if (std.mem.eql(u8, kind, "permissions-policy-violation")) return try interfaces.PermissionsPolicyViolationReportBody.initWith(allocator, realm, args);
+    if (std.mem.eql(u8, kind, "deprecation")) return try interfaces.DeprecationReportBody.initWith(allocator, realm, args);
+    if (std.mem.eql(u8, kind, "intervention")) return try interfaces.InterventionReportBody.initWith(allocator, realm, args);
+    if (std.mem.eql(u8, kind, "crash")) return try interfaces.CrashReportBody.initWith(allocator, realm, args);
+    if (std.mem.eql(u8, kind, "coop-access-violation")) return try interfaces.CoopAccessViolationReportBody.initWith(allocator, realm, args);
+    if (std.mem.eql(u8, kind, "coep")) {
+        var fields = try BodyFields.parse(allocator, record.body_json);
+        defer fields.deinit();
+        const coep_type = fields.string("type") orelse "";
+        if (std.mem.eql(u8, coep_type, "corp")) return try interfaces.CORPViolationReportBody.initWith(allocator, realm, args);
+        return try interfaces.COEPInheritenceViolationReportBody.initWith(allocator, realm, args);
+    }
+    return null;
+}
+
+/// A report body's members, read from its record's native JSON
+/// (`Record.body_json`) by the body interfaces' getters: each body
+/// interface's impl keeps one with the record it was made from. Strings are
+/// borrowed from the parse, which lives as long as this does.
+pub const BodyFields = struct {
+    parsed: std.json.Parsed(std.json.Value),
+
+    pub fn parse(allocator: std.mem.Allocator, json: []const u8) !BodyFields {
+        return .{ .parsed = try std.json.parseFromSlice(std.json.Value, allocator, json, .{}) };
+    }
+
+    pub fn deinit(self: *BodyFields) void {
+        self.parsed.deinit();
+    }
+
+    fn get(self: *const BodyFields, name: []const u8) ?std.json.Value {
+        const object = switch (self.parsed.value) {
+            .object => |object| object,
+            else => return null,
+        };
+        return object.get(name);
+    }
+
+    /// Member `name` as a string; null when it is absent, null or not one.
+    pub fn string(self: *const BodyFields, name: []const u8) ?[]const u8 {
+        return switch (self.get(name) orelse return null) {
+            .string => |value| value,
+            else => null,
+        };
+    }
+
+    /// Member `name` as a non-negative integer; null when it is absent,
+    /// null or not one.
+    pub fn unsigned(self: *const BodyFields, name: []const u8) ?u32 {
+        return switch (self.get(name) orelse return null) {
+            .integer => |value| std.math.cast(u32, value),
+            else => null,
+        };
+    }
+
+    /// Member `name` as an integer; null when it is absent, null or not one.
+    pub fn signed(self: *const BodyFields, name: []const u8) ?i32 {
+        return switch (self.get(name) orelse return null) {
+            .integer => |value| std.math.cast(i32, value),
+            else => null,
+        };
+    }
+
+    /// Member `name` as a value of WebIDL enumeration `E` (codegen's enum,
+    /// its variants in `idl_values` order); E's first value when the member
+    /// is absent or names none of them.
+    pub fn enumeration(self: *const BodyFields, comptime E: type, name: []const u8) E {
+        const value = self.string(name) orelse return @fromBackingInt(@intCast(0));
+        for (E.idl_values, 0..) |idl, i| {
+            if (std.mem.eql(u8, idl, value)) return @fromBackingInt(@intCast(i));
+        }
+        return @fromBackingInt(@intCast(0));
+    }
+
+    /// Member `name` as a boolean; false when it is absent or not one.
+    pub fn boolean(self: *const BodyFields, name: []const u8) bool {
+        return switch (self.get(name) orelse return false) {
+            .bool => |value| value,
+            else => false,
+        };
+    }
+};
+
+/// What every body interface's impl keeps: the record it was made from
+/// (retained) and its body's members. The impls alias `initOwn`, `deinitOwn`
+/// and `InternalState` from `BodyImpl`; shared here, outside the impls, as
+/// the impls boundary asks of a helper several types use.
+pub const BodyInternal = struct {
+    allocator: std.mem.Allocator,
+    record: *Record,
+    fields: BodyFields,
+};
+
+/// The construction and teardown every body interface shares, for the
+/// generated `State` of its interface.
+pub fn BodyImpl(comptime InterfaceState: type) type {
+    return struct {
+        pub const construction_args = .{"record"};
+
+        pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+            const record: *Record = args.record;
+            const internal = try allocator.create(BodyInternal);
+            errdefer allocator.destroy(internal);
+            internal.* = .{ .allocator = allocator, .record = record, .fields = try BodyFields.parse(allocator, record.body_json) };
+            record.retain();
+            instance.getState(StateType).own._internal = internal;
+        }
+
+        pub fn deinitOwn(instance: *runtime.Instance) void {
+            const state = instance.getState(InterfaceState);
+            const internal = state.own._internal orelse return;
+            state.own._internal = null;
+            internal.fields.deinit();
+            internal.record.release();
+            internal.allocator.destroy(internal);
+        }
+
+        /// The body's members; InvalidStateError for an instance torn down.
+        pub fn fields(instance: *runtime.Instance) !*const BodyFields {
+            const state = instance.stateAs(InterfaceState) orelse return error.InvalidStateError;
+            return &(state.own._internal orelse return error.InvalidStateError).fields;
+        }
+    };
 }
 
 /// Reporting §2.1 "serialize a list of reports to JSON", steps 1-4.
