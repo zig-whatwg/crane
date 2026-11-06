@@ -234,6 +234,7 @@ pub const SheetRecord = struct {
     pub fn changed(self: *SheetRecord) void {
         self.contents_version +%= 1;
         @import("resource_loading.zig").sheetChanged(self);
+        @import("engine.zig").transitionsSheetChanged(self);
     }
 
     /// The media changed (the owner's media attribute, MediaList).

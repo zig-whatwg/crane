@@ -974,6 +974,9 @@ fn handleAttributeChanges(
     // Used style resources are reconsidered at the next rendering turn.
     // Names are filtered before values; no style resolution occurs here.
     dom.style.engine.resource_loading.attributeChanged(instance, local_name, new_value, namespace);
+    // CSS Transitions: a style attribute that declares one opens its
+    // document's step-16 style update (one scan, style attributes only).
+    dom.style.engine.styleAttributeChanged(instance, local_name, new_value, namespace);
 
     // Step 1: "Queue a mutation record of "attributes" for element with
     // attribute's local name, attribute's namespace, oldValue, « », « »,

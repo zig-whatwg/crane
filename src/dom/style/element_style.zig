@@ -17,6 +17,7 @@ const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const css = @import("css");
 const hooks = @import("hooks.zig");
+const css_transitions = @import("../animations/css_transitions.zig");
 
 const ComputedStyle = css.computed_style.ComputedStyle;
 const DeclarationBlock = css.declarations.DeclarationBlock;
@@ -41,6 +42,13 @@ pub const Key = struct {
 
 pub const Cached = struct {
     style: *ComputedStyle,
+    /// The style without the animation and transition origins (the base
+    /// style), OWNED, when it differs from `style`: kept only for an element
+    /// an effect applied to, so that the next style change event has the
+    /// before-change style CSS Transitions 1 section 3 compares (Blink keeps
+    /// the base computed style on ElementAnimations for the same reason).
+    /// Null: `style` is the base style.
+    base: ?*ComputedStyle = null,
     key: Key,
     /// The style read per-element dynamic state (or inherited from one
     /// that did): resolved again on every read (design 5.3).
@@ -55,6 +63,24 @@ pub const Cached = struct {
     /// again too, so inheritance follows the animated value.
     serial: u64 = 0,
     parent_serial: u64 = 0,
+    /// The element was being rendered when this style was resolved: no
+    /// `display: none` on it or a flat-tree ancestor, and it has not been
+    /// removed from the document since (its removing steps clear it). A
+    /// style resolved while not rendered is no before-change style (CSS
+    /// Transitions 1 section 3, CSS Transitions 2 section 3).
+    rendered: bool = true,
+
+    /// The before-change style this cached style gives the next style
+    /// change event: its base style, or null when it has none.
+    pub fn beforeChange(self: *const Cached) ?*const ComputedStyle {
+        if (!self.rendered) return null;
+        return self.base orelse self.style;
+    }
+
+    fn destroy(self: Cached) void {
+        self.style.destroy();
+        if (self.base) |base| base.destroy();
+    }
 };
 
 pub const PseudoCached = struct {
@@ -117,6 +143,11 @@ pub const ElementStyle = struct {
     background_hint: ?*BackgroundHint = null,
     /// HTML 15.3.4: an HTML font element's color/face/size hint (font_hints.zig).
     font_hint: ?*@import("font_hints.zig").FontHint = null,
+    /// CSS Transitions 1 section 3: the element's running and completed
+    /// transitions (dom.animations.css_transitions), made at its first
+    /// transition. Holds no engine handle: the running transitions are
+    /// borrowed links, the completed ones values.
+    transitions: ?*css_transitions.ElementTransitions = null,
 
     pub const InlineState = enum {
         /// Parse the attribute's value on the next read.
@@ -141,6 +172,7 @@ pub const ElementStyle = struct {
         self.dropFontHint();
         self.dropCache();
         self.pseudo.deinit(self.allocator);
+        if (self.transitions) |transitions| transitions.destroy(self.allocator);
         self.allocator.destroy(self);
     }
 
@@ -165,10 +197,10 @@ pub const ElementStyle = struct {
 
     /// Forget every cached style.
     pub fn dropCache(self: *ElementStyle) void {
-        if (self.cached) |c| c.style.destroy();
+        if (self.cached) |c| c.destroy();
         self.cached = null;
         for (self.pseudo.items) |p| {
-            p.cached.style.destroy();
+            p.cached.destroy();
             self.allocator.free(p.name);
         }
         self.pseudo.clearRetainingCapacity();
@@ -176,8 +208,15 @@ pub const ElementStyle = struct {
 
     /// Replace the cached style (taken).
     pub fn setCached(self: *ElementStyle, cached: Cached) void {
-        if (self.cached) |old| old.style.destroy();
+        if (self.cached) |old| old.destroy();
         self.cached = cached;
+    }
+
+    /// The element left the document (its removing steps): no cached style
+    /// of it is a before-change style any more.
+    pub fn markRemoved(self: *ElementStyle) void {
+        if (self.cached) |*c| c.rendered = false;
+        for (self.pseudo.items) |*p| p.cached.rendered = false;
     }
 
     pub fn pseudoCached(self: *ElementStyle, name: []const u8) ?*PseudoCached {
@@ -188,11 +227,11 @@ pub const ElementStyle = struct {
     /// Replace the cached style of pseudo-element `name` (taken).
     pub fn setPseudoCached(self: *ElementStyle, name: []const u8, cached: Cached) Allocator.Error!void {
         if (self.pseudoCached(name)) |existing| {
-            existing.cached.style.destroy();
+            existing.cached.destroy();
             existing.cached = cached;
             return;
         }
-        errdefer cached.style.destroy();
+        errdefer cached.destroy();
         const copy = try self.allocator.dupe(u8, name);
         errdefer self.allocator.free(copy);
         try self.pseudo.append(self.allocator, .{ .name = copy, .cached = cached });
@@ -226,4 +265,22 @@ test "an element's style state keeps one cached style per pseudo-element" {
     try state.setPseudoCached("before", .{ .style = try ComputedStyle.initial(std.testing.allocator), .key = key, .@"volatile" = false });
     try std.testing.expectEqual(@as(usize, 1), state.pseudo.items.len);
     try std.testing.expect(key.eql(state.pseudoCached("before").?.cached.key));
+}
+
+test "a cached style owns its base style, and a removed element's cache is no before-change style" {
+    const state = try ElementStyle.create(std.testing.allocator);
+    defer state.destroy();
+    const key: Key = .{ .tree_version = 1, .generation = 1, .singletons = @splat(0) };
+    const style = try ComputedStyle.initial(std.testing.allocator);
+    const base = try ComputedStyle.initial(std.testing.allocator);
+    state.setCached(.{ .style = style, .base = base, .key = key, .@"volatile" = false });
+    try std.testing.expect(state.cached.?.beforeChange() == base);
+    // Replacing it frees both (std.testing.allocator fails the test on a leak).
+    const plain = try ComputedStyle.initial(std.testing.allocator);
+    state.setCached(.{ .style = plain, .key = key, .@"volatile" = false });
+    try std.testing.expect(state.cached.?.beforeChange() == plain);
+    try state.setPseudoCached("before", .{ .style = try ComputedStyle.initial(std.testing.allocator), .base = try ComputedStyle.initial(std.testing.allocator), .key = key, .@"volatile" = false });
+    state.markRemoved();
+    try std.testing.expect(state.cached.?.beforeChange() == null);
+    try std.testing.expect(state.pseudoCached("before").?.cached.beforeChange() == null);
 }

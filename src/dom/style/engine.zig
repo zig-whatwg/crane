@@ -65,6 +65,7 @@ const element_style = @import("element_style.zig");
 // H-R3-ENGINE-KEY / H-R3-ENGINE-RESOLVE (lane rendering3): Web Animations.
 const animations = struct {
     const effect_stack = @import("../animations/effect_stack.zig");
+    const css_transitions = @import("../animations/css_transitions.zig");
 };
 const environment_variables = @import("environment_variables.zig");
 pub const resource_loading = @import("resource_loading.zig");
@@ -259,6 +260,9 @@ pub const StyleEngine = struct {
         /// held; every style computed with it holds its own.
         registered: ?*css.registered_properties.Snapshot = null,
         registered_key: RegisteredKey = .{},
+        /// CSS Transitions from style: whether the document declares any,
+        /// and what its last step-16 style update saw (`TransitionGate`).
+        transitions: TransitionGate = .{},
 
         fn deinit(self: *Rare, allocator: Allocator) void {
             if (self.resources) |resources| resources.destroy();
@@ -480,7 +484,10 @@ pub const StyleEngine = struct {
     /// `element` (a style or link element of this document) may own a
     /// sheet. Idempotent.
     pub fn addOwner(self: *StyleEngine, element: *runtime.Instance) Error!void {
-        if (hooks.sheetOf(element)) |record| resource_loading.sheetChanged(record);
+        if (hooks.sheetOf(element)) |record| {
+            resource_loading.sheetChanged(record);
+            transitionsSheetChanged(record);
+        }
         for (self.owners.items) |o| if (o.element == element and o.live()) {
             self.sheetsChanged();
             return;
@@ -574,7 +581,27 @@ pub const StyleEngine = struct {
         try self.buildActive(document, &built);
         self.active = built;
         self.generation +%= 1;
+        // The net for sheets that join without addOwner (adopted and
+        // constructed sheets): an active sheet that declares a transition
+        // opens the gate.
+        if (!self.declaresTransitions()) if (activeDeclaresTransitions(&self.active.?)) self.noteTransitionDeclaration(document);
         return &self.active.?;
+    }
+
+    /// Whether this document declares CSS transitions (`TransitionGate`).
+    fn declaresTransitions(self: *const StyleEngine) bool {
+        const rare = self.rare orelse return false;
+        return rare.transitions.declares;
+    }
+
+    /// A transition declaration reached this document: from now on its
+    /// rendering opportunities update its style, and its mutations ask for
+    /// one (dom.update_the_rendering's watch).
+    fn noteTransitionDeclaration(self: *StyleEngine, document: *runtime.Instance) void {
+        const rare = self.ensureRare() catch return;
+        if (rare.transitions.declares) return;
+        rare.transitions.declares = true;
+        @import("../update_the_rendering.zig").watchStyle(document);
     }
 
     /// CSSOM 6.2's final CSS style sheets of the document, enabled and
@@ -1053,8 +1080,13 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
     var parent_style: ?*const ComputedStyle = null;
     var parent_volatile = false;
     var parent_serial: u64 = 0;
-    // H-R3-ENGINE-KEY: the effect stack's view for this read, found once.
-    const animation_reader = animations.effect_stack.reader(element);
+    var parent_rendered = true;
+    // CSS Transitions 2 3.2: this read is one style change event; its
+    // transitions share one generation, taken at the first.
+    var generation: ?u64 = null;
+    // H-R3-ENGINE-KEY: the effect stack's view for this read, found once
+    // (again after a transition started or was canceled).
+    var animation_reader = animations.effect_stack.reader(element);
     var i = lineage.items.len;
     while (i > 0) {
         i -= 1;
@@ -1070,8 +1102,14 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
         };
         if (must_resolve) {
             var reads: selector_matching.StateReads = .{};
-            const style = try resolveOne(&res, e, entry.node, state, null, parent_style, i == lineage.items.len - 1, &reads);
-            state.setCached(.{ .style = style, .key = res.key, .@"volatile" = reads.@"volatile" or parent_volatile, .animations = animated, .serial = animations.effect_stack.nextStyleSerial(e), .parent_serial = parent_serial });
+            const resolved = try resolveOne(&res, e, entry.node, state, null, parent_style, i == lineage.items.len - 1, &reads, .{
+                .event = styleChangeEvent(state.cached, res.key, parent_volatile),
+                .parent_rendered = parent_rendered,
+                .generation = &generation,
+            });
+            if (resolved.transitions_changed) animation_reader = animations.effect_stack.reader(element);
+            const component = if (resolved.transitions_changed) animation_reader.component(e, null) else animated;
+            state.setCached(.{ .style = resolved.style, .base = resolved.base, .key = res.key, .@"volatile" = reads.@"volatile" or parent_volatile, .animations = component, .serial = animations.effect_stack.nextStyleSerial(e), .parent_serial = parent_serial, .rendered = resolved.rendered });
         }
         const cached = state.cached.?;
         if (i == lineage.items.len - 1) {
@@ -1091,6 +1129,7 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
         parent_style = cached.style;
         parent_volatile = cached.@"volatile";
         parent_serial = cached.serial;
+        parent_rendered = cached.rendered;
     }
     const state = element_style.existingOf(element) orelse return null;
     const own = state.cached orelse return null;
@@ -1104,8 +1143,14 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
         if (!cached.cached.@"volatile" and !own.@"volatile" and cached.cached.key.eql(res.key) and cached.cached.animations == pseudo_animated and cached.cached.parent_serial == own.serial) return cached.cached.style;
     }
     var reads: selector_matching.StateReads = .{};
-    const style = try resolveOne(&res, element, node, state, p, own.style, false, &reads);
-    try state.setPseudoCached(p, .{ .style = style, .key = res.key, .@"volatile" = reads.@"volatile" or own.@"volatile", .animations = pseudo_animated, .serial = animations.effect_stack.nextStyleSerial(element), .parent_serial = own.serial });
+    const previous: ?element_style.Cached = if (state.pseudoCached(p)) |cached| cached.cached else null;
+    const resolved = try resolveOne(&res, element, node, state, p, own.style, false, &reads, .{
+        .event = styleChangeEvent(previous, res.key, own.@"volatile"),
+        .parent_rendered = own.rendered,
+        .generation = &generation,
+    });
+    const component = if (resolved.transitions_changed) animations.effect_stack.component(element, p) else pseudo_animated;
+    try state.setPseudoCached(p, .{ .style = resolved.style, .base = resolved.base, .key = res.key, .@"volatile" = reads.@"volatile" or own.@"volatile", .animations = component, .serial = animations.effect_stack.nextStyleSerial(element), .parent_serial = own.serial, .rendered = resolved.rendered });
     return state.pseudoCached(p).?.cached.style;
 }
 
@@ -1174,9 +1219,52 @@ const LineageEntry = struct {
     slotted: bool,
 };
 
+/// What a resolution knows about the style change event it may be.
+const StyleChange = struct {
+    /// Null: an animation-only resolution (only the element's animation
+    /// component or its parent's serial moved), which is no style change
+    /// event: Blink skips the transition update when the recalc is an
+    /// animation style change (CSSAnimations::CalculateTransitionUpdate,
+    /// `animation_style_recalc`).
+    event: ?Event,
+    /// The flat-tree parent was being rendered (no `display: none` up the
+    /// lineage).
+    parent_rendered: bool,
+    generation: *?u64,
+
+    const Event = struct {
+        /// The before-change style: the previous resolution's base style;
+        /// null when there was none or it was not rendered.
+        before: ?*const ComputedStyle,
+    };
+};
+
+/// Whether resolving again a style cached as `cached` is a style change
+/// event (CSS Transitions 1 section 3): its inputs moved - the key, or a
+/// volatile style's per-element state - rather than only its animations.
+fn styleChangeEvent(cached: ?element_style.Cached, key: Key, parent_volatile: bool) ?StyleChange.Event {
+    const c = cached orelse return .{ .before = null };
+    if (!c.key.eql(key) or c.@"volatile" or parent_volatile) return .{ .before = c.beforeChange() };
+    return null;
+}
+
+/// One resolution's results: the computed style and, when effects applied,
+/// its base style (both OWNED), and whether it is being rendered.
+const Resolved = struct {
+    style: *ComputedStyle,
+    base: ?*ComputedStyle,
+    rendered: bool,
+    /// A transition started or was canceled: the effects moved.
+    transitions_changed: bool,
+};
+
 /// The cascade for one element (or pseudo-element), its parent's style
-/// computed.
-fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, state: *ElementStyle, pseudo: ?[]const u8, parent: ?*const ComputedStyle, is_root: bool, reads: *selector_matching.StateReads) Error!*ComputedStyle {
+/// computed. At a style change event the base style - the cascade without
+/// the animation and transition origins - is the after-change style CSS
+/// Transitions 1 section 3 starts transitions from (Blink
+/// CalculateAfterChangeStyle: `state.base_style`); the transitions run
+/// before the animated cascade, so a new transition's value applies at once.
+fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, state: *ElementStyle, pseudo: ?[]const u8, parent: ?*const ComputedStyle, is_root: bool, reads: *selector_matching.StateReads, change: StyleChange) Error!Resolved {
     res.matched.clearRetainingCapacity();
     try collectMatched(res, element, node, state, pseudo, reads);
     var random_context: RandomContext = .{
@@ -1217,11 +1305,25 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         // Properties and Values API 1: the registrations; null when none.
         .registered = res.registered,
     };
+    const base = try css.cascade.cascade(ctx, res.matched.items);
+    errdefer base.destroy();
+    const rendered = change.parent_rendered and base.display().box != .none;
+    var transitions_changed = false;
+    if (change.event) |event| {
+        transitions_changed = animations.css_transitions.styleChangeEvent(element, pseudo, .{
+            .before = event.before,
+            .after = base,
+            .rendered = rendered,
+            .generation = change.generation,
+        });
+    }
     // H-R3-ENGINE-RESOLVE.
     if (animations.effect_stack.component(element, pseudo) != 0) {
-        if (try resolveAnimated(res, element, pseudo, ctx)) |style| return style;
+        if (try resolveAnimated(res, element, pseudo, ctx, base)) |style| {
+            return .{ .style = style, .base = base, .rendered = rendered, .transitions_changed = transitions_changed };
+        }
     }
-    return css.cascade.cascade(ctx, res.matched.items);
+    return .{ .style = base, .base = null, .rendered = rendered, .transitions_changed = transitions_changed };
 }
 
 /// Conditional 5 §7: borrowed for one resolution. Ordinary units never
@@ -1272,18 +1374,23 @@ fn containerEligibility(raw: *anyopaque, axis: css.math_values.Context.Container
 /// 5 6.2) - Blink's StyleCascade::ApplyAnimations after the declared
 /// cascade, WebKit's base style then setAnimatedPropertiesInStyle. Null when
 /// no effect applies after all (the caller cascades as usual).
-fn resolveAnimated(res: *Resolution, element: *runtime.Instance, pseudo: ?[]const u8, ctx: css.cascade.Context) Error!?*ComputedStyle {
-    const base = try css.cascade.cascade(ctx, res.matched.items);
-    var base_kept = false;
-    defer if (!base_kept) base.destroy();
+///
+/// `base` is the caller's (borrowed). The CSS transitions with an owning
+/// element composite into a block of their own at the transitions level,
+/// above every important declaration (CSS Transitions 2 4.2; Blink's
+/// active_interpolations_for_transitions beside those for animations).
+fn resolveAnimated(res: *Resolution, element: *runtime.Instance, pseudo: ?[]const u8, ctx: css.cascade.Context, base: *const ComputedStyle) Error!?*ComputedStyle {
     var above: AboveCascade = .{ .ctx = ctx, .matched = res.matched.items };
-    var block = (try animations.effect_stack.animatedBlock(res.allocator, element, pseudo, base, .{ .context = &above, .cascadeAbove = AboveCascade.run })) orelse {
-        base_kept = true;
-        return base;
-    };
-    defer block.deinit();
-    try res.matched.append(res.allocator, .{ .block = &block, .source = .{ .origin = .animation } });
-    defer _ = res.matched.pop();
+    const cascader: animations.effect_stack.Cascader = .{ .context = &above, .cascadeAbove = AboveCascade.run };
+    var animation_block = try animations.effect_stack.animatedBlock(res.allocator, element, pseudo, base, cascader, .animations);
+    defer if (animation_block) |*b| b.deinit();
+    var transition_block = try animations.effect_stack.animatedBlock(res.allocator, element, pseudo, base, cascader, .transitions);
+    defer if (transition_block) |*b| b.deinit();
+    if (animation_block == null and transition_block == null) return null;
+    const restore = res.matched.items.len;
+    defer res.matched.shrinkRetainingCapacity(restore);
+    if (animation_block) |*b| try res.matched.append(res.allocator, .{ .block = b, .source = .{ .origin = .animation } });
+    if (transition_block) |*b| try res.matched.append(res.allocator, .{ .block = b, .source = .{ .origin = .transition } });
     return try css.cascade.cascade(ctx, res.matched.items);
 }
 
@@ -1708,6 +1815,230 @@ pub fn reparseInline(element: *runtime.Instance, state: *ElementStyle, value: []
         state.inline_block = try css.declarations.DeclarationBlock.parse(options, value);
     }
     state.inline_state = .parsed;
+    // The net for a style attribute set while its element had no document
+    // engine to tell: a parsed inline block that declares a transition
+    // opens the gate.
+    if (state.inline_block) |*block| if (blockDeclaresTransitions(block)) {
+        const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+        if (hooks.engineOf(document)) |engine| engine.noteTransitionDeclaration(document);
+    };
+}
+
+// ============================================================================
+// CSS Transitions: the gate, the step-16 style update and the flush
+// ============================================================================
+//
+// CSS Transitions 1 section 3 does not say when computed values update; it
+// asks that a style change event "update the computed value for all
+// properties and elements to reflect all of these changes at the same time
+// (or at least it must be undetectable that it was done at a different
+// time)". Crane resolves style when something asks (computedStyle), and each
+// resolution whose inputs moved is the element's style change event. A
+// document-wide update - every element of the document resolved - runs at
+// HTML step 16 and at the getAnimations() flush, but ONLY for a document that
+// declares transitions: a transition can start only from an after-change
+// style whose transition-duration or transition-delay is not the initial 0s,
+// and those properties are neither inherited nor animatable, so only a
+// declaration of them in a sheet or a style attribute can give one. A
+// document with none would gain nothing observable from the update, and the
+// update costs about 2 us per element per rendering opportunity
+// (tmp/plans/anim1b2-design.md section 5, measured on the release console).
+//
+// Stated deviations this gate brings, against a browser that updates the
+// style of every document at every rendering opportunity (the integrator's
+// condition 2, design 1.5):
+// 1. In a document that declared no transition before, the elements' cached
+//    styles can be older than a browser's previous frame: a transition
+//    declared in the SAME task as its change, on an element never read since
+//    an unread change, starts from that older value or, for an element never
+//    resolved, not at all.
+// 2. A pseudo-element never read has no before-change style: the update
+//    resolves only the pseudo-element styles already cached.
+// 3. An inherited property under an animating ancestor: the child's base
+//    style inherits the ancestor's animated value (Blink re-resolves the
+//    base chain through animating ancestors), so a child's own transition on
+//    it can start when the child is resolved for an unrelated change while
+//    the ancestor animates.
+// 4. @starting-style gives no before-change style: the cascade skips it.
+
+/// A document's CSS transitions gate (StyleEngine.Rare).
+pub const TransitionGate = struct {
+    /// Sticky: a sheet or a style attribute of the document declared a
+    /// transition (transition-duration, transition-delay or `transition`).
+    declares: bool = false,
+    /// The style inputs the last step-16 update resolved under, and whether
+    /// it met a volatile style (resolved again on every read).
+    updated: ?Inputs = null,
+    updated_volatile: bool = false,
+
+    const Inputs = struct {
+        key: Key,
+        sheets_version: u64,
+
+        fn eql(a: Inputs, b: Inputs) bool {
+            return a.key.eql(b.key) and a.sheets_version == b.sheets_version;
+        }
+    };
+};
+
+/// Whether `document` declares CSS transitions: its rendering opportunities
+/// update its style (step 16) and its mutations ask for one.
+pub fn declaresTransitions(document: *runtime.Instance) bool {
+    const engine = hooks.engineOf(document) orelse return false;
+    return engine.declaresTransitions();
+}
+
+/// Whether CSS text mentions a transition: one scan, ASCII
+/// case-insensitive. A mention in a URL or a string opens the gate too,
+/// which costs only the update.
+fn textMentionsTransition(text: []const u8) bool {
+    const needle = "transition";
+    if (text.len < needle.len) return false;
+    var i: usize = 0;
+    while (i + needle.len <= text.len) : (i += 1) {
+        if ((text[i] | 0x20) == 't' and std.ascii.eqlIgnoreCase(text[i..][0..needle.len], needle)) return true;
+    }
+    return false;
+}
+
+fn blockDeclaresTransitions(block: *const css.declarations.DeclarationBlock) bool {
+    for (block.entries.items) |*entry| {
+        if (std.ascii.startsWithIgnoreCase(entry.name(), "transition")) return true;
+    }
+    return false;
+}
+
+fn ruleDeclaresTransitions(rule: *style_rules.Rule) bool {
+    if (rule.block()) |block| if (blockDeclaresTransitions(block)) return true;
+    if (rule.data == .import) if (rule.data.import.child) |child| {
+        if (sheetDeclaresTransitions(child)) return true;
+    };
+    if (rule.children()) |children| for (children.items) |child| {
+        if (ruleDeclaresTransitions(child)) return true;
+    };
+    return false;
+}
+
+fn sheetDeclaresTransitions(record: *SheetRecord) bool {
+    if (record.text) |text| if (textMentionsTransition(text)) return true;
+    if (record.rules) |rules| for (rules.items) |rule| {
+        if (ruleDeclaresTransitions(rule)) return true;
+    };
+    return false;
+}
+
+fn activeDeclaresTransitions(active: *const Active) bool {
+    for (active.sheets.items) |sheet| if (sheetDeclaresTransitions(sheet.record)) return true;
+    for (active.scopes.items) |scope| for (scope.sheets.items) |sheet| {
+        if (sheetDeclaresTransitions(sheet.record)) return true;
+    };
+    return false;
+}
+
+/// A sheet joined a document or changed (StyleEngine.addOwner,
+/// SheetRecord.changed): one that declares a transition opens its
+/// document's gate, and in a document already declaring transitions the
+/// change asks for the rendering opportunity whose style update starts them
+/// (a sheet change moves no DOM tree version, so the watch does not see it).
+pub fn transitionsSheetChanged(record: *SheetRecord) void {
+    var root = record;
+    while (root.parentSheet()) |parent| root = parent;
+    const document = if (root.owner_node) |owner|
+        (interfaces.Node.get_ownerDocument(owner) catch null) orelse return
+    else
+        root.constructorDocument() orelse return;
+    const engine = hooks.engineOf(document) orelse return;
+    if (engine.declaresTransitions()) {
+        @import("../update_the_rendering.zig").requestFrame(document);
+        return;
+    }
+    if (sheetDeclaresTransitions(record)) engine.noteTransitionDeclaration(document);
+}
+
+/// DOM "handle attribute changes" (the Element interface's owner calls it
+/// for every attribute change): a style attribute whose value mentions a
+/// transition opens its node document's gate. One scan, of style attribute
+/// values only.
+pub fn styleAttributeChanged(element: *runtime.Instance, local_name: []const u8, value: ?[]const u8, namespace: ?[]const u8) void {
+    if (namespace != null or !std.mem.eql(u8, local_name, "style")) return;
+    const text = value orelse return;
+    if (!textMentionsTransition(text)) return;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+    const engine = hooks.engineOf(document) orelse return;
+    engine.noteTransitionDeclaration(document);
+}
+
+/// HTML update the rendering step 16.2.1, "recalculate styles", for a
+/// document that declares transitions: every element's style resolved (each
+/// resolution whose inputs moved is its style change event), and the cached
+/// pseudo-element styles with them - when a style input moved since the last
+/// update. Run in the document's realm (dom.update_the_rendering).
+pub fn recalculateStyles(document: *runtime.Instance) void {
+    const engine = hooks.engineOf(document) orelse return;
+    if (!engine.declaresTransitions()) return;
+    const rare = engine.rare orelse return;
+    const inputs: TransitionGate.Inputs = .{
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slot_version, .singletons = singletonKey(document) },
+        .sheets_version = engine.sheets_version,
+    };
+    if (rare.transitions.updated) |updated| if (updated.eql(inputs) and !rare.transitions.updated_volatile) return;
+    const root = instance_bridge.getNodeBase(document) orelse return;
+    rare.transitions.updated_volatile = updateSubtree(engine.allocator, root) catch return;
+    // The update itself may move nothing it is keyed on; record what it saw.
+    rare.transitions.updated = inputs;
+}
+
+/// Resolve every connected element of the shadow-including subtree of
+/// `root` (and the pseudo-element styles each has cached). Returns whether
+/// any resolved style is volatile.
+fn updateSubtree(allocator: Allocator, root: *NodeBase) !bool {
+    var nodes = try @import("../tree_helpers.zig").getShadowIncludingInclusiveDescendants(allocator, root);
+    defer nodes.deinit();
+    var any_volatile = false;
+    var names: std.ArrayList([]u8) = .empty;
+    defer {
+        for (names.items) |n| allocator.free(n);
+        names.deinit(allocator);
+    }
+    for (nodes.items()) |node| {
+        if (node.node_type != NodeBase.ELEMENT_NODE or !node.is_connected) continue;
+        const element = instanceOf(node) orelse continue;
+        _ = computedStyle(element, null) catch continue;
+        const state = element_style.existingOf(element) orelse continue;
+        if (state.cached) |cached| any_volatile = any_volatile or cached.@"volatile";
+        // The pseudo-element styles already cached, by name: resolving one
+        // may replace the list's entries.
+        for (names.items) |n| allocator.free(n);
+        names.clearRetainingCapacity();
+        for (state.pseudo.items) |p| try names.append(allocator, try allocator.dupe(u8, p.name));
+        for (names.items) |n| _ = computedStyle(element, n) catch continue;
+    }
+    return any_volatile;
+}
+
+/// CSS Transitions 2 6.2 "requirements on pending style changes": before
+/// getAnimations() answers, the pending style changes of `root` - an
+/// element (its subtree too with `subtree`), a document or a shadow root -
+/// are processed. The element itself is always resolved; a subtree only in a
+/// document that declares transitions (no transition can start elsewhere).
+pub fn flushForAnimations(root: *runtime.Instance, subtree: bool) void {
+    const node = instance_bridge.getNodeBase(root) orelse return;
+    if (node.node_type == NodeBase.ELEMENT_NODE) {
+        _ = computedStyle(root, null) catch {};
+        if (element_style.existingOf(root)) |state| {
+            var index: usize = 0;
+            while (index < state.pseudo.items.len) : (index += 1) {
+                const name = root.ctx.allocator.dupe(u8, state.pseudo.items[index].name) catch break;
+                defer root.ctx.allocator.free(name);
+                _ = computedStyle(root, name) catch {};
+            }
+        }
+        if (!subtree) return;
+    }
+    const document = if (node.node_type == NodeBase.DOCUMENT_NODE) root else (interfaces.Node.get_ownerDocument(root) catch null) orelse return;
+    const engine = hooks.engineOf(document) orelse return;
+    if (!engine.declaresTransitions()) return;
+    _ = updateSubtree(engine.allocator, node) catch {};
 }
 
 /// HTML "being rendered", as a layout-less Crane answers it (ruling Q4):

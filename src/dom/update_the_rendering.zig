@@ -200,9 +200,20 @@ pub fn requestFrame(document: *runtime.Instance) void {
 /// asks for a frame and starts the watch.
 pub fn focusedAreaChanged(document: *runtime.Instance, element: ?*runtime.Instance) void {
     if (element == null) {
-        refcount.watchRendering(document, false);
+        // One watch, two reasons: a document that declares transitions keeps
+        // it (`watchStyle`).
+        refcount.watchRendering(document, style_engine.declaresTransitions(document));
         return;
     }
+    refcount.watchRendering(document, true);
+    requestFrame(document);
+}
+
+/// `document` declares CSS transitions (dom.style's gate): its next
+/// mutation can start one, which only its step-16 style update would start
+/// if nobody reads the style, so every mutation asks for a frame (once per
+/// frame: step 16 watches again). Asks for one now too.
+pub fn watchStyle(document: *runtime.Instance) void {
     refcount.watchRendering(document, true);
     requestFrame(document);
 }
@@ -222,12 +233,21 @@ pub fn watchFocusedArea(document: *runtime.Instance) void {
 /// is the style half and what the browsers do in the same lifecycle update,
 /// in this order:
 ///
-/// 1. The used CSS resources: the images and fonts the styles now use are
+/// 1. Recalculate styles: for a document that declares CSS transitions, the
+///    document-wide style change event (dom.style recalculateStyles: every
+///    element resolved, which starts and cancels transitions, CSS
+///    Transitions 1 section 3), then the transitions whose element left the
+///    document are canceled (dom.animations.css_transitions.sweep). Blink
+///    Document::UpdateStyleAndLayoutTree with
+///    CSSAnimations::CalculateTransitionUpdate. A document that declares
+///    none gets no update: nothing in it can start one (dom.style's gate).
+/// 2. The used CSS resources: the images and fonts the styles now use are
 ///    selected (dom.style resource_loading), after the animation frame
 ///    callbacks and their microtasks, never by a style getter.
-/// 2. The pending animations: every animation `document` times whose play
+/// 3. The pending animations: every animation `document` times whose play
 ///    or pause task still waits completes it with this update's timeline
-///    time (dom.animations.commitPendingAnimations; Blink
+///    time - the transitions part 1 started among them
+///    (dom.animations.commitPendingAnimations; Blink
 ///    PendingAnimations::Update after the style and layout update).
 ///
 /// 16.2.2-16.2.4 (content-visibility proximity) and 16.2.5-16.3
@@ -239,10 +259,24 @@ pub fn watchFocusedArea(document: *runtime.Instance) void {
 pub fn styleAndLayout(document: *runtime.Instance, frame: Frame) void {
     _ = frame;
     // 1.
-    @import("style/resource_loading.zig").updateRendering(document);
+    if (style_engine.declaresTransitions(document)) {
+        @import("engine").runInRealm(document.ctx, recalculateStyles, document) catch {};
+        // Its next mutation asks for the next frame again.
+        refcount.watchRendering(document, true);
+    }
     // 2.
+    @import("style/resource_loading.zig").updateRendering(document);
+    // 3.
     animations.commitPendingAnimations(document);
 }
+
+fn recalculateStyles(context: ?*anyopaque) void {
+    const document: *runtime.Instance = @ptrCast(@alignCast(context orelse return));
+    style_engine.recalculateStyles(document);
+    @import("animations/css_transitions.zig").sweep(document);
+}
+
+const style_engine = @import("style/engine.zig");
 
 /// Run `step` for `document`, if its owner installed it. The loop's.
 pub fn run(step: Step, document: *runtime.Instance, frame: Frame) void {

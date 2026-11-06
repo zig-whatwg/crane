@@ -90,6 +90,11 @@ pub const Registry = struct {
     /// commitStyles' partial effect stack, armed for one style read
     /// (effect_stack.Commit; root.commitStyles). Borrowed.
     commit: ?*@import("effect_stack.zig").Commit = null,
+    /// CSS Transitions 2 3.2 "the current transition generation", moved by
+    /// each style change event that starts a transition
+    /// (css_transitions.Run.start). Kept per event loop: the browsing
+    /// contexts of one loop share it.
+    transition_generation: u64 = 0,
 
     pub fn init(allocator: Allocator) Registry {
         return .{ .allocator = allocator };
@@ -436,6 +441,10 @@ pub fn updateAnimationsAndSendEvents(document: *runtime.Instance, frame: update_
     // tasks of an animation that is now ready, its finished state, and the
     // events it queues. Snapshot first: resolving a promise can reach
     // script (a `then` getter on the animation).
+    // CSS Transitions 1 section 3: the transitions of an element that left
+    // the document are canceled - here, before the events, so that their
+    // transitioncancel is dispatched in this frame (css_transitions.sweep).
+    @import("css_transitions.zig").sweep(document);
     var snapshot = animationsTimedBy(registry, document) catch return;
     defer snapshot.deinit(registry.allocator);
     for (snapshot.items) |link| {
@@ -444,7 +453,12 @@ pub fn updateAnimationsAndSendEvents(document: *runtime.Instance, frame: update_
         if (animation.documentForTiming() != document) continue;
         animation.runPendingTasks();
         animation.updateFinishedState(false, false);
-        if (animation.css != null) @import("css_events.zig").update(animation);
+        if (animation.css != null) {
+            // CSS Transitions 1 section 5: a finished transition moves to
+            // the completed transitions before its events are fired.
+            @import("css_transitions.zig").completeIfFinished(animation);
+            @import("css_events.zig").update(animation);
+        }
         animation.settle();
     }
     // 2. Remove replaced animations for doc.
@@ -484,6 +498,11 @@ pub fn commitPendingAnimations(document: *runtime.Instance) void {
         const animation = hooks.animationOf(instance) orelse continue;
         if (animation.documentForTiming() != document or !animation.hasPendingTask()) continue;
         animation.runPendingTasks();
+        // A CSS animation or transition's phase moved with its start time:
+        // its events are queued now and dispatched at the next "update
+        // animations and send events" (Blink's event delegate sees the phase
+        // change when the start time is set, PendingAnimations::Update).
+        if (animation.css != null) @import("css_events.zig").update(animation);
         animation.settle();
     }
 }
@@ -599,6 +618,9 @@ fn isReplaceable(animation: *model.Animation) bool {
 
 pub fn compositeOrderLessThan(_: void, a: *model.Animation, b: *model.Animation) bool {
     if (a.class != b.class) return @backingInt(a.class) < @backingInt(b.class);
+    // CSS Transitions 2 4.1: two CSS transitions by owning element, tree
+    // order, transition generation and property name.
+    if (a.class == .css_transition) if (@import("css_transitions.zig").compositeLessThan(a, b)) |less| return less;
     return a.sequence < b.sequence;
 }
 
