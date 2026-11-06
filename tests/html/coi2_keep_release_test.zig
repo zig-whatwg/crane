@@ -1,5 +1,5 @@
-//! Lane coi2 batch 2: a ReportingObserver's keep is ended once, by the step
-//! that ends its registration.
+//! Lane coi2 batch 2: a ReportingObserver's and a BroadcastChannel's keeps
+//! are ended once, by the step that ends their registration.
 //!
 //! observe() keeps the observer's wrapper while it is registered (Reporting
 //! §4, Blink ReportingObserver::HasPendingActivity: `registered_`), and
@@ -14,7 +14,9 @@
 //! no longer existed - "releasePlatformObject on ReportingObserver ... with
 //! no keepPlatformObjectAlive left to end", dozens of times per COEP
 //! reporting file in the Debug runner. That log is an error, which fails a
-//! unit test (decision D9).
+//! unit test (decision D9). A BroadcastChannel's constructor keep had the
+//! same shape (its teardown released it when the channel was not closed);
+//! Blink ends it at ContextDestroyed.
 //!
 //! Each test runs on a thread of its own (a Browser's agent belongs to the
 //! thread that made it) and on std.testing.allocator.
@@ -35,19 +37,27 @@ fn openPage(html: []const u8) !*browser_mod.Browser {
     return browser;
 }
 
-/// Live ReportingObserver slab slots of `browser` - read from the slab, so
-/// an observer whose teardown never ran still counts.
-fn liveObservers(browser: *browser_mod.Browser) usize {
+/// Live slab slots of `browser` whose interface is `name` - read from the
+/// slab, so an object whose teardown never ran still counts.
+fn liveOf(browser: *browser_mod.Browser, name: []const u8) usize {
     var count: usize = 0;
     var slab = browser.scope.slab.slabs;
     while (slab) |each| : (slab = each.next) {
         for (&each.slots) |*slot| {
             const instance: *runtime.Instance = @ptrCast(slot);
             if (runtime.SlabAllocator.generationOf(instance) == runtime.SlabAllocator.dead_generation) continue;
-            if (std.mem.eql(u8, instance.vtable.name, "ReportingObserver")) count += 1;
+            if (std.mem.eql(u8, instance.vtable.name, name)) count += 1;
         }
     }
     return count;
+}
+
+fn liveObservers(browser: *browser_mod.Browser) usize {
+    return liveOf(browser, "ReportingObserver");
+}
+
+fn liveChannels(browser: *browser_mod.Browser) usize {
+    return liveOf(browser, "BroadcastChannel");
 }
 
 /// Collect, and let the tasks a collection queues (realm ends, deferred
@@ -150,4 +160,65 @@ fn scriptDisconnects() !void {
 
 test "observe and disconnect from script take and end exactly one keep" {
     try helpers.onFreshThread(scriptDisconnects);
+}
+
+fn channelInRemovedFrame() !void {
+    const browser = try openPage("<!doctype html><body></body>");
+    defer browser.deinit();
+    // An open channel made in a frame's Window, which the parent keeps
+    // nothing of.
+    const page = browser.current_context orelse return error.NoPage;
+    try page.runScript(
+        \\{
+        \\  const frame = document.createElement('iframe');
+        \\  document.body.appendChild(frame);
+        \\  const channel = new frame.contentWindow.BroadcastChannel('coi2');
+        \\  channel.onmessage = () => {};
+        \\  frame.remove();
+        \\}
+    );
+    try testing.expectEqual(@as(usize, 1), liveChannels(browser));
+    _ = try browser.runEventLoopBlocking(20);
+    try collect(browser);
+    try testing.expectEqual(@as(usize, 0), liveChannels(browser));
+}
+
+test "an open BroadcastChannel of a removed frame ends its keep with its document, and its teardown releases nothing" {
+    try helpers.onFreshThread(channelInRemovedFrame);
+}
+
+fn channelsOfPageNavigatedInPlace() !void {
+    const browser = try openPage("<!doctype html><body></body>");
+    defer browser.deinit();
+    const page = browser.current_context orelse return error.NoPage;
+    // Open, closed once, closed twice: each keep ends once.
+    try page.runScript(
+        \\globalThis.channels = [new BroadcastChannel('a'), new BroadcastChannel('b'), new BroadcastChannel('c')];
+        \\channels[1].close();
+        \\channels[2].close(); channels[2].close();
+    );
+    try testing.expectEqual(@as(usize, 3), liveChannels(browser));
+    try browser.navigateInPlace("about:blank");
+    _ = try browser.runEventLoopBlocking(50);
+    try collect(browser);
+    try testing.expectEqual(@as(usize, 0), liveChannels(browser));
+}
+
+test "BroadcastChannels of a page navigated in place end their keeps once, open or closed" {
+    try helpers.onFreshThread(channelsOfPageNavigatedInPlace);
+}
+
+fn closedChannelIsCollected() !void {
+    const browser = try openPage("<!doctype html><body></body>");
+    defer browser.deinit();
+    const page = browser.current_context orelse return error.NoPage;
+    // close() ends the keep: dropped, the channel is collected; an open one
+    // script drops stays.
+    try page.runScript("{ const c = new BroadcastChannel('x'); c.close(); c.close(); } { new BroadcastChannel('y'); }");
+    try collect(browser);
+    try testing.expectEqual(@as(usize, 1), liveChannels(browser));
+}
+
+test "close() ends a BroadcastChannel's keep once, and an open channel stays kept" {
+    try helpers.onFreshThread(closedChannelIsCollected);
 }
