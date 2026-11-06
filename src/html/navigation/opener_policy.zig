@@ -129,3 +129,152 @@ pub fn enforce(is_initial_about_blank: bool, group_has_others: bool, response_or
     // 6. Return the new result.
     return result;
 }
+
+// ============================================================================
+// Reports (7.1.3.3)
+// ============================================================================
+
+/// A violation report's disposition: "enforce" for the enforced value,
+/// "reporting" for the report-only one.
+pub const Disposition = enum {
+    enforce,
+    reporting,
+
+    fn name(self: Disposition) []const u8 {
+        return switch (self) {
+            .enforce => "enforce",
+            .reporting => "reporting",
+        };
+    }
+};
+
+/// The endpoint a report of `disposition` goes to, null for none.
+///
+/// Browser deviation (2 of 2 shipping engines; Firefox ships no COOP
+/// reports): HTML's "queue a violation report for browsing context group
+/// switch when navigating to / away from a COOP response" step 1 checks
+/// coop's reporting endpoint for both dispositions and queues to it, which
+/// would send a report-only policy's reports to the enforced policy's
+/// endpoint (and none when only the report-only header names one).
+/// Chromium's CrossOriginOpenerPolicyReporter::QueueNavigationToCOOPReport
+/// and WebKit's CrossOriginOpenerPolicy::reportingEndpointForDisposition
+/// take the report-only reporting endpoint for "reporting", and the tests
+/// encode that (navigation-reporting/report-only-same-origin-report-to:
+/// C157 4/4, S27.2 4/4 at wpt.fyi 1eecaa0c30).
+pub fn reportingEndpoint(policy: OpenerPolicy, disposition: Disposition) ?[]const u8 {
+    return switch (disposition) {
+        .enforce => policy.reporting_endpoint,
+        .reporting => policy.report_only_reporting_endpoint,
+    };
+}
+
+/// Steps 2-3: coopValue - the report-only value for "reporting".
+fn effectiveValue(policy: OpenerPolicy, disposition: Disposition) Value {
+    return switch (disposition) {
+        .enforce => policy.value,
+        .reporting => policy.report_only_value,
+    };
+}
+
+/// HTML "sanitize a URL to send in a report", for a serialized URL:
+/// 1-3. a copy with an empty username and password, 4. serialized with
+/// exclude fragment. Every scheme keeps its URL, as the spec and WebKit's
+/// PingLoader::sanitizeURLForReport do (Chromium's GetAsReferrer() empties
+/// a URL that is not HTTP(S); no WPT file tells the two apart). Owned.
+pub fn sanitizeUrlForReport(allocator: std.mem.Allocator, url: []const u8) error{OutOfMemory}![]u8 {
+    // 4. "with exclude fragment set to true".
+    const without_fragment = url[0 .. std.mem.indexOfScalar(u8, url, '#') orelse url.len];
+    // 2-3. An empty username and password: the serializer writes no
+    // userinfo. Only a URL with an authority ("scheme://") has one.
+    const marker = std.mem.indexOf(u8, without_fragment, "://") orelse return allocator.dupe(u8, without_fragment);
+    if (std.mem.indexOfScalar(u8, without_fragment[0..marker], '/') != null) return allocator.dupe(u8, without_fragment);
+    const authority_start = marker + 3;
+    const rest = without_fragment[authority_start..];
+    const authority_end = std.mem.indexOfAny(u8, rest, "/?") orelse rest.len;
+    const at = std.mem.lastIndexOfScalar(u8, rest[0..authority_end], '@') orelse return allocator.dupe(u8, without_fragment);
+    return std.mem.concat(allocator, u8, &.{ without_fragment[0..authority_start], rest[at + 1 ..] });
+}
+
+/// A navigation report's endpoint name (borrowed from its policy) and body
+/// (owned JSON, freed by the caller).
+pub const NavigationReport = struct {
+    endpoint: []const u8,
+    body_json: []u8,
+};
+
+/// HTML "queue a violation report for browsing context group switch when
+/// navigating to a COOP response", steps 1-6: the report for `coop` - the
+/// response's opener policy, with `coop_origin` its origin - of a
+/// navigation from `previous_response_url` (of origin
+/// `previous_response_origin`) whose request's referrer is `referrer` (a
+/// serialized URL, or null for "no-referrer"). Null when step 1 returns.
+/// Step 7, queueing it for coopURL, is dom.coop_reporting's.
+///
+/// Browser deviation (Chromium and WebKit; Firefox ships none): a hidden
+/// previousResponseURL is "" where the spec's table says null - Chromium's
+/// QueueNavigationToCOOPReport sets "", WebKit sets a null String, which
+/// serializes as "" - and the tests expect "" (navigation-reporting/
+/// reporting-popup-same-origin-report-to: C157 7/7, S27.2 7/7).
+pub fn navigationToResponseReport(
+    allocator: std.mem.Allocator,
+    coop: OpenerPolicy,
+    disposition: Disposition,
+    previous_response_url: []const u8,
+    coop_origin: []const u8,
+    previous_response_origin: []const u8,
+    referrer: ?[]const u8,
+) error{OutOfMemory}!?NavigationReport {
+    // 1. No reporting endpoint: return.
+    const endpoint = reportingEndpoint(coop, disposition) orelse return null;
+    // 2-3. coopValue.
+    const coop_value = effectiveValue(coop, disposition);
+    // 4-5. serializedReferrer: the referrer's serialization, else "".
+    const serialized_referrer = referrer orelse "";
+    // 6. The body; previousResponseURL is the sanitization only when same
+    // origin.
+    const previous = if (sameOrigin(coop_origin, previous_response_origin)) try sanitizeUrlForReport(allocator, previous_response_url) else try allocator.dupe(u8, "");
+    defer allocator.free(previous);
+    const body = try std.json.Stringify.valueAlloc(allocator, .{
+        .disposition = disposition.name(),
+        .effectivePolicy = coop_value.token(),
+        .previousResponseURL = previous,
+        .referrer = serialized_referrer,
+        .type = "navigation-to-response",
+    }, .{});
+    return .{ .endpoint = endpoint, .body_json = body };
+}
+
+/// HTML "queue a violation report for browsing context group switch when
+/// navigating away from a COOP response", steps 1-4: the report for `coop`
+/// - the active document's opener policy, with `coop_origin` its origin -
+/// of a navigation to `next_response_url` (of origin `next_response_origin`);
+/// `is_coop_response_navigation_source` is the enforcement result's
+/// "current context is navigation source". Null when step 1 returns. Step
+/// 5 is dom.coop_reporting's. A hidden nextResponseURL is "", as for
+/// `navigationToResponseReport` (Chromium QueueNavigationAwayFromCOOPReport).
+pub fn navigationFromResponseReport(
+    allocator: std.mem.Allocator,
+    coop: OpenerPolicy,
+    disposition: Disposition,
+    next_response_url: []const u8,
+    coop_origin: []const u8,
+    next_response_origin: []const u8,
+    is_coop_response_navigation_source: bool,
+) error{OutOfMemory}!?NavigationReport {
+    // 1. No reporting endpoint: return.
+    const endpoint = reportingEndpoint(coop, disposition) orelse return null;
+    // 2-3. coopValue.
+    const coop_value = effectiveValue(coop, disposition);
+    // 4. The body; nextResponseURL is the sanitization when same origin or
+    // when the COOP document was the navigation's source.
+    const shown = sameOrigin(coop_origin, next_response_origin) or is_coop_response_navigation_source;
+    const next = if (shown) try sanitizeUrlForReport(allocator, next_response_url) else try allocator.dupe(u8, "");
+    defer allocator.free(next);
+    const body = try std.json.Stringify.valueAlloc(allocator, .{
+        .disposition = disposition.name(),
+        .effectivePolicy = coop_value.token(),
+        .nextResponseURL = next,
+        .type = "navigation-from-response",
+    }, .{});
+    return .{ .endpoint = endpoint, .body_json = body };
+}
