@@ -19,8 +19,11 @@
 //!   perf_bench validate <journal.jsonl> ...
 //!       read journals strictly; say what they hold
 //!   perf_bench report --journals=<dir> --out=<dir> [--site-url=<url>]
+//!                  [--control=<dir> --remeasured=<engine>[,<engine>...]]
 //!       write /performance/ (index.html, card.png) from every *.jsonl
-//!       below <dir>
+//!       below <dir>; with --control, the named engines' rows came from a
+//!       second window whose Crane rows (below <control>) are its drift
+//!       control, shown and compared on the page
 //!   perf_bench serve --root=<tests/perf> [--port=<n>]
 //!       the pages alone, for a person to open in a browser
 
@@ -349,7 +352,22 @@ fn readJournals(arena: Allocator, io: Io, dir_path: []const u8) ![]const journal
 fn writeReport(arena: Allocator, io: Io, args: *const Args) !void {
     const records = try readJournals(arena, io, args.need("journals"));
     const model = try report.build(arena, records);
-    const out = try report.render(arena, &model, .{ .site_url = args.get("site-url") orelse "https://zig-whatwg.github.io/crane/" });
+    // --control=<dir> --remeasured=safari[,...]: some engines' rows come
+    // from a second window, whose rows of Crane in <dir> are the drift
+    // control (docs/performance.md, "Re-measuring an engine").
+    var remeasured: ?report.Remeasured = null;
+    var control: report.Model = undefined;
+    if (args.get("control")) |dir| {
+        const list = args.get("remeasured") orelse fail("--control needs --remeasured=<engine>[,<engine>...]", .{});
+        var names: std.ArrayList(journal.EngineName) = .empty;
+        var it = std.mem.tokenizeScalar(u8, list, ',');
+        while (it.next()) |n| try names.append(arena, std.meta.stringToEnum(journal.EngineName, n) orelse fail("--remeasured: no engine {s}", .{n}));
+        control = try report.build(arena, try readJournals(arena, io, dir));
+        remeasured = .{ .engines = names.items, .control = &control };
+        const d = try report.drift(arena, &model, &control, model.latest_round, .crane);
+        std.debug.print("perf_bench: drift control: time {d:.3}, memory {d:.3} (over {d} and {d} workloads), {d} outside their band: {s}\n", .{ d.time_ratio orelse 0, d.memory_ratio orelse 0, d.time_n, d.memory_n, d.outside, if (d.within) "within noise" else "NOT within noise" });
+    } else if (args.get("remeasured") != null) fail("--remeasured needs --control=<dir>", .{});
+    const out = try report.render(arena, &model, .{ .site_url = args.get("site-url") orelse "https://zig-whatwg.github.io/crane/", .remeasured = remeasured });
     const out_dir = args.need("out");
     try Io.Dir.cwd().createDirPath(io, out_dir);
     var dir = try Io.Dir.cwd().openDir(io, out_dir, .{});

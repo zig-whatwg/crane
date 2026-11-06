@@ -161,42 +161,49 @@ pub fn members(sel: Selector, out: []i32) usize {
         }
     }
     if (sel.names.len > 0) {
-        var all: [4096]c_int = undefined;
-        const got = proc_listallpids(&all, @intCast(@sizeOf(@TypeOf(all))));
-        if (got > 0) {
-            const count: usize = @min(@as(usize, @intCast(got)), all.len);
-            for (all[0..count]) |p| {
-                if (p <= 0 or n >= out.len) continue;
-                if (std.mem.indexOfScalar(i32, out[0..n], p) != null) continue;
-                var name_buf: [256]u8 = undefined;
-                const len = proc_name(p, &name_buf, name_buf.len);
-                if (len <= 0) continue;
-                const name = name_buf[0..@intCast(len)];
-                for (sel.names) |want| if (std.mem.eql(u8, name, want)) {
-                    const u = usageOf(p) orelse break;
-                    if (u.start_abs < sel.started_after) break;
-                    out[n] = p;
-                    n += 1;
-                    break;
-                };
-            }
+        var by_name: [max_processes]i32 = undefined;
+        const got = named(sel.names, sel.started_after, &by_name);
+        for (by_name[0..got]) |p| {
+            if (n >= out.len) break;
+            if (std.mem.indexOfScalar(i32, out[0..n], p) != null) continue;
+            out[n] = p;
+            n += 1;
         }
     }
     return n;
 }
 
-// RED STUB
-pub fn nameOf(pid: i32, buf: []u8) ![]const u8 {
-    _ = pid;
-    return buf[0..0];
+/// A process's name (proc_name: its executable's, at most 2 * MAXCOMLEN).
+pub fn nameOf(pid: i32, buf: []u8) error{NoSuchProcess}![]const u8 {
+    if (!supported) return error.NoSuchProcess;
+    const len = proc_name(pid, buf.ptr, @intCast(buf.len));
+    if (len <= 0) return error.NoSuchProcess;
+    return buf[0..@intCast(len)];
 }
 
-// RED STUB
+/// The pids of every process with one of `names` (exact process names)
+/// started at or after `started_after` (mach absolute time; 0: any), into
+/// `out`; how many.
 pub fn named(names: []const []const u8, started_after: u64, out: []i32) usize {
-    _ = names;
-    _ = started_after;
-    _ = out;
-    return 0;
+    if (!supported or names.len == 0) return 0;
+    var all: [4096]c_int = undefined;
+    const got = proc_listallpids(&all, @intCast(@sizeOf(@TypeOf(all))));
+    if (got <= 0) return 0;
+    const count: usize = @min(@as(usize, @intCast(got)), all.len);
+    var n: usize = 0;
+    for (all[0..count]) |p| {
+        if (p <= 0 or n >= out.len) continue;
+        var name_buf: [256]u8 = undefined;
+        const name = nameOf(p, &name_buf) catch continue;
+        for (names) |want| if (std.mem.eql(u8, name, want)) {
+            const u = usageOf(p) orelse break;
+            if (u.start_abs < started_after) break;
+            out[n] = p;
+            n += 1;
+            break;
+        };
+    }
+    return n;
 }
 
 /// The set at one moment: each member's figures.

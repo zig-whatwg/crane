@@ -313,30 +313,76 @@ pub const Options = struct {
     remeasured: ?Remeasured = null,
 };
 
-// RED STUB
+/// Some engines' rows of a round come from a second window: the engines,
+/// and the control - the second window's rows of an engine the round
+/// already has (Crane ReleaseSafe), run alternating with them so that a
+/// drift of the host between the windows shows (the integrator,
+/// 2026-11-06). The control's rows never enter the round's cells.
 pub const Remeasured = struct {
     engines: []const EngineName,
     control: *const Model,
+    /// The engine both windows ran.
+    engine: EngineName = .crane,
 };
 
-// RED STUB
+/// The control against the round, for one engine: per workload the
+/// control's figure over the round's, and their geometric means.
 pub const Drift = struct {
     engine: EngineName,
     time_ratio: ?f64 = null,
     time_n: usize = 0,
     memory_ratio: ?f64 = null,
     memory_n: usize = 0,
+    /// Workloads whose time or memory ratio is outside its noise band
+    /// (`noiseBand`).
     outside: usize = 0,
+    /// Both geometric means within `drift_limit` of 1.
     within: bool = false,
 };
 
-// RED STUB
+/// How far the control's geometric means may stray from 1 and still be
+/// within noise: 5%.
+pub const drift_limit = 0.05;
+
+/// A workload's noise band: 10%, or three times the runs' spread (the
+/// larger of the two cells' relative MAD) where that is wider.
+pub fn noiseBand(a: *const Cell, b: *const Cell) f64 {
+    const s = @max(a.spread orelse 0, b.spread orelse 0);
+    return @max(0.10, 3.0 * s);
+}
+
 pub fn drift(arena: Allocator, m: *const Model, control: *const Model, round: u32, engine: EngineName) !Drift {
-    _ = arena;
-    _ = m;
-    _ = control;
-    _ = round;
-    return .{ .engine = engine };
+    var d: Drift = .{ .engine = engine };
+    var t: std.ArrayList(f64) = .empty;
+    var mem: std.ArrayList(f64) = .empty;
+    for (try control.workloads(arena, round)) |w| {
+        if (!inHeadline(w)) continue;
+        const c = control.current(round, engine, w) orelse continue;
+        const r = m.current(round, engine, w) orelse continue;
+        const band = noiseBand(c, r);
+        var out = false;
+        if (c.timeFigure()) |ct| if (r.timeFigure()) |rt| if (rt > 0) {
+            try t.append(arena, ct / rt);
+            if (@abs(ct / rt - 1.0) > band) out = true;
+        };
+        if (c.memoryFigure()) |cm| if (r.memoryFigure()) |rm| if (rm > 0) {
+            try mem.append(arena, cm / rm);
+            if (@abs(cm / rm - 1.0) > @max(0.10, band)) out = true;
+        };
+        if (out) d.outside += 1;
+    }
+    d.time_ratio = stats.geometricMean(t.items);
+    d.time_n = t.items.len;
+    d.memory_ratio = stats.geometricMean(mem.items);
+    d.memory_n = mem.items.len;
+    const ok = struct {
+        fn f(x: ?f64) bool {
+            const v = x orelse return false;
+            return @abs(v - 1.0) <= drift_limit;
+        }
+    }.f;
+    d.within = ok(d.time_ratio) and ok(d.memory_ratio);
+    return d;
 }
 
 /// Every file of /performance/ for `m`: name -> bytes.
@@ -390,6 +436,7 @@ fn writePage(w: W, arena: Allocator, m: *const Model, vs: []const Versus, o: Opt
     try w.print(" <a href=\"{s}\">WPT results</a>.</p>\n</header>\n", .{o.assets});
 
     try writeHeadline(w, vs);
+    if (o.remeasured) |rm| try writeRemeasured(w, arena, m, rm);
     try writeReleaseFast(w, arena, m);
     try writeEngines(w, arena, m);
     try writeRound(w, arena, m);
@@ -470,6 +517,47 @@ fn writeHeadline(w: W, vs: []const Versus) !void {
         try w.print("<td class=\"n\">{d}</td>", .{v.time_n});
         if (v.memory_ratio) |r| try w.print("<td class=\"n {s}\">{d}%</td>", .{ ratioClass(r), percent(r) }) else try w.writeAll("<td class=\"n\">&ndash;</td>");
         try w.print("<td class=\"n\">{d}</td></tr>\n", .{v.memory_n});
+    }
+    try w.writeAll("</tbody></table></div></section>\n");
+}
+
+/// Which engines a re-measurement covers, and how the control compares:
+/// the page says so, with each workload's ratio.
+fn writeRemeasured(w: W, arena: Allocator, m: *const Model, rm: Remeasured) !void {
+    const round = m.latest_round;
+    const d = try drift(arena, m, rm.control, round, rm.engine);
+    try w.writeAll("<section id=\"remeasured\"><h2>Re-measured</h2>\n<p>");
+    for (rm.engines, 0..) |e, i| {
+        if (i > 0) try w.writeAll(if (i + 1 == rm.engines.len) " and " else ", ");
+        try w.writeAll(e.label());
+    }
+    try w.print(" ran again in a second window, alternating with {s} as a drift control; this round&rsquo;s rows of ", .{rm.engine.label()});
+    for (rm.engines, 0..) |e, i| {
+        if (i > 0) try w.writeAll(if (i + 1 == rm.engines.len) " and " else ", ");
+        try w.writeAll(e.label());
+    }
+    try w.print(" are that window&rsquo;s, and {s}&rsquo;s are the first window&rsquo;s. In the second window {s}&rsquo;s time was ", .{ rm.engine.label(), rm.engine.label() });
+    if (d.time_ratio) |r| try w.print("{d:.1}%", .{r * 100}) else try w.writeAll("&ndash;");
+    try w.print(" and its memory ", .{});
+    if (d.memory_ratio) |r| try w.print("{d:.1}%", .{r * 100}) else try w.writeAll("&ndash;");
+    try w.print(" of the first window&rsquo;s (geometric means over {d} and {d} workloads): ", .{ d.time_n, d.memory_n });
+    try w.writeAll(if (d.within) "<strong>within noise</strong>" else "<strong class=\"fail\">not within noise</strong>");
+    try w.print(" (both means within {d:.0}% of 100%; {d} workloads outside their own band of 10% or three times the runs&rsquo; spread).</p>\n", .{ drift_limit * 100, d.outside });
+    try w.print("<div class=\"table-wrap\"><table class=\"listing\"><thead><tr><th scope=\"col\">Workload</th><th scope=\"col\" class=\"n\">Time, first window</th><th scope=\"col\" class=\"n\">Time, control</th><th scope=\"col\" class=\"n\">Control / first</th><th scope=\"col\" class=\"n\">Memory, first window</th><th scope=\"col\" class=\"n\">Memory, control</th><th scope=\"col\" class=\"n\">Control / first</th></tr></thead><tbody>\n", .{});
+    for (try rm.control.workloads(arena, round)) |wl| {
+        if (!inHeadline(wl)) continue;
+        const c = rm.control.current(round, rm.engine, wl) orelse continue;
+        const r = m.current(round, rm.engine, wl);
+        try w.writeAll("<tr><th scope=\"row\"><code>");
+        try html.text(w, wl);
+        try w.writeAll("</code></th>");
+        try writeTimeCell(w, r);
+        try writeTimeCell(w, c);
+        try writeRatio(w, c.timeFigure(), if (r) |x| x.timeFigure() else null);
+        try writeMemoryCell(w, r);
+        try writeMemoryCell(w, c);
+        try writeRatio(w, c.memoryFigure(), if (r) |x| x.memoryFigure() else null);
+        try w.writeAll("</tr>\n");
     }
     try w.writeAll("</tbody></table></div></section>\n");
 }

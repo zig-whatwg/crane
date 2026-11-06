@@ -174,6 +174,25 @@ pub const crane_flags = [_][]const u8{ "--proxy=direct", "--timeout=900000" };
 
 pub const firefox_flags = [_][]const u8{ "--headless", "--no-remote" };
 
+/// Safari's app: one per launch (`Launch.app_names`).
+pub const safari_app_names = [_][]const u8{"Safari"};
+
+/// `name`'s app, outside its launched tree (`Launch.app_names`).
+pub fn appNames(name: Name) []const []const u8 {
+    return switch (name) {
+        .safari => &safari_app_names,
+        .crane, .crane_fast, .chrome, .firefox, .lightpanda => &.{},
+    };
+}
+
+/// The process names `name`'s set adds to its launched tree (`Launch.names`).
+pub fn setNames(name: Name) []const []const u8 {
+    return switch (name) {
+        .safari => &safari_process_names,
+        .crane, .crane_fast, .chrome, .firefox, .lightpanda => &.{},
+    };
+}
+
 /// The process names Safari's set adds to safaridriver's tree: the browser
 /// and the WebKit processes launchd starts for it.
 pub const safari_process_names = [_][]const u8{
@@ -206,7 +225,12 @@ pub const Launch = struct {
     drive: Drive,
     /// Processes outside the launched tree that belong to the engine.
     names: []const []const u8 = &.{},
-    // RED STUB
+    /// The engine's own app, outside the launched tree (Safari: launchd
+    /// starts it for safaridriver): the runner refuses the launch while one
+    /// runs - started before the launch, its processes would be outside the
+    /// set - and ends the one the launch started, by exact pid, when the
+    /// launch ends. safaridriver leaves it running after Delete Session
+    /// (Safari 27.2; perf round 0, 2026-11-06).
     app_names: []const []const u8 = &.{},
     /// Environment additions.
     env: []const [2][]const u8 = &.{},
@@ -279,7 +303,7 @@ pub fn launch(arena: Allocator, pin: Pin, url: []const u8, profile: []const u8, 
             const port_text = try std.fmt.allocPrint(arena, "{d}", .{port});
             try argv.appendSlice(arena, &.{ pin.webdriver.?, "-p", port_text });
             try flags.appendSlice(arena, &.{ "safaridriver", "-p", "<port>" });
-            return .{ .argv = argv.items, .flags = flags.items, .drive = .webdriver, .names = &safari_process_names };
+            return .{ .argv = argv.items, .flags = flags.items, .drive = .webdriver, .names = setNames(.safari), .app_names = appNames(.safari) };
         },
     }
 }
