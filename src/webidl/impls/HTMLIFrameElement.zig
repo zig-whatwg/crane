@@ -946,6 +946,11 @@ const Navigation = struct {
     /// it) and the browsing context group switch (21.12.2).
     params_container: ?fetch_mod.internal.PolicyContainer = null,
     group_switch: ?html_core.window.browsing_context.CrossOriginIsolationMode = null,
+    /// The navigation's opener policy enforcement result's "would need a
+    /// browsing context group switch due to report-only" (openerPolicySwitch),
+    /// for "obtain a browsing context to use for a navigation response" step
+    /// 9.1 when `group_switch` is null.
+    would_need_virtual_group_switch: bool = false,
     /// The commit listed the entry before the active document unloaded
     /// ("finalize a cross-document navigation" steps 5-9, from the queue):
     /// `recordInHistory` makes that entry's document active, with the
@@ -2791,7 +2796,16 @@ fn runCommit(context: ?*anyopaque) void {
     // 21.13 and "attempt to populate the history entry's document" step 4),
     // and a sandboxed response with an opener policy (step 21.12.3), are
     // network errors too.
-    if (embedderPolicyBlocks(integration, record, response) or sandboxedOpenerPolicyBlocks(integration, record, response)) {
+    // HTML's order: step 21.12.2 enforces the response's opener policy
+    // before step 21.12.3 makes a sandboxed one a network error, so the
+    // network error's document still takes the switch the response asked
+    // for - a sandboxed popup's opener is cut (Chrome follows it:
+    // coop-sandbox-cuts-opener.https.html C157 2/2, F159 0/2, S27.2 0/2 at
+    // wpt.fyi 1eecaa0c30). Decided, with its reports, before the response
+    // is replaced.
+    const sandbox_blocks = sandboxedOpenerPolicyBlocks(integration, record, response);
+    const sandbox_error_switch = if (sandbox_blocks) openerPolicySwitchBeforeSandboxError(integration, record, response) else null;
+    if (embedderPolicyBlocks(integration, record, response) or sandbox_blocks) {
         response.deinit();
         record.response = navigation_fetch.networkErrorResult(integration.allocator, record.url) catch null;
         if (record.response == null) {
@@ -2866,7 +2880,7 @@ fn runCommit(context: ?*anyopaque) void {
     // Step 21.12.2 for a top-level traversable: whether the response's
     // opener policy needs a browsing context group switch, read from the
     // active document before it unloads.
-    const group_switch = if (params_container) |*container| openerPolicySwitch(integration, record, response, container) else null;
+    const group_switch = if (sandbox_blocks) sandbox_error_switch else if (params_container) |*container| openerPolicySwitch(integration, record, response, container) else null;
     record.params_container = params_container;
     params_container_taken = true;
     record.group_switch = group_switch;
@@ -3037,6 +3051,12 @@ fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, wai
     if (record.group_switch) |mode| {
         if (integration.browsing_context) |bc| bc.switchGroup(mode, record.final_sandboxing_flags);
         integration.next_new_window_proxy = integration.host_realms == null;
+    } else if (record.would_need_virtual_group_switch) {
+        // Step 9.1: "If coopEnforcementResult's would need a browsing
+        // context group switch due to report-only is true, set
+        // browsingContext's virtual browsing context group ID to a new unique
+        // identifier."
+        if (integration.browsing_context) |bc| bc.startVirtualGroup();
     }
     defer integration.next_new_window_proxy = false;
     // "Create and initialize a Document object" step 7: the keying of the
@@ -3451,7 +3471,19 @@ fn embedderPolicyBlocks(integration: *IFrameIntegration, record: *Navigation, re
     // compatible value. Nothing is allocated.
     if (!parent_policy.value.compatibleWithCrossOriginIsolation() and !parent_policy.report_only_value.compatibleWithCrossOriginIsolation()) return false;
     // Step 21.13: only a response from the network has the header.
-    if (response.headers) |headers| {
+    // Browser deviation (Chrome and Firefox; Safari 6/9): a blob: or data:
+    // response skips the CORP check - its embedder policy is inherited, and
+    // step 4 below checks that. Chromium's NavigationRequest::EnforceCOEP
+    // returns before CrossOriginResourcePolicy::IsNavigationBlocked for
+    // them ("Some special URLs not loaded using the network are inheriting
+    // the Cross-Origin-Embedder-Policy header from their parent"). Fetch's
+    // scheme fetch gives a blob: response headers of its own, so without
+    // this its blob: URL - a cross-origin creator's - fails require-corp's
+    // same-origin check: html/cross-origin-embedder-policy/blob.https.html
+    // C157 9/9, F159 9/9, S27.2 6/9 (wpt.fyi 1eecaa0c30).
+    const scheme = navigate_steps.schemeOf(response_url);
+    const is_local_response = std.mem.eql(u8, scheme, "blob") or std.mem.eql(u8, scheme, "data");
+    if (response.headers) |headers| if (!is_local_response) {
         const parent_origin = documentOriginOf(parent, allocator);
         defer if (parent_origin) |origin| allocator.free(origin);
         const check = fetch_mod.internal.cross_origin_policies.corpCheck(allocator, parent_origin orelse "null", parent_policy, .{
@@ -3465,7 +3497,7 @@ fn embedderPolicyBlocks(integration: *IFrameIntegration, record: *Navigation, re
         if (check.report_only_blocks) queueEmbedderPolicyReport(parent, response_url, .{ .corp = destination }, parent_policy.report_only_reporting_endpoint, true);
         if (check.enforced_by_embedder_policy) queueEmbedderPolicyReport(parent, response_url, .{ .corp = destination }, parent_policy.reporting_endpoint, false);
         if (check.result == .blocked) return true;
-    }
+    };
     // Step 4: a response with a reserved environment.
     if (record.srcdoc != null or navigate_steps.matchesAboutSrcdoc(response_url)) return false;
     if (std.mem.eql(u8, navigate_steps.schemeOf(response_url), "about")) return false;
@@ -3544,14 +3576,14 @@ fn queueEmbedderPolicyReportFallible(container_document: *runtime.Instance, resp
 /// "Create navigation params by fetching" step 21.12.3, for a top-level
 /// traversable: "If finalSandboxFlags is not empty and responseCOOP's value
 /// is not "unsafe-none", then set response to an appropriate network
-/// error." finalSandboxFlags is the target snapshot's sandboxing flags and
-/// the response's CSP-derived ones (step 21.10). A response without the
-/// header allocates nothing here. Out of memory blocks.
+/// error." Counted, as the browsers do: the target snapshot's sandboxing
+/// flags only (the comment below says why). A response without the header
+/// allocates nothing here. Out of memory blocks.
 fn sandboxedOpenerPolicyBlocks(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) bool {
     if (response.is_network_error) return false;
     const browsing_context = integration.browsing_context orelse return false;
     if (browsing_context.parent != null) return false;
-    const headers = response.headers orelse return false;
+    if (record.target_sandboxing_flags.isEmpty()) return false;
     const cross_origin = crossOriginHeadersOf(response);
     if (cross_origin.coop == null) return false;
     const allocator = integration.allocator;
@@ -3559,14 +3591,17 @@ fn sandboxedOpenerPolicyBlocks(integration: *IFrameIntegration, record: *Navigat
     var coop = fetch_mod.internal.cross_origin_policies.obtainOpenerPolicy(allocator, cross_origin, reservedEnvironmentIsSecure(browsing_context, response_url, allocator)) catch return true;
     defer coop.deinit(allocator);
     if (coop.value == .unsafe_none) return false;
-    if (!record.target_sandboxing_flags.isEmpty()) return true;
-    var csp_only = fetch_mod.internal.PolicyContainer.fromResponseHeaders(allocator, .{
-        .url = response_url,
-        .csp = headers.get("content-security-policy"),
-        .csp_report_only = headers.get("content-security-policy-report-only"),
-    }) catch return true;
-    defer csp_only.deinit();
-    return !sandboxing.cspDerivedSandboxingFlags(&csp_only.csp_list).isEmpty();
+    // Browser deviation (Chrome and Safari; Firefox 159 fails the file):
+    // HTML's finalSandboxFlags also holds the response's CSP-derived flags
+    // (step 21.10), but the browsers refuse only a navigable sandboxed from
+    // outside - its target snapshot's flags - and give a CSP-sandboxed COOP
+    // response its opaque origin, so it switches groups: Chromium's
+    // CrossOriginOpenerPolicyStatus::SanitizeResponse checks
+    // pending_frame_policy().sandbox_flags, WebKit's
+    // doCrossOriginOpenerHandlingOfResponse the frame's
+    // effectiveSandboxFlags(). coop-navigate-same-origin-csp-sandbox.html:
+    // C157 1/1, F159 0/1, S27.2 1/1 (wpt.fyi 1eecaa0c30).
+    return !record.target_sandboxing_flags.isEmpty();
 }
 
 /// "Create navigation params by fetching" step 21.12.2 - "enforce the
@@ -3594,10 +3629,10 @@ fn openerPolicySwitch(integration: *IFrameIntegration, record: *Navigation, resp
     const active = activeDocumentOf(integration) orelse return null;
     const allocator = integration.allocator;
     const opener_policy = html_core.navigation.opener_policy;
-    const active_coop: fetch_mod.internal.OpenerPolicy = if (dom_module.policy_containers.of(active)) |c|
-        .{ .value = c.openerPolicy().value, .report_only_value = c.openerPolicy().report_only_value }
-    else
-        .{};
+    // The active document's opener policy, with its endpoint names (the
+    // reports'), borrowed from its container for this call.
+    const active_container = dom_module.policy_containers.of(active);
+    const active_coop: fetch_mod.internal.OpenerPolicy = if (active_container) |c| c.openerPolicy().* else .{};
     // Two "unsafe-none" policies, enforced and report-only, match whatever
     // the origins: no switch, and nothing allocated.
     const response_coop = container.openerPolicy();
@@ -3615,13 +3650,97 @@ fn openerPolicySwitch(integration: *IFrameIntegration, record: *Navigation, resp
     else
         navigationParamsOrigin(integration, record.final_sandboxing_flags, response_url, if (record.srcdoc == null) record.initiator_origin else null, allocator) catch return null;
     defer allocator.free(response_origin);
+    // Steps 4.2 and 5.2 report only when "browsingContext's group's
+    // browsing context set's size is greater than 1".
     var reports: opener_policy.Reports = .{};
-    const enforced = opener_policy.enforce(document_lifecycle.isInitialAboutBlank(active), false, response_origin, .{
-        .value = response_coop.value,
-        .report_only_value = response_coop.report_only_value,
-    }, .{ .origin = active_origin orelse "null", .policy = active_coop }, &reports);
+    const enforced = opener_policy.enforce(document_lifecycle.isInitialAboutBlank(active), browsing_context.groupHoldsOthers(), response_origin, response_coop.*, .{ .origin = active_origin orelse "null", .policy = active_coop }, &reports);
+    if (reports.enforce or reports.reporting) queueOpenerPolicyReports(browsing_context, record, response, container, active, active_container, active_coop, active_origin orelse "null", response_url, response_origin, reports);
+    // "Obtain a browsing context to use for a navigation response" step 9.1
+    // reads it when the navigation keeps its group (runCommit).
+    record.would_need_virtual_group_switch = enforced.would_need_switch_due_to_report_only;
     if (!enforced.needs_switch) return null;
     return if (response_coop.value == .same_origin_plus_coep) .concrete else .none;
+}
+
+/// Step 21.12.2 for a response step 21.12.3 then refuses
+/// (sandboxedOpenerPolicyBlocks): `openerPolicySwitch` over the response's
+/// own navigation params - its policy container, and the final sandboxing
+/// flag set it would have had (step 21.10) - before the network error
+/// replaces it. Null when its container cannot be made.
+fn openerPolicySwitchBeforeSandboxError(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) ?html_core.window.browsing_context.CrossOriginIsolationMode {
+    var container = navigationParamsPolicyContainer(integration, record, response) catch return null;
+    defer container.deinit();
+    const saved = record.final_sandboxing_flags;
+    defer record.final_sandboxing_flags = saved;
+    record.final_sandboxing_flags = record.target_sandboxing_flags.unionWith(sandboxing.cspDerivedSandboxingFlags(&container.csp_list));
+    return openerPolicySwitch(integration, record, response, &container);
+}
+
+/// "Enforce a response's opener policy" steps 4.2 and 5.2's violation
+/// reports for this navigation (dom.coop_reporting): the response's - its
+/// URL, its navigation params' origin and policy container (its opener
+/// policy and Reporting-Endpoints) - and the active document's, the current
+/// enforcement result (step 21.14's: its URL, origin and opener policy, and
+/// "current context is navigation source": its origin same origin with the
+/// initiator origin). An initial about:blank document whose opener policy
+/// its creator's top-level document gave it reports as that document
+/// (PolicyContainer.openerPolicyReporter; dom.coop_reporting.Side says
+/// why). The active document's Window carries the uploads, kept by its
+/// agent past its document's unload. A report that cannot be made is
+/// dropped; the navigation goes on.
+fn queueOpenerPolicyReports(
+    browsing_context: *html_core.BrowsingContext,
+    record: *Navigation,
+    response: *const navigation_fetch.NavigationFetchResult,
+    container: *const fetch_mod.internal.PolicyContainer,
+    active: *runtime.Instance,
+    active_container: ?*fetch_mod.internal.PolicyContainer,
+    active_coop: fetch_mod.internal.OpenerPolicy,
+    active_origin: []const u8,
+    response_url: []const u8,
+    response_origin: []const u8,
+    reports: html_core.navigation.opener_policy.Reports,
+) void {
+    const sender = dom_module.reporting.globalOf(active.ctx) orelse return;
+    const allocator = active.ctx.allocator;
+    const active_url = documentUrlOf(active, allocator) catch return;
+    defer allocator.free(active_url);
+    const reporter = if (active_container) |c| c.openerPolicyReporter() else null;
+    // The current result's url for a popup's initial about:blank document:
+    // its opener's active document's URL, when that document is still same
+    // origin with it. HTML's text (step 21.14) says the active document's
+    // URL, about:blank; Chromium's CrossOriginOpenerPolicyStatus "uses the
+    // URL of the opener for reporting purposes when doing an initial
+    // navigation in a popup" (current_url_, origin-checked), WebKit's
+    // CrossOriginOpenerPolicyEnforcementResult::from takes openerURL, and the
+    // tests expect it as previousResponseURL and as the report's url
+    // (navigation-reporting/reporting-popup-same-origin: C157 5/5, S27.2 5/5).
+    const opener_url = if (document_lifecycle.isInitialAboutBlank(active)) openerDocumentUrl(browsing_context, active_origin, allocator) else null;
+    defer if (opener_url) |url| allocator.free(url);
+    const is_source = if (record.request_origin) |initiator| !std.mem.eql(u8, active_origin, "null") and std.mem.eql(u8, active_origin, initiator) else false;
+    dom_module.coop_reporting.queueNavigationReports(sender, reports, .{
+        .policy = container.openerPolicy().*,
+        .url = response_url,
+        .origin = response_origin,
+        .endpoints = container.endpoints,
+    }, .{
+        .policy = active_coop,
+        .url = opener_url orelse if (reporter) |r| r.url else active_url,
+        .origin = active_origin,
+        .endpoints = if (reporter) |r| r.endpoints else if (active_container) |c| c.endpoints else null,
+    }, response.referrer, is_source);
+}
+
+/// The URL of `browsing_context`'s opener's active document, when its origin
+/// is `origin` (serialized, not opaque); null otherwise. Owned.
+fn openerDocumentUrl(browsing_context: *html_core.BrowsingContext, origin: []const u8, allocator: std.mem.Allocator) ?[]u8 {
+    if (std.mem.eql(u8, origin, "null")) return null;
+    const opener = browsing_context.opener orelse return null;
+    const document: *runtime.Instance = @ptrCast(@alignCast(opener.getActiveDocument() orelse return null));
+    const opener_origin = documentOriginOf(document, allocator) orelse return null;
+    defer allocator.free(opener_origin);
+    if (!std.mem.eql(u8, opener_origin, origin)) return null;
+    return documentUrlOf(document, allocator) catch null;
 }
 
 /// An opener policy whose value and report-only value are "unsafe-none".
@@ -6027,9 +6146,25 @@ fn inheritPolicyContainer(document: *runtime.Instance, from: *runtime.Instance) 
 fn inheritOpenerPolicy(document: *runtime.Instance, creator: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
     if (browsing_context.parent != null) return;
     const own = dom_module.policy_containers.of(document) orelse return;
-    // Out of memory leaves it a new policy (logged): the popup may switch
-    // groups where it would not have, never the other way round.
-    own.setOpenerPolicy(topLevelOpenerPolicyFor(creator)) catch log.warn("[navigation] an initial about:blank document could not take its creator's opener policy", .{});
+    const top_document = topLevelOpenerPolicySource(creator) orelse return;
+    const top_container = dom_module.policy_containers.of(top_document) orelse return;
+    // The whole policy, its endpoint names included (its reports'). Out of
+    // memory leaves it a new policy (logged): the popup may switch groups
+    // where it would not have, never the other way round.
+    const policy = top_container.openerPolicy().clone(own.allocator) catch return log.warn("[navigation] an initial about:blank document could not take its creator's opener policy", .{});
+    own.setOpenerPolicy(policy) catch return log.warn("[navigation] an initial about:blank document could not take its creator's opener policy", .{});
+    // Its reports are made as the document it came from - that document's
+    // URL and Reporting-Endpoints, snapshotted now (the creator may navigate
+    // on): Chromium gives the popup's initial empty document a COOP reporter
+    // of its creator's URL and reporting source, WebKit's
+    // CrossOriginOpenerPolicyEnforcementResult::from reports with the
+    // opener's URL (PolicyContainer.OpenerPolicyReporter). A policy that
+    // reports nowhere needs none.
+    const inherited = own.openerPolicy();
+    if (inherited.reporting_endpoint == null and inherited.report_only_reporting_endpoint == null) return;
+    const url = documentUrlOf(top_document, own.allocator) catch return;
+    defer own.allocator.free(url);
+    own.setOpenerPolicyReporter(url, top_container.endpoints) catch log.warn("[navigation] an initial about:blank document's opener policy reports nowhere: out of memory", .{});
 }
 
 /// HTML "is local": an about:, blob: or data: URL's scheme.
@@ -6043,20 +6178,32 @@ fn isLocalScheme(scheme: []const u8) bool {
 /// policy when `document`'s origin is same origin with that document's
 /// (its relevant settings object's top-level origin), else a new one -
 /// HTML "create a new browsing context and document" step 19.3's rule.
-/// Values only: the endpoints serve COOP reports, queued as lane coi1's
-/// follow-up, and a copy that allocates nothing cannot fail.
+/// Values only, for a top-level local document's navigation: its endpoint
+/// names would resolve in no list - a local document's Reporting-Endpoints
+/// are empty, and WebKit, the one engine whose code shows the path
+/// (computeResponseOriginAndCOOP), reports through the new document's own -
+/// and a copy that allocates nothing cannot fail. An initial about:blank
+/// document takes the whole policy and its reporter (inheritOpenerPolicy).
 fn topLevelOpenerPolicyFor(document: *runtime.Instance) fetch_mod.internal.OpenerPolicy {
-    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return .{};
-    const bc = dom_module.browser_state.browsingContextOf(window) orelse return .{};
-    const top_document: *runtime.Instance = @ptrCast(@alignCast(bc.getTop().getActiveDocument() orelse return .{}));
-    const allocator = document.ctx.allocator;
-    const origin = documentOriginOf(document, allocator) orelse return .{};
-    defer allocator.free(origin);
-    const top_origin = documentOriginOf(top_document, allocator) orelse return .{};
-    defer allocator.free(top_origin);
-    if (std.mem.eql(u8, origin, "null") or !std.mem.eql(u8, origin, top_origin)) return .{};
+    const top_document = topLevelOpenerPolicySource(document) orelse return .{};
     const top_container = dom_module.policy_containers.of(top_document) orelse return .{};
     return .{ .value = top_container.openerPolicy().value, .report_only_value = top_container.openerPolicy().report_only_value };
+}
+
+/// The document whose opener policy step 19.3's rule gives what `document`
+/// creates: its top-level browsing context's active document, when
+/// `document`'s origin is same origin with it; null otherwise.
+fn topLevelOpenerPolicySource(document: *runtime.Instance) ?*runtime.Instance {
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return null;
+    const bc = dom_module.browser_state.browsingContextOf(window) orelse return null;
+    const top_document: *runtime.Instance = @ptrCast(@alignCast(bc.getTop().getActiveDocument() orelse return null));
+    const allocator = document.ctx.allocator;
+    const origin = documentOriginOf(document, allocator) orelse return null;
+    defer allocator.free(origin);
+    const top_origin = documentOriginOf(top_document, allocator) orelse return null;
+    defer allocator.free(top_origin);
+    if (std.mem.eql(u8, origin, "null") or !std.mem.eql(u8, origin, top_origin)) return null;
+    return top_document;
 }
 
 fn failInheritanceClosed(document: *runtime.Instance) void {
