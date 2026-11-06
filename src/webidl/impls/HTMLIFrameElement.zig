@@ -961,6 +961,9 @@ const Navigation = struct {
     /// The user navigated from the browser's UI (userInvolvement "browser
     /// UI"), which no self-referential URL bound applies to.
     browser_initiated: bool = false,
+    /// When `navigate` was entered (the unsafe shared current time, ms): the
+    /// time origin of the document the navigation makes.
+    navigation_start: f64 = 0,
     /// A POST resource's request body and content-type, fetched with POST.
     /// Owned; the fetch borrows the body until it ends.
     post_body: ?[]u8 = null,
@@ -1495,6 +1498,12 @@ fn documentOriginOf(document: *runtime.Instance, allocator: std.mem.Allocator) ?
 /// navigation (1-7), deferred fetch quota (22), WebDriver BiDi, and lazy
 /// loading (11). Step 21's navigate event has no form data entry list.
 pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: NavigateOptions) void {
+    // The navigation's start: the moment navigate is entered, which the new
+    // document's time origin becomes (performance_timeline's
+    // createNavigationTimingEntry states the browsers it follows) - read
+    // before any step runs, as Chrome's NavigationRequest takes its
+    // navigation_start when it is made.
+    const navigation_start = fetch_mod.algorithms.http_fetch.getCurrentTimeMs();
     // A navigable that is going, or never came: nothing to navigate.
     if (integration.state == .discarded) return;
     const browsing_context = integration.browsing_context orelse return;
@@ -1632,6 +1641,7 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         .traversal_from = options.traversal_from,
         .traversal_wait = TraversalWait.of(integration, options.traversal_waiter),
         .browser_initiated = options.user_involvement == .browser_ui,
+        .navigation_start = navigation_start,
         .csp_navigation_type = options.csp_navigation_type,
         // Step 8: "Let targetSnapshotParams be the result of snapshotting
         // target snapshot params given navigable": its sandboxing flags.
@@ -3969,6 +3979,8 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
             };
             dom_module.performance_timeline.createNavigationTimingEntry(realm, .{
                 .report = &report,
+                // The navigation's start: the document's time origin.
+                .navigation_start = record.navigation_start,
                 .unload_event_start = timing.unload_event_start,
                 .unload_event_end = timing.unload_event_end,
                 // The response's service worker timing info (fetch copied
