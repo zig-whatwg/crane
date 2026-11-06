@@ -63,11 +63,56 @@ mode is listed in build.zig as TEMPORARY with its findings file.
 A test that needs a fresh per-thread state runs its body on a `std.Thread` of
 its own. A race test
 between Browsers on different threads gives each Browser its own leak-checking
-`std.heap.DebugAllocator(.{ .stack_trace_frames = 0 })` instead of the shared
+`@import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 })` instead of the shared
 `std.testing.allocator`: the shared one's lock and per-allocation stack capture
 make the threads take turns, so the race never happens - a liveclassic race
 that crashed 7/7 with per-Browser allocators passed 6/6 with the shared one
 ([lesson](../docs/lessons/testing-a-shared-test-allocator-makes-two-browsers-take-turns.md)).
+
+**Every allocator a test checks memory with poisons what it frees** (lane
+poison2, the user 2026-11-05; tests/test_runner/poisoning.zig). A read after a
+free shows only if something changed the freed bytes:
+
+- `std.testing.allocator` is Zig 0.17's `SafeAllocator`, which the Crane test
+  runner makes per test with `check_write_after_free`: its free writes 0x55
+  over every allocation in a bucket (under 12 KiB) and its bucket release
+  panics "write after free" if anything wrote there since; a larger
+  allocation is unmapped. A fault at 0x5555... is a read of freed memory.
+- A test's own allocator is `@import("root").poisoning.DebugAllocator(config)`,
+  a drop-in for `std.heap.DebugAllocator(config)` (`.init`, `allocator()`,
+  `deinit()`) with 0xdd written over each block of 32 KiB or less before it is
+  freed. Never a bare `std.heap.DebugAllocator`: it neither reuses nor writes a
+  freed slot, so a struct read after its `destroy` has its old values and the
+  test passes - two service-worker use-after-frees passed every gate that way
+  and crashed on libc malloc (lane crashes8,
+  [lesson](../docs/lessons/testing-the-debug-allocator-never-reuses-or-poisons-a-freed-slot.md)).
+  tests/infra/test_allocators_test.zig fails a test file that makes one. A
+  fault at 0xdddd... is a read of a block a test's DebugAllocator freed.
+- libc's: the launcher runs every test child with `MallocScribble=1` (macOS;
+  `MALLOC_PERTURB_=85` on glibc) for v8_wrapper.cpp's `new`/`delete` and
+  `std.heap.c_allocator`. On the pool's macOS 27 malloc already zeroes a
+  freed block of up to at least 4 KiB (past its free-list header); the
+  scribble fills a freed block of 16 KiB or more with 0x55, which otherwise
+  keeps its bytes, and every new block with 0xaa, so a read before a write
+  reads 0xaa, not 0.
+
+`CRANE_POISON_FREES=0` turns all three off for one run - to see whether a
+failure depends on the poison, never to make a test pass. The launcher passes
+it to its children; a cached run step does not rerun for it, so add
+`-Dlaunch-seed=random` (or run the test executable or the launcher by hand).
+tests/test_runner_fixture/poison_fixture.zig pins it: each of its reads after a
+free fails by name under the poison and passes with it off.
+
+What it costs (lane poison2, chat.local, alternating pairs, CPU = user + sys):
+a warm `zig build test -Dlaunch-seed=random` with poisoning on against
+`CRANE_POISON_FREES=0` ran wall x1.14 and x1.25, CPU x1.26 and x1.18; the html
+suites alone ran wall x0.99 to x1.25 (median x1.11), CPU x1.02 to x1.20
+(median x1.05); max RSS unchanged. Off also turns off SafeAllocator's check,
+which Zig's own runner turns on, and nearly all of the difference is that
+check (its free memsets 0x55 and its bucket release reads every freed byte
+back, in Debug code): suites that link no V8 and swap no allocator pay the
+same share as the rest. The drop-in and the scribble are memsets; from the
+per-suite split they add about 0-3% over the check alone.
 A test that needs this build's V8 snapshot imports `test_snapshot` (tests/v8),
 never a path under `zig-out/`.
 

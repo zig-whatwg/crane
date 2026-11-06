@@ -150,7 +150,7 @@ fn runInPage(browser: *Browser, body: []const u8) ![]u8 {
 /// One run: a Browser that runs `scenario` and ends. Its allocator's leak
 /// check is the verdict.
 fn runOnce(comptime frames: usize, server: *http.Server, scenario: Scenario) !void {
-    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = frames }) = .init;
+    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = frames }) = .init;
     var leaked = false;
     {
         var proxy_buf: [64]u8 = undefined;

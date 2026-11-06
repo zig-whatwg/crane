@@ -29,7 +29,7 @@ const page_url = "https://leaks6.test/page.html";
 fn ignoreReport(_: ?*anyopaque, _: *const engine.ErrorInfo) void {}
 
 fn run() !void {
-    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     {
         const browser = try Browser.init(debug.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
         defer browser.deinit();
@@ -96,7 +96,7 @@ fn frameDocument(page: anytype, realm: runtime.Context) !*runtime.Instance {
 }
 
 fn reusedAddress() !void {
-    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     {
         const browser = try Browser.init(debug.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
         defer browser.deinit();

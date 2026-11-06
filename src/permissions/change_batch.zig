@@ -39,7 +39,7 @@ pub const ChangeBatch = struct {
 };
 
 test "a permission command waits for every task and can abandon its share" {
-    var gpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(gpa.deinit() == .ok) catch @panic("batch leaked");
     const batch = try ChangeBatch.create(gpa.allocator());
     try std.testing.expect(batch.isDone());
@@ -74,7 +74,7 @@ const TestTask = struct {
 };
 
 test "a closed permission target completes its batch through drop" {
-    var gpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(gpa.deinit() == .ok) catch @panic("closed target leaked");
     const allocator = gpa.allocator();
     const sink = try runtime.TaskSink.create(allocator);
@@ -91,7 +91,7 @@ test "a closed permission target completes its batch through drop" {
 }
 
 test "same-thread permission deliveries complete only after their task runs" {
-    var gpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(gpa.deinit() == .ok) catch @panic("same-thread target leaked");
     const allocator = gpa.allocator();
     const sink = try runtime.TaskSink.create(allocator);
@@ -112,9 +112,9 @@ test "same-thread permission deliveries complete only after their task runs" {
 }
 
 test "a worker task can finish after its permission command was abandoned" {
-    var sender_gpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var sender_gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(sender_gpa.deinit() == .ok) catch @panic("batch leaked");
-    var target_gpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var target_gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(target_gpa.deinit() == .ok) catch @panic("sink leaked");
     const sink = try runtime.TaskSink.create(target_gpa.allocator());
     defer sink.release();

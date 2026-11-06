@@ -137,7 +137,7 @@ const Rendezvous = struct {
 };
 
 fn loadAndWait(port: u16, together: *Rendezvous) !void {
-    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer if (debug_allocator.deinit() == .leak) @panic("a Browser leaked");
     const allocator = debug_allocator.allocator();
     errdefer together.failed.store(true, .release);

@@ -141,7 +141,7 @@ const Side = struct {
     shared: *Shared,
     page_url: []const u8,
     failure: ?anyerror = null,
-    debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
+    debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
 
     fn run(self: *Side) void {
         self.steps() catch |err| {

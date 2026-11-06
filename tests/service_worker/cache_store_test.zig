@@ -223,3 +223,46 @@ test "an entry's bytes read back as the same request and response" {
     try testing.expectEqual(@as(usize, 2), back.response.headers.len);
     try testing.expectError(error.Corrupt, records.decode(a, bytes[0 .. bytes.len - 1]));
 }
+
+test "a router rule's cache source looks in every cache of the storage key, in order, past one that has no match" {
+    // Handle Fetch step 13.3.3.7 for source "cache": the storage key's caches
+    // in map order, the first response any of them holds. A cache made
+    // earlier that lacks the request - another page's, left behind - is
+    // passed over, as Chromium's caches.match()-style lookup and WebKit's
+    // CacheStorageManager::query pass it (lane flaky5: generation 203's
+    // static-router-no-fetch-handler loss, where a runner process's earlier
+    // file had made "test-cache" before the test's "v1").
+    var f = try Fixture.init();
+    defer f.deinit();
+    const key = "https://a.test";
+    const earlier = try f.storage.openCache(f.browser, key, "test-cache");
+    const v1 = try f.storage.openCache(f.browser, key, "v1");
+    const other_request = request("https://a.test/other.txt", "GET", &.{});
+    const other_response = response(200, &.{}, "other");
+    _ = try f.storage.batch(f.browser, earlier, &.{.{ .kind = .put, .request = &other_request, .response = &other_response }});
+    const cached_request = request("https://a.test/cache.txt", "GET", &.{});
+    const cached_response = response(200, &.{}, "From cache");
+    _ = try f.storage.batch(f.browser, v1, &.{.{ .kind = .put, .request = &cached_request, .response = &cached_response }});
+    // An empty cache first in another storage key's map changes nothing here.
+    _ = try f.storage.openCache(f.browser, "https://b.test", "empty");
+
+    // "cache": found in v1, the second cache of the map.
+    var hit = (try f.storage.routerMatch(f.browser, testing.allocator, key, null, .{ .url = "https://a.test/cache.txt" })) orelse return error.TestExpectedMatch;
+    defer hit.deinit(testing.allocator);
+    try testing.expectEqualStrings("From cache", hit.response.body.?);
+    // ... and in the first, for what the first holds.
+    var first = (try f.storage.routerMatch(f.browser, testing.allocator, key, null, .{ .url = "https://a.test/other.txt" })) orelse return error.TestExpectedMatch;
+    defer first.deinit(testing.allocator);
+    try testing.expectEqualStrings("other", first.response.body.?);
+    // No cache holds it: the network.
+    try testing.expect((try f.storage.routerMatch(f.browser, testing.allocator, key, null, .{ .url = "https://a.test/none.txt" })) == null);
+    // {cacheName}: that cache's alone (7.1) - v1 finds it, test-cache does
+    // not, and a name the map lacks finds nothing.
+    var named = (try f.storage.routerMatch(f.browser, testing.allocator, key, "v1", .{ .url = "https://a.test/cache.txt" })) orelse return error.TestExpectedMatch;
+    defer named.deinit(testing.allocator);
+    try testing.expectEqualStrings("From cache", named.response.body.?);
+    try testing.expect((try f.storage.routerMatch(f.browser, testing.allocator, key, "test-cache", .{ .url = "https://a.test/cache.txt" })) == null);
+    try testing.expect((try f.storage.routerMatch(f.browser, testing.allocator, key, "v2", .{ .url = "https://a.test/cache.txt" })) == null);
+    // Another storage key's map holds none of it.
+    try testing.expect((try f.storage.routerMatch(f.browser, testing.allocator, "https://b.test", null, .{ .url = "https://a.test/cache.txt" })) == null);
+}

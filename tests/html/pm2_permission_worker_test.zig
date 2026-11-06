@@ -28,7 +28,7 @@ fn waitFor(browser: *Browser, expression: []const u8) !void {
 }
 
 fn workerDelivery() !void {
-    var gpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(gpa.deinit() == .ok) catch @panic("permission Browser leaked");
     const browser = try Browser.init(gpa.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
     defer browser.deinit();
@@ -68,7 +68,7 @@ fn workerDelivery() !void {
 
 fn browserIsolation() !void {
     for (0..2) |index| {
-        var gpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+        var gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
         defer std.testing.expect(gpa.deinit() == .ok) catch @panic("permission Browser leaked");
         const browser = try Browser.init(gpa.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
         defer browser.deinit();

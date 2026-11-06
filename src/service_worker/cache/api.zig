@@ -407,27 +407,13 @@ fn routerMatchSteps(realm: runtime.Context, allocator: Allocator, storage_key: [
     const browser_scope = realm.browserScope() orelse return null;
     const storage = try browser_scope.of(Storage);
     const browser = html.platform_state.of(realm) orelse return null;
-    // 13.3.3.6. caches: the storage key's name to cache map.
-    const caches = storage.caches(browser, allocator, storage_key) catch return null;
-    defer {
-        for (caches) |c| allocator.free(c.name);
-        allocator.free(caches);
-    }
     var stored = try storedRequestOf(allocator, request);
     defer stored.deinit(allocator);
-    for (caches) |c| {
-        // 13.3.3.7.1.
-        if (cache_name) |name| if (!std.mem.eql(u8, name, c.name)) continue;
-        // 13.3.3.7.2. Query Cache.
-        const entries = storage.query(browser, allocator, c.cache, store_mod.Query.of(&stored), .{}) catch return null;
-        defer records.freeEntries(allocator, entries);
-        // 13.3.3.7.3. None: the network.
-        if (entries.len == 0) return null;
-        // 13.3.3.7.4. The first one's response.
-        return try internalResponseOf(allocator, &entries[0].response);
-    }
-    // 13.3.3.8.
-    return null;
+    // 13.3.3.6-7: the storage key's caches, queried in order.
+    var entry = (storage.routerMatch(browser, allocator, storage_key, cache_name, store_mod.Query.of(&stored)) catch return null) orelse return null;
+    defer entry.deinit(allocator);
+    // 13.3.3.7.4.2. Its response.
+    return try internalResponseOf(allocator, &entry.response);
 }
 
 // ============================================================================

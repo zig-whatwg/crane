@@ -129,7 +129,7 @@ fn runPosted(sink: *runtime.TaskSink, allocator: std.mem.Allocator) !void {
 }
 
 test "two realm threads register and unregister at once through one manager" {
-    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.debug.assert(debug_allocator.deinit() == .ok);
     const allocator = debug_allocator.allocator();
 

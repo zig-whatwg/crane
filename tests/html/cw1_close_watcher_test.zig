@@ -249,7 +249,7 @@ fn closeWatcherOnItsOwnBrowser(failure: *?anyerror) void {
 fn closeWatcherOnItsOwnBrowserInner() !void {
     // Each Browser its own leak-checking allocator (AGENTS.md: the shared
     // test allocator makes two Browsers take turns).
-    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer if (debug_allocator.deinit() == .leak) @panic("leak");
     const browser = try openWith(debug_allocator.allocator(), "<!doctype html><body></body>");
     defer browser.deinit();

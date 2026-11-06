@@ -155,7 +155,7 @@ const Side = struct {
     frames: usize,
     ends_first: bool,
     failure: ?anyerror = null,
-    debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
+    debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
 
     fn run_(self: *Side) void {
         self.steps() catch |err| {

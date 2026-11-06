@@ -280,7 +280,7 @@ test "hc1 cache: a 304's fields replace the stored ones, except those the stored
 // whole entry or none, nothing leaks (the DebugAllocator would say), and the
 // counts add up.
 test "hc1 cache: one cache shared by two threads stays consistent" {
-    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.testing.expect(debug.deinit() == .ok) catch @panic("leak");
     const allocator = debug.allocator();
     const store = try HttpCache.create(allocator, .{ .max_bytes = 64 * 1024 });

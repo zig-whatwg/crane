@@ -154,7 +154,7 @@ test "two Browsers on two threads keep independent popover stacks" {
         fn exercise(self: *@This()) !void {
             // Independent allocators avoid serializing the two Browsers on
             // std.testing.allocator's lock and allocation stack capture.
-            var allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+            var allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
             defer std.debug.assert(allocator.deinit() == .ok);
             const browser = try openPage(allocator.allocator());
             defer browser.deinit();

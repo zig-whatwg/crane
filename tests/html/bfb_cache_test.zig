@@ -466,7 +466,7 @@ const ThreadRun = struct {
     caching: bool,
 
     fn body(self: *ThreadRun) void {
-        var counted: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+        var counted: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
         self.run(counted.allocator()) catch {
             self.failed = true;
         };
