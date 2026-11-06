@@ -275,7 +275,12 @@ pub const Animation = struct {
     fn currentTimeIgnoringHold(self: *const Animation) ?f64 {
         const timeline_time = self.timelineTime() orelse return null;
         const start = self.start_time orelse return null;
-        return (timeline_time - start) * self.playback_rate;
+        // "+ 0" turns a negative zero (a zero offset times a negative rate)
+        // into zero: Blink's AnimationTimeDelta and Gecko's TimeDuration keep
+        // times as integers, which have no negative zero, and script reads
+        // 0 (updating-the-finished-state.html, a reversed animation seeked
+        // to zero).
+        return (timeline_time - start) * self.playback_rate + 0.0;
     }
 
     /// 4.5.15.2 the effective playback rate.
@@ -760,7 +765,11 @@ pub const Animation = struct {
         if (self.timelineTime() == null) return error.InvalidStateError;
         // 2-3.
         const original_pending_playback_rate = self.pending_playback_rate;
-        self.pending_playback_rate = -self.effectivePlaybackRate();
+        // The additive inverse, written 0 - rate so that a zero rate stays
+        // zero, not negative zero (reversing-an-animation.html: "reverse()
+        // should preserve playbackRate if the playbackRate == 0"; browsers
+        // read 0).
+        self.pending_playback_rate = 0.0 - self.effectivePlaybackRate();
         // 4.
         self.playSteps(true) catch |err| {
             self.pending_playback_rate = original_pending_playback_rate;
