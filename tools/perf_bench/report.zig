@@ -521,6 +521,15 @@ fn writeHeadline(w: W, vs: []const Versus) !void {
     try w.writeAll("</tbody></table></div></section>\n");
 }
 
+/// An engine as its build: Crane's release build is "Crane ReleaseSafe"
+/// where another Crane build could be meant; the rest are their labels.
+fn buildName(e: EngineName) []const u8 {
+    return switch (e) {
+        .crane => "Crane ReleaseSafe",
+        else => e.label(),
+    };
+}
+
 /// Which engines a re-measurement covers, and how the control compares:
 /// the page says so, with each workload's ratio.
 fn writeRemeasured(w: W, arena: Allocator, m: *const Model, rm: Remeasured) !void {
@@ -531,18 +540,19 @@ fn writeRemeasured(w: W, arena: Allocator, m: *const Model, rm: Remeasured) !voi
         if (i > 0) try w.writeAll(if (i + 1 == rm.engines.len) " and " else ", ");
         try w.writeAll(e.label());
     }
-    try w.print(" ran again in a second window, alternating with {s} as a drift control; this round&rsquo;s rows of ", .{rm.engine.label()});
+    const control_name = buildName(rm.engine);
+    try w.print(" ran again in a second window, alternating with {s} as a drift control; this round&rsquo;s rows of ", .{control_name});
     for (rm.engines, 0..) |e, i| {
         if (i > 0) try w.writeAll(if (i + 1 == rm.engines.len) " and " else ", ");
         try w.writeAll(e.label());
     }
-    try w.print(" are that window&rsquo;s, and {s}&rsquo;s are the first window&rsquo;s. In the second window {s}&rsquo;s time was ", .{ rm.engine.label(), rm.engine.label() });
+    try w.print(" are that window&rsquo;s, and {s}&rsquo;s are the first window&rsquo;s. In the second window {s}&rsquo;s time was ", .{ control_name, control_name });
     if (d.time_ratio) |r| try w.print("{d:.1}%", .{r * 100}) else try w.writeAll("&ndash;");
     try w.print(" and its memory ", .{});
     if (d.memory_ratio) |r| try w.print("{d:.1}%", .{r * 100}) else try w.writeAll("&ndash;");
     try w.print(" of the first window&rsquo;s (geometric means over {d} and {d} workloads): ", .{ d.time_n, d.memory_n });
     try w.writeAll(if (d.within) "<strong>within noise</strong>" else "<strong class=\"fail\">not within noise</strong>");
-    try w.print(" (both means within {d:.0}% of 100%; {d} workloads outside their own band of 10% or three times the runs&rsquo; spread).</p>\n", .{ drift_limit * 100, d.outside });
+    try w.print(" (both means within {d:.0}% of 100%; {d} workload{s} outside {s} own band of 10% or three times the runs&rsquo; spread).</p>\n", .{ drift_limit * 100, d.outside, if (d.outside == 1) "" else "s", if (d.outside == 1) "its" else "their" });
     try w.print("<div class=\"table-wrap\"><table class=\"listing\"><thead><tr><th scope=\"col\">Workload</th><th scope=\"col\" class=\"n\">Time, first window</th><th scope=\"col\" class=\"n\">Time, control</th><th scope=\"col\" class=\"n\">Control / first</th><th scope=\"col\" class=\"n\">Memory, first window</th><th scope=\"col\" class=\"n\">Memory, control</th><th scope=\"col\" class=\"n\">Control / first</th></tr></thead><tbody>\n", .{});
     for (try rm.control.workloads(arena, round)) |wl| {
         if (!inHeadline(wl)) continue;
