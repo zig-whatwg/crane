@@ -63,9 +63,8 @@
 //!   own push/replace step would set the current step back under a jumped
 //!   push (whatwg/html#10232, #12961). A cross-document navigation's
 //!   finalize is an apply of its own (.push_replace, lane nav2 F1), which
-//!   waits; only the commits still made inline (an embedder's load, a
-//!   javascript: URL's result) settle a running apply
-//!   (JointHistory.settleApply).
+//!   waits; only the commits still made inline (a javascript: URL's
+//!   result) settle a running apply (JointHistory.settleApply).
 //! - "Apply the push/replace history step" runs inline in the finalize
 //!   (JointHistory.finalizeSameDocument says why).
 //! - A traversal whose target step is forward of the current one, appended

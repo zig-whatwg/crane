@@ -1027,18 +1027,14 @@ fn effectiveDomain(document: *runtime.Instance, internal: *InternalState, alloca
     return try allocator.dupe(u8, host);
 }
 
-/// `document`'s origin, serialized - its window's (the relevant settings
-/// object's) when it has one; else its origin record's, for a document made
-/// with another's origin (new Document(), createHTMLDocument(), a clone);
-/// else its URL's - or null for an opaque origin. OWNED by `allocator`.
+/// `document`'s origin, serialized: its origin record's - which every
+/// document a navigation, a browsing context's creation or another document
+/// made was given ("determining the origin", decided once) - else, for a
+/// record made unresolved, its URL's; null for an opaque origin. OWNED by
+/// `allocator`. Never its window's: the window's origin is this document's
+/// (Window.effectiveOrigin reads it here), and asking it back read the copy
+/// the window kept of the origin it was created with (lane loadpath1).
 fn serializedOrigin(document: *runtime.Instance, internal: *InternalState, allocator: std.mem.Allocator) !?[]u8 {
-    if (internal.default_view) |window| {
-        // The getter's string is the window realm's to free.
-        const serialized = try interfaces.Window.get_origin(window);
-        defer window.ctx.allocator.free(serialized);
-        if (std.mem.eql(u8, serialized, "null")) return null;
-        return try allocator.dupe(u8, serialized);
-    }
     if (internal.origin) |record| {
         if (record.serialized) |serialized| {
             if (std.mem.eql(u8, serialized, "null")) return null;
@@ -4634,6 +4630,23 @@ fn lifecycleTaskSteps(data: ?*anyopaque) void {
         // Step 6.1-6.3: the DOM content loaded event start time; "Fire an
         // event named DOMContentLoaded at the Document object, with its
         // bubbles attribute initialized to true"; its end time.
+        //
+        // In a QUEUED task, as "the end" step 6 says, though all three
+        // engines fire it synchronously at the end of the parse: Blink's
+        // Document::FinishedParsing ("FIXME: DOMContentLoaded is dispatched
+        // synchronously, but this should be dispatched in a queued task, see
+        // https://crbug.com/961428"), WebKit's Document::finishedParsing
+        // ("FIXME: Schedule a task to fire DOMContentLoaded event instead. See
+        // webkit.org/b/82931"), and Gecko's Document::UnblockDOMContentLoaded
+        // through a script runner while dom.document.domcontentloaded_
+        // synchronous.enabled is set (a runnable otherwise). Two of the three
+        // mark their dispatch a bug against the spec: they lag it, so the spec
+        // decides (golden rule 2; integrator ruling 2026-11-06). Observable
+        // through a zero-delay timer set by a defer script, whose task is
+        // queued at its call (Context.zig queueAtCall), ahead of this one:
+        // html/syntax/parsing/DOMContentLoaded-defer.html passes here and
+        // fails in Chrome 157, Firefox 159 and Safari 27.2, and its tentative
+        // twin DOMContentLoaded-defer-task-order.tentative.html the reverse.
         .dom_content_loaded => {
             // (The timeline keeps the load timing info of the document a
             // window shows; a windowless document's is not recorded.)

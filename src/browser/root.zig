@@ -48,11 +48,6 @@ pub const Context = @import("Context.zig").Context;
 pub const back_forward_cache = @import("back_forward_cache.zig");
 pub const ContextType = @import("Context.zig").ContextType;
 
-pub const navigation = @import("navigation.zig");
-pub const NavigationResult = navigation.NavigationResult;
-pub const NavigationOptions = navigation.NavigationOptions;
-pub const NavigationError = navigation.NavigationError;
-
 pub const storage = @import("storage/Storage.zig");
 pub const Storage = storage.Storage;
 pub const LocalStorage = storage.LocalStorage;
@@ -63,6 +58,5 @@ test {
     _ = @import("process.zig");
     _ = @import("Context.zig");
     _ = @import("rendering.zig");
-    _ = @import("navigation.zig");
     _ = @import("storage/Storage.zig");
 }

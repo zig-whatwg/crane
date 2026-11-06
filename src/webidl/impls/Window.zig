@@ -250,23 +250,6 @@ pub const InternalState = struct {
     /// m_isSecureContext). Null when nothing created it (`secureContext`).
     creator_is_secure_context: ?bool = null,
 
-    /// The origin this window was CREATED with: the page's for a top-level
-    /// window, the container document's for an iframe. It is a fallback only:
-    /// the window's origin is its associated Document's (`effectiveOrigin`),
-    /// and this copy answers only before the window has a document whose
-    /// origin is known. A Window made for a later navigation of the same
-    /// navigable is given the navigable's first creation origin, so this goes
-    /// stale the moment the frame navigates to another origin - which is why
-    /// nothing reads it while the document's origin record can answer.
-    origin: []const u8 = "null",
-
-    /// `effectiveOrigin`'s answer for a document URL with an origin of its
-    /// own, and the URL it was derived from; both owned. Recomputed only when
-    /// the URL changes, because the cross-origin `document` check asks on every
-    /// access from another window.
-    derived_origin: ?[]const u8 = null,
-    derived_origin_url: ?[]const u8 = null,
-
     /// Dimensions (defaults, can be updated by platform)
     inner_width: i32 = 1024,
     inner_height: i32 = 768,
@@ -375,14 +358,6 @@ pub const InternalState = struct {
             self.allocator.free(self.name);
         }
 
-        // Free origin if allocated: never "null", which is always the literal
-        // (`setOrigin` keeps it so).
-        if (!std.mem.eql(u8, self.origin, "null")) {
-            self.allocator.free(self.origin);
-        }
-        if (self.derived_origin) |o| self.allocator.free(o);
-        if (self.derived_origin_url) |u| self.allocator.free(u);
-
         // Free status if allocated
         if (self.status.len > 0) {
             self.allocator.free(self.status);
@@ -395,29 +370,6 @@ const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
 
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
-}
-
-/// Set the Window's origin for storage access.
-/// This should be called when the document's origin is established.
-pub fn setOrigin(instance: *runtime.Instance, origin: []const u8) !void {
-    const internal = getInternal(instance) orelse return error.InvalidState;
-    // `internal.origin` is a copy of its own exactly when it is not "null":
-    // the default is the literal, and so is every "null" set here. The free
-    // below and InternalState.deinit's decide by that. Copying "null" too made
-    // a copy they never freed - a frame nested in a sandboxed document gets
-    // the opaque origin's "null" (leaks lane, 2026-10-02: 2 per
-    // cookies/samesite/sandbox-iframe-nested.https.html run alone).
-    const opaque_origin = "null";
-    // Copy the origin string since it may be from temporary storage
-    const origin_copy: []const u8 = if (std.mem.eql(u8, origin, opaque_origin))
-        opaque_origin
-    else
-        try internal.allocator.dupe(u8, origin);
-    // Free the old origin if it was allocated (not "null")
-    if (!std.mem.eql(u8, internal.origin, opaque_origin)) {
-        internal.allocator.free(internal.origin);
-    }
-    internal.origin = origin_copy;
 }
 
 /// This window's origin: its associated Document's origin.
@@ -435,58 +387,21 @@ pub fn setOrigin(instance: *runtime.Instance, origin: []const u8) !void {
 /// (webstorage/localstorage-share-data-unrelated-origins.html passes in
 /// Chrome 155, Firefox 158 and Safari 27).
 ///
-/// `internal.origin` - the origin the Window was created with - used to
-/// answer for an about: or javascript: URL, and for an iframe that was its
-/// PARENT's origin, or for a Window a later navigation made, the navigable's
-/// FIRST container's: a srcdoc frame inside a cross-origin frame read the
-/// top-level page's storage, and a popup's frame's about:blank children
-/// were cross-origin to their own parent. It answers now only for a
-/// document whose record has no serialization yet (the top-level page's,
-/// until something shares it), and before the window has a document.
+/// The Window keeps no origin of its own (lane loadpath1). It kept the
+/// origin it was created with, which a frame's later Windows inherited from
+/// its first container and which only the embedder's own load ever set for
+/// the host page: a page the console had navigated to, or a frame that
+/// navigated to another origin, then handed window.open() an origin that
+/// was not its document's. A document whose record was made unresolved
+/// resolves it now from its URL (dom.document_origin.shareable); a window
+/// with no document - only while it is being made - is opaque.
 ///
-/// The slice lives while the document holds its record, or until its URL
-/// next changes; copy it to keep it.
+/// The slice lives while the document holds its record; copy it to keep it.
 fn effectiveOrigin(instance: *runtime.Instance, internal: *InternalState) []const u8 {
-    const document = internal.document orelse return internal.origin;
-    // A Window's origin is its associated Document's: its origin record's,
-    // opaque or not, once the record knows its serialization - a document
-    // made with a new opaque origin (a network error's, one its response's
-    // CSP sandboxes) whatever its URL, and an inheriting document with the
-    // origin it shares.
-    if (@import("dom").document_origin.record(document)) |record| {
-        if (record.serialized) |serialized| return serialized;
-    }
-    const url = interfaces.Document.get_URL(document) catch return internal.origin;
-    // The getter clones into the document's context allocator.
-    defer document.ctx.allocator.free(url);
-    if (url.len == 0 or inheritsCreatorOrigin(url)) return internal.origin;
-
-    if (internal.derived_origin_url) |cached_url| {
-        if (std.mem.eql(u8, cached_url, url)) return internal.derived_origin orelse internal.origin;
-    }
-
-    const parsed = (interfaces.URL.call_static_parse(instance, url, webidl.Opt(runtime.USVString).notPassed()) catch null) orelse
-        return internal.origin;
-    defer runtime.Instance.deinit(parsed);
-    const serialized = interfaces.URL.get_origin(parsed) catch return internal.origin;
-    defer parsed.ctx.allocator.free(serialized);
-
-    const origin_copy = internal.allocator.dupe(u8, serialized) catch return internal.origin;
-    const url_copy = internal.allocator.dupe(u8, url) catch {
-        internal.allocator.free(origin_copy);
-        return internal.origin;
-    };
-    if (internal.derived_origin) |old| internal.allocator.free(old);
-    if (internal.derived_origin_url) |old| internal.allocator.free(old);
-    internal.derived_origin = origin_copy;
-    internal.derived_origin_url = url_copy;
-    return origin_copy;
-}
-
-/// about:blank, about:srcdoc and a javascript: URL's result take their
-/// creator's origin rather than one of their own.
-fn inheritsCreatorOrigin(url: []const u8) bool {
-    return std.ascii.startsWithIgnoreCase(url, "about:") or std.ascii.startsWithIgnoreCase(url, "javascript:");
+    _ = instance; // the callers' shape: a window and its state
+    const document = internal.document orelse return "null";
+    const record = (@import("dom").document_origin.shareable(document) catch return "null") orelse return "null";
+    return record.serialized orelse "null";
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,
@@ -509,7 +424,6 @@ pub fn installHooks() void {
         .bound_global = &getBoundV8Global,
         .release_browsing_context = &releaseBrowsingContext,
         .adopt_browsing_context = &replaceBrowsingContext,
-        .set_origin = &setOrigin,
         .move_auxiliary_navigables = &moveAuxiliaryNavigables,
     });
     // A hyperlink's or form's target that names no frame: the popups this
@@ -3310,8 +3224,9 @@ const CloseTask = struct {
         engine.runTaskInRealm(task.window.ctx, steps, task.window) catch {};
     }
 
-    /// The task never ran: its realm's timers ended with it armed - the
-    /// popup, or the whole Browser, went first.
+    /// The task never ran: its event loop ended with it queued (or, with no
+    /// loop, its realm's timers ended with it armed) - the popup, or the
+    /// whole Browser, went first.
     fn drop(data: ?*anyopaque) void {
         const task: *CloseTask = @ptrCast(@alignCast(data orelse return));
         task.allocator.destroy(task);
@@ -3327,10 +3242,30 @@ const CloseTask = struct {
     }
 };
 
+/// Step 6.2's task, queued on the window's event loop - in order with every
+/// other task: a zero-delay setTimeout called before window.close() has its
+/// task queued at its call (Context.zig queueAtCall), so it runs first, as
+/// in Chromium (DOMTimer's immediate task is posted before Page::CloseSoon
+/// posts its DoDeferredClose task) and Gecko (TimeoutExecutor's immediate
+/// runnable is dispatched before nsGlobalWindowOuter::FinalClose dispatches
+/// its nsCloseEvent, PostCloseEvent). It was
+/// a zero-delay native timer, run from the loop's poll ahead of every queued
+/// task: the page unloaded before a timer task queued earlier ran
+/// (html/browsers/browsing-the-web/unloading-documents/
+/// prompt-and-unload-script-closeable.html: testharness.js's load-time
+/// setTimeout(0), which marks the harness loaded, lost to the close).
+/// "Queue a task" names no document: the task is runnable whatever the
+/// window's document becomes.
 fn queueDefinitelyClose(window: *runtime.Instance) void {
-    const timer = window.ctx.getOptionalTimer() orelse return;
     const task = window.ctx.allocator.create(CloseTask) catch return;
     task.* = .{ .window = window, .generation = runtime.SlabAllocator.generationOf(window), .allocator = window.ctx.allocator };
+    if (window.ctx.getOptionalEventLoop()) |loop| {
+        // The loop's end drops it (CloseTask.drop) if it never runs.
+        loop.queueTask(.{ .callback = CloseTask.run, .context = task, .drop = CloseTask.drop });
+        return;
+    }
+    // A realm with no event loop (an engine test's): its timer, as before.
+    const timer = window.ctx.getOptionalTimer() orelse return task.allocator.destroy(task);
     // Owned by the timer: a task its realm's end drops is freed then. With a
     // plain timer, a popup closed just before its Browser ended leaked this
     // task - lane httpcache1's one intermittent allocation (lane leaks6;
@@ -3637,7 +3572,11 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     // failures in Chromium 379674022 and Gecko 1931035 are spec lag, not a
     // contrary browser policy: https://github.com/whatwg/html/pull/10547.
     @import("html").user_activation.consume(window);
-    const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), internal.origin, is_popup, popup_flags) orelse return null;
+    // The popup's initial about:blank takes its creator's origin - the
+    // opener's active DOCUMENT's ("create a new browsing context and
+    // document" step 5.1), which the machinery reads from the document's
+    // origin record, not from this Window.
+    const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), is_popup, popup_flags) orelse return null;
     const integration: *html_core.IFrameIntegration = @ptrCast(@alignCast(created.integration));
     internal.auxiliary_navigables.append(allocator, integration) catch {
         integration.deinit();

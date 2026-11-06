@@ -2,8 +2,10 @@
 //! HTML "navigate" through the host page's top-level traversable
 //! (Browser.navigateTraversable -> Context.navigate), whose commit makes the
 //! page's new Window (Context.realmForTraversableDocument -> replaceRealm) -
-//! a path the WPT runner, which loads each file as an embedder load, rarely
-//! takes. window.open() gives a popup its opener's origin, and a same-origin
+//! the one path every page load takes since lane loadpath1, the WPT runner's
+//! included. window.open() gives a popup its opener's active document's
+//! origin ("create a new browsing context and document" step 5.1, read from
+//! the document's origin record, not from its Window), and a same-origin
 //! popup's first navigation reuses the Window its initial about:blank
 //! document had (HTML "create and initialize a Document object" step 6), so
 //! `p.onload` set right after open() fires (wpt

@@ -37,6 +37,15 @@ pub const Page = struct {
         try browser.navigate("about:blank", .window);
         const page = browser.current_context orelse return error.NoPage;
         try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "about:blank" });
+        // The load gave the page a Window of its own (HTML "create and
+        // initialize a Document object" step 7: the initial about:blank's
+        // origin is opaque, lane loadpath1): the initial about:blank's realm
+        // goes now - collected, then torn down between tasks - not in the
+        // middle of what a test counts.
+        for (0..3) |_| {
+            try page.runScript("TestUtils.gc(); TestUtils.gc();");
+            _ = try browser.runEventLoopBlocking(20);
+        }
         return .{ .browser = browser };
     }
 

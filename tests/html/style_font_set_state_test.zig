@@ -726,11 +726,13 @@ fn controlFontText() !void {
             "@font-face{font-family:Control;src:url(http://127.0.0.1:65533/control-A);unicode-range:U+41}" ++
             "@font-face{font-family:Control;src:url(http://127.0.0.1:65533/control-B);unicode-range:U+42}" ++
             "@font-face{font-family:Control;src:url(http://127.0.0.1:65533/control-space);unicode-range:U+20}" ++
-            "textarea{font-family:Control}</style><body><textarea id=t>A</textarea></body>",
+            "textarea{font-family:Control}</style><body><textarea id=t>A</textarea>" ++
+            // The value is set as the document is parsed, before any rendering
+            // opportunity: the load is a navigation (lane loadpath1), and the
+            // event loop turn that commits it may also run the frame clock's.
+            "<script>document.getElementById('t').value='B';</script></body>",
         .{ .base_url = "about:blank" },
     );
-    const mutation = try browser.evaluateScript("document.getElementById('t').value='B';");
-    defer mutation.release();
     const realm = browser.getRealm() orelse return error.NoRealm;
     const value = try browser.evaluateScript("document");
     defer value.release();

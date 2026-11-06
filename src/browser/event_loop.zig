@@ -674,51 +674,74 @@ pub const EventLoop = struct {
     /// the same: a suspended group's tasks are put back, in order, ahead of
     /// those queued meanwhile, a stopped group's are discarded
     /// (WebCore/dom/EventLoop.cpp). Whether any task ran or was dropped.
+    ///
+    /// The queue moves ONCE per drain: the walk reads each task where it is
+    /// and copies a waiting one down behind the waiting ones before it, and
+    /// at the end the tasks queued meanwhile are moved down behind those.
+    /// Removing each task from the front as it ran moved every task behind
+    /// it - a burst of n due timers, n tasks since window timers became
+    /// tasks (lane loadpath1), cost n²/2 task copies: two thirds of a
+    /// setInterval chain's time in gc_bench. Chromium's sequence manager
+    /// pops a task from the front of a deque (WorkQueue over
+    /// TaskQueueImpl::TaskDeque); WebKit's EventLoop::run exchanges its queue
+    /// for an empty one, walks the old one and appends what it keeps and what
+    /// was queued meanwhile to a new vector - neither moves the queue per
+    /// task.
     fn drainTasks(self: *Self, classify: Classify, after: AfterTask) bool {
         // The tasks of documents a restore made fully active again come
         // first: they were queued before anything queued while they waited.
         if (self.suspended.items.len != 0) self.spliceResumed();
-        var budget = self.tasks.items.len;
+        // The tasks queued before the drain began: `read` walks them. Those
+        // left waiting are `self.tasks.items[0..kept]`; while a task runs,
+        // `[kept, read)` holds none (nothing reads the queue's tasks during
+        // a drain - nothing but a drain and `deinit` removes from it, and
+        // queueing appends past `end`, where the walk never goes).
+        const end = self.tasks.items.len;
         // Until this drain is done, any queued task may be runnable.
         self.waiting = 0;
-        var index: usize = 0;
+        var kept: usize = 0;
+        var read: usize = 0;
         var progressed = false;
-        // Tasks the ones run here queue are appended: the budget never
-        // reaches them, and nothing else removes from the queue, so
-        // `index` is always at a task queued before the drain.
-        while (budget > 0 and index < self.tasks.items.len) : (budget -= 1) {
-            const task = self.tasks.items[index];
+        while (read < end) {
+            // Read afresh each time: a task that ran may have queued one,
+            // and the queue's storage moved.
+            const task = self.tasks.items[read];
+            read += 1;
             switch (classify(task)) {
                 .inactive => {
                     // A document the back/forward cache holds: into its
-                    // group, in queue order. `index` stays: the next task
-                    // has moved into this slot.
+                    // group, in queue order.
                     if (self.suspended.items.len != 0) {
                         if (self.groupOf(task)) |group| {
                             if (group.tasks.ensureUnusedCapacity(self.allocator, 1)) {
-                                _ = self.tasks.orderedRemove(index);
                                 group.tasks.appendAssumeCapacity(task);
                                 continue;
                             } else |_| {}
                         }
                     }
-                    // Left where it is: the next drain asks again.
-                    index += 1;
+                    // Left in the queue, behind the ones left before it:
+                    // the next drain asks again.
+                    self.tasks.items[kept] = task;
+                    kept += 1;
                 },
                 .gone => {
-                    _ = self.tasks.orderedRemove(index);
                     if (task.drop) |drop| drop(task.context);
                     progressed = true;
                 },
                 .fully_active => {
-                    _ = self.tasks.orderedRemove(index);
                     task.callback(task.context);
                     after(self);
                     progressed = true;
                 },
             }
         }
-        self.waiting = index;
+        // The tasks queued during the drain follow the waiting ones.
+        if (kept != read) {
+            const queued_meanwhile = self.tasks.items.len - read;
+            std.mem.copyForwards(Task, self.tasks.items[kept .. kept + queued_meanwhile], self.tasks.items[read..]);
+            self.tasks.shrinkRetainingCapacity(kept + queued_meanwhile);
+        }
+        self.waiting = kept;
         return progressed;
     }
 
@@ -1405,6 +1428,90 @@ test "a task queued while waiting tasks are passed over waits for the next drain
     _ = loop.drainTasks(TestDocument.classify, noCheckpoint);
     try testing.expectEqualStrings("be", log.items);
     try testing.expectEqual(@as(usize, 1), loop.waiting);
+}
+
+test "one drain over waiting, runnable and gone tasks keeps the waiting ones in order, ahead of what the runnable ones queued" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var log: std.ArrayListUnmanaged(u8) = .empty;
+    defer log.deinit(testing.allocator);
+    var first: TestDocument = .{ .activity = .inactive };
+    var second: TestDocument = .{ .activity = .inactive };
+    var gone: TestDocument = .{ .activity = .gone };
+    var a: Ordered = .{ .log = &log, .name = 'a' };
+    var e: Ordered = .{ .log = &log, .name = 'e' };
+    var g: Ordered = .{ .log = &log, .name = 'g' };
+    var b: Ordered = .{ .log = &log, .name = 'b', .queues = &e, .loop = &loop };
+    var c: Ordered = .{ .log = &log, .name = 'c' };
+    var d: Ordered = .{ .log = &log, .name = 'd' };
+    var f: Ordered = .{ .log = &log, .name = 'f', .queues = &g, .loop = &loop };
+    queueAll(&loop, &.{ a.task(&first), b.task(null), c.task(&gone), d.task(&second), f.task(null) });
+
+    try testing.expect(loop.drainTasks(TestDocument.classify, noCheckpoint));
+    // The runnable ones ran in queue order, the gone one was dropped, and
+    // what b and f queued waits for the next drain, behind a and d.
+    try testing.expectEqualStrings("bf", log.items);
+    try testing.expect(c.dropped and !a.dropped and !d.dropped);
+    try testing.expectEqual(@as(usize, 4), loop.tasks.items.len);
+    for ([_]*Ordered{ &a, &d, &e, &g }, loop.tasks.items) |expected, task| {
+        try testing.expectEqual(@as(?*anyopaque, expected), task.context);
+    }
+    try testing.expectEqual(@as(usize, 2), loop.waiting);
+
+    first.activity = .fully_active;
+    second.activity = .gone;
+    try testing.expect(loop.drainTasks(TestDocument.classify, noCheckpoint));
+    try testing.expectEqualStrings("bfaeg", log.items);
+    try testing.expect(d.dropped);
+    try testing.expectEqual(@as(usize, 0), loop.tasks.items.len);
+    try testing.expectEqual(@as(usize, 0), loop.waiting);
+}
+
+test "a drain of a burst runs every task in order, and each one queued meanwhile once, at the next drain" {
+    // A burst of due timers is a burst of tasks (lane loadpath1): 5,000 in
+    // one drain, each queueing one more, as gc_bench's setTimeout(0) burst
+    // and setInterval chain do.
+    var loop = try testLoop();
+    defer loop.deinit();
+    const n = 5_000;
+    const Run = struct {
+        loop: *EventLoop,
+        /// The index of the next task expected to run.
+        next: usize = 0,
+        ran: usize = 0,
+        in_order: bool = true,
+        requeue: bool = true,
+    };
+    const Slot = struct {
+        run: *Run,
+        index: usize,
+        fn task(context: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            const state = self.run;
+            if (self.index != state.next) state.in_order = false;
+            state.next = (self.index + 1) % n;
+            state.ran += 1;
+            if (state.requeue) state.loop.eventLoop().queueTask(.{ .callback = &task, .context = self });
+        }
+    };
+    var state: Run = .{ .loop = &loop };
+    const slots = try testing.allocator.alloc(Slot, n);
+    defer testing.allocator.free(slots);
+    for (slots, 0..) |*slot, index| {
+        slot.* = .{ .run = &state, .index = index };
+        loop.eventLoop().queueTask(.{ .callback = &Slot.task, .context = slot });
+    }
+    try testing.expect(loop.drainTasks(TestDocument.classify, noCheckpoint));
+    try testing.expectEqual(@as(usize, n), state.ran);
+    try testing.expect(state.in_order);
+    // What they queued, in order, waits for the next drain.
+    try testing.expectEqual(@as(usize, n), loop.tasks.items.len);
+    try testing.expectEqual(@as(usize, 0), loop.waiting);
+    state.requeue = false;
+    try testing.expect(loop.drainTasks(TestDocument.classify, noCheckpoint));
+    try testing.expectEqual(@as(usize, 2 * n), state.ran);
+    try testing.expect(state.in_order);
+    try testing.expectEqual(@as(usize, 0), loop.tasks.items.len);
 }
 
 test "the loop's end drops a waiting task" {

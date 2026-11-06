@@ -1,10 +1,11 @@
 //! The embedder's answer for the external classic scripts that frame and
 //! popup documents prepare.
 //!
-//! A top-level page's embedder hands its parser a script loader
-//! (`Context.loadPageWithOptions`), but the documents of the page's
-//! iframes and window.open popups are parsed by the engine
-//! (`HTMLIFrameElement.parseHtmlForIframe`), which has no embedder to ask.
+//! A top-level page's embedder hands the navigation that loads it a script
+//! loader (`Context.loadPageWithOptions`, dom.top_level_traversables
+//! NavigateOptions) for that page's document only, but the documents of the
+//! page's iframes and window.open popups are parsed with no embedder to ask
+//! (`HTMLIFrameElement.parseHtmlForIframe`).
 //! An embedder that must answer for those documents too registers a
 //! `Loader` on its Browser, once, before any page loads; the frame parse
 //! path asks `forRealm` for a script loader bound to the frame's realm,

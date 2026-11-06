@@ -525,7 +525,23 @@ pub const NativeTimerManager = struct {
         .setTimeoutOwned = setTimeoutOwnedVTable,
         .clearTimeout = clearTimeoutVTable,
         .remainingMs = remainingMsVTable,
+        .reserveId = reserveIdVTable,
     };
+
+    fn reserveIdVTable(ctx: *anyopaque) TimerId {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        return self.reserveId();
+    }
+
+    /// The next id, naming no timer (TimerVTable.reserveId): taken from the
+    /// counter `arm` takes its ids from, so it is never an armed timer's.
+    /// 0 once the manager has ended.
+    pub fn reserveId(self: *Self) TimerId {
+        if (!self.initialized) return 0;
+        const id = self.next_id;
+        self.next_id += 1;
+        return id;
+    }
 
     fn remainingMsVTable(ctx: *anyopaque, id: TimerId) ?u64 {
         const self: *Self = @ptrCast(@alignCast(ctx));
@@ -728,6 +744,30 @@ test "setTimeout ids are non-zero and increasing; 0 is the failure sentinel" {
     const b = mgr.setTimeout(10, countingCallback, null);
     try testing.expect(a != 0);
     try testing.expect(b > a);
+}
+
+test "an id reserved without a timer is in the armed timers' id space, and never theirs" {
+    // A zero-delay window timer queues its task at the call and arms nothing
+    // (lane loadpath1); its id comes from the same counter as an armed
+    // timer's, so a window's map of setTimeout and setInterval IDs never
+    // holds one id twice.
+    var fired: usize = 0;
+    var mgr = try NativeTimerManager.init(testing.allocator);
+    defer mgr.deinit();
+    const timers = mgr.timerInterface();
+
+    const reserved = timers.reserveId() orelse return error.NotSupported;
+    const armed = timers.setTimeout(0, countingCallback, &fired);
+    const again = timers.reserveId() orelse return error.NotSupported;
+    try testing.expect(reserved != 0);
+    try testing.expect(armed > reserved);
+    try testing.expect(again > armed);
+    // A reserved id names no armed timer: clearing it cancels nothing, and
+    // only the armed one is pending.
+    try testing.expect(!timers.clearTimeout(reserved));
+    try testing.expectEqual(@as(usize, 1), mgr.getActiveTimerCount());
+    try testing.expect(mgr.poll());
+    try testing.expectEqual(@as(usize, 1), fired);
 }
 
 test "a due timer fires exactly once and is then gone" {

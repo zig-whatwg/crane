@@ -104,22 +104,26 @@ test "a load that replaces a loaded page gives it a new Window behind the same W
     try onFreshThread(replacingLoad);
 }
 
-fn firstLoadKeepsWindow() !void {
+fn firstLoadGetsItsOwnWindow() !void {
     const browser = try startBrowser();
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
     const page = browser.current_context orelse return error.NoPage;
-    // The embedder's injection point: what it puts in the realm-creation
-    // Window before the first load is the first page's.
     try page.runScript("globalThis.injected = 7;");
     const window = page.window_instance orelse return error.NoWindow;
     try page.loadHTML("<!doctype html><script>globalThis.sawInjected = globalThis.injected;</script>", .{ .base_url = "http://example.test/first" });
-    try testing.expectEqual(window, page.window_instance.?);
-    try expectEval(page, "String(sawInjected)", "7");
+    // Step 6 keeps the initial about:blank's Window only for a document same
+    // origin-domain with it, and an embedder's traversable's initial
+    // about:blank is of a new opaque origin ("create a new browsing context
+    // and document" step 7, no creator): the first page has a Window of its
+    // own, as in Chrome, Firefox and Safari. (Lane loadpath1: it kept the
+    // initial one, through an embedder-only load path no browser has.)
+    try testing.expect(window != page.window_instance.?);
+    try expectEval(page, "typeof sawInjected", "undefined");
 }
 
-test "a fresh page's first load keeps the Window its initial about:blank document had" {
-    try onFreshThread(firstLoadKeepsWindow);
+test "a fresh page's first load gets a Window of its own: the initial about:blank is opaque" {
+    try onFreshThread(firstLoadGetsItsOwnWindow);
 }
 
 fn unloadThenNewWindow() !void {

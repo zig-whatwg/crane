@@ -1239,7 +1239,14 @@ test "native autofocus rendering retires replaced and destroyed documents and ex
             try browser.navigate("about:blank", .window);
             const context = browser.current_context.?;
             const frames = &browser.event_loop.?.frames;
-            try context.loadHTML("<!doctype html><body><input autofocus>", .{ .base_url = "about:blank" });
+            // The candidate goes in after the load: a load is a navigation,
+            // which turns the event loop until it settles (lane loadpath1), and
+            // a rendering opportunity in those turns - one 16 ms frame on a
+            // loaded host - flushes a parser-inserted candidate first (the
+            // test went FLAKY under three concurrent builds). Script inserts
+            // it with no turn between.
+            try context.loadHTML("<!doctype html><body>", .{ .base_url = "about:blank" });
+            try context.runScript("document.body.innerHTML = '<input autofocus>'");
             const old_document = context.document_instance.?;
             try std.testing.expect(frames.requests.items.len == 1);
             const request = frames.requests.items[0];
@@ -1285,7 +1292,10 @@ test "reactivation restores pending native autofocus rendering without an idle t
             try browser.navigate("about:blank", .window);
             const context = browser.current_context.?;
             const frames = &browser.event_loop.?.frames;
-            try context.loadHTML("<!doctype html><body><input autofocus>", .{ .base_url = "about:blank" });
+            // Inserted after the load, as in the test above: a rendering
+            // opportunity during the load's turns would flush it first.
+            try context.loadHTML("<!doctype html><body>", .{ .base_url = "about:blank" });
+            try context.runScript("document.body.innerHTML = '<input autofocus>'");
             const document = context.document_instance.?;
             const realm = document.ctx;
             const window = Context.realmWindow(realm).?;
