@@ -151,6 +151,9 @@ pub const getOrCreateTemplateStorage = isolate_templates.getOrCreateTemplateStor
 pub const getTemplateStorage = isolate_templates.getTemplateStorage;
 pub const cleanupTemplateStorage = isolate_templates.cleanupTemplateStorage;
 
+/// [external_memory]: the host's native memory reported to the isolate.
+pub const external_memory = @import("external_memory.zig");
+
 /// Isolate allocator (per-isolate memory management)
 pub const isolate_allocator = @import("isolate_allocator.zig");
 

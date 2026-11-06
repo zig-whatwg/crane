@@ -42,7 +42,10 @@ pub inline fn enterRealm(realm: runtime.Context) ?*DeferredTeardown {
     return enter(@ptrCast(@alignCast(agent)));
 }
 
-/// A binding returns into script: at depth zero the queue runs what it owes.
+/// A binding returns into script: at depth zero the queue runs what it owes -
+/// a relief, a drain, and the report of the agent's DOM memory to V8
+/// (external_memory.zig, through the queue's report steps) - all behind the
+/// one check of what is owed.
 pub inline fn leaveToScript(queue: ?*DeferredTeardown) void {
     if (queue) |q| q.leaveAlgorithmToScript();
 }

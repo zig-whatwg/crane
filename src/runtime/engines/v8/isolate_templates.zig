@@ -55,6 +55,15 @@ pub const IsolateTemplates = struct {
     /// invocation counts (dom_algorithm.zig): one load from the isolate, on
     /// the hottest path. Null for an isolate createAgent did not make.
     deferred_teardown: ?*@import("runtime").gc.DeferredTeardown = null,
+    /// The host's native memory the agent's objects keep alive
+    /// (engine.AgentOptions.external_memory), BORROWED from createAgent to
+    /// the agent's end, and what V8 was last told of it
+    /// (external_memory.zig): read at the outermost binding exit and each
+    /// microtask checkpoint.
+    external_memory: ?*@import("runtime").gc.ExternalMemory = null,
+    external_reported: usize = 0,
+    /// This storage's isolate, for the report (set with `external_memory`).
+    external_isolate: ?*anyopaque = null,
 
     /// Initialize isolate-local template storage
     pub fn init(allocator: std.mem.Allocator) IsolateTemplates {

@@ -281,6 +281,9 @@ pub const Browser = struct {
             // A collected node's teardown is queued here, for the event loop
             // to run between tasks (runtime.gc.DeferredTeardown).
             .deferred_teardown = &agent_host.deferred_teardown,
+            // The Browser's DOM, which its engine is told about as it grows
+            // and shrinks (runtime.gc.ExternalMemory).
+            .external_memory = &scope.dom_memory,
             // Date reads the Browser's clock when it has one of its own.
             .clock = if (browser_clock.wall_now) |wall_now| .{ .context = browser_clock.context, .wall_now = wall_now } else null,
             // Math.random replays from the Browser's stream when it has one.

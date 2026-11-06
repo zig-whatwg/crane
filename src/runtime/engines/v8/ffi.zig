@@ -926,6 +926,16 @@ pub extern fn v8_Isolate_GetContextCounts(
     detached_contexts: ?*usize,
 ) void;
 pub extern fn v8_Isolate_ThrowException(isolate: *Isolate, exception: *Value) void;
+/// Isolate::AdjustAmountOfExternalAllocatedMemory: the external memory the
+/// isolate's objects keep alive changed by `change_in_bytes`; returns the
+/// new total. A rise may start incremental marking, or collect, before it
+/// returns (V8 13.1 Heap::HandleExternalMemoryInterrupt); a fall never does.
+/// On the isolate's thread, with it entered.
+pub extern fn v8_Isolate_AdjustAmountOfExternalAllocatedMemory(isolate: *Isolate, change_in_bytes: i64) i64;
+/// Every byte of external memory V8 counts toward its collections - backing
+/// stores and what the host reported (HeapStatistics' external is backing
+/// stores alone in 13.1). Starts nothing.
+pub extern fn v8_Isolate_GetExternalMemory(isolate: *Isolate) usize;
 
 // Isolate embedder data (for storing per-isolate state)
 pub extern fn v8_Isolate_SetData(isolate: *Isolate, slot: c_int, data: ?*anyopaque) void;

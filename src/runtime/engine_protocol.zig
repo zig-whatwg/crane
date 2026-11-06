@@ -541,6 +541,20 @@ pub const AgentOptions = struct {
     /// would give every agent the same sequence. Null, the default: the
     /// engine's own entropy, exactly as without this option.
     random_seed: ?u64 = null,
+    /// Native memory the host's objects of this agent keep alive beside the
+    /// engine's heap (runtime.gc.ExternalMemory: a Browser's DOM, given to
+    /// its window agent), BORROWED for the agent's life and claimed for the
+    /// agent's thread - honoured where `external_memory`. The engine
+    /// collects when its own heap grows, and a wrapper of a few dozen bytes
+    /// keeps a native tree alive: told how the host's figure changed, at the
+    /// adapter's safe points - the binding exit back into script that brings
+    /// the agent's DOM-algorithm depth to zero, and each microtask
+    /// checkpoint - in steps of `ExternalMemory.report_step`, it collects
+    /// when that memory grows too (V8: Isolate::
+    /// AdjustAmountOfExternalAllocatedMemory, as Blink reported its DOM
+    /// before its unified heap). The agent's end takes back what it
+    /// reported. Null, the default: the engine sees only its own heap.
+    external_memory: ?*runtime.gc.ExternalMemory = null,
 };
 
 /// A host's wall clock for an agent (AgentOptions.clock): nanoseconds since
@@ -984,6 +998,15 @@ pub const Capabilities = struct {
     /// more - and says so (JavaScriptCore's public C API has no REPL mode;
     /// QuickJS's JS_EVAL_FLAG_ASYNC is not wired).
     repl_mode: Support,
+    /// AgentOptions.external_memory: the engine's collector counts the
+    /// host's native memory the agent's objects keep alive, so a script that
+    /// drops wrappers of large native trees gets collections it would not
+    /// get from its own heap's growth. Unsupported: the option is ignored -
+    /// the engine collects on its own heap's growth alone, so dropped trees
+    /// wait for a collection that growth brings (JavaScriptCore's
+    /// JSReportExtraMemoryCost is not public API; QuickJS counts only its
+    /// own allocations).
+    external_memory: Support,
 };
 
 /// The capabilities of the engine this build selected.

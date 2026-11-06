@@ -100,6 +100,15 @@ pub const ArenaAllocator = struct {
         return @as(usize, 1) << @intCast(class + min_class_shift);
     }
 
+    /// The bytes a state of `size`/`alignment` holds once made: its class's
+    /// block, or the request itself when it is not recycled (`createRaw`).
+    /// What a Browser's DOM memory counts for a node's state
+    /// (dom.instance_bridge.storageBytes).
+    pub fn heldBytes(size: usize, alignment: usize) usize {
+        const class = sizeClassOf(size, alignment) orelse return size;
+        return classSize(class);
+    }
+
     /// Take a block of `class` off its free list, or null if the list is empty.
     fn popFree(self: *ArenaAllocator, class: usize) ?[*]u8 {
         const head = self.free_lists[class] orelse return null;
@@ -477,4 +486,26 @@ test "ArenaAllocator.stats accuracy" {
     s = arena.stats();
     try testing.expectEqual(@as(usize, 3), s.total_allocations);
     try testing.expectEqual(@as(usize, 1), s.total_resets); // Still 1 reset
+}
+
+test "heldBytes is the block createRaw hands out: a freed block of that size comes back to it, one byte more does not" {
+    var arena_value = ArenaAllocator.init(testing.allocator);
+    defer arena_value.deinit();
+    const arena = &arena_value;
+    for ([_]usize{ 16, 17, 100, 1100, 1700, 2048, 2049, 9000, 16384 }) |size| {
+        const held = ArenaAllocator.heldBytes(size, 8);
+        try testing.expect(held >= size);
+        const block = try arena.createRaw(size, 8);
+        arena.destroyRaw(block, size, 8);
+        // The whole block is the class's: a request of `held` bytes takes it back.
+        const again = try arena.createRaw(held, 8);
+        try testing.expectEqual(block, again);
+        arena.destroyRaw(again, held, 8);
+        // One byte more is the next class: a new block.
+        const bigger = try arena.createRaw(held + 1, 8);
+        try testing.expect(bigger != block);
+        arena.destroyRaw(bigger, held + 1, 8);
+    }
+    // Past the largest class nothing is rounded: the request is what is held.
+    try testing.expectEqual(@as(usize, 20000), ArenaAllocator.heldBytes(20000, 8));
 }

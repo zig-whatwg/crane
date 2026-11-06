@@ -50,6 +50,11 @@ pub const BrowserScope = struct {
     slab: SlabAllocator,
     /// The state of every platform object of this Browser.
     arena: ArenaAllocator,
+    /// The native storage of this Browser's nodes - its DOM - which its
+    /// window agent's engine is told about (runtime.gc.ExternalMemory,
+    /// engine.AgentOptions.external_memory): dom.instance_bridge counts each
+    /// node as it registers and unregisters. Its window agent's thread only.
+    dom_memory: @import("gc_integration.zig").ExternalMemory = .{},
     /// Protects `supplements` and the making of tables. Never held across a
     /// supplement's own steps beyond its `init`.
     mutex: std.Io.Mutex = .init,

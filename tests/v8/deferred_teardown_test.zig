@@ -181,9 +181,12 @@ test "the collection that takes a detached root's wrapper queues the root and fr
 
     try testing.expectEqual(@as(usize, 1), queue.len());
     // Since refcount step 7 the counts queue it (the wrapper's deref left
-    // its tree with no hold), weighed by a walk capped at the bound's own
-    // estimate (dom.refcount_teardown.weight_cap), not the whole tree.
-    try testing.expectEqual(dom.refcount_teardown.weight_cap, queue.pendingNodes());
+    // its tree with no hold), weighed by its nodes - all 4,001 of them: the
+    // queue's memory bound (high_water) counts nodes, so a tree weighed at
+    // less than its nodes lets the bound admit that many more trees (lane
+    // perf1: a 64-node cap let 1,562 innerHTML-replaced lists of 900 nodes
+    // wait - 1.39M nodes, 4 GB).
+    try testing.expectEqual(@as(usize, 4001), queue.pendingNodes());
     try testing.expect(tree.root.alive());
     try testing.expect(tree.first_text.alive());
     try testing.expectEqual(@as(usize, 2000), tree.childCount());
@@ -331,6 +334,9 @@ test "a Document root goes in one slice, whatever the budget" {
     try page.run("globalThis.d = null;");
     page.collect();
     try testing.expectEqual(@as(usize, 1), queue.len());
+    // Weighed by its whole tree: the Document, its html and 50 spans with a
+    // text each - 102 nodes - though it goes in one slice.
+    try testing.expectEqual(@as(usize, 102), queue.pendingNodes());
     _ = queue.runSlice(1);
     try testing.expect(queue.isEmpty());
     try testing.expect(!watched.alive());

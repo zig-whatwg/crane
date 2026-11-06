@@ -111,9 +111,15 @@ pub fn settle(root: *NodeBase, foreign_holds: ?u32) void {
         .generation = runtime.SlabAllocator.generationOf(instance),
         .owner = queueOwner(instance.ctx),
         .steps = &garbage_tree_steps,
-        // The memory bound counts nodes: a walk capped at `weight_cap`, so
-        // a removal stays O(1) and a large tree weighs at least that much.
-        .weight = tree_teardown.countUpTo(root, weight_cap),
+        // The memory bound counts nodes, so the tree weighs its nodes - up
+        // to the bound itself, past which one tree alone has the next safe
+        // point free it. The walk is the one its slices then make to free
+        // them: one more pass, read-only, over a tree freed anyway. A
+        // capped weight let the bound admit trees instead of nodes (lane
+        // perf1: weighed at most 64, 1,562 innerHTML-replaced lists of 900
+        // nodes waited - 1.39M nodes, 4 GB; the document-unreferenced item
+        // below weighs its tree the same way).
+        .weight = tree_teardown.countUpTo(root, DeferredTeardown.high_water),
     })) {
         // The agent is ending (its queue closed): the old model frees it.
         root.rc_flags.garbage = false;
@@ -121,10 +127,6 @@ pub fn settle(root: *NodeBase, foreign_holds: ?u32) void {
     }
     queue.books.queued += 1;
 }
-
-/// The most nodes a garbage tree's weight counts at its push (the queue's
-/// memory bound; design 1.4 item 6 left the weight to an estimate).
-pub const weight_cap: usize = 64;
 
 /// The owner a realm's garbage is queued under: its ContextData, whose end
 /// drains it (`drainRealm`).

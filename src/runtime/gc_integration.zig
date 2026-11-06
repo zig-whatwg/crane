@@ -251,7 +251,12 @@ pub const DeferredTeardown = struct {
     /// runs it.
     algorithm_depth: u32 = 0,
     /// What the queue owes the next safe point (see `algorithm_depth`).
-    owed: Owed = .none,
+    owed: Owed = .{},
+    /// What the agent's adapter runs at a safe point when the agent's DOM
+    /// memory moved past its report step (`Owed.report`; runtime.gc.
+    /// ExternalMemory): it tells its engine. Set by the adapter while the
+    /// agent lives (engine.AgentOptions.external_memory), null otherwise.
+    report_steps: ?ReportSteps = null,
     /// The DOM's books of the trees its counts queued here (refcount step 7,
     /// dom.refcount_teardown): diagnostics and tests.
     books: Books = .{},
@@ -286,13 +291,34 @@ pub const DeferredTeardown = struct {
         resurrections: u64 = 0,
     };
 
-    pub const Owed = enum(u8) {
-        none,
+    /// What is owed, one bit each, so the binding exit's check - is
+    /// anything owed - is one byte's compare whatever is.
+    pub const Owed = packed struct(u8) {
         /// Past `high_water`: free down to it.
-        relief,
+        relief: bool = false,
         /// A full collection asked for everything (requestGarbageCollection).
-        drain,
+        drain: bool = false,
+        /// The agent's DOM memory moved past its report step
+        /// (ExternalMemory.due): `report_steps` tell the engine.
+        report: bool = false,
+        _: u5 = 0,
+
+        pub inline fn any(self: Owed) bool {
+            return @as(u8, @bitCast(self)) != 0;
+        }
     };
+
+    /// The adapter's steps for `Owed.report`, and their data.
+    pub const ReportSteps = struct {
+        run: *const fn (data: ?*anyopaque) void,
+        data: ?*anyopaque,
+    };
+
+    /// The agent's DOM memory is due to be reported (ExternalMemory, where
+    /// its figure moves): the next safe point runs `report_steps`.
+    pub fn oweReport(self: *DeferredTeardown) void {
+        self.owed.report = true;
+    }
 
     /// What `push` takes.
     pub const Request = struct {
@@ -385,7 +411,7 @@ pub const DeferredTeardown = struct {
         self.pending += request.weight;
         self.queued_total += 1;
         // The memory bound: past it, the next safe point frees down to it.
-        if (self.pending > high_water and self.owed == .none) self.owed = .relief;
+        if (self.pending > high_water and !self.owed.drain) self.owed.relief = true;
         return true;
     }
 
@@ -398,7 +424,7 @@ pub const DeferredTeardown = struct {
     /// A binding returns to script: the outermost one runs what is owed.
     pub fn leaveAlgorithmToScript(self: *DeferredTeardown) void {
         self.algorithm_depth -|= 1;
-        if (self.algorithm_depth == 0 and self.owed != .none) self.runOwed();
+        if (self.algorithm_depth == 0 and self.owed.any()) self.runOwed();
     }
 
     /// A callback returns to the native algorithm that invoked it: nothing
@@ -417,7 +443,7 @@ pub const DeferredTeardown = struct {
     /// the outermost binding exit instead - the caller then drains nothing.
     pub fn oweDrainIfInAlgorithm(self: *DeferredTeardown) bool {
         if (self.algorithm_depth == 0) return false;
-        self.owed = .drain;
+        self.owed.drain = true;
         return true;
     }
 
@@ -425,14 +451,14 @@ pub const DeferredTeardown = struct {
     fn runOwed(self: *DeferredTeardown) void {
         if (self.slicing) return;
         const owed = self.owed;
-        self.owed = .none;
-        switch (owed) {
-            .none => {},
-            .drain => self.drainAll(),
-            .relief => if (self.pending > high_water) {
-                _ = self.runSlice(self.pending - high_water + slice_budget);
-            },
+        self.owed = .{};
+        if (owed.drain) {
+            self.drainAll();
+        } else if (owed.relief and self.pending > high_water) {
+            _ = self.runSlice(self.pending - high_water + slice_budget);
         }
+        // After the frees: the figure the engine is told is what they left.
+        if (owed.report) if (self.report_steps) |steps| steps.run(steps.data);
     }
 
     /// One slice: items in the order they were queued, until `budget` nodes
@@ -452,7 +478,7 @@ pub const DeferredTeardown = struct {
             freed += @max(progress.freed, 1);
             if (progress.done) self.finish(item) else self.pushFront(item);
         }
-        if (self.owed == .relief and self.pending <= high_water) self.owed = .none;
+        if (self.owed.relief and self.pending <= high_water) self.owed.relief = false;
         return freed;
     }
 
@@ -466,7 +492,8 @@ pub const DeferredTeardown = struct {
     /// item, in full, now.
     pub fn drainAll(self: *DeferredTeardown) void {
         self.drainMatching(null, true);
-        self.owed = .none;
+        self.owed.relief = false;
+        self.owed.drain = false;
     }
 
     /// `owner` ends without teardowns (its objects go with the pools): forget
@@ -494,7 +521,7 @@ pub const DeferredTeardown = struct {
         if (self.slicing or self.pending <= high_water) return;
         // A DOM algorithm on the stack: owed to its outermost exit.
         if (self.algorithm_depth != 0) {
-            if (self.owed == .none) self.owed = .relief;
+            if (!self.owed.drain) self.owed.relief = true;
             return;
         }
         _ = self.runSlice(added +| slice_budget);
@@ -578,6 +605,111 @@ pub const DeferredTeardown = struct {
         item.prev = null;
         item.next = null;
         self.count -= 1;
+    }
+};
+
+/// Native memory that a host's objects keep alive beside an agent's engine
+/// heap, which the engine's collector cannot see: a Browser's DOM - every
+/// node's slab slot, state block and NodeBase (runtime.BrowserScope.
+/// dom_memory, counted by dom.instance_bridge as nodes are made and freed).
+///
+/// The engine collects when ITS heap grows. A wrapper is a few dozen bytes
+/// of it and keeps a whole native tree alive (a dropped cloneNode(true) of
+/// 840 nodes is ~2.5 MB native and 200 bytes of engine heap), so a script
+/// that makes and drops trees ran no collection at all and kept every one
+/// (lane perf1: 650 clones, 548,150 nodes, 1.7 GB). The host keeps `live`;
+/// the agent's adapter tells its collector how it changed
+/// (engine.AgentOptions.external_memory) at its safe points, in steps of
+/// `report_step`. Blink did the same before its DOM moved into the
+/// collector's heap: V8GCController::reportDOMMemoryUsageToV8 passed the
+/// change of the DOM partition's size to Isolate::
+/// AdjustAmountOfExternalAllocatedMemory after every task (Chromium 45,
+/// Source/bindings/core/v8/V8GCController.cpp); since its unified heap V8
+/// counts the DOM's bytes itself (CppHeap's allocated size, against V8's
+/// global limit).
+///
+/// One per Browser, written and read only on its window agent's thread: a
+/// node is made and freed on the thread of its window agent (workers have no
+/// nodes), and only the window agent is given it. Debug builds check the
+/// thread once an agent has claimed it (`claim`).
+pub const ExternalMemory = struct {
+    /// Bytes alive now.
+    live: usize = 0,
+    /// `live` has left the window around what the engine was last told
+    /// (`low`..`high`, `report_step` either side): the adapter's next safe
+    /// point tells it. Set here, where the figure moves - once per node made
+    /// or freed - and owed on the agent's queue (`queue`), so the binding exit
+    /// back into script pays nothing for it: its one check of what the queue
+    /// owes covers this too (DeferredTeardown.Owed.report).
+    due: bool = false,
+    /// The queue of the agent that claimed it, whose safe points report it.
+    queue: ?*DeferredTeardown = null,
+    low: usize = 0,
+    high: usize = report_step,
+    /// The thread of the agent it was given to (Debug only; `claim`): every
+    /// later change must come from it. Null while no agent has it - a
+    /// Browser-less scope's nodes (unit tests) are counted unchecked.
+    thread: if (debug_checks) ?std.Thread.Id else void = if (debug_checks) null else {},
+
+    const debug_checks = @import("builtin").mode == std.builtin.OptimizeMode.Debug;
+
+    /// The change an adapter waits for before it tells its engine: 128 KB,
+    /// V8's own step - it re-checks its external memory limits every
+    /// kExternalAllocationLimitForInterrupt (128 KB) of growth (V8 13.1
+    /// src/heap/heap.h, ExternalMemoryAccounting), and cppgc reports the
+    /// unified heap's allocations to it every kIncrementalMarkingCheckInterval
+    /// (128 KB; src/heap/cppgc-js/cpp-heap.cc). A smaller step would only
+    /// cost calls; a larger one would let the engine see the growth late.
+    pub const report_step: usize = 128 * 1024;
+
+    /// An agent takes it, on its own thread (the adapter's createAgent),
+    /// with the queue whose safe points report it (null: its microtask
+    /// checkpoints only): its engine has been told nothing yet.
+    pub fn claim(self: *ExternalMemory, queue: ?*DeferredTeardown) void {
+        if (debug_checks) self.thread = std.Thread.getCurrentId();
+        self.queue = queue;
+        self.low = 0;
+        self.high = report_step;
+        self.due = false;
+        if (self.live > self.high) self.becomeDue();
+    }
+
+    /// The agent ended: it no longer has it.
+    pub fn release(self: *ExternalMemory) void {
+        if (debug_checks) self.thread = null;
+        self.queue = null;
+        self.due = false;
+    }
+
+    pub fn add(self: *ExternalMemory, bytes: usize) void {
+        self.checkThread();
+        self.live += bytes;
+        if (!self.due and self.live > self.high) self.becomeDue();
+    }
+
+    pub fn sub(self: *ExternalMemory, bytes: usize) void {
+        self.checkThread();
+        self.live -|= bytes;
+        if (!self.due and self.live < self.low) self.becomeDue();
+    }
+
+    fn becomeDue(self: *ExternalMemory) void {
+        self.due = true;
+        if (self.queue) |queue| queue.oweReport();
+    }
+
+    /// The adapter told its engine `live`: the window moves around it.
+    pub fn markReported(self: *ExternalMemory, live: usize) void {
+        self.low = live -| report_step;
+        self.high = live +| report_step;
+        self.due = false;
+        if (self.queue) |queue| queue.owed.report = false;
+    }
+
+    fn checkThread(self: *const ExternalMemory) void {
+        if (!debug_checks) return;
+        const owner = self.thread orelse return;
+        if (owner != std.Thread.getCurrentId()) @panic("a Browser's DOM memory was counted on a thread other than its window agent's");
     }
 };
 
