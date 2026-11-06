@@ -101,9 +101,36 @@ pub const PolicyContainer = struct {
     pub const CrossOriginPolicies = struct {
         embedder_policy: EmbedderPolicy = .{},
         opener_policy: OpenerPolicy = .{},
+        /// Who the opener policy's reports are made by when the policy came
+        /// from another document (`OpenerPolicyReporter`); null for the
+        /// container's own document. OWNED.
+        opener_policy_reporter: ?*OpenerPolicyReporter = null,
 
         fn isNew(self: *const CrossOriginPolicies) bool {
-            return isNewEmbedderPolicy(&self.embedder_policy) and isNewOpenerPolicy(&self.opener_policy);
+            return isNewEmbedderPolicy(&self.embedder_policy) and isNewOpenerPolicy(&self.opener_policy) and
+                self.opener_policy_reporter == null;
+        }
+    };
+
+    /// The URL an inherited opener policy's reports are made for, and the
+    /// endpoint list its endpoint names resolve in: an initial about:blank
+    /// document's opener policy is its creator's top-level document's (HTML
+    /// "create a new browsing context and document" step 19.3), and so are
+    /// its reports - Chromium's popup initial empty document gets a COOP
+    /// reporter made from its creator's URL and reporting source
+    /// (RenderFrameHostImpl::CreateNewWindow), WebKit's
+    /// CrossOriginOpenerPolicyEnforcementResult::from reports with the
+    /// opener's URL. Snapshotted when the policy is inherited: the creator
+    /// may navigate on. A clone does not carry it (`clone`). OWNED by the
+    /// container's allocator.
+    pub const OpenerPolicyReporter = struct {
+        url: []u8,
+        endpoints: ?*Endpoints,
+
+        fn destroy(self: *OpenerPolicyReporter, allocator: Allocator) void {
+            allocator.free(self.url);
+            if (self.endpoints) |endpoints| endpoints.deinit();
+            allocator.destroy(self);
         }
     };
 
@@ -144,6 +171,30 @@ pub const PolicyContainer = struct {
         policies.embedder_policy.deinit(self.allocator);
         policies.embedder_policy = taken;
         self.dropNewCrossOrigin();
+    }
+
+    /// The reporter of the container's inherited opener policy, null when
+    /// the policy is the document's own. BORROWED while the container lives
+    /// and its reporter is not set again.
+    pub fn openerPolicyReporter(self: *const PolicyContainer) ?*const OpenerPolicyReporter {
+        const policies = self.cross_origin orelse return null;
+        return policies.opener_policy_reporter;
+    }
+
+    /// Record that the container's opener policy reports as the document at
+    /// `url` with endpoint list `endpoints` (OpenerPolicyReporter): both
+    /// copied. Nothing changes on failure.
+    pub fn setOpenerPolicyReporter(self: *PolicyContainer, url: []const u8, endpoints: ?*const Endpoints) error{OutOfMemory}!void {
+        const reporter = try self.allocator.create(OpenerPolicyReporter);
+        errdefer self.allocator.destroy(reporter);
+        const owned_url = try self.allocator.dupe(u8, url);
+        errdefer self.allocator.free(owned_url);
+        const owned_endpoints = if (endpoints) |list| try list.clone(self.allocator) else null;
+        errdefer if (owned_endpoints) |list| list.deinit();
+        reporter.* = .{ .url = owned_url, .endpoints = owned_endpoints };
+        const policies = (try self.crossOriginFor(false)).?;
+        if (policies.opener_policy_reporter) |previous| previous.destroy(self.allocator);
+        policies.opener_policy_reporter = reporter;
     }
 
     /// Set the opener policy to `policy`, which the container takes, as
@@ -234,6 +285,7 @@ pub const PolicyContainer = struct {
         if (self.cross_origin) |policies| {
             policies.embedder_policy.deinit(self.allocator);
             policies.opener_policy.deinit(self.allocator);
+            if (policies.opener_policy_reporter) |reporter| reporter.destroy(self.allocator);
             self.allocator.destroy(policies);
         }
         if (self.endpoints) |endpoints| endpoints.deinit();
@@ -496,6 +548,22 @@ pub const Endpoints = struct {
     pub fn find(self: *Endpoints, name: []const u8) ?*Endpoint {
         for (self.items.items) |*endpoint| if (std.mem.eql(u8, endpoint.name, name)) return endpoint;
         return null;
+    }
+
+    /// An independent copy, owned by `allocator`: names, URLs and failure
+    /// counts.
+    pub fn clone(self: *const Endpoints, allocator: Allocator) error{OutOfMemory}!*Endpoints {
+        const copy = try allocator.create(Endpoints);
+        copy.* = .{ .allocator = allocator };
+        errdefer copy.deinit();
+        try copy.items.ensureTotalCapacity(allocator, self.items.items.len);
+        for (self.items.items) |endpoint| {
+            const name = try allocator.dupe(u8, endpoint.name);
+            errdefer allocator.free(name);
+            const url = try allocator.dupe(u8, endpoint.url);
+            copy.items.appendAssumeCapacity(.{ .name = name, .url = url, .failures = endpoint.failures });
+        }
+        return copy;
     }
 
     pub fn remove(self: *Endpoints, name: []const u8, url: []const u8) void {
