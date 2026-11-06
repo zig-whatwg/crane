@@ -7,9 +7,6 @@ src/browser/Browser.zig clock.@import 1
 src/browser/Browser.zig clock.monotonicMillis 2
 src/browser/Browser.zig host.@import 1
 src/browser/Browser.zig platform.media_backend 3
-src/browser/navigation.zig host.@import 1
-src/browser/navigation.zig host.io 1
-src/browser/navigation.zig std.Io.Dir 1
 src/browser/process.zig host.@import 1
 src/browser/process.zig host.cwd 1
 src/browser/process.zig host.io 1

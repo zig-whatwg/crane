@@ -367,7 +367,8 @@ pub fn reportNavigationResponse(sender: *runtime.Instance, violation: *const Vio
         .sender = sender,
         .generation = runtime.SlabAllocator.generationOf(sender),
     };
-    errdefer task.deinit();
+    var task_live = true;
+    errdefer if (task_live) task.deinit();
     task.base_url = try allocator.dupe(u8, response.url);
     task.origin = try fetch.internal.origins.serializedOriginOf(allocator, response.url);
     const document_url = try csp.violation_events.stripUrlForReports(allocator, response.url);
@@ -388,21 +389,21 @@ pub fn reportNavigationResponse(sender: *runtime.Instance, violation: *const Vio
         .status_code = response.status,
     };
     // §5.5 step 4.1: report-to suppresses legacy delivery even with no
-    // matching response endpoint. Never consult the sender's endpoints.
+    // matching response endpoint. Never consult the sender's endpoints: the
+    // report is queued for the response's (Reporting's queue for an
+    // endpoint list with a URL and no settings object, which COOP's
+    // navigation reports share).
     if (violation.policy.getDirective("report-to")) |directive| {
-        const destination = reporting.reportDestination(directive);
-        if (response.endpoints) |endpoints| {
-            if (endpoints.find(destination)) |endpoint| try task.addEndpoint(endpoint.url);
-        }
         const bytes = try body.serializeModern(allocator);
         defer allocator.free(bytes);
-        task.modern = try reporting.Record.create(allocator, .{
+        task_live = false;
+        task.deinit();
+        return reporting.queueForEndpoint(sender, .{
             .type = "csp-violation",
-            .destination = destination,
-            .url = document_url,
+            .url = response.url,
+            .destination = reporting.reportDestination(directive),
             .body_json = bytes,
-            .timestamp_ms = @import("platform").wallMillis(),
-            .user_agent = if (@import("browser_state.zig").networkOf(sender.ctx)) |network| network.userAgent() else fetch.internal.user_agent.default_user_agent,
+            .endpoints = response.endpoints,
         });
     } else if (violation.policy.getDirective("report-uri")) |directive| {
         task.legacy = try body.serializeLegacy(allocator);
@@ -423,7 +424,6 @@ const NavigationViolationTask = struct {
     base_url: []const u8 = "",
     origin: []const u8 = "",
     legacy: []const u8 = "",
-    modern: ?*reporting.Record = null,
     endpoints: std.ArrayListUnmanaged([]const u8) = .empty,
 
     fn addEndpoint(self: *NavigationViolationTask, borrowed: []const u8) !void {
@@ -437,7 +437,6 @@ const NavigationViolationTask = struct {
         allocator.free(self.base_url);
         allocator.free(self.origin);
         allocator.free(self.legacy);
-        if (self.modern) |record| record.release();
         for (self.endpoints.items) |endpoint| allocator.free(endpoint);
         self.endpoints.deinit(allocator);
         allocator.destroy(self);
@@ -458,32 +457,20 @@ const NavigationViolationTask = struct {
 
     fn steps(context: ?*anyopaque) void {
         const self: *NavigationViolationTask = @ptrCast(@alignCast(context.?));
-        if (self.modern) |record| {
-            const bytes = reporting.serializeReports(self.allocator, &.{record}, @import("platform").wallMillis()) catch return;
-            defer self.allocator.free(bytes);
-            for (self.endpoints.items) |endpoint| {
-                const request = reporting.modernRequest(self.allocator, endpoint, self.origin, bytes) catch continue;
-                // Client-null reports still use their Browser's network
-                // configuration and cookie jar, as Reporting's delivery task
-                // does. The sender supplies transport, never report metadata.
-                request.cookie_jar = @import("global_settings.zig").cookieJarOf(self.sender);
-                request.network = @import("browser_state.zig").networkOf(self.sender.ctx);
-                _ = @import("keepalive_fetch.zig").send(self.sender, request, .{ .load = .ping }) catch {};
-            }
-        } else {
-            if (self.endpoints.items.len == 0) return;
-            var client = @import("global_settings.zig").requestClient(self.sender) catch return;
-            defer client.deinit();
-            for (self.endpoints.items) |token| {
-                const endpoint = (reporting.parseEndpoint(self.sender, token, self.base_url) catch continue) orelse continue;
-                defer self.allocator.free(endpoint);
-                const request = reporting.legacyRequest(self.allocator, endpoint, self.legacy, client.request) catch continue;
-                request.setOrigin(self.origin) catch {
-                    request.deinit();
-                    continue;
-                };
-                _ = @import("keepalive_fetch.zig").send(self.sender, request, .{ .load = .ping }) catch {};
-            }
+        // The legacy report-uri delivery; report-to's went to
+        // reporting.queueForEndpoint.
+        if (self.endpoints.items.len == 0) return;
+        var client = @import("global_settings.zig").requestClient(self.sender) catch return;
+        defer client.deinit();
+        for (self.endpoints.items) |token| {
+            const endpoint = (reporting.parseEndpoint(self.sender, token, self.base_url) catch continue) orelse continue;
+            defer self.allocator.free(endpoint);
+            const request = reporting.legacyRequest(self.allocator, endpoint, self.legacy, client.request) catch continue;
+            request.setOrigin(self.origin) catch {
+                request.deinit();
+                continue;
+            };
+            _ = @import("keepalive_fetch.zig").send(self.sender, request, .{ .load = .ping }) catch {};
         }
     }
 };
