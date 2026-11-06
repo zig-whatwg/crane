@@ -124,7 +124,7 @@ fn withPage(comptime body: fn (Page) anyerror!void) !void {
         }
 
         fn runBody() !void {
-            var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+            var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
             defer if (debug.deinit() == .leak) @panic("leaked");
             const page = try Page.open(debug.allocator());
             defer page.close();

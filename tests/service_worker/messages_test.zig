@@ -193,7 +193,7 @@ fn eventsInFlight(manager: *Manager, worker_id: u64) u32 {
 }
 
 test "a message to a service worker reaches its host once the worker runs, and is done after" {
-    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.debug.assert(debug_allocator.deinit() == .ok);
     const allocator = debug_allocator.allocator();
 
@@ -231,7 +231,7 @@ test "a message to a service worker reaches its host once the worker runs, and i
 }
 
 test "Client.postMessage reaches the client's realm as a task; to a client that has gone, nothing" {
-    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.debug.assert(debug_allocator.deinit() == .ok);
     const allocator = debug_allocator.allocator();
 
@@ -264,7 +264,7 @@ test "Client.postMessage reaches the client's realm as a task; to a client that 
 }
 
 test "matchAll gathers each window client's data on its loop, then answers the worker's realm: windows first" {
-    var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer std.debug.assert(debug_allocator.deinit() == .ok);
     const allocator = debug_allocator.allocator();
 

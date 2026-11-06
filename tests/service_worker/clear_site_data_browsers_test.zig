@@ -125,7 +125,7 @@ const Side = struct {
     shared: *Shared,
     index: usize,
     failure: ?anyerror = null,
-    debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
+    debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
 
     fn main(self: *Side) void {
         self.steps() catch |err| {

@@ -2982,11 +2982,20 @@ pub fn build(b: *std.Build) void {
     const launch: *const TestLaunch = launch: {
         const many_browsers = b.option(bool, "many-browsers", "The many-Browsers variant: every test runs beside a second, busy Browser on another thread of its process (suites that link V8)") orelse false;
         const test_log_level = b.option(std.log.Level, "test-log-level", "The test executables' log level: compiled and printed while a test runs (default: compiled at info, printed at warn; debug for a local diagnosis)");
+        // The CRANE_POISON_FREES switch the launcher reads for libc's
+        // scribbling in every test child (child.zig, `malloc_scribble`), as
+        // the Crane test runner reads it (lane poison2): std only.
+        const launcher_poisoning = b.createModule(.{
+            .root_source_file = b.path("tests/test_runner/poisoning.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+        });
         const launcher_module = b.createModule(.{
             .root_source_file = b.path("tools/test_launcher/main.zig"),
             // Build-time tool: runs on the host, as codegen does.
             .target = b.graph.host,
             .optimize = .Debug,
+            .imports = &.{.{ .name = "poisoning", .module = launcher_poisoning }},
         });
         const launcher = b.addExecutable(.{ .name = "test_launcher", .root_module = launcher_module });
         const launch_step = b.step("test-launch", "Run the selected test executables through tools/test_launcher, without test's lints and checks (-Dspec=<dir> -Dlaunch-batch=B -Dlaunch-seed=S|random)");
@@ -3043,6 +3052,23 @@ pub fn build(b: *std.Build) void {
             .{ .prefix = "held.", .config = .{}, .plain = false },
         }, false, test_log_level);
         launcher_fixture_options.addOptionPath("joined_path", joined_fixture.getEmittedBin());
+        // Reads after a free, through std.testing.allocator and through a
+        // test's own allocator (tests/test_runner_fixture/poison_fixture.zig):
+        // child.zig's tests check that each fails by its name - it reads the
+        // poison, or faults on it - and that CRANE_POISON_FREES=0 lets it
+        // read the old bytes and pass (lane poison2).
+        const poison_fixture = b.addTest(.{
+            .name = "test_poison_fixture",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tests/test_runner_fixture/poison_fixture.zig"),
+                .target = target,
+                // std.heap.c_allocator: libc's malloc, which the launcher's
+                // MallocScribble poisons.
+                .link_libc = true,
+            }),
+        });
+        _ = useCraneTestRunner(b, poison_fixture, "test_poison_fixture", .fail, .per_test, &.{}, false, test_log_level);
+        launcher_fixture_options.addOptionPath("poison_path", poison_fixture.getEmittedBin());
         // A test that races, built with ThreadSanitizer: child.zig's tests
         // check that the launcher's TSAN_OPTIONS make the race a crash of
         // its process, blamed on that test (-Dsanitize-thread's contract).
@@ -3080,7 +3106,10 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tools/test_launcher/main.zig"),
             .target = b.graph.host,
             .optimize = .Debug,
-            .imports = &.{.{ .name = "launcher_fixture", .module = launcher_fixture_options.createModule() }},
+            .imports = &.{
+                .{ .name = "launcher_fixture", .module = launcher_fixture_options.createModule() },
+                .{ .name = "poisoning", .module = launcher_poisoning },
+            },
         });
         const own_tests = b.addTest(.{ .name = "test_launcher", .root_module = launcher_test_module });
         const launcher_tests = b.addRunArtifact(own_tests);
@@ -3140,6 +3169,28 @@ pub fn build(b: *std.Build) void {
         const run_neighbour_tests = addSuiteRun(b, launch, neighbour_tests, "test_runner-neighbour", null);
         if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) test_step.dependOn(&run_neighbour_tests.step);
         b.top_level_steps.get("test-launcher").?.step.dependOn(&run_neighbour_tests.step);
+    }
+
+    // Poison on free (tests/test_runner/poisoning.zig, lane poison2): the
+    // Poisoning front, the DebugAllocator a test makes for itself, and the
+    // CRANE_POISON_FREES switch - std only, under the Crane test runner it
+    // serves (its `poison_frees` decides). Part of `test` and of
+    // `test-launcher`.
+    {
+        const poisoning_tests = b.addTest(.{
+            .name = "test_runner-poisoning",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tests/test_runner/poisoning.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
+        });
+        const run_poisoning_tests = addSuiteRun(b, launch, poisoning_tests, "test_runner-poisoning", null);
+        // -Dverify-files=tests/test_runner/poisoning.zig: its tests live in
+        // the module, as the WPT runner's harness modules' do.
+        addTestVerify(b, launch, poisoning_tests, "test_runner-poisoning", "tests/test_runner", &.{"poisoning.zig"});
+        if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) test_step.dependOn(&run_poisoning_tests.step);
+        b.top_level_steps.get("test-launcher").?.step.dependOn(&run_poisoning_tests.step);
     }
 
     // The V8 snapshot the tests/v8 snapshot tests restore: THIS build's,
@@ -5130,6 +5181,14 @@ pub fn build(b: *std.Build) void {
     // WPT (Web Platform Tests) RUNNER
     // ========================================================================
 
+    // Poison on free, std only: the sweep allocator's front
+    // (runner_allocator.zig), shared with the Crane test runner, which
+    // imports the same file as one beside it (lane poison2).
+    const poisoning_module = b.createModule(.{
+        .root_source_file = b.path("tests/test_runner/poisoning.zig"),
+        .target = target,
+    });
+
     // Unit tests for the runner's pure-Zig support modules. These import only
     // std, so they build and run without V8 or libuv - which means the parts of
     // the harness that decide *which* tests exist and *which* are in scope are
@@ -5174,6 +5233,8 @@ pub fn build(b: *std.Build) void {
                         .{ .name = "host", .module = testing_graph.host },
                         .{ .name = "xml", .module = testing_graph.xml },
                         .{ .name = "xml_document_encoding", .module = testing_graph.xml_document_encoding },
+                        // runner_allocator.zig's Poisoning (lane poison2).
+                        .{ .name = "poisoning", .module = poisoning_module },
                     },
                 }),
             });
@@ -5219,6 +5280,9 @@ pub fn build(b: *std.Build) void {
 
     // WPT Runner executable for running Web Platform Tests
     const wpt_runner_imports = [_]std.Build.Module.Import{
+        // The sweep allocator's poisoning front (runner_allocator.zig), shared
+        // with the Crane test runner (lane poison2).
+        .{ .name = "poisoning", .module = poisoning_module },
         .{ .name = "clock", .module = runner_graph.clock },
         .{ .name = "host", .module = runner_graph.host },
         .{ .name = "xml", .module = runner_graph.xml },

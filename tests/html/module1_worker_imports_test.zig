@@ -243,7 +243,7 @@ const TwoBrowsers = struct {
     }
 
     fn steps(self: *TwoBrowsers) !void {
-        var debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+        var debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
         const allocator = debug_allocator.allocator();
         {
             const browser = try startBrowser(allocator, self.server);

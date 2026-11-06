@@ -224,7 +224,7 @@ fn testResponse(allocator: std.mem.Allocator, status: u16) !*InternalResponse {
 }
 
 const Fixture = struct {
-    debug_allocator: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
+    debug_allocator: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
     harness: Harness = undefined,
     sink: *runtime.TaskSink = undefined,
     sw_sink: *runtime.TaskSink = undefined,

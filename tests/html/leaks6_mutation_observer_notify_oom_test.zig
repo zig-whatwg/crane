@@ -51,7 +51,7 @@ fn expectAnswer(realm: runtime.Context, allocator: std.mem.Allocator, source: []
 const queue_three = "t.setAttribute('a', ++k); t.setAttribute('b', k); t.setAttribute('c', k); String(seen)";
 
 fn sweep(rounds: usize) !void {
-    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     var leaked = false;
     defer if (leaked) std.debug.print("the sweep's Browser leaked\n", .{});
     {
@@ -136,7 +136,7 @@ test "leaks6 MutationObserver: an out-of-memory notify frees each record once an
 /// in notifyMutationObservers freed them under the wrapper cache, which frees
 /// each again when its wrapper goes - a double free, or a use after free.
 fn notFullyActive() !void {
-    var debug: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     {
         const browser = try Browser.init(debug.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
         defer browser.deinit();

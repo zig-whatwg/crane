@@ -74,7 +74,7 @@ const script =
 ;
 
 const Side = struct {
-    gpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
+    gpa: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init,
     failure: ?anyerror = null,
     answer: [64]u8 = undefined,
     answer_len: usize = 0,
