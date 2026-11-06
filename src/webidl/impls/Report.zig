@@ -80,19 +80,11 @@ pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return body;
 }
 
-/// Operation: toJSON - Chromium's Report::toJSON (report.cc): type, url,
-/// and the body's JSON as a plain object (body()->BuildJSONValue), which
-/// structured clone takes; the record keeps the body's members as that JSON.
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const internal = try internalOf(instance);
-    const record = internal.record;
-    const realm = engine.currentRealm() orelse instance.ctx;
-    const body = try engine.parseJsonToValue(realm, record.body_json);
-    defer body.release();
-    const object = try engine.createDictionaryObject(realm, &.{
-        .{ .name = "type", .value = .{ .string = .{ .data = record.type, .owned = false } } },
-        .{ .name = "url", .value = .{ .string = .{ .data = record.url, .owned = false } } },
-        .{ .name = "body", .value = body.value },
-    });
-    return object.take();
+/// Operation: toJSON ([Default]: type, url and the body object)
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!Report.ReportToJSON {
+    return .{
+        .type = try get_type(instance),
+        .url = try get_url(instance),
+        .body = try get_body(instance),
+    };
 }

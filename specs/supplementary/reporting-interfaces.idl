@@ -33,33 +33,35 @@
 //   (and Crane makes no such report); they become interfaces only because a
 //   dictionary cannot inherit from the ReportBody interface, with no interface
 //   object, so nothing of them is observable until one is reported.
-// - toJSON: Report's is Chromium's hand-written one (report.cc
-//   Report::toJSON: type, url, and the body's JSON - body()->BuildJSONValue
-//   - as a plain object), not [Default] (Firefox, WebKit), whose body member
-//   is the ReportBody platform object itself (WebIDL "default toJSON
-//   steps"), which structured clone refuses: the COEP reporting files post
-//   r.toJSON() from a worker (html/cross-origin-embedder-policy/resources/
-//   reporting-worker.js), which only a plain body survives. [Default] on
+// - toJSON: [Default] on Report, as the user's ruling of 2026-11-05 says
+//   and as two of the three ship it: Firefox (Reporting.webidl [Default];
+//   its default toJSON defines each attribute's value) and WebKit
+//   (Report.idl [Default]; CodeGeneratorJS
+//   GenerateDefaultToJSONOperationDefinition converts each attribute with
+//   NativeToJSValue). Its body member is the ReportBody platform object
+//   itself (WebIDL "default toJSON steps"). Chromium's is hand-written
+//   (report.cc Report::toJSON: the body's JSON - body()->BuildJSONValue - as
+//   a plain object), which the COEP reporting files that post r.toJSON()
+//   from a worker need (structured clone refuses a platform object); that
+//   form waits for the user's decision on lane/coi2-tojson-chromium.
+//   [Default] on ReportBody too (Firefox; Chromium's hand-written toJSON
+//   and WebKit's [Custom] one give the same object with no member). [Default] on
 //   every body but
 //   CoopAccessViolationReportBody (Firefox, WebKit; a
 //   body's toJSON in Chromium, ReportBody::toJSON -> BuildJSONValue, writes
-//   the body's attributes). ReportBody's own toJSON is hand-written in
-//   Chromium (report_body.idl: [CallWith=ScriptState] object toJSON(optional
-//   DOMString key)) and WebKit ([Custom] object toJSON()), [Default] in
-//   Firefox: the majority's plain operation, which gives an object with no
-//   member - ReportBody has no attribute - as all three do; each body's
-//   [Default] toJSON writes its own attributes.
+//   the body's attributes); each body's [Default] toJSON writes its own
+//   attributes, ReportBody's none.
 // - Attribute types: the specs' dictionary member types, except where the
 //   engines agree otherwise (CSPViolationReportBody as in all three).
 
 [Exposed=(Window,Worker)]
 interface ReportBody {
-  object toJSON();
+  [Default] object toJSON();
 };
 
 [Exposed=(Window,Worker), LegacyNoInterfaceObject]
 interface Report {
-  object toJSON();
+  [Default] object toJSON();
   readonly attribute DOMString type;
   readonly attribute DOMString url;
   readonly attribute ReportBody? body;

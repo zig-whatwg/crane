@@ -7,7 +7,6 @@
 
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const engine = @import("engine");
 const ReportBody = interfaces.ReportBody;
 
 pub const State = ReportBody.State;
@@ -15,11 +14,10 @@ pub const State = ReportBody.State;
 /// No state of its own (the generated State asks for the type).
 pub const InternalState = struct {};
 
-/// Operation: toJSON - an object with no member: ReportBody has no
-/// attribute, and its toJSON writes none (Chromium ReportBody::toJSON over
-/// BuildJSONValue, WebKit's [Custom] toJSON). A body interface's own
-/// [Default] toJSON writes its attributes.
-pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const object = try engine.createDictionaryObject(engine.currentRealm() orelse instance.ctx, &.{});
-    return object.take();
+/// Operation: toJSON ([Default]): ReportBody has no attribute, so an object
+/// with no member. A body interface's own [Default] toJSON writes its
+/// attributes.
+pub fn call_toJSON(instance: *runtime.Instance) anyerror!ReportBody.ReportBodyToJSON {
+    _ = instance;
+    return .{};
 }

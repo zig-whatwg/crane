@@ -76,6 +76,20 @@ pub const Report = struct {
         },
     );
 
+    // ========================================
+    // ToJSON Struct ([Default] toJSON result)
+    // ========================================
+
+    /// ToJSON result struct for Report
+    /// Generated from [Default] toJSON extended attribute
+    pub const ReportToJSON = struct {
+        type: runtime.DOMString,
+        url: runtime.DOMString,
+        body: ?*runtime.Instance,
+
+        pub const default_to_json = true;
+    };
+
     const delegates = .{
         .get_body = &get_body,
         .get_type = &get_type,
@@ -183,7 +197,8 @@ pub const Report = struct {
         return try ReportImpl.get_body(instance);
     }
 
-    pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    /// Extended attributes: [Default]
+    pub fn call_toJSON(instance: *runtime.Instance) anyerror!ReportToJSON {
         return try ReportImpl.call_toJSON(instance);
     }
 };
