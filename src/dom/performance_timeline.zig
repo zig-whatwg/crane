@@ -1393,6 +1393,9 @@ pub const NavigationRecord = struct {
     report: *const fetch.internal.TimingReport,
     redirect_count: u16,
     navigation_type: NavigationType,
+    /// When the navigation started - its navigate algorithm was entered -
+    /// the unsafe shared current time in ms; 0 when it was not recorded.
+    navigation_start: f64 = 0,
     /// The previous document's unload event start and end times, unsafe
     /// shared current time in ms (HTML "unload a document" steps 11/13); 0
     /// when there was none, or it was not same origin.
