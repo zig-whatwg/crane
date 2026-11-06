@@ -140,8 +140,9 @@ pub const NetworkResponse = struct {
     final_url: ?[]const u8,
     /// Total time in milliseconds
     total_time_ms: u64,
-    /// Time to first byte in milliseconds
-    time_to_first_byte_ms: u64,
+    /// Time to first byte, in milliseconds after the transfer started, with
+    /// its fraction (curl measures to the microsecond).
+    time_to_first_byte_ms: f64,
     /// Number of redirects followed
     redirect_count: u32,
     /// Remote IP address
@@ -150,16 +151,24 @@ pub const NetworkResponse = struct {
     remote_port: ?u16,
 
     // === Resource Timing API fields ===
-    // All times are in milliseconds from request start
+    // All times are in milliseconds after the transfer started, with their
+    // fractions: curl measures each phase to the microsecond, and a loopback
+    // connection's phases all fall within one millisecond. Floored to whole
+    // milliseconds, a fresh connection's TLS start fell on the transfer's
+    // start, in fetchStart's coarsening tick (lane flaky6). Fetch records
+    // each connection timing info time as the unsafe shared current time
+    // ("record connection timing info") and coarsens it only when exposed
+    // (HR-Time "coarsen time", 125 us in Crane); Chrome, Firefox and Safari
+    // keep the phases below a millisecond the same way.
 
     /// Time when DNS lookup completed
-    dns_lookup_time_ms: u64 = 0,
+    dns_lookup_time_ms: f64 = 0,
     /// Time when TCP connection completed
-    connect_time_ms: u64 = 0,
+    connect_time_ms: f64 = 0,
     /// Time when TLS handshake completed (0 for non-HTTPS)
-    app_connect_time_ms: u64 = 0,
+    app_connect_time_ms: f64 = 0,
     /// Time when request was ready to transfer
-    pretransfer_time_ms: u64 = 0,
+    pretransfer_time_ms: f64 = 0,
     /// Time spent in redirects (when following redirects)
     redirect_time_ms: u64 = 0,
     /// Whether connection was reused from pool

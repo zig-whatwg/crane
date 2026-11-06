@@ -1359,8 +1359,8 @@ pub fn httpNetworkFetchFinish(
     const end_time = getCurrentTimeMs();
     const transfer_start = start_time + network_response.queue_wait_ms;
     params.timing_info.final_connection_timing_info = connectionTimingInfo(request, network_response, transfer_start, params.timing_info.post_redirect_start_time);
-    params.timing_info.final_network_request_start_time = transfer_start + @as(f64, @floatFromInt(network_response.pretransfer_time_ms));
-    params.timing_info.final_network_response_start_time = transfer_start + @as(f64, @floatFromInt(network_response.time_to_first_byte_ms));
+    params.timing_info.final_network_request_start_time = transfer_start + network_response.pretransfer_time_ms;
+    params.timing_info.final_network_response_start_time = transfer_start + network_response.time_to_first_byte_ms;
     params.timing_info.end_time = end_time;
 
     return response;
@@ -1397,8 +1397,10 @@ fn filteredContentCoding(headers: *const @import("../internal/header_list.zig").
 
 /// Fetch "record connection timing info" for the connection that answered
 /// `network_response`, from the network's measurements (ms after
-/// `start_time`). HTTP-network fetch step 8.2 clamps a reused connection to
-/// this fetch's post-redirect start time, not the later network start.
+/// `start_time`, with their fractions: a loopback connection's phases all
+/// fall within one millisecond). HTTP-network fetch step 8.2 clamps a reused
+/// connection to this fetch's post-redirect start time, not the later
+/// network start.
 fn connectionTimingInfo(request: *const InternalRequest, network_response: *const NetworkResponse, start_time: f64, post_redirect_start_time: f64) @import("../internal/fetch_timing.zig").ConnectionTimingInfo {
     const alpn: []const u8 = switch (network_response.http_version) {
         .http_1_0 => "http/1.0",
@@ -1421,8 +1423,8 @@ fn connectionTimingInfo(request: *const InternalRequest, network_response: *cons
         return reused;
     }
     const ms = struct {
-        fn after(start: f64, offset: u64) f64 {
-            return start + @as(f64, @floatFromInt(offset));
+        fn after(start: f64, offset: f64) f64 {
+            return start + offset;
         }
     }.after;
     const lookup_end = ms(start_time, network_response.dns_lookup_time_ms);
