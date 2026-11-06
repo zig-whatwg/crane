@@ -37,5 +37,10 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 pub fn get_options(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // HTML 4.10.8: every descendant HTML option, including empty/disabled
     // options. The generated SameObject accessor owns the cached collection.
-    return interfaces.Element.call_getElementsByTagNameNS(instance, runtime.DOMString.initInterned("http://www.w3.org/1999/xhtml"), runtime.DOMString.initInterned("option"));
+    // The datalist's OWN collection, not the one getElementsByTagNameNS keeps
+    // for the same filter (dom.live_collections.newCollection, lane perf2):
+    // Blink's options() is EnsureCachedCollection<HTMLDataListOptionsCollection>,
+    // a type of its own, and in all three browsers
+    // `datalist.options !== datalist.getElementsByTagNameNS(HTML, "option")`.
+    return @import("dom").live_collections.newCollection(instance, .{ .namespace_local_name = .{ .namespace = "http://www.w3.org/1999/xhtml", .local_name = "option" } });
 }

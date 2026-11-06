@@ -2857,12 +2857,10 @@ pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: runtime
 /// Operation: getElementsByTagNameNS
 pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!*runtime.Instance {
     // DOM: "return the list of elements with namespace namespace and local
-    // name localName for this" - a LIVE collection (dom.live_collections).
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
-    errdefer interfaces.HTMLCollection.deinit(collection);
-    try live_collections.elementsWithNamespaceAndLocalName(collection, instance, if (namespace) |ns| ns.asSlice() else null, localName.asSlice());
-    return collection;
+    // name localName for this" - a LIVE collection, the same one for the
+    // same arguments while it lives (dom.live_collections.collectionFor).
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return live_collections.collectionFor(instance, .{ .namespace_local_name = .{ .namespace = if (namespace) |ns| ns.asSlice() else null, .local_name = localName.asSlice() } });
 }
 
 /// Operation: elementsFromPoint
@@ -3052,17 +3050,15 @@ pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runt
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const class_names = classNames.asSlice();
 
-    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
-    errdefer interfaces.HTMLCollection.deinit(collection);
-
     // Steps 1-2: the ordered set parser's tokens are the pieces between ASCII
     // whitespace; none means the empty set, and the empty collection.
     var tokens = std.mem.tokenizeAny(u8, class_names, "\t\n\x0C\r ");
-    if (tokens.next() == null) return collection;
+    if (tokens.next() == null) return interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
 
-    // Step 3.
-    try live_collections.elementsWithClassNames(collection, instance, class_names);
-    return collection;
+    // Step 3, the same collection for the same argument while it lives
+    // (dom.live_collections.collectionFor: "the same HTMLCollection object
+    // may be returned as returned by an earlier call").
+    return live_collections.collectionFor(instance, .{ .class_names = class_names });
 }
 
 /// Operation: getElementsByTagName
@@ -3074,11 +3070,10 @@ pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runt
 /// design 5h). It was a snapshot that compared local names ignoring case for
 /// every element of an HTML document.
 pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
-    errdefer interfaces.HTMLCollection.deinit(collection);
-    try live_collections.elementsWithQualifiedName(collection, instance, qualifiedName.asSlice());
-    return collection;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    // The same collection for the same argument while it lives and this
+    // document's type is unchanged (dom.live_collections.collectionFor).
+    return live_collections.collectionFor(instance, .{ .qualified_name = qualifiedName.asSlice() });
 }
 
 /// Operation: evaluate
@@ -3347,12 +3342,12 @@ pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instanc
 ///
 /// HTML's live NodeList contains HTML elements with an identical name.
 /// A fresh list owns the query string; root retention is a refcount follow-up.
+/// The same list for the same argument while it lives (node_lists
+/// elementsByNameFor: "the user agent may return the same as the object
+/// returned by the earlier call").
 pub fn call_getElementsByName(instance: *runtime.Instance, elementName: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const list = try interfaces.NodeList.init(internal.allocator, instance.ctx);
-    errdefer interfaces.NodeList.deinit(list);
-    try @import("dom").node_lists.elementsByName(list, instance, elementName.asSlice());
-    return list;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return @import("dom").node_lists.elementsByNameFor(instance, elementName.asSlice());
 }
 
 /// Operation: writeln
