@@ -58,6 +58,12 @@ const WindowRealmState = struct {
     /// An auxiliary navigable's realm (WindowRealmOptions.auxiliary): a realm
     /// built around its parent's WindowProxy adopts it.
     auxiliary: bool = false,
+    /// A top-level navigable's realm - made with no parent, or auxiliary (a
+    /// popup is a top-level traversable): Blink's "is main frame", which
+    /// decides what the detach tells V8 (`detach`, step 3). Kept apart from
+    /// `parent`, which a top-level predecessor gets when a later realm takes
+    /// over its WindowProxy.
+    top_level: bool = false,
     /// The realms made with this one as their parent that have not ended:
     /// they end first when this one does.
     children: std.ArrayListUnmanaged(Context) = .empty,
@@ -390,6 +396,7 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         .host = options.host,
         .parent = options.parent,
         .auxiliary = options.auxiliary and options.parent != null,
+        .top_level = options.parent == null or options.auxiliary,
         .window = window,
         .window_generation = runtime.SlabAllocator.generationOf(window),
         .allocator = allocator,
@@ -857,6 +864,18 @@ fn detach(realm: Context, state: *WindowRealmState) void {
     _ = ffi.v8_Object_WeakenTaggedHandles(global, key, retained_key.ptr, retained_key.len);
     ffi.v8_Context_SetWeak(context, record, realmCollected);
     state.detached = record;
+    // 3. V8 is told the context was let go, now - at the navigation or the
+    // frame's removal, not when it is collected - as Blink tells it from
+    // LocalWindowProxy::DisposeContext (V8GCForContextDispose::
+    // NotifyContextDisposed, Isolate::ContextDisposedNotification(
+    // !is_main_frame)). For a top-level page V8 resets its old-generation and
+    // global allocation limits and tells its memory reducer there may be
+    // garbage (13.1 Heap::NotifyContextDisposed), so the collection that
+    // takes the old page comes soon. Without it a chain of page loads in one
+    // tab kept up to five old pages - their realms and their DOM, 138 MB -
+    // once V8's limits had grown past them (lane perf1, load.docs: the
+    // collector was in no hurry for contexts nobody had said were gone).
+    _ = ffi.v8_Isolate_ContextDisposedNotification(state.isolate, !state.top_level);
 }
 
 /// The collector took a detached realm's context (its weak handle's first
