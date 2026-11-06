@@ -11,5 +11,8 @@
 1. `runtime.OwnState(State, T)` keeps the state in the impl's own `State.own._internal`, with InstanceRegistry's API, so each converted impl changed one line (14 node types plus EventTarget's chained instances).
 2. The tables that are enumerated per document while the Browser runs (input, img, script, form, ...) stay: a slab walk there would be O(every object of the Browser).
 3. dom.instance_bridge reads a node's NodeBase through a hook Node installs, since src/dom may not read Node's state. That removed the map, its mutex and its cache.
+4. Every job of the old table needs a new owner, including the nets. The PRE gate found two:
+   - The standalone scope (runtime.initializeRuntime) runs no teardown sweeps. EventTarget's table end had released every entry left, so the table now records its scope and walks the slab at its end.
+   - A slot freed without its destruction chain now LEAKS what its OwnState levels own. The registries' exit sweep used to free it silently. Production frees a slot only through `gc.releaseStorage` after the chain, so the only case was a test that freed a slot by hand (image_fetch_detach_test). It now runs the base levels' chain first. A missed teardown is now a leak the leak checks see, not a sweep that hides it.
 
 **Takeaway**: **Before adding a side table or a pointer for per-object state, look at what the object already carries; and before removing a table, name every job it does - a lookup table is often also the only enumeration.**
