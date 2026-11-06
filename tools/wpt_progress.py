@@ -242,6 +242,7 @@ LOSS_KEYS = {
     'user-ruling': {'date', 'decision'},
     'upstream-test-change': {'wpt.before', 'wpt.after'},
     'fixed': {'commit', 'test', 'repro'},
+    'timing-bound': {'tick_us', 'gap_us', 'pass_rate', 'condition', 'measured_at', 'paths'},
 }
 
 
@@ -277,6 +278,68 @@ def git_contains(head, commit, repo):
             or not git_is_commit(commit, repo):
         return None
     return _git_ok(repo, 'merge-base', '--is-ancestor', commit, head)
+
+
+# The `timing-bound` kind (the user, 2026-11-06; lane flaky6): a file whose result
+# provably depends on whether a gap shorter than Crane's coarsening tick crosses a tick
+# - two marks the spec puts back to back, on a clock floored to 125 us. Its evidence is
+# the tick, the measured gap (min / p50 / max, the median below the tick), the pass rate
+# under the condition that exposes it (both outcomes seen), the merged commit it was
+# measured at, and the code the gap runs through. It explains the path's losses in its
+# own generation and every later one, so a flip no longer blocks publication; it puts
+# the file on the progress page's watch list; and it is STALE - a warning, never a
+# block - once a commit after the measurement touches that code, which may have moved
+# the gap. It is not a flake: the one-flake rule does not count it.
+def timing_bound_for(path, generation, dispositions):
+    """The latest timing-bound entry for `path` recorded at or before `generation`."""
+    entries = [e for (p, g), e in dispositions.items()
+               if p == path and g <= generation and e['kind'] == 'timing-bound']
+    return max(entries, key=lambda e: int(e['generation'])) if entries else None
+
+
+def timing_bound_stale(entry, repo=None, head='HEAD'):
+    """The commits after `entry`'s measurement, up to `head`, that touch a path it lists
+    (short ids, newest first): non-empty means the gap may have moved. Git failing to
+    answer is reported as a stale mark too, never as fresh."""
+    paths = [p.strip() for p in entry['paths'].split(',') if p.strip()]
+    try:
+        out = subprocess.run(['git', 'log', '--format=%h', f'{entry["measured_at"]}..{head}', '--', *paths],
+                             cwd=repo or REPO, capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return ['?']
+    if out.returncode != 0:
+        return ['?']
+    return out.stdout.split()
+
+
+def render_timing_bound(dispositions, repo=None, head='HEAD'):
+    """The progress page's timing-bound watch list: every such entry with its evidence,
+    marked STALE when code it runs through changed after its measurement."""
+    entries = sorted((key, e) for key, e in dispositions.items() if e['kind'] == 'timing-bound')
+    if not entries:
+        return ''
+    items = []
+    for (path, _), e in entries:
+        stale = timing_bound_stale(e, repo=repo, head=head)
+        mark = (f' <b>STALE</b> <span class="dim">(changed since: {html.escape(", ".join(stale))})</span>'
+                if stale else '')
+        items.append(
+            f'<li><code>{html.escape(path)}</code> <span class="dim">since generation {e["generation"]}</span>{mark}'
+            f'<div>{html.escape(e["why"])}</div><ul class="samples">'
+            f'<li>condition: {html.escape(e["condition"])}</li>'
+            f'<li>gap: {html.escape(e["gap_us"])} us against a {html.escape(e["tick_us"])} us tick; '
+            f'passes {html.escape(e["pass_rate"])} under the condition</li>'
+            f'<li>measured at <code>{html.escape(e["measured_at"])}</code>; runs through '
+            f'{html.escape(e["paths"])}</li></ul></li>')
+    return f"""
+<div class="panel">
+  <h2 class="panelh">Timing-bound watch list</h2>
+  <div class="dim sub2">Files whose result depends on whether a gap shorter than Crane's
+    coarsening tick crosses a tick. Their losses are explained from the generation listed on; an
+    entry is STALE once the code its gap runs through has changed since it was measured
+    (<code>tools/wpt_loss_dispositions.txt</code>, kind <code>timing-bound</code>).</div>
+  <ol>{''.join(items)}</ol>
+</div>"""
 
 
 # The one-flake rule (the user, 2026-10-31; lane flaky1): a path may carry ONE
@@ -349,7 +412,7 @@ def parse_loss_dispositions(text, worklist, repo=None):
         generation = int(values['generation'])
         kind = values['kind']
         if kind not in LOSS_KEYS:
-            error('kind must be flake, user-ruling, upstream-test-change or fixed')
+            error('kind must be flake, user-ruling, upstream-test-change, fixed or timing-bound')
         required = common | LOSS_KEYS[kind]
         for key in sorted(required - values.keys()):
             error(f'missing "{key}" for {kind}')
@@ -391,6 +454,37 @@ def parse_loss_dispositions(text, worklist, repo=None):
                 error('repro: before must show the bug (at least one failure)')
             if af * br >= bf * ar:
                 error('repro: after must fail less often than before')
+        elif kind == 'timing-bound':
+            if not re.fullmatch(r'[1-9][0-9]*', values['tick_us']):
+                error('tick_us must be the coarsening tick in microseconds (a positive integer)')
+            tick = int(values['tick_us'])
+            number = r'(\d+(?:\.\d+)?)'
+            match = re.fullmatch(rf'min {number} / p50 {number} / max {number}', values['gap_us'])
+            if not match:
+                error('gap_us must read "min <us> / p50 <us> / max <us>"')
+            low, mid, high = map(float, match.groups())
+            if not low <= mid <= high:
+                error('gap_us: min <= p50 <= max')
+            if mid >= tick:
+                error('gap_us: its median must be below tick_us - a gap that usually crosses the tick '
+                      'does not make the result depend on it')
+            match = re.fullmatch(r'(\d+)/(\d+)', values['pass_rate'])
+            if not match:
+                error('pass_rate must read "<passes>/<runs>" under the condition')
+            passes, runs = map(int, match.groups())
+            if not 0 < passes < runs:
+                error('pass_rate must show both outcomes under the condition (0 < passes < runs)')
+            commit = values['measured_at']
+            if not re.fullmatch(r'[0-9a-f]{7,40}', commit):
+                error('measured_at must be the measured commit id (7 to 40 lowercase hex digits)')
+            if not git_is_commit(commit, repo):
+                error(f'measured_at {commit} is not a commit of this repository')
+            if not git_contains('HEAD', commit, repo):
+                error(f'measured_at {commit} is not an ancestor of HEAD: a measurement counts once it is merged')
+            for listed in (p.strip() for p in values['paths'].split(',')):
+                if not listed or not _git_ok(repo, 'cat-file', '-e', f'{commit}:{listed}'):
+                    error(f'path "{listed}" is not in the measured commit {commit}: paths name the code '
+                          'the gap runs through')
         else:
             for key in LOSS_KEYS[kind]:
                 if not re.fullmatch(r'[0-9a-f]{40}', values[key]):
@@ -453,6 +547,9 @@ def loss_disposition(generation, loss, dispositions, head=None, repo=None):
     """The disposition that explains `loss` in `generation` (whose head commit is `head`),
     or None."""
     entry = dispositions.get((loss['path'], generation))
+    if entry is None:
+        # A timing-bound entry also explains every later generation's loss of its path.
+        entry = timing_bound_for(loss['path'], generation, dispositions)
     if entry and entry['kind'] == 'upstream-test-change':
         # A disposition for different (or unidentified) snapshots explains nothing.
         if (entry['wpt.before'], entry['wpt.after']) != (loss.get('before_revision'), loss.get('after_revision')):
@@ -2469,6 +2566,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
 
     history_html = render_history(history) if history else ''
     losses_html = render_losses(history or {}, dispositions or {})
+    timing_bound_html = render_timing_bound(dispositions or {})
     unexplained = len(unexplained_losses(history or {}, dispositions or {}))
     roadmap_html = render_roadmap(roadmap, worklist, records)
     exempt_html = render_exempt(records, worklist)
@@ -2651,6 +2749,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
 {subtest_html}
 
 {losses_html}
+{timing_bound_html}
 
 {history_html}
 
@@ -2700,6 +2799,15 @@ def main():
     worklist = load_worklist()
     EXEMPTIONS = load_exemptions(worklist)
     dispositions = load_loss_dispositions(worklist)
+    # A timing-bound entry whose code changed since its measurement still explains its
+    # losses, but its gap may have moved: say so, never block.
+    for (path, generation), entry in sorted(dispositions.items()):
+        if entry['kind'] == 'timing-bound':
+            moved = timing_bound_stale(entry)
+            if moved:
+                print(f'warning: timing-bound {path} (generation {generation}) is STALE: '
+                      f'{", ".join(moved)} changed {entry["paths"]} after {entry["measured_at"]}; '
+                      're-measure its gap', file=sys.stderr)
     if '--rebuild-history' in sys.argv:
         try:
             with open(HISTORY) as f:
@@ -3300,6 +3408,130 @@ def _check_fixed_disposition():
         assert len(parse_loss_dispositions(_LOSS_FIXTURE + _fixed_entry(b), wl, repo=repo)) == 2
 
 
+def _timing_bound_fixture_repo(d):
+    """A git repository for the `timing-bound` kind's checks: A adds src/gap.zig (the
+    code the gap runs through) and src/other.zig, B is the measured commit, C changes
+    only the README (HEAD of main), E (branch "moved", off C) changes src/gap.zig, and
+    D is a side branch off A that never took B. Returns the repo and the full ids."""
+    repo = os.path.join(d, 'repo')
+    os.makedirs(os.path.join(repo, 'src'))
+    env = dict(os.environ, GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t',
+               GIT_COMMITTER_EMAIL='t@t', GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1')
+
+    def git(*args):
+        return subprocess.run(['git', *args], cwd=repo, env=env, check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def commit(files, message):
+        for path, text in files.items():
+            with open(os.path.join(repo, path), 'w') as f:
+                f.write(text)
+            git('add', path)
+        git('commit', '-q', '-m', message)
+        return git('rev-parse', 'HEAD')
+
+    git('init', '-q', '-b', 'main')
+    a = commit({'src/gap.zig': 'gap\n', 'src/other.zig': 'other\n', 'README': 'a\n'}, 'A')
+    b = commit({'README': 'b\n'}, 'B: measured')
+    c = commit({'README': 'c\n'}, 'C')
+    git('checkout', '-q', '-b', 'moved', c)
+    e = commit({'src/gap.zig': 'gap moved\n'}, 'E: moves the gap')
+    git('checkout', '-q', '-b', 'side', a)
+    d_ = commit({'side.txt': 'd\n'}, 'D')
+    git('checkout', '-q', 'main')
+    return repo, {'A': a, 'B': b, 'C': c, 'D': d_, 'E': e}
+
+
+def _timing_bound_entry(measured_at, generation=205, tick='125', gap='min 63 / p50 76 / max 100',
+                        rate='17/30', paths='src/gap.zig, src/other.zig',
+                        condition='a reused connection from an earlier https file in the runner process'):
+    return (f'[a.html]\ngeneration = {generation}\nkind = timing-bound\n'
+            'why = passes when the navigate -> fetch-start gap crosses a coarsening tick\n'
+            f'tick_us = {tick}\ngap_us = {gap}\npass_rate = {rate}\ncondition = {condition}\n'
+            f'measured_at = {measured_at}\npaths = {paths}\n')
+
+
+def _check_timing_bound_disposition():
+    """A timing-bound file (the user, 2026-11-06): its result depends on whether a gap
+    shorter than Crane's coarsening tick crosses a tick. The entry carries the tick, the
+    measured gap, the pass rate under its condition, the commit measured (merged) and the
+    code the gap runs through; it explains the path's losses in its own generation and
+    every later one, lists the file on the watch list, and is STALE - a warning, never a
+    block - once a commit after the measurement touches that code. It is not a flake."""
+    import tempfile
+    wl = ['a.html']
+    with tempfile.TemporaryDirectory() as d:
+        repo, ids = _timing_bound_fixture_repo(d)
+        b = ids['B']
+        parsed = parse_loss_dispositions(_timing_bound_entry(b[:10]), wl, repo=repo)
+        entry = parsed[('a.html', 205)]
+        assert entry['kind'] == 'timing-bound' and entry['measured_at'] == b[:10]
+
+        def invalid(text, needle):
+            try:
+                parse_loss_dispositions(text, wl, repo=repo)
+            except LossDispositionError as err:
+                assert needle in str(err), (needle, str(err))
+                return
+            raise AssertionError('accepted invalid timing-bound disposition: ' + needle)
+
+        for key in ('tick_us', 'gap_us', 'pass_rate', 'condition', 'measured_at', 'paths'):
+            invalid('\n'.join(l for l in _timing_bound_entry(b).splitlines() if not l.startswith(key + ' =')),
+                    f'missing "{key}" for timing-bound')
+        invalid(_timing_bound_entry(b) + 'pair.1 = base 1/1; tip 1/1\n', 'not evidence for timing-bound')
+        invalid(_timing_bound_entry(b, tick='0'), 'tick_us must be')
+        invalid(_timing_bound_entry(b, tick='125us'), 'tick_us must be')
+        invalid(_timing_bound_entry(b, gap='about 70'), 'gap_us must read')
+        invalid(_timing_bound_entry(b, gap='min 80 / p50 76 / max 100'), 'gap_us: min <= p50 <= max')
+        # A gap that usually crosses the tick does not make a result depend on it.
+        invalid(_timing_bound_entry(b, gap='min 63 / p50 130 / max 400'), 'below tick_us')
+        invalid(_timing_bound_entry(b, rate='17'), 'pass_rate must read')
+        invalid(_timing_bound_entry(b, rate='0/30'), 'both outcomes')
+        invalid(_timing_bound_entry(b, rate='30/30'), 'both outcomes')
+        invalid(_timing_bound_entry(b, rate='31/30'), 'both outcomes')
+        invalid(_timing_bound_entry('not-a-commit'), 'measured_at must be')
+        invalid(_timing_bound_entry('0123456789abcdef0123456789abcdef01234567'), 'not a commit of this repository')
+        invalid(_timing_bound_entry(ids['D']), 'not an ancestor of HEAD')
+        invalid(_timing_bound_entry(b, paths='src/gap.zig, src/missing.zig'), 'not in the measured commit')
+        invalid(_timing_bound_entry(b, paths='src/gap.zig,'), 'not in the measured commit')
+
+        # It explains its own generation and every later one, whatever the head; never
+        # an earlier one.
+        loss = {'path': 'a.html', 'before': 1, 'after': 0, 'best': 1}
+        assert loss_disposition(205, loss, parsed, head=ids['C'], repo=repo) == entry
+        assert loss_disposition(209, loss, parsed, head=ids['C'], repo=repo) == entry
+        assert loss_disposition(204, loss, parsed, head=ids['C'], repo=repo) is None
+        assert loss_disposition(209, {'path': 'b.html', 'before': 1, 'after': 0, 'best': 1}, parsed) is None
+        history = {'generations': [{'n': 204, 'head': ids['A'], 'losses': [loss]},
+                                   {'n': 205, 'head': ids['B'], 'losses': [loss]},
+                                   {'n': 207, 'head': ids['C'], 'losses': [loss]}]}
+        assert [n for n, _ in unexplained_losses(history, parsed, repo=repo)] == [204]
+        assert 'explained: timing-bound' in render_losses(history, parsed, repo=repo)
+        # An exact entry for a later generation is that generation's disposition.
+        later = parse_loss_dispositions(
+            _timing_bound_entry(b) + '[a.html]\ngeneration = 207\nkind = user-ruling\nwhy = accepted\n'
+            'date = 2026-11-06\ndecision = the user accepted it\n', wl, repo=repo)
+        assert loss_disposition(207, loss, later, head=ids['C'], repo=repo)['kind'] == 'user-ruling'
+        assert loss_disposition(206, loss, later, head=ids['C'], repo=repo)['kind'] == 'timing-bound'
+
+        # STALE once a commit after the measurement touches a listed path - a warning.
+        assert timing_bound_stale(entry, repo=repo, head=ids['C']) == []
+        moved = timing_bound_stale(entry, repo=repo, head=ids['E'])
+        assert len(moved) == 1 and ids['E'].startswith(moved[0]), moved
+        assert timing_bound_stale(dict(entry, paths='src/other.zig'), repo=repo, head=ids['E']) == []
+        assert loss_disposition(209, loss, parsed, head=ids['E'], repo=repo) == entry
+        page = render_timing_bound(parsed, repo=repo, head=ids['E'])
+        assert 'Timing-bound watch list' in page and 'a.html' in page and '<b>STALE</b>' in page
+        assert 'min 63 / p50 76 / max 100' in page and '17/30' in page and '125' in page
+        assert '<b>STALE</b>' not in render_timing_bound(parsed, repo=repo, head=ids['C'])
+        assert render_timing_bound({}, repo=repo) == ''
+
+        # Not a flake: the path's one flake disposition is still free, and a flake
+        # entry beside it is accepted.
+        both = parse_loss_dispositions(_LOSS_FIXTURE + _timing_bound_entry(b), wl, repo=repo)
+        assert {e['kind'] for e in both.values()} == {'flake', 'timing-bound'}
+
+
 def _check_flaky_count():
     """A file is flaky in a generation when its latest record says so; nothing else counts."""
     wl = ['a.html', 'b.html', 'c.html', 'd.html']
@@ -3818,6 +4050,7 @@ if __name__ == '__main__':
         _check_loss_dispositions()
         _check_one_flake_rule()
         _check_fixed_disposition()
+        _check_timing_bound_disposition()
         _check_flaky_count()
         _check_retry_counts()
         _check_loss_baseline_migration()
