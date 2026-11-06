@@ -1030,6 +1030,10 @@ test "a re-measured engine: Crane's drift control against the first window, with
     const i = std.mem.indexOf(u8, page, "id=\"remeasured\"").?;
     const section = page[i .. i + std.mem.indexOf(u8, page[i..], "</section>").?];
     try testing.expect(std.mem.indexOf(u8, section, "Safari") != null);
+    // The control is named as the build it is, never a bare "Crane".
+    try testing.expect(std.mem.indexOf(u8, section, "alternating with Crane ReleaseSafe as a drift control") != null);
+    try testing.expect(std.mem.indexOf(u8, section, "Crane&rsquo;s") == null);
+    try testing.expect(std.mem.indexOf(u8, section, "0 workloads outside") != null);
     try testing.expect(std.mem.indexOf(u8, section, "within noise") != null);
     try testing.expect(std.mem.indexOf(u8, section, "not within noise") == null);
     try testing.expect(std.mem.indexOf(u8, section, "<code>dom.a</code>") != null);
@@ -1047,6 +1051,18 @@ test "a re-measured engine: Crane's drift control against the first window, with
     try testing.expectEqual(@as(usize, 2), dd.outside);
     const bad_page = (try render(a, &m, .{ .remeasured = .{ .engines = &.{.safari}, .control = &bad } })).index_html;
     try testing.expect(std.mem.indexOf(u8, bad_page, "not within noise") != null);
+    try testing.expect(std.mem.indexOf(u8, bad_page, "2 workloads outside") != null);
+
+    // One workload outside its band: "1 workload", singular.
+    const one_off = [_]journal.Record{
+        try timed(a, 0, .crane, "abc", "dom.a", 0, 30, 100),
+        try timed(a, 0, .crane, "abc", "dom.b", 0, 8, 200),
+    };
+    const one = try build(a, &one_off);
+    try testing.expectEqual(@as(usize, 1), (try drift(a, &m, &one, 0, .crane)).outside);
+    const one_page = (try render(a, &m, .{ .remeasured = .{ .engines = &.{.safari}, .control = &one } })).index_html;
+    try testing.expect(std.mem.indexOf(u8, one_page, "1 workload outside") != null);
+    try testing.expect(std.mem.indexOf(u8, one_page, "1 workloads") == null);
 }
 
 test "the page: headline in the HTML, social metadata, the card, every engine named" {
