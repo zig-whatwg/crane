@@ -450,17 +450,19 @@ pub const LibcurlBackend = struct {
 // =============================================================================
 
 /// What Resource Timing reads of the connection a transfer used: curl's DNS,
-/// TCP, TLS and pre-transfer times, each in whole milliseconds after the
-/// transfer started, and whether the transfer reused a connection - it made
-/// none (CURLINFO_NUM_CONNECTS 0). The same for a whole response (`finish`)
+/// TCP, TLS and pre-transfer times, each in milliseconds after the transfer
+/// started, with its fraction (curl's doubles are microsecond-precise, and a
+/// loopback connection's phases all fall within one millisecond: floored,
+/// they were all 0 - lane flaky6), and whether the transfer reused a
+/// connection - it made none (CURLINFO_NUM_CONNECTS 0). The same for a whole response (`finish`)
 /// and a streamed one's head (`Transfer.head`): a head that said "fresh"
 /// for every connection made each reused navigation connection look like a
 /// new one, timed by a second clock reading (lane flaky4).
 const ConnectionMeasures = struct {
-    dns_lookup_time_ms: u64,
-    connect_time_ms: u64,
-    app_connect_time_ms: u64,
-    pretransfer_time_ms: u64,
+    dns_lookup_time_ms: f64,
+    connect_time_ms: f64,
+    app_connect_time_ms: f64,
+    pretransfer_time_ms: f64,
     connection_reused: bool,
 
     fn of(transfer: *const Transfer) ConnectionMeasures {
@@ -476,10 +478,10 @@ const ConnectionMeasures = struct {
         var num_connects: c_long = 0;
         _ = curl.easy_getinfo(handle, curl.CURLINFO_NUM_CONNECTS, &num_connects);
         return .{
-            .dns_lookup_time_ms = @intFromFloat(namelookup_time * 1000),
-            .connect_time_ms = @intFromFloat(connect_time * 1000),
-            .app_connect_time_ms = @intFromFloat(appconnect_time * 1000),
-            .pretransfer_time_ms = @intFromFloat(pretransfer_time * 1000),
+            .dns_lookup_time_ms = namelookup_time * 1000,
+            .connect_time_ms = connect_time * 1000,
+            .app_connect_time_ms = appconnect_time * 1000,
+            .pretransfer_time_ms = pretransfer_time * 1000,
             .connection_reused = num_connects == 0,
         };
     }
@@ -714,7 +716,7 @@ pub const Transfer = struct {
             else
                 null,
             .total_time_ms = 0,
-            .time_to_first_byte_ms = @intFromFloat(starttransfer_time * 1000),
+            .time_to_first_byte_ms = starttransfer_time * 1000,
             .redirect_count = 0,
             .remote_ip = if (primary_ip != null) allocator.dupe(u8, std.mem.span(primary_ip.?)) catch null else null,
             .remote_port = if (primary_port > 0) @intCast(primary_port) else null,
@@ -893,7 +895,7 @@ pub const Transfer = struct {
             .body = body,
             .final_url = final_url,
             .total_time_ms = @intFromFloat(total_time * 1000),
-            .time_to_first_byte_ms = @intFromFloat(starttransfer_time * 1000),
+            .time_to_first_byte_ms = starttransfer_time * 1000,
             .redirect_count = @intCast(redirect_count),
             .remote_ip = remote_ip,
             .remote_port = if (primary_port > 0) @intCast(primary_port) else null,
