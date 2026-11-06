@@ -155,6 +155,9 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn installHooks() void {
     // Its states and NodeBases left at its Browser's end (Browser.deinit).
     dom_module.teardown_sweeps.install(.nodes, &sweepRemaining);
+    // dom.instance_bridge reaches a node's NodeBase through its state here,
+    // before any node exists.
+    instance_bridge.install(.{ .node_base_of = &nodeBaseOf });
     // Every other node creator sets a node document through
     // `dom.node_document`, never through this impl. The hook is installed
     // here, before anything can hold this node to set its document.
@@ -171,6 +174,13 @@ pub fn installHooks() void {
     // A realm's end frees the orphans its removals recorded (dom.mutation's
     // orphanRemoved), each through its own teardown as a tree frees a child.
     runtime.orphan_roots.install(.{ .still_orphan = &stillOrphan, .free = &deinitNodeByType });
+}
+
+/// dom.instance_bridge's `node_base_of`: the NodeBase in `instance`'s own
+/// Node state, or null when it is no node or its NodeBase is gone.
+fn nodeBaseOf(instance: *runtime.Instance) ?*NodeBase {
+    const internal = Registry.get(instance) orelse return null;
+    return internal.node_base;
 }
 
 /// runtime.orphan_roots' check, for a recorded root whose generation and
