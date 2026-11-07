@@ -690,6 +690,14 @@ test "ending processes by exact pid: TERM first, KILL after the grace time" {
     // One that ends on TERM, one that ignores it.
     var polite = try std.process.spawn(io, .{ .argv = &.{ "/bin/sleep", "30" }, .stdin = .ignore, .stdout = .ignore, .stderr = .ignore });
     var stubborn = try std.process.spawn(io, .{ .argv = &.{ "/bin/sh", "-c", "trap '' TERM; while :; do sleep 0.1; done" }, .stdin = .ignore, .stdout = .ignore, .stderr = .ignore });
+    // The pids, read BEFORE the reapers own the Child values: Child.wait
+    // ends in Io.Threaded.childCleanupPosix, which writes `child.id = null`
+    // on the reaper's thread, so a read of `id` here after the spawn raced
+    // with it (ThreadSanitizer, -Dsanitize-thread: the reaper's write at
+    // Threaded.zig childCleanupPosix against this thread's read of
+    // `polite.id`; the runner itself copies the pid before it starts its
+    // waiter, `Process.pid`).
+    const pids = [_]i32{ polite.id.?, stubborn.id.? };
     // Reap each as it ends, as launchd does for Safari: a zombie still reads.
     const Reaper = struct {
         fn run(c: *std.process.Child, i: Io) void {
@@ -700,7 +708,6 @@ test "ending processes by exact pid: TERM first, KILL after the grace time" {
     const t2 = try std.Thread.spawn(.{}, Reaper.run, .{ &stubborn, io });
     // Let the shell install its trap.
     Io.sleep(io, .fromMilliseconds(300), .awake) catch {};
-    const pids = [_]i32{ polite.id.?, stubborn.id.? };
     const killed = endProcesses(io, &pids, 1000);
     const gone = [2]bool{ proc.usageOf(pids[0]) == null, proc.usageOf(pids[1]) == null };
     // Whatever endProcesses did, the test leaves nothing behind (a failing
