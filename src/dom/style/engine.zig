@@ -1968,6 +1968,26 @@ pub const AnimationGate = struct {
     };
 };
 
+/// DOM moving steps (Element's installHooks registers them): a style sheet
+/// owner moved by DOM "move" - a style, link or SVG style element, an
+/// xml-stylesheet processing instruction - keeps its sheet and stays a
+/// candidate (no removing or insertion steps run), but its place among the
+/// document's sheets is its tree order (CSSOM 6.2, "document or shadow root
+/// CSS style sheets"), so the active sheets are rebuilt in the new order
+/// when style is next read. Blink re-registers it for the same reason:
+/// HTMLLinkElement::RemovedFrom calls RemoveStyleSheetCandidateNode during an
+/// atomic move, and InsertedInto adds it again
+/// (dom/nodes/moveBefore/stylesheet-cascade-order.html).
+pub fn movingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
+    _ = old_parent;
+    if (node.node_type != NodeBase.ELEMENT_NODE and node.node_type != NodeBase.PROCESSING_INSTRUCTION_NODE) return;
+    const owner = instanceOf(node) orelse return;
+    if (hooks.sheetOf(owner) == null) return;
+    const document = (interfaces.Node.get_ownerDocument(owner) catch null) orelse return;
+    const engine = hooks.engineOf(document) orelse return;
+    engine.sheetsChanged();
+}
+
 /// CSSOM View's layout-dependent reads of `element` - getBoundingClientRect,
 /// getClientRects and the offset*, client* and scroll* getters - update style
 /// before they answer, as the browsers' do: Blink's

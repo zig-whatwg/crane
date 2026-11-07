@@ -191,6 +191,8 @@ pub fn installHooks() void {
     dom.style.engine.resource_loading.installHooks();
     dom.mutation.registerInsertionStepsCallback(&dom.style.engine.resource_loading.insertionSteps) catch @panic("failed to install style resource insertion steps");
     dom.mutation.registerChildrenChangedCallback(&dom.style.engine.resource_loading.childrenChanged) catch @panic("failed to install style resource children changed steps");
+    // A moved style sheet owner takes its new place in the sheets' tree order.
+    dom.mutation.registerMovingStepsCallback(&dom.style.engine.movingSteps) catch @panic("failed to install style sheet moving steps");
     dom.mutation.registerInsertionStepsCallback(&autofocusInsertionSteps) catch @panic("failed to install autofocus insertion steps");
     // Its states left at its Browser's end (Browser.deinit).
     @import("dom").teardown_sweeps.install(.elements, &sweepRemaining);
