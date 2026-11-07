@@ -1532,7 +1532,7 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
 /// HTML §8.5.5 - Replaces the element with a parsed fragment.
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#the-outerhtml-property
 pub fn set_outerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
     // HTML outerHTML setter step 1: "Let compliantString be the result of
     // invoking the get trusted type compliant string algorithm with
     // TrustedHTML, this's relevant global object, the given value, "Element
@@ -1764,7 +1764,7 @@ pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(dictionaries
 ///
 /// Without a layout engine, returns an empty DOMRectList
 pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
 
     // Return empty DOMRectList (no layout = no client rects)
     return interfaces.DOMRectList.init(allocatorOf(instance), instance.ctx) catch return error.OutOfMemory;
@@ -2077,7 +2077,7 @@ pub fn call_convertPointFromNode(instance: *runtime.Instance, point: dictionarie
 /// DOM §4.10.5 - Returns HTMLCollection of descendants with all given class names
 /// Spec: https://dom.spec.whatwg.org/#dom-element-getelementsbyclassname
 pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runtime.DOMString) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
     const names_slice = classNames.asSlice();
 
     // DOM "list of elements with class names", steps 1–3: an empty
