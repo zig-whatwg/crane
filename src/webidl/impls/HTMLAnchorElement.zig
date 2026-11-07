@@ -124,7 +124,7 @@ pub fn get_relList(instance: *runtime.Instance) anyerror!*runtime.Instance {
     }
 
     // Create a new DOMTokenList
-    const token_list = interfaces.DOMTokenList.init(data.allocator, instance.ctx) catch return error.OutOfMemory;
+    const token_list = interfaces.DOMTokenList.init(runtime.BrowserScope.ofInstance(instance).allocator, instance.ctx) catch return error.OutOfMemory;
     errdefer interfaces.DOMTokenList.deinit(token_list);
 
     // Initialize with current rel attribute value
