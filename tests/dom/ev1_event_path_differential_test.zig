@@ -127,7 +127,7 @@ const Dispatch = struct {
 
 fn hasActivationBehavior(target: *Instance) bool {
     const node = dom.instance_bridge.getNodeBase(target) orelse return false;
-    return node.node_type == dom.NodeBase.ELEMENT_NODE and std.ascii.eqlIgnoreCase(node.node_name, "x-act");
+    return node.node_type == dom.NodeBase.ELEMENT_NODE and std.ascii.eqlIgnoreCase(node.nodeName(), "x-act");
 }
 
 /// "Append to an event path".

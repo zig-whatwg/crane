@@ -39,6 +39,29 @@ const Instance = @import("instance.zig").Instance;
 const BrowserScope = @import("browser_scope.zig").BrowserScope;
 const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
 const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
+const ExternalMemory = @import("gc_integration.zig").ExternalMemory;
+
+/// The DOM memory a node's arena block counts in: its Browser's
+/// (BrowserScope.dom_memory), when `instance` is a node - its vtable's
+/// `counted` is runtime.lifetime's node - and null for every other object.
+/// Lane perf2 batch 4: V8 is told what a node really holds - its slab slot,
+/// its State block and its NodeBase (dom.instance_bridge.storageBytes, at
+/// its registration), and every level's InternalState block, added here when
+/// the block is made and subtracted when it goes back, at the block's arena
+/// class (ArenaAllocator.heldBytes), so a node's total returns to 0 at its
+/// teardown. Until then a div was reported as 368-632 B while it held ~2,450
+/// (tmp/plans/perf2b4-design.md 1.5), and V8 scheduled DOM-driven
+/// collections from that. The figure reaches V8 through the engine
+/// protocol's AgentOptions.external_memory (capability `external_memory`):
+/// the V8 adapter's external_memory.zig passes the change to
+/// Isolate::AdjustAmountOfExternalAllocatedMemory at its safe points, as
+/// Blink's V8GCController::reportDOMMemoryUsageToV8 did. Nodes are made and
+/// freed on their window agent's thread only, the ExternalMemory's rule.
+pub fn nodeDomMemory(instance: *const Instance) ?*ExternalMemory {
+    const counted = instance.vtable.counted orelse return null;
+    if (counted.kind != .node) return null;
+    return &BrowserScope.ofInstance(instance).dom_memory;
+}
 
 /// The InternalState `T` of an impl whose interface's generated State is
 /// `State`, in that State's `own._internal`.
@@ -81,6 +104,7 @@ pub fn OwnState(comptime State: type, comptime T: type) type {
             std.debug.assert(field.* == null);
             const internal = try arena.create(T);
             field.* = internal;
+            if (nodeDomMemory(instance)) |memory| memory.add(ArenaAllocator.heldBytes(@sizeOf(T), @alignOf(T)));
             return internal;
         }
 
@@ -91,6 +115,7 @@ pub fn OwnState(comptime State: type, comptime T: type) type {
             const field = fieldOf(instance) orelse return;
             const internal = field.* orelse return;
             field.* = null;
+            if (nodeDomMemory(instance)) |memory| memory.sub(ArenaAllocator.heldBytes(@sizeOf(T), @alignOf(T)));
             BrowserScope.ofInstance(instance).arena.destroy(T, internal);
         }
 

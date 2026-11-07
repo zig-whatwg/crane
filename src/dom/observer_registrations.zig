@@ -24,7 +24,6 @@ const std = @import("std");
 const infra = @import("infra");
 const runtime = @import("runtime");
 const handles = @import("handles.zig");
-const RegisteredObserver = @import("registered_observer.zig").RegisteredObserver;
 const NodeBase = @import("node_base.zig").NodeBase;
 const node_holds = @import("node_holds.zig");
 
@@ -42,6 +41,9 @@ pub const Implementation = struct {
     remove_transients: *const fn (observer: *runtime.Instance) void,
     /// `observer`'s record queue, in its state.
     record_queue: *const fn (observer: *runtime.Instance) *RecordQueue,
+    /// `observer`'s creation index (DOM 4.3), which "notify mutation
+    /// observers" step 2 sorts by.
+    creation_index: *const fn (observer: *runtime.Instance) u64,
     /// "Notify mutation observers" step 6.4: invoke `observer`'s callback
     /// with « `records`, `observer` », and "report" what it throws. The
     /// records are taken: wrapped, they are the wrapper cache's.
@@ -255,17 +257,24 @@ pub fn install(impl: Implementation) void {
     implementation.install(impl);
 }
 
-/// `node` is going away: tell every observer registered on it, then free its
-/// registered observer list.
-pub fn releaseList(node: *runtime.Instance, list: *infra.List(RegisteredObserver)) void {
-    if (implementation.get()) |impl| {
-        for (list.items()) |registered| {
-            const observer_opaque = handles.mutationObserverToAnyopaque(registered.observer) orelse continue;
-            const observer: *runtime.Instance = @ptrCast(@alignCast(observer_opaque));
-            impl.node_released(observer, registered.observer_generation, node);
+/// `node` (its tree node `node_base`) is going away: tell every observer
+/// registered on it, head to tail, and free each entry of its registered
+/// observer list - the first step of its NodeBase's teardown, before the
+/// rare data that held the list goes (NodeBase.deinitRareData). The hook
+/// only edits the observer's own node list and transient set; it never
+/// reaches this list.
+pub fn releaseList(node: *runtime.Instance, node_base: *NodeBase) void {
+    const impl = implementation.get();
+    var entries = node_base.registeredObservers();
+    while (entries.next()) |registered| {
+        if (impl) |steps| {
+            if (handles.mutationObserverToAnyopaque(registered.observer)) |observer_opaque| {
+                const observer: *runtime.Instance = @ptrCast(@alignCast(observer_opaque));
+                steps.node_released(observer, registered.observer_generation, node);
+            }
         }
+        node_base.removeRegisteredObserver(registered);
     }
-    list.deinit();
 }
 
 /// "remove" step 15: a transient registered observer of `observer` now sits
@@ -287,6 +296,13 @@ pub fn removeTransients(observer: *runtime.Instance) void {
 pub fn recordQueueOf(observer: *runtime.Instance) ?*RecordQueue {
     const impl = implementation.get() orelse return null;
     return impl.record_queue(observer);
+}
+
+/// `observer`'s creation index; 0 before MutationObserver has installed its
+/// steps, when no observer can exist.
+pub fn creationIndexOf(observer: *runtime.Instance) u64 {
+    const impl = implementation.get() orelse return 0;
+    return impl.creation_index(observer);
 }
 
 /// "Notify mutation observers" step 6.4 for `observer`: see

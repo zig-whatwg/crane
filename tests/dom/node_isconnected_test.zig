@@ -15,17 +15,14 @@ fn createMockDocumentNode(allocator: std.mem.Allocator) NodeBase {
     return NodeBase{
         .allocator = allocator,
         .node_type = NodeBase.DOCUMENT_NODE,
-        .node_name = "#document",
         .parent_node = null,
         .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
-        .registered_observers = infra.List(dom.node_base.RegisteredObserverType).init(allocator),
     };
 }
 
 fn deinitMockDocument(doc: *NodeBase) void {
     doc.child_nodes.deinit();
-    doc.registered_observers.deinit();
 }
 
 test "Node.isConnected - document node is connected" {
@@ -171,15 +168,12 @@ test "Node.isConnected - document fragment root is not connected" {
     var frag = NodeBase{
         .allocator = allocator,
         .node_type = NodeBase.DOCUMENT_FRAGMENT_NODE,
-        .node_name = "#document-fragment",
         .parent_node = null,
         .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
-        .registered_observers = infra.List(dom.node_base.RegisteredObserverType).init(allocator),
     };
     defer {
         frag.child_nodes.deinit();
-        frag.registered_observers.deinit();
     }
 
     var elem = Element.init(allocator, "div");

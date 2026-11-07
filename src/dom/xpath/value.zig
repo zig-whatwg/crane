@@ -357,7 +357,7 @@ fn getStringValue(allocator: std.mem.Allocator, node: *NodeBase) ![]const u8 {
                 return try allocator.dupe(u8, char_data.data);
             }
             // Fallback (should not happen)
-            return try allocator.dupe(u8, node.node_name);
+            return try allocator.dupe(u8, node.nodeName());
         },
         NodeBase.PROCESSING_INSTRUCTION_NODE => {
             // PI content (excluding target) - XPath 1.0 §5.2
@@ -372,7 +372,7 @@ fn getStringValue(allocator: std.mem.Allocator, node: *NodeBase) ![]const u8 {
                 return try allocator.dupe(u8, attr.getValue());
             }
             // Fallback (should not happen)
-            return try allocator.dupe(u8, node.node_name);
+            return try allocator.dupe(u8, node.nodeName());
         },
         else => {
             return try allocator.dupe(u8, "");

@@ -121,7 +121,7 @@ pub fn fnLocalName(allocator: std.mem.Allocator, ctx: *const Context, args: []co
     };
 
     // Extract local name from node_name (ignoring namespace prefix)
-    const name = node.node_name;
+    const name = node.nodeName();
     if (std.mem.indexOf(u8, name, ":")) |colon_pos| {
         // Has namespace prefix, return local part
         return Value{ .string = try allocator.dupe(u8, name[colon_pos + 1 ..]) };
@@ -183,7 +183,7 @@ pub fn fnName(allocator: std.mem.Allocator, ctx: *const Context, args: []const V
     };
 
     // Return the full qualified name
-    return Value{ .string = try allocator.dupe(u8, node.node_name) };
+    return Value{ .string = try allocator.dupe(u8, node.nodeName()) };
 }
 
 // ============================================================================
