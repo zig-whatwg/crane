@@ -49,6 +49,7 @@ const clock = @import("clock");
 /// ceiling (script_deadline.zig), when the engine has it.
 const engine = @import("engine");
 const runtime = @import("runtime");
+const interfaces = @import("interfaces");
 const script_deadline = @import("script_deadline.zig");
 const host_media = @import("host_media.zig");
 
@@ -368,18 +369,44 @@ pub const WptBrowser = struct {
             }
         };
 
-        const load_ms = lapMs(&phase);
-
         // A page whose parse reached no testharnessreport.js include - one
         // that names the harness without including it, includes only
         // testharness.js, or names none (`before_page`) - has the runner's
-        // hook installed now, before the harness can complete (it completes
-        // after the load event, from a task).
-        if (!self.harnessHookInstalled(ctx)) {
+        // hook installed once its parse has ended, before the harness can
+        // complete (it completes after the load event, from a task).
+        //
+        // Upstream wptrunner installs nothing after a page: it serves its
+        // report at the include's path, and wpt lint rejects a testharness
+        // page without that include (MISSING-TESTHARNESSREPORT). Crane's
+        // runner keeps a late install because its results come only through
+        // its own completion hook, and it runs pages that never reach the
+        // hook from an include: Crane tests with no include
+        // (crane/c6-harness-no-include.html), and sources that name the
+        // harness in a form the script loader does not answer.
+        //
+        // "Reached no include" is known only once the parse has ended. The
+        // load returns when its parser has run as far as it can, which may
+        // be a parsing-blocking script still loading before the page's
+        // includes (Context.LoadWait, a CDP Page.navigate-style settle
+        // point that its callers rely on). Deciding there made a second
+        // harness: the runner's, with no subtests, then the page's own at
+        // its include. In a file that ends at the harness timeout, the
+        // runner's copy armed its timer first and completed with nothing
+        // (html/cross-origin-embedder-policy/reporting-to-frame-owner and
+        // -worker-owner load get-host-info.sub.js before testharness.js:
+        // no subtest reported in 6-9 of 10 fresh runs; lane coi2 batch 3,
+        // crane/coi2-harness-after-pending-script.html). So the runner
+        // spins the event loop until HTML "the end" step 1 has set the
+        // document's readiness to "interactive", within the run's ceiling,
+        // and installs nothing for a parse that never ends: no browser runs
+        // a harness its page never reached.
+        if (!self.harnessHookInstalled(ctx) and self.waitForParseEnd(ctx, deadline) and !self.harnessHookInstalled(ctx)) {
             self.installHarnessLate(ctx, explicit_timeout) catch |err| {
                 log.warn("runHTMLTest: could not install the harness after the page: {}", .{err});
             };
         }
+
+        const load_ms = lapMs(&phase);
 
         // Run event loop until test completes or timeout
         var result = try self.waitForCompletion(ctx, deadline, timeout_ms, test_path);
@@ -388,6 +415,37 @@ pub const WptBrowser = struct {
 
         self.tests_run += 1;
         return result;
+    }
+
+    /// What `waitForParseEnd` waits for: the page's document is past
+    /// readiness "loading" - HTML "the end" step 1 has run, so its parser
+    /// has reached the end of its input (and every include in it) - or the
+    /// page has no document. Read natively, as Context.LoadWait reads it: a
+    /// spin's goal runs no script.
+    const ParseEnd = struct {
+        ctx: *Context,
+
+        fn met(opaque_self: *anyopaque) bool {
+            const self: *ParseEnd = @ptrCast(@alignCast(opaque_self));
+            const document = self.ctx.document_instance orelse return true;
+            const state = interfaces.Document.get_readyState(document) catch return true;
+            return state != ._loading_;
+        }
+    };
+
+    /// Run the page's event loop until its parse has ended (`ParseEnd`) or
+    /// the run's ceiling `deadline` (clock.monotonicMillis) passes. Whether
+    /// the parse ended.
+    fn waitForParseEnd(self: *WptBrowser, ctx: *Context, deadline: i64) bool {
+        var goal: ParseEnd = .{ .ctx = ctx };
+        if (ParseEnd.met(&goal)) return true;
+        const now = clock.monotonicMillis();
+        if (now >= deadline) return false;
+        const outcome = self.browser.spinEventLoopUntil(.{ .context = &goal, .met = ParseEnd.met }, @intCast(deadline - now)) catch |err| {
+            log.warn("runHTMLTest: could not wait for the page's parse to end: {}", .{err});
+            return ParseEnd.met(&goal);
+        };
+        return outcome == .met;
     }
 
     /// Milliseconds since the timer was last lapped, and reset it.

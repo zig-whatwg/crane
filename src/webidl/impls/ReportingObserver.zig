@@ -40,11 +40,16 @@ pub fn init(
     return instance;
 }
 
-/// Installed once at process start: a destroyed document's (or ended
-/// worker's) observers stop being registered and kept
-/// (reporting.endRegistrations).
+/// Installed once at process start: a discarded global's - a destroyed
+/// document's whose Window goes with it, or an ended worker's - observers
+/// stop being registered and kept (reporting.endRegistrations). A global
+/// teardown step, not a document step: Reporting §4 keeps the registered
+/// observer list on the global, so a Window the next document reuses (HTML
+/// "create and initialize a Document object" step 6) keeps its observers,
+/// as Blink's does - its ReportingObserver ends at ContextDestroyed, which a
+/// reused LocalDOMWindow never gets (dom.unloading_cleanup).
 pub fn installHooks() void {
-    @import("dom").unloading_cleanup.install(&reporting.endRegistrations);
+    @import("dom").unloading_cleanup.installGlobalTeardown(&reporting.endRegistrations);
 }
 
 /// Deinitialize instance

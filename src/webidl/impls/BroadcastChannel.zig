@@ -270,10 +270,17 @@ fn endKeep(instance: *runtime.Instance, internal: *InternalState) void {
     engine.releasePlatformObject(instance);
 }
 
-/// Installed once at process start: a destroyed document's (or ended
-/// worker's) channels are no destinations and no longer kept.
+/// Installed once at process start: a discarded global's - a destroyed
+/// document's whose Window goes with it, or an ended worker's - channels are
+/// no destinations and no longer kept. A global teardown step, not a
+/// document step: HTML keeps a channel with a message listener strongly from
+/// its relevant global while it is not closed, and a Window the next
+/// document reuses (HTML "create and initialize a Document object" step 6)
+/// is the same global, so its channels stay - Blink closes one only at
+/// ContextDestroyed (CloseInternal), which a reused LocalDOMWindow never
+/// gets (dom.unloading_cleanup).
 pub fn installHooks() void {
-    dom.unloading_cleanup.install(&endInRealm);
+    dom.unloading_cleanup.installGlobalTeardown(&endInRealm);
 }
 
 /// An unloading document cleanup step (dom.unloading_cleanup), which also
