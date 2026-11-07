@@ -474,6 +474,9 @@ pub const Matcher = struct {
             .VolumeLocked => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .volume_locked) else false,
             .Heading => |levels| if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .{ .heading = levels }) else false,
             .Target => false,
+            // UA style sheets only (parser.zig): no selector this matcher
+            // runs - querySelector(), matches(), closest() - can name it.
+            .InternalListBox => false,
             .Defined => if (instanceOf(element)) |object| dom.custom_elements.isDefined(@ptrCast(@alignCast(object))) else false,
             .State => |name| blk: {
                 const object = dom.instance_bridge.getInstance(&element.base) orelse break :blk false;

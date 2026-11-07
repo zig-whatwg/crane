@@ -471,6 +471,9 @@ pub const Longhand = enum(u16) {
     image_orientation,
     object_view_box,
 
+    // SVG 2 §13.10.2: a rendering hint for text, inherited.
+    text_rendering,
+
     pub const count = @typeInfo(Longhand).@"enum".field_names.len;
 
     /// The property name.
@@ -809,6 +812,11 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .image_orientation, .inherited = true, .initial = Value.kw(.from_image), .grammar = .keywords, .keywords = &.{ .none, .from_image } },
         // Images5 §3.1: the computed rectangular shape does not inherit.
         .{ .longhand = .object_view_box, .inherited = false, .initial = Value.kw(.none), .grammar = .object_view_box },
+        // SVG 2 §13.10.2 (specs/w3c/svg2/painting.md): auto | optimizeSpeed |
+        // optimizeLegibility | geometricPrecision, inherited, computed as
+        // specified, discrete. All three browsers ship it as a CSS property
+        // (HTML 15.5.16's base-appearance select inherits it).
+        .{ .longhand = .text_rendering, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .optimizespeed, .optimizelegibility, .geometricprecision } },
         // Motion1 §§2.1–2.5: none of the motion properties inherits.
         .{ .longhand = .offset_position, .inherited = false, .initial = Value.kw(.normal), .grammar = .motion_position },
         .{ .longhand = .offset_path, .inherited = false, .initial = Value.kw(.none), .grammar = .motion_path },
@@ -1644,7 +1652,7 @@ pub fn parseDeclaration(options: ParseOptions, property: Property, source_text: 
     const opaque_image = (property == .longhand and property.longhand == .background_image) or
         (property == .shorthand and property.shorthand == .background);
     var functions = FunctionFlags{};
-    if (containsUnsupportedToken(text, content_functions, &functions)) return false;
+    if (containsUnsupportedToken(text, content_functions, options.user_agent, &functions)) return false;
     // Values 5 "Resolving in Properties": a value with an arbitrary
     // substitution function (var(), env(), random-item()) whose functions
     // all match their argument grammars is valid at parse time, and is a
@@ -1717,7 +1725,12 @@ fn cssWideKeyword(text: []const u8) ?values.CssWide {
 /// substitution function makes the value pending.
 const FunctionFlags = struct { numeric_random: bool = false, substitution: bool = false };
 
-fn containsUnsupportedToken(text: []const u8, content_functions: bool, flags: *FunctionFlags) bool {
+fn containsUnsupportedToken(text: []const u8, content_functions: bool, user_agent: bool, flags: *FunctionFlags) bool {
+    const substitution = @import("substitution.zig");
+    // A UA sheet's declarations also have -internal-auto-base() (Blink's
+    // CSSVariableParser: only in kUASheetMode); in author text it is an
+    // ordinary function token no grammar accepts.
+    const table = if (user_agent) substitution.user_agent_table else substitution.default_table;
     var tok = Tokenizer.init(text);
     while (true) {
         const token = tok.next();
@@ -1729,7 +1742,7 @@ fn containsUnsupportedToken(text: []const u8, content_functions: bool, flags: *F
         if (token.token_type == .function and tokenizer_mod.nameEql(token.value, "random")) flags.numeric_random = true;
         // An arbitrary substitution function anywhere: the whole value is
         // checked (and stored) by pending_values.Pending.create instead.
-        if (token.token_type == .function and @import("substitution.zig").functionId(token.value) != null) {
+        if (token.token_type == .function and substitution.functionIdIn(table, token.value) != null) {
             flags.substitution = true;
             return false;
         }

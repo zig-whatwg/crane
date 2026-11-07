@@ -225,6 +225,11 @@ pub const ComputedStyle = struct {
     /// display:none suppresses all descendant boxes.
     box_context: enum { suppressed, grid, other } = .other,
     subgrid_ineligible: bool = false,
+    /// HTML 15.5.16: the element is rendered with base appearance (a
+    /// base-select select, its base ::picker(select), and their contents) -
+    /// what the UA sheet's -internal-auto-base() picks on. Not a property:
+    /// no author style reads or sets it (Blink ComputedStyle InBaseAppearance).
+    in_base_appearance: bool = false,
     /// CSS Variables 1 §2: the element's custom properties, computed; shared
     /// by reference with the parent's when this cascade changed none (one
     /// reference held). Null: none has a value.

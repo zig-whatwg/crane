@@ -893,7 +893,7 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
     switch (parsed.kind) {
         .qualified => {
             if (parsed.prelude.len == 0) return null;
-            var parsed_selector = parseCssomSelectorIn(a, try a.dupe(u8, parsed.prelude), options.parse.namespaces, if (options.nesting) |n| n.kind else null) catch |err| switch (err) {
+            var parsed_selector = parseSheetSelector(a, try a.dupe(u8, parsed.prelude), options.parse.namespaces, if (options.nesting) |n| n.kind else null, options.parse.user_agent) catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
                 // "A style rule whose selector is invalid is dropped."
                 else => return null,
@@ -1382,8 +1382,15 @@ pub fn parseCssomSelector(allocator: Allocator, text: []u8, map: ?*const css.nam
 }
 
 pub fn parseCssomSelectorIn(allocator: Allocator, text: []u8, map: ?*const css.namespace_map.NamespaceMap, nesting: ?selector.parser.NestingContext) selector.ParserError!selector.CssomSelector {
+    return parseSheetSelector(allocator, text, map, nesting, false);
+}
+
+/// parseCssomSelectorIn for a sheet's style rule: a UA sheet's (`user_agent`)
+/// may use the UA-only pseudo-classes (selector.parser.ParseOptions).
+fn parseSheetSelector(allocator: Allocator, text: []u8, map: ?*const css.namespace_map.NamespaceMap, nesting: ?selector.parser.NestingContext, user_agent: bool) selector.ParserError!selector.CssomSelector {
     var parse_options = selectorOptions(map);
     parse_options.nesting = nesting;
+    parse_options.user_agent = user_agent;
     return selector.parseCssomOwned(allocator, text, parse_options);
 }
 
