@@ -3647,9 +3647,28 @@ fn embedderPolicyBlocks(integration: *IFrameIntegration, record: *Navigation, re
         if (check.enforced_by_embedder_policy) queueEmbedderPolicyReport(parent, response_url, .{ .corp = destination }, parent_policy.reporting_endpoint, false);
         if (check.result == .blocked) return true;
     };
-    // Step 4: a response with a reserved environment.
+    // Step 4: a response with a reserved environment. "Create navigation
+    // params from a srcdoc resource" makes none. A non-initial about:blank
+    // is a fetch scheme's URL, so "attempt to populate the history entry's
+    // document" creates its navigation params by fetching, with a reserved
+    // environment: its embedder policy - its initiator's, which its policy
+    // container inherits (navigationParamsPolicyContainer step 3; whatwg/html
+    // #6793, 2021: "it is inherited from the initiator when navigating") - is
+    // checked as data:'s and blob:'s are. Under a require-corp parent, an
+    // about:blank whose initiator has none is blocked, and reported.
+    //
+    // Golden rule 2, a newer spec: #6793 was merged with Chrome and Firefox
+    // interested, and Chrome ships it. Its "Move COEP to Policy Container"
+    // change enforces COEP on non-initial about:blank in
+    // NavigationRequest::BeginNavigationImpl, and it landed with this test:
+    // block-local-documents-inheriting-none.https.html, C157 1/1 at wpt.fyi
+    // 94f58d592d. Firefox's implementation bug is open (bugzilla 1706026,
+    // "Implement policy inheritance according to policy container", NEW),
+    // and F159 0/1 has no report at all: it ships no COEP reports. WebKit's
+    // (bugs.webkit.org 224745) is fixed, but S27.2 0/1 makes only 1 of the
+    // file's 3 reports, and its one assertion does not say which case
+    // failed.
     if (record.srcdoc != null or navigate_steps.matchesAboutSrcdoc(response_url)) return false;
-    if (std.mem.eql(u8, navigate_steps.schemeOf(response_url), "about")) return false;
     var container = navigationParamsPolicyContainer(integration, record, response) catch return true;
     defer container.deinit();
     const compatible = container.embedderPolicy().value.compatibleWithCrossOriginIsolation();
