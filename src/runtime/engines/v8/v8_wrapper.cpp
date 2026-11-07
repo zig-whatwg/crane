@@ -1519,6 +1519,28 @@ bool v8_Debug_IsRealmTagged(Global<Value>* global) {
     return realmTaggedHandles().count(static_cast<const void*>(global)) != 0;
 }
 
+/// The wrapper class id on `handle`'s node (0 for a null or empty handle):
+/// the ledger's kind and the map flags. For tests.
+uint16_t v8_Debug_HandleClassId(void* handle) {
+    if (!handle) return 0;
+    return static_cast<Global<Value>*>(handle)->WrapperClassId();
+}
+
+/// Write `class_id` on `handle`'s node. For tests (V8's reset of a freed
+/// node's class id).
+void v8_Debug_SetHandleClassId(void* handle, uint16_t class_id) {
+    if (!handle) return;
+    static_cast<Global<Value>*>(handle)->SetWrapperClassId(class_id);
+}
+
+/// The address of `handle`'s node in V8's global-handle table (the slot its
+/// box points at), or null: tells a test whether V8 handed a freed node out
+/// again. For tests.
+void* v8_Debug_HandleNode(void* handle) {
+    if (!handle) return nullptr;
+    return *static_cast<void**>(handle);
+}
+
 /// A second, independently owned Global for the value `global` holds. Both
 /// must be disposed. Returns nullptr for a null or empty handle.
 Global<Value>* v8_Global_Clone(Global<Value>* global) {

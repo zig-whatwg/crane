@@ -1663,6 +1663,13 @@ pub extern fn v8_Global_DisposeCallbackValue(global: ?*Value) void;
 /// Tests: how many Globals carry a realm tag, and whether `global` does.
 pub extern fn v8_Debug_RealmTaggedHandleCount() usize;
 pub extern fn v8_Debug_IsRealmTagged(global: ?*Value) bool;
+/// The wrapper class id on a Global's node: the ledger's kind (low byte) and
+/// the map flags (0x8000 armed, 0x4000 realm-tagged). For tests.
+pub extern fn v8_Debug_HandleClassId(handle: ?*anyopaque) u16;
+/// Write a Global's node class id. For tests.
+pub extern fn v8_Debug_SetHandleClassId(handle: ?*anyopaque, class_id: u16) void;
+/// The address of a Global's node in V8's global-handle table. For tests.
+pub extern fn v8_Debug_HandleNode(handle: ?*anyopaque) ?*anyopaque;
 
 /// Run `body(data)` with V8's automatic microtask execution suppressed
 /// (Isolate::SuppressMicrotaskExecutionScope, held on the C++ stack).
