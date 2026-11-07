@@ -7,13 +7,16 @@
 
      the history chart     WPT subtests over every generation, interactive,
                            redrawn from the generations table's rows
-     the tables            sort by any column; on a directory page, filter by
-                           name and by standing, with the view kept in the URL
+     the tables            sort by any column; on a directory page, sort and
+                           filter its test files by name and by standing, with
+                           the view kept in the URL
      the search            any directory or test file, from every page ("/")
-     the subtests          filter a test file's subtests by result and name,
-                           open or close every message, open a linked one
+     the subtests          filter an open test file's subtests by result and
+                           name, open or close every message
+     a linked section      a test file's or subtest's address opens it in place
      the rail              follows the section being read on the index
-     old links             the first site's #path links land on their pages
+     old links             the first site's #path links, and a test file's old
+                           page address (404.html), land on its section
 
    Red is failure and grey is blocking, in the markup and here. */
 (() => {
@@ -57,9 +60,26 @@
     const p = parseAt(at);
     return p ? `${p.d} ${MONTHS[p.mo - 1]}` : "";
   }
-  /** A site path ("dom/nodes/", "dom/x.html") as the URL of its page. */
+  /** A site path as its address: a directory's page ("dom/nodes/"), or a test
+      file's section on its directory's page ("dom/nodes/#x.html"). */
   function pageUrl(p) {
-    return ROOT + p.split("/").map(encodeURIComponent).join("/") + (p.endsWith("/") ? "" : "/");
+    const enc = (s) => s.split("/").map(encodeURIComponent).join("/");
+    if (p.endsWith("/")) return ROOT + enc(p);
+    const cut = p.lastIndexOf("/") + 1;
+    return ROOT + enc(p.slice(0, cut)) + "#" + encodeURIComponent(p.slice(cut));
+  }
+  /** Where a test file's old page address (until 2026-11-07, "<dir>/<file>/")
+      leads: its section, "<dir>/#<file>" - the old address's "../" (404.html's
+      plain link) and the file's name. pages.zig oldFileTarget is the same rule. */
+  function oldFileTarget(path) {
+    let p = path;
+    if (p.endsWith("/index.html")) p = p.slice(0, -"index.html".length);
+    if (p.endsWith("/")) p = p.slice(0, -1);
+    const cut = p.lastIndexOf("/");
+    if (cut < 0) return null;
+    const name = p.slice(cut + 1);
+    if (!name || !name.includes(".")) return null;
+    return p.slice(0, cut + 1) + "#" + name;
   }
   function params() { return new URLSearchParams(location.search); }
   function setParams(update) {
@@ -380,6 +400,55 @@
     });
   }
 
+  // A directory page's test files: a list of sections (details.tf), or of rows
+  // leading to them on part pages (div.tf-away), under a head of column names.
+  // Each carries what sorting reads: data-pass/-of, data-ref-pass/-of,
+  // data-failed, data-gate.
+  function fileKey(item, key) {
+    const d = item.dataset;
+    if (key === "name") return item.querySelector(".tf-name")?.textContent.trim().toLowerCase() ?? null;
+    if (key === "pass") return d.of == null || +d.of === 0 ? null : +d.pass / +d.of;
+    if (key === "ref") return d.refOf == null || +d.refOf === 0 ? null : +d.refPass / +d.refOf;
+    if (key === "failed") return +d.failed;
+    return SEVERITY[d.gate] ?? null;
+  }
+  function sortFiles(list, items, keys, col, dir) {
+    const k = new Map(items.map((r) => [r, fileKey(r, keys[col])]));
+    const sign = dir === "ascending" ? 1 : -1;
+    const sorted = [...items].sort((a, b) => {
+      const ka = k.get(a), kb = k.get(b);
+      if (ka == null || kb == null) return ka == null && kb == null ? a._i - b._i : ka == null ? 1 : -1;
+      const c = typeof ka === "string" ? ka.localeCompare(kb, "en", { numeric: true }) : ka - kb;
+      return c ? sign * c : a._i - b._i;
+    });
+    list.append(...sorted);
+    [...list.querySelector(".tf-head").children].forEach((h, i) => {
+      if (i === col) h.setAttribute("aria-sort", dir); else h.removeAttribute("aria-sort");
+    });
+  }
+  function sortableFiles(list, onSort) {
+    const head = list.querySelector(".tf-head");
+    const items = [...list.querySelectorAll(":scope > .tf")];
+    if (!head || items.length < 2) return null;
+    items.forEach((r, i) => (r._i = i));
+    const keys = [...head.children].map((h, i, all) =>
+      i === 0 ? "name" : i === all.length - 1 ? "gate" : i === all.length - 2 ? "failed" : i === 1 ? "pass" : "ref");
+    head.setAttribute("role", "group");
+    head.setAttribute("aria-label", "Sort the test files");
+    [...head.children].forEach((h, col) => {
+      const btn = el("button", { type: "button", class: "sort" }, h.textContent, el("span", { class: "sort-ind", "aria-hidden": "true" }));
+      h.replaceChildren(btn);
+      btn.addEventListener("click", () => {
+        // Names A to Z first, the share passing lowest first, counts highest first.
+        const first = col === 0 || keys[col] === "pass" || keys[col] === "ref" ? "ascending" : "descending";
+        const dir = h.getAttribute("aria-sort") === first ? (first === "ascending" ? "descending" : "ascending") : first;
+        sortFiles(list, items, keys, col, dir);
+        if (onSort) onSort(col, dir);
+      });
+    });
+    return (col, dir) => { if (col < keys.length) sortFiles(list, items, keys, col, dir); };
+  }
+
   // ==========================================================================
   // A directory page: filter its tables by name and by standing.
   // ==========================================================================
@@ -396,23 +465,21 @@
 
   function directoryTools() {
     if (document.getElementById("history")) return; // the index: its tables are short
-    const box = document.querySelector("main > .boxes > .box.tests");
+    const box = document.querySelector("main .box.tests");
     if (!box) return;
-    const files = box.querySelector("table.listing-files");
+    const fileList = box.querySelector(".tf-list");
     const dirs = box.querySelector("table.listing-dirs");
-    const fileRows = files ? [...files.tBodies[0].rows] : [];
+    const fileRows = fileList ? [...fileList.querySelectorAll(":scope > .tf")] : [];
     const dirRows = dirs ? [...dirs.tBodies[0].rows] : [];
-    const tables = [dirs, files].filter(Boolean);
     const q0 = params();
 
-    for (const t of tables) {
-      const tag = t === files ? "f" : "d";
-      sortable(t, (col, dir) => setParams({ sort: `${tag}${col}${dir === "ascending" ? "a" : "d"}` }));
-    }
+    if (dirs) sortable(dirs, (col, dir) => setParams({ sort: `d${col}${dir === "ascending" ? "a" : "d"}` }));
+    const sortFilesBy = fileList ? sortableFiles(fileList, (col, dir) => setParams({ sort: `f${col}${dir === "ascending" ? "a" : "d"}` })) : null;
     const sortParam = /^([fd])(\d)([ad])$/.exec(q0.get("sort") || "");
     if (sortParam) {
-      const t = sortParam[1] === "f" ? files : dirs;
-      if (t && +sortParam[2] < t.tHead.rows[0].cells.length) sortRows(t, +sortParam[2], sortParam[3] === "a" ? "ascending" : "descending");
+      const dir = sortParam[3] === "a" ? "ascending" : "descending";
+      if (sortParam[1] === "f" && sortFilesBy) sortFilesBy(+sortParam[2], dir);
+      else if (sortParam[1] === "d" && dirs && +sortParam[2] < dirs.tHead.rows[0].cells.length) sortRows(dirs, +sortParam[2], dir);
     }
     if (fileRows.length + dirRows.length < 8) return;
 
@@ -439,15 +506,17 @@
 
     function apply() {
       const words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
-      const hit = (row) => { const name = row.cells[0].textContent.toLowerCase(); return words.every((w) => name.includes(w)); };
+      const nameOf = (row) => (row.cells ? row.cells[0] : row.querySelector(".tf-name"))?.textContent.toLowerCase() ?? "";
+      const hit = (row) => { const name = nameOf(row); return words.every((w) => name.includes(w)); };
       let files = 0, dirsOn = 0;
       for (const r of fileRows) { const on = show[2](r.dataset.gate) && hit(r); r.hidden = !on; files += on; }
       for (const r of dirRows) {
         // A directory stays while showing everything, or blocking files it holds.
-        const on = hit(r) && (show[0] === "all" || (show[0] === "blocking" && +r.cells[3].dataset.v > 0));
+        const on = hit(r) && (show[0] === "all" || (show[0] === "blocking" && +r.cells[r.cells.length - 1].dataset.v > 0));
         r.hidden = !on; dirsOn += on;
       }
-      for (const t of tables) t.hidden = [...t.tBodies[0].rows].every((r) => r.hidden);
+      if (dirs) dirs.hidden = dirRows.every((r) => r.hidden);
+      if (fileList) fileList.hidden = fileRows.every((r) => r.hidden);
       const part = (on, all, one, many) => (all ? `${on === all ? fmt(all) : `${fmt(on)} of ${fmt(all)}`} ${all === 1 ? one : many}` : null);
       const filtered = files < fileRows.length || dirsOn < dirRows.length;
       shown.textContent = (filtered ? "Showing " : "") +
@@ -461,7 +530,15 @@
     box.querySelector(".box-head").after(el("div", { class: "toolbar" }, input, chips, shown));
     box.append(empty);
     apply();
+    // A linked file the filter hides is shown again.
+    showAll = () => {
+      if (!input.value && show === STANDINGS[0]) return;
+      input.value = ""; show = STANDINGS[0];
+      for (const c of chips.querySelectorAll("button")) c.setAttribute("aria-pressed", String(c === chips.querySelector("button")));
+      apply();
+    };
   }
+  let showAll = () => {};
 
   // ==========================================================================
   // The search: every directory and test file, from every page.
@@ -561,6 +638,7 @@
 
   // ==========================================================================
   // A test file's subtests: filter by result and name; open every message.
+  // Added to a file's section the first time it opens.
   // ==========================================================================
 
   const RESULTS = [
@@ -569,19 +647,17 @@
     ["timeout", "Timed out", (li) => li.classList.contains("s-timeout")],
     ["notrun", "Not run", (li) => li.classList.contains("s-notrun")],
     ["other", "Other", (li) => li.classList.contains("s-other")],
-    ["pass", "Passed", (li) => li.classList.contains("s-pass")],
   ];
 
-  function subtestTools() {
-    const section = document.querySelector(".subtests-section");
-    const items = section ? [...section.querySelectorAll("li.sub")] : [];
-    if (!items.length) return;
-    const details = [...section.querySelectorAll("li.sub details")];
-    const q0 = params();
-    let result = RESULTS.find(([k]) => k === q0.get("result")) || RESULTS[0];
-
-    const input = el("input", { type: "search", class: "filter", placeholder: "Filter subtests by name", "aria-label": "Filter subtests by name", spellcheck: "false", autocomplete: "off" });
-    input.value = q0.get("q") || "";
+  function subtestTools(section) {
+    if (section._tools) return;
+    section._tools = true;
+    const body = section.querySelector(".tf-body");
+    const items = body ? [...body.querySelectorAll("li.sub")] : [];
+    if (items.length < 8) return;
+    const details = [...body.querySelectorAll("li.sub details")];
+    let result = RESULTS[0];
+    const input = el("input", { type: "search", class: "filter", placeholder: "Filter subtests by name", "aria-label": "Filter this file's subtests by name", spellcheck: "false", autocomplete: "off" });
     const chips = el("div", { class: "chips", role: "group", "aria-label": "Show subtests" });
     for (const r of RESULTS) {
       const count = items.filter(r[2]).length;
@@ -613,29 +689,50 @@
         li.hidden = !on;
         seen += on;
       }
-      shown.textContent = seen === items.length ? `${fmt(items.length)} subtests` : `Showing ${fmt(seen)} of ${fmt(items.length)}`;
-      setParams({ q: input.value.trim() || null, result: result[0] === "all" ? null : result[0] });
+      shown.textContent = seen === items.length ? `${fmt(items.length)} subtests that did not pass` : `Showing ${fmt(seen)} of ${fmt(items.length)}`;
     }
     input.addEventListener("input", apply);
     input.addEventListener("keydown", (e) => { if (e.key === "Escape" && input.value) { input.value = ""; apply(); } });
-    (section.querySelector(".sub-hint") || section.querySelector("h2")).after(tools);
+    (body.querySelector(".harness") || body.querySelector(".file-meta")).after(tools);
     apply();
+  }
 
-    // A link to one subtest opens its message. The first site linked subtests
-    // by name (?sub=), so those land here too.
-    function openTarget() {
-      let li = location.hash ? document.getElementById(decodeURIComponent(location.hash.slice(1))) : null;
-      const byName = params().get("sub");
-      if (!li && byName != null) li = items.find((x) => x.querySelector(".sub-name")?.textContent === byName) || null;
-      if (!li || !li.classList.contains("sub")) return;
-      if (li.hidden) { result = RESULTS[0]; input.value = ""; for (const c of chips.children) c.setAttribute("aria-pressed", String(c === chips.firstChild)); apply(); }
-      const d = li.querySelector("details");
-      if (d) d.open = true;
-      li.classList.add("is-target");
-      li.scrollIntoView({ block: "center" });
+  function fileSections() {
+    const sections = [...document.querySelectorAll("details.tf")];
+    for (const s of sections) {
+      if (s.open) subtestTools(s);
+      s.addEventListener("toggle", () => { if (s.open) subtestTools(s); });
     }
-    window.addEventListener("hashchange", openTarget);
-    openTarget();
+  }
+
+  // A test file's address (<dir>/#<file>) or a subtest's (#s-...): open its
+  // section, and the subtest's message, in place. Without script the file's
+  // row is the target (the browser's ancestor revealing opens a closed
+  // <details> around a target, not the target itself); a file whose section
+  // is on a part page goes there.
+  function revealTarget() {
+    if (location.hash.length < 2) return;
+    let id;
+    try { id = decodeURIComponent(location.hash.slice(1)); } catch { return; }
+    const t = document.getElementById(id);
+    if (!t) return;
+    if (t.classList.contains("tf-away")) { const a = t.querySelector("a"); if (a) location.replace(a.href); return; }
+    if (!t.matches("details.tf, li.sub")) return;
+    if (t.closest("[hidden]")) showAll();
+    for (let d = t.closest("details"); d; d = d.parentElement?.closest("details")) d.open = true;
+    t.querySelector(":scope > details")?.setAttribute("open", "");
+    t.classList.add("is-target");
+    t.scrollIntoView({ block: t.matches("li.sub") ? "center" : "start" });
+  }
+
+  // 404.html: a test file's old page address goes to its section.
+  function notFound() {
+    const link = document.getElementById("moved-to");
+    if (!link) return;
+    const target = oldFileTarget(location.pathname);
+    if (!target) { link.closest("p").hidden = true; return; }
+    link.href = target;
+    location.replace(target);
   }
 
   // ==========================================================================
@@ -676,18 +773,21 @@
     if (qi >= 0) { sub = new URLSearchParams(h.slice(qi + 1)).get("sub"); h = h.slice(0, qi); }
     try { h = decodeURIComponent(h); } catch { return; }
     if (!h.includes("/") || document.getElementById(h)) return;
-    location.replace(pageUrl(h) + (sub != null && !h.endsWith("/") ? `?sub=${encodeURIComponent(sub)}` : ""));
+    location.replace(pageUrl(h));
   }
 
   // ==========================================================================
 
+  notFound();
   oldLinks();
   historyChart();
   for (const t of document.querySelectorAll("table.listing")) {
     if (!t.closest("main > .boxes")) sortable(t); // a directory page's tables are set up with their filter
   }
   directoryTools();
-  subtestTools();
+  fileSections();
+  revealTarget();
+  window.addEventListener("hashchange", revealTarget);
   search();
   railFollows();
 })();

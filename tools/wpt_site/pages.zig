@@ -8,18 +8,40 @@
 //!     index.html                     the record: headline numbers, scope,
 //!                                    contents, one section per suite,
 //!                                    revision history
-//!     <dir>/index.html               one page per directory of the tree
-//!     <dir>/<file>/index.html        one page per test file, its subtests
+//!     <dir>/index.html               one page per directory of the tree, and
+//!                                    on it one section per test file directly
+//!                                    in it: a native <details> that opens in
+//!                                    place to the file's subtests
+//!     <dir>/~<n>/index.html          only for a directory over the page
+//!                                    budget: its file sections, in parts
+//!     404.html                       GitHub Pages' one page for a missing
+//!                                    address: sends a test file's old page
+//!                                    address to its section
 //!
 //! So a directory is at `/crane/dom/nodes/` and a test file at
-//! `/crane/dom/nodes/Node-cloneNode.html/` - the WPT path, as wpt.fyi names
-//! it. Links are relative, so the site works from any base.
+//! `/crane/dom/nodes/#Node-cloneNode.html` - its directory's WPT path, as
+//! wpt.fyi names it, and the file's name as the section's id. Every link to a
+//! test file is that address (`writeFileHref`). Until 2026-11-07 each test file
+//! had a page of its own at `/crane/<dir>/<file>/` (13,169 of them, most of the
+//! site's 14,245 files); 404.html maps those addresses here (`oldFileTarget`).
+//! Links are relative, so the site works from any base; 404.html, served at
+//! every missing address, names its assets from the site's own path.
 //!
 //! Determinism: only index.html carries anything that changes from one
 //! regeneration to the next without the results changing (the generation,
-//! its date, the history). Directory and file pages depend on their own
-//! results, the worklist and the WPT revision only, so an unchanged file
-//! writes an unchanged page and the gh-pages history stays small.
+//! its date, the history, the runs). A directory page depends on its own
+//! files' results, the worklist and the WPT revision only - not on which run
+//! recorded a result, unless that run is not the generation's main one - so
+//! a directory whose files' results did not move writes an unchanged page and
+//! the gh-pages history stays small. Generation 207's commit rewrote 13,206
+//! pages because every test file page named its run (`sweep-<sha>`, a new one
+//! each sweep) although ~50 files' results had moved.
+//!
+//! Page budget: a directory page stays within `Budget.bytes` of HTML. Over it,
+//! its file sections count their passing subtests without naming them; still
+//! over it, the sections go onto part pages (`~1/`, `~2/`, ...) and the
+//! directory's page lists every file with a link to its part, keeping each
+//! file's address (`<dir>/#<file>`) landing on its row.
 
 const std = @import("std");
 const model = @import("model.zig");
@@ -29,6 +51,8 @@ const reference_mod = @import("reference.zig");
 const Io = std.Io;
 const W = *Io.Writer;
 const Error = Io.Writer.Error;
+/// Writing a file section allocates (its subtest ids).
+pub const SectionError = Error || std.mem.Allocator.Error;
 
 pub const Generation = chart.Generation;
 
@@ -101,6 +125,10 @@ pub const Site = struct {
     /// Top-level directory paths ("console/", "dom/", ...), sorted.
     suites: []const []const u8,
     runs: *const std.StringArrayHashMapUnmanaged(RunInfo),
+    /// The run that holds the most files (`mainRun`): a file whose result
+    /// came from it does not name it, so a new sweep rewrites no section whose
+    /// result it did not change. The index names it.
+    main_run: ?[]const u8 = null,
     history: []const Generation,
     wpt: Revision,
     worklist_name: []const u8,
@@ -143,6 +171,33 @@ pub const Site = struct {
     pub fn latest(s: *const Site) Generation {
         return if (s.history.len > 0) s.history[s.history.len - 1] else .{};
     }
+
+    /// The site's own path ("/crane/" for https://zig-whatwg.github.io/crane/):
+    /// 404.html is served at every missing address, so it names its assets from it.
+    pub fn basePath(s: *const Site) []const u8 {
+        const scheme = std.mem.indexOf(u8, s.site_url, "://") orelse return "/";
+        const slash = std.mem.indexOfScalarPos(u8, s.site_url, scheme + 3, '/') orelse return "/";
+        return s.site_url[slash..];
+    }
+};
+
+/// The run that holds the most files, the first by id among equals: the
+/// generation's main run (a sweep). Null when no file has a run.
+pub fn mainRun(runs: *const std.StringArrayHashMapUnmanaged(RunInfo)) ?[]const u8 {
+    var best: ?RunInfo = null;
+    for (runs.values()) |r| {
+        if (best) |b| if (r.files < b.files or (r.files == b.files and std.mem.order(u8, r.id, b.id) != .lt)) continue;
+        best = r;
+    }
+    return if (best) |b| b.id else null;
+}
+
+/// How much HTML one page may carry (lane site1, 2026-11-07: about 2 MB, so
+/// the largest directory page still opens quickly on a phone). generate.zig
+/// holds every directory page to it: see the header, "Page budget".
+pub const Budget = struct {
+    pub const default_bytes: usize = 2_000_000;
+    bytes: usize = default_bytes,
 };
 
 /// One test URL's result from the wptreport stream (a file may have several:
@@ -660,9 +715,9 @@ fn writeFileTable(w: W, site: *const Site, base: []const u8, files: []const usiz
             try html.text(w, f.path);
             try w.writeAll("\"");
         }
-        try w.print("><th scope=\"row\"><a href=\"{s}", .{base});
-        try html.href(w, f.path);
-        try w.writeAll("/\">");
+        try w.writeAll("><th scope=\"row\"><a href=\"");
+        try writeFileHref(w, base, f.path);
+        try w.writeAll("\">");
         try html.path(w, baseName(f.path));
         try w.print("</a></th><td class=\"n\" data-v=\"{d}\" data-of=\"{d}\">", .{ f.counts.passed, f.counts.reported() });
         if (f.status == null) {
@@ -691,6 +746,38 @@ fn baseName(p: []const u8) []const u8 {
     const trimmed = if (std.mem.endsWith(u8, p, "/")) p[0 .. p.len - 1] else p;
     const i = std.mem.lastIndexOfScalar(u8, trimmed, '/') orelse return trimmed;
     return trimmed[i + 1 ..];
+}
+
+/// "dom/nodes/x.html" -> "dom/nodes/"; "x.html" -> "".
+fn dirOf(p: []const u8) []const u8 {
+    const i = std.mem.lastIndexOfScalar(u8, p, '/') orelse return "";
+    return p[0 .. i + 1];
+}
+
+/// A test file's address from a page `base` below the site root: its section
+/// on its directory's page, `<base><dir>#<name>` (`dom/nodes/#Node-cloneNode.html`).
+/// Every link to a test file is written here.
+pub fn writeFileHref(w: W, base: []const u8, p: []const u8) Error!void {
+    try w.writeAll(base);
+    try html.href(w, dirOf(p));
+    try w.writeByte('#');
+    try html.href(w, baseName(p));
+}
+
+/// Where 404.html (site.js `oldFileTarget`) sends a test file's old page
+/// address: `<prefix><dir>/<file>/` (or `.../index.html`) -> `<prefix><dir>/#<file>`,
+/// written into `buf`. The rule needs no list of files: the last segment of
+/// the path names a test file when it has a dot, and its directory's page is
+/// the old address's `../` - which is also the plain link 404.html gives a
+/// reader without script. Null for any other address.
+pub fn oldFileTarget(buf: []u8, path: []const u8) ?[]const u8 {
+    var p = path;
+    if (std.mem.endsWith(u8, p, "/index.html")) p = p[0 .. p.len - "index.html".len];
+    if (std.mem.endsWith(u8, p, "/")) p = p[0 .. p.len - 1];
+    const cut = std.mem.lastIndexOfScalar(u8, p, '/') orelse return null;
+    const name = p[cut + 1 ..];
+    if (name.len == 0 or std.mem.indexOfScalar(u8, name, '.') == null) return null;
+    return std.fmt.bufPrint(buf, "{s}#{s}", .{ p[0 .. cut + 1], name }) catch null;
 }
 
 /// Above this many test files directly in a suite, the index names them in
@@ -838,7 +925,7 @@ fn writeRuns(w: W, site: *const Site) Error!void {
     if (keys.len > shown) {
         try w.writeAll("<span class=\"quiet\">; and ");
         try html.plural(w, keys.len - shown, "more run", "more runs");
-        try w.writeAll(", named on each file&rsquo;s page</span>");
+        try w.writeAll(", each named in the sections of the files it recorded</span>");
     }
 }
 
@@ -901,9 +988,9 @@ fn writeStatus(w: W, site: *const Site, tot: model.Totals) Error!void {
         try html.num(w, tot.files);
         try w.writeAll(" files have it in this generation.");
     } else {
-        try w.writeAll("no file has it in this generation yet, so each file&rsquo;s page gives its counts.");
+        try w.writeAll("no file has it in this generation yet, so each file&rsquo;s section gives its counts.");
     }
-    try w.writeAll("</p>\n</div>\n<div class=\"note\" role=\"note\">\n<p class=\"note-label\">How to read a section</p>\n<p>Each suite is a numbered section that opens with its own subtest numbers. Its <em>Conformance</em> box counts files by standing; its <em>Tests</em> tables link to a page for every directory and every test file, and a test file&rsquo;s page lists its subtests. Everything has a permanent link, <span class=\"self-demo\" aria-hidden=\"true\">&para;</span>.</p>\n<dl class=\"legend\" aria-label=\"File standings\">\n<div><dt><span class=\"key key-clean\"></span>Clean</dt><dd>every reported subtest passed</dd></div>\n<div><dt><span class=\"key key-partial\"></span>With failures</dt><dd>some subtests passed, some did not</dd></div>\n<div><dt><span class=\"key key-blocking\"></span>Blocking</dt><dd>NONE-PASSED, TIMEOUT, ERROR, CRASH</dd></div>\n<div><dt><span class=\"key key-empty\"></span>No subtests</dt><dd>the file ran and reported none</dd></div>\n<div><dt><span class=\"key key-unrun\"></span>Not run</dt><dd>no result yet</dd></div>\n");
+    try w.writeAll("</p>\n</div>\n<div class=\"note\" role=\"note\">\n<p class=\"note-label\">How to read a section</p>\n<p>Each suite is a numbered section that opens with its own subtest numbers. Its <em>Conformance</em> box counts files by standing; its <em>Tests</em> tables link to a page for every directory, where each test file opens in place to its subtests. Everything has a permanent link, <span class=\"self-demo\" aria-hidden=\"true\">&para;</span>.</p>\n<dl class=\"legend\" aria-label=\"File standings\">\n<div><dt><span class=\"key key-clean\"></span>Clean</dt><dd>every reported subtest passed</dd></div>\n<div><dt><span class=\"key key-partial\"></span>With failures</dt><dd>some subtests passed, some did not</dd></div>\n<div><dt><span class=\"key key-blocking\"></span>Blocking</dt><dd>NONE-PASSED, TIMEOUT, ERROR, CRASH</dd></div>\n<div><dt><span class=\"key key-empty\"></span>No subtests</dt><dd>the file ran and reported none</dd></div>\n<div><dt><span class=\"key key-unrun\"></span>Not run</dt><dd>no result yet</dd></div>\n");
     if (site.exemptions.len > 0) try w.writeAll("<div><dt><span class=\"key key-exempt\"></span>Exempt</dt><dd>would block, but all three browsers intentionally deviate from the spec it tests</dd></div>\n");
     try w.writeAll("</dl>\n</div>\n</section>\n");
 }
@@ -939,8 +1026,8 @@ fn writeExempt(w: W, site: *const Site) Error!void {
     try w.writeAll("<section class=\"front\" id=\"exempt\" aria-labelledby=\"exempt-h\">\n<h2 id=\"exempt-h\">Exempt from the gate</h2>\n<div class=\"front-prose\">\n<p>These files are omitted from the blocking count: all three of Chrome, Firefox and Safari intentionally deviate from the spec each tests, each with evidence of intent (a standards position, a WontFix bug or an implementer&rsquo;s objection), and Crane does as they do. A listed file that does not block keeps its own standing.</p>\n<ol class=\"exempt-list\">\n");
     for (site.exemptions) |*e| {
         try w.writeAll("<li><a href=\"");
-        try html.href(w, e.path);
-        try w.writeAll("/\"><code>");
+        try writeFileHref(w, "", e.path);
+        try w.writeAll("\"><code>");
         try html.text(w, e.path);
         try w.writeAll("</code></a> ");
         for (site.files) |f| if (std.mem.eql(u8, f.path, e.path)) try gateSpan(w, f.gate);
@@ -1169,25 +1256,54 @@ fn writeGenRow(w: W, g: Generation) Error!void {
 // Directory pages
 // ============================================================================
 
-pub fn writeDirPage(w: W, site: *const Site, d: *const DirView) Error!void {
+/// How a directory page holds its test files' sections. generate.zig chooses,
+/// against `Budget`: every section with its passing subtests named; over the
+/// budget, `counted`; still over it, `parts`.
+pub const DirBody = struct {
+    /// Each file's section (`writeFileSection`), in `DirView.files` order;
+    /// empty when the sections are on part pages.
+    sections: []const []const u8 = &.{},
+    /// The sections count passing subtests without naming them.
+    counted: bool = false,
+    /// The sections are on part pages (`writePartPage`): each file's part,
+    /// 1-based, in `DirView.files` order, and how many parts there are.
+    parts: []const usize = &.{},
+    part_count: usize = 0,
+    /// The budget the page was held to, as its note says it.
+    budget_bytes: usize = Budget.default_bytes,
+};
+
+/// A budget as its note says it: "2&nbsp;MB", "40&nbsp;kB".
+fn writeBytes(w: W, n: usize) Error!void {
+    if (n >= 1_000_000 and n % 1_000_000 == 0) return w.print("{d}&nbsp;MB", .{n / 1_000_000});
+    try w.print("{d}&nbsp;kB", .{n / 1000});
+}
+
+/// The directory's own number: N for a suite, N.i for a suite's own directories.
+fn dirNumber(buf: []u8, site: *const Site, p: []const u8) ?[]const u8 {
+    const suite = p[0 .. (std.mem.indexOfScalar(u8, p, '/') orelse p.len) + 1];
+    const n = site.suiteNo(suite) orelse return null;
+    if (std.mem.eql(u8, p, suite)) return std.fmt.bufPrint(buf, "{d}", .{n}) catch null;
+    if (depthOf(p) == 2) {
+        for (site.dir(suite).dirs, 1..) |c, i| if (std.mem.eql(u8, c, p)) return std.fmt.bufPrint(buf, "{d}.{d}", .{ n, i }) catch null;
+    }
+    return null;
+}
+
+fn suiteOf(p: []const u8) []const u8 {
+    return p[0 .. (std.mem.indexOfScalar(u8, p, '/') orelse 0) + 1];
+}
+
+pub fn writeDirPage(w: W, site: *const Site, d: *const DirView, body: DirBody) Error!void {
     var rbuf: [3 * 64]u8 = undefined;
     const root = rootFor(&rbuf, depthOf(d.path));
-    const suite = d.path[0 .. (std.mem.indexOfScalar(u8, d.path, '/') orelse d.path.len) + 1];
-    const suite_no = site.suiteNo(suite);
-    // A suite's own directories are numbered N.i, as its index section numbers them.
+    const suite = suiteOf(d.path);
     var number_buf: [32]u8 = undefined;
-    const number: ?[]const u8 = blk: {
-        const n = suite_no orelse break :blk null;
-        if (std.mem.eql(u8, d.path, suite)) break :blk std.fmt.bufPrint(&number_buf, "{d}", .{n}) catch null;
-        if (depthOf(d.path) == 2) {
-            for (site.dir(suite).dirs, 1..) |c, i| if (std.mem.eql(u8, c, d.path)) break :blk std.fmt.bufPrint(&number_buf, "{d}.{d}", .{ n, i }) catch null;
-        }
-        break :blk null;
-    };
+    const number = dirNumber(&number_buf, site, d.path);
 
     var title_buf: [512]u8 = undefined;
     const title = std.fmt.bufPrint(&title_buf, "{s} - Crane WPT Results", .{d.path}) catch "Crane WPT Results";
-    try writeHead(w, .{ .root = root, .title = title, .description = "Crane's web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it." });
+    try writeHead(w, .{ .root = root, .title = title, .description = "Crane's web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages." });
     try w.writeAll("</head>\n<body>\n<div class=\"frame\">\n<main class=\"doc\" id=\"main\">\n<header class=\"head head-page\">\n");
     try writeCrumbs(w, root, d.path, false);
     try w.writeAll("<h1 class=\"page-title\">");
@@ -1206,35 +1322,113 @@ pub fn writeDirPage(w: W, site: *const Site, d: *const DirView) Error!void {
     if (d.files.len > 0) {
         try html.plural(w, d.files.len, "test file", "test files");
         try w.writeAll(" here");
+        if (body.part_count > 0) try w.print(", on {d} pages", .{body.part_count});
     }
     try w.writeAll("</span></div>\n");
-    try writeDirTable(w, site, root, d.dirs, if (std.mem.eql(u8, d.path, suite)) suite_no else null, false);
-    try writeFileTable(w, site, root, d.files, false);
+    try writeDirTable(w, site, root, d.dirs, if (std.mem.eql(u8, d.path, suite)) site.suiteNo(suite) else null, false);
+    if (d.files.len > 0) try writeFileList(w, site, d.files, body);
     try w.writeAll("</div>\n</div>\n");
     try writeClose(w, site, root, suite);
 }
 
-// ============================================================================
-// Test file pages
-// ============================================================================
+/// A directory's test files as a list: a head naming the columns, then one
+/// row per file - its section (a `<details>` that opens in place), or, when
+/// the sections are on part pages, a link to the file's section there that
+/// keeps the file's id, so `<dir>/#<file>` still lands on its row.
+fn writeFileList(w: W, site: *const Site, files: []const usize, body: DirBody) Error!void {
+    try w.print("<div class=\"tf-list{s}\">\n", .{if (site.reference != null) " has-ref" else ""});
+    if (body.part_count > 0) {
+        try w.print("<p class=\"tf-hint\">These test files&rsquo; sections are on {d} pages, to keep each page under ", .{body.part_count});
+        try writeBytes(w, body.budget_bytes);
+        try w.writeAll(": each file leads to its own.</p>\n");
+    } else {
+        try w.writeAll("<p class=\"tf-hint\">Each test file opens in place to its subtests, and each subtest that did not pass to its message.");
+        if (body.counted) {
+            try w.writeAll(" Passing subtests are counted, not named: with every name this page would be larger than ");
+            try writeBytes(w, body.budget_bytes);
+            try w.writeAll(".");
+        }
+        try w.writeAll("</p>\n");
+    }
+    try w.writeAll("<div class=\"tf-head\"><span>Test file</span><span>Subtests passing</span>");
+    if (site.reference) |r| try w.print("<span>{s}</span>", .{r.label()});
+    try w.writeAll("<span>Failed</span><span>Standing</span></div>\n");
+    if (body.part_count > 0) {
+        for (files, body.parts) |fi, part| {
+            const f = &site.files[fi];
+            try w.writeAll("<div class=\"tf tf-away\"");
+            try writeFileAttrs(w, f);
+            try w.print("><a class=\"tf-row\" href=\"~{d}/#", .{part});
+            try html.href(w, baseName(f.path));
+            try w.writeAll("\">");
+            try writeSummaryCells(w, site, f);
+            try w.writeAll("</a></div>\n");
+        }
+    } else {
+        for (body.sections) |s| try w.writeAll(s);
+    }
+    try w.writeAll("</div>\n");
+}
 
-pub fn writeFilePage(w: W, site: *const Site, f: *const FileView, runs: []const SubtestRun) Error!void {
-    var rbuf: [3 * 64]u8 = undefined;
-    const root = rootFor(&rbuf, depthOf(f.path) + 1);
-    const suite = f.path[0 .. (std.mem.indexOfScalar(u8, f.path, '/') orelse 0) + 1];
+/// A file row's id (the file's name) and the keys site.js sorts and filters by.
+fn writeFileAttrs(w: W, f: *const FileView) Error!void {
+    try w.writeAll(" id=\"");
+    try html.text(w, baseName(f.path));
+    try w.print("\" data-gate=\"{s}\" data-pass=\"{d}\" data-of=\"{d}\" data-failed=\"{d}\"", .{ f.gate.word(), f.counts.passed, f.counts.reported(), f.counts.failed });
+    if (f.ref) |rv| try w.print(" data-ref-pass=\"{d}\" data-ref-of=\"{d}\"", .{ rv.counts.passed, rv.counts.reported() });
+}
 
-    var title_buf: [600]u8 = undefined;
-    const title = std.fmt.bufPrint(&title_buf, "{s} - Crane WPT Results", .{f.path}) catch "Crane WPT Results";
-    try writeHead(w, .{ .root = root, .title = title, .description = "Crane's web-platform-tests result for one test file: its subtest numbers, and each subtest's status and failure message." });
-    try w.writeAll("</head>\n<body>\n<div class=\"frame\">\n<main class=\"doc\" id=\"main\">\n<header class=\"head head-page\">\n");
-    try writeCrumbs(w, root, f.path, true);
-    try w.writeAll("<h1 class=\"page-title\">");
+/// A file's row, as its section's summary shows it: the name, Crane's
+/// subtests passing, the reference run's beside them, failed, the standing.
+/// The words in `tf-lbl` are for readers that do not see the column heads.
+fn writeSummaryCells(w: W, site: *const Site, f: *const FileView) Error!void {
+    try w.writeAll("<span class=\"tf-name\">");
     try html.path(w, baseName(f.path));
-    try w.writeAll("</h1>\n");
-    const c = f.counts;
-    try writeFigures(w, f.path, .{ .pass = c.passed, .reported = c.reported(), .failed = c.failed, .timed_out = c.timed_out, .notrun = c.notrun });
+    try w.writeAll("</span><span class=\"tf-n\">");
+    if (f.status == null) {
+        try w.writeAll("<span class=\"quiet\">&mdash;</span><span class=\"tf-lbl\"> not run</span>");
+    } else {
+        try writePassOf(w, f.counts.passed, f.counts.reported());
+        if (f.counts.reported() > 0) try w.writeAll("<span class=\"tf-lbl\"> passing</span>");
+    }
+    try w.writeAll("</span>");
+    if (site.reference) |r| {
+        try w.print("<span class=\"tf-ref\"><span class=\"tf-lbl\">{s} </span>", .{r.label()});
+        if (f.ref) |rv| try writePassOf(w, rv.counts.passed, rv.counts.reported()) else try w.writeAll("<span class=\"quiet\">&mdash;</span>");
+        try w.writeAll("</span>");
+    }
+    try w.writeAll("<span class=\"tf-fail\">");
+    if (f.counts.failed > 0) {
+        try w.writeAll("<span class=\"fail\">");
+        try html.num(w, f.counts.failed);
+        try w.writeAll("</span>");
+    } else try w.writeAll("<span class=\"quiet\">0</span>");
+    try w.writeAll("<span class=\"tf-lbl\"> failed</span></span><span class=\"tf-gate\">");
+    try gateSpan(w, f.gate);
+    try w.writeAll("</span>");
+}
 
-    try w.writeAll("<dl class=\"file-meta\">\n<div><dt>Standing</dt><dd>");
+// ============================================================================
+// Test file sections
+// ============================================================================
+
+pub const SectionOptions = struct {
+    /// Name the passing subtests (in a closed list under their count); false
+    /// counts them only (`DirBody.counted`).
+    passing_names: bool = true,
+};
+
+/// One test file's section of its directory's page: a native `<details>`
+/// whose summary is the file's row and which opens in place to what a test
+/// file's page used to hold - its standing, the reference run's, the run (when
+/// not the generation's main one), its source, its harness message, and its
+/// subtests, each failure opening in place to its message.
+pub fn writeFileSection(w: W, gpa: std.mem.Allocator, site: *const Site, f: *const FileView, runs: []const SubtestRun, opts: SectionOptions) SectionError!void {
+    try w.writeAll("<details class=\"tf\"");
+    try writeFileAttrs(w, f);
+    try w.writeAll("><summary>");
+    try writeSummaryCells(w, site, f);
+    try w.writeAll("</summary>\n<div class=\"tf-body\">\n<dl class=\"file-meta\">\n<div><dt>Standing</dt><dd>");
     try gateSpan(w, f.gate);
     if (f.status) |st| {
         try w.writeAll(" <span class=\"quiet\">runner status <code>");
@@ -1243,9 +1437,10 @@ pub fn writeFilePage(w: W, site: *const Site, f: *const FileView, runs: []const 
     }
     try w.writeAll("</dd></div>\n");
     try writeRefStanding(w, site, f);
-    try w.writeAll("<div><dt>Run</dt><dd>");
-    if (f.run) |rid| {
-        try w.writeAll("<code>");
+    // The run, only when it is not the generation's main one: a new sweep
+    // must not rewrite a section whose result it did not change.
+    if (f.run) |rid| if (site.main_run == null or !std.mem.eql(u8, rid, site.main_run.?)) {
+        try w.writeAll("<div><dt>Run</dt><dd><code>");
         try html.text(w, rid);
         try w.writeAll("</code>");
         if (site.runs.get(rid)) |r| {
@@ -1254,8 +1449,9 @@ pub fn writeFilePage(w: W, site: *const Site, f: *const FileView, runs: []const 
             try w.writeAll("</span>, Crane ");
             try commitLink(w, r.commit);
         }
-    } else try w.writeAll("not run yet");
-    try w.writeAll("</dd></div>\n<div><dt>Test source</dt><dd><a href=\"");
+        try w.writeAll("</dd></div>\n");
+    };
+    try w.writeAll("<div><dt>Test source</dt><dd><a href=\"");
     try sourceUrl(w, site, f.path);
     try w.writeAll("\">");
     try html.path(w, f.path);
@@ -1270,8 +1466,7 @@ pub fn writeFilePage(w: W, site: *const Site, f: *const FileView, runs: []const 
         try html.text(w, m);
         try w.writeAll("</pre></div>\n");
     }
-    try w.writeAll("</header>\n<section class=\"subtests-section\" aria-labelledby=\"subtests-h\">\n<h2 id=\"subtests-h\">Subtests</h2>\n");
-
+    const c = f.counts;
     if (runs.len == 0) {
         try w.writeAll("<p class=\"no-detail\"><strong>No per-subtest data for this file.</strong> ");
         if (f.status == null) {
@@ -1291,41 +1486,42 @@ pub fn writeFilePage(w: W, site: *const Site, f: *const FileView, runs: []const 
         }
         try w.writeAll("</p>\n");
     } else {
-        try w.writeAll("<p class=\"sub-hint\">Each subtest that failed opens in place to its message.</p>\n");
-        var ids = IdSet{};
-        for (runs) |r| try writeRun(w, r, runs.len > 1, &ids);
+        var ids: IdSet = .{ .gpa = gpa };
+        defer ids.deinit();
+        for (runs) |r| try writeRun(w, r, runs.len > 1, &ids, opts);
     }
-    try w.writeAll("</section>\n");
-    try writeClose(w, site, root, suite);
+    try w.writeAll("</div>\n</details>\n");
 }
 
-/// Subtest ids, made unique within their page: a hash of the test URL and
-/// the name, stable across regenerations, with a suffix for a repeated name.
+/// Subtest ids, unique within their file: a hash of the test URL and the
+/// name (so unique within the directory's page too, at 48 bits), stable
+/// across regenerations, with a suffix for a repeated name.
 const IdSet = struct {
-    seen: [4096]u32 = undefined,
-    n: usize = 0,
-    overflow: u32 = 0,
+    gpa: std.mem.Allocator,
+    seen: std.AutoHashMapUnmanaged(u64, u32) = .empty,
 
-    fn make(s: *IdSet, buf: []u8, test_url: []const u8, name: []const u8) []const u8 {
+    fn deinit(s: *IdSet) void {
+        s.seen.deinit(s.gpa);
+    }
+
+    fn make(s: *IdSet, buf: []u8, test_url: []const u8, name: []const u8) std.mem.Allocator.Error![]const u8 {
         var h = std.hash.Wyhash.init(0x5eed);
         h.update(test_url);
         h.update("\x00");
         h.update(name);
-        const v: u32 = @truncate(h.final());
-        var dup: u32 = 0;
-        for (s.seen[0..s.n]) |x| if (x == v) {
-            dup += 1;
-        };
-        if (s.n < s.seen.len) {
-            s.seen[s.n] = v;
-            s.n += 1;
-        }
-        if (dup == 0) return std.fmt.bufPrint(buf, "s-{x:0>8}", .{v}) catch unreachable;
-        return std.fmt.bufPrint(buf, "s-{x:0>8}-{d}", .{ v, dup + 1 }) catch unreachable;
+        const v: u48 = @truncate(h.final());
+        const gop = try s.seen.getOrPut(s.gpa, v);
+        const n: u32 = if (gop.found_existing) gop.value_ptr.* + 1 else 1;
+        gop.value_ptr.* = n;
+        if (n == 1) return std.fmt.bufPrint(buf, "s-{x:0>12}", .{v}) catch unreachable;
+        return std.fmt.bufPrint(buf, "s-{x:0>12}-{d}", .{ v, n }) catch unreachable;
     }
 };
 
-fn writeRun(w: W, r: SubtestRun, multi: bool, ids: *IdSet) Error!void {
+/// One test URL's subtests: those that did not pass in the harness's order,
+/// each with its id and self-link, a failure opening in place to its message;
+/// then the passing ones as a count, opening to their names when `opts` keeps them.
+fn writeRun(w: W, r: SubtestRun, multi: bool, ids: *IdSet, opts: SectionOptions) SectionError!void {
     try w.writeAll("<div class=\"run\">\n");
     if (multi or !std.mem.eql(u8, r.status, "OK")) {
         try w.writeAll("<h3 class=\"run-head\"><code>");
@@ -1341,11 +1537,17 @@ fn writeRun(w: W, r: SubtestRun, multi: bool, ids: *IdSet) Error!void {
         try html.text(w, m);
         try w.writeAll("</pre>\n");
     }
-    if (r.subtests.len > 0) {
+    var listed_pass: u64 = 0;
+    var others: usize = 0;
+    for (r.subtests) |s| {
+        if (std.mem.eql(u8, s.status, "PASS")) listed_pass += 1 else others += 1;
+    }
+    if (others > 0) {
         try w.writeAll("<ol class=\"subtests\">\n");
         for (r.subtests) |s| {
+            if (std.mem.eql(u8, s.status, "PASS")) continue;
             var idbuf: [32]u8 = undefined;
-            const id = ids.make(&idbuf, r.test_url, s.name);
+            const id = try ids.make(&idbuf, r.test_url, s.name);
             try w.print("<li class=\"sub {s}\" id=\"{s}\">", .{ markClass(s.status), id });
             if (s.message) |m| {
                 try w.print("<details><summary><span class=\"mark\">{s}</span><span class=\"sub-name\">", .{markWord(s.status)});
@@ -1362,6 +1564,24 @@ fn writeRun(w: W, r: SubtestRun, multi: bool, ids: *IdSet) Error!void {
         }
         try w.writeAll("</ol>\n");
     }
+    if (listed_pass > 0) {
+        if (opts.passing_names) {
+            try w.writeAll("<details class=\"passing\"><summary>");
+            try html.plural(w, listed_pass, "passing subtest", "passing subtests");
+            try w.writeAll("</summary><ol class=\"pass-list\">");
+            for (r.subtests) |s| {
+                if (!std.mem.eql(u8, s.status, "PASS")) continue;
+                try w.writeAll("<li>");
+                try html.text(w, s.name);
+                try w.writeAll("</li>");
+            }
+            try w.writeAll("</ol></details>\n");
+        } else {
+            try w.writeAll("<p class=\"omitted\">");
+            try html.plural(w, listed_pass, "passing subtest", "passing subtests");
+            try w.writeAll(", counted, not named on this page.</p>\n");
+        }
+    }
     if (r.passing_omitted > 0) {
         try w.writeAll("<p class=\"omitted\">");
         try html.plural(w, r.passing_omitted, "passing subtest is", "passing subtests are");
@@ -1372,10 +1592,95 @@ fn writeRun(w: W, r: SubtestRun, multi: bool, ids: *IdSet) Error!void {
 }
 
 // ============================================================================
+// Part pages: a directory over the budget
+// ============================================================================
+
+/// The name of a directory's part page, below the directory: `~2/`. No WPT
+/// directory starts with `~`, so it never shadows one.
+pub fn partDir(buf: []u8, part: usize) []const u8 {
+    return std.fmt.bufPrint(buf, "~{d}/", .{part}) catch unreachable;
+}
+
+/// Part `part` of `part_count` of a directory's file sections: `files` are
+/// indices into `Site.files`, `sections` theirs, in order.
+pub fn writePartPage(w: W, site: *const Site, d: *const DirView, part: usize, part_count: usize, files: []const usize, sections: []const []const u8, body: DirBody) Error!void {
+    var rbuf: [3 * 65]u8 = undefined;
+    const root = rootFor(&rbuf, depthOf(d.path) + 1);
+    const suite = suiteOf(d.path);
+    var title_buf: [512]u8 = undefined;
+    const title = std.fmt.bufPrint(&title_buf, "{s} part {d} of {d} - Crane WPT Results", .{ d.path, part, part_count }) catch "Crane WPT Results";
+    try writeHead(w, .{ .root = root, .title = title, .description = "Crane's web-platform-tests results for some of the test files of one directory of the WPT tree, with their subtests and failure messages." });
+    try w.writeAll("</head>\n<body>\n<div class=\"frame\">\n<main class=\"doc\" id=\"main\">\n<header class=\"head head-page\">\n");
+    // The crumbs: the directory's, its own name a link, then this part.
+    try w.writeAll("<nav class=\"crumbs\" aria-label=\"Breadcrumb\"><ol>");
+    try w.print("<li><a href=\"{s}\">Crane WPT results</a></li>", .{root});
+    var it = std.mem.splitScalar(u8, d.path[0 .. d.path.len - 1], '/');
+    var consumed: usize = 0;
+    while (it.next()) |seg| {
+        consumed += seg.len + 1;
+        try w.print("<li><a href=\"{s}", .{root});
+        try html.href(w, d.path[0..consumed]);
+        try w.writeAll("\">");
+        try html.path(w, d.path[consumed - seg.len - 1 .. consumed]);
+        try w.writeAll("</a></li>");
+    }
+    try w.print("<li aria-current=\"page\">part {d} of {d}</li></ol></nav>\n", .{ part, part_count });
+    try w.writeAll("<h1 class=\"page-title\">");
+    try html.path(w, d.path);
+    try w.print(" <span class=\"part-no\">part {d} of {d}</span></h1>\n", .{ part, part_count });
+    var t: model.Totals = .{};
+    for (files) |fi| t.add(site.files[fi].gate, site.files[fi].counts);
+    try writeFigures(w, "these test files", Figures.ofTotals(t));
+    try w.writeAll("<p class=\"part-lede\">Test files ");
+    try html.path(w, baseName(site.files[files[0]].path));
+    try w.writeAll(" to ");
+    try html.path(w, baseName(site.files[files[files.len - 1]].path));
+    try w.writeAll(" of <a href=\"../\">");
+    try html.path(w, d.path);
+    try w.writeAll("</a>, whose page has the directory&rsquo;s numbers and lists every file.</p>\n</header>\n");
+    try w.writeAll("<div class=\"box tests\">\n<div class=\"box-head\"><h2 class=\"box-title\">Tests</h2><span class=\"box-sub\">");
+    try html.plural(w, files.len, "test file", "test files");
+    try w.writeAll(" here</span></div>\n");
+    try writeFileList(w, site, files, .{ .sections = sections, .counted = body.counted, .budget_bytes = body.budget_bytes });
+    try w.writeAll("</div>\n<nav class=\"parts\" aria-label=\"Parts\"><ol>");
+    for (1..part_count + 1) |p| {
+        var pbuf: [24]u8 = undefined;
+        if (p == part) {
+            try w.print("<li aria-current=\"page\">Part {d}</li>", .{p});
+        } else try w.print("<li><a href=\"../{s}\">Part {d}</a></li>", .{ partDir(&pbuf, p), p });
+    }
+    try w.writeAll("</ol></nav>\n");
+    try writeClose(w, site, root, suite);
+}
+
+// ============================================================================
+// 404.html
+// ============================================================================
+
+/// GitHub Pages' page for every missing address. Served at the missing
+/// address itself, so its assets and links are named from the site's path
+/// (`Site.basePath`), and its one relative link, `../`, is the directory of a
+/// test file's old page address - where its section is. site.js adds the
+/// file's `#name` and goes there (`oldFileTarget`). It carries no results, so
+/// a regeneration leaves it alone.
+pub fn write404(w: W, site: *const Site) Error!void {
+    const base = site.basePath();
+    try writeHead(w, .{ .root = base, .title = "Not found - Crane WPT Results", .description = "No page of Crane's web-platform-tests results is at this address; a test file's old page address leads to its section on its directory's page." });
+    try w.writeAll("</head>\n<body>\n<div class=\"frame\">\n<main class=\"doc\" id=\"main\">\n<header class=\"head head-page\">\n");
+    try w.print("<nav class=\"crumbs\" aria-label=\"Breadcrumb\"><ol><li><a href=\"{s}\">Crane WPT results</a></li><li aria-current=\"page\">Not found</li></ol></nav>\n", .{base});
+    try w.writeAll("<h1 class=\"page-title\">Not found</h1>\n</header>\n<section class=\"notfound\">\n");
+    try w.writeAll("<p>Nothing of Crane&rsquo;s WPT results is at this address.</p>\n");
+    try w.writeAll("<p>If it is a test file&rsquo;s old page: test files no longer have pages of their own. Each is a section of its directory&rsquo;s page, at the directory&rsquo;s address with the file&rsquo;s name after a <code>#</code>, so <code>dom/<wbr>nodes/<wbr>Node-cloneNode.<wbr>html/</code> is now <code>dom/<wbr>nodes/<wbr>#Node-cloneNode.<wbr>html</code>.</p>\n");
+    try w.writeAll("<p class=\"moved\"><a id=\"moved-to\" href=\"../\">Its directory&rsquo;s page</a></p>\n");
+    try w.print("<p>Or start from <a href=\"{s}\">the record</a>: every suite and directory, with its numbers.</p>\n</section>\n", .{base});
+    try writeClose(w, site, base, null);
+}
+
+// ============================================================================
 // A reference run beside Crane's
 // ============================================================================
 
-/// A file page's row for the reference run: its standing and subtests, or
+/// A file section's row for the reference run: its standing and subtests, or
 /// that it has none.
 fn writeRefStanding(w: W, site: *const Site, f: *const FileView) Error!void {
     const r = site.reference orelse return;
@@ -1777,8 +2082,8 @@ fn gateRank(g: model.Gate) u8 {
 fn writeCompareRow(w: W, f: FileView, ref_ahead: bool) Error!void {
     const rv = f.ref.?;
     try w.print("<tr data-gate=\"{s}\"><th scope=\"row\"><a href=\"", .{f.gate.word()});
-    try html.href(w, f.path);
-    try w.writeAll("/\">");
+    try writeFileHref(w, "", f.path);
+    try w.writeAll("\">");
     try html.path(w, f.path);
     try w.writeAll("</a></th>");
     try w.print("<td class=\"n\" data-v=\"{d}\" data-of=\"{d}\">", .{ f.counts.passed, f.counts.reported() });
@@ -1811,8 +2116,8 @@ fn writeOnlyList(w: W, site: *const Site, list: []const usize, ref_side: bool) E
         const c = if (ref_side) f.ref.?.counts else f.counts;
         const g = if (ref_side) f.ref.?.gate else f.gate;
         try w.writeAll("<tr><th scope=\"row\"><a href=\"");
-        try html.href(w, f.path);
-        try w.writeAll("/\">");
+        try writeFileHref(w, "", f.path);
+        try w.writeAll("\">");
         try html.path(w, f.path);
         try w.print("</a></th><td class=\"n\" data-v=\"{d}\" data-of=\"{d}\">", .{ c.passed, c.reported() });
         try writePassOf(w, c.passed, c.reported());
@@ -1839,7 +2144,7 @@ pub fn writeComparePage(w: W, site: *const Site) Error!void {
     try writeRefFigures(w, site, site.root().ref_totals);
     try w.writeAll("<p class=\"compare-lede\">");
     try writeRunIdentity(w, r);
-    try w.writeAll(" Its results are a reference, never counted as Crane&rsquo;s. A file is listed where the two pass different numbers of its subtests; the same count can still hide different subtests, which each file&rsquo;s page shows for Crane.</p>\n</header>\n");
+    try w.writeAll(" Its results are a reference, never counted as Crane&rsquo;s. A file is listed where the two pass different numbers of its subtests; the same count can still hide different subtests, which each file&rsquo;s section on its directory&rsquo;s page shows for Crane.</p>\n</header>\n");
 
     try w.print("<section class=\"compare\" id=\"ahead-ref\" aria-labelledby=\"ahead-ref-h\">\n<h2 id=\"ahead-ref-h\">Where {s} passes subtests Crane does not</h2>\n<p>", .{name});
     try html.plural(w, site.ahead_ref.len, "file", "files");
@@ -1909,4 +2214,38 @@ test "needsScript: the enhancement script is allowed; anything content would wai
     try std.testing.expectEqualStrings("more than one script", needsScript("<script src=\"site.js\" defer></script><script src=\"site.js\" defer></script>").?);
     try std.testing.expectEqualStrings("a slot for script to fill", needsScript("<dd data-fill=\"hl-pass\"></dd>").?);
     try std.testing.expectEqualStrings("a loading placeholder", needsScript("<p>Loading the results</p>").?);
+}
+
+test "oldFileTarget: a test file's old page address goes to its section; any other address stays" {
+    var buf: [256]u8 = undefined;
+    try std.testing.expectEqualStrings("/crane/dom/nodes/#Node-cloneNode.html", oldFileTarget(&buf, "/crane/dom/nodes/Node-cloneNode.html/").?);
+    try std.testing.expectEqualStrings("/crane/dom/nodes/#Node-cloneNode.html", oldFileTarget(&buf, "/crane/dom/nodes/Node-cloneNode.html/index.html").?);
+    try std.testing.expectEqualStrings("/crane/dom/nodes/#Node-cloneNode.html", oldFileTarget(&buf, "/crane/dom/nodes/Node-cloneNode.html").?);
+    // Encoded as the old page's address was (html.href), so as the new fragment is.
+    try std.testing.expectEqualStrings("/crane/url/#a%20b.any.js", oldFileTarget(&buf, "/crane/url/a%20b.any.js/").?);
+    try std.testing.expectEqualStrings("/x/#y.html", oldFileTarget(&buf, "/x/y.html/").?);
+    try std.testing.expect(oldFileTarget(&buf, "/crane/dom/nodes/") == null);
+    try std.testing.expect(oldFileTarget(&buf, "/crane/dom/index.html") == null);
+    try std.testing.expect(oldFileTarget(&buf, "/crane/") == null);
+    try std.testing.expect(oldFileTarget(&buf, "/") == null);
+    try std.testing.expect(oldFileTarget(&buf, "") == null);
+}
+
+test "writeFileHref: a test file's address is its section on its directory's page" {
+    var aw: Io.Writer.Allocating = .init(std.testing.allocator);
+    defer aw.deinit();
+    try writeFileHref(&aw.writer, "../../", "dom/nodes/Node-cloneNode.html");
+    try aw.writer.writeByte(' ');
+    try writeFileHref(&aw.writer, "", "url/a b.any.js");
+    try std.testing.expectEqualStrings("../../dom/nodes/#Node-cloneNode.html url/#a%20b.any.js", aw.written());
+}
+
+test "mainRun: the run that holds the most files, the first by id among equals" {
+    var runs: std.StringArrayHashMapUnmanaged(RunInfo) = .empty;
+    defer runs.deinit(std.testing.allocator);
+    try std.testing.expect(mainRun(&runs) == null);
+    try runs.put(std.testing.allocator, "wpt-x", .{ .id = "wpt-x", .commit = null, .date = "", .journal = "", .files = 3 });
+    try runs.put(std.testing.allocator, "sweep-b", .{ .id = "sweep-b", .commit = null, .date = "", .journal = "", .files = 900 });
+    try runs.put(std.testing.allocator, "sweep-a", .{ .id = "sweep-a", .commit = null, .date = "", .journal = "", .files = 900 });
+    try std.testing.expectEqualStrings("sweep-a", mainRun(&runs).?);
 }
