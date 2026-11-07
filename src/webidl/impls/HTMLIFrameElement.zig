@@ -1850,15 +1850,23 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // The same snapshot, serialized, for the navigation's request (its
     // origin, startFetch).
     if (options.source_document) |source| record.request_origin = documentOriginOf(source, allocator);
-    // "Create navigation params by fetching" step 3 for a traversal or reload
-    // no document started ("apply the history step" populating the entry
+    // "Create navigation params by fetching" step 3 for a traversal no
+    // document started ("apply the history step" populating the entry
     // again): the request's origin is the entry's document state's initiator
     // origin, and its referrer the document state's request referrer - those
     // of the navigation that first populated it, not the document the
     // navigable shows now. Chrome and Firefox pass history-traversal/
     // document-state.https.html's "document repopulation case" (Safari fails;
     // wpt.fyi 94f58d592d).
-    if (options.traversal_entry != 0 and options.source_document == null) {
+    // Deviation, stated: not for a reload (the traversal to the entry the
+    // navigable is on). The spec's step applies to it too, but the same file's
+    // "used on location.reload()" fails in Chrome 157, Firefox 159 and Safari
+    // 27.2, and a reload sent with a cross-site initiator loses its
+    // SameSite=Strict cookies: cookies/samesite/form-get-blank-reload.https.html
+    // and window-open-reload.https.html "Reloaded cross-site ... are strictly
+    // same-site" pass in all three (RFC 6265bis treats a reload as same-site)
+    // - golden rule 2, all three browsers.
+    if (options.traversal_entry != 0 and options.traversal_entry != options.traversal_from and options.source_document == null) {
         if (browsing_context.jointHistory() catch null) |history| {
             if (history.entryById(options.traversal_entry)) |entry| {
                 if (record.request_origin == null) if (entry.initiator_origin) |o| {
