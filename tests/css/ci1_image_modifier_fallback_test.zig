@@ -45,5 +45,7 @@ test "unknown nested URL tail keeps its preexisting opaque acceptance until the 
     try testing.expect(try block.setProperty(.{ .allocator = testing.allocator }, "background-image", text, ""));
     const value = block.get(.background_image).?.value.value;
     try testing.expect(value == .text);
-    try testing.expectEqualStrings(text, value.text.bytes);
+    // A setProperty value runs to the real end of its input: CSS Syntax 3
+    // closes the cut-off url( and image-set( at EOF (lane anim1 b4).
+    try testing.expectEqualStrings("image-set(url('a' junk))", value.text.bytes);
 }
