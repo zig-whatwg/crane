@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const infra = @import("infra");
+const runtime = @import("runtime");
 const Allocator = std.mem.Allocator;
 const interfaces = @import("interfaces");
 
@@ -186,7 +187,20 @@ pub const NodeBase = struct {
         const rare = try self.allocator.create(NodeRareData);
         rare.* = .{};
         self.rare = rare;
+        if (self.domMemory()) |memory| memory.add(@sizeOf(NodeRareData));
         return rare;
+    }
+
+    /// The DOM memory of this node's Browser (runtime.BrowserScope.dom_memory),
+    /// which counts what the node holds so V8 can schedule collections by it
+    /// (runtime.own_state.nodeDomMemory): its rare data and its registered
+    /// observer entries are counted here, as they are made and freed. Null for
+    /// a NodeBase no Instance owns (the test-only WithBase types), and after
+    /// the node's teardown unregistered it - nothing is counted for it then.
+    fn domMemory(self: *const NodeBase) ?*runtime.gc.ExternalMemory {
+        const owner = self.owner_instance orelse return null;
+        const instance: *const runtime.Instance = @ptrCast(@alignCast(owner));
+        return &runtime.BrowserScope.ofInstance(instance).dom_memory;
     }
 
     /// The node's teardown, after its registered observers were released
@@ -198,6 +212,7 @@ pub const NodeBase = struct {
         if (rare.node_name_allocated) self.allocator.free(rare.node_name);
         self.allocator.destroy(rare);
         self.rare = null;
+        if (self.domMemory()) |memory| memory.sub(@sizeOf(NodeRareData));
     }
 
     /// The node name a node type gave its NodeBase, or "" - every node but
@@ -255,6 +270,7 @@ pub const NodeBase = struct {
         const record = try self.allocator.create(ObserverRegistration);
         record.* = .{ .registered = registered };
         rare.registered_observers.append(&record.link);
+        if (self.domMemory()) |memory| memory.add(@sizeOf(ObserverRegistration));
         return &record.registered;
     }
 
@@ -265,6 +281,7 @@ pub const NodeBase = struct {
         const record: *ObserverRegistration = @fieldParentPtr("registered", registered);
         rare.registered_observers.remove(&record.link);
         self.allocator.destroy(record);
+        if (self.domMemory()) |memory| memory.sub(@sizeOf(ObserverRegistration));
     }
 
     /// The one write of `parent_node` (WebKit `Node::setParentNode`): the

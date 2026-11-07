@@ -56,6 +56,10 @@ pub fn InstanceRegistry(comptime tag: BrowserScope.Table, comptime T: type) type
             /// The block came from the instance's arena and goes back there on
             /// `remove`.
             owned: bool = false,
+            /// The block counts in its node's Browser's DOM memory
+            /// (runtime.own_state.nodeDomMemory): set by `createIn` for a
+            /// node, and subtracted when the block goes back.
+            counted: bool = false,
         };
 
         /// One Browser's table of `T`.
@@ -92,6 +96,7 @@ pub fn InstanceRegistry(comptime tag: BrowserScope.Table, comptime T: type) type
         /// The block of `slot`, back to the arena of `instance`'s Browser if
         /// the registry owns it.
         fn release(instance: *const Instance, slot: Slot) void {
+            if (slot.counted) BrowserScope.ofInstance(instance).dom_memory.sub(ArenaAllocator.heldBytes(@sizeOf(T), @alignOf(T)));
             if (slot.owned) BrowserScope.ofInstance(instance).arena.destroy(T, slot.ptr);
         }
 
@@ -154,7 +159,9 @@ pub fn InstanceRegistry(comptime tag: BrowserScope.Table, comptime T: type) type
             const internal = try arena.create(T);
             errdefer arena.destroy(T, internal);
             table.guard.beforeInsert(&table.map);
-            try table.map.put(@intFromPtr(instance), .{ .ptr = internal, .owned = true });
+            const memory = @import("own_state.zig").nodeDomMemory(instance);
+            try table.map.put(@intFromPtr(instance), .{ .ptr = internal, .owned = true, .counted = memory != null });
+            if (memory) |dom_memory| dom_memory.add(ArenaAllocator.heldBytes(@sizeOf(T), @alignOf(T)));
             return internal;
         }
 

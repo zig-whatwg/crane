@@ -163,11 +163,18 @@ pub fn register(instance: *anyopaque, node_base: *NodeBase) !void {
 }
 
 /// The native storage a registered node holds for as long as it lives, as
-/// its Browser's DOM memory counts it (runtime.BrowserScope.dom_memory): its
-/// slab slot, its state block as the arena holds it (the block of its
-/// type's state size) and its NodeBase - the allocations every node makes;
-/// what hangs off them (attribute values, text data, lists) is not counted.
-/// Exact sizes, read from the allocators and the node's type.
+/// its Browser's DOM memory counts it (runtime.BrowserScope.dom_memory),
+/// added here at its registration and subtracted at its teardown: its slab
+/// slot, its State block as the arena holds it (the block of its type's
+/// state size) and its NodeBase. The rest of what every node holds is
+/// counted where it is made and freed (lane perf2 batch 4): each level's
+/// InternalState block at its arena class (runtime.own_state.nodeDomMemory,
+/// OwnState and InstanceRegistry), and the NodeBase's rare data and
+/// registered observer entries (NodeBase.domMemory) - so a div is reported
+/// as the ~2,000 B it holds, not the 368 B these three alone come to, and a
+/// node's total returns to 0 at its teardown. What hangs off them (attribute
+/// values, text data, lists) is not counted. Exact sizes, read from the
+/// allocators and the node's type.
 pub fn storageBytes(instance: *const runtime.Instance) usize {
     return runtime.SlabAllocator.slot_bytes +
         runtime.ArenaAllocator.heldBytes(instance.vtable.state_size, instance.vtable.state_align) +
