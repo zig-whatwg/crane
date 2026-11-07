@@ -32,10 +32,12 @@ pub const Registry = runtime.InstanceRegistry(.document, InternalState);
 
 comptime {
     // The registry allocates InternalState from the arena's power-of-two
-    // classes: past 2048 bytes every Document's block doubles to 4096 (feature
-    // queue, 2026-10-18). Pinned; tests/dom/nav2b7_document_state_size_test.zig
-    // reports the size.
-    if (@sizeOf(InternalState) > 2048) @compileError(std.fmt.comptimePrint("Document's InternalState is {d} bytes: past the arena's 2048-byte class", .{@sizeOf(InternalState)}));
+    // classes (feature queue, 2026-10-18: one byte past a class doubles every
+    // Document's block). Measured 2026-11-07 (lane nav2 b7): 2168 bytes at
+    // 0f7c8a5f49e and with load_aborted (the bool fills padding) - already
+    // past the 2048-byte class, so it is in the 4096-byte class; this pins
+    // that class. tests/dom/nav2b7_document_state_size_test.zig checks it.
+    if (@sizeOf(InternalState) > 4096) @compileError(std.fmt.comptimePrint("Document's InternalState is {d} bytes: past the arena's 4096-byte class", .{@sizeOf(InternalState)}));
 }
 
 /// Document format type enumeration
