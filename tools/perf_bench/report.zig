@@ -686,6 +686,7 @@ pub const RoundNote = struct { round: u32, note: []const u8 };
 pub const round_notes = [_]RoundNote{
     .{ .round = 0, .note = "The baseline: the suite's first measurement, of main 9b0f1b1f382, built for its build host's CPU." },
     .{ .round = 1, .note = "Lane perf1: DOM memory reported to V8, and a garbage tree's deferred teardown weighed by its nodes. Lane perf2: getElementsBy* return one live list per document, and querySelector, matches and closest parse through a per-document selector cache with Blink's ID path." },
+    .{ .round = 2, .note = "Lane perf2: each node type's state in its own generated State, read with no hash lookup; a generated State that holds only its internal pointers (a kept div 4,683 -> 2,782 B); NodeBase 472 -> 208 B, and every block a node holds reported to V8. Lane perf3: a DOM call's values are V8 Locals - no Global per getter, setter or method call - and a Global's dispose takes no lock. Lane anim1: CSS transitions and animations from style." },
 };
 
 pub fn roundNote(round: u32) ?[]const u8 {
@@ -2681,6 +2682,7 @@ test "every round has its note, in order" {
         try testing.expect(n.note.len > 0);
     }
     try testing.expect(roundNote(1) != null);
+    try testing.expect(roundNote(2) != null);
     try testing.expect(roundNote(99) == null);
 }
 
