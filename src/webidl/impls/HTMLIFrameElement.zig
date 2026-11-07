@@ -824,6 +824,7 @@ fn updateIframeLocation(realm_ptr: ?*anyopaque, url: []const u8, same_document: 
 
 const navigate_steps = html_core.navigation.navigate_steps;
 const navigation_fetch = html_core.navigation.fetch_integration;
+const WindowFate = dom_module.window_documents.WindowFate;
 const document_lifecycle = dom_module.document_lifecycle;
 const fetch_mod = @import("fetch");
 
@@ -3167,9 +3168,26 @@ fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, wai
         if (!dom_module.navigables.createChildNavigable(container, integration)) return endLoadDelay(integration);
         if (integration.state == .discarded or integration.browsing_context == null) return;
     }
+    // "Create and initialize a Document object" step 6, decided before the
+    // unload: the new document keeps the active Window when the active
+    // document is the initial about:blank and same origin-domain with the
+    // new document's origin (`keepsInitialWindow`, as realmForNewDocument
+    // decides below) - unless a browsing context group switch gives the
+    // navigable a new browsing context (step 1), whose initial about:blank
+    // is opaque. Such a Window is shared by both documents ("both ... will
+    // share the same Window object"), so the about:blank's unload runs only
+    // its document cleanup steps; the global's teardown - Reporting §4's
+    // registered observer list lives on the global, and Blink ends a
+    // ReportingObserver or a BroadcastChannel only at ContextDestroyed,
+    // which its reused LocalDOMWindow (DocumentLoader ShouldReuseDOMWindow)
+    // never gets - waits for that global's end. Passed down as an argument
+    // to the unload (dom.navigables.destroyWindowDocuments), never kept as
+    // state.
+    const new_origin = if (record.final_sandboxing_flags.origin) Origin.createOpaque() else integration.responseOrigin(record.url, response);
+    const window_fate: WindowFate = if (record.group_switch == null and keepsInitialWindow(integration, new_origin)) .kept_for_next_document else .discarded;
     // The back/forward cache may keep the displayed page (unload step 5).
     var kept: ?KeptDocument = null;
-    if (!unloadActiveDocument(integration, if (swap) |*step| step else null, &kept)) return endLoadDelay(integration);
+    if (!unloadActiveDocument(integration, if (swap) |*step| step else null, &kept, window_fate)) return endLoadDelay(integration);
     const unload_end = fetch_mod.algorithms.http_fetch.getCurrentTimeMs();
     if (integration.state == .discarded or integration.browsing_context == null) {
         if (kept) |page| destroyKeptDocument(integration, page);
@@ -3178,8 +3196,7 @@ fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, wai
 
     // "Create and initialize a Document object" steps 5-7: the realm the new
     // document goes in - the active one, or a new Window's around the same
-    // WindowProxy - decided with no realm entered.
-    const new_origin = if (record.final_sandboxing_flags.origin) Origin.createOpaque() else integration.responseOrigin(record.url, response);
+    // WindowProxy - decided with no realm entered (`new_origin` above).
     const old_origin: ?Origin = if (integration.window_proxy) |proxy| proxy.document_origin else null;
     // Navigation Timing: the unload times are the new document's only when
     // the previous document was same origin with it.
@@ -4167,15 +4184,15 @@ fn documentBaseUrl(document: *runtime.Instance, allocator: std.mem.Allocator) ?[
 /// `kept` is set when the unload kept the document for the back/forward
 /// cache (dom.bfcache): it was not destroyed, and the caller hands it and
 /// its realm to the cache - or destroys it.
-fn unloadActiveDocument(integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, kept: *?KeptDocument) bool {
+fn unloadActiveDocument(integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, kept: *?KeptDocument, window_fate: WindowFate) bool {
     const ctx = navigableContext(integration) orelse return false;
     var unloaded = true;
-    if (!inRealm(ctx, unloadActive, .{ integration, page_swap, &unloaded, kept })) return false;
+    if (!inRealm(ctx, unloadActive, .{ integration, page_swap, &unloaded, kept, window_fate })) return false;
     return unloaded;
 }
 
-fn unloadActive(integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, unloaded: *bool, kept: *?KeptDocument) void {
-    if (activeDocumentOf(integration)) |old| unloaded.* = unloadDocumentAndDescendantsKeeping(old, integration, page_swap, kept);
+fn unloadActive(integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, unloaded: *bool, kept: *?KeptDocument, window_fate: WindowFate) void {
+    if (activeDocumentOf(integration)) |old| unloaded.* = unloadDocumentAndDescendantsKeeping(old, integration, page_swap, kept, window_fate);
 }
 
 /// "Deactivate a document for a cross-document navigation" step 5.1's
@@ -4726,8 +4743,8 @@ fn unloadDocumentAndDescendants(document: *runtime.Instance, integration: *IFram
 /// intendToKeepInBfcache: `mayKeepInBfcache`, then dom.bfcache.mayKeep).
 /// `kept` is set when it did: the document is unloaded, not destroyed, and
 /// its history entry still has it.
-fn unloadDocumentAndDescendantsKeeping(document: *runtime.Instance, integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, kept: *?KeptDocument) bool {
-    return unloadDocumentTree(document, integration, page_swap, kept);
+fn unloadDocumentAndDescendantsKeeping(document: *runtime.Instance, integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, kept: *?KeptDocument, window_fate: WindowFate) bool {
+    return unloadDocumentTree(document, integration, page_swap, kept, window_fate);
 }
 
 /// `unloadDocumentAndDescendants` with firePageSwapSteps: the pageswap event
@@ -4740,12 +4757,16 @@ fn unloadDocumentAndDescendantsKeeping(document: *runtime.Instance, integration:
 /// none is salvageable without a bfcache), and then so are the navigables
 /// of `document`'s iframes (`destroyChildNavigables`).
 fn unloadDocumentAndDescendantsSwapping(document: *runtime.Instance, integration: *IFrameIntegration, page_swap: ?*const PageSwapStep) bool {
-    return unloadDocumentTree(document, integration, page_swap, null);
+    return unloadDocumentTree(document, integration, page_swap, null, .discarded);
 }
 
 /// The unload of `unloadDocumentAndDescendantsSwapping`, keeping `document`
 /// for the back/forward cache when `kept` is given and it may be kept.
-fn unloadDocumentTree(document: *runtime.Instance, integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, kept: ?*?KeptDocument) bool {
+/// `window_fate` is what becomes of the navigable's own window: kept for the
+/// next document when that document reuses it (HTML "create and initialize
+/// a Document object" step 6; commitAfterFinalize decides it before this
+/// unload), discarded otherwise.
+fn unloadDocumentTree(document: *runtime.Instance, integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, kept: ?*?KeptDocument, window_fate: WindowFate) bool {
     var documents = dom_module.navigables.inclusiveDescendantDocuments(document, integration.allocator);
     defer documents.deinit(integration.allocator);
     // Unload step 5, before any of the tree's handlers run: the user agent
@@ -4801,8 +4822,11 @@ fn unloadDocumentTree(document: *runtime.Instance, integration: *IFrameIntegrati
         }
     }
     // Step 18 for each document: the unloading document cleanup steps - or,
-    // for a kept one, only the store steps (dom.navigables).
-    if (integration.browsing_context) |bc| dom_module.navigables.destroyWindowDocuments(bc);
+    // for a kept one, only the store steps (dom.navigables). A window the
+    // next document keeps runs the document steps alone: the global's own
+    // teardown (a ReportingObserver's registration, a BroadcastChannel's
+    // keep) waits for that global's end.
+    if (integration.browsing_context) |bc| dom_module.navigables.destroyWindowDocuments(bc, window_fate);
     reasons.finish(integration);
     destroyChildNavigables(integration);
     if (kept) |out| {
@@ -5285,7 +5309,19 @@ fn javascriptNavigationInRealm(integration: *IFrameIntegration, record: *Navigat
     // sandbox flags for the new document (they are the frame's policy, not
     // the response's), as Gecko does (its docshell's sandbox flags).
     if (active) |old| record.final_sandboxing_flags = dom_module.document_scripts.activeSandboxingFlags(old);
-    if (active) |old| unloadDocumentAndDescendants(old, integration);
+    // "Create and initialize a Document object" step 6 for the String's
+    // document, decided before the unload as commitAfterFinalize decides it:
+    // the document keeps the active Window when the active document is the
+    // initial about:blank and same origin-domain with the new document's
+    // origin. The origin it is compared with here is the one the commit
+    // compares (runJavascriptNavigation's realmForDocument: the container's
+    // origin, the decision that actually keeps or replaces the Window), so
+    // the unload never ends the teardown of a global the commit keeps. A kept
+    // Window runs only the about:blank's document cleanup steps; its global
+    // teardown (Reporting §4's registered observers, a BroadcastChannel's
+    // keep) waits for the global's end (dom.unloading_cleanup).
+    const window_fate: WindowFate = if (keepsInitialWindow(integration, integration.container_origin)) .kept_for_next_document else .discarded;
+    if (active) |old| _ = unloadDocumentTree(old, integration, null, null, window_fate);
     if (integration.state == .discarded or integration.browsing_context == null) return;
     // Step 17, handed back to runJavascriptNavigation to commit outside this
     // realm: a new document may need a new one.
@@ -7016,7 +7052,7 @@ fn restoreFromBfcache(integration: *IFrameIntegration, bc: *html_core.BrowsingCo
     var swap = pageSwapOfTraversal(integration, entry_id);
     defer if (swap) |*step| step.deinit();
     var kept: ?KeptDocument = null;
-    const unloaded = unloadActiveDocument(integration, if (swap) |*step| step else null, &kept);
+    const unloaded = unloadActiveDocument(integration, if (swap) |*step| step else null, &kept, .discarded);
     if (!unloaded or integration.state == .discarded or integration.browsing_context == null) {
         if (kept) |leaving| destroyKeptDocument(integration, leaving);
         // The page cannot be shown here any more: it goes.
@@ -7165,7 +7201,7 @@ fn definitelyCloseTraversable(window: *runtime.Instance) bool {
             }
             document_lifecycle.unload(entry.document);
         }
-        dom_module.navigables.destroyWindowDocuments(bc);
+        dom_module.navigables.destroyWindowDocuments(bc, .discarded);
         return true;
     };
     abandonNavigationsOf(made);

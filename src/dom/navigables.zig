@@ -378,7 +378,7 @@ pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameI
     // their windows' timers and animation frames end here, though the
     // contexts live on while script holds the windows.
     if (integration.state != .discarded) {
-        if (integration.browsing_context) |bc| destroyWindowDocuments(bc);
+        if (integration.browsing_context) |bc| destroyWindowDocuments(bc, .discarded);
     }
     // Its entries, and its descendants', leave the traversable's history.
     if (integration.browsing_context) |bc| {
@@ -427,7 +427,14 @@ pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameI
 /// destroyed, so their windows' timers and animation frames end
 /// (dom.window_documents) - though their realms live on for as long as
 /// script holds the windows.
-pub fn destroyWindowDocuments(bc: *BrowsingContext) void {
+///
+/// `fate` is what becomes of `bc`'s own window: `.kept_for_next_document`
+/// when the navigation that unloads its document gives the next document
+/// the same Window (HTML "create and initialize a Document object" step 6),
+/// so only the document's cleanup steps run for it and its global's
+/// teardown waits for the global's end (dom.unloading_cleanup). The windows
+/// of the navigables inside it are always discarded with their documents.
+pub fn destroyWindowDocuments(bc: *BrowsingContext, fate: window_documents.WindowFate) void {
     var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
     defer tree.deinit(std.heap.page_allocator);
     tree.append(std.heap.page_allocator, bc) catch return;
@@ -452,7 +459,9 @@ pub fn destroyWindowDocuments(bc: *BrowsingContext) void {
         // "Destroy a document" step 2, "abort a document" step 2: the
         // fetches its script started are canceled, firing nothing.
         document_fetches.abortAll(window.ctx);
-        window_documents.destroyed(window.ctx);
+        if (navigable == bc and fate == .kept_for_next_document) {
+            window_documents.documentReplaced(window.ctx);
+        } else window_documents.destroyed(window.ctx);
     }
 }
 
