@@ -359,11 +359,22 @@ fn releaseAll(allocator: Allocator, composited: *Composited) void {
     composited.deinit(allocator);
 }
 
+/// Which of the stack's effects a block composites (CSS Transitions 2 4.2):
+/// CSS transitions with an owning element apply at the transitions level of
+/// the cascade, every other effect at the animations level.
+pub const Level = enum { animations, transitions };
+
+fn levelOf(effect: *const model.Effect) Level {
+    const animation = effect.animationModel() orelse return .animations;
+    if (animation.class == .css_transition and @import("css_events.zig").hasOwningElement(animation)) return .transitions;
+    return .animations;
+}
+
 /// The animated values of (element, pseudo) over `base` (its style without
-/// animations), as declarations for the animation origin: typed entries of
-/// computed values, range-checked (Values 4 3.1). Null when no effect
-/// applies. OWNED.
-pub fn animatedBlock(allocator: Allocator, element: *runtime.Instance, pseudo: ?[]const u8, base: *const ComputedStyle, cascader: Cascader) Allocator.Error!?DeclarationBlock {
+/// animations), as declarations for the cascade level `level`: typed entries
+/// of computed values, range-checked (Values 4 3.1). Null when no effect of
+/// that level applies. OWNED.
+pub fn animatedBlock(allocator: Allocator, element: *runtime.Instance, pseudo: ?[]const u8, base: *const ComputedStyle, cascader: Cascader, level: Level) Allocator.Error!?DeclarationBlock {
     const effects = effectsOf(element) orelse return null;
     // 5.3.2: "the computed values of dependencies held by value must be
     // calculated first". Two rounds, as Blink's StyleCascade applies its
@@ -380,7 +391,7 @@ pub fn animatedBlock(allocator: Allocator, element: *runtime.Instance, pseudo: ?
     var any = false;
     for (effects) |link| {
         const effect = liveEffect(link) orelse continue;
-        if (!samePseudo(effect, pseudo)) continue;
+        if (!samePseudo(effect, pseudo) or levelOf(effect) != level) continue;
         any = true;
         try applyEffect(allocator, effect, base, cascader, null, .early, &early, &customs);
     }
@@ -391,7 +402,7 @@ pub fn animatedBlock(allocator: Allocator, element: *runtime.Instance, pseudo: ?
     defer releaseAll(allocator, &composited);
     for (effects) |link| {
         const effect = liveEffect(link) orelse continue;
-        if (!samePseudo(effect, pseudo)) continue;
+        if (!samePseudo(effect, pseudo) or levelOf(effect) != level) continue;
         try applyEffect(allocator, effect, base, cascader, if (early_block) |*b| b else null, .late, &composited, &customs);
     }
     for (early.keys(), early.values()) |l, *v| {
@@ -546,6 +557,22 @@ fn applyEffect(allocator: Allocator, effect: *model.Effect, base: *const Compute
         slot.value_ptr.* = result;
         if (commit) |c| if (effect.animationModel() == c.animation) try c.targeted.put(c.allocator, seed.longhand, {});
     }
+    // A CSS transition's custom property keyframes are its start and end
+    // values themselves, as Blink's TransitionKeyframes hold their values:
+    // the computed text with its attr() taint (CSS Values 5 8.7.2), which
+    // the keyframe's serialized text alone would lose
+    // (css/css-variables/transition-with-attribute-taint.html).
+    if (round == .early) if (effect.animationModel()) |animation| {
+        if (@import("css_transitions.zig").ownCustomValues(animation, effect)) |own| {
+            for (computed_customs.items) |*c| {
+                if (!std.mem.eql(u8, c.name.bytes, own.name)) continue;
+                const value = if (c.frame == 0) own.start else own.end;
+                if (value) |v| v.retain();
+                if (c.value) |old| old.release();
+                c.value = value;
+            }
+        }
+    };
     // Each target custom property in turn (5.3.4), combined by its
     // registered syntax (CSS Properties and Values API 1 2.5), or discretely
     // when it has none.
@@ -624,6 +651,54 @@ fn releaseCustoms(allocator: Allocator, customs: *Customs) void {
 fn customIndex(customs: *const Customs, name: []const u8) ?usize {
     for (customs.items, 0..) |c, i| if (std.mem.eql(u8, c.name.bytes, name)) return i;
     return null;
+}
+
+/// Whether an animation that is not an owned CSS transition, in effect on
+/// (element, pseudo), has `longhand` (a physical longhand) or the custom
+/// property `custom` among its target properties: such a property starts no
+/// transition (Gecko nsTransitionManager skips a property an effect set
+/// animates, HasEffectiveAnimationOfProperty; Blink
+/// CanCalculateTransitionUpdateForProperty; Chrome, Firefox and Safari pass
+/// web-animations/interfaces/Animation/style-change-events.html, whose
+/// covering animation keeps every probe transition from starting).
+pub fn animatesProperty(element: *runtime.Instance, pseudo: ?[]const u8, style: *const ComputedStyle, longhand: ?Longhand, custom: ?[]const u8) bool {
+    const effects = effectsOf(element) orelse return false;
+    for (effects) |link| {
+        const effect = liveEffect(link) orelse continue;
+        if (!samePseudo(effect, pseudo) or levelOf(effect) != .animations) continue;
+        for (effect.keyframes.frames.items) |frame| for (frame.properties.items) |property| {
+            if (custom) |name| {
+                if (std.mem.eql(u8, property.name, name)) return true;
+                continue;
+            }
+            const wanted = longhand orelse continue;
+            const found = css.properties.lookup(property.name) orelse continue;
+            switch (found) {
+                .longhand => |l| if (style.physical(l) == wanted) return true,
+                .shorthand => |sh| for (sh.longhands()) |l| {
+                    if (style.physical(l) == wanted) return true;
+                },
+            }
+        };
+    }
+    return false;
+}
+
+/// CSS Transitions 1 "transitionable" for custom property `name` in
+/// `style`: its registered syntax combines the pair smoothly (an
+/// unregistered or universal one is discrete).
+pub fn customSmooth(allocator: Allocator, style: *const ComputedStyle, name: []const u8, a: CustomValue, b: CustomValue) Allocator.Error!bool {
+    const ops: CustomOps = .{ .allocator = allocator, .syntax = registeredSyntax(style, name) };
+    const value = (try ops.combine(a, b, 0.5, .interpolate)) orelse return false;
+    ops.release(value);
+    return true;
+}
+
+/// Custom property `name`'s values `a` and `b` interpolated at `p` by its
+/// registered syntax, discretely without one. OWNED.
+pub fn customInterpolate(allocator: Allocator, style: *const ComputedStyle, name: []const u8, a: CustomValue, b: CustomValue, p: f64) Allocator.Error!CustomValue {
+    const ops: CustomOps = .{ .allocator = allocator, .syntax = registeredSyntax(style, name) };
+    return ops.interpolate(a, b, p);
 }
 
 /// The registered syntax of custom property `name` in `style`'s
