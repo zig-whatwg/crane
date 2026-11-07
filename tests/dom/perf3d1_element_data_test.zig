@@ -112,7 +112,7 @@ test "ElementData is 152 bytes: the list and the Attr nodes out of line, no allo
     }
 }
 
-test "Element's InternalState fits a 512-byte arena block" {
+test "Element's InternalState is 416 bytes, in a 512-byte arena block" {
     const size = @sizeOf(ElementState);
     const block = runtime.ArenaAllocator.heldBytes(size, @alignOf(ElementState));
     if (block > 512) {
@@ -120,11 +120,12 @@ test "Element's InternalState fits a 512-byte arena block" {
         std.debug.print("Element.InternalState: {d} bytes in a {d}-byte block\n", .{ size, block });
         return error.ElementStateTooLarge;
     }
-    // 848 at 5b07812bf00, in a 1,024-byte block: - 432 (ElementData's
-    // diet) - 16 (Element's allocator copy: the element's Browser's,
-    // found from its address).
-    try expectSize(ElementState, 400);
-    try testing.expect(!@hasField(ElementState, "allocator"));
+    // 848 at 5b07812bf00, in a 1,024-byte block: - 432 (ElementData's diet).
+    // Element keeps its own 16-byte allocator copy, as Node does (lane perf2
+    // b5): in the V8 tests' realms the creation allocator is not the scope's
+    // (docs/lessons/architecture-a-nodes-creation-allocator-is-its-browsers-
+    // only-inside-a-browser.md); ElementData's copy is gone.
+    try expectSize(ElementState, 416);
 }
 
 // ============================================================================
