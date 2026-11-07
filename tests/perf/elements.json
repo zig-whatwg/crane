@@ -1,0 +1,11 @@
+{
+  "format": "crane-perf-suite/1",
+  "pages": [
+    {"page": "memory/elements-control.html", "kind": "retained", "count": 100000, "settle_ms": 3000, "timeout_s": 300, "workloads": ["elements.control"]},
+    {"page": "memory/elements-detached-div.html", "kind": "retained", "count": 100000, "settle_ms": 3000, "timeout_s": 300, "workloads": ["elements.detached-div"]},
+    {"page": "memory/elements-attached-div.html", "kind": "retained", "count": 100000, "settle_ms": 3000, "timeout_s": 300, "workloads": ["elements.attached-div"]},
+    {"page": "memory/elements-div-two-attributes.html", "kind": "retained", "count": 100000, "settle_ms": 3000, "timeout_s": 300, "workloads": ["elements.div-two-attributes"]},
+    {"page": "memory/elements-text-node.html", "kind": "retained", "count": 100000, "settle_ms": 3000, "timeout_s": 300, "workloads": ["elements.text-node"]},
+    {"page": "memory/elements-parser-span.html", "kind": "retained", "count": 100000, "settle_ms": 3000, "timeout_s": 300, "workloads": ["elements.parser-span"]}
+  ]
+}

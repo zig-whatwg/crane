@@ -106,6 +106,16 @@ pub const Kind = enum {
     /// A Crane-only gc_bench row (no browser equivalent): one process run,
     /// its wall time, instructions retired and peak footprint.
     gc_bench,
+    /// Objects made and kept (`perf.retain`, a `retained` page of the
+    /// suite): `ops` of them; the process set's footprint before they were
+    /// made (`footprint_start`) and after (`footprint_end`), each read after
+    /// a collection where the engine lets a page ask for one and the page's
+    /// settle time; `wall_ms` the one sample of making them. Its counters:
+    /// `forced_gc` (1 when the page could ask for a full collection before
+    /// both readings, 0 when it could not), `settle_ms` (the idle time
+    /// before each reading), and `js_heap_before` and `js_heap_after` where
+    /// the engine tells a page its JS heap.
+    retained,
 };
 
 pub const Host = struct {
@@ -196,8 +206,9 @@ pub const Record = struct {
     memory: ?Memory = null,
     /// chain: the footprint after each step; instances: with 1..k running.
     series: []const u64 = &.{},
-    /// Figures only Crane reports (a gc_bench row's retained bytes per
-    /// cycle, engine heap, live handles), by name.
+    /// Figures beyond the common ones, by name: a gc_bench row's retained
+    /// bytes per cycle, engine heap and live handles (Crane only); a
+    /// retained row's collection and JS heap (`Kind.retained`).
     counters: []const Counter = &.{},
     /// From launch to the page's load mark.
     launch_ms: ?f64 = null,
@@ -265,6 +276,11 @@ pub fn validate(r: Record) ValidationError!void {
         .startup => if (r.wall_ms.len != 1) return error.MissingSamples,
         .instances => if (r.series.len < 2) return error.BadSeries,
         .gc_bench => {
+            if (r.wall_ms.len != 1) return error.MissingSamples;
+            if (r.memory == null) return error.MissingMemory;
+        },
+        .retained => {
+            if (r.ops == 0) return error.MissingOps;
             if (r.wall_ms.len != 1) return error.MissingSamples;
             if (r.memory == null) return error.MissingMemory;
         },
@@ -538,6 +554,59 @@ test "validation: each kind's own fields" {
     try validate(r);
     r.memory = null;
     try testing.expectError(error.MissingMemory, validate(r));
+}
+
+fn sampleRetained() Record {
+    var r = sampleTimed();
+    r.page = "memory/elements-detached-div.html";
+    r.workload = "elements.detached-div";
+    r.kind = .retained;
+    r.run = 0;
+    r.ops = 100000;
+    r.wall_ms = &.{41.5};
+    r.cpu_ms = null;
+    r.memory = .{ .footprint_start = 50_000_000, .footprint_end = 324_000_000, .footprint_peak = 330_000_000, .resident_end = 400_000_000, .processes = 1 };
+    r.counters = &.{.{ .name = "forced_gc", .value = 1 }};
+    r.launch_ms = null;
+    return r;
+}
+
+/// The line `sampleRetained` writes: a retained row, byte for byte.
+const golden_retained =
+    \\{"format":"crane-perf/1","round":0,"time":"2026-11-05T18:00:00Z","host":{"name":"chat","os":"macOS 26.1 (25B78)","arch":"aarch64","cpu":"Apple M4 Pro","cores":14,"memory_bytes":68719476736},"engine":{"name":"crane","version":"e7101e588f1","build":"release: ReleaseSafe everywhere, C .trap, libc malloc","commit":"e7101e588f1","optimize":"root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap","v8":"13.1.203 static","binary":"zig-out/bin/repl","binary_sha256":"6472fd2f6472fd2f6472fd2f6472fd2f6472fd2f6472fd2f6472fd2f6472fd2f","flags":["--proxy=direct"]},"page":"memory/elements-detached-div.html","workload":"elements.detached-div","kind":"retained","run":0,"status":"ok","ops":100000,"wall_ms":[41.5],"memory":{"footprint_start":50000000,"footprint_end":324000000,"footprint_peak":330000000,"resident_end":400000000,"processes":1},"series":[],"counters":[{"name":"forced_gc","value":1}]}
+    \\
+;
+
+test "a retained row: the objects made, the footprint before and after, and its counters" {
+    var out: Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try writeLine(&out.writer, sampleRetained());
+    try testing.expectEqualStrings(golden_retained, out.written());
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const back = try parseLine(arena.allocator(), std.mem.trimEnd(u8, golden_retained, "\n"));
+    try testing.expectEqual(Kind.retained, back.kind);
+    try testing.expectEqual(@as(u64, 100000), back.ops);
+    try testing.expectEqual(@as(u64, 50_000_000), back.memory.?.footprint_start);
+    // An ok retained row needs its count, its one sample and its memory;
+    // no CPU (nothing is timed between marks).
+    var r = sampleRetained();
+    try validate(r);
+    r.ops = 0;
+    try testing.expectError(error.MissingOps, validate(r));
+    r = sampleRetained();
+    r.wall_ms = &.{};
+    try testing.expectError(error.MissingSamples, validate(r));
+    r = sampleRetained();
+    r.memory = null;
+    try testing.expectError(error.MissingMemory, validate(r));
+    // A failed one says why.
+    r = sampleRetained();
+    r.status = .@"error";
+    r.memory = null;
+    try testing.expectError(error.MissingMessage, validate(r));
+    r.message = "the page reported an error";
+    try validate(r);
 }
 
 test "a journal reads line by line and names the line that fails" {
