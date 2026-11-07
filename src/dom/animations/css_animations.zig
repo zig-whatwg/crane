@@ -765,14 +765,20 @@ const Group = struct {
         try self.properties.append(allocator, .{ .name = owned_name, .value = owned_value });
     }
 
-    /// Whether the group sets `name` (a longhand set through a shorthand
-    /// that is waiting for var() substitution counts).
+    /// Whether the group sets `name`: the property itself, a longhand
+    /// through a shorthand waiting for var() substitution, or - for a
+    /// shorthand `name` - any of its longhands.
     fn sets(self: *const Group, name: []const u8) bool {
+        const wanted = css.properties.lookup(name);
         for (self.properties.items) |p| {
+            if (p.value.len == 0) continue;
             if (std.mem.eql(u8, p.name, name)) return true;
-            const property = css.properties.lookup(p.name) orelse continue;
-            if (property != .shorthand) continue;
-            for (property.shorthand.longhands()) |l| if (std.mem.eql(u8, l.name(), name)) return true;
+            if (css.properties.lookup(p.name)) |property| if (property == .shorthand) {
+                for (property.shorthand.longhands()) |l| if (std.mem.eql(u8, l.name(), name)) return true;
+            };
+            if (wanted) |w| if (w == .shorthand) {
+                for (w.shorthand.longhands()) |l| if (std.mem.eql(u8, l.name(), p.name)) return true;
+            };
         }
         return false;
     }
@@ -917,12 +923,14 @@ pub fn buildKeyframes(allocator: Allocator, rule: *const Rule, default_easing: [
         }
     };
 
-    // 4. The computed order: a stable sort by offset.
-    std.sort.block(Group, groups.items, {}, struct {
-        fn lessThan(_: void, a: Group, b: Group) bool {
-            return a.offset < b.offset;
-        }
-    }.lessThan);
+    var list: keyframes_mod.List = .{};
+    errdefer list.deinit(allocator);
+    // An animation whose keyframes set no animatable property has none at
+    // all: Chrome, Firefox and Safari return no keyframes for `from {} to
+    // {}` or keyframes with only a timing function (css-animations
+    // KeyframeEffect-getKeyframes.tentative "no frames for various kinds of
+    // empty animations"). The animation still runs and fires its events.
+    if (animated.items.len == 0) return list;
 
     // 3. The initial and final keyframes: each animated property no
     // keyframe at that end sets is IMPLICIT there (an empty value): the
@@ -933,13 +941,7 @@ pub fn buildKeyframes(allocator: Allocator, rule: *const Rule, default_easing: [
     var final = try generatedFrame(allocator, groups.items, animated.items, 1, default_easing, default_composite);
     defer if (final) |*f| deinitFrame(allocator, f);
 
-    var list: keyframes_mod.List = .{};
-    errdefer list.deinit(allocator);
     try list.frames.ensureTotalCapacity(allocator, groups.items.len + 2);
-    if (initial) |f| {
-        list.frames.appendAssumeCapacity(f);
-        initial = null;
-    }
     for (groups.items) |*g| {
         var frame: keyframes_mod.Keyframe = .{ .offset = g.offset, .computed_offset = g.offset, .composite = g.composite };
         frame.easing = try parseEasing(allocator, g.easing, default_easing);
@@ -948,10 +950,25 @@ pub fn buildKeyframes(allocator: Allocator, rule: *const Rule, default_easing: [
         g.properties = .empty;
         list.frames.appendAssumeCapacity(frame);
     }
+    if (initial) |f| {
+        list.frames.appendAssumeCapacity(f);
+        initial = null;
+    }
     if (final) |f| {
         list.frames.appendAssumeCapacity(f);
         final = null;
     }
+    // 4. The computed order: a stable sort by offset, the groups in the
+    // order of their earliest block. A generated keyframe sorts after the
+    // declared ones at its offset: Gecko and Blink report a declared 0%
+    // keyframe with its own timing function before the generated one
+    // (KeyframeEffect-getKeyframes.tentative "implicit values and a
+    // non-default timing function"), where the text says to prepend it.
+    std.sort.block(keyframes_mod.Keyframe, list.frames.items, {}, struct {
+        fn lessThan(_: void, a: keyframes_mod.Keyframe, b: keyframes_mod.Keyframe) bool {
+            return a.computed_offset < b.computed_offset;
+        }
+    }.lessThan);
     return list;
 }
 

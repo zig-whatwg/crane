@@ -594,7 +594,10 @@ fn applyEffect(allocator: Allocator, effect: *model.Effect, base: *const Compute
         // own easing (CSS Animations 2 3.2 step 3; Blink's neutral
         // keyframes).
         for (effect.keyframes.frames.items, 0..) |*frame, frame_index| {
-            if (implicitIn(frame, base, seed.longhand, null)) {
+            const declared = for (computed_values.items) |c| {
+                if (c.longhand == seed.longhand and c.frame == frame_index) break true;
+            } else false;
+            if (!declared and implicitIn(frame, base, seed.longhand, null)) {
                 try keyframe_list.append(allocator, .{
                     .offset = frame.computed_offset,
                     .easing = if (frame.easing.value != null) &frame.easing else null,
@@ -669,7 +672,10 @@ fn applyEffect(allocator: Allocator, effect: *model.Effect, base: *const Compute
         const existing = customIndex(composited_customs, seed.name.bytes);
         const underlying: CustomValue = if (existing) |i| composited_customs.items[i].value else base.customValue(seed.name.bytes);
         for (effect.keyframes.frames.items, 0..) |*frame, frame_index| {
-            if (implicitIn(frame, base, null, seed.name.bytes)) {
+            const declared = for (computed_customs.items) |c| {
+                if (c.frame == frame_index and std.mem.eql(u8, c.name.bytes, seed.name.bytes)) break true;
+            } else false;
+            if (!declared and implicitIn(frame, base, null, seed.name.bytes)) {
                 try custom_keyframes.append(allocator, .{
                     .offset = frame.computed_offset,
                     .easing = if (frame.easing.value != null) &frame.easing else null,

@@ -883,6 +883,16 @@ const Matcher = struct {
                 // Selectors 4 3.2.1: a default namespace never prevents
                 // an otherwise matching featureless host.
                 .NamespaceURI => continue,
+                // CSS Scoping 3.1.1: `:host::before` styles the host's
+                // ::before - the pseudo-element the style engine resolves
+                // (pseudo_target), as matchesSimple accepts it for an
+                // ordinary subject. Chrome, Firefox and Safari apply it
+                // (css/css-shadow/keyframes-006.html).
+                .PseudoElement => |pseudo| {
+                    const wanted = self.pseudo_target orelse return false;
+                    if (!std.ascii.eqlIgnoreCase(wanted, pseudo.name)) return false;
+                    continue;
+                },
                 .PseudoClass => |pseudo| pseudo.kind,
                 else => return false,
             };

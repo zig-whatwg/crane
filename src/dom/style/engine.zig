@@ -146,6 +146,9 @@ const Active = struct {
     sheets: std.ArrayList(ActiveSheet) = .empty,
     /// Each connected shadow tree's that has any.
     scopes: std.ArrayList(Scope) = .empty,
+    /// Whether an author sheet here styles ::before, ::after or ::marker
+    /// (generatedPseudoRules); null until first asked.
+    generated_pseudo_rules: ?bool = null,
     /// Every top-level sheet the build looked at - the disabled ones and
     /// those whose media did not match too - with the version it saw, held:
     /// a sheet enabled again or edited moves its version.
@@ -1937,7 +1940,9 @@ pub fn reparseInline(element: *runtime.Instance, state: *ElementStyle, value: []
 //    an unread change, starts from that older value or, for an element never
 //    resolved, not at all.
 // 2. A pseudo-element never read has no before-change style: the update
-//    resolves only the pseudo-element styles already cached.
+//    resolves the pseudo-element styles already cached, and ::before,
+//    ::after and ::marker when an author sheet styles one of them (lane
+//    anim1 C2: their CSS animations start at the update).
 // 3. An inherited property under an animating ancestor: the child's base
 //    style inherits the ancestor's animated value (Blink re-resolves the
 //    base chain through animating ancestors), so a child's own transition on
@@ -2096,10 +2101,13 @@ fn updateSubtree(allocator: Allocator, root: *NodeBase) !bool {
         for (names.items) |n| allocator.free(n);
         names.deinit(allocator);
     }
+    // Asked after the first resolution: the active sheets exist then.
+    var generated: ?bool = null;
     for (nodes.items()) |node| {
         if (node.node_type != NodeBase.ELEMENT_NODE or !node.is_connected) continue;
         const element = instanceOf(node) orelse continue;
         _ = computedStyle(element, null) catch continue;
+        if (generated == null) generated = generatedPseudoRules(node);
         const state = element_style.existingOf(element) orelse continue;
         if (state.cached) |cached| any_volatile = any_volatile or cached.@"volatile";
         // The pseudo-element styles already cached, by name: resolving one
@@ -2107,9 +2115,61 @@ fn updateSubtree(allocator: Allocator, root: *NodeBase) !bool {
         for (names.items) |n| allocator.free(n);
         names.clearRetainingCapacity();
         for (state.pseudo.items) |p| try names.append(allocator, try allocator.dupe(u8, p.name));
+        // ::before, ::after and ::marker too when an author sheet styles one
+        // of them: their CSS animations and transitions start at this update
+        // as a browser's frame starts them, with no read.
+        if (generated.?) try addGeneratedPseudos(allocator, &names, state);
         for (names.items) |n| _ = computedStyle(element, n) catch continue;
     }
     return any_volatile;
+}
+
+/// The pseudo-elements a browser generates boxes for, whose CSS animations
+/// and transitions run without a read: ::before, ::after, and ::marker on a
+/// list item (CSS Pseudo 4).
+fn addGeneratedPseudos(allocator: Allocator, names: *std.ArrayList([]u8), state: *ElementStyle) Allocator.Error!void {
+    const list_item = if (state.cached) |cached| cached.style.display().list_item else false;
+    for ([_][]const u8{ "marker", "before", "after" }) |name| {
+        if (std.mem.eql(u8, name, "marker") and !list_item) continue;
+        const known = for (names.items) |n| {
+            if (std.mem.eql(u8, n, name)) break true;
+        } else false;
+        if (!known) try names.append(allocator, try allocator.dupe(u8, name));
+    }
+}
+
+/// Whether an author sheet of `node`'s document or of one of its shadow
+/// trees has a rule for ::before, ::after or ::marker (found once per build
+/// of the active sheets). Without one those pseudo-elements generate no box
+/// with an animation, and the step-16 update resolves none of them.
+fn generatedPseudoRules(node: *NodeBase) bool {
+    var root = node;
+    while (root.parent_node) |p| root = p;
+    while (isShadowRoot(root)) {
+        const host = interfaces.ShadowRoot.get_host(instanceOf(root) orelse return false) catch return false;
+        root = instance_bridge.getNodeBase(host) orelse return false;
+        while (root.parent_node) |p| root = p;
+    }
+    const document = instanceOf(root) orelse return false;
+    const engine = hooks.engineOf(document) orelse return false;
+    const active = if (engine.active) |*a| a else return false;
+    if (active.generated_pseudo_rules) |known| return known;
+    const found = sheetsStyleGenerated(active.sheets.items) or for (active.scopes.items) |*scope| {
+        if (sheetsStyleGenerated(scope.sheets.items)) break true;
+    } else false;
+    active.generated_pseudo_rules = found;
+    return found;
+}
+
+fn sheetsStyleGenerated(sheets: []const ActiveSheet) bool {
+    for (sheets) |*s| {
+        const b = &s.contents.buckets;
+        for ([_][]const u32{ b.pseudo.items, b.slotted.items, b.part.items }) |indices| for (indices) |index| {
+            const p = s.contents.rules.items[index].pseudo orelse continue;
+            if (std.ascii.eqlIgnoreCase(p, "before") or std.ascii.eqlIgnoreCase(p, "after") or std.ascii.eqlIgnoreCase(p, "marker")) return true;
+        };
+    }
+    return false;
 }
 
 /// CSS Transitions 2 6.2 "requirements on pending style changes": before
@@ -2123,12 +2183,23 @@ pub fn flushForAnimations(root: *runtime.Instance, subtree: bool) void {
     if (node.node_type == NodeBase.ELEMENT_NODE) {
         _ = computedStyle(root, null) catch {};
         if (element_style.existingOf(root)) |state| {
-            var index: usize = 0;
-            while (index < state.pseudo.items.len) : (index += 1) {
-                const name = root.ctx.allocator.dupe(u8, state.pseudo.items[index].name) catch break;
-                defer root.ctx.allocator.free(name);
-                _ = computedStyle(root, name) catch {};
+            // Its cached pseudo-element styles, and ::before, ::after and
+            // ::marker, whose animations a browser runs without a read.
+            const allocator = root.ctx.allocator;
+            var names: std.ArrayList([]u8) = .empty;
+            defer {
+                for (names.items) |n| allocator.free(n);
+                names.deinit(allocator);
             }
+            for (state.pseudo.items) |p| {
+                const copy = allocator.dupe(u8, p.name) catch break;
+                names.append(allocator, copy) catch {
+                    allocator.free(copy);
+                    break;
+                };
+            }
+            addGeneratedPseudos(allocator, &names, state) catch {};
+            for (names.items) |name| _ = computedStyle(root, name) catch {};
         }
         if (!subtree) return;
     }
