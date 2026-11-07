@@ -205,11 +205,13 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // builds).
     const internal = try Registry.create(instance);
     errdefer Registry.remove(instance);
-    // What the node's state allocates later comes from its Browser's
-    // allocator (runtime.allocatorOf: the realm's scope, which issued its
-    // slot and block) - in a Browser, the allocator it was made with. A test
-    // may make one with another (an allocation-failure wrapper): its state's
-    // allocations and frees still agree, all through its Browser's.
+    // The allocator a node is made with IS its Browser's (the realm's scope,
+    // which issued its slot and block): every later allocation for it, and
+    // every free, goes through runtime.allocatorOf, which reads that scope -
+    // so a node is freed through the allocator that made it. A test that
+    // fails allocations builds its scope with the failing allocator
+    // (tests/dom/perf2b5_node_allocator_test.zig).
+    std.debug.assert(allocator.ptr == runtime.allocatorOf(instance).ptr and allocator.vtable == runtime.allocatorOf(instance).vtable);
     internal.* = .{
         .node_type = node_type,
         .base = .{

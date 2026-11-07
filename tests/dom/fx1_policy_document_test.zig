@@ -29,6 +29,36 @@ const Fixture = struct {
     }
 };
 
+/// A Browser scope and a realm made with `allocator`, standing in for the
+/// standalone one while they live: a node's creation allocator is its
+/// Browser's (Node's initOwn asserts it), so a test that fails allocations in
+/// the construction chain makes the scope with the failing allocator too, and
+/// every node is freed through the allocator that made it (lane perf2 b5).
+const FailingScope = struct {
+    scope: *runtime.BrowserScope,
+    previous: ?*runtime.BrowserScope,
+    context: runtime.ContextData,
+
+    fn init(self: *FailingScope, allocator: std.mem.Allocator) !void {
+        self.scope = try allocator.create(runtime.BrowserScope);
+        errdefer allocator.destroy(self.scope);
+        self.scope.* = runtime.BrowserScope.init(allocator);
+        errdefer self.scope.deinit();
+        self.previous = runtime.BrowserScope.standalone();
+        runtime.BrowserScope.setStandalone(self.scope);
+        errdefer runtime.BrowserScope.setStandalone(self.previous);
+        self.context = try runtime.ContextData.init(allocator, .{});
+    }
+
+    fn deinit(self: *FailingScope) void {
+        const allocator = self.scope.allocator;
+        self.context.deinit();
+        runtime.BrowserScope.setStandalone(self.previous);
+        self.scope.deinit();
+        allocator.destroy(self.scope);
+    }
+};
+
 fn onThread(comptime body: fn () anyerror!void) !void {
     const Run = struct {
         fn run(failure: *?anyerror) void {
@@ -145,7 +175,11 @@ fn expectLazyInteractions(document: *runtime.Instance) !void {
     try testing.expect(try dom.top_layer.ofDocument(document, false) == null);
 }
 
-fn constructAtFailure(allocator: std.mem.Allocator, context: runtime.Context, supplied: bool) !void {
+fn constructAtFailure(allocator: std.mem.Allocator, supplied: bool) !void {
+    var failing_scope: FailingScope = undefined;
+    try failing_scope.init(allocator);
+    defer failing_scope.deinit();
+    const context: runtime.Context = &failing_scope.context;
     const origin = try dom.origin_record.OriginRecord.create(allocator, "https://parent.test");
     defer origin.release();
     if (supplied) {
@@ -175,10 +209,10 @@ fn allocationFailures() !void {
     var fixture: Fixture = undefined;
     try fixture.init();
     defer fixture.deinit();
-    // As in xm1_svg_interfaces_test, the per-thread slab/context keeps its
-    // leak-checking allocator; fail allocations in the construction chain.
-    try testing.checkAllAllocationFailures(testing.allocator, constructAtFailure, .{ &fixture.context, false });
-    try testing.checkAllAllocationFailures(testing.allocator, constructAtFailure, .{ &fixture.context, true });
+    // Fail allocations in the construction chain - the Browser scope and its
+    // realm made with the same failing allocator (FailingScope).
+    try testing.checkAllAllocationFailures(testing.allocator, constructAtFailure, .{false});
+    try testing.checkAllAllocationFailures(testing.allocator, constructAtFailure, .{true});
 }
 
 test "Document policy construction takes ownership only on success under every allocation failure" {
@@ -195,6 +229,9 @@ fn interactionAllocationFailures() !void {
         for ([_]bool{ false, true }) |autofocus| {
             var failing = testing.FailingAllocator.init(testing.allocator, .{});
             const allocator = failing.allocator();
+            var failing_scope: FailingScope = undefined;
+            try failing_scope.init(allocator);
+            defer failing_scope.deinit();
             const origin = try dom.origin_record.OriginRecord.create(allocator, "https://parent.test");
             defer origin.release();
             const document = if (supplied) blk: {
@@ -202,8 +239,8 @@ fn interactionAllocationFailures() !void {
                     .enforce = "deferred-fetch=();report-to=owned",
                 });
                 errdefer input.deinit();
-                break :blk try interfaces.Document.initWith(allocator, &fixture.context, .{ .origin = origin, .permissions_policy = input });
-            } else try interfaces.Document.initWith(allocator, &fixture.context, .{ .origin = origin });
+                break :blk try interfaces.Document.initWith(allocator, &failing_scope.context, .{ .origin = origin, .permissions_policy = input });
+            } else try interfaces.Document.initWith(allocator, &failing_scope.context, .{ .origin = origin });
             defer interfaces.Document.deinit(document);
             const owned = dom.policy_containers.permissionsOf(document) orelse return error.MissingPolicy;
             try expectLazyInteractions(document);
