@@ -951,6 +951,18 @@ const Navigation = struct {
     /// for "obtain a browsing context to use for a navigation response" step
     /// 9.1 when `group_switch` is null.
     would_need_virtual_group_switch: bool = false,
+    /// "Create navigation params by fetching" step 14's coopEnforcementResult
+    /// for a top-level traversable's navigation, as step 21.12.2 replaces it
+    /// at each response of the fetch - every redirect hop's
+    /// (`enforceRedirectHop`), then the last one's (`openerPolicySwitch`).
+    /// Null until a response is enforced. OWNED.
+    coop_result: ?CoopResult = null,
+    /// Step 21.12.3 made a redirect hop's response a network error ("If
+    /// finalSandboxFlags is not empty and responseCOOP's value is not
+    /// "unsafe-none", then set response to an appropriate network error and
+    /// break"): the navigation commits that error, with the browsing context
+    /// group switch `coop_result` holds.
+    coop_sandbox_error_at_hop: bool = false,
     /// The commit listed the entry before the active document unloaded
     /// ("finalize a cross-document navigation" steps 5-9, from the queue):
     /// `recordInHistory` makes that entry's document active, with the
@@ -1107,10 +1119,47 @@ const Navigation = struct {
         if (self.traversal_policy_container) |*container| container.deinit();
         if (self.history_policy_container) |*container| container.deinit();
         if (self.params_container) |*container| container.deinit();
+        if (self.coop_result) |*result| result.deinit(self.allocator);
         if (self.listed_previous) |*previous| previous.deinit(self.listed_previous_allocator.?);
         if (self.required_csp) |required| self.allocator.free(required);
         self.allocator.free(self.url);
         self.allocator.destroy(self);
+    }
+};
+
+/// HTML's "opener policy enforcement result" as a navigation keeps it
+/// between the responses of its fetch (`Navigation.coop_result`): the two
+/// switch flags, and what the document or response it describes gives the
+/// violation reports a later response's enforcement queues - its URL (the
+/// reports' coopURL), its origin (serialized, "null" when opaque), its
+/// opener policy with its endpoint names, the endpoint list those names
+/// resolve in, and "current context is navigation source". OWNED by the
+/// record's allocator.
+const CoopResult = struct {
+    needs_switch: bool = false,
+    would_need_switch_due_to_report_only: bool = false,
+    url: []u8,
+    origin: []u8,
+    policy: fetch_mod.internal.OpenerPolicy = .{},
+    endpoints: ?*fetch_mod.internal.policy_container.Endpoints = null,
+    current_context_is_navigation_source: bool = false,
+
+    fn deinit(self: *CoopResult, allocator: std.mem.Allocator) void {
+        allocator.free(self.url);
+        allocator.free(self.origin);
+        self.policy.deinit(allocator);
+        if (self.endpoints) |endpoints| endpoints.deinit();
+    }
+
+    /// "Obtain a browsing context to use for a navigation response" steps 4
+    /// and 12: the new group's cross-origin isolation mode when the result
+    /// needs a browsing context group switch ("concrete" for
+    /// "same-origin-plus-COEP", Crane's choice; BrowsingContext), null when
+    /// it needs none. The result's opener policy is the last enforced
+    /// response's.
+    fn groupSwitch(self: *const CoopResult) ?html_core.window.browsing_context.CrossOriginIsolationMode {
+        if (!self.needs_switch) return null;
+        return if (self.policy.value == .same_origin_plus_coep) .concrete else .none;
     }
 };
 
@@ -2476,8 +2525,21 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
     // transfer instead (AsyncFetch.stopProducing cancels the fetch's current
     // one).
     if (record.fetch) |f| if (result != null and f.hasNextManualRedirect()) {
+        // Steps 21.9-21.12 for the redirect response, read before it goes.
+        const sandbox_error = enforceRedirectHop(record, f, &result.?);
         result.?.deinit();
         result = null;
+        if (sandbox_error) {
+            // 21.12.3: "set response to an appropriate network error and
+            // break". AsyncFetch's pump permits termination from done; f is
+            // not read after it (followManualRedirect's CSP block does the
+            // same).
+            record.fetch = null;
+            terminateFetch(f);
+            record.coop_sandbox_error_at_hop = true;
+            record.response = navigation_fetch.networkErrorResult(record.allocator, record.url) catch return endNavigation(record.navigables, record.id);
+            return queueNavigationTask(record.integration, record.id, &runCommit);
+        }
         return followManualRedirect(record, f);
     };
     // "Create and initialize a Document object" step 3: creationURL is the
@@ -2744,6 +2806,63 @@ fn navigationBlockedByCSP(record: *Navigation, current_url: []const u8, redirect
 /// error there (step 23: "redirects to fetch scheme URLs that aren't HTTP(S)
 /// are treated like network errors"; a non-fetch scheme's navigation params
 /// are not made - stated, as before).
+/// "Create navigation params by fetching" steps 21.9-21.12 for a redirect
+/// response `r` of a top-level traversable's navigation - the response
+/// handed over before the next hop starts; HTML runs them for every
+/// response of the loop, not only the last: its navigation params' policy
+/// container (21.9), finalSandboxFlags (21.10), its origin (21.11 -
+/// "response's URL will be the URL that led to the redirect"), and its
+/// opener policy enforced against the navigation's current result
+/// (21.12.1-2, `enforceResponseOpenerPolicy`, with its reports). True when
+/// step 21.12.3 makes the response a network error, counted on the target
+/// snapshot's sandboxing flags as for the last response
+/// (`sandboxedOpenerPolicyBlocks` says why). A child navigable has no step
+/// 21.12. Out of memory decides nothing: the redirect is followed.
+///
+/// The browsers enforce each redirect the same way: Chromium's
+/// NavigationRequest::OnRequestRedirected calls
+/// CrossOriginOpenerPolicyStatus::EnforceCOOP for the redirect response, as
+/// OnResponseStarted does for the last, and its SanitizeResponse refuses a
+/// sandboxed hop; WebKit's DocumentLoader::willSendRequest runs
+/// doCrossOriginOpenerHandlingOfResponse for each redirect response.
+/// popup-redirect-same-origin-allow-popups.https.html and both
+/// *-reporting/reporting-redirect-with-same-origin-allow-popups files:
+/// C157 2/2, F159 0/2, S27.2 2/2 each (wpt.fyi 94f58d592d). Step 21.12.3 at
+/// a hop is the step Crane already takes for the last response, Chrome's
+/// behaviour (coop-sandbox-redirects-cuts-opener.https.html C157 2/2,
+/// F159 0/2, S27.2 0/2, as coop-sandbox-cuts-opener.https.html is for the
+/// last response: runCommit says why).
+fn enforceRedirectHop(record: *Navigation, f: *fetch_mod.algorithms.AsyncFetch, r: *const fetch_mod.algorithms.FetchResult) bool {
+    const integration = record.integration;
+    const browsing_context = integration.browsing_context orelse return false;
+    if (browsing_context.parent != null) return false;
+    const allocator = record.allocator;
+    var hop = navigation_fetch.resultFromResponse(allocator, record.url, r.response, .{}) catch return false;
+    defer hop.deinit();
+    const hop_url = if (hop.final_url.len > 0) hop.final_url else record.url;
+    // 21.9. responsePolicyContainer, with the hop's opener policy (21.12.1)
+    // and Reporting-Endpoints.
+    var container = navigationParamsPolicyContainer(integration, record, &hop) catch return false;
+    defer container.deinit();
+    // 21.10. finalSandboxFlags.
+    const flags = record.target_sandboxing_flags.unionWith(sandboxing.cspDerivedSandboxingFlags(&container.csp_list));
+    // 21.11. responseOrigin: "determining the origin" given the response's
+    // URL, finalSandboxFlags and the initiator origin.
+    const origin: []u8 = if (flags.origin)
+        allocator.dupe(u8, "null") catch return false
+    else
+        navigationParamsOrigin(integration, flags, hop_url, if (record.srcdoc == null) record.initiator_origin else null, allocator) catch return false;
+    defer allocator.free(origin);
+    // 21.12.2, with "request's referrer" as main fetch left it for this hop.
+    const referrer: ?[]const u8 = switch (f.job.request.referrer) {
+        .url => |url| url,
+        .no_referrer, .client => null,
+    };
+    _ = enforceResponseOpenerPolicy(integration, record, &container, hop_url, origin, referrer);
+    // 21.12.3.
+    return sandboxedOpenerPolicyBlocks(integration, record, &hop);
+}
+
 fn followManualRedirect(record: *Navigation, f: *fetch_mod.algorithms.AsyncFetch) void {
     // 21.14. locationURL.
     if (f.nextManualRedirectUrl()) |location| {
@@ -2904,10 +3023,12 @@ fn runCommit(context: ?*anyopaque) void {
     record.final_sandboxing_flags = if (response.is_network_error) .empty else record.target_sandboxing_flags.unionWith(
         if (params_container) |*container| sandboxing.cspDerivedSandboxingFlags(&container.csp_list) else .empty,
     );
-    // Step 21.12.2 for a top-level traversable: whether the response's
-    // opener policy needs a browsing context group switch, read from the
-    // active document before it unloads.
-    const group_switch = if (sandbox_blocks) sandbox_error_switch else if (params_container) |*container| openerPolicySwitch(integration, record, response, container) else null;
+    // Step 21.12.2 for a top-level traversable's last response: whether its
+    // opener policy needs a browsing context group switch, against the
+    // result the redirect hops before it left (or the active document's),
+    // read before that document unloads. A redirect hop's step 21.12.3
+    // network error commits with the switch that hop's enforcement left.
+    const group_switch = if (record.coop_sandbox_error_at_hop) hopSandboxErrorSwitch(record) else if (sandbox_blocks) sandbox_error_switch else if (params_container) |*container| openerPolicySwitch(integration, record, response, container) else null;
     record.params_container = params_container;
     params_container_taken = true;
     record.group_switch = group_switch;
@@ -3634,39 +3755,28 @@ fn sandboxedOpenerPolicyBlocks(integration: *IFrameIntegration, record: *Navigat
 
 /// "Create navigation params by fetching" step 21.12.2 - "enforce the
 /// response's opener policy" (html.navigation.opener_policy) - for a
-/// top-level traversable's navigation to `response`, whose navigation
-/// params' policy container is `container` (its opener policy the
-/// response's), and "obtain a browsing context to use for a navigation
-/// response" steps 4 and 12: the new group's cross-origin isolation mode
-/// when the navigation needs a browsing context group switch ("concrete"
-/// for "same-origin-plus-COEP", Crane's choice; BrowsingContext), null when
-/// it needs none. A child navigable never switches. Read from the active
-/// document - its URL, origin and opener policy (step 21.14's current
-/// result) - before it unloads.
-///
-/// Stated: the result is computed once, for the response the navigation
-/// commits; HTML enforces each redirect hop's response in turn (step 21.12
-/// inside the loop), which needs the navigation's fetch to follow redirects
-/// itself (queued with the hop-by-hop navigation fetch). Steps 4.2 and 5.2's
-/// violation reports, and step 9.1's virtual browsing context group ID,
-/// serve COOP reports, queued as lane coi1's follow-up.
+/// top-level traversable's navigation to its last response `response`,
+/// whose navigation params' policy container is `container` (its opener
+/// policy the response's), against the navigation's current enforcement
+/// result: step 14's, from the active document, or the one the redirect
+/// hops before it left (`enforceRedirectHop`). Returns "obtain a browsing
+/// context to use for a navigation response" steps 4 and 12's switch
+/// (`CoopResult.groupSwitch`), null when none is needed. A child navigable
+/// never switches. Read before the active document unloads.
 fn openerPolicySwitch(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult, container: *const fetch_mod.internal.PolicyContainer) ?html_core.window.browsing_context.CrossOriginIsolationMode {
     if (response.is_network_error) return null;
     const browsing_context = integration.browsing_context orelse return null;
     if (browsing_context.parent != null) return null;
     const active = activeDocumentOf(integration) orelse return null;
     const allocator = integration.allocator;
-    const opener_policy = html_core.navigation.opener_policy;
-    // The active document's opener policy, with its endpoint names (the
-    // reports'), borrowed from its container for this call.
-    const active_container = dom_module.policy_containers.of(active);
-    const active_coop: fetch_mod.internal.OpenerPolicy = if (active_container) |c| c.openerPolicy().* else .{};
-    // Two "unsafe-none" policies, enforced and report-only, match whatever
-    // the origins: no switch, and nothing allocated.
+    // With no redirect enforced before it, two "unsafe-none" policies,
+    // enforced and report-only, match whatever the origins: no switch, no
+    // report, and nothing allocated.
     const response_coop = container.openerPolicy();
-    if (allUnsafeNone(active_coop) and allUnsafeNone(response_coop.*)) return null;
-    const active_origin = documentOriginOf(active, allocator);
-    defer if (active_origin) |origin| allocator.free(origin);
+    if (record.coop_result == null) {
+        const active_coop: fetch_mod.internal.OpenerPolicy = if (dom_module.policy_containers.of(active)) |c| c.openerPolicy().* else .{};
+        if (allUnsafeNone(active_coop) and allUnsafeNone(response_coop.*)) return null;
+    }
     const response_url = if (response.final_url.len > 0) response.final_url else record.url;
     // navigationParams's origin ("determining the origin"): an about:blank
     // document's is its initiator's, not its URL's - the origin the commit
@@ -3678,16 +3788,20 @@ fn openerPolicySwitch(integration: *IFrameIntegration, record: *Navigation, resp
     else
         navigationParamsOrigin(integration, record.final_sandboxing_flags, response_url, if (record.srcdoc == null) record.initiator_origin else null, allocator) catch return null;
     defer allocator.free(response_origin);
-    // Steps 4.2 and 5.2 report only when "browsingContext's group's
-    // browsing context set's size is greater than 1".
-    var reports: opener_policy.Reports = .{};
-    const enforced = opener_policy.enforce(document_lifecycle.isInitialAboutBlank(active), browsing_context.groupHoldsOthers(), response_origin, response_coop.*, .{ .origin = active_origin orelse "null", .policy = active_coop }, &reports);
-    if (reports.enforce or reports.reporting) queueOpenerPolicyReports(browsing_context, record, response, container, active, active_container, active_coop, active_origin orelse "null", response_url, response_origin, reports);
+    const result = enforceResponseOpenerPolicy(integration, record, container, response_url, response_origin, response.referrer) orelse return null;
     // "Obtain a browsing context to use for a navigation response" step 9.1
     // reads it when the navigation keeps its group (runCommit).
-    record.would_need_virtual_group_switch = enforced.would_need_switch_due_to_report_only;
-    if (!enforced.needs_switch) return null;
-    return if (response_coop.value == .same_origin_plus_coep) .concrete else .none;
+    record.would_need_virtual_group_switch = result.would_need_switch_due_to_report_only;
+    return result.groupSwitch();
+}
+
+/// The switch a redirect hop's step 21.12.3 network error commits with:
+/// the one that hop's enforcement left in the navigation's result, whose
+/// report-only flag step 9.1 reads when it keeps the group.
+fn hopSandboxErrorSwitch(record: *Navigation) ?html_core.window.browsing_context.CrossOriginIsolationMode {
+    const result = if (record.coop_result) |*r| r else return null;
+    record.would_need_virtual_group_switch = result.would_need_switch_due_to_report_only;
+    return result.groupSwitch();
 }
 
 /// Step 21.12.2 for a response step 21.12.3 then refuses
@@ -3704,59 +3818,125 @@ fn openerPolicySwitchBeforeSandboxError(integration: *IFrameIntegration, record:
     return openerPolicySwitch(integration, record, response, &container);
 }
 
-/// "Enforce a response's opener policy" steps 4.2 and 5.2's violation
-/// reports for this navigation (dom.coop_reporting): the response's - its
-/// URL, its navigation params' origin and policy container (its opener
-/// policy and Reporting-Endpoints) - and the active document's, the current
-/// enforcement result (step 21.14's: its URL, origin and opener policy, and
-/// "current context is navigation source": its origin same origin with the
-/// initiator origin). An initial about:blank document whose opener policy
-/// its creator's top-level document gave it reports as that document
-/// (PolicyContainer.openerPolicyReporter; dom.coop_reporting.Side says
-/// why). The active document's Window carries the uploads, kept by its
-/// agent past its document's unload. A report that cannot be made is
-/// dropped; the navigation goes on.
-fn queueOpenerPolicyReports(
-    browsing_context: *html_core.BrowsingContext,
+/// "Create navigation params by fetching" step 14: the navigation's first
+/// opener policy enforcement result, from the navigable's active document
+/// `active` - its URL, origin and opener policy, and "current context is
+/// navigation source": its origin same origin with the initiator origin -
+/// with the endpoint list its reports use. An initial about:blank document
+/// whose opener policy its creator's top-level document gave it reports as
+/// that document (PolicyContainer.openerPolicyReporter;
+/// dom.coop_reporting.Side says why), and a popup's initial document
+/// reports with its opener's URL while that document is still same origin
+/// with it: HTML's text says the active document's URL, about:blank, but
+/// Chromium's CrossOriginOpenerPolicyStatus "uses the URL of the opener for
+/// reporting purposes when doing an initial navigation in a popup"
+/// (current_url_, origin-checked), WebKit's
+/// CrossOriginOpenerPolicyEnforcementResult::from takes openerURL, and the
+/// tests expect it as previousResponseURL and as the report's url
+/// (navigation-reporting/reporting-popup-same-origin: C157 5/5, S27.2 5/5).
+/// Null out of memory.
+fn initialCoopResult(integration: *IFrameIntegration, record: *Navigation, active: *runtime.Instance) ?CoopResult {
+    const browsing_context = integration.browsing_context orelse return null;
+    return activeDocumentCoopResult(record.allocator, browsing_context, active, record.request_origin) catch null;
+}
+
+fn activeDocumentCoopResult(allocator: std.mem.Allocator, browsing_context: *html_core.BrowsingContext, active: *runtime.Instance, initiator_origin: ?[]const u8) error{OutOfMemory}!CoopResult {
+    const active_container = dom_module.policy_containers.of(active);
+    const reporter = if (active_container) |c| c.openerPolicyReporter() else null;
+    const origin = documentOriginOf(active, allocator) orelse try allocator.dupe(u8, "null");
+    var result: CoopResult = .{ .url = &.{}, .origin = origin };
+    errdefer result.deinit(allocator);
+    result.url = blk: {
+        if (document_lifecycle.isInitialAboutBlank(active)) {
+            if (openerDocumentUrl(browsing_context, origin, allocator)) |url| break :blk url;
+        }
+        if (reporter) |r| break :blk try allocator.dupe(u8, r.url);
+        break :blk try documentUrlOf(active, allocator);
+    };
+    const active_coop: fetch_mod.internal.OpenerPolicy = if (active_container) |c| c.openerPolicy().* else .{};
+    result.policy = try active_coop.clone(allocator);
+    const endpoints = if (reporter) |r| r.endpoints else if (active_container) |c| c.endpoints else null;
+    if (endpoints) |list| result.endpoints = try list.clone(allocator);
+    result.current_context_is_navigation_source = if (initiator_origin) |initiator| !std.mem.eql(u8, origin, "null") and std.mem.eql(u8, origin, initiator) else false;
+    return result;
+}
+
+/// "Create navigation params by fetching" step 21.12.2 for one response of
+/// a top-level traversable's navigation - a redirect hop's or the last:
+/// "enforce the response's opener policy" given the navigable's active
+/// browsing context, the response's URL `response_url`, its origin
+/// `response_origin` (step 21.11), its opener policy (step 21.12.1, on its
+/// navigation params' policy container `container`, with the
+/// Reporting-Endpoints its names resolve in) and the navigation's current
+/// result (`Navigation.coop_result`; step 14's when none), which the new
+/// result replaces. Steps 4.2 and 5.2's violation reports go to the
+/// response's endpoints and from the current result's
+/// (dom.coop_reporting), carried by the active document's Window, kept by
+/// its agent past its document's unload; `referrer` is the request's
+/// referrer. Null - nothing decided - with no active document, or out of
+/// memory before any result exists.
+fn enforceResponseOpenerPolicy(
+    integration: *IFrameIntegration,
     record: *Navigation,
-    response: *const navigation_fetch.NavigationFetchResult,
     container: *const fetch_mod.internal.PolicyContainer,
-    active: *runtime.Instance,
-    active_container: ?*fetch_mod.internal.PolicyContainer,
-    active_coop: fetch_mod.internal.OpenerPolicy,
-    active_origin: []const u8,
     response_url: []const u8,
     response_origin: []const u8,
-    reports: html_core.navigation.opener_policy.Reports,
-) void {
-    const sender = dom_module.reporting.globalOf(active.ctx) orelse return;
-    const allocator = active.ctx.allocator;
-    const active_url = documentUrlOf(active, allocator) catch return;
-    defer allocator.free(active_url);
-    const reporter = if (active_container) |c| c.openerPolicyReporter() else null;
-    // The current result's url for a popup's initial about:blank document:
-    // its opener's active document's URL, when that document is still same
-    // origin with it. HTML's text (step 21.14) says the active document's
-    // URL, about:blank; Chromium's CrossOriginOpenerPolicyStatus "uses the
-    // URL of the opener for reporting purposes when doing an initial
-    // navigation in a popup" (current_url_, origin-checked), WebKit's
-    // CrossOriginOpenerPolicyEnforcementResult::from takes openerURL, and the
-    // tests expect it as previousResponseURL and as the report's url
-    // (navigation-reporting/reporting-popup-same-origin: C157 5/5, S27.2 5/5).
-    const opener_url = if (document_lifecycle.isInitialAboutBlank(active)) openerDocumentUrl(browsing_context, active_origin, allocator) else null;
-    defer if (opener_url) |url| allocator.free(url);
-    const is_source = if (record.request_origin) |initiator| !std.mem.eql(u8, active_origin, "null") and std.mem.eql(u8, active_origin, initiator) else false;
-    dom_module.coop_reporting.queueNavigationReports(sender, reports, .{
-        .policy = container.openerPolicy().*,
-        .url = response_url,
-        .origin = response_origin,
-        .endpoints = container.endpoints,
-    }, .{
-        .policy = active_coop,
-        .url = opener_url orelse if (reporter) |r| r.url else active_url,
-        .origin = active_origin,
-        .endpoints = if (reporter) |r| r.endpoints else if (active_container) |c| c.endpoints else null,
-    }, response.referrer, is_source);
+    referrer: ?[]const u8,
+) ?*const CoopResult {
+    const opener_policy = html_core.navigation.opener_policy;
+    const browsing_context = integration.browsing_context orelse return null;
+    const active = activeDocumentOf(integration) orelse return null;
+    const allocator = record.allocator;
+    if (record.coop_result == null) record.coop_result = initialCoopResult(integration, record, active) orelse return null;
+    const current = &record.coop_result.?;
+    const response_coop = container.openerPolicy();
+    // Steps 1-6 (step 3, the browsing context's initial URL, is not kept).
+    var reports: opener_policy.Reports = .{};
+    const enforced = opener_policy.enforce(document_lifecycle.isInitialAboutBlank(active), browsing_context.groupHoldsOthers(), response_origin, response_coop.*, .{
+        .needs_switch = current.needs_switch,
+        .would_need_switch_due_to_report_only = current.would_need_switch_due_to_report_only,
+        .origin = current.origin,
+        .policy = current.policy,
+        .current_context_is_navigation_source = current.current_context_is_navigation_source,
+    }, &reports);
+    // Steps 4.2 and 5.2.
+    if (reports.enforce or reports.reporting) if (dom_module.reporting.globalOf(active.ctx)) |sender| {
+        dom_module.coop_reporting.queueNavigationReports(sender, reports, .{
+            .policy = response_coop.*,
+            .url = response_url,
+            .origin = response_origin,
+            .endpoints = container.endpoints,
+        }, .{
+            .policy = current.policy,
+            .url = current.url,
+            .origin = current.origin,
+            .endpoints = current.endpoints,
+        }, referrer, current.current_context_is_navigation_source);
+    };
+    // Step 1's new result, describing the response, replaces the current
+    // one. Out of memory, the decision is still kept: the current result
+    // takes the new flags and keeps describing the previous response.
+    current.needs_switch = enforced.needs_switch;
+    current.would_need_switch_due_to_report_only = enforced.would_need_switch_due_to_report_only;
+    var next = coopResultOf(allocator, container, response_url, response_origin) catch return current;
+    next.needs_switch = enforced.needs_switch;
+    next.would_need_switch_due_to_report_only = enforced.would_need_switch_due_to_report_only;
+    next.current_context_is_navigation_source = enforced.current_context_is_navigation_source;
+    current.deinit(allocator);
+    current.* = next;
+    return current;
+}
+
+/// A result describing the response at `url`, of origin `origin`, whose
+/// navigation params' policy container is `container`: its opener policy
+/// and endpoint list copied. The flags are the caller's to set.
+fn coopResultOf(allocator: std.mem.Allocator, container: *const fetch_mod.internal.PolicyContainer, url: []const u8, origin: []const u8) error{OutOfMemory}!CoopResult {
+    var result: CoopResult = .{ .url = try allocator.dupe(u8, url), .origin = &.{} };
+    errdefer result.deinit(allocator);
+    result.origin = try allocator.dupe(u8, origin);
+    result.policy = try container.openerPolicy().clone(allocator);
+    if (container.endpoints) |list| result.endpoints = try list.clone(allocator);
+    return result;
 }
 
 /// The URL of `browsing_context`'s opener's active document, when its origin
