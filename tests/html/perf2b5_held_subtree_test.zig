@@ -6,7 +6,10 @@
 //!
 //! The holders: a live range's boundary points, a NodeIterator's reference
 //! node and a TreeWalker's current node (each a hold, dom.node_holds), and a
-//! pending MutationRecord's removed nodes (a hold too). While one holds a
+//! MutationRecord's removed nodes (a hold too) - one the observer's callback
+//! keeps (the record queue is delivered at the script's microtask
+//! checkpoint, before any collection or teardown can run) and one still
+//! queued when the reads run. While one holds a
 //! subtree, the subtree stays whole across heavy block reuse; once they let
 //! go it is freed. And when the subtree's own realm ends under holders in
 //! another realm (a removed frame), every read through them is the node or
@@ -54,7 +57,7 @@ fn heldSubtreeStaysWhole() !void {
         \\(() => {
         \\  const host = document.getElementById('host');
         \\  const p = document.getElementById('p1');
-        \\  globalThis.mo = new MutationObserver(() => {});
+        \\  globalThis.mo = new MutationObserver((records) => { (globalThis.kept ??= []).push(...records); });
         \\  mo.observe(host, { childList: true, subtree: true });
         \\  p.remove();
         \\  const b = p.firstChild, i = p.lastChild;
@@ -77,14 +80,17 @@ fn heldSubtreeStaysWhole() !void {
         \\if (it.referenceNode.id !== 'b1') throw new Error('iterator: ' + it.referenceNode.id);
         \\if (it.nextNode().data !== 'x') throw new Error('iterator next');
         \\if (tw.currentNode.id !== 'b1' || tw.nextSibling().id !== 'i1') throw new Error('walker');
-        \\const records = mo.takeRecords();
+        \\const records = [...(globalThis.kept ?? []), ...mo.takeRecords()];
         \\if (records.length !== 1) throw new Error('records: ' + records.length);
         \\const removed = records[0].removedNodes[0];
         \\if (removed.id !== 'p1' || removed.firstChild.id !== 'b1' || removed.lastChild.id !== 'i1') throw new Error('record');
-        \\globalThis.kept = removed;
+        \\// A record still queued: removing the span reads its siblings now.
+        \\document.getElementById('s1').remove();
+        \\const queued = mo.takeRecords();
+        \\if (queued.length !== 1 || queued[0].removedNodes[0].id !== 's1') throw new Error('queued record');
         \\0;
     );
-    // The record is taken; its node is in `kept` now. Every holder lets go.
+    // Every holder lets go.
     try page.run("delete globalThis.range; delete globalThis.it; delete globalThis.tw; mo.disconnect(); delete globalThis.mo; delete globalThis.kept; 0;");
     for (0..4) |_| try page.collect();
     try testing.expectEqual(@as(usize, 0), liveOf(page.browser, "HTMLParagraphElement"));
@@ -108,7 +114,7 @@ fn holdersOutliveAFramesSubtree() !void {
         \\  doc.body.innerHTML = '<div id=fhost><p id=fp><b id=fb>x</b><i id=fi>y</i></p></div>';
         \\  const host = doc.getElementById('fhost');
         \\  const p = doc.getElementById('fp');
-        \\  globalThis.mo = new MutationObserver(() => {});
+        \\  globalThis.mo = new MutationObserver((records) => { (globalThis.kept ??= []).push(...records); });
         \\  mo.observe(host, { childList: true, subtree: true });
         \\  p.remove();
         \\  globalThis.range = doc.createRange();
@@ -136,12 +142,12 @@ fn holdersOutliveAFramesSubtree() !void {
         \\read(() => it.nextNode()?.data);
         \\read(() => tw.currentNode.id);
         \\read(() => tw.nextSibling()?.id);
-        \\read(() => { const r = mo.takeRecords(); return r.length ? r[0].removedNodes[0].firstChild.id : null; });
+        \\read(() => { const r = [...(globalThis.kept ?? []), ...mo.takeRecords()]; return r.length ? r[0].removedNodes[0].firstChild.id : null; });
         \\for (const v of seen) {
         \\  if (v === 'churn' || v === 'q' || v === 'w') throw new Error('a holder read a block another node took: ' + seen.join(','));
         \\  if (!['fb', 'y', 'x', 'fi'].includes(v)) throw new Error('unexpected read: ' + seen.join(','));
         \\}
-        \\delete globalThis.range; delete globalThis.it; delete globalThis.tw; mo.disconnect(); delete globalThis.mo;
+        \\delete globalThis.range; delete globalThis.it; delete globalThis.tw; mo.disconnect(); delete globalThis.mo; delete globalThis.kept;
         \\0;
     );
     for (0..3) |_| try page.collect();
