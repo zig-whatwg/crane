@@ -3,12 +3,12 @@
 //! 2, 5.1) queue at their owning element as their phase changes from one
 //! animation frame to the next.
 //!
-//! Who makes CSS animations and transitions - the style engine, from
-//! computed animation-* and transition-* values at style change events - is
-//! a later batch (rendering2's design delta, section 6). This file is what
-//! that maker will call: `attach` gives a CSSAnimation or CSSTransition its
-//! owning element and name; `update` runs at each "update animations and
-//! send events" for it, and `canceled` when it is canceled.
+//! The style engine makes them from computed animation-* and transition-*
+//! values at style change events (css_animations.zig, css_transitions.zig):
+//! `attach` gives a CSSAnimation or CSSTransition its owning element and
+//! name; `update` runs at each "update animations and send events" for it
+//! (and where a pending task completes), and `canceled` when it is
+//! canceled.
 //!
 //! Spec: https://drafts.csswg.org/css-animations-2/#event-dispatch
 //! Spec: https://drafts.csswg.org/css-transitions-2/#event-dispatch
@@ -48,10 +48,16 @@ pub const State = struct {
     /// property, start, end and reversing values, transition generation and
     /// running-set membership. OWNED; null for a CSS animation.
     transition: ?*@import("css_transitions.zig").Transition = null,
+    /// A CSS animation's own state (css_animations.CssAnimation): its
+    /// pseudo-element, animation-name position, keyframes' origin, last
+    /// play state, script overrides and list membership. OWNED; null for a
+    /// CSS transition.
+    css_animation: ?*@import("css_animations.zig").CssAnimation = null,
 };
 
 pub fn destroy(allocator: Allocator, state: *State) void {
     if (state.transition) |transition| transition.destroy(allocator);
+    if (state.css_animation) |css_animation| css_animation.destroy(allocator);
     if (state.name.len != 0) allocator.free(state.name);
     if (state.pseudo.len != 0) allocator.free(state.pseudo);
     allocator.destroy(state);
@@ -73,9 +79,11 @@ pub fn attach(animation: *model.Animation, kind: Kind, element: ?*runtime.Instan
         .name = owned_name,
     };
     if (animation.css) |old| {
-        // A second attach keeps the transition's own values.
+        // A second attach keeps the transition's or animation's own values.
         state.transition = old.transition;
         old.transition = null;
+        state.css_animation = old.css_animation;
+        old.css_animation = null;
         destroy(allocator, old);
     }
     animation.css = state;
@@ -86,6 +94,54 @@ pub fn attach(animation: *model.Animation, kind: Kind, element: ?*runtime.Instan
 pub fn detach(animation: *model.Animation) void {
     const state = animation.css orelse return;
     state.owning_element = null;
+}
+
+/// An event's composite-order key, captured when it is queued (Web
+/// Animations 1 4.4 step 6 sorts equal scheduled event times by composite
+/// order): the owning element, the pseudo-element's rank and the position
+/// among that element's animations - a CSS animation's animation-name
+/// index (CSS Animations 2 2.2), a CSS transition's generation (CSS
+/// Transitions 2 4.1). For a cancel these are the ones "in use at the
+/// moment when the CSS Animation was cancelled", and "positions of
+/// cancelled animations sort before positions of animations that have not
+/// been cancelled".
+pub const OrderKey = struct {
+    owner: ?model.Link = null,
+    pseudo_rank: u8 = 0,
+    position: u64 = 0,
+    canceled: bool = false,
+
+    /// Null when the keys do not decide (no owner, or the same owner,
+    /// pseudo-element and position): the caller falls back to the global
+    /// list position, then queue order. Pseudo-elements other than
+    /// ::marker, ::before and ::after share a rank (their code-point order
+    /// is not kept, stated).
+    pub fn lessThan(a: OrderKey, b: OrderKey) ?bool {
+        const oa = (a.owner orelse return null).get() orelse return null;
+        const ob = (b.owner orelse return null).get() orelse return null;
+        if (oa != ob) return @import("css_animations.zig").treeOrderLessThan(oa, ob);
+        if (a.pseudo_rank != b.pseudo_rank) return a.pseudo_rank < b.pseudo_rank;
+        if (a.canceled != b.canceled) return a.canceled;
+        if (a.position != b.position) return a.position < b.position;
+        return null;
+    }
+};
+
+/// `animation`'s OrderKey now.
+pub fn orderKey(animation: *const model.Animation) OrderKey {
+    const state = animation.css orelse return .{};
+    const owner = state.owning_element orelse return .{};
+    if (owner.get() == null) return .{};
+    const css_animations = @import("css_animations.zig");
+    var key: OrderKey = .{ .owner = owner, .canceled = animation.playState() == .idle };
+    if (state.css_animation) |own| {
+        key.pseudo_rank = css_animations.pseudoRank(own.pseudo);
+        key.position = own.index;
+    } else if (state.transition) |own| {
+        key.pseudo_rank = css_animations.pseudoRank(own.pseudo);
+        key.position = own.generation;
+    }
+    return key;
 }
 
 pub fn hasOwningElement(animation: *const model.Animation) bool {

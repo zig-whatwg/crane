@@ -204,7 +204,8 @@ const Completed = struct {
 };
 
 /// An element's set of running transitions and set of completed transitions,
-/// for it and its pseudo-elements. OWNED by its ElementStyle.
+/// for it and its pseudo-elements. OWNED by its ElementStyle (inside
+/// element_style.StyleAnimations).
 pub const ElementTransitions = struct {
     /// The running transitions: borrowed, generation-checked links to their
     /// CSSTransitions, each kept alive by itself while it is a member.
@@ -214,11 +215,10 @@ pub const ElementTransitions = struct {
     /// removing steps): the next sweep cancels them.
     removed: bool = false,
 
-    pub fn destroy(self: *ElementTransitions, allocator: Allocator) void {
+    pub fn deinit(self: *ElementTransitions, allocator: Allocator) void {
         self.running.deinit(allocator);
         for (self.completed.items) |c| c.deinit(allocator);
         self.completed.deinit(allocator);
-        allocator.destroy(self);
     }
 
     fn clearCompleted(self: *ElementTransitions, allocator: Allocator, pseudo: ?[]const u8, all: bool) void {
@@ -295,16 +295,14 @@ fn owningElement(animation: *const model.Animation) ?*runtime.Instance {
 
 fn setOf(element: *runtime.Instance) ?*ElementTransitions {
     const state = element_style.existingOf(element) orelse return null;
-    return state.transitions;
+    const both = state.animations orelse return null;
+    return &both.transitions;
 }
 
 fn ensureSet(element: *runtime.Instance) Allocator.Error!*ElementTransitions {
     const state = element_style.of(element) orelse return error.OutOfMemory;
-    if (state.transitions) |set| return set;
-    const set = try state.allocator.create(ElementTransitions);
-    set.* = .{};
-    state.transitions = set;
-    return set;
+    const both = try state.ensureAnimations();
+    return &both.transitions;
 }
 
 /// The running transition of (element, pseudo) for `property`.
@@ -984,18 +982,25 @@ fn serialize(allocator: Allocator, property: PropertyRef, value: TransitionValue
 /// interface's owner at process start). They only MARK - no engine call
 /// inside the removal algorithm: the element's cached styles stop being
 /// before-change styles, its completed transitions go, and its running
-/// transitions are canceled at the next sweep (step 11 of the frame the
-/// removal asks for, or a getAnimations() flush).
+/// transitions and CSS animations are canceled at the next sweep (step 11
+/// of the frame the removal asks for, or a getAnimations() flush).
 pub fn removingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
     _ = old_parent;
     if (node.node_type != NodeBase.ELEMENT_NODE) return;
     const element: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(node) orelse return));
     const state = element_style.existingOf(element) orelse return;
     state.markRemoved();
-    const set = state.transitions orelse return;
+    const both = state.animations orelse return;
+    // Its CSS animations are canceled at the same sweep
+    // (css_animations.sweep).
+    var ask = @import("css_animations.zig").markRemoved(&both.css_animations);
+    const set = &both.transitions;
     set.clearCompleted(state.allocator, null, true);
-    if (set.running.items.len == 0) return;
-    set.removed = true;
+    if (set.running.items.len != 0) {
+        set.removed = true;
+        ask = true;
+    }
+    if (!ask) return;
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
     registry_mod.requestFrameFor(document);
 }

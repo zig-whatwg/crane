@@ -22,7 +22,8 @@ const Before = struct {
     computed_map: @FieldType(state.ElementStyle, "computed_map"),
     pseudo: @FieldType(state.ElementStyle, "pseudo"),
     // Integrator ruling (2026-11-06, lane anim1): the lazy per-element CSS Transitions 1 section 3 running/completed sets (Blink ElementAnimations, WebKit Styleable) are on both sides.
-    transitions: @FieldType(state.ElementStyle, "transitions"),
+    // Lane anim1 batch 3 (2026-11-07): the same one pointer, renamed `animations`, now also holds the element's CSS animations (CSS Animations 1 section 2) - no growth.
+    animations: @FieldType(state.ElementStyle, "animations"),
 };
 
 test "a sibling cache costs at most one inline pointer and allocates lazily" {
