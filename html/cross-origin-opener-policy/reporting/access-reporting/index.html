@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../html/"><code>html/</code></a></li><li><a href="../../../../html/cross-origin-opener-policy/"><code>cross-<wbr>origin-<wbr>opener-<wbr>policy/</code></a></li><li><a href="../../../../html/cross-origin-opener-policy/reporting/"><code>reporting/</code></a></li><li aria-current="page"><code>access-<wbr>reporting/</code></li></ol></nav>
 <h1 class="page-title"><code>html/<wbr>cross-<wbr>origin-<wbr>opener-<wbr>policy/<wbr>reporting/<wbr>access-<wbr>reporting/</code></h1>
 <div class="figures" role="group" aria-label="html/cross-origin-opener-policy/reporting/access-reporting/">
-<p class="figures-main"><span class="fg-pass">11</span><span class="fg-of"> / 20</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>7</dd></div><div><dt>Timed out</dt><dd>1</dd></div><div><dt>Not run</dt><dd>1</dd></div><div><dt>Test files</dt><dd>4</dd></div><div class="blk"><dt>Blocking files</dt><dd>1</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">18</span><span class="fg-of"> / 20</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>1</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>4</dd></div><div class="blk"><dt>Blocking files</dt><dd>1</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>19</b> / 20 WPT subtests passing on the same files, <span class="blk">1 blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of html/cross-origin-opener-policy/reporting/access-reporting/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">4 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="1 clean, 2 with failures, 1 blocking, 0 with no subtests, 0 not run, of 4 files"><span class="m-clean" style="width:25.000%"></span><span class="m-partial" style="width:50.000%"></span><span class="m-blocking" style="width:25.000%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>1</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>2</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>1</dd></div><p class="kinds"><b>1</b> TIMEOUT</p></dl>
+<div class="meter" role="img" aria-label="2 clean, 1 with failures, 1 blocking, 0 with no subtests, 0 not run, of 4 files"><span class="m-clean" style="width:50.000%"></span><span class="m-partial" style="width:25.000%"></span><span class="m-blocking" style="width:25.000%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>2</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>1</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>1</dd></div><p class="kinds"><b>1</b> TIMEOUT</p></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -39,23 +39,19 @@
 <div class="tf-list has-ref">
 <p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
 <div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
-<details class="tf" id="property-indexed-getter.https.html" data-gate="partial" data-pass="4" data-of="6" data-failed="2" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>property-<wbr>indexed-<wbr>getter.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>4</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="property-indexed-getter.https.html" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>property-<wbr>indexed-<wbr>getter.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/cross-origin-opener-policy/reporting/access-reporting/property-indexed-getter.https.html"><code>html/<wbr>cross-<wbr>origin-<wbr>opener-<wbr>policy/<wbr>reporting/<wbr>access-<wbr>reporting/<wbr>property-<wbr>indexed-<wbr>getter.<wbr>https.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-23d992b41f13"><details><summary><span class="mark">FAIL</span><span class="sub-name">cross-origin &gt; w =&gt; w[0]</span></summary><pre class="msg">assert_equals: expected 1 but got 0</pre></details><a class="self" href="#s-23d992b41f13" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fc27588bd7c4"><details><summary><span class="mark">FAIL</span><span class="sub-name">same-site &gt; w =&gt; w[0]</span></summary><pre class="msg">assert_equals: expected 1 but got 0</pre></details><a class="self" href="#s-fc27588bd7c4" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>cross-origin &gt; w =&gt; w[1]</li><li>cross-origin &gt; w =&gt; w[-1]</li><li>same-site &gt; w =&gt; w[1]</li><li>same-site &gt; w =&gt; w[-1]</li></ol></details>
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>cross-origin &gt; w =&gt; w[0]</li><li>cross-origin &gt; w =&gt; w[1]</li><li>cross-origin &gt; w =&gt; w[-1]</li><li>same-site &gt; w =&gt; w[0]</li><li>same-site &gt; w =&gt; w[1]</li><li>same-site &gt; w =&gt; w[-1]</li></ol></details>
 </div>
 </div>
 </details>
-<details class="tf" id="property-named-getter.https.html" data-gate="partial" data-pass="5" data-of="8" data-failed="3" data-ref-pass="8" data-ref-of="8"><summary><span class="tf-name"><code>property-<wbr>named-<wbr>getter.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>5</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 8</span><span class="tf-fail"><span class="fail">3</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="property-named-getter.https.html" data-gate="partial" data-pass="7" data-of="8" data-failed="1" data-ref-pass="8" data-ref-of="8"><summary><span class="tf-name"><code>property-<wbr>named-<wbr>getter.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>7</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 8</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
@@ -65,10 +61,8 @@
 <div class="run">
 <ol class="subtests">
 <li class="sub s-fail" id="s-4a08b4d6da08"><details><summary><span class="mark">FAIL</span><span class="sub-name">same-site &gt; w =&gt; w[&quot;iframeName&quot;]</span></summary><pre class="msg">assert_equals: expected 1 but got 0</pre></details><a class="self" href="#s-4a08b4d6da08" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-28c4fc1f8a18"><details><summary><span class="mark">FAIL</span><span class="sub-name">cross-origin &gt; w =&gt; w[&quot;iframeName&quot;]</span></summary><pre class="msg">assert_equals: expected 1 but got 0</pre></details><a class="self" href="#s-28c4fc1f8a18" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5dcac70770a7"><details><summary><span class="mark">FAIL</span><span class="sub-name">same-site &gt; w =&gt; w[&quot;divID&quot;]</span></summary><pre class="msg">assert_equals: expected 1 but got 0</pre></details><a class="self" href="#s-5dcac70770a7" aria-label="Link to this subtest">&para;</a></li>
 </ol>
-<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>cross-origin &gt; w =&gt; w[&quot;divID&quot;]</li><li>same-site &gt; w =&gt; w[&quot;existingGlobal&quot;]</li><li>cross-origin &gt; w =&gt; w[&quot;existingGlobal&quot;]</li><li>same-site &gt; w =&gt; w[&quot;missingGlobal&quot;]</li><li>cross-origin &gt; w =&gt; w[&quot;missingGlobal&quot;]</li></ol></details>
+<details class="passing"><summary>7 passing subtests</summary><ol class="pass-list"><li>cross-origin &gt; w =&gt; w[&quot;iframeName&quot;]</li><li>same-site &gt; w =&gt; w[&quot;divID&quot;]</li><li>cross-origin &gt; w =&gt; w[&quot;divID&quot;]</li><li>same-site &gt; w =&gt; w[&quot;existingGlobal&quot;]</li><li>cross-origin &gt; w =&gt; w[&quot;existingGlobal&quot;]</li><li>same-site &gt; w =&gt; w[&quot;missingGlobal&quot;]</li><li>cross-origin &gt; w =&gt; w[&quot;missingGlobal&quot;]</li></ol></details>
 </div>
 </div>
 </details>
@@ -84,7 +78,7 @@
 </div>
 </div>
 </details>
-<details class="tf" id="reporting-observer.html" data-gate="timeout" data-pass="0" data-of="4" data-failed="2" data-ref-pass="3" data-ref-of="4"><summary><span class="tf-name"><code>reporting-<wbr>observer.<wbr>html</code></span><span class="tf-n"><b>0</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 4</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-timeout g-block">TIMEOUT</span></span></summary>
+<details class="tf" id="reporting-observer.html" data-gate="timeout" data-pass="3" data-of="4" data-failed="0" data-ref-pass="3" data-ref-of="4"><summary><span class="tf-name"><code>reporting-<wbr>observer.<wbr>html</code></span><span class="tf-n"><b>3</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-timeout g-block">TIMEOUT</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
@@ -92,13 +86,11 @@
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/cross-origin-opener-policy/reporting/access-reporting/reporting-observer.html"><code>html/<wbr>cross-<wbr>origin-<wbr>opener-<wbr>policy/<wbr>reporting/<wbr>access-<wbr>reporting/<wbr>reporting-<wbr>observer.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<h3 class="run-head"><code>/html/cross-origin-opener-policy/reporting/access-reporting/reporting-observer.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 4</span></h3>
+<h3 class="run-head"><code>/html/cross-origin-opener-policy/reporting/access-reporting/reporting-observer.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>3</b> / 4</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-b541d68d3480"><details><summary><span class="mark">FAIL</span><span class="sub-name">Opener COOP</span></summary><pre class="msg">assert_equals: No report received. expected 1 but got 0</pre></details><a class="self" href="#s-b541d68d3480" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7dde8973c2b3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Openee COOP</span></summary><pre class="msg">assert_equals: No report received. expected 1 but got 0</pre></details><a class="self" href="#s-7dde8973c2b3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-timeout" id="s-3e629b1cfec0"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Access from same-origin iframe</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-3e629b1cfec0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-notrun" id="s-7e403b180c43"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Access from cross-site iframe</span></div><a class="self" href="#s-7e403b180c43" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-timeout" id="s-7e403b180c43"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Access from cross-site iframe</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-7e403b180c43" aria-label="Link to this subtest">&para;</a></li>
 </ol>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>Opener COOP</li><li>Openee COOP</li><li>Access from same-origin iframe</li></ol></details>
 </div>
 </div>
 </details>

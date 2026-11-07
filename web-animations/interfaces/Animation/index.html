@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../web-animations/"><code>web-<wbr>animations/</code></a></li><li><a href="../../../web-animations/interfaces/"><code>interfaces/</code></a></li><li aria-current="page"><code>Animation/</code></li></ol></nav>
 <h1 class="page-title"><code>web-<wbr>animations/<wbr>interfaces/<wbr>Animation/</code></h1>
 <div class="figures" role="group" aria-label="web-animations/interfaces/Animation/">
-<p class="figures-main"><span class="fg-pass">131</span><span class="fg-of"> / 147</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>16</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>19</dd></div><div class="blk"><dt>Blocking files</dt><dd>2</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">132</span><span class="fg-of"> / 147</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>15</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>19</dd></div><div class="blk"><dt>Blocking files</dt><dd>1</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>135</b> / 148 WPT subtests passing on the same files, <span class="quiet">none blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of web-animations/interfaces/Animation/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">19 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="15 clean, 2 with failures, 2 blocking, 0 with no subtests, 0 not run, of 19 files"><span class="m-clean" style="width:78.947%"></span><span class="m-partial" style="width:10.526%"></span><span class="m-blocking" style="width:10.526%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>15</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>2</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>2</dd></div><p class="kinds"><b>2</b> NONE-PASSED</p></dl>
+<div class="meter" role="img" aria-label="16 clean, 2 with failures, 1 blocking, 0 with no subtests, 0 not run, of 19 files"><span class="m-clean" style="width:84.211%"></span><span class="m-partial" style="width:10.526%"></span><span class="m-blocking" style="width:5.263%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>16</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>2</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>1</dd></div><p class="kinds"><b>1</b> NONE-PASSED</p></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -85,17 +85,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="cancel-event-on-element-removal.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>cancel-<wbr>event-<wbr>on-<wbr>element-<wbr>removal.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="cancel-event-on-element-removal.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>cancel-<wbr>event-<wbr>on-<wbr>element-<wbr>removal.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/interfaces/Animation/cancel-event-on-element-removal.html"><code>web-<wbr>animations/<wbr>interfaces/<wbr>Animation/<wbr>cancel-<wbr>event-<wbr>on-<wbr>element-<wbr>removal.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-f2cfdc7b2bee"><details><summary><span class="mark">FAIL</span><span class="sub-name">Animation.cancel event fires when element is removed</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;ready&#39;)&quot;</pre></details><a class="self" href="#s-f2cfdc7b2bee" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Animation.cancel event fires when element is removed</li></ol></details>
 </div>
 </div>
 </details>

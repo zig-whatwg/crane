@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../html/"><code>html/</code></a></li><li aria-current="page"><code>cross-<wbr>origin-<wbr>opener-<wbr>policy/</code></li></ol></nav>
 <h1 class="page-title"><span class="secno">23.3</span><code>html/<wbr>cross-<wbr>origin-<wbr>opener-<wbr>policy/</code></h1>
 <div class="figures" role="group" aria-label="html/cross-origin-opener-policy/">
-<p class="figures-main"><span class="fg-pass">535</span><span class="fg-of"> / 591</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>53</dd></div><div><dt>Timed out</dt><dd>2</dd></div><div><dt>Not run</dt><dd>1</dd></div><div><dt>Test files</dt><dd>85</dd></div><div class="blk"><dt>Blocking files</dt><dd>9</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">557</span><span class="fg-of"> / 591</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>32</dd></div><div><dt>Timed out</dt><dd>2</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>85</dd></div><div class="blk"><dt>Blocking files</dt><dd>3</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>586</b> / 591 WPT subtests passing on the same files, <span class="blk">2 blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of html/cross-origin-opener-policy/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">85 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="70 clean, 6 with failures, 9 blocking, 0 with no subtests, 0 not run, of 85 files"><span class="m-clean" style="width:82.353%"></span><span class="m-partial" style="width:7.059%"></span><span class="m-blocking" style="width:10.588%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>70</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>6</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>9</dd></div><p class="kinds"><b>7</b> NONE-PASSED, <b>2</b> TIMEOUT</p></dl>
+<div class="meter" role="img" aria-label="78 clean, 4 with failures, 3 blocking, 0 with no subtests, 0 not run, of 85 files"><span class="m-clean" style="width:91.765%"></span><span class="m-partial" style="width:4.706%"></span><span class="m-blocking" style="width:3.529%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>78</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>4</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>3</dd></div><p class="kinds"><b>1</b> NONE-PASSED, <b>2</b> TIMEOUT</p></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -40,7 +40,7 @@
 <thead><tr><th scope="col">Directory</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Test files</th><th scope="col">Standing</th></tr></thead>
 <tbody>
 <tr><th scope="row"><a href="../../html/cross-origin-opener-policy/historical/"><code>historical/</code></a></th><td class="n" data-v="76" data-of="76"><b>76</b> / 76</td><td class="n" data-v="76" data-of="76"><b>76</b> / 76</td><td class="n" data-v="10">10</td><td data-v="0"><span class="tally"><span class="quiet">none blocking</span><span class="mini" aria-hidden="true"><span class="m-clean" style="width:100.000%"></span></span></span></td></tr>
-<tr><th scope="row"><a href="../../html/cross-origin-opener-policy/reporting/"><code>reporting/</code></a></th><td class="n" data-v="57" data-of="74"><b>57</b> / 74</td><td class="n" data-v="73" data-of="74"><b>73</b> / 74</td><td class="n" data-v="22">22</td><td data-v="5"><span class="tally"><span class="blk">5 blocking</span><span class="mini" aria-hidden="true"><span class="m-clean" style="width:68.182%"></span><span class="m-partial" style="width:9.091%"></span><span class="m-blocking" style="width:22.727%"></span></span></span></td></tr>
+<tr><th scope="row"><a href="../../html/cross-origin-opener-policy/reporting/"><code>reporting/</code></a></th><td class="n" data-v="72" data-of="74"><b>72</b> / 74</td><td class="n" data-v="73" data-of="74"><b>73</b> / 74</td><td class="n" data-v="22">22</td><td data-v="1"><span class="tally"><span class="blk">1 blocking</span><span class="mini" aria-hidden="true"><span class="m-clean" style="width:90.909%"></span><span class="m-partial" style="width:4.545%"></span><span class="m-blocking" style="width:4.545%"></span></span></span></td></tr>
 </tbody>
 </table>
 <div class="tf-list has-ref">
@@ -91,20 +91,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="coep-redirect.https.html" data-gate="partial" data-pass="3" data-of="6" data-failed="3" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>coep-<wbr>redirect.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>3</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="fail">3</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="coep-redirect.https.html" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>coep-<wbr>redirect.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/cross-origin-opener-policy/coep-redirect.https.html"><code>html/<wbr>cross-<wbr>origin-<wbr>opener-<wbr>policy/<wbr>coep-<wbr>redirect.<wbr>https.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-a05797edb6ca"><details><summary><span class="mark">FAIL</span><span class="sub-name">Redirect from no coop/no coep to coop/coep</span></summary><pre class="msg">assert_equals: name expected &quot;&quot; but got &quot;Redirect-from-no-coop/no-coep-to-coop/coep&quot;</pre></details><a class="self" href="#s-a05797edb6ca" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-25547ce5cca6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Redirect from coop/no coep to coop/coep</span></summary><pre class="msg">assert_equals: name expected &quot;&quot; but got &quot;Redirect-from-coop/no-coep-to-coop/coep&quot;</pre></details><a class="self" href="#s-25547ce5cca6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-27527451fe40"><details><summary><span class="mark">FAIL</span><span class="sub-name">Redirect from coop unsafe-none/coep to coop/coep</span></summary><pre class="msg">assert_equals: name expected &quot;&quot; but got &quot;Redirect-from-coop-unsafe-none/coep-to-coop/coep&quot;</pre></details><a class="self" href="#s-27527451fe40" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>Redirect from coop/coep to coop/coep</li><li>Redirect from coop/coep to no coop/coep</li><li>Redirect from coop unsafe-none/coep to coop unsafe-inherit/coep</li></ol></details>
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>Redirect from coop/coep to coop/coep</li><li>Redirect from coop/coep to no coop/coep</li><li>Redirect from no coop/no coep to coop/coep</li><li>Redirect from coop/no coep to coop/coep</li><li>Redirect from coop unsafe-none/coep to coop/coep</li><li>Redirect from coop unsafe-none/coep to coop unsafe-inherit/coep</li></ol></details>
 </div>
 </div>
 </details>
@@ -291,18 +286,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="coop-sandbox-redirects-cuts-opener.https.html" data-gate="none-passed" data-pass="0" data-of="2" data-failed="2" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>coop-<wbr>sandbox-<wbr>redirects-<wbr>cuts-<wbr>opener.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>0</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="coop-sandbox-redirects-cuts-opener.https.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>coop-<wbr>sandbox-<wbr>redirects-<wbr>cuts-<wbr>opener.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/cross-origin-opener-policy/coop-sandbox-redirects-cuts-opener.https.html"><code>html/<wbr>cross-<wbr>origin-<wbr>opener-<wbr>policy/<wbr>coop-<wbr>sandbox-<wbr>redirects-<wbr>cuts-<wbr>opener.<wbr>https.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-dfa1f5e8672b"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;iframe sandbox=&quot;allow-popups allow-scripts allow-same-origin&quot;&gt; Sandboxed Cross-Origin-Opener-Policy popup should cut the opener if necessary including during redirects.</span></summary><pre class="msg">assert_unreached: A COOP popup was created from a sandboxed frame Reached unreachable code</pre></details><a class="self" href="#s-dfa1f5e8672b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c4ed0e7d0729"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;iframe sandbox=&quot;allow-popups allow-scripts&quot;&gt; Sandboxed Cross-Origin-Opener-Policy popup should cut the opener if necessary including during redirects.</span></summary><pre class="msg">assert_unreached: A COOP popup was created from a sandboxed frame Reached unreachable code</pre></details><a class="self" href="#s-c4ed0e7d0729" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>&lt;iframe sandbox=&quot;allow-popups allow-scripts allow-same-origin&quot;&gt; Sandboxed Cross-Origin-Opener-Policy popup should cut the opener if necessary including during redirects.</li><li>&lt;iframe sandbox=&quot;allow-popups allow-scripts&quot;&gt; Sandboxed Cross-Origin-Opener-Policy popup should cut the opener if necessary including during redirects.</li></ol></details>
 </div>
 </div>
 </details>
@@ -642,8 +634,8 @@
 <div class="run">
 <h3 class="run-head"><code>/html/cross-origin-opener-policy/javascript-url.https.html?13-14</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-5dbc56c32416"><details><summary><span class="mark">FAIL</span><span class="sub-name">navigation: SAME_ORIGIN; parentCOOP: same-origin; childCOOP: unsafe-none</span></summary><pre class="msg">assert_equals: child name expected &quot;&quot; but got &quot;7e85a57d-5515-4f35-871f-33ca89c3a284&quot;</pre></details><a class="self" href="#s-5dbc56c32416" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-edc469961dc8"><details><summary><span class="mark">FAIL</span><span class="sub-name">navigation: SAME_SITE; parentCOOP: same-origin; childCOOP: unsafe-none</span></summary><pre class="msg">assert_equals: child name expected &quot;&quot; but got &quot;8b9f7952-fdcc-4f04-9df6-294275821fc4&quot;</pre></details><a class="self" href="#s-edc469961dc8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5dbc56c32416"><details><summary><span class="mark">FAIL</span><span class="sub-name">navigation: SAME_ORIGIN; parentCOOP: same-origin; childCOOP: unsafe-none</span></summary><pre class="msg">assert_equals: child name expected &quot;&quot; but got &quot;d21c9782-8dcf-40dc-b0e0-ba6d54875395&quot;</pre></details><a class="self" href="#s-5dbc56c32416" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-edc469961dc8"><details><summary><span class="mark">FAIL</span><span class="sub-name">navigation: SAME_SITE; parentCOOP: same-origin; childCOOP: unsafe-none</span></summary><pre class="msg">assert_equals: child name expected &quot;&quot; but got &quot;a2aec09d-a225-4d4b-b014-f1021c993ba1&quot;</pre></details><a class="self" href="#s-edc469961dc8" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
@@ -653,7 +645,7 @@
 <div class="run">
 <h3 class="run-head"><code>/html/cross-origin-opener-policy/javascript-url.https.html?17-last</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 2</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-fd8aef3d6254"><details><summary><span class="mark">FAIL</span><span class="sub-name">navigation: SAME_ORIGIN; parentCOOP: same-origin; childCOOP: same-origin</span></summary><pre class="msg">assert_equals: child name expected &quot;e60f7a03-3bc5-4c39-947c-e6630c937e42&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-fd8aef3d6254" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fd8aef3d6254"><details><summary><span class="mark">FAIL</span><span class="sub-name">navigation: SAME_ORIGIN; parentCOOP: same-origin; childCOOP: same-origin</span></summary><pre class="msg">assert_equals: child name expected &quot;a6dd4790-37d6-478e-8f35-d9b4bbe2a185&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-fd8aef3d6254" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 <details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>navigation: SAME_SITE; parentCOOP: same-origin; childCOOP: same-origin</li></ol></details>
 </div>
@@ -672,7 +664,7 @@
 <div class="run">
 <h3 class="run-head"><code>/html/cross-origin-opener-policy/javascript-url.https.html?9-10</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 2</span></h3>
 <ol class="subtests">
-<li class="sub s-fail" id="s-bd004663bddd"><details><summary><span class="mark">FAIL</span><span class="sub-name">navigation: SAME_ORIGIN; parentCOOP: same-origin-allow-popups; childCOOP: same-origin-allow-popups</span></summary><pre class="msg">assert_equals: child name expected &quot;3a6e141d-e19f-45bd-a913-ba9524c7f8c6&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-bd004663bddd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bd004663bddd"><details><summary><span class="mark">FAIL</span><span class="sub-name">navigation: SAME_ORIGIN; parentCOOP: same-origin-allow-popups; childCOOP: same-origin-allow-popups</span></summary><pre class="msg">assert_equals: child name expected &quot;9dab8362-a12a-4515-a7e7-d801749656ca&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-bd004663bddd" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 <details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>navigation: SAME_SITE; parentCOOP: same-origin-allow-popups; childCOOP: same-origin-allow-popups</li></ol></details>
 </div>
@@ -776,18 +768,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="popup-redirect-same-origin-allow-popups.https.html" data-gate="none-passed" data-pass="0" data-of="2" data-failed="2" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>popup-<wbr>redirect-<wbr>same-<wbr>origin-<wbr>allow-<wbr>popups.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>0</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="popup-redirect-same-origin-allow-popups.https.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>popup-<wbr>redirect-<wbr>same-<wbr>origin-<wbr>allow-<wbr>popups.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/cross-origin-opener-policy/popup-redirect-same-origin-allow-popups.https.html"><code>html/<wbr>cross-<wbr>origin-<wbr>opener-<wbr>policy/<wbr>popup-<wbr>redirect-<wbr>same-<wbr>origin-<wbr>allow-<wbr>popups.<wbr>https.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-5ea235fbd7ef"><details><summary><span class="mark">FAIL</span><span class="sub-name">Same origin popup redirects to same-origin with same-origin-allow-popups</span></summary><pre class="msg">assert_equals: opener expected &quot;false&quot; but got &quot;true&quot;</pre></details><a class="self" href="#s-5ea235fbd7ef" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3196323ccab8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cross origin popup redirects to same-origin with same-origin-allow-popups</span></summary><pre class="msg">assert_equals: opener expected &quot;false&quot; but got &quot;true&quot;</pre></details><a class="self" href="#s-3196323ccab8" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Same origin popup redirects to same-origin with same-origin-allow-popups</li><li>Cross origin popup redirects to same-origin with same-origin-allow-popups</li></ol></details>
 </div>
 </div>
 </details>
