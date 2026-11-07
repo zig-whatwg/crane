@@ -63,6 +63,19 @@ pub const Implementation = struct {
     /// cancels the NavigationScheduler (whatwg/html#3730;
     /// navigating-across-documents/form-submit-and-window-stop.html).
     cancel_planned_navigations: *const fn (document: *runtime.Instance) void,
+    /// A navigation has started in the navigable whose html_core
+    /// BrowsingContext id is `navigable`: every planned navigation aimed at
+    /// it whose task has not run is cancelled, whatever form planned it, in
+    /// the Browser of `scope` (any instance of that Browser). Not HTML's
+    /// "plan to navigate", which only the form's own next plan cancels:
+    /// golden rule 2, all three browsers - navigating-across-documents/006.html
+    /// and 008.html pass in Chrome 157, Firefox 159 and Safari 27.2 (wpt.fyi
+    /// 94f58d592d). Blink keeps the pending submission on its TARGET frame
+    /// (Frame::ScheduleFormSubmission's form_submit_navigation_task_) and
+    /// FrameLoader::WillStartNavigation -> CancelProvisionalLoaderForNewNavigation
+    /// calls Frame::CancelFormSubmission; WebKit's NavigationScheduler of the
+    /// target frame cancels its scheduled submission when a new load starts.
+    cancel_planned_navigations_to: *const fn (scope: *runtime.Instance, navigable: u64) void,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -78,6 +91,14 @@ pub fn install(impl: Implementation) void {
 pub fn cancelPlannedNavigations(document: *runtime.Instance) void {
     const impl = implementation.get() orelse return;
     impl.cancel_planned_navigations(document);
+}
+
+/// Cancel every planned navigation aimed at the navigable `navigable`: see
+/// Implementation.cancel_planned_navigations_to. Nothing before any form
+/// installed the implementation.
+pub fn cancelPlannedNavigationsTo(scope: *runtime.Instance, navigable: u64) void {
+    const impl = implementation.get() orelse return;
+    impl.cancel_planned_navigations_to(scope, navigable);
 }
 
 /// Submit `form` from `submitter`.

@@ -251,6 +251,7 @@ pub fn installHooks() void {
         .unload = &lifecycleUnload,
         .abort = &lifecycleAbort,
         .abort_for_navigation = &lifecycleAbortForNavigation,
+        .end_load = &lifecycleEndLoad,
         .propagate_abort = &lifecyclePropagateAbort,
         .destroy = &lifecycleDestroy,
         .set_about_base_url = &lifecycleSetAboutBaseUrl,
@@ -3594,7 +3595,6 @@ fn updateReadiness(instance: *runtime.Instance, readiness: enums.DocumentReadySt
 /// runs the scripts that will execute when the document has finished
 /// parsing - a defer script document.write() put in the stream - as the
 /// navigation and written parsers both use these guarded lifecycle steps.
-/// Deviation, stated: load's legacy target override is not modelled.
 fn theEnd(instance: *runtime.Instance) void {
     const realm = instance.ctx;
     const had_engine = realm.hasEngine();
@@ -3665,6 +3665,35 @@ fn lifecycleAbort(document: *runtime.Instance) void {
 
 fn lifecycleAbortForNavigation(document: *runtime.Instance) void {
     abortDocument(document, true);
+}
+
+/// dom.document_lifecycle: a navigation that `document`'s own page started
+/// (not the browser's: its UI navigation leaves the old page loading until
+/// the new one commits, as Chrome's browser-initiated NavigationRequest does
+/// - HTMLIFrameElement.runBeforeUnload) aborted it before its load event
+/// fired (its readiness is not "complete" yet): its load ends - it never
+/// fires load or pageshow, nor its container's load (completeLoading).
+/// Stated deviation from HTML, whose "the end" step 9 task fires load whatever
+/// aborted the document after its parser stopped - golden rule 2, the
+/// majority: Firefox and Safari pass replace-before-load/a-user-click.html and
+/// location-assign-user-click.html (a navigation while an image delays the
+/// load event; the frame's first load event is the new document's), Chrome
+/// fails both (wpt.fyi 94f58d592d); no newer spec. Gecko's mechanism:
+/// nsDocumentViewer::LoadComplete(aStatus) fires load and pageshow only for a
+/// successful status, and the new load's Stop() completes the old one as
+/// NS_BINDING_ABORTED. With the parse of a fully received body ending in its
+/// own task (as Firefox's parser flushes it), a planned form navigation
+/// queued by the parse's script runs after "interactive" and before the load
+/// task - replace-before-load/form-submit.html and the other two pass by this
+/// rule - while an unhandledrejection queued by the same script still follows
+/// "interactive" (promise-rejection-event-during-parse.html).
+/// Every WPT file behind this rule is a navigation the page itself started (a
+/// form submission, a click, location.assign). A browser-UI navigation keeps
+/// Crane's stated Chrome model instead; WPT cannot drive one, so no file
+/// decides it (an open golden-rule-2 item, lane nav2's handoff).
+fn lifecycleEndLoad(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    if (internal.ready_state != ._complete_) internal.load_aborted = true;
 }
 
 /// Only fetch-owner policy distinguishes provisional navigation here;
@@ -4249,8 +4278,8 @@ fn unloadSteps(data: ?*anyopaque) void {
     }
     // Step 12: "If oldDocument's salvageable state is false, then fire an
     // event named unload at oldDocument's relevant global object, with legacy
-    // target override flag set." The override is not modelled.
-    if (!internal.salvageable) fireEvent(document, window, "unload", false);
+    // target override flag set."
+    if (!internal.salvageable) fireAtWindow(document, window, "unload");
     // Step 14.
     termination_nesting.leave(event_loop);
     terminating = false;
@@ -4770,14 +4799,26 @@ fn completeLoadingWithChild(container: *runtime.Instance) void {
 /// destroys it); then the completely loaded time; then the parent's own
 /// completion.
 fn completeLoading(document: *runtime.Instance) void {
+    // A navigation its page started aborted it before this task ran
+    // (lifecycleEndLoad): its load
+    // ends without load, pageshow or its container's load - as Gecko's
+    // nsDocumentViewer::LoadComplete for an NS_BINDING_ABORTED load. Its
+    // readiness still becomes "complete" (as "abort a parser" step 5 leaves
+    // a document whose parser a navigation aborted).
+    if (getInternal(document)) |internal| if (internal.load_aborted) {
+        updateReadiness(document, ._complete_);
+        return;
+    };
     // Step 9.1: "Update the current document readiness to "complete"."
     updateReadiness(document, ._complete_);
     // Steps 9.2-9.3: no browsing context, nothing more.
     const window = (get_defaultView(document) catch null) orelse return;
     // Step 9.4: the load event start time.
     @import("dom").performance_timeline.recordLoadTiming(document.ctx, .load_event_start);
-    // Step 9.5: "Fire an event named load at window".
-    fireEvent(document, window, "load", false);
+    // Step 9.5: "Fire an event named load at window, with legacy target
+    // override flag set" - the event's target is this document (DOM
+    // dispatch step 5).
+    fireAtWindow(document, window, "load");
     // Step 9.8: the load event end time.
     @import("dom").performance_timeline.recordLoadTiming(document.ctx, .load_event_end);
     const internal = getInternal(document) orelse return;
@@ -4876,16 +4917,36 @@ fn firePageShow(document: *runtime.Instance, window: *runtime.Instance) void {
     firePageTransition(document, window, "pageshow", false);
 }
 
-/// "Fire a page transition event named `event_type` at window with
-/// `persisted`".
+/// "Fire an event named `event_type` at" `window` "with legacy target
+/// override flag set" (HTML's Window load and unload): an Event that does
+/// not bubble and is not cancelable, whose target is `window`'s associated
+/// Document while `window`'s listeners run (DOM dispatch steps 5 and 6.3).
+fn fireAtWindow(document: *runtime.Instance, window: *runtime.Instance, event_type: []const u8) void {
+    const event = interfaces.Event.call_constructor(
+        document.ctx,
+        runtime.DOMString.initInterned(event_type),
+        webidl.Opt(dictionaries.EventInit).passed(.{}),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = @import("dom").fire_event.dispatchTrustedLegacyTargetOverride(window, event) catch {};
+    event.releaseIfUnwrapped(generation);
+}
+
+/// HTML "fire a page transition event" named `event_type` at window with
+/// `persisted`: a PageTransitionEvent "with the persisted attribute
+/// initialized to persisted, the cancelable attribute initialized to true,
+/// the bubbles attribute initialized to true, and legacy target override
+/// flag set" (whatwg/html#6794; Blink's PageTransitionEvent is
+/// Bubbles::kYes, Cancelable::kYes, dispatched with LocalDOMWindow::
+/// DispatchEvent(event, document())).
 fn firePageTransition(document: *runtime.Instance, window: *runtime.Instance, event_type: []const u8, persisted: bool) void {
     const event = interfaces.PageTransitionEvent.call_constructor(
         document.ctx,
         runtime.DOMString.initInterned(event_type),
-        webidl.Opt(dictionaries.PageTransitionEventInit).passed(.{ .base = .{}, .persisted = persisted }),
+        webidl.Opt(dictionaries.PageTransitionEventInit).passed(.{ .base = .{ .bubbles = true, .cancelable = true }, .persisted = persisted }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = @import("dom").fire_event.dispatchTrusted(window, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrustedLegacyTargetOverride(window, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 

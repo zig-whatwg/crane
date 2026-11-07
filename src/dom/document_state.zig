@@ -30,6 +30,16 @@ const SpeculationEagerness = dom_document_scripts.SpeculationEagerness;
 /// Each Document's state, in its Browser's side table.
 pub const Registry = runtime.InstanceRegistry(.document, InternalState);
 
+comptime {
+    // The registry allocates InternalState from the arena's power-of-two
+    // classes (feature queue, 2026-10-18: one byte past a class doubles every
+    // Document's block). Measured 2026-11-07 (lane nav2 b7): 2168 bytes at
+    // 0f7c8a5f49e and with load_aborted (the bool fills padding) - already
+    // past the 2048-byte class, so it is in the 4096-byte class; this pins
+    // that class. tests/dom/nav2b7_document_state_size_test.zig checks it.
+    if (@sizeOf(InternalState) > 4096) @compileError(std.fmt.comptimePrint("Document's InternalState is {d} bytes: past the arena's 4096-byte class", .{@sizeOf(InternalState)}));
+}
+
 /// Document format type enumeration
 pub const DocType = enum {
     html,
@@ -269,6 +279,11 @@ pub const InternalState = struct {
     pending_load_token: u64 = 0,
     /// The step 9 task whose load completeLoadingWithChild ran early, or 0.
     early_load_token: u64 = 0,
+    /// A navigation aborted this document ("abort a document and its
+    /// descendants", navigate step 24.3) before its load event fired: it never
+    /// fires load or pageshow, and its container gets no load event for it
+    /// (Document's completeLoading).
+    load_aborted: bool = false,
     /// Load-task tokens and shadow-tree scope serials share this sequence:
     /// monotonic per document, never zero and never reused.
     next_serial: u64 = 1,

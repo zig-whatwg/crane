@@ -59,7 +59,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
-    dom.navigation_objects.installActivations(.{ .create = &create });
+    dom.navigation_objects.installActivations(.{ .create = &create, .update = &update });
 }
 
 /// Initialize instance (creates the instance), and install this type's part
@@ -94,6 +94,28 @@ fn create(realm: runtime.Context, init_state: dom.navigation_objects.ActivationI
     const instance = try interfaces.NavigationActivation.init(realm.allocator, realm);
     errdefer runtime.Instance.deinit(instance);
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    point(instance, internal, init_state);
+    return instance;
+}
+
+/// dom.navigation_objects: HTML "update document for history step
+/// application" step 7 for a document whose navigation's activation is not
+/// null - a document shown again from the back/forward cache: "set
+/// activation's old entry" (7.3-7.5), its new entry (7.6) and its navigation
+/// type (7.7) on the SAME object, as Chromium's NavigationActivation::Update
+/// (called from NavigationApi::SetEntriesForRestore).
+fn update(instance: *runtime.Instance, init_state: dom.navigation_objects.ActivationInit) void {
+    const internal = getInternal(instance) orelse return;
+    // The edges to the entries it named go first, then the new ones are
+    // taken: an entry this activation no longer names is held only by
+    // whatever else holds it.
+    internal.release(instance);
+    point(instance, internal, init_state);
+}
+
+/// The old entry, new entry and navigation type `init_state` gives, each
+/// entry kept through its edge.
+fn point(instance: *runtime.Instance, internal: *InternalState, init_state: dom.navigation_objects.ActivationInit) void {
     if (init_state.from) |from| {
         internal.old_entry = from;
         internal.old_edge.hold(instance, from);
@@ -106,7 +128,6 @@ fn create(realm: runtime.Context, init_state: dom.navigation_objects.ActivationI
         .reload => ._reload_,
         .traverse => ._traverse_,
     };
-    return instance;
 }
 
 /// "The from getter steps are to return this's old entry."
