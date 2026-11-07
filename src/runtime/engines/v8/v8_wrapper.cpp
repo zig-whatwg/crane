@@ -6420,13 +6420,18 @@ struct FCILayout {
 
 static Local<Data> functionCallbackTarget(const FunctionCallbackInfo<Value>* info) {
     const FCILayout* layout = reinterpret_cast<const FCILayout*>(info);
-    // Get the target function from implicit_args[kTargetIndex]
-    // kTargetIndex = 4
-    internal::Address target_addr = layout->implicit_args[4];
-    // Convert the internal address to a Local<Value> using reinterpret
-    // V8 Local handles internally store an Address*, so we create a pointer to
-    // our address slot and reinterpret it as a Local
-    return *reinterpret_cast<Local<Data>*>(&target_addr);
+    // A Local over the SLOT, as Data() makes one
+    // (Local<Data>::FromSlot(&implicit_args_[kTargetIndex])): in V8 13.1,
+    // without direct handles, a Local is the address of a slot that holds
+    // the tagged pointer. The slot is part of the API callback's frame, so
+    // the Local is good for the whole call, read at its start or after its
+    // impl has run script. This read used to copy the slot's value and
+    // reinterpret THAT as the Local - the tagged pointer taken for a slot -
+    // so every question asked of the target read its first word as an
+    // object: garbage, nearly always "not a function", and once, read late
+    // in a call, a bus error (tests/v8/perf3_function_creation_context_test.zig).
+    internal::Address* target_slot = &layout->implicit_args[4];
+    return *reinterpret_cast<Local<Data>*>(&target_slot);
 }
 
 /// What the callback's target is, read as GetFunctionCreationContext reads it:
