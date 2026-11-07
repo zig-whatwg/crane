@@ -1325,7 +1325,16 @@ fn checkNode(node: *NodeBase, fanout: usize) CheckError!void {
     // through the WebIDL layer, whose node document is set through
     // Node.setOwnerDocument (a NodeBase built outside it has no counts).
     if (node.owner_instance != null and node.parent_node == null and !node.rc_flags.hosted and countsAsForeign(node) and !node.rc_flags.foreign) return error.FlagMismatch;
-    if (node.child_nodes.size() > fanout) return;
+    // A node with more children than `fanout` is not checked (a bounded
+    // walk of its links: a node keeps no child list).
+    {
+        var children_seen: usize = 0;
+        var walked = node.first_child;
+        while (walked) |at| : (walked = at.next_sibling) {
+            children_seen += 1;
+            if (children_seen > fanout) return;
+        }
+    }
     var total: u64 = @intFromBool(isHeld(node));
     var child = node.first_child;
     while (child) |at| : (child = at.next_sibling) total += at.subtree_holds;

@@ -597,7 +597,8 @@ fn removingSteps(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
 
 fn movedOptions(node: *dom.NodeBase, root: *dom.NodeBase, old_parent: *dom.NodeBase) void {
     if (optionInstance(node)) |option| changedOwner(option, ownerBeforeChange(option, root, old_parent));
-    for (node.child_nodes.items()) |child| movedOptions(child, root, old_parent);
+    var children = node.children();
+    while (children.next()) |child| movedOptions(child, root, old_parent);
 }
 
 fn movingSteps(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {

@@ -31,13 +31,15 @@ const SpeculationEagerness = dom_document_scripts.SpeculationEagerness;
 pub const Registry = runtime.InstanceRegistry(.document, InternalState);
 
 comptime {
-    // The registry allocates InternalState from the arena's power-of-two
-    // classes (feature queue, 2026-10-18: one byte past a class doubles every
-    // Document's block). Measured 2026-11-07 (lane nav2 b7): 2168 bytes at
-    // 0f7c8a5f49e and with load_aborted (the bool fills padding) - already
-    // past the 2048-byte class, so it is in the 4096-byte class; this pins
-    // that class. tests/dom/nav2b7_document_state_size_test.zig checks it.
-    if (@sizeOf(InternalState) > 4096) @compileError(std.fmt.comptimePrint("Document's InternalState is {d} bytes: past the arena's 4096-byte class", .{@sizeOf(InternalState)}));
+    // The registry allocates InternalState from the state arena. Its classes
+    // were powers of two (feature queue, 2026-10-18: one byte past a class
+    // doubled every Document's block; lane nav2 b7 measured 2168 bytes, in
+    // the 4096-byte class). Since lane perf2 b5 they are exact to 16 bytes up
+    // to 4 KiB (runtime.ArenaAllocator): a field costs its own bytes and the
+    // state's block is 2,176. Past 4 KiB the classes are powers of two again,
+    // so this pins the state under 4 KiB.
+    // tests/dom/nav2b7_document_state_size_test.zig checks it.
+    if (@sizeOf(InternalState) > 4096) @compileError(std.fmt.comptimePrint("Document's InternalState is {d} bytes: past the arena's exact classes (4 KiB)", .{@sizeOf(InternalState)}));
 }
 
 /// Document format type enumeration
@@ -62,7 +64,7 @@ pub const Mode = enum {
 /// Independently owned state behind one Document-owned pointer. The policy
 /// pointer is always set at construction; interaction members stay lazy.
 /// New Document extension pointers join this block so the inline state stays
-/// within its pinned 2048-byte allocation class.
+/// small (its block is exact to 16 bytes since lane perf2 b5).
 pub const InteractionState = struct {
     top_layer: ?*@import("top_layer.zig").State = null,
     autofocus: ?*@import("document_autofocus.zig").State = null,
@@ -207,8 +209,9 @@ pub const InternalState = struct {
     /// Document ready state
     ready_state: enums.DocumentReadyState,
     /// HTML lastModified: the exact source timestamp, used only when known.
-    /// Keep the tag in the boolean padding: ?WallTime raises this state from
-    /// the arena's 2048-byte class to 4096 bytes (measured on row 76).
+    /// Keep the tag in the boolean padding: ?WallTime raised this state from
+    /// the arena's 2048-byte class to 4096 bytes when the classes were powers
+    /// of two (measured on row 76); exact since lane perf2 b5.
     last_modified: @import("platform").WallTime = .{ .ns_since_epoch = 0 },
     last_modified_known: bool = false,
     /// HTML "page showing": set when pageshow fires at the end of loading.

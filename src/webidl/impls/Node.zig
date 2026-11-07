@@ -70,30 +70,41 @@ pub const DocumentPosition = struct {
 /// Uses NodeBase for tree structure - single source of truth in src/dom/
 /// Tree operations delegate to src/dom/mutation.zig
 pub const InternalState = struct {
+    /// Kept by value in this interface's own State (runtime.OwnState, the
+    /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
+    pub const embedded_in_state = true;
+
+    /// The allocator the node was made with: what its state allocates and
+    /// frees. Not its Browser's (runtime.allocatorOf) - the two are one in a
+    /// Browser, but the V8 tests' realms make nodes with the test's
+    /// allocator over the process's standalone scope (lane perf2 batch 5:
+    /// 210 tests), so the copy stays until those realms get scopes of their
+    /// own.
     allocator: std.mem.Allocator,
 
     /// NodeBase - THE source of truth for tree structure
-    /// Contains: parent_node, first_child, last_child, previous_sibling, next_sibling, child_nodes
+    /// Contains: parent_node, first_child, last_child, previous_sibling, next_sibling
     /// All tree operations go through this via src/dom/mutation.zig
+    /// `&base` while the node lives; null once its teardown released it
+    /// (`releaseNodeBase`).
     node_base: ?*NodeBase = null,
+
+    /// The node's NodeBase, by value (lane perf2 batch 5, Z7): with this
+    /// state in the node's State block, the tree node is in that block too -
+    /// one allocation per node, as a Blink or WebKit Node is one object. Its
+    /// address lives as long as the block: released by the node's teardown,
+    /// its bytes go back with the block (gc.releaseStorage, after the
+    /// destruction chain).
+    base: NodeBase,
 
     /// The type of this node (ELEMENT_NODE, TEXT_NODE, etc.)
     /// This determines behavior of many getters (nodeName, nodeValue, textContent)
     node_type: u16 = NodeType.ELEMENT_NODE,
 
-    /// The local name for Element nodes, target for PI nodes, etc.
-    /// Used by nodeName getter
-    local_name: ?runtime.DOMString = null,
-
-    /// The namespace URI for Element nodes
-    namespace_uri: ?runtime.DOMString = null,
-
-    /// The namespace prefix for Element nodes
-    prefix: ?runtime.DOMString = null,
-
-    /// The node value (for Text, Comment, CDATA, PI, Attr nodes)
-    /// For Element and Document nodes, this is always null
-    node_value: ?runtime.DOMString = null,
+    // No local name, namespace, prefix or node value here (lane perf2 b5:
+    // 128 bytes on every node, set on 186 of 6.07 M - and never read): an
+    // element's names are its ElementData's, a CharacterData's value its
+    // data, an Attr's value its own state, a PI's target its own.
 
     /// The owner document for this node
     /// Document nodes return null from ownerDocument getter
@@ -111,30 +122,13 @@ pub const InternalState = struct {
     /// of it - when it is freed (`childNodesFreed`).
     child_nodes_list: ?*runtime.Instance = null,
 
-    /// For tracking if node is in a document tree (for isConnected)
-    /// A node is connected when its root is a document
-    is_connected: bool = false,
+    // isConnected reads NodeBase.is_connected, kept by the insertion and
+    // removing steps; this state kept a copy nothing set.
 
-    pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-        };
-    }
-
+    /// Owns nothing: node_base and child_nodes_list are managed separately
+    /// (releaseNodeBase, childNodesFreed).
     pub fn deinit(self: *InternalState) void {
-        if (self.local_name) |*name| {
-            name.deinit(self.allocator);
-        }
-        if (self.namespace_uri) |*uri| {
-            uri.deinit(self.allocator);
-        }
-        if (self.prefix) |*p| {
-            p.deinit(self.allocator);
-        }
-        if (self.node_value) |*val| {
-            val.deinit(self.allocator);
-        }
-        // Note: node_base and child_nodes_list are managed separately via deinit
+        _ = self;
     }
 };
 
@@ -202,43 +196,41 @@ fn stillOrphan(instance: *runtime.Instance) bool {
 /// ...)`, and its `nodeType()` is not virtual. No creation path sets it
 /// afterwards.
 ///
-/// Its internal state is a block of its Browser's arena, kept in this level's
-/// own State field (`own._internal`, runtime.OwnState).
+/// Its internal state - the NodeBase in it - is kept by value in this level's
+/// own State (`_embedded`, runtime.OwnState): the node is one block.
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = args;
     const node_type = comptime nodeTypeOf(StateType);
 
-    // Initialize Node internal state in its own State (runtime.OwnState)
-    // The block is the arena's, and `Registry.remove` returns it to the arena.
-    // Node is the hottest path here - every element is a Node - and with `set` the
-    // block was dropped from the map and held to process exit.
-    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
-    internal.* = InternalState.init(allocator);
-    internal.node_type = node_type;
+    // Node's internal state, by value in its own State (runtime.OwnState),
+    // and in it the NodeBase - the unified tree structure: one block for the
+    // whole node, made zeroed by Instance.init (lane perf2 batch 5, Z7). One
+    // write of the whole state, no field left `undefined` (a fill in safe
+    // builds).
+    const internal = try Registry.create(instance);
     errdefer Registry.remove(instance);
-
-    // Create NodeBase - the unified tree structure
-    const node_base = try allocator.create(NodeBase);
-    errdefer allocator.destroy(node_base);
-
-    node_base.* = NodeBase{
+    internal.* = .{
         .allocator = allocator,
         .node_type = node_type,
-        .parent_node = null,
-        .first_child = null,
-        .last_child = null,
-        .previous_sibling = null,
-        .next_sibling = null,
-        .child_nodes = infra.List(*NodeBase).init(allocator),
-        .owner_document = null,
-        .is_connected = false,
-        // Born with one reference, its creator's (rc_one), which it offers to
-        // whoever takes it on first (NodeBase.RcFlags.creator; refcount7) -
-        // a Document too, since refcount step 5i (lane refcount8): the
-        // holder it is made for (a Window, a template's owner, a resource
-        // cache) or its first wrapper takes it over.
-        .rc_flags = .{},
+        .base = .{
+            .allocator = allocator,
+            .node_type = node_type,
+            .parent_node = null,
+            .first_child = null,
+            .last_child = null,
+            .previous_sibling = null,
+            .next_sibling = null,
+            .owner_document = null,
+            .is_connected = false,
+            // Born with one reference, its creator's (rc_one), which it offers to
+            // whoever takes it on first (NodeBase.RcFlags.creator; refcount7) -
+            // a Document too, since refcount step 5i (lane refcount8): the
+            // holder it is made for (a Window, a template's owner, a resource
+            // cache) or its first wrapper takes it over.
+            .rc_flags = .{},
+        },
     };
+    const node_base = &internal.base;
     internal.node_base = node_base;
 
     // Register the Instance <-> NodeBase mapping
@@ -317,10 +309,9 @@ pub fn deinit(instance: *runtime.Instance) void {
             // tree walk happens. By collecting instances first, we avoid following
             // potentially dangling next_sibling pointers.
             //
-            // We use child_nodes list (stored in parent's NodeBase) rather than
-            // sibling pointers because the list is guaranteed valid as long as
-            // the parent's NodeBase is valid.
-            const child_count = node_base.child_nodes.size();
+            // The children are read off the parent's links (a node keeps no
+            // child list: NodeBase.children), all before the first is torn down.
+            const child_count = node_base.childCount();
             if (child_count > 0) {
                 // Collect all child instances first
                 var child_instances: [256]*runtime.Instance = undefined;
@@ -328,7 +319,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
                 // Use bounded array for small trees, fall back to allocator for large trees
                 if (child_count <= 256) {
-                    for (node_base.child_nodes.items()) |child_base| {
+                    var child_base_walk = node_base.children();
+                    while (child_base_walk.next()) |child_base| {
                         if (instance_bridge.getInstance(child_base)) |child_opaque| {
                             child_instances[collected] = @ptrCast(@alignCast(child_opaque));
                             collected += 1;
@@ -364,7 +356,8 @@ pub fn deinit(instance: *runtime.Instance) void {
                     };
                     defer internal.allocator.free(alloc_children);
 
-                    for (node_base.child_nodes.items()) |child_base| {
+                    var child_base_walk = node_base.children();
+                    while (child_base_walk.next()) |child_base| {
                         if (instance_bridge.getInstance(child_base)) |child_opaque| {
                             alloc_children[collected] = @ptrCast(@alignCast(child_opaque));
                             collected += 1;
@@ -972,7 +965,7 @@ pub fn set_nodeValue(instance: *runtime.Instance, value: ?runtime.DOMString) any
             // Step 1: If the given value is null, act as if it was the empty string.
             try interfaces.CharacterData.set_data(instance, value orelse runtime.DOMString.initEmpty());
         },
-        // For Attr, set an existing attribute value; Attr keeps its value in node_value.
+        // For Attr, set an existing attribute value; Attr keeps its value in its own state.
         // Attr: "set an existing attribute value" with this and the given
         // value (null becomes the empty string) - through the Attr impl, which
         // changes the attribute in its element's list when it has one.
@@ -1444,8 +1437,8 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             const owner = document orelse node_internal.owner_document orelse
                 return error.InvalidStateError;
             // The getters below clone into ctx.allocator, so they must be freed
-            // with ctx.allocator - node_internal.allocator is not necessarily the
-            // same one.
+            // with ctx.allocator - the node's Browser's allocator is not
+            // necessarily the same one.
             const instance_allocator = node.ctx.allocator;
 
             // Each of these getters CLONES into ctx.allocator and transfers
@@ -1572,7 +1565,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             defer local_name.deinit(instance_allocator);
             var value = try interfaces.Attr.get_value(node);
             defer value.deinit(instance_allocator);
-            const copy = try interfaces.Attr.init(node_internal.allocator, owner.ctx);
+            const copy = try interfaces.Attr.init(allocator, owner.ctx);
             errdefer interfaces.Attr.deinit(copy);
             try setOwnerDocument(copy, owner);
             try dom_module.attr_nodes.name(
@@ -1916,31 +1909,19 @@ fn setLocalNameHook(instance: *runtime.Instance, name: runtime.DOMString) dom_mo
 /// Also names the NodeBase (NodeBase.nodeName) for DOM operations.
 pub fn setLocalName(instance: *runtime.Instance, name: runtime.DOMString) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.local_name) |*old| {
-        old.deinit(internal.allocator);
-    }
-    internal.local_name = try name.clone(internal.allocator);
 
     // Also name the NodeBase for DOM operations (post-connection steps, etc.):
     // the uppercase of the local name, owned by the node (its rare data).
     if (internal.node_base) |node_base| {
         const name_slice = name.asSlice();
-        const upper_name = try internal.allocator.alloc(u8, name_slice.len);
-        errdefer internal.allocator.free(upper_name);
+        // The NodeBase owns it, and frees it with its own allocator.
+        const upper_name = try node_base.allocator.alloc(u8, name_slice.len);
+        errdefer node_base.allocator.free(upper_name);
         for (name_slice, 0..) |c, i| {
             upper_name[i] = std.ascii.toUpper(c);
         }
         try node_base.setOwnedNodeName(upper_name);
     }
-}
-
-/// Set the namespace URI (used by Element, Attr)
-pub fn setNamespaceURI(instance: *runtime.Instance, uri: ?runtime.DOMString) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.namespace_uri) |*old| {
-        old.deinit(internal.allocator);
-    }
-    internal.namespace_uri = if (uri) |u| try u.clone(internal.allocator) else null;
 }
 
 /// Set the owner document
@@ -2162,13 +2143,19 @@ const DocumentCounts = enum { with_document_counts, without_document_counts };
 /// 5. the bridge forgets the node - an observer's `liveNode` reads null from
 ///    here - and the NodeBase is freed.
 fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, node_base: *NodeBase, counts: DocumentCounts) void {
-    node_base.child_nodes.deinit();
     dom_module.observer_registrations.releaseList(instance, node_base);
     node_base.deinitRareData();
     dom_module.node_holds.nodeReleased(node_base);
     if (counts == .with_document_counts) releaseDocumentCounts(internal, node_base);
     instance_bridge.unregister(instance);
-    internal.allocator.destroy(node_base);
+    // The NodeBase is the State block's (`InternalState.base`): released, not
+    // freed - its bytes go back with the block. Poisoned as the tests' and the
+    // WPT correctness runner's allocators poison a freed block (Debug builds,
+    // and a Browser that asked: runtime.BrowserScope.poisonsReleasedNodes), so
+    // a read of a released NodeBase still faults the way a read of the freed
+    // one did.
+    if (runtime.BrowserScope.ofInstance(instance).poisonsReleasedNodes())
+        @memset(std.mem.asBytes(node_base), runtime.ArenaAllocator.poison_byte);
     internal.node_base = null;
 }
 

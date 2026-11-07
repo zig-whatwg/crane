@@ -39,6 +39,10 @@ pub const ImplError = error{
 /// exit is then the sweep at its Browser's end. A block of its own
 /// (`allocator.create`) had none, and leaked per orphaned script.
 pub const InternalState = struct {
+    /// Kept by value in this interface's own State (runtime.OwnState, the
+    /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
+    pub const embedded_in_state = true;
+
     flags: ScriptFlags = .{},
 
     /// What the state owns: its script text (Trusted Types 4.1.2.1).
@@ -93,7 +97,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     try dom_module.node_creation.setNodeLocalName(instance, runtime.DOMString.initInterned("script"));
 
     _ = allocator;
-    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
+    const internal = try Registry.create(instance);
     internal.* = .{};
 }
 

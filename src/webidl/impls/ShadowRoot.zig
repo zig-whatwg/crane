@@ -29,6 +29,10 @@ pub const ImplError = error{
 /// Internal state for ShadowRoot
 /// Spec: https://dom.spec.whatwg.org/#shadowroot
 pub const InternalState = struct {
+    /// Kept by value in this interface's own State (runtime.OwnState, the
+    /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
+    pub const embedded_in_state = true;
+
     allocator: std.mem.Allocator,
 
     /// The mode of this shadow root ("open" or "closed")
@@ -206,7 +210,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // registry's `remove` returns it and an orphaned root's goes with the
     // arena. A block of its own (`set`) had no exit for an orphaned host's
     // root (lane orphanleak).
-    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
+    const internal = try Registry.create(instance);
     internal.* = InternalState.init(allocator);
 }
 

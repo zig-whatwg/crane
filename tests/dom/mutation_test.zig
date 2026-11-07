@@ -36,11 +36,9 @@ test "NodeBase.getNodeDocument - Document node returns itself" {
         .last_child = null,
         .previous_sibling = null,
         .next_sibling = null,
-        .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null, // Document nodes have null owner_document
         .is_connected = true,
     };
-    defer doc_node.child_nodes.deinit();
 
     // Per spec: For Document nodes, getNodeDocument returns itself
     const node_doc = doc_node.getNodeDocument();
@@ -63,11 +61,9 @@ test "NodeBase.getNodeDocument - Element node returns owner_document" {
         .last_child = null,
         .previous_sibling = null,
         .next_sibling = null,
-        .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
         .is_connected = true,
     };
-    defer doc_node.child_nodes.deinit();
 
     // Cast to Document type pointer for owner_document field
     const doc_ptr: *dom.Document = @ptrCast(&doc_node);
@@ -116,11 +112,9 @@ test "adopt - changes node_document for entire subtree" {
         .last_child = null,
         .previous_sibling = null,
         .next_sibling = null,
-        .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
         .is_connected = true,
     };
-    defer doc1_node.child_nodes.deinit();
 
     var doc2_node = NodeBase{
         .allocator = allocator,
@@ -130,11 +124,9 @@ test "adopt - changes node_document for entire subtree" {
         .last_child = null,
         .previous_sibling = null,
         .next_sibling = null,
-        .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
         .is_connected = true,
     };
-    defer doc2_node.child_nodes.deinit();
 
     const doc1_ptr: *dom.Document = @ptrCast(&doc1_node);
     const doc2_ptr: *dom.Document = @ptrCast(&doc2_node);
@@ -148,9 +140,10 @@ test "adopt - changes node_document for entire subtree" {
     defer child.deinit();
     child.base.owner_document = doc1_ptr;
 
-    // Manually set up parent-child relationship (simplified, not using full mutation)
-    try parent.base.child_nodes.append(&child.base);
-    child.base.parent_node = &parent.base;
+    // Set up the parent-child relationship (simplified, not the full insert):
+    // the links and the parent write with the holds it moves (refcount), so
+    // the reference counts' checks see a consistent subtree.
+    _ = try parent.appendChild(&child.base);
 
     // Verify initial state
     try std.testing.expectEqual(doc1_ptr, parent.base.owner_document.?);
@@ -176,11 +169,9 @@ test "adopt - updates attribute node documents for elements" {
         .last_child = null,
         .previous_sibling = null,
         .next_sibling = null,
-        .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
         .is_connected = true,
     };
-    defer doc1_node.child_nodes.deinit();
 
     var doc2_node = NodeBase{
         .allocator = allocator,
@@ -190,11 +181,9 @@ test "adopt - updates attribute node documents for elements" {
         .last_child = null,
         .previous_sibling = null,
         .next_sibling = null,
-        .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
         .is_connected = true,
     };
-    defer doc2_node.child_nodes.deinit();
 
     const doc1_ptr: *dom.Document = @ptrCast(&doc1_node);
     const doc2_ptr: *dom.Document = @ptrCast(&doc2_node);
@@ -235,11 +224,9 @@ test "adopt - same document is a no-op" {
         .last_child = null,
         .previous_sibling = null,
         .next_sibling = null,
-        .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
         .is_connected = true,
     };
-    defer doc_node.child_nodes.deinit();
 
     const doc_ptr: *dom.Document = @ptrCast(&doc_node);
 
@@ -273,11 +260,9 @@ test "mutation - insert calls adopt before inserting" {
         .last_child = null,
         .previous_sibling = null,
         .next_sibling = null,
-        .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
         .is_connected = true,
     };
-    defer doc_node.child_nodes.deinit();
 
     const doc_ptr: *dom.Document = @ptrCast(&doc_node);
 

@@ -95,8 +95,11 @@ pub const WptBrowser = struct {
     /// its thread runs only where the engine can abort a running script.
     script_deadline: script_deadline.ScriptDeadline = .{ .abort = abortAgentScript },
 
-    /// Initialize WptBrowser with a fresh Browser instance
-    pub fn init(allocator: std.mem.Allocator, wpt_root: []const u8) !*WptBrowser {
+    /// Initialize WptBrowser with a fresh Browser instance. `poison_freed_state`:
+    /// the runner poisons its allocator's frees (main.zig `poisoning`), so the
+    /// Browser poisons the platform objects' freed state too
+    /// (BrowserConfig.poison_freed_state).
+    pub fn init(allocator: std.mem.Allocator, wpt_root: []const u8, poison_freed_state: bool) !*WptBrowser {
         const self = try allocator.create(WptBrowser);
         errdefer allocator.destroy(self);
 
@@ -115,6 +118,7 @@ pub const WptBrowser = struct {
             // reads (host_media.zig). Crane itself builds in no decoder.
             .media_backend = host_media.backend,
             .ca_bundle_path = ca,
+            .poison_freed_state = poison_freed_state,
         });
         errdefer browser_instance.deinit();
 
