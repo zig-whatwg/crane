@@ -1850,6 +1850,26 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // The same snapshot, serialized, for the navigation's request (its
     // origin, startFetch).
     if (options.source_document) |source| record.request_origin = documentOriginOf(source, allocator);
+    // "Create navigation params by fetching" step 3 for a traversal or reload
+    // no document started ("apply the history step" populating the entry
+    // again): the request's origin is the entry's document state's initiator
+    // origin, and its referrer the document state's request referrer - those
+    // of the navigation that first populated it, not the document the
+    // navigable shows now. Chrome and Firefox pass history-traversal/
+    // document-state.https.html's "document repopulation case" (Safari fails;
+    // wpt.fyi 94f58d592d).
+    if (options.traversal_entry != 0 and options.source_document == null) {
+        if (browsing_context.jointHistory() catch null) |history| {
+            if (history.entryById(options.traversal_entry)) |entry| {
+                if (record.request_origin == null) if (entry.initiator_origin) |o| {
+                    record.request_origin = allocator.dupe(u8, o) catch null;
+                };
+                if (record.referrer == null) if (entry.request_referrer) |r| {
+                    record.referrer = allocator.dupe(u8, r) catch null;
+                };
+            }
+        }
+    }
     list.putNavigation(id, record) catch {
         record.destroy();
         return;
@@ -4319,7 +4339,13 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     // makes, should a navigation leave it (`mayKeepInBfcache`).
     if (document_state) |state| {
         if (integration.browsing_context) |bc| {
-            if (bc.jointHistory() catch null) |history| history.setKeepableResponse(state, keepableResponse(record, response, final_url));
+            if (bc.jointHistory() catch null) |history| {
+                history.setKeepableResponse(state, keepableResponse(record, response, final_url));
+                // HTML "navigate" step 22's document state: its initiator
+                // origin and request referrer, which a traversal that
+                // populates it again sends (`navigate`, below step 19).
+                history.setInitiator(state, record.request_origin, record.referrer);
+            }
         }
     }
     if (record.history_policy_container) |*container| {
