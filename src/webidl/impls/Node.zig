@@ -81,19 +81,10 @@ pub const InternalState = struct {
     /// This determines behavior of many getters (nodeName, nodeValue, textContent)
     node_type: u16 = NodeType.ELEMENT_NODE,
 
-    /// The local name for Element nodes, target for PI nodes, etc.
-    /// Used by nodeName getter
-    local_name: ?runtime.DOMString = null,
-
-    /// The namespace URI for Element nodes
-    namespace_uri: ?runtime.DOMString = null,
-
-    /// The namespace prefix for Element nodes
-    prefix: ?runtime.DOMString = null,
-
-    /// The node value (for Text, Comment, CDATA, PI, Attr nodes)
-    /// For Element and Document nodes, this is always null
-    node_value: ?runtime.DOMString = null,
+    // No local name, namespace, prefix or node value here (lane perf2 b5:
+    // 128 bytes on every node, set on 186 of 6.07 M - and never read): an
+    // element's names are its ElementData's, a CharacterData's value its
+    // data, an Attr's value its own state, a PI's target its own.
 
     /// The owner document for this node
     /// Document nodes return null from ownerDocument getter
@@ -111,9 +102,8 @@ pub const InternalState = struct {
     /// of it - when it is freed (`childNodesFreed`).
     child_nodes_list: ?*runtime.Instance = null,
 
-    /// For tracking if node is in a document tree (for isConnected)
-    /// A node is connected when its root is a document
-    is_connected: bool = false,
+    // isConnected reads NodeBase.is_connected, kept by the insertion and
+    // removing steps; this state kept a copy nothing set.
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -121,20 +111,10 @@ pub const InternalState = struct {
         };
     }
 
+    /// Owns nothing: node_base and child_nodes_list are managed separately
+    /// (releaseNodeBase, childNodesFreed).
     pub fn deinit(self: *InternalState) void {
-        if (self.local_name) |*name| {
-            name.deinit(self.allocator);
-        }
-        if (self.namespace_uri) |*uri| {
-            uri.deinit(self.allocator);
-        }
-        if (self.prefix) |*p| {
-            p.deinit(self.allocator);
-        }
-        if (self.node_value) |*val| {
-            val.deinit(self.allocator);
-        }
-        // Note: node_base and child_nodes_list are managed separately via deinit
+        _ = self;
     }
 };
 
@@ -972,7 +952,7 @@ pub fn set_nodeValue(instance: *runtime.Instance, value: ?runtime.DOMString) any
             // Step 1: If the given value is null, act as if it was the empty string.
             try interfaces.CharacterData.set_data(instance, value orelse runtime.DOMString.initEmpty());
         },
-        // For Attr, set an existing attribute value; Attr keeps its value in node_value.
+        // For Attr, set an existing attribute value; Attr keeps its value in its own state.
         // Attr: "set an existing attribute value" with this and the given
         // value (null becomes the empty string) - through the Attr impl, which
         // changes the attribute in its element's list when it has one.
@@ -1916,10 +1896,6 @@ fn setLocalNameHook(instance: *runtime.Instance, name: runtime.DOMString) dom_mo
 /// Also names the NodeBase (NodeBase.nodeName) for DOM operations.
 pub fn setLocalName(instance: *runtime.Instance, name: runtime.DOMString) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.local_name) |*old| {
-        old.deinit(internal.allocator);
-    }
-    internal.local_name = try name.clone(internal.allocator);
 
     // Also name the NodeBase for DOM operations (post-connection steps, etc.):
     // the uppercase of the local name, owned by the node (its rare data).
@@ -1932,15 +1908,6 @@ pub fn setLocalName(instance: *runtime.Instance, name: runtime.DOMString) !void 
         }
         try node_base.setOwnedNodeName(upper_name);
     }
-}
-
-/// Set the namespace URI (used by Element, Attr)
-pub fn setNamespaceURI(instance: *runtime.Instance, uri: ?runtime.DOMString) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.namespace_uri) |*old| {
-        old.deinit(internal.allocator);
-    }
-    internal.namespace_uri = if (uri) |u| try u.clone(internal.allocator) else null;
 }
 
 /// Set the owner document
