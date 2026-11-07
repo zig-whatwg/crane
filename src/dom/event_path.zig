@@ -74,6 +74,11 @@ pub const Input = struct {
     /// MouseEvent whose type is "click"): the activation behaviour an
     /// EventTarget has, or null - dom.activation.of.
     activation_of: ?*const fn (target: *runtime.Instance) ?activation.Behavior = null,
+    /// DOM dispatch step 5's targetOverride when "legacy target override
+    /// flag" is set: the target Window's associated Document (HTML sets the
+    /// flag for the Window's load, pageshow, pagehide and unload). Null - the
+    /// flag unset - makes targetOverride the target itself.
+    target_override: ?*runtime.Instance = null,
 };
 
 /// An activation target and its behaviour.
@@ -261,11 +266,17 @@ pub fn build(state: *EventState, target: *runtime.Instance, input: Input) error{
     // relatedTarget". Otherwise the path stays empty: no listener runs.
     if (target == walk.related and target != walk.event_related) return .{};
 
+    // Step 5: "Let targetOverride be target, if legacy target override flag
+    // is not given, and target's associated Document otherwise" - HTML's,
+    // for the Window's load and page transition events (`target_override`).
     // Step 6.3: "Append to an event path with event, target, targetOverride,
-    // relatedTarget, touchTargets, and false." targetOverride is target: the
-    // legacy target override flag is HTML's, for a Window, and Crane's HTML
-    // does not pass it.
-    try walk.append(target, target_node, target, false);
+    // relatedTarget, touchTargets, and false."
+    try walk.append(target, target_node, input.target_override orelse target, false);
+    // Invoke steps 1-3 read the struct's recorded target - the last
+    // shadow-adjusted target at or before it, here targetOverride itself.
+    // Not an invocation target, so not held by the path: its dispatcher
+    // holds it (EventTarget's dispatchTrustedLegacyTargetOverride).
+    if (input.target_override) |override| state.path.toSliceMut()[0].target = override;
 
     // Steps 6.4-6.5: isActivationEvent (activation_of non-null), and the
     // target itself as activationTarget.

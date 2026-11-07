@@ -3594,7 +3594,6 @@ fn updateReadiness(instance: *runtime.Instance, readiness: enums.DocumentReadySt
 /// runs the scripts that will execute when the document has finished
 /// parsing - a defer script document.write() put in the stream - as the
 /// navigation and written parsers both use these guarded lifecycle steps.
-/// Deviation, stated: load's legacy target override is not modelled.
 fn theEnd(instance: *runtime.Instance) void {
     const realm = instance.ctx;
     const had_engine = realm.hasEngine();
@@ -4249,8 +4248,8 @@ fn unloadSteps(data: ?*anyopaque) void {
     }
     // Step 12: "If oldDocument's salvageable state is false, then fire an
     // event named unload at oldDocument's relevant global object, with legacy
-    // target override flag set." The override is not modelled.
-    if (!internal.salvageable) fireEvent(document, window, "unload", false);
+    // target override flag set."
+    if (!internal.salvageable) fireAtWindow(document, window, "unload");
     // Step 14.
     termination_nesting.leave(event_loop);
     terminating = false;
@@ -4776,8 +4775,10 @@ fn completeLoading(document: *runtime.Instance) void {
     const window = (get_defaultView(document) catch null) orelse return;
     // Step 9.4: the load event start time.
     @import("dom").performance_timeline.recordLoadTiming(document.ctx, .load_event_start);
-    // Step 9.5: "Fire an event named load at window".
-    fireEvent(document, window, "load", false);
+    // Step 9.5: "Fire an event named load at window, with legacy target
+    // override flag set" - the event's target is this document (DOM
+    // dispatch step 5).
+    fireAtWindow(document, window, "load");
     // Step 9.8: the load event end time.
     @import("dom").performance_timeline.recordLoadTiming(document.ctx, .load_event_end);
     const internal = getInternal(document) orelse return;
@@ -4876,16 +4877,36 @@ fn firePageShow(document: *runtime.Instance, window: *runtime.Instance) void {
     firePageTransition(document, window, "pageshow", false);
 }
 
-/// "Fire a page transition event named `event_type` at window with
-/// `persisted`".
+/// "Fire an event named `event_type` at" `window` "with legacy target
+/// override flag set" (HTML's Window load and unload): an Event that does
+/// not bubble and is not cancelable, whose target is `window`'s associated
+/// Document while `window`'s listeners run (DOM dispatch steps 5 and 6.3).
+fn fireAtWindow(document: *runtime.Instance, window: *runtime.Instance, event_type: []const u8) void {
+    const event = interfaces.Event.call_constructor(
+        document.ctx,
+        runtime.DOMString.initInterned(event_type),
+        webidl.Opt(dictionaries.EventInit).passed(.{}),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = @import("dom").fire_event.dispatchTrustedLegacyTargetOverride(window, event) catch {};
+    event.releaseIfUnwrapped(generation);
+}
+
+/// HTML "fire a page transition event" named `event_type` at window with
+/// `persisted`: a PageTransitionEvent "with the persisted attribute
+/// initialized to persisted, the cancelable attribute initialized to true,
+/// the bubbles attribute initialized to true, and legacy target override
+/// flag set" (whatwg/html#6794; Blink's PageTransitionEvent is
+/// Bubbles::kYes, Cancelable::kYes, dispatched with LocalDOMWindow::
+/// DispatchEvent(event, document())).
 fn firePageTransition(document: *runtime.Instance, window: *runtime.Instance, event_type: []const u8, persisted: bool) void {
     const event = interfaces.PageTransitionEvent.call_constructor(
         document.ctx,
         runtime.DOMString.initInterned(event_type),
-        webidl.Opt(dictionaries.PageTransitionEventInit).passed(.{ .base = .{}, .persisted = persisted }),
+        webidl.Opt(dictionaries.PageTransitionEventInit).passed(.{ .base = .{ .bubbles = true, .cancelable = true }, .persisted = persisted }),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = @import("dom").fire_event.dispatchTrusted(window, event) catch {};
+    _ = @import("dom").fire_event.dispatchTrustedLegacyTargetOverride(window, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 
