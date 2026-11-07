@@ -112,7 +112,7 @@ fn successor(parent: *NodeBase) ?*runtime.Instance {
 }
 
 /// Whether `node` is `ancestor` or below it, through shadow roots' hosts.
-fn isShadowIncludingInclusiveDescendant(node: *NodeBase, ancestor: *NodeBase) bool {
+pub fn isShadowIncludingInclusiveDescendant(node: *NodeBase, ancestor: *NodeBase) bool {
     var current: ?*NodeBase = node;
     while (current) |n| {
         if (n == ancestor) return true;

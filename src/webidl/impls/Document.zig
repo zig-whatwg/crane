@@ -287,6 +287,9 @@ pub fn installHooks() void {
     // visibility state updates its documents' visibility state, through these
     // hooks.
     @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea });
+    // HTML removing steps step 2: a removed focused area becomes the
+    // viewport at the removal (html.focus.removingSteps).
+    @import("dom").mutation.registerRemovingStepsCallback(&@import("html").focus.removingSteps) catch @panic("focus removing steps allocation");
     // HTML "update the rendering" step 6: reveal (dom.update_the_rendering).
     @import("dom").update_the_rendering.installStep(.reveal, &revealStep);
     @import("dom").visibility_state.install(.{ .update = &updateVisibilityStateFromHook });
@@ -1849,13 +1852,11 @@ fn adoptedSheetsOf(instance: *runtime.Instance) ?*@import("dom").style.adopted.A
 /// retargeted against this document; the body element, else the document
 /// element, when the viewport has the focus.
 ///
-/// Stated deviation: the spec applies the focus fixup rule ("When the
-/// designated focused area of the document is removed from that Document in
-/// some way ..., designate the Document's viewport to be the new focused
-/// area of the document") as a state change during "update the rendering";
-/// html.focus.focusedAreaOf applies it when the focused area is read, here
-/// and in every other reader. The rule fires no event, so activeElement
-/// reads the same either way.
+/// A removed focused area becomes the viewport at the removal (HTML removing
+/// steps step 2, html.focus.removingSteps); the rendering-time focus fixup
+/// (update the rendering step 17, for a focused area that stopped being
+/// focusable) is html.focus.focusedAreaOf, applied when the focused area is
+/// read, here and in every other reader.
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-documentorshadowroot-activeelement
 pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     if (getInternal(instance) == null) return error.InvalidStateError;
