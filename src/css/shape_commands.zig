@@ -10,7 +10,7 @@ const Value = values.Value;
 const Point = union(enum) {
     position: *positions.Position,
     pair: [2]Value,
-    fn release(self: Point) void {
+    pub fn release(self: Point) void {
         switch (self) {
             .position => |p| p.unref(),
             .pair => |p| for (p) |v| v.release(),
@@ -146,7 +146,7 @@ const Command = struct {
     controls: [2]Control = undefined,
     control_count: u2 = 0,
     arc: ?Arc = null,
-    fn release(self: Command) void {
+    pub fn release(self: Command) void {
         switch (self.endpoint) {
             .none => {},
             .point => |p| p.release(),

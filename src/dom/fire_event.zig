@@ -21,6 +21,10 @@ const runtime = @import("runtime");
 pub const Implementation = struct {
     dispatch_trusted_with_throws: *const fn (*runtime.Instance, *runtime.Instance, *bool) anyerror!bool,
     dispatch_trusted: *const fn (target: *runtime.Instance, event: *runtime.Instance) anyerror!bool,
+    /// `dispatch_trusted` with DOM dispatch's "legacy target override flag"
+    /// set: `window` is a Window, and its associated Document is the event's
+    /// target while the Window's listeners run (DOM dispatch steps 5, 6.3).
+    dispatch_trusted_legacy_target_override: *const fn (window: *runtime.Instance, event: *runtime.Instance) anyerror!bool,
     /// `window`'s current event (HTML), which inner invoke sets around each
     /// listener it calls in that Window's realm; null for undefined.
     current_event: *const fn (window: *runtime.Instance) ?*runtime.Instance,
@@ -39,6 +43,17 @@ pub fn install(impl: Implementation) void {
 pub fn dispatchTrusted(target: *runtime.Instance, event: *runtime.Instance) !bool {
     const impl = implementation.get() orelse return error.NotSupported;
     return impl.dispatch_trusted(target, event);
+}
+
+/// Dispatch `event` at the Window `window` with isTrusted true and the
+/// legacy target override flag set: HTML fires the Window's load (the end
+/// step 9.5), pageshow and pagehide ("fire a page transition event") and
+/// unload ("unload" step 12) this way, so `event.target` is the Window's
+/// associated Document while `currentTarget` is the Window - as Blink's
+/// LocalDOMWindow::DispatchEvent(event, document()).
+pub fn dispatchTrustedLegacyTargetOverride(window: *runtime.Instance, event: *runtime.Instance) !bool {
+    const impl = implementation.get() orelse return error.NotSupported;
+    return impl.dispatch_trusted_legacy_target_override(window, event);
 }
 
 /// HTML: a Window's "current event", which `window.event` returns - the

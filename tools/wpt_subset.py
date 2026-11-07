@@ -1132,6 +1132,11 @@ EXCLUDE = [
     # boxes. Chrome, Firefox and Safari pass each variant 55/55.
     ('html/semantics/the-button-element/command-and-commandfor/invalid-element-types.html',
      'hit-tests a point (pointer actions at viewport coordinates), needs layout'),
+    # Geometry (the user's 0.1 scope line: no layout; lane anim1 batch 4's gap analysis, 2026-11-07): its one
+    # subtest compares the resolved transform matrix of translateX(100%) against translateX(100px) on a
+    # 100px-wide div, which needs the transform reference box (the element's border box) from layout.
+    ('web-animations/animation-model/combining-effects/applying-interpolated-transform.html',
+     'resolves translateX(100%) against the transform reference box (the border box), needs layout'),
     # COOP access reports that need the Report-To header (the integrator's ruling, 2026-11-05, lane coi2):
     # each file reaches its reports only through Report-To (reportToHeaders, resources/test-access-property.js:28
     # for the property-* files). The Reporting spec replaced Report-To with Reporting-Endpoints for documents

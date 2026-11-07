@@ -1558,6 +1558,13 @@ pub const ParseOptions = struct {
     /// The declaring sheet's namespace prefixes, borrowed; a pending value
     /// retains it (attr(): Codex row 122 fills it where sheets parse).
     namespaces: ?*@import("namespace_map.zig").NamespaceMap = null,
+    /// The value text runs to the REAL end of its input (a setProperty
+    /// value): CSS Syntax 3 "consume a function" / "consume a simple block"
+    /// return a function or block cut off by EOF as it is, closed, so
+    /// parseDeclaration appends the closers EOF implies. False where a
+    /// declaration list was split at `;` or `}`: there a function would have
+    /// consumed those tokens, and the cut text must stay invalid.
+    closes_at_eof: bool = false,
 };
 
 pub const UrlResolver = resources.UrlResolver;
@@ -1600,7 +1607,26 @@ pub const max_non_all_assignments: usize = blk: {
 /// for `property`, appending the longhands it sets to `out`. False, and
 /// nothing appended, when the value is invalid for the property. The values
 /// appended hold references the caller releases.
-pub fn parseDeclaration(options: ParseOptions, property: Property, text: []const u8, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
+pub fn parseDeclaration(options: ParseOptions, property: Property, source_text: []const u8, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
+    // CSS Syntax 3 5.4.8 "consume a function", 5.4.9 "consume a simple
+    // block" (and 4.3.5/4.3.6 for strings and url()): at EOF "this is a parse
+    // error. Return the function." - a value cut off at the real end of its
+    // input is the closed value (`inset(10px` is `inset(10px)` in Chrome,
+    // Firefox and Safari). The grammars read a flat token stream that needs
+    // the closing tokens, so they are appended: substitution.closeAtEof, the
+    // one implementation var() substitution uses too.
+    // A text that needs no closer stays the caller's own bytes: random()
+    // scopes and URL ranges are keyed to the original buffer (Q205).
+    var closed: ?[]u8 = if (options.closes_at_eof and std.mem.indexOfAny(u8, source_text, "([{\"'\\") != null)
+        try @import("substitution.zig").closeAtEof(options.allocator, source_text)
+    else
+        null;
+    if (closed) |c| if (std.mem.eql(u8, c, source_text)) {
+        options.allocator.free(c);
+        closed = null;
+    };
+    defer if (closed) |c| options.allocator.free(c);
+    const text = closed orelse source_text;
     const start = out.items.len;
     errdefer {
         for (out.items[start..]) |a| a.value.release();

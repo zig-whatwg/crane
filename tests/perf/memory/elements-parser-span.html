@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Memory per element: parsed spans</title>
+<!-- One case of the memory-per-element measurement (docs/performance.md, "Memory per element"):
+     count spans made by the HTML fragment parser (innerHTML), kept by the document. The footprint is read before and after; the case is in elements.js. -->
+<script src="../harness.js"></script>
+<script src="elements.js"></script>
+<body>
+<script>perf.retain('elements.parser-span', elementCases.parserSpan);</script>

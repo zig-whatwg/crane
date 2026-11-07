@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Memory per element: the control</title>
+<!-- One case of the memory-per-element measurement (docs/performance.md, "Memory per element"):
+     the same steps as every case, and nothing made. The footprint is read before and after; the case is in elements.js. -->
+<script src="../harness.js"></script>
+<script src="elements.js"></script>
+<body>
+<script>perf.retain('elements.control', elementCases.control);</script>

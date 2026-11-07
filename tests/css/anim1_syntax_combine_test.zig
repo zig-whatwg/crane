@@ -5,7 +5,8 @@
 //! item and only at equal lengths; <transform-list> (and
 //! <transform-function>+) combine as the transform property (Transforms 2
 //! 14-15: addition concatenates, accumulation is per function with one-based
-//! scale parameters); a pair with no smooth rule is null, for the caller to
+//! scale parameters; different functions as decomposed matrices); a pair
+//! with no smooth rule is null, for the caller to
 //! combine discretely.
 const std = @import("std");
 const css = @import("css");
@@ -80,8 +81,9 @@ test "a <transform-function> combines argument by argument" {
     try combine(a, "<transform-function>", "translateX(100px)", "translateX(200px)", 0.5, .interpolate, "translateX(150px)");
     // A single function's addition is the function's: the sum of its arguments.
     try combine(a, "<transform-function>", "translateX(100px)", "translateX(250px)", 1, .add, "translateX(350px)");
-    // Different functions need matrices (Transforms 2 13): no smooth rule here.
-    try combine(a, "<transform-function>", "translateX(100px)", "rotate(10deg)", 0.5, .interpolate, "");
+    // Different functions interpolate as decomposed matrices (Transforms 2
+    // section 14, 2D: Transforms 1 11.2): translate 50px, rotate 5deg.
+    try combine(a, "<transform-function>", "translateX(100px)", "rotate(10deg)", 0.5, .interpolate, "matrix(0.996195, 0.087156, -0.087156, 0.996195, 50, 0)");
 }
 
 test "a <transform-list> combines as the transform property" {
@@ -95,8 +97,9 @@ test "a <transform-list> combines as the transform property" {
     // matching the longer list's.
     try combine(a, "<transform-list>", "translateX(100px)", "translateX(100px) translateX(300px)", 0.5, .interpolate, "translateX(100px) translateX(150px)");
     try combine(a, "<transform-list>", "scale(2) rotate(90deg)", "scale(4)", 0.5, .interpolate, "scale(3) rotate(45deg)");
-    // Different functions at one position need matrices: no smooth rule here.
-    try combine(a, "<transform-list>", "translateX(100px) scale(2)", "rotate(180deg)", 0.5, .interpolate, "");
+    // Different functions at one position: the rest of each list
+    // interpolates as a decomposed matrix (Transforms 1 section 9).
+    try combine(a, "<transform-list>", "translateX(100px) scale(2)", "rotate(180deg)", 0.5, .interpolate, "matrix(0, -1.5, 1.5, 0, 50, 0)");
 }
 
 test "discrete syntaxes have no smooth combination" {
