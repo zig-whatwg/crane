@@ -165,10 +165,15 @@ fn isAnimatable(property: css.properties.Property) bool {
     };
     if (std.mem.startsWith(u8, name, "animation") or std.mem.startsWith(u8, name, "transition")) return false;
     if (std.mem.startsWith(u8, name, "scroll-timeline") or std.mem.startsWith(u8, name, "view-timeline")) return false;
+    // `all` is a shorthand whose longhands animate (CSS Cascade 5 3.2:
+    // "Animation type: see individual properties"); its expansion leaves out
+    // direction and unicode-bidi, which are not animatable either. Firefox
+    // and Safari animate it (web-animations/animation-model/keyframe-effects/
+    // computed-keyframes-shorthands.html passes in both; Chrome 157 fails it).
     const not_animatable = [_][]const u8{
         "direction",      "unicode-bidi", "writing-mode", "text-orientation", "text-combine-upright",
         "will-change",    "contain",      "container",    "container-name",   "container-type",
-        "timeline-scope", "all",
+        "timeline-scope",
     };
     for (not_animatable) |n| if (std.mem.eql(u8, name, n)) return false;
     return true;

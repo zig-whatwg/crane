@@ -10,7 +10,7 @@ const Value = values.Value;
 const Color = values.Color;
 const Stream = properties.Stream;
 
-const Shadow = struct {
+pub const Shadow = struct {
     color: ?Color = null,
     lengths: [3]Value = @splat(Value.px(0)),
     count: u2 = 0,
@@ -39,7 +39,7 @@ pub const Shadows = struct {
     items: []const Shadow,
     computed: bool,
 
-    fn create(allocator: Allocator, items: []const Shadow, computed: bool) Allocator.Error!*Shadows {
+    pub fn create(allocator: Allocator, items: []const Shadow, computed: bool) Allocator.Error!*Shadows {
         const owned = try allocator.dupe(Shadow, items);
         errdefer allocator.free(owned);
         const self = try allocator.create(Shadows);

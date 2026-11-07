@@ -28,7 +28,7 @@ pub const Rotation = struct {
     angle: Number,
 
     /// Takes one reference to the borrowed angle after allocation succeeds.
-    fn create(allocator: Allocator, mode: @FieldType(Rotation, "mode"), angle: Number) Allocator.Error!*Rotation {
+    pub fn create(allocator: Allocator, mode: @FieldType(Rotation, "mode"), angle: Number) Allocator.Error!*Rotation {
         const result = try allocator.create(Rotation);
         result.* = .{ .allocator = allocator, .mode = mode, .angle = angle };
         angle.ref();
@@ -90,7 +90,7 @@ fn isZero(angle: Number) bool {
     return angle == .literal and angle.literal.value == 0;
 }
 
-const RaySize = enum {
+pub const RaySize = enum {
     closest_side,
     closest_corner,
     farthest_side,
@@ -113,13 +113,13 @@ const RaySize = enum {
         return null;
     }
 };
-const Ray = struct {
+pub const Ray = struct {
     angle: Number,
     size: RaySize = .closest_side,
     contain: bool = false,
     position: ?*positions.Position = null,
 };
-const PathData = union(enum) {
+pub const PathData = union(enum) {
     box,
     url: Value,
     shape: *shapes.Shape,
@@ -156,7 +156,7 @@ pub const Path = struct {
     box: shapes.GeometryBox,
 
     /// Retains the borrowed component only after allocation succeeds.
-    fn create(allocator: Allocator, data: PathData, box: shapes.GeometryBox) Allocator.Error!*Path {
+    pub fn create(allocator: Allocator, data: PathData, box: shapes.GeometryBox) Allocator.Error!*Path {
         const result = try allocator.create(Path);
         result.* = .{ .allocator = allocator, .data = data, .box = box };
         data.retain();

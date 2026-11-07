@@ -457,7 +457,11 @@ pub const DeclarationBlock = struct {
         //    property property. If component value list is null, then return."
         var assignments: std.ArrayList(Assignment) = .empty;
         defer assignments.deinit(self.allocator);
-        if (!try properties.parseDeclaration(options, property, value_text, &assignments)) return false;
+        // CSSOM "parse a CSS value": value is the whole input, so its open
+        // functions and blocks close at EOF (CSS Syntax 3).
+        var eof_options = options;
+        eof_options.closes_at_eof = true;
+        if (!try properties.parseDeclaration(eof_options, property, value_text, &assignments)) return false;
         var consumed: usize = 0;
         defer for (assignments.items[consumed..]) |a| a.value.release();
         // 6-9: "set the CSS declaration" each longhand.
