@@ -301,10 +301,8 @@ pub fn parseJsonInNewGlobal(realm: Context, bytes: []const u8) Error!Owned {
     //    agent too - a page's (tests/v8/new_global_snapshot_test.zig).
     const fresh = ffi.v8_Context_New(entered.isolate) orelse return error.OperationFailed;
     defer ffi.v8_Context_Dispose(fresh);
-    if (ffi.v8_Context_GetSecurityToken(entered.context())) |token| {
-        defer ffi.v8_Value_Dispose(token);
-        ffi.v8_Context_SetSecurityToken(fresh, token);
-    }
+    // The token goes across with no handle made (v8_Context_InheritSecurityToken).
+    ffi.v8_Context_InheritSecurityToken(fresh, entered.context());
     // 4. JSON.parse, the new global's intrinsic, with the new global entered:
     //    v8_JSON_Parse_FromBuffer parses in the CURRENT context.
     const Parse = struct {

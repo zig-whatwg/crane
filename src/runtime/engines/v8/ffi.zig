@@ -979,6 +979,8 @@ pub extern fn v8_Context_Global(context: *Context) ?*Object;
 pub extern fn v8_Context_GetRawAddress(context: *Context) ?*anyopaque;
 pub extern fn v8_Context_SetSecurityToken(context: *Context, token: *Value) void;
 pub extern fn v8_Context_GetSecurityToken(context: *Context) ?*Value;
+/// Give `to` the security token of `from` (both BORROWED); makes no handle.
+pub extern fn v8_Context_InheritSecurityToken(to: *Context, from: *Context) void;
 pub extern fn v8_Context_UseDefaultSecurityToken(context: *Context) void;
 pub extern fn v8_Context_AllowCodeGenerationFromStrings(context: *Context, allow: bool) void;
 pub extern fn v8_Context_GetMicrotaskQueue(context: *Context) ?*MicrotaskQueue;
