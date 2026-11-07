@@ -222,3 +222,129 @@ fn closedChannelIsCollected() !void {
 test "close() ends a BroadcastChannel's keep once, and an open channel stays kept" {
     try helpers.onFreshThread(closedChannelIsCollected);
 }
+
+// ---------------------------------------------------------------------------
+// Lane coi2 batch 3: a Window the next document reuses
+// ---------------------------------------------------------------------------
+//
+// An iframe's initial about:blank and the same-origin document that replaces
+// it share one Window (HTML "create and initialize a Document object" step 6:
+// "both ... will share the same Window object"). The about:blank's unload runs
+// its document cleanup steps, but the global's own teardown - its
+// ReportingObservers' registrations (Reporting §4 keeps them on the global),
+// its BroadcastChannels' keeps - waits for the global's end: Blink ends both
+// only at ContextDestroyed, which a reused LocalDOMWindow (DocumentLoader
+// ShouldReuseDOMWindow) never gets. It ran at the about:blank's unload, so an
+// observer or channel of that Window was not kept and a collection took it
+// (html/cross-origin-embedder-policy/reporting-navigation.https.html lost its
+// reports at random).
+
+/// A page at an http origin with one iframe (window.frame), and `before`
+/// run in the frame's initial about:blank Window (`w`); then the frame
+/// navigates to a srcdoc document - its origin is the page's, so the Window
+/// is reused, which the script checks with an expando - and `after` runs in
+/// that same Window. Returns the Browser, with the event loop run to the
+/// srcdoc document's load.
+fn reusedFrame(before: []const u8, after: []const u8) !*browser_mod.Browser {
+    return reusedFrameBy(before, after, "frame.srcdoc = '<!doctype html><p id=loaded>srcdoc</p>';");
+}
+
+/// `reusedFrame`, with `navigate` the script that navigates the frame (its
+/// new document has an element with id "loaded").
+fn reusedFrameBy(before: []const u8, after: []const u8, navigate: []const u8) !*browser_mod.Browser {
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    errdefer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "http://127.0.0.1:65533/coi2b3" });
+    _ = try browser.runEventLoopBlocking(20);
+    const setup = try std.fmt.allocPrint(testing.allocator,
+        \\{{
+        \\  const frame = document.createElement('iframe');
+        \\  document.body.appendChild(frame);
+        \\  globalThis.frame = frame;
+        \\  const w = frame.contentWindow;
+        \\  w.reusedMarker = 'initial';
+        \\  {s}
+        \\  {s}
+        \\}}
+    , .{ before, navigate });
+    defer testing.allocator.free(setup);
+    try page.runScript(setup);
+    var turns: usize = 0;
+    while (turns < 50) : (turns += 1) {
+        _ = try browser.runEventLoopBlocking(20);
+        const done = try page.evaluateScriptToString("String(!!(frame.contentDocument && frame.contentDocument.getElementById('loaded')))", testing.allocator);
+        defer testing.allocator.free(done);
+        if (std.mem.eql(u8, done, "true")) break;
+    } else return error.SrcdocNeverLoaded;
+    const reused = try page.evaluateScriptToString("String(frame.contentWindow.reusedMarker)", testing.allocator);
+    defer testing.allocator.free(reused);
+    try testing.expectEqualStrings("initial", reused);
+    const rest = try std.fmt.allocPrint(testing.allocator, "{{ const w = frame.contentWindow; {s} }}", .{after});
+    defer testing.allocator.free(rest);
+    try page.runScript(rest);
+    return browser;
+}
+
+fn observerOfReusedWindow() !void {
+    const browser = try reusedFrame("", "new w.ReportingObserver(() => {}).observe();");
+    defer browser.deinit();
+    try collect(browser);
+    // Its registration keeps it: the Window it observes is live.
+    try testing.expectEqual(@as(usize, 1), liveObservers(browser));
+}
+
+test "a ReportingObserver registered in a Window the next document reused stays kept" {
+    try helpers.onFreshThread(observerOfReusedWindow);
+}
+
+fn observerBeforeTheReusingNavigation() !void {
+    const browser = try reusedFrame("new w.ReportingObserver(() => {}).observe();", "");
+    defer browser.deinit();
+    try collect(browser);
+    try testing.expectEqual(@as(usize, 1), liveObservers(browser));
+}
+
+test "a ReportingObserver registered on the initial about:blank stays kept when the next document reuses its Window" {
+    try helpers.onFreshThread(observerBeforeTheReusingNavigation);
+}
+
+fn channelBeforeTheReusingNavigation() !void {
+    const browser = try reusedFrame("{ const c = new w.BroadcastChannel('coi2b3'); c.onmessage = () => {}; }", "");
+    defer browser.deinit();
+    try collect(browser);
+    try testing.expectEqual(@as(usize, 1), liveChannels(browser));
+}
+
+test "a BroadcastChannel made on the initial about:blank stays kept when the next document reuses its Window" {
+    try helpers.onFreshThread(channelBeforeTheReusingNavigation);
+}
+
+fn reusedWindowRemoved() !void {
+    const browser = try reusedFrame("new w.ReportingObserver(() => {}).observe(); { const c = new w.BroadcastChannel('coi2b3'); c.onmessage = () => {}; }", "new w.ReportingObserver(() => {}).observe();");
+    defer browser.deinit();
+    const page = browser.current_context orelse return error.NoPage;
+    // The frame goes: its global is discarded, and the teardown it waited for
+    // runs - nothing of the Window is kept any longer.
+    try page.runScript("frame.remove(); globalThis.frame = null;");
+    _ = try browser.runEventLoopBlocking(20);
+    try collect(browser);
+    try testing.expectEqual(@as(usize, 0), liveObservers(browser));
+    try testing.expectEqual(@as(usize, 0), liveChannels(browser));
+}
+
+test "the reused Window's observers and channels end their keeps once its frame is removed" {
+    try helpers.onFreshThread(reusedWindowRemoved);
+}
+
+fn observerBeforeJavascriptUrl() !void {
+    const browser = try reusedFrameBy("new w.ReportingObserver(() => {}).observe();", "", "frame.src = \"javascript:'<!doctype html><p id=loaded>javascript</p>'\";");
+    defer browser.deinit();
+    try collect(browser);
+    try testing.expectEqual(@as(usize, 1), liveObservers(browser));
+}
+
+test "a ReportingObserver registered on the initial about:blank stays kept when a javascript: URL's document reuses its Window" {
+    try helpers.onFreshThread(observerBeforeJavascriptUrl);
+}
