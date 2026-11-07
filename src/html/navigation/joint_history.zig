@@ -128,6 +128,15 @@ pub const Entry = struct {
     /// document's markup, which a traversal loads again rather than the
     /// srcdoc attribute's current value. Owned.
     resource: ?[]u8 = null,
+    /// The document state's initiator origin and request referrer (HTML
+    /// "document state"), serialized: what the navigation that populated it
+    /// sent, which a traversal that populates it again sends too ("create
+    /// navigation params by fetching" step 3: the request's origin is the
+    /// document state's initiator origin, its referrer the document state's
+    /// request referrer). Shared by the entries of the document state, each
+    /// holding its own copy. Owned.
+    initiator_origin: ?[]u8 = null,
+    request_referrer: ?[]u8 = null,
     /// The document state's history policy container: the policy container
     /// its document was made with, when the document's URL "requires storing
     /// the policy container in history" (an about: or data: URL) - for a
@@ -177,9 +186,17 @@ pub const Entry = struct {
         self.api_state.deinit(allocator);
         allocator.free(self.origin);
         if (self.resource) |r| allocator.free(r);
+        self.dropInitiator(allocator);
         self.dropHistoryPolicyContainer();
         self.dropActivation(allocator);
         self.dropNotRestoredReasons(allocator);
+    }
+
+    fn dropInitiator(self: *Entry, allocator: Allocator) void {
+        if (self.initiator_origin) |o| allocator.free(o);
+        if (self.request_referrer) |r| allocator.free(r);
+        self.initiator_origin = null;
+        self.request_referrer = null;
     }
 
     fn dropNotRestoredReasons(self: *Entry, allocator: Allocator) void {
@@ -1073,6 +1090,11 @@ pub const JointHistory = struct {
         // The document state is shared, so its resource is too.
         const resource: ?[]u8 = if (active.resource) |r| try allocator.dupe(u8, r) else null;
         errdefer if (resource) |r| allocator.free(r);
+        // And so are its initiator origin and request referrer.
+        const initiator_origin: ?[]u8 = if (active.initiator_origin) |o| try allocator.dupe(u8, o) else null;
+        errdefer if (initiator_origin) |o| allocator.free(o);
+        const request_referrer: ?[]u8 = if (active.request_referrer) |r| try allocator.dupe(u8, r) else null;
+        errdefer if (request_referrer) |r| allocator.free(r);
         // And so is its history policy container.
         var history_container: ?PolicyContainer = if (active.history_policy_container) |*c| try c.clone(allocator) else null;
         errdefer if (history_container) |*c| c.deinit();
@@ -1096,6 +1118,8 @@ pub const JointHistory = struct {
             .api_id = self.randomUuid(),
             .origin = origin,
             .resource = resource,
+            .initiator_origin = initiator_origin,
+            .request_referrer = request_referrer,
             .history_policy_container = history_container,
             .scroll_restoration_manual = active.scroll_restoration_manual,
             .protect_url = active.protect_url,
@@ -1478,6 +1502,18 @@ pub const JointHistory = struct {
         return start - first;
     }
 
+    /// HTML "document state" initiator origin and request referrer of
+    /// `document_state` (`Entry.initiator_origin`): copies on every entry of
+    /// the state. Out of memory, an entry keeps none.
+    pub fn setInitiator(self: *JointHistory, document_state: u64, initiator_origin: ?[]const u8, request_referrer: ?[]const u8) void {
+        for (self.entries.items) |*entry| {
+            if (entry.document_state != document_state) continue;
+            entry.dropInitiator(self.allocator);
+            entry.initiator_origin = if (initiator_origin) |o| self.allocator.dupe(u8, o) catch null else null;
+            entry.request_referrer = if (request_referrer) |r| self.allocator.dupe(u8, r) catch null else null;
+        }
+    }
+
     /// Record `resource` - a srcdoc document's markup - as the document
     /// state's resource of the entry `entry_id` (a cross-document finalize's
     /// new entry, before its navigable's current entry is it).
@@ -1552,6 +1588,7 @@ pub const JointHistory = struct {
                 if (current.document_state != doc_state) {
                     if (current.resource) |r| self.allocator.free(r);
                     current.resource = null;
+                    current.dropInitiator(self.allocator);
                     current.dropHistoryPolicyContainer();
                     current.dropActivation(self.allocator);
                 }
