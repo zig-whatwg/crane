@@ -71,7 +71,9 @@ pub const DOMException = error{
 ///   - Custom element reactions
 ///
 /// This is an extension point for specifications to hook into DOM mutations.
-pub const ChildrenChange = enum { inserted, removed, replaced_data };
+/// `moved`: a child left (for the old parent) or joined (for the new one) by
+/// DOM "move" - `move`'s doc comment says why these steps run for it.
+pub const ChildrenChange = enum { inserted, removed, replaced_data, moved };
 pub const ChildrenChangedCallback = *const fn (parent: *NodeBase, change: ChildrenChange) void;
 
 /// Global registry for children changed steps callbacks
@@ -1865,6 +1867,16 @@ pub fn removeNode(node: *runtime.Instance) NodeError!void {
     remove(node_ptr, false) catch |err| return nodeError(err);
 }
 
+/// "Move `node` into `parent` before `child`" (null: at the end) - DOM
+/// "move", ParentNode.moveBefore()'s step 3. A `child` that is no node is
+/// null.
+pub fn moveNode(node: *runtime.Instance, parent: *runtime.Instance, child: ?*runtime.Instance) NodeError!void {
+    const parent_ptr = try nodeOfInstance(parent);
+    const node_ptr = try nodeOfInstance(node);
+    const child_ptr: ?*NodeBase = if (child) |c| instance_bridge.getNodeBase(c) else null;
+    move(node_ptr, parent_ptr, child_ptr) catch |err| return nodeError(err);
+}
+
 /// DOM "converting nodes into a node", given `nodes` (the ParentNode and
 /// ChildNode mixins' `(Node or DOMString)...`: a slice of a union with a
 /// `node` and a `string` arm) and `document`.
@@ -1913,199 +1925,171 @@ fn nodeOrText(item: anytype, document: *runtime.Instance) !*runtime.Instance {
     };
 }
 
-/// DOM §4.2.5 - Move
-/// Spec: https://dom.spec.whatwg.org/#concept-node-move
+/// DOM "move" (https://dom.spec.whatwg.org/#move): move `node` into
+/// `new_parent` before `child` (null: at the end). A primitive of its own,
+/// not a removal and an insertion: it runs the moving steps and never the
+/// removing, insertion or post-connection steps, so a moved node keeps its
+/// state - its iframe's navigable, its running animations, its place in the
+/// top layer, the focus, a fetched style sheet, a custom element's state.
+/// ParentNode.moveBefore() is its caller (`moveNode`).
 ///
-/// To move a node into a node newParent before a node-or-null child:
+/// Children changed steps, a stated deviation (AGENTS.md golden rule 2; no
+/// newer spec is involved): the DOM text runs none in move, but both browsers
+/// that ship moveBefore notify both parents' children changes on a move.
+/// Blink's Node::moveBefore (core/dom/node.cc) is ContainerNode::InsertBefore,
+/// which removes the child and inserts it again under
+/// Document::StatePreservingAtomicMoveInProgress, and each half calls
+/// ContainerNode::ChildrenChanged; Gecko's nsINode::MoveBefore
+/// (dom/base/nsINode.cpp) is RemoveChildNode + InsertChildBefore with
+/// notifications (ContentWillBeRemoved, ContentInserted). Both skip only the
+/// script's preparation for it: HTMLScriptElement/SVGScriptElement::
+/// ChildrenChanged do not call the script loader during the move, and Gecko's
+/// ScriptElement::ContentInserted/ContentAppended return when `aInfo.mOldParent`
+/// is set ("moveBefore() must not run the script"); a style element updates its
+/// sheet in both. So the steps run here with the `.moved` reason, which the
+/// script elements' callbacks skip (dom/nodes/moveBefore/script-move-before.html:
+/// Chrome 157 and Firefox 159 2/2).
 ///
-/// This is distinct from remove + insert. It preserves state and is more efficient.
-/// The move algorithm is used by ParentNode.moveBefore().
-///
-/// Steps:
-/// 1. If newParent's shadow-including root is not the same as node's shadow-including root, throw HierarchyRequestError
-/// 2. If node is a host-including inclusive ancestor of newParent, throw HierarchyRequestError
-/// 3. If child is non-null and its parent is not newParent, throw NotFoundError
-/// 4. If node is not an Element or CharacterData node, throw HierarchyRequestError
-/// 5. If node is a Text node and newParent is a document, throw HierarchyRequestError
-/// 6. If newParent is a document, validate element constraints
-/// 7. Let oldParent be node's parent
-/// 8. Assert: oldParent is non-null
-/// 9. Run the live range pre-remove steps
-/// 10. Run NodeIterator pre-remove steps for all iterators
-/// 11-12. Capture old siblings
-/// 13. Remove node from oldParent's children
-/// 14-16. Shadow DOM slot assignment
-/// 17. Update live ranges in newParent (if child is non-null)
-/// 18. Determine newPreviousSibling
-/// 19-20. Insert node into newParent's children
-/// 21-22. Shadow DOM slot assignment for newParent
-/// 23. Run assign slottables for tree
-/// 24. Run moving steps for all shadow-including inclusive descendants
-/// 25-26. Queue tree mutation records
-pub fn move(
-    node: anytype,
-    new_parent: anytype,
-    child: anytype,
-) DOMException!void {
-    // Step 1: If newParent's shadow-including root is not the same as node's shadow-including root,
-    // throw HierarchyRequestError
-    const node_root = getShadowIncludingRoot(node);
-    const new_parent_root = getShadowIncludingRoot(new_parent);
-    if (node_root != new_parent_root) {
-        return DOMException.HierarchyRequestError;
+/// Lifetime (lesson "a move is a removal and an insertion - hold what you
+/// move"): the counts move once, from the old tree to the new one, at the
+/// link (refcount.moveChild); the node is never a counted root of its own,
+/// so its tree cannot become garbage between step 13 and step 20, and no
+/// remover's hold is needed (step 13's comment).
+pub fn move(node: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) DOMException!void {
+    // 1. "If newParent's shadow-including root is not the same as node's
+    // shadow-including root, then throw a HierarchyRequestError
+    // DOMException." (So a move is only performed when newParent's
+    // connected is node's connected.)
+    if (shadowIncludingRoot(new_parent) != shadowIncludingRoot(node)) return error.HierarchyRequestError;
+    // 2. "If node is a host-including inclusive ancestor of newParent, then
+    // throw a HierarchyRequestError DOMException."
+    if (isHostIncludingInclusiveAncestor(node, new_parent)) return error.HierarchyRequestError;
+    // 3. "If child is non-null and its parent is not newParent, then throw a
+    // NotFoundError DOMException."
+    if (child) |c| if (c.parent_node != new_parent) return error.NotFoundError;
+    // 4. "If node is not an Element or a CharacterData node, then throw a
+    // HierarchyRequestError DOMException."
+    if (!isElement(node) and !isCharacterData(node)) return error.HierarchyRequestError;
+    // 5. "If node is a Text node and newParent is a document, then throw a
+    // HierarchyRequestError DOMException."
+    if (isText(node) and isDocument(new_parent)) return error.HierarchyRequestError;
+    // 6. "If newParent is a document, node is an Element node, and either
+    // newParent has an element child, child is a doctype, or child is
+    // non-null and a doctype is following child then throw a
+    // HierarchyRequestError DOMException."
+    if (isDocument(new_parent) and isElement(node)) {
+        if (hasElementChild(new_parent, null)) return error.HierarchyRequestError;
+        if (child) |c| if (isDocumentType(c) or isDoctypeFollowing(new_parent, c)) return error.HierarchyRequestError;
     }
+    // 7. "Let oldParent be node's parent." 8. "Assert: oldParent is
+    // non-null." Step 1 holds it: a parentless node is its own
+    // shadow-including root, which step 2 keeps from being newParent's.
+    const old_parent = node.parent_node orelse return error.HierarchyRequestError;
+    const allocator = new_parent.allocator;
+    // Room for node in newParent's child list, taken before anything
+    // changes: steps 13-27 cannot fail in the standard, and the link in
+    // steps 20-21 must not fail with node already out of oldParent.
+    try new_parent.child_nodes.ensureCapacity(new_parent.child_nodes.size() + 1);
 
-    // Step 2: If node is a host-including inclusive ancestor of newParent, throw HierarchyRequestError
-    if (isHostIncludingInclusiveAncestor(node, new_parent)) {
-        return DOMException.HierarchyRequestError;
-    }
+    // 9. "Run the live range pre-remove steps, given node."
+    runLiveRangePreRemoveSteps(node);
+    // 10. "For each NodeIterator object iterator whose root's node document
+    // is node's node document: run the NodeIterator pre-remove steps given
+    // node and iterator."
+    runNodeIteratorPreRemoveSteps(node);
+    // 11. "Let oldPreviousSibling be node's previous sibling."
+    const old_previous_sibling = node.previous_sibling;
+    // 12. "Let oldNextSibling be node's next sibling."
+    const old_next_sibling = node.next_sibling;
 
-    // Step 3: If child is non-null and its parent is not newParent, throw NotFoundError
-    if (child) |c| {
-        if (c.parent_node != new_parent) {
-            return DOMException.NotFoundError;
-        }
-    }
+    // 13. "Remove node from oldParent's children."
+    //
+    // Node's parent pointer stays oldParent until steps 20-21 write the new
+    // one (refcount.moveChild): the counts then move from the old chain to
+    // the new one in a single step, and the moved tree is never a counted
+    // root of its own - with a parentless node a hold taken and dropped
+    // between the two (a wrap, a node_holds hold) would end at node and call
+    // its tree garbage. What the standard's parentless node changes in the
+    // steps in between: steps 14-16 walk trees through child lists, which no
+    // longer reach node, so oldParent's tree loses node's slots and node's
+    // slots find no slottable through "find a slot" either way; only a
+    // manually assigned slot in node's subtree still finds its manually
+    // assigned nodes for one step (its root reads as oldParent's), and step
+    // 24 assigns it again from node's new root. Every other step names its
+    // parent explicitly.
+    unlinkForMove(node, old_parent);
 
-    // Step 4: If node is not an Element or CharacterData node, throw HierarchyRequestError
-    if (!isElement(node) and !isCharacterData(node)) {
-        return DOMException.HierarchyRequestError;
-    }
+    // 14. "If node is assigned, then run assign slottables for node's
+    // assigned slot." 15. "If oldParent's root is a shadow root, and
+    // oldParent is a slot whose assigned nodes is empty, then run signal a
+    // slot change for oldParent." 16. "If node has an inclusive descendant
+    // that is a slot": assign slottables for a tree with oldParent's root,
+    // then with node. (The remove steps 8-10.)
+    removingSlotSteps(allocator, node, old_parent);
 
-    // Step 5: If node is a Text node and newParent is a document, throw HierarchyRequestError
-    if (isText(node) and isDocument(new_parent)) {
-        return DOMException.HierarchyRequestError;
-    }
-
-    // Step 6: If newParent is a document, validate element constraints
-    if (isDocument(new_parent)) {
-        if (isElement(node)) {
-            // Check if newParent has an element child
-            if (hasElementChild(new_parent)) {
-                return DOMException.HierarchyRequestError;
-            }
-
-            // Check if child is a doctype
-            if (child) |c| {
-                if (isDocumentType(c)) {
-                    return DOMException.HierarchyRequestError;
-                }
-
-                // Check if a doctype is following child
-                if (isDoctypeFollowing(new_parent, child)) {
-                    return DOMException.HierarchyRequestError;
-                }
-            }
-        }
-    }
-
-    // Step 7: Let oldParent be node's parent
-    const old_parent = node.parent_node orelse {
-        // If node has no parent, this is an error (move requires node to already be in tree)
-        return DOMException.HierarchyRequestError;
+    // 17. "Add transient registered observers given node and oldParent."
+    // An allocation failure leaves those observers out, not the move half
+    // done.
+    createTransientObserversForRemovedNode(node, old_parent) catch |err| {
+        std.log.scoped(.mutation).warn("transient observers after a move failed: {}", .{err});
     };
 
-    // Step 8: Assert: oldParent is non-null (checked above)
+    // The old parent's children changed - the stated deviation above.
+    runChildrenChangedSteps(old_parent, .moved);
 
-    // Step 9: Run the live range pre-remove steps, given node
-    runLiveRangePreRemoveSteps(node);
-
-    // Step 10: For each NodeIterator object iterator whose root's node document is node's node document,
-    // run the NodeIterator pre-remove steps given node and iterator
-    runNodeIteratorPreRemoveSteps(node);
-
-    // Step 11: Let oldPreviousSibling be node's previous sibling
-    const old_previous_sibling = tree_helpers.getPreviousSibling(node);
-
-    // Step 12: Let oldNextSibling be node's next sibling
-    const old_next_sibling = tree_helpers.getNextSibling(node);
-
-    // Step 13: Remove node from oldParent's children
-    removeFromChildrenList(node, old_parent);
-
-    // Step 13.1: Run children changed steps for oldParent
-    // (Node was removed from oldParent's children)
-    runChildrenChangedSteps(old_parent, .removed);
-
-    // Steps 14-16: the remove steps 8-10, with oldParent.
-    removingSlotSteps(new_parent.allocator, @ptrCast(node), @ptrCast(old_parent));
-
-    // Step 17: If child is non-null:
+    // 18. "If child is non-null": "For each live range whose start node is
+    // newParent and start offset is greater than child's index: increase its
+    // start offset by 1", and the same for end nodes and end offsets.
     if (child) |c| {
-        const child_index = getChildIndex(c) orelse 0;
-
-        // Get the document for range tracking
-        if (nodeDocument(new_parent)) |doc| {
-            // Step 17.1: For each live range whose start node is newParent and start offset
-            // is greater than child's index, increase its start offset by 1
-            updateRangesForInsertion(doc, new_parent, child_index);
-        }
+        if (nodeDocument(new_parent)) |doc| updateRangesForInsertion(doc, new_parent, getChildIndex(c) orelse 0);
     }
 
-    // Step 18: Let newPreviousSibling be child's previous sibling if child is non-null,
-    // and newParent's last child otherwise
-    const new_previous_sibling = if (child) |c|
-        tree_helpers.getPreviousSibling(c)
-    else
-        tree_helpers.getLastChild(new_parent);
+    // 19. "Let newPreviousSibling be child's previous sibling if child is
+    // non-null, and newParent's last child otherwise."
+    const new_previous_sibling = if (child) |c| c.previous_sibling else new_parent.last_child;
 
-    // Step 19: If child is null, then append node to newParent's children
-    // Step 20: Otherwise, insert node into newParent's children before child's index
-    insertIntoChildrenList(node, new_parent, child);
+    // 20. "If child is null, then append node to newParent's children."
+    // 21. "Otherwise, insert node into newParent's children before child's
+    // index." The parent link, the counts and the wrapper edges with it.
+    linkForMove(node, old_parent, new_parent, child);
 
     // domindex1: the light subtree leaves its old tree scope's maps and
     // joins its new one's - often the same scope, and the move still changes
-    // the order its keys' elements are in - before the form owner reset.
-    tree_ordered_map.moved(@ptrCast(node), @ptrCast(old_parent), @ptrCast(new_parent));
+    // the order its keys' elements are in - at the link, before the form
+    // owner reset reads them.
+    tree_ordered_map.moved(node, old_parent, new_parent);
+    // HTML moving steps step 2: reset the form owner of what the move
+    // reached, once, in the new position (CE2-S1).
+    formSubtreeMoved(node, old_parent, new_parent);
 
-    // HTML element moving steps: reset the form owner once, in the new
-    // position (CE2-S1).
-    formSubtreeMoved(@ptrCast(node), @ptrCast(old_parent), @ptrCast(new_parent));
+    // 22. "If newParent is a shadow host whose shadow root's slot assignment
+    // is "named" and node is a slottable, then assign a slot for node."
+    // 23. "If newParent's root is a shadow root, and newParent is a slot
+    // whose assigned nodes is empty, then run signal a slot change for
+    // newParent." 24. "Run assign slottables for a tree with node's root."
+    // (The insert steps 7.4-7.6.)
+    insertionSlotSteps(allocator, node, new_parent);
 
-    // Step 20.1: Run children changed steps for newParent
-    // (Node was added to newParent's children)
-    runChildrenChangedSteps(new_parent, .inserted);
+    // The new parent's children changed - the stated deviation above.
+    runChildrenChangedSteps(new_parent, .moved);
 
-    // Steps 21-23: the insert steps 7.4-7.6, with newParent.
-    insertionSlotSteps(new_parent.allocator, @ptrCast(node), @ptrCast(new_parent));
+    // 25. For each shadow-including inclusive descendant of node, in
+    // shadow-including tree order: the moving steps, and connectedMoveCallback
+    // for a custom one when newParent is connected.
+    const new_parent_connected = new_parent.is_connected or isDocument(new_parent) or isConnectedThroughShadow(new_parent);
+    runMovingStepsForTree(node, old_parent, new_parent_connected);
 
-    // Step 24: For each shadow-including inclusive descendant of node, in shadow-including tree order
-    // Run moving steps (handles shadow-including traversal internally)
-    runMovingStepsForTree(node, old_parent);
-
-    // Step 25: Queue a tree mutation record for oldParent
-    // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
-    {
-        var removed_nodes_buf: [1]*NodeBase = undefined;
-        removed_nodes_buf[0] = node;
-        queueTreeMutationRecord(
-            new_parent.allocator,
-            old_parent,
-            &[_]*NodeBase{},
-            removed_nodes_buf[0..1],
-            old_previous_sibling,
-            old_next_sibling,
-        );
-    }
-
-    // Step 26: Queue a tree mutation record for newParent
-    // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
-    {
-        var added_nodes_buf: [1]*NodeBase = undefined;
-        added_nodes_buf[0] = node;
-        queueTreeMutationRecord(
-            new_parent.allocator,
-            new_parent,
-            added_nodes_buf[0..1],
-            &[_]*NodeBase{},
-            new_previous_sibling,
-            child,
-        );
-    }
+    // 26. "Queue a tree mutation record for oldParent with « », « node »,
+    // oldPreviousSibling, and oldNextSibling."
+    const moved_nodes = [_]*NodeBase{node};
+    queueTreeMutationRecord(allocator, old_parent, &[_]*NodeBase{}, &moved_nodes, old_previous_sibling, old_next_sibling);
+    // 27. "Queue a tree mutation record for newParent with « node », « »,
+    // newPreviousSibling, and child."
+    queueTreeMutationRecord(allocator, new_parent, &moved_nodes, &[_]*NodeBase{}, new_previous_sibling, child);
 
     if (refcount.treeChecksOn()) {
-        refcount.checkAround(@ptrCast(old_parent));
-        refcount.checkAround(@ptrCast(new_parent));
+        refcount.checkAround(old_parent);
+        refcount.checkAround(new_parent);
     }
 }
 
@@ -2125,11 +2109,26 @@ fn removingSlotSteps(allocator: std.mem.Allocator, node: *NodeBase, parent: *Nod
     };
 }
 
-/// Helper: Get shadow-including root of a node
-/// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-root
-fn getShadowIncludingRoot(node: anytype) @TypeOf(node) {
-    // For now, just return regular root (shadow DOM TODO)
-    return tree_helpers.getRoot(node);
+/// DOM "shadow-including root": "its root's host's shadow-including root, if
+/// the object's root is a shadow root; otherwise its root." Through
+/// ShadowRoot's host, as isConnectedThroughShadow: a template's contents is a
+/// fragment with a host too, but not a shadow root, so it is a root here.
+/// Gecko's MoveBefore step 1 compares GetRootNode({composed: true}).
+fn shadowIncludingRoot(node: *NodeBase) *NodeBase {
+    var current = node;
+    // A chain of shadow roots is a handful deep; the bound only stops a
+    // corrupt tree from looping.
+    var depth: usize = 0;
+    while (depth < 1024) : (depth += 1) {
+        var root = current;
+        while (root.parent_node) |parent| root = parent;
+        if (root.node_type != DOCUMENT_FRAGMENT_NODE) return root;
+        const root_instance = instanceOfNode(root) orelse return root;
+        if (root_instance.stateAs(interfaces.ShadowRoot.State) == null) return root;
+        const host = interfaces.ShadowRoot.get_host(root_instance) catch return root;
+        current = instance_bridge.getNodeBase(host) orelse return root;
+    }
+    return current;
 }
 
 /// Helper: Check if node is a host-including inclusive ancestor of other
@@ -2573,50 +2572,63 @@ fn updateRangesForInsertionWithCount(doc: anytype, parent: anytype, child_index:
     }
 }
 
-/// Helper: Remove node from parent's children list (without updating parent pointer)
-fn removeFromChildrenList(node: anytype, parent: anytype) void {
-    const node_ptr: *NodeBase = @ptrCast(node);
-    // Update sibling pointers
+/// Move step 13: `node` leaves `old_parent`'s children - the sibling links,
+/// both ends and the child list, as removeHeld's step 7. Its parent link
+/// stays until linkForMove (refcount.moveChild writes it there with the
+/// counts): see `move`.
+fn unlinkForMove(node: *NodeBase, old_parent: *NodeBase) void {
+    const index = getChildIndex(node);
     if (node.previous_sibling) |prev| {
         prev.next_sibling = node.next_sibling;
     } else {
-        // node was first child
-        const first = parent.child_nodes.items()[0];
-        if (first == node_ptr) {
-            if (node.next_sibling) |next| {
-                parent.child_nodes.items()[0] = next;
-            } else {
-                // Was only child
-                parent.child_nodes.clearRetainingCapacity();
-                return;
-            }
-        }
+        old_parent.first_child = node.next_sibling;
     }
-
     if (node.next_sibling) |next| {
         next.previous_sibling = node.previous_sibling;
+    } else {
+        old_parent.last_child = node.previous_sibling;
     }
-
-    // Remove from parent's children array
-    if (getChildIndex(node)) |idx| {
-        _ = parent.child_nodes.remove(idx) catch unreachable; // idx is guaranteed valid by getChildIndex
-    }
-
-    // Clear node's sibling pointers (but not parent - that stays for the move)
     node.previous_sibling = null;
     node.next_sibling = null;
+    if (index) |i| _ = old_parent.child_nodes.remove(i) catch unreachable; // getChildIndex found it there
 }
 
-/// Move 19-20's parent write (refcount.moveChild), and a wrapped node's
-/// opaque root following it: it leaves its old parent's and joins its new
-/// one's (step 4) - the moving steps, in place of the adapter's old hook.
-fn moveChildFollowed(node: anytype, parent: anytype) void {
-    const old_parent = node.parent_node;
-    refcount.moveChild(node, parent);
-    if (old_parent) |old| if (old != @as(*NodeBase, @ptrCast(parent))) {
-        leftTree(@ptrCast(node), old);
-        joinedTree(@ptrCast(node), @ptrCast(parent));
-    };
+/// Move steps 20-21: `node` joins `new_parent`'s children before `child`
+/// (null: at the end) - the child list, the sibling links and both ends, as
+/// insertWith's step 7.2-7.3 - with the parent write and the counts moved
+/// from `old_parent`'s tree to `new_parent`'s in one step (refcount.moveChild:
+/// the new chain gains first, so no total passes through zero), and a wrapped
+/// node's opaque root and tree edges following it: it leaves its old
+/// parent's and joins its new one's (refcount design section 7 step 4).
+/// `move` reserved the list's room before it changed anything.
+fn linkForMove(node: *NodeBase, old_parent: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) void {
+    if (child) |c| {
+        const index = getChildIndex(c) orelse new_parent.child_nodes.size();
+        new_parent.child_nodes.insert(index, node) catch unreachable; // capacity reserved by move
+        node.next_sibling = c;
+        node.previous_sibling = c.previous_sibling;
+        if (c.previous_sibling) |prev| {
+            prev.next_sibling = node;
+        } else {
+            new_parent.first_child = node;
+        }
+        c.previous_sibling = node;
+    } else {
+        new_parent.child_nodes.append(node) catch unreachable; // capacity reserved by move
+        node.previous_sibling = new_parent.last_child;
+        node.next_sibling = null;
+        if (new_parent.last_child) |last| {
+            last.next_sibling = node;
+        } else {
+            new_parent.first_child = node;
+        }
+        new_parent.last_child = node;
+    }
+    refcount.moveChild(node, new_parent);
+    if (old_parent != new_parent) {
+        leftTree(node, old_parent);
+        joinedTree(node, new_parent);
+    }
 }
 
 /// Node tracing's opaque root follows the tree (refcount design 2.2, section 7
@@ -2642,49 +2654,6 @@ fn leftTree(node: *NodeBase, old_parent: *NodeBase) void {
     engine.leaveOpaqueRoot(@ptrCast(@alignCast(member)), @ptrCast(@alignCast(owner)));
 }
 
-/// Helper: Insert node into parent's children list (updates parent pointer)
-fn insertIntoChildrenList(node: anytype, parent: anytype, child: anytype) void {
-    if (child) |c| {
-        // Insert before child
-        const child_idx = getChildIndex(c) orelse {
-            // Child not found, append to end
-            parent.child_nodes.append(node) catch return;
-            moveChildFollowed(node, parent);
-            node.previous_sibling = tree_helpers.getLastChild(parent);
-            node.next_sibling = null;
-            if (node.previous_sibling) |prev| {
-                prev.next_sibling = node;
-            }
-            return;
-        };
-
-        // Insert at child_idx
-        parent.child_nodes.insert(child_idx, node) catch return;
-
-        // Update pointers
-        moveChildFollowed(node, parent);
-        node.next_sibling = c;
-        node.previous_sibling = tree_helpers.getPreviousSibling(c);
-
-        c.previous_sibling = node;
-        if (node.previous_sibling) |prev| {
-            prev.next_sibling = node;
-        }
-    } else {
-        // Append to end
-        parent.child_nodes.append(node) catch return;
-
-        moveChildFollowed(node, parent);
-        const last = tree_helpers.getLastChild(parent);
-        node.previous_sibling = if (last == node) null else last;
-        node.next_sibling = null;
-
-        if (node.previous_sibling) |prev| {
-            prev.next_sibling = node;
-        }
-    }
-}
-
 /// After a tree left `old_document`: every live range of `old_document`
 /// moves to its start node's document if that is no longer this one. Moving
 /// a range removes it from this list, which the walk's cursor allows for
@@ -2703,63 +2672,51 @@ fn moveLiveRangesAfterAdoption(old_document: *runtime.Instance) void {
     }
 }
 
-/// Helper: Run moving steps for node and all descendants
-/// Spec: DOM §4.2.5 move algorithm step 24
-/// For each shadow-including inclusive descendant, run moving steps
-fn runMovingStepsForTree(node: *NodeBase, old_parent: *NodeBase) void {
-    // Step 24: For each shadow-including inclusive descendant of node,
-    // in shadow-including tree order
-
-    // Try to use shadow-including traversal
-    if (tree_helpers.getShadowIncludingInclusiveDescendants(
-        node.allocator,
-        node,
-    )) |descendants| {
-        defer descendants.deinit();
-
-        // Step 24.1: If inclusiveDescendant is node, run moving steps with oldParent
-        // Otherwise, run moving steps with null
-        for (descendants.items, 0..) |descendant, i| {
-            if (i == 0) {
-                // First item is node itself
-                runMovingSteps(descendant, old_parent);
-            } else {
-                // All other descendants get null
-                runMovingSteps(descendant, null);
-            }
-
-            // Step 24.2: If inclusiveDescendant is custom and newParent is connected,
-            // enqueue connectedMoveCallback reaction
-            // Note: This is handled via moving steps callbacks (see registerMovingStepsCallback)
-            // Custom element implementations should register a callback that checks:
-            // - if (node.is_custom_element() and node.parent_node.?.root().is_connected()) {
-            //     enqueue_connected_move_callback_reaction(node, old_parent);
-            // }
+/// Move step 25: "For each shadow-including inclusive descendant
+/// inclusiveDescendant of node, in shadow-including tree order: 1. Let
+/// isSubtreeRoot be true if inclusiveDescendant is node; otherwise false.
+/// 2. Run the moving steps with inclusiveDescendant, isSubtreeRoot, and
+/// oldParent. 3. If inclusiveDescendant is custom and newParent is
+/// connected, then enqueue a custom element callback reaction with
+/// inclusiveDescendant, callback name "connectedMoveCallback", and « »."
+///
+/// The moving-steps callbacks receive oldParent for the subtree root and
+/// null for every descendant: isSubtreeRoot and oldAncestor in one argument
+/// (the HTML moving steps of option, selectedcontent, img and source read
+/// oldAncestor only when isSubtreeRoot is true).
+fn runMovingStepsForTree(node: *NodeBase, old_parent: *NodeBase, new_parent_connected: bool) void {
+    var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(node.allocator, node) catch {
+        // No room for the list: the same steps over the light tree, without
+        // its shadow trees, rather than none.
+        runMovingStepsOn(node, old_parent, new_parent_connected);
+        var current = node.first_child;
+        while (current) |descendant| {
+            runMovingStepsOn(descendant, null, new_parent_connected);
+            current = nextInSubtree(descendant, node);
         }
-    } else |_| {
-        // Fallback to regular tree traversal if shadow-including fails
-        // Run moving steps for node itself with oldParent
-        runMovingSteps(node, old_parent);
-
-        // Run moving steps for all descendants with null
-        var stack = infra.List(*NodeBase).init(node.allocator);
-        defer stack.deinit();
-
-        for (node.child_nodes.items()) |child| {
-            stack.append(child) catch continue;
-        }
-
-        while (stack.len > 0) {
-            const current = stack.get(stack.len - 1) orelse break;
-            _ = stack.remove(stack.len - 1) catch break;
-            runMovingSteps(current, null);
-
-            // Add children to stack
-            for (current.child_nodes.items()) |child| {
-                stack.append(child) catch continue;
-            }
-        }
+        return;
+    };
+    defer descendants.deinit();
+    for (descendants.toSlice(), 0..) |descendant, i| {
+        runMovingStepsOn(descendant, if (i == 0) old_parent else null, new_parent_connected);
     }
+}
+
+/// The node after `current` in `root`'s light subtree, in tree order.
+fn nextInSubtree(current: *NodeBase, root: *NodeBase) ?*NodeBase {
+    if (current.first_child) |first| return first;
+    var at = current;
+    while (at != root) {
+        if (at.next_sibling) |next| return next;
+        at = at.parent_node orelse return null;
+    }
+    return null;
+}
+
+/// Move steps 25.2-25.3 for one shadow-including inclusive descendant.
+fn runMovingStepsOn(descendant: *NodeBase, old_parent: ?*NodeBase, new_parent_connected: bool) void {
+    runMovingSteps(descendant, old_parent);
+    if (new_parent_connected) enqueueCustomElementCallback(descendant, .connected_move, .none);
 }
 
 fn hasCustomElementDefinitions(node: anytype) bool {

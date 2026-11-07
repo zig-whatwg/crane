@@ -164,8 +164,11 @@ fn insertionSteps(node: *NodeBase) void {
 fn childrenChangedSteps(node: *NodeBase, change: dom_module.mutation.ChildrenChange) void {
     // As for HTML scripts (DOM 808/1261, HTML 10188/4354), skip removal.
     // WebKit SVGScriptElement::childrenChanged delegates to ScriptElement,
-    // whose childrenChanged requires childChange.isInsertion().
-    if (change == .removed) return;
+    // whose childrenChanged requires childChange.isInsertion(). And a move,
+    // as HTMLScriptElement's: Blink SVGScriptElement::ChildrenChanged skips
+    // the loader during an atomic move, Gecko ScriptElement::ContentInserted
+    // returns for one.
+    if (change == .removed or change == .moved) return;
     if (!node.is_connected) return;
     const instance = svgScriptOf(node) orelse return;
     @import("html").script_execution.svgScriptInsertionOrChildrenChanged(instance.ctx.allocator, instance);
