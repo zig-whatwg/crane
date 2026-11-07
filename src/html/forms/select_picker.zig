@@ -8,6 +8,7 @@ const options = @import("options.zig");
 const associated = @import("../form_associated.zig");
 const focus = @import("../focus.zig");
 const popover = @import("../popover.zig");
+const selected_content = @import("selected_content.zig");
 const Instance = runtime.Instance;
 
 pub fn ownerSelect(option: *Instance) ?*Instance {
@@ -150,11 +151,45 @@ pub fn mouseUp(target: *Instance, button: u3) void {
 fn pick(select: *Instance, option: *Instance) void {
     if (associated.isDisabled(select) or options.isDisabled(option)) return;
     dom.form_controls.pickOption(select, option, isListbox(select)) catch return;
-    // TODO(unwrapped task holder, row 52 Q9 / row 61 Q3(c)): send select
-    // update notifications, including selectedcontent and input/change,
-    // on the user-interaction task source. Do not substitute an IDL setter.
+    // HTML 4.10.7 "pick an option" step 6 (and, in a `multiple` list box,
+    // the toggle paragraph): send select update notifications.
+    sendSelectUpdateNotifications(select);
+    // Step 7: a drop-down box with base appearance hides its picker.
     if (!isListbox(select)) popover.hidePicker(select, true) catch {};
 }
+
+/// HTML 4.10.7 "send select update notifications" for `select`: queue an
+/// element task on the user interaction task source given it. The queued
+/// task keeps the select (dom.node_holds.ElementTask, as popover and dialog
+/// toggle tasks do).
+pub fn sendSelectUpdateNotifications(select: *Instance) void {
+    _ = SelectUpdateTask.queue(.{select}, .{});
+}
+
+const SelectUpdate = struct {
+    pub const held_count = 1;
+
+    pub fn steps(_: *SelectUpdate, held: []const dom.node_holds.TaskHold) void {
+        // A teardown freed the select: nothing to notify.
+        const select = held[0].get() orelse return;
+        // 1. Set element's user validity to true.
+        dom.form_controls.setUserValidity(select, true) catch {};
+        // 2. Update a select's descendant selectedcontent elements given
+        // element.
+        selected_content.updateAll(select) catch {};
+        // 3. "Clone selected option into select button" sets the select
+        // fallback button text, a node of the select's UA shadow tree that
+        // Crane does not build (nothing script reads; HTML 15.5.16).
+        // 4. Fire an event named input at element, with the bubbles and
+        // composed attributes initialized to true.
+        associated.fireSimpleEvent(select, "input", .{ .bubbles = true, .composed = true }) catch {};
+        // 5. Fire an event named change at element, with the bubbles
+        // attribute initialized to true.
+        associated.fireSimpleEvent(select, "change", .{ .bubbles = true }) catch {};
+    }
+};
+
+const SelectUpdateTask = dom.node_holds.ElementTask(SelectUpdate);
 
 fn keyIs(key: []const u8, name: []const u8) bool {
     return std.mem.eql(u8, key, name);
@@ -291,9 +326,10 @@ pub fn typeAhead(target: *Instance, typed: []const u8) bool {
         // the existing HTML label algorithm and this match are ASCII only.
         if (value.len < prefix.len or !std.ascii.eqlIgnoreCase(value[0..prefix.len], prefix)) continue;
         if (closed) {
-            // HTML pick an option through another mechanism. Its queued
-            // notifications share the task-holder dependency noted above.
+            // HTML "pick an option" through another mechanism, with its
+            // queued notifications (step 6).
             dom.form_controls.pickOption(select, item, false) catch {};
+            sendSelectUpdateNotifications(select);
         } else focus.focusingSteps(item, null, .other);
         break;
     }
