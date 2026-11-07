@@ -201,7 +201,8 @@ pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 fn documentChildrenChanged(parent: *dom.NodeBase, _: dom.mutation.ChildrenChange) void {
     if (parent.node_type != dom.NodeBase.DOCUMENT_NODE) return;
     var in_prolog = true;
-    for (parent.child_nodes.items()) |child| {
+    var child_walk = parent.children();
+    while (child_walk.next()) |child| {
         if (child.node_type == dom.NodeBase.ELEMENT_NODE) in_prolog = false;
         if (child.node_type != dom.NodeBase.PROCESSING_INSTRUCTION_NODE) continue;
         const raw = dom.instance_bridge.getInstance(child) orelse continue;

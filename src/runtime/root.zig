@@ -119,12 +119,28 @@ pub const arraybuffer_view = @import("arraybuffer_view.zig");
 // Memory allocators
 pub const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
 pub const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
+/// The state arena's size classes: the scheme it uses and every scheme's classes
+/// (lane perf2 batch 5; the fallback is one constant away).
+pub const arena_classes = struct {
+    pub const ClassScheme = @import("arena_allocator.zig").ClassScheme;
+    pub const scheme = @import("arena_allocator.zig").class_scheme;
+    pub const SizeClasses = @import("arena_allocator.zig").SizeClasses;
+};
 
 /// The arena of `instance`'s Browser (docs/instances.md): where its state,
 /// and the internal state its impl keeps for it, are allocated and returned.
 /// Found from the instance's address (BrowserScope.ofInstance).
 pub fn arenaOf(instance: *const Instance) *ArenaAllocator {
     return &BrowserScope.ofInstance(instance).arena;
+}
+
+/// The allocator of `instance`'s Browser (docs/instances.md): what its impl
+/// allocates the memory its state owns from - the allocator its constructor
+/// was given, which is its realm's Browser's (asserted where a node is made:
+/// Node's initOwn) - found from its address, so a state need not keep a copy
+/// (lane perf2 batch 5: 16 bytes per level per object).
+pub fn allocatorOf(instance: *const Instance) std.mem.Allocator {
+    return BrowserScope.ofInstance(instance).allocator;
 }
 
 // Compile-time utilities

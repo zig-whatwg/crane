@@ -165,20 +165,19 @@ pub fn register(instance: *anyopaque, node_base: *NodeBase) !void {
 /// The native storage a registered node holds for as long as it lives, as
 /// its Browser's DOM memory counts it (runtime.BrowserScope.dom_memory),
 /// added here at its registration and subtracted at its teardown: its slab
-/// slot, its State block as the arena holds it (the block of its type's
-/// state size) and its NodeBase. The rest of what every node holds is
-/// counted where it is made and freed (lane perf2 batch 4): each level's
-/// InternalState block at its arena class (runtime.own_state.nodeDomMemory,
-/// OwnState and InstanceRegistry), and the NodeBase's rare data and
-/// registered observer entries (NodeBase.domMemory) - so a div is reported
-/// as the ~2,000 B it holds, not the 368 B these three alone come to, and a
-/// node's total returns to 0 at its teardown. What hangs off them (attribute
-/// values, text data, lists) is not counted. Exact sizes, read from the
-/// allocators and the node's type.
+/// slot and its State block as the arena holds it (the block of its type's
+/// state size) - which since lane perf2 batch 5 (Z7) IS the node: every
+/// level's InternalState kept by value (runtime.OwnState) and the NodeBase in
+/// Node's, counted once, here. The rest is counted where it is made and
+/// freed (lane perf2 batch 4): an InternalState block an InstanceRegistry
+/// makes for a node, at its arena class (runtime.own_state.nodeDomMemory),
+/// and the NodeBase's rare data and registered observer entries
+/// (NodeBase.domMemory) - so a node's total returns to 0 at its teardown.
+/// What hangs off them (attribute values, text data, lists) is not counted.
+/// Exact sizes, read from the allocators and the node's type.
 pub fn storageBytes(instance: *const runtime.Instance) usize {
     return runtime.SlabAllocator.slot_bytes +
-        runtime.ArenaAllocator.heldBytes(instance.vtable.state_size, instance.vtable.state_align) +
-        @sizeOf(NodeBase);
+        runtime.ArenaAllocator.heldBytes(instance.vtable.state_size, instance.vtable.state_align);
 }
 
 /// Unregister a node being torn down: what `register` counted goes back, and

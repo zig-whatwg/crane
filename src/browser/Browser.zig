@@ -135,6 +135,13 @@ pub const BrowserConfig = struct {
     proxy: Proxy = .system,
     /// WebDriver's acceptInsecureCerts: TLS certificates are not verified.
     accept_insecure_certs: bool = false,
+    /// Whether a platform object's freed state - its State block, and a
+    /// node's NodeBase released at its teardown - is overwritten with the
+    /// poison byte (runtime.ArenaAllocator.poison_freed), so a read after the
+    /// free faults instead of finding the old bytes. For the WPT correctness
+    /// runner, which poisons its allocator's frees by default (the user,
+    /// 2026-11-05); off by default - never in a product build.
+    poison_freed_state: bool = false,
     /// How many pages the back/forward cache keeps (back_forward_cache.zig):
     /// 8 by default - Firefox's desktop cap, for the whole Browser
     /// (back_forward_cache.zig `default_size` says why). 0 keeps none.
@@ -261,6 +268,7 @@ pub const Browser = struct {
         errdefer allocator.destroy(scope);
         scope.* = runtime.BrowserScope.init(allocator);
         errdefer scope.deinit();
+        scope.arena.poison_freed = config.poison_freed_state;
         const browser_platform = try @import("html").platform_state.createWith(scope, &.{ .platform = config.platform });
         const browser_clock = platform.browserClock(browser_platform);
         var random_seed: u64 = undefined;

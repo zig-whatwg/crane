@@ -1,0 +1,12 @@
+# Architecture: A node's creation allocator is its Browser's only inside a Browser
+
+**Date**: 2026-11-07
+**Lesson**: Removing a per-object allocator copy in favour of "the Browser's allocator, found from the object's address" (`BrowserScope.ofInstance(instance).allocator`) is safe only where every object is made with its scope's allocator - true in a Browser, false in much of the test infrastructure, so prove it with an assertion run over the whole suite before relying on it.
+
+**Why**: A Browser makes its scope (slab and arena) with its allocator and gives its realms the same one, so `ctx.allocator` and the scope's allocator are one. Tests build realms differently: tests/v8's `test_process.TestAgent` makes contexts with the test's allocator (`std.testing.allocator`) while their scope is the process's standalone one, started with `std.heap.page_allocator`; html tests and allocation-failure tests make nodes through a `FailingAllocator` over a scope made with `testing.allocator`. An object then allocates with one allocator and would free with another.
+
+**What Happened**: Lane perf2 batch 5 removed Node.InternalState's 16-byte allocator copy and asserted in Node's initOwn that the creation allocator is the scope's (the integrator's condition for the removal). tests-dom showed 2 failures (fx1_policy_document_test's failing-allocator construction); the full PRE gate showed 210, all that one assertion: 191 in tests-v8 (159 through `new Document()`, Document.call_constructor -> ctx.allocator) and 19 in tests-html. Making the tests agree means giving every TestAgent realm, and those fixtures, a BrowserScope of its own whose life ends after its agent - test-infrastructure and teardown-order work, not part of a layout batch.
+
+**Fix**: Node kept its allocator copy (16 B); the assertion and the readers of `runtime.allocatorOf` went with the removal. Text's copy, never read, stayed removed. The failing-allocator tests that could be fixed cheaply build their scope with the failing allocator (`FailingScope`), and tests/dom/perf2b5_node_allocator_test.zig proves a node made under a failing-allocator Browser frees through that same allocator. The removal is queued: TestAgent realms and the html fixtures get scopes of their own, then the assertion, then the copies go.
+
+**Takeaway**: **"Its Browser's allocator" equals "the allocator that made it" only inside a Browser: assert the identity and run the whole suite before removing a copy that depends on it.**

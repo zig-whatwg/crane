@@ -220,8 +220,8 @@ fn isBeforeInDocumentOrder(a: *NodeBase, b: *NodeBase) bool {
     if (a_child == null or b_child == null) return false;
 
     // Compare positions in parent's child list
-    for (0..common.child_nodes.size()) |i| {
-        const child = common.child_nodes.get(i) orelse continue;
+    var child_walk = common.children();
+    while (child_walk.next()) |child| {
         if (child == a_child) return true;
         if (child == b_child) return false;
     }
@@ -390,10 +390,9 @@ fn collectTextContent(allocator: std.mem.Allocator, node: *const NodeBase, resul
     }
 
     // Recursively collect from children
-    for (0..node.child_nodes.size()) |i| {
-        if (node.child_nodes.get(i)) |child| {
-            try collectTextContent(allocator, child, result);
-        }
+    var child_walk = node.children();
+    while (child_walk.next()) |child| {
+        try collectTextContent(allocator, child, result);
     }
 }
 // ============================================================================

@@ -22,6 +22,10 @@ pub const ImplError = error{
 /// - Private data not exposed via WebIDL attributes
 /// - Cached computations, buffers, etc.
 pub const InternalState = struct {
+    /// Kept by value in this interface's own State (runtime.OwnState, the
+    /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
+    pub const embedded_in_state = true;
+
     content: ?*runtime.Instance = null,
     content_generation: u64 = 0,
 };
@@ -91,7 +95,7 @@ pub fn init(
     // Chain to parent class (HTMLElement)
     const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
     errdefer interfaces.HTMLElement.deinit(instance);
-    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
+    const internal = try Registry.create(instance);
     internal.* = .{};
     return instance;
 }

@@ -157,10 +157,9 @@ fn traverseAndMatchTagRecursive(
     }
 
     // Traverse children
-    for (0..node.child_nodes.size()) |i| {
-        if (node.child_nodes.get(i)) |child| {
-            try traverseAndMatchTagRecursive(child, tag_name, matches);
-        }
+    var children = node.children();
+    while (children.next()) |child| {
+        try traverseAndMatchTagRecursive(child, tag_name, matches);
     }
 }
 
@@ -202,10 +201,9 @@ fn traverseAndMatchClassRecursive(
     }
 
     // Traverse children
-    for (0..node.child_nodes.size()) |i| {
-        if (node.child_nodes.get(i)) |child| {
-            try traverseAndMatchClassRecursive(child, class_name, matches);
-        }
+    var children = node.children();
+    while (children.next()) |child| {
+        try traverseAndMatchClassRecursive(child, class_name, matches);
     }
 }
 
@@ -254,10 +252,9 @@ fn traverseAndMatchIdRecursive(
     }
 
     // Traverse children
-    for (0..node.child_nodes.size()) |i| {
-        if (node.child_nodes.get(i)) |child| {
-            try traverseAndMatchIdRecursive(child, id, matches);
-        }
+    var children = node.children();
+    while (children.next()) |child| {
+        try traverseAndMatchIdRecursive(child, id, matches);
     }
 }
 
@@ -328,10 +325,9 @@ fn traverseAndMatch(
     }
 
     // Traverse children
-    for (0..node.child_nodes.size()) |i| {
-        if (node.child_nodes.get(i)) |child| {
-            try traverseAndMatch(allocator, matcher, selector_list, child, matches);
-        }
+    var children = node.children();
+    while (children.next()) |child| {
+        try traverseAndMatch(allocator, matcher, selector_list, child, matches);
     }
 }
 
@@ -354,6 +350,19 @@ fn destroyTestElement(allocator: std.mem.Allocator, elem: *ElementWithBase) void
     allocator.destroy(elem);
 }
 
+/// Test fixtures: link `child` as `parent`'s last child (a node's children are
+/// its sibling links: NodeBase.children).
+fn linkTestChild(parent: *NodeBase, child: *NodeBase) void {
+    child.previous_sibling = parent.last_child;
+    child.next_sibling = null;
+    if (parent.last_child) |last| {
+        last.next_sibling = child;
+    } else {
+        parent.first_child = child;
+    }
+    parent.last_child = child;
+}
+
 test "fast path: simple tag selector" {
     const allocator = testing.allocator;
 
@@ -370,11 +379,11 @@ test "fast path: simple tag selector" {
     const p = try createTestElement(allocator, "p");
     defer destroyTestElement(allocator, p);
 
-    try div.base.child_nodes.append(&span1.base);
+    linkTestChild(&div.base, &span1.base);
     span1.base.parent_node = &div.base;
-    try div.base.child_nodes.append(&span2.base);
+    linkTestChild(&div.base, &span2.base);
     span2.base.parent_node = &div.base;
-    try div.base.child_nodes.append(&p.base);
+    linkTestChild(&div.base, &p.base);
     p.base.parent_node = &div.base;
 
     // Query for "span" should use fast path and return both spans
@@ -393,7 +402,7 @@ test "fast path: simple tag selector case-insensitive" {
     const span = try createTestElement(allocator, "SPAN");
     defer destroyTestElement(allocator, span);
 
-    try root.base.child_nodes.append(&span.base);
+    linkTestChild(&root.base, &span.base);
     span.base.parent_node = &root.base;
 
     // Query for "span" (lowercase) should match "SPAN" (uppercase)
@@ -421,11 +430,11 @@ test "fast path: simple class selector" {
     defer destroyTestElement(allocator, elem3);
     try elem3.setAttribute("class", "active note");
 
-    try root.base.child_nodes.append(&elem1.base);
+    linkTestChild(&root.base, &elem1.base);
     elem1.base.parent_node = &root.base;
-    try root.base.child_nodes.append(&elem2.base);
+    linkTestChild(&root.base, &elem2.base);
     elem2.base.parent_node = &root.base;
-    try root.base.child_nodes.append(&elem3.base);
+    linkTestChild(&root.base, &elem3.base);
     elem3.base.parent_node = &root.base;
 
     // Query for ".active" should return elem1 and elem3
@@ -449,9 +458,9 @@ test "fast path: simple id selector" {
     defer destroyTestElement(allocator, elem2);
     try elem2.setAttribute("id", "sidebar");
 
-    try root.base.child_nodes.append(&elem1.base);
+    linkTestChild(&root.base, &elem1.base);
     elem1.base.parent_node = &root.base;
-    try root.base.child_nodes.append(&elem2.base);
+    linkTestChild(&root.base, &elem2.base);
     elem2.base.parent_node = &root.base;
 
     // Query for "#main" should return only elem1
@@ -474,9 +483,9 @@ test "generic path: complex selector falls back to full parser" {
     const p_elem = try createTestElement(allocator, "p");
     defer destroyTestElement(allocator, p_elem);
 
-    try root.base.child_nodes.append(&article.base);
+    linkTestChild(&root.base, &article.base);
     article.base.parent_node = &root.base;
-    try article.base.child_nodes.append(&p_elem.base);
+    linkTestChild(&article.base, &p_elem.base);
     p_elem.base.parent_node = &article.base;
 
     // Complex selector uses full parser

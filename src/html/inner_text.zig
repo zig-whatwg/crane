@@ -1149,7 +1149,7 @@ pub fn setOuterText(element: *runtime.Instance, value: runtime.DOMString) !void 
     defer dom.node_creation.destroyUninserted(fragment);
     const contents = dom.instance_bridge.getNodeBase(fragment) orelse return error.InvalidStateError;
     // Step 5: unlike innerText, an empty outerText creates an empty Text.
-    if (contents.child_nodes.size() == 0) {
+    if (contents.first_child == null) {
         try appendCreated(contents, try interfaces.Document.call_createTextNode(document, .empty));
     }
     // Step 6: replace this within its parent. The generated setter holds the

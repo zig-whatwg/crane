@@ -10,6 +10,19 @@ const webidl = @import("webidl");
 const NodeBase = dom.NodeBase;
 const Element = dom.ElementWithBase;
 
+/// Link `child` as `parent`'s last child (a node's children are its sibling
+/// links: NodeBase.children; lane perf2 batch 5).
+fn linkTestChild(parent: *NodeBase, child: *NodeBase) void {
+    child.previous_sibling = parent.last_child;
+    child.next_sibling = null;
+    if (parent.last_child) |last| {
+        last.next_sibling = child;
+    } else {
+        parent.first_child = child;
+    }
+    parent.last_child = child;
+}
+
 test "Node.contains - self" {
     const allocator = std.testing.allocator;
 
@@ -47,7 +60,7 @@ test "Node.contains - direct child" {
     const child = child_elem.asNode();
 
     // Add child to parent
-    try parent.child_nodes.append(child);
+    linkTestChild(parent, child);
     child.parent_node = parent;
 
     // Parent contains child
@@ -74,10 +87,10 @@ test "Node.contains - descendant" {
     const child = child_elem.asNode();
 
     // Build tree: grandparent > parent > child
-    try grandparent.child_nodes.append(parent);
+    linkTestChild(grandparent, parent);
     parent.parent_node = grandparent;
 
-    try parent.child_nodes.append(child);
+    linkTestChild(parent, child);
     child.parent_node = parent;
 
     // Grandparent contains all descendants
