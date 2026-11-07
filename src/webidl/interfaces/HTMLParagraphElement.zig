@@ -223,7 +223,6 @@ pub const HTMLParagraphElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"align": runtime.DOMString = undefined,
             _internal: ?*HTMLParagraphElementImpl.InternalState = null,
         },
     );

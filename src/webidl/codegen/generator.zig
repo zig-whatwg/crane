@@ -1824,7 +1824,13 @@ fn generateInterfaceFile(
     // Generate State struct from OWN attributes only (preserving WebIDL casing and types)
     // State includes only this interface's own attributes
     // FullState will flatten with inheritance/mixins via runtime.FlattenedState
-    try writer.writeGeneratedState(w, own_attrs.items, impl_name, type_registry);
+    // Node and its descendants keep their attribute storage in their impls:
+    // their State holds only `_internal` and the caches (writer.implKeepsAttributeStorage).
+    const attribute_storage: writer.AttributeStorage = if (ir) |model|
+        (if (writer.implKeepsAttributeStorage(model, interface.name)) .impl else .state)
+    else
+        .state;
+    try writer.writeGeneratedState(w, own_attrs.items, impl_name, type_registry, .{ .attribute_storage = attribute_storage });
 
     // Generate constant getters (static functions returning const values)
     // Only generate OWN constants - inherited constants accessed via parent vtable

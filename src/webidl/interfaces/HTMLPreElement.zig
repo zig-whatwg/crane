@@ -223,7 +223,6 @@ pub const HTMLPreElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            width: i32 = undefined,
             _internal: ?*HTMLPreElementImpl.InternalState = null,
         },
     );

@@ -225,8 +225,6 @@ pub const HTMLOptGroupElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            disabled: bool = undefined,
-            label: runtime.DOMString = undefined,
             _internal: ?*HTMLOptGroupElementImpl.InternalState = null,
         },
     );

@@ -230,14 +230,6 @@ pub const SVGFEOffsetElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            in1: *runtime.Instance = undefined,
-            dx: *runtime.Instance = undefined,
-            dy: *runtime.Instance = undefined,
-            x: *runtime.Instance = undefined,
-            y: *runtime.Instance = undefined,
-            width: *runtime.Instance = undefined,
-            height: *runtime.Instance = undefined,
-            result: *runtime.Instance = undefined,
             _internal: ?*SVGFEOffsetElementImpl.InternalState = null,
         },
     );

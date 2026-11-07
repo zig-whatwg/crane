@@ -225,8 +225,6 @@ pub const HTMLModElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cite: runtime.USVString = undefined,
-            dateTime: runtime.DOMString = undefined,
             _internal: ?*HTMLModElementImpl.InternalState = null,
         },
     );

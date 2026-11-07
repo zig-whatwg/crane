@@ -231,9 +231,6 @@ pub const SVGGraphicsElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            transform: *runtime.Instance = undefined,
-            requiredExtensions: *runtime.Instance = undefined,
-            systemLanguage: *runtime.Instance = undefined,
             cached_transform: ?*runtime.Instance = null,
             cached_requiredExtensions: ?*runtime.Instance = null,
             cached_systemLanguage: ?*runtime.Instance = null,

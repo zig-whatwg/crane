@@ -218,9 +218,6 @@ pub const SVGScriptElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: runtime.DOMString = undefined,
-            crossOrigin: ?runtime.DOMString = null,
-            href: *runtime.Instance = undefined,
             cached_href: ?*runtime.Instance = null,
             _internal: ?*SVGScriptElementImpl.InternalState = null,
         },

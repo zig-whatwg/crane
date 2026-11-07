@@ -5840,8 +5840,26 @@ pub fn V8Interface(comptime Interface: type) type {
             if (comptime special.supported_property_name) |query| {
                 return @field(Interface, query)(instance, runtime.DOMString.initInterned(key)) catch false;
             }
+            return supportedByList(instance, key);
+        }
+
+        /// The list path's stack buffer, and nothing else. ReleaseSafe writes
+        /// 0xAA over an `undefined` buffer where it is declared: 8 KB on every
+        /// named read of an interface with no per-name query, 30% of
+        /// `el.dataset.k` and 29% of `el.attributes.title` (lane perf2, batch 3,
+        /// MEASURED). Runtime safety is off for this declaration only - the
+        /// user's approval, 2026-11-06 18:04 UTC ("ok to turn off ReleaseSafe's
+        /// safety around the buffer"): supportedByListIn, which uses the buffer,
+        /// keeps every check (@setRuntimeSafety is lexically scoped, so a callee
+        /// keeps its own, inlined or not).
+        fn supportedByList(instance: *runtime.Instance, key: []const u8) bool {
+            @setRuntimeSafety(false);
             var fallback_buffer: [8192]u8 = undefined;
-            var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.c_allocator);
+            return supportedByListIn(&fallback_buffer, instance, key);
+        }
+
+        fn supportedByListIn(fallback_buffer: *[8192]u8, instance: *runtime.Instance, key: []const u8) bool {
+            var fallback: std.heap.BufferFirstAllocator = .init(fallback_buffer, std.heap.c_allocator);
             var arena = std.heap.ArenaAllocator.init(fallback.allocator());
             defer arena.deinit();
             const names = Interface.getSupportedPropertyNames(instance, arena.allocator()) catch return false;
@@ -5894,10 +5912,20 @@ pub fn V8Interface(comptime Interface: type) type {
             own: bool,
             in_prototype_chain: bool,
 
+            /// The stack buffer, and nothing else: ReleaseSafe's 0xAA fill of it
+            /// was 1 KB per named read, 3.7% of `el.dataset.k` (lane perf2, batch
+            /// 3, MEASURED). Runtime safety is off for this declaration only - the
+            /// user's approval, 2026-11-06 18:04 UTC: `ofIn`, which uses the
+            /// buffer, keeps every check.
             fn of(info: *const anyopaque, key: []const u8) NameState {
-                // The name's code units: a lone surrogate stays itself.
+                @setRuntimeSafety(false);
                 var fallback_buffer: [1024]u8 = undefined;
-                var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buffer, std.heap.c_allocator);
+                return ofIn(&fallback_buffer, info, key);
+            }
+
+            fn ofIn(fallback_buffer: *[1024]u8, info: *const anyopaque, key: []const u8) NameState {
+                // The name's code units: a lone surrogate stays itself.
+                var fallback: std.heap.BufferFirstAllocator = .init(fallback_buffer, std.heap.c_allocator);
                 const allocator = fallback.allocator();
                 const units = allocator.alloc(u16, key.len) catch return .{ .own = false, .in_prototype_chain = false };
                 defer allocator.free(units);

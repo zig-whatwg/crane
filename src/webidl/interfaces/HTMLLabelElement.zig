@@ -228,9 +228,6 @@ pub const HTMLLabelElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            form: ?*runtime.Instance = null,
-            htmlFor: runtime.DOMString = undefined,
-            control: ?*runtime.Instance = null,
             _internal: ?*HTMLLabelElementImpl.InternalState = null,
         },
     );

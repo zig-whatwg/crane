@@ -223,7 +223,6 @@ pub const HTMLDataElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: runtime.DOMString = undefined,
             _internal: ?*HTMLDataElementImpl.InternalState = null,
         },
     );

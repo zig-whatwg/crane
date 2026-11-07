@@ -121,8 +121,6 @@ pub const ProcessingInstruction = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            target: runtime.DOMString = undefined,
-            sheet: ?*runtime.Instance = null,
             _internal: ?*ProcessingInstructionImpl.InternalState = null,
         },
     );

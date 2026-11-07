@@ -232,8 +232,6 @@ pub const SVGPolylineElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            points: *runtime.Instance = undefined,
-            animatedPoints: *runtime.Instance = undefined,
             cached_points: ?*runtime.Instance = null,
             cached_animatedPoints: ?*runtime.Instance = null,
             _internal: ?*SVGPolylineElementImpl.InternalState = null,

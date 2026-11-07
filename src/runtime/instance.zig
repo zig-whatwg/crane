@@ -151,16 +151,14 @@ pub const Instance = struct {
         errdefer scope.slab.free(instance);
 
         // Step 2: Allocate state from the Browser's arena (variable size
-        // based on StateType)
+        // based on StateType). It comes back ZEROED - every pointer field
+        // null, every number 0 - which the state needs: Zig does not apply
+        // struct defaults (= null) through an allocator, and an optional
+        // pointer holding garbage crashes when unwrapped (Blink's C++
+        // constructors initialize every field instead). The arena zeroes the
+        // request once (ArenaAllocator.createRaw); this used to zero it again
+        // (lane perf2, batch 3).
         const state = try scope.arena.create(StateType);
-
-        // Step 2a: CRITICAL - Zero-initialize state memory to prevent uninitialized reads
-        // This ensures all pointer fields are null, all numbers are 0, etc.
-        // Without this, optional pointer fields contain garbage that crashes when unwrapped.
-        // Rationale: Chrome/Blink uses C++ constructors that explicitly initialize all fields.
-        // In Zig, struct default values (= null) are NOT applied by allocator.create(),
-        // so we must explicitly zero the memory.
-        @memset(std.mem.asBytes(state), 0);
 
         // Step 3: Link state and context to instance
         instance.state = state;

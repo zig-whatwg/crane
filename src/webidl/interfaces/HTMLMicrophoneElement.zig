@@ -238,11 +238,6 @@ pub const HTMLMicrophoneElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            track: ?*runtime.Instance = null,
-            @"error": ?*runtime.Instance = null,
-            ontrack: typedefs.EventHandler = undefined,
-            onerror: typedefs.EventHandler = undefined,
-            oncancel: typedefs.EventHandler = undefined,
             _internal: ?*HTMLMicrophoneElementImpl.InternalState = null,
         },
     );

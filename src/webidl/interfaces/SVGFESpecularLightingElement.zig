@@ -236,17 +236,6 @@ pub const SVGFESpecularLightingElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            in1: *runtime.Instance = undefined,
-            surfaceScale: *runtime.Instance = undefined,
-            specularConstant: *runtime.Instance = undefined,
-            specularExponent: *runtime.Instance = undefined,
-            kernelUnitLengthX: *runtime.Instance = undefined,
-            kernelUnitLengthY: *runtime.Instance = undefined,
-            x: *runtime.Instance = undefined,
-            y: *runtime.Instance = undefined,
-            width: *runtime.Instance = undefined,
-            height: *runtime.Instance = undefined,
-            result: *runtime.Instance = undefined,
             _internal: ?*SVGFESpecularLightingElementImpl.InternalState = null,
         },
     );

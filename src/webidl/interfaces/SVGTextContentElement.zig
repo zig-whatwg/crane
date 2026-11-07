@@ -252,8 +252,6 @@ pub const SVGTextContentElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            textLength: *runtime.Instance = undefined,
-            lengthAdjust: *runtime.Instance = undefined,
             cached_textLength: ?*runtime.Instance = null,
             cached_lengthAdjust: ?*runtime.Instance = null,
             _internal: ?*SVGTextContentElementImpl.InternalState = null,

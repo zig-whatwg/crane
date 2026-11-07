@@ -223,7 +223,6 @@ pub const HTMLDivElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"align": runtime.DOMString = undefined,
             _internal: ?*HTMLDivElementImpl.InternalState = null,
         },
     );

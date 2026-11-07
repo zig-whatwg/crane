@@ -241,8 +241,6 @@ pub const HTMLCanvasElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            width: u32 = undefined,
-            height: u32 = undefined,
             _internal: ?*HTMLCanvasElementImpl.InternalState = null,
         },
     );

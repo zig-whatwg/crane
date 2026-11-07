@@ -232,13 +232,6 @@ pub const HTMLModelElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ready: runtime.JSValue = undefined,
-            boundingBoxCenter: *runtime.Instance = undefined,
-            boundingBoxExtents: *runtime.Instance = undefined,
-            entityTransform: *runtime.Instance = undefined,
-            environmentMap: runtime.USVString = undefined,
-            environmentMapReady: runtime.JSValue = undefined,
-            stageMode: runtime.DOMString = undefined,
             _internal: ?*HTMLModelElementImpl.InternalState = null,
         },
     );

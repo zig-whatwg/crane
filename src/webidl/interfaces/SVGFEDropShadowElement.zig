@@ -238,16 +238,6 @@ pub const SVGFEDropShadowElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            in1: *runtime.Instance = undefined,
-            dx: *runtime.Instance = undefined,
-            dy: *runtime.Instance = undefined,
-            stdDeviationX: *runtime.Instance = undefined,
-            stdDeviationY: *runtime.Instance = undefined,
-            x: *runtime.Instance = undefined,
-            y: *runtime.Instance = undefined,
-            width: *runtime.Instance = undefined,
-            height: *runtime.Instance = undefined,
-            result: *runtime.Instance = undefined,
             _internal: ?*SVGFEDropShadowElementImpl.InternalState = null,
         },
     );

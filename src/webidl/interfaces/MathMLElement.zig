@@ -459,13 +459,6 @@ pub const MathMLElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            style: *runtime.Instance = undefined,
-            attributeStyleMap: *runtime.Instance = undefined,
-            onerror: typedefs.OnErrorEventHandler = undefined,
-            dataset: *runtime.Instance = undefined,
-            nonce: runtime.DOMString = undefined,
-            autofocus: bool = undefined,
-            tabIndex: i32 = undefined,
             cached_style: ?*runtime.Instance = null,
             cached_attributeStyleMap: ?*runtime.Instance = null,
             cached_dataset: ?*runtime.Instance = null,
