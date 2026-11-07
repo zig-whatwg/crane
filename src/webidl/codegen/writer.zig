@@ -2160,8 +2160,9 @@ pub fn writeToJSONStruct(
     attrs: []const ir.ToJSONAttribute,
     ir_data: *const ir.IR,
 ) !void {
-    if (attrs.len == 0) return;
-
+    // An interface with no attribute gets an empty struct too: its toJSON
+    // delegate returns it, and WebIDL's default toJSON steps then give an
+    // object with no member (ReportBody).
     try writer.writeAll("    // ========================================\n");
     try writer.writeAll("    // ToJSON Struct ([Default] toJSON result)\n");
     try writer.writeAll("    // ========================================\n\n");

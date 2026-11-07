@@ -1440,6 +1440,7 @@ pub const Context = struct {
             // realm [cross_origin_objects]; without it, the Window's own
             // checks (Window.get_document).
             .is_platform_object_same_origin = if (engine.capabilities.cross_origin_objects != .unsupported) dom_mod.cross_origin.isPlatformObjectSameOrigin else null,
+            .report_window_access = if (engine.capabilities.window_access_reporting != .unsupported) dom_mod.coop_reporting.checkAccess else null,
             .host = self,
             // HTML 8.1.3.5, for [SecureContext] exposure (WebIDL 3.3.13):
             // the document the realm is made for is this URL's, with no

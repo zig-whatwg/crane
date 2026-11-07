@@ -174,7 +174,13 @@ fn corpBlocks(allocator: Allocator, request: *const InternalRequest, response: *
         .request_includes_credentials = response.request_includes_credentials,
     }, false) catch return HttpFetchError.OutOfMemory;
     if (request.coep_violation_reporter) |reporter| {
-        const blocked_url = response.url() orelse request.currentUrl();
+        // "Queue a cross-origin embedder policy CORP violation report" step 2:
+        // "serializing a response URL for reporting with response" reads its
+        // URL list[0] - which main fetch makes request's URL list, so the
+        // URL the request started at, not where its redirects ended
+        // (reporting-subresource-corp.https.html's redirect case). The
+        // stripping is dom.coep_reporting's.
+        const blocked_url = request.getUrl();
         // 4. The report-only value's check blocked: a "reporting" report.
         if (check.report_only_blocks) reporter.report(reporter.context, &.{
             .blocked_url = blocked_url,

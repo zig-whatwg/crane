@@ -1120,6 +1120,11 @@ pub fn windowIndexedPropertyGetter(
     }
 
     if (result) |child_window| {
+        // HTML 7.1.3.3's access report check, for an index that names a
+        // child (Chromium's DOMWindow::AnonymousIndexedGetter reports
+        // "indexed"; access-reporting/property-indexed-getter: none for an
+        // index past the end).
+        @import("protocol_realms.zig").reportWindowAccess(instance, "indexed");
         // We have a child Window instance - wrap it and return
         const interface_name = template_registry.getInstanceInterfaceName(child_window);
         const wrapped = template_registry.wrapInstanceAsV8Object(
@@ -1305,6 +1310,11 @@ pub fn windowNamedPropertyGetter(
     const result = WindowImpl.getNamedProperty(instance, name) catch return .kNo;
 
     if (result) |js_val| {
+        // HTML 7.1.3.3's access report check for a name the named getter
+        // answers (Chromium reports "named"; access-reporting/
+        // property-named-getter: an iframe's name and an element's id, never
+        // a global or a missing name).
+        @import("protocol_realms.zig").reportWindowAccess(instance, "named");
         const value = conv.toV8Value(runtime.JSValue, isolate, v8_context, js_val) catch return .kNo;
         info.setReturnValue(value);
         return .kYes;

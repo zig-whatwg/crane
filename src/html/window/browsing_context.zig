@@ -380,6 +380,14 @@ pub const BrowsingContext = struct {
     /// Initial URL for this browsing context
     initial_url: ?[]const u8,
 
+    /// HTML's "opener origin at creation": the origin of its opener's active
+    /// document when this auxiliary context was made ("create a new
+    /// auxiliary browsing context" step 9), serialized ("null" for an opaque
+    /// one); null for a context with no opener. Chromium keeps it as the
+    /// FrameTreeNode's popup_creator_origin. Read by opener policy access
+    /// reports (dom.coop_reporting: an openee's initialPopupURL). OWNED.
+    opener_origin_at_creation: ?[]u8 = null,
+
     /// HTML's popup sandboxing flag set: empty when the context is created,
     /// populated by "the rules for choosing a navigable" for a top-level
     /// traversable opened from a sandboxed document - its creation
@@ -551,6 +559,7 @@ pub const BrowsingContext = struct {
     /// opener's list.
     pub fn initAuxiliary(allocator: Allocator, opener_ctx: *BrowsingContext, is_popup_flag: bool) !*BrowsingContext {
         const ctx = try initTopLevel(allocator, opener_ctx.navigables orelse return error.NoNavigables);
+        errdefer ctx.deinit();
         // HTML "create a new auxiliary browsing context" step 1-2: "Let group
         // be openerBrowsingContext's top-level browsing context's group",
         // which the new context joins.
@@ -561,10 +570,21 @@ pub const BrowsingContext = struct {
         ctx.cross_origin_isolation_mode = opener_ctx.getTop().cross_origin_isolation_mode;
         ctx.opener = opener_ctx;
         ctx.is_popup = is_popup_flag;
+        // Step 9: "Set browsingContext's opener origin at creation to
+        // opener's active document's origin."
+        ctx.opener_origin_at_creation = try serializeOrigin(allocator, opener_ctx.origin);
         // "The rules for choosing a navigable" step 8.10: "Set chosen's is
         // created by web content to true."
         ctx.is_created_by_web_content = true;
         return ctx;
+    }
+
+    /// HTML's ASCII serialization of an origin: "null" for an opaque one,
+    /// else scheme "://" host, then ":" port when it has one. OWNED.
+    fn serializeOrigin(allocator: Allocator, origin: Origin) error{OutOfMemory}![]u8 {
+        if (origin.is_opaque) return allocator.dupe(u8, "null");
+        if (origin.port) |port| return std.fmt.allocPrint(allocator, "{s}://{s}:{d}", .{ origin.scheme, origin.host, port });
+        return std.fmt.allocPrint(allocator, "{s}://{s}", .{ origin.scheme, origin.host });
     }
 
     /// Leave the parent: off its children list, and the link to it gone. The
@@ -637,6 +657,8 @@ pub const BrowsingContext = struct {
         if (self.target_name.len > 0) {
             self.allocator.free(self.target_name);
         }
+        if (self.opener_origin_at_creation) |origin| self.allocator.free(origin);
+        self.opener_origin_at_creation = null;
 
         // Free initial URL if allocated
         if (self.initial_url) |url| {

@@ -46,6 +46,8 @@ pub const capabilities: engine.Capabilities = .{
     // No engine linked. Linked, it could be emulated with exotic class
     // methods (JSClassExoticMethods) except for [[GetPrototypeOf]].
     .cross_origin_objects = .unsupported,
+    // No engine linked; the bindings would call the host as V8's do.
+    .window_access_reporting = .unsupported,
     // QuickJS has no WebAssembly.
     .webassembly_streaming = .unsupported,
     // Not until this adapter marks every object it binds an instance to.

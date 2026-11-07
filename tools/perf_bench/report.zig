@@ -22,8 +22,12 @@
 //!     that round measured as Crane) shows the host did not move; where the
 //!     round has a base of the control's commit for the fixed CPU target,
 //!     what the target alone did (`targetAlone`);
-//!   - Crane round by round: each workload's figures per round, split into
-//!     the code's change and the CPU target's where the round has both;
+//!   - the progress (from the second round on): Crane over time - its own
+//!     time and memory per measurement round as a share of its first round's,
+//!     one line each - and the gap to the browsers, a table of Crane's figure
+//!     as a multiple of each browser's per round (the user, 2026-11-07);
+//!   - Crane round by round: each workload's figures per measurement round,
+//!     its change since the first and its trend;
 //!   - the engines: each one's version, build and launch flags;
 //!   - this round, workload by workload: each engine's median time and
 //!     memory, and Crane's ratio to each browser;
@@ -624,14 +628,15 @@ pub fn compareRounds(arena: Allocator, m: *const Model, round: u32, subject: Eng
     return v;
 }
 
-/// What each round changed, for its point in the progress section: one line written when the
+/// What each round changed, for its line in the progress section: one line written when the
 /// round is published (the WPT site's chart events are the same pattern, tools/wpt_site/chart.zig);
-/// every figure beside it is the journals'. A round with no line shows none.
+/// every figure beside it is the journals'. A round with no line shows none. A change of CPU
+/// target is the journals' too (`targetChanges`), so no note repeats it.
 pub const RoundNote = struct { round: u32, note: []const u8 };
 
 pub const round_notes = [_]RoundNote{
     .{ .round = 0, .note = "The baseline: the suite's first measurement, of main 9b0f1b1f382, built for its build host's CPU." },
-    .{ .round = 1, .note = "Lane perf1: DOM memory reported to V8, and a garbage tree's deferred teardown weighed by its nodes. Lane perf2: getElementsBy* return one live list per document, and querySelector, matches and closest parse through a per-document selector cache with Blink's ID path. From this round every Crane build is for one fixed CPU, apple_m1." },
+    .{ .round = 1, .note = "Lane perf1: DOM memory reported to V8, and a garbage tree's deferred teardown weighed by its nodes. Lane perf2: getElementsBy* return one live list per document, and querySelector, matches and closest parse through a per-document selector cache with Blink's ID path." },
 };
 
 pub fn roundNote(round: u32) ?[]const u8 {
@@ -639,19 +644,20 @@ pub fn roundNote(round: u32) ?[]const u8 {
     return null;
 }
 
-/// One point of Crane's progress: its headline against each browser, the browsers' rows as they
-/// stood (`Model.standing`). A round's Crane (`crane`), and before it, where the round rebuilt an
-/// earlier round's source for its own CPU target (`targetAlone`), that base (`crane_base`): the
-/// step into the base is the target's, the step out of it the code's.
+/// One point of Crane's progress: a measurement round of Crane's release build (`crane`), never a
+/// methodology control (a round's base or drift control is not a point: the user, 2026-11-07, on
+/// the chart that drew round 0's source rebuilt for round 1's CPU target as a point of its own -
+/// "this graph is confusing for tracking Crane's progress"). Its geometric means against the
+/// first round's (`since`), and against each browser's rows as they stood (`vs`,
+/// `Model.standing`).
 pub const ProgressPoint = struct {
     round: u32,
-    engine: EngineName,
-    /// For a base: the round whose source it is (the control's round).
-    source_round: u32,
     commit: []const u8,
     /// The window's date, "2026-11-06" (its rows' latest time).
     date: []const u8,
     target: ?[]const u8,
+    /// Crane's time and memory over the first round's (`compareRounds`): 1 at the first round.
+    since: Versus,
     vs: [browsers.len]Versus,
 };
 
@@ -678,15 +684,18 @@ fn dateOf(m: *const Model, round: u32, engine: EngineName) []const u8 {
 /// Crane's progress, oldest first: every round that has Crane's release build.
 pub fn progress(arena: Allocator, m: *const Model) ![]const ProgressPoint {
     var out: std.ArrayList(ProgressPoint) = .empty;
+    var first: ?u32 = null;
     for (m.rounds) |r| {
         if (!hasEngine(m, r, .crane)) continue;
-        if (try targetAlone(arena, m, r)) |t| {
-            const cd = (try controlDrift(arena, m, r)).?;
-            var bp: ProgressPoint = .{ .round = r, .engine = .crane_base, .source_round = cd.earlier_round orelse r, .commit = cd.version, .date = dateOf(m, r, .crane_base), .target = t.base_target, .vs = undefined };
-            for (browsers, 0..) |b, i| bp.vs[i] = try compare(arena, m, r, .crane_base, b);
-            try out.append(arena, bp);
-        }
-        var p: ProgressPoint = .{ .round = r, .engine = .crane, .source_round = r, .commit = "", .date = dateOf(m, r, .crane), .target = try targetOf(arena, m, r), .vs = undefined };
+        if (first == null) first = r;
+        var p: ProgressPoint = .{
+            .round = r,
+            .commit = "",
+            .date = dateOf(m, r, .crane),
+            .target = try targetOf(arena, m, r),
+            .since = try compareRounds(arena, m, r, .crane, first.?, .crane),
+            .vs = undefined,
+        };
         for (m.cells) |c| if (c.round == r and c.engine == .crane and c.kind != .gc_bench) {
             p.commit = c.version;
             break;
@@ -695,6 +704,42 @@ pub fn progress(arena: Allocator, m: *const Model) ![]const ProgressPoint {
         try out.append(arena, p);
     }
     return out.items;
+}
+
+/// Where a round changed Crane's CPU target and also rebuilt an earlier round's source for the new
+/// one (`targetAlone`): what the target alone did, said once beside the progress charts instead of
+/// a point on them.
+pub const TargetChange = struct {
+    round: u32,
+    /// The round whose source was rebuilt (the drift control's round).
+    source_round: u32,
+    target: []const u8,
+    /// The rebuilt source over the control (`compare` of `crane_base` against `crane_control`).
+    versus: Versus,
+};
+
+pub fn targetChanges(arena: Allocator, m: *const Model) ![]const TargetChange {
+    var out: std.ArrayList(TargetChange) = .empty;
+    for (m.rounds) |r| {
+        const t = (try targetAlone(arena, m, r)) orelse continue;
+        const cd = (try controlDrift(arena, m, r)) orelse continue;
+        try out.append(arena, .{ .round = r, .source_round = cd.earlier_round orelse r, .target = t.base_target, .versus = t.versus });
+    }
+    return out.items;
+}
+
+/// A gap's change from the round before: lower (better, for Crane), higher, or within the noise
+/// limit the drift control itself is held to (`drift_limit`) - a move that small is not shown as
+/// one.
+pub const Change = enum { none, better, worse, steady };
+
+pub fn changeOf(prev: ?f64, cur: ?f64) Change {
+    const p = prev orelse return .none;
+    const c = cur orelse return .none;
+    if (p <= 0) return .none;
+    const r = c / p;
+    if (@abs(r - 1.0) <= drift_limit) return .steady;
+    return if (r < 1.0) .better else .worse;
 }
 
 /// Crane's latest round over its first (`compareRounds`): the progress the card names. Null with
@@ -806,22 +851,38 @@ const style =
     \\.perf td.flags code { font-size: 0.78rem; overflow-wrap: anywhere; }
     \\.perf .listing tbody th { width: auto; }
     \\.perf .listing thead th { padding: 0.32rem 0.75rem; }
-    \\.perf { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; }
-    \\@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .perf { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; } }
-    \\:root[data-theme="dark"] .perf { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; }
-    \\.perf-chart .s1, .chart-key .s1 { stroke: var(--s1); } .perf-chart .s2, .chart-key .s2 { stroke: var(--s2); }
-    \\.perf-chart .s3, .chart-key .s3 { stroke: var(--s3); } .perf-chart .s4, .chart-key .s4 { stroke: var(--s4); }
-    \\.perf-chart line.s1, .perf-chart line.s2, .perf-chart line.s3, .perf-chart line.s4, .chart-key line { stroke-width: 2; stroke-linecap: round; }
-    \\.perf-chart .step-target, .spark .step-target { stroke-dasharray: 4 3; }
-    \\.perf-chart .dot { stroke: var(--paper); stroke-width: 2; }
-    \\.perf-chart .dot.s1 { fill: var(--s1); } .perf-chart .dot.s2 { fill: var(--s2); } .perf-chart .dot.s3 { fill: var(--s3); } .perf-chart .dot.s4 { fill: var(--s4); }
-    \\.perf-chart .dot.hollow { fill: var(--paper); stroke-width: 2; }
-    \\.perf-chart .dot.hollow.s1 { stroke: var(--s1); } .perf-chart .dot.hollow.s2 { stroke: var(--s2); } .perf-chart .dot.hollow.s3 { stroke: var(--s3); } .perf-chart .dot.hollow.s4 { stroke: var(--s4); }
-    \\.perf-chart .parity { stroke: var(--ink-2); stroke-width: 1; }
-    \\.perf-chart .mark-label { fill: var(--ink); }
+    \\.perf { --trend: #2a78d6; }
+    \\@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .perf { --trend: #3987e5; } }
+    \\:root[data-theme="dark"] .perf { --trend: #3987e5; }
+    \\.perf .trend-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 0 2.5rem; max-width: 52rem; }
+    \\.perf .trend { margin: 1rem 0 0; }
+    \\.perf .trend-title { margin: 0 0 0.35rem; font: 400 0.9rem/1.35 var(--sans); color: var(--ink-2); }
+    \\.perf .trend-title strong { color: var(--ink); font-weight: 600; }
+    \\.trend-svg .trend-line { fill: none; stroke: var(--trend); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+    \\.trend-svg .trend-dot { fill: var(--trend); stroke: var(--paper); stroke-width: 2; }
+    \\.trend-svg .ref { stroke: var(--ink-2); stroke-width: 1; }
+    \\.trend-svg .trend-value { font-size: 12px; font-weight: 600; fill: var(--ink); }
+    \\.trend-svg .x-round { fill: var(--ink); font-weight: 600; }
+    \\.trend-svg .x-date { font-size: 10px; }
+    \\.trend-svg .x-commit { font-family: var(--mono); font-size: 9.5px; }
+    \\.perf .chart-note, .perf .gap-legend { max-width: var(--measure); font: 400 0.88rem/1.45 var(--sans); color: var(--ink-2); }
+    \\.perf .gap td.n { color: var(--ink); }
+    \\.perf .gap td.ratio-good { color: var(--pass, #2e7d32); } .perf .gap td.ratio-bad { color: var(--fail, #b3261e); }
+    \\.perf .gap thead th[scope="colgroup"] { text-align: center; }
+    \\.perf .gap-wrap { display: inline-block; max-width: 100%; max-height: none; vertical-align: top; }
+    \\.perf .listing.gap { width: auto; }
+    \\.perf .listing.gap tbody th { padding-right: 2rem; }
+    \\@media (max-width: 52rem) {
+    \\  .perf .gap-wrap { display: block; }
+    \\  .perf .listing.gap { width: 100%; }
+    \\  .perf .listing.gap tbody tr { display: block; padding: 0.5rem 0.6rem; }
+    \\  .perf .listing.gap tbody th { display: block; margin-bottom: 0.3rem; padding: 0; }
+    \\  .perf .listing.gap tbody td { display: flex; align-items: baseline; gap: 0.45rem; padding: 0.12rem 0; }
+    \\  .perf .listing.gap tbody td::before { content: attr(data-label); margin-right: auto; color: var(--ink-2); }
+    \\}
     \\.spark { width: 96px; height: 26px; }
     \\.spark .spark-line { stroke: var(--ink-2); stroke-width: 1.5; }
-    \\.spark .spark-dot { fill: var(--ink); } .spark .spark-dot.hollow { fill: var(--paper); stroke: var(--ink); stroke-width: 1.2; }
+    \\.spark .spark-dot { fill: var(--ink); }
     \\.perf .round-notes { font: 400 0.92rem/1.45 var(--sans); }
     \\</style>
     \\
@@ -913,110 +974,163 @@ fn writeHeadline(w: W, vs: []const Versus, round: u32) !void {
     try w.writeAll("</tbody></table></div></section>\n");
 }
 
-fn pointLabel(arena: Allocator, p: ProgressPoint) ![]const u8 {
-    return switch (p.engine) {
-        .crane_base => try std.fmt.allocPrint(arena, "Round {d}'s source", .{p.source_round}),
-        else => try std.fmt.allocPrint(arena, "Round {d}", .{p.round}),
-    };
-}
-
-const series_classes = [browsers.len][]const u8{ "s1", "s2", "s3", "s4" };
-
-/// Crane's progress (`progress`): its headline round by round against each browser, as a chart
-/// and a table for time and for memory, each point labelled with its round, date, commit, CPU
-/// target and what the round changed (`round_notes`). Shown from the second round on.
+/// Crane's progress (`progress`), from the second round on, in two parts (the user, 2026-11-07:
+/// the chart of one line per browser with a CPU-target point "is confusing for tracking Crane's
+/// progress"):
+/// - "Crane over time", first: two small charts, time and memory, ONE line each - Crane's
+///   geometric mean as a share of its first round's, a point per measurement round labelled with
+///   its value (`chart.trendChart`); a footnote, never a point, for a round that changed the CPU
+///   target (`targetChanges`); and what each round changed, with its figures (`round_notes`);
+/// - "The gap to the browsers": a table of Crane's time and memory as a multiple of each
+///   browser's, round by round, against each browser's rows as they stood (`Model.standing`, the
+///   headline's rows), coloured by the change from the round before (`changeOf`).
 fn writeProgress(w: W, arena: Allocator, m: *const Model) !void {
     const pts = try progress(arena, m);
     if (pts.len < 2) return;
-    try w.writeAll("<section id=\"progress\"><h2>Progress</h2>\n<p>Crane&rsquo;s headline round by round: its time and memory as a percentage of each browser&rsquo;s, each point against the browsers&rsquo; rows as they stood then - each browser&rsquo;s last-measured rows. Lower is better for Crane.");
-    if (try sinceFirst(arena, m)) |sv| {
-        try w.print(" Since round {d}, Crane&rsquo;s time is ", .{sv.round.?});
-        try writePercent1(w, sv.time_ratio);
-        try w.writeAll(" and its memory ");
-        try writePercent1(w, sv.memory_ratio);
-        try w.print(" of round {d}&rsquo;s (geometric means over {d} and {d} workloads).", .{ sv.round.?, sv.time_n, sv.memory_n });
+    const first = pts[0].round;
+    try w.print("<section id=\"progress\"><h2>Progress</h2>\n<h3>Crane over time</h3>\n<p>Crane&rsquo;s own time and memory in each measurement round as a share of round {d}&rsquo;s: the geometric mean, over the workloads both rounds ran, of each workload&rsquo;s figure over its round-{d} figure (memory is the steady footprint). Round {d} is 100%; lower is better.</p>\n<div class=\"trend-pair\">\n", .{ first, first, first });
+    var cpoints: std.ArrayList(chart.Point) = .empty;
+    for (pts) |p| try cpoints.append(arena, .{ .label = try std.fmt.allocPrint(arena, "Round {d}", .{p.round}), .date = p.date, .commit = p.commit });
+    for ([_]Measure{ .time, .steady }) |measure| {
+        const what = if (measure == .time) "time" else "memory";
+        var values: std.ArrayList(?f64) = .empty;
+        var titles: std.ArrayList([]const u8) = .empty;
+        for (pts) |p| {
+            const r = if (measure == .time) p.since.time_ratio else p.since.memory_ratio;
+            const n = if (measure == .time) p.since.time_n else p.since.memory_n;
+            try values.append(arena, r);
+            try titles.append(arena, if (r) |x| try std.fmt.allocPrint(arena, "Round {d}, {s}, Crane {s}: {d:.1}% of round {d}'s {s} (over {d} workloads)", .{ p.round, p.date, p.commit, x * 100, first, what, n }) else "");
+        }
+        try w.print("<figure class=\"chart trend\"><figcaption class=\"trend-title\"><strong>{s}</strong> as a share of round {d}&rsquo;s &middot; lower is better</figcaption>", .{ if (measure == .time) "Time" else "Memory", first });
+        const aria = try std.fmt.allocPrint(arena, "Crane's {s} as a share of round {d}'s over {d} rounds, from round {d} to round {d}; lower is better. The figures are in the list below.", .{ what, first, pts.len, first, pts[pts.len - 1].round });
+        try chart.trendChart(w, cpoints.items, .{ .aria = aria, .values = values.items, .titles = titles.items });
+        try w.writeAll("</figure>\n");
     }
-    try w.writeAll("</p>\n<ul class=\"round-notes\">\n");
-    var mark: ?chart.Mark = null;
+    try w.writeAll("</div>\n");
+    try writeTargetNotes(w, try targetChanges(arena, m));
+    try w.writeAll("<ul class=\"round-notes\">\n");
     for (pts, 0..) |p, i| {
-        try w.writeAll("<li><strong>");
-        try html.text(w, try pointLabel(arena, p));
-        try w.writeAll("</strong>, ");
+        try w.print("<li><strong>Round {d}</strong>, ", .{p.round});
         try html.text(w, p.date);
         try w.writeAll(", Crane <code>");
         try html.text(w, p.commit);
-        try w.writeAll("</code>, for <code>");
+        try w.writeAll("</code> for <code>");
         try html.text(w, p.target orelse "a CPU not recorded");
         try w.writeAll("</code>");
-        if (p.engine == .crane_base) {
-            try w.print(": measured in round {d}&rsquo;s window, it is the step the CPU target alone made (dashed on the charts); the step from it to round {d} is the code&rsquo;s.", .{ p.round, p.round });
-            if (mark == null and i > 0) mark = .{ .at = i, .label = try std.fmt.allocPrint(arena, "CPU target {s}", .{p.target orelse "?"}) };
-        } else if (roundNote(p.round)) |note| {
+        if (i == 0) try w.writeAll(", the reference (100%)") else {
+            try w.writeAll(", time ");
+            try writePercent1(w, p.since.time_ratio);
+            try w.writeAll(" and memory ");
+            try writePercent1(w, p.since.memory_ratio);
+            try w.print(" of round {d}&rsquo;s (over {d} and {d} workloads)", .{ first, p.since.time_n, p.since.memory_n });
+        }
+        if (roundNote(p.round)) |note| {
             try w.writeAll(": ");
             try html.text(w, note);
         } else try w.writeAll(".");
         try w.writeAll("</li>\n");
     }
     try w.writeAll("</ul>\n");
-    var cpoints: std.ArrayList(chart.Point) = .empty;
-    for (pts) |p| try cpoints.append(arena, .{ .label = try pointLabel(arena, p), .sub = p.target orelse "", .hollow = p.engine == .crane_base });
-    for ([_]Measure{ .time, .steady }) |measure| {
-        const what = if (measure == .time) "time" else "memory";
-        var lines: std.ArrayList(chart.Line) = .empty;
-        for (browsers, 0..) |b, bi| {
-            var values: std.ArrayList(?f64) = .empty;
-            var titles: std.ArrayList([]const u8) = .empty;
-            var any = false;
-            for (pts) |p| {
-                const v = p.vs[bi];
-                const r = if (measure == .time) v.time_ratio else v.memory_ratio;
-                if (r != null) any = true;
-                try values.append(arena, r);
-                try titles.append(arena, if (r) |x| try std.fmt.allocPrint(arena, "{s}, {s}, Crane {s}: {d}% of {s}'s {s} ({s} {s}, round {d}'s rows)", .{ try pointLabel(arena, p), p.date, p.commit, percent(x), b.label(), what, b.label(), v.version orelse "", v.round orelse 0 }) else "");
-            }
-            if (any) try lines.append(arena, .{ .name = b.label(), .class = series_classes[bi], .values = values.items, .titles = titles.items });
-        }
-        try w.print("<h3>{s}</h3>\n<figure class=\"chart\">", .{if (measure == .time) "Time" else "Memory, steady"});
-        const aria = try std.fmt.allocPrint(arena, "Crane's {s} as a percentage of each browser's over {d} points, from {s} to {s}; the numbers are in the table below.", .{ what, pts.len, try pointLabel(arena, pts[0]), try pointLabel(arena, pts[pts.len - 1]) });
-        try chart.ratioChart(w, .{ .aria = aria }, cpoints.items, lines.items, mark);
-        try w.writeAll("<figcaption class=\"chart-key\">");
-        for (lines.items) |ln| {
-            try w.print("<span><svg width=\"22\" height=\"10\" aria-hidden=\"true\"><line class=\"{s}\" x1=\"1\" x2=\"21\" y1=\"5\" y2=\"5\"/></svg>", .{ln.class});
-            try html.text(w, ln.name);
+    try writeGap(w, arena, pts);
+    try w.writeAll("</section>\n");
+}
+
+/// Whether a geometric mean of one build over another is within the noise limit (`drift_limit`).
+fn withinNoise(ratio: ?f64) bool {
+    const r = ratio orelse return false;
+    return @abs(r - 1.0) <= drift_limit;
+}
+
+/// The footnote beside the progress charts for each round that changed the CPU target
+/// (`targetChanges`): a methodology control, said in a sentence, never drawn as a point.
+fn writeTargetNotes(w: W, changes: []const TargetChange) !void {
+    for (changes) |c| {
+        try w.print("<p class=\"chart-note\">From round {d} Crane is built for one fixed CPU target, <code>", .{c.round});
+        try html.text(w, c.target);
+        try w.print("</code>; re-measuring round {d}&rsquo;s source for it changed time by ", .{c.source_round});
+        try writeTimes3(w, c.versus.time_ratio);
+        try w.writeAll(" and memory by ");
+        try writeTimes3(w, c.versus.memory_ratio);
+        if (withinNoise(c.versus.time_ratio) and withinNoise(c.versus.memory_ratio))
+            try w.print(", within noise (both within {d:.0}%).</p>\n", .{drift_limit * 100})
+        else
+            try w.print(", beyond the {d:.0}% noise limit.</p>\n", .{drift_limit * 100});
+    }
+}
+
+fn writeTimes3(w: W, ratio: ?f64) !void {
+    if (ratio) |r| try w.print("{d:.3}&times;", .{r}) else try w.writeAll("&ndash;");
+}
+
+/// "The gap to the browsers": per browser with any figure, Crane's time and memory as a multiple
+/// of the browser's in each round (the headline's `compare`, against the rows standing then).
+fn writeGap(w: W, arena: Allocator, pts: []const ProgressPoint) !void {
+    try w.writeAll("<h3>The gap to the browsers</h3>\n<p>Crane&rsquo;s time and memory as a multiple of each browser&rsquo;s, round by round: the headline&rsquo;s geometric means, each round against the browsers&rsquo; rows as they stood then (each browser&rsquo;s last-measured rows).</p>\n");
+    try w.print("<p class=\"gap-legend\">1.00&times; = the browser&rsquo;s own time (or memory); lower is better. Green: lower than the round before; red: higher; a change within {d:.0}%, the drift control&rsquo;s noise limit, is not coloured.</p>\n", .{drift_limit * 100});
+    const n = pts.len;
+    try w.print("<div class=\"table-wrap gap-wrap\"><table class=\"listing gap\"><thead><tr><th scope=\"col\" rowspan=\"2\">Browser</th><th scope=\"colgroup\" colspan=\"{d}\" class=\"n\">Time</th><th scope=\"colgroup\" colspan=\"{d}\" class=\"n\">Memory</th></tr>\n<tr>", .{ n, n });
+    for (0..2) |_| for (pts) |p| try w.print("<th scope=\"col\" class=\"n\">Round {d}</th>", .{p.round});
+    try w.writeAll("</tr></thead><tbody>\n");
+    for (browsers, 0..) |b, bi| {
+        const any = for (pts) |p| {
+            if (p.vs[bi].time_ratio != null or p.vs[bi].memory_ratio != null) break true;
+        } else false;
+        if (!any) continue;
+        // The row names the browser as it stands in the latest round; a cell whose rows were
+        // another version says so in its tooltip.
+        const latest_version = pts[n - 1].vs[bi].version;
+        try w.print("<tr><th scope=\"row\">{s}", .{b.label()});
+        if (latest_version) |v| {
+            try w.writeAll(" <span class=\"quiet\">");
+            try html.text(w, v);
             try w.writeAll("</span>");
         }
-        // The parity line is drawn only where the chart's scale reaches it (chart.ratioChart).
-        var lo: f64 = std.math.floatMax(f64);
-        var hi: f64 = 0;
-        for (lines.items) |ln| for (ln.values) |v| if (v) |x| {
-            lo = @min(lo, x);
-            hi = @max(hi, x);
-        };
-        if (chart.reachesParity(lo, hi)) try w.writeAll("<span>100%: parity</span>");
-        if (mark != null) try w.writeAll("<span>dashed: the CPU target&rsquo;s step</span>");
-        try w.writeAll("</figcaption></figure>\n");
-        try w.writeAll("<div class=\"table-wrap\"><table class=\"listing\"><thead><tr><th scope=\"col\">Point</th><th scope=\"col\">Date</th><th scope=\"col\">Crane</th><th scope=\"col\">CPU target</th>");
-        for (browsers) |b| try w.print("<th scope=\"col\" class=\"n\">{s}</th>", .{b.label()});
-        try w.writeAll("</tr></thead><tbody>\n");
-        for (pts) |p| {
-            try w.writeAll("<tr><th scope=\"row\">");
-            try html.text(w, try pointLabel(arena, p));
-            try w.writeAll("</th><td>");
-            try html.text(w, p.date);
-            try w.writeAll("</td><td><code>");
-            try html.text(w, p.commit);
-            try w.writeAll("</code></td><td><code>");
-            try html.text(w, p.target orelse "not recorded");
-            try w.writeAll("</code></td>");
-            for (p.vs) |v| {
-                const r = if (measure == .time) v.time_ratio else v.memory_ratio;
-                if (r) |x| try w.print("<td class=\"n {s}\">{d}%</td>", .{ ratioClass(x), percent(x) }) else try w.writeAll("<td class=\"n\">&ndash;</td>");
+        try w.writeAll("</th>");
+        for ([_]Measure{ .time, .steady }) |measure| {
+            for (pts, 0..) |p, i| {
+                const v = p.vs[bi];
+                const pick = struct {
+                    fn f(x: Versus, ms: Measure) ?f64 {
+                        return if (ms == .time) x.time_ratio else x.memory_ratio;
+                    }
+                }.f;
+                const label = try std.fmt.allocPrint(arena, "{s}, round {d}", .{ if (measure == .time) "Time" else "Memory", p.round });
+                var title: []const u8 = "";
+                if (v.version) |ver| if (latest_version == null or !std.mem.eql(u8, ver, latest_version.?)) {
+                    title = try std.fmt.allocPrint(arena, "against {s} {s}, round {d}'s rows", .{ b.label(), ver, v.round orelse p.round });
+                };
+                try writeGapCell(w, label, title, pick(v, measure), if (i == 0) null else pick(pts[i - 1].vs[bi], measure));
             }
-            try w.writeAll("</tr>\n");
         }
-        try w.writeAll("</tbody></table></div>\n");
+        try w.writeAll("</tr>\n");
     }
-    try w.writeAll("</section>\n");
+    try w.writeAll("</tbody></table></div>\n");
+}
+
+/// One cell of the gap: "5.97x", from the second round on green when lower than the round before,
+/// red when higher, uncoloured within the noise limit (`changeOf`). What it was is the column beside
+/// it, never repeated in the cell (the integrator, 2026-11-07).
+fn writeGapCell(w: W, label: []const u8, title: []const u8, cur: ?f64, prev: ?f64) !void {
+    const c = cur orelse {
+        try w.writeAll("<td class=\"n\" data-label=\"");
+        try html.text(w, label);
+        try w.writeAll("\">&ndash;</td>");
+        return;
+    };
+    const class = switch (changeOf(prev, c)) {
+        .better => "n ratio-good",
+        .worse => "n ratio-bad",
+        .none, .steady => "n",
+    };
+    try w.print("<td class=\"{s}\" data-label=\"", .{class});
+    try html.text(w, label);
+    try w.writeAll("\"");
+    if (title.len > 0) {
+        try w.writeAll(" title=\"");
+        try html.text(w, title);
+        try w.writeAll("\"");
+    }
+    try w.print(">{d:.2}&times;</td>", .{c});
 }
 
 fn writePercent1(w: W, ratio: ?f64) !void {
@@ -1389,68 +1503,45 @@ fn writeRound(w: W, arena: Allocator, m: *const Model) !void {
     try w.writeAll("</section>\n");
 }
 
-/// Crane (its release build, `crane`) round by round: each workload's time
-/// and steady memory in every round that has it, and the latest round's
-/// over the one before. Where the round has a drift control and a base of
-/// the control's commit for the fixed target (`targetAlone`), the change
-/// splits in two: the code's (tip over base, one target) and the target's
-/// (base over control, one source).
+/// Crane (its release build, `crane`) round by round: each workload's time and steady memory in
+/// every measurement round (`progress`), the latest round's over the first's, and its trend -
+/// Crane's own rounds only, as in the progress charts (the user, 2026-11-07). What a round's CPU
+/// target alone did to each workload is the drift control's table (`writeDrift`), not a step here.
 fn writeCraneHistory(w: W, arena: Allocator, m: *const Model) !void {
     const pts = try progress(arena, m);
     if (pts.len < 2) return;
     const first = pts[0].round;
     const latest = pts[pts.len - 1].round;
-    const split = (try targetAlone(arena, m, latest)) != null;
-    var cpoints: std.ArrayList(chart.Point) = .empty;
-    var mark_at: ?usize = null;
-    for (pts, 0..) |p, i| {
-        try cpoints.append(arena, .{ .label = try pointLabel(arena, p), .hollow = p.engine == .crane_base });
-        if (p.engine == .crane_base and mark_at == null and i > 0) mark_at = i;
-    }
-    try w.print("<section id=\"crane-history\"><h2>Crane, round by round</h2>\n<p>Each workload&rsquo;s time per operation and steady memory for Crane&rsquo;s release build (ReleaseSafe) at every point of its progress, and round {d}&rsquo;s figure as a share of round {d}&rsquo;s.", .{ latest, first });
+    try w.print("<section id=\"crane-history\"><h2>Crane, round by round</h2>\n<p>Each workload&rsquo;s time per operation and steady memory for Crane&rsquo;s release build (ReleaseSafe) in every measurement round, round {d}&rsquo;s figure as a share of round {d}&rsquo;s, and its trend.", .{ latest, first });
     for (pts) |p| {
-        try w.writeAll(" ");
-        try html.text(w, try pointLabel(arena, p));
-        try w.writeAll(": <code>");
+        try w.print(" Round {d}: <code>", .{p.round});
         try html.text(w, p.target orelse "target not recorded");
         try w.writeAll("</code>.");
     }
-    if (split) try w.writeAll(" Where a round has both, its change splits into the code&rsquo;s (Crane over its base, one CPU target) and the CPU target&rsquo;s (the base over the control, one source); on the sparklines the target&rsquo;s step is dashed.");
+    if ((try targetAlone(arena, m, latest)) != null) try w.print(" What round {d}&rsquo;s CPU target alone did to each workload is in the <a href=\"#drift\">drift control</a>&rsquo;s table.", .{latest});
     try w.writeAll("</p>\n<div class=\"table-wrap\"><table class=\"listing\"><thead><tr><th scope=\"col\">Workload</th>");
     for ([_][]const u8{ "Time", "Memory" }) |what| {
-        for (pts) |p| {
-            try w.print("<th scope=\"col\" class=\"n\">{s}, ", .{what});
-            try html.text(w, try pointLabel(arena, p));
-            try w.writeAll("</th>");
-        }
-        try w.print("<th scope=\"col\" class=\"n\">Since round {d}</th>", .{first});
-        if (split) try w.writeAll("<th scope=\"col\" class=\"n\">Code</th><th scope=\"col\" class=\"n\">Target</th>");
-        try w.writeAll("<th scope=\"col\">Trend</th>");
+        for (pts) |p| try w.print("<th scope=\"col\" class=\"n\">{s}, Round {d}</th>", .{ what, p.round });
+        try w.print("<th scope=\"col\" class=\"n\">Since round {d}</th><th scope=\"col\">Trend</th>", .{first});
     }
     try w.writeAll("</tr></thead><tbody>\n");
     for (try m.workloads(arena, latest)) |wl| {
         const c = m.current(latest, .crane, wl) orelse continue;
         if (c.kind == .gc_bench) continue;
         const f = m.current(first, .crane, wl);
-        const base = m.current(latest, .crane_base, wl);
-        const control = m.current(latest, .crane_control, wl);
         try w.writeAll("<tr><th scope=\"row\"><code>");
         try html.text(w, wl);
         try w.writeAll("</code></th>");
         for ([_]Measure{ .time, .steady }) |measure| {
             var values: std.ArrayList(?f64) = .empty;
             for (pts) |p| {
-                const cell = m.current(p.round, p.engine, wl);
+                const cell = m.current(p.round, .crane, wl);
                 try writeMeasureCell(w, cell, measure);
                 try values.append(arena, if (cell) |x| figureOf(x, measure) else null);
             }
             try writeRatio(w, figureOf(c, measure), if (f) |x| figureOf(x, measure) else null);
-            if (split) {
-                try writeRatio(w, figureOf(c, measure), if (base) |x| figureOf(x, measure) else null);
-                try writeRatio(w, if (base) |x| figureOf(x, measure) else null, if (control) |x| figureOf(x, measure) else null);
-            }
             try w.writeAll("<td>");
-            try chart.sparkline(w, try std.fmt.allocPrint(arena, "{s} {s} over the points", .{ wl, if (measure == .time) "time" else "memory" }), values.items, cpoints.items, mark_at);
+            try chart.sparkline(w, try std.fmt.allocPrint(arena, "{s} {s} over the rounds", .{ wl, if (measure == .time) "time" else "memory" }), values.items);
             try w.writeAll("</td>");
         }
         try w.writeAll("</tr>\n");
@@ -2065,81 +2156,123 @@ test "the CPU target alone: round 0's source built for the fixed target, against
     try testing.expect((try targetAlone(a, &(try build(a, &r0)), 0)) == null);
 }
 
-test "Crane round by round: each workload's figures in every round, and the latest over the one before" {
+/// The section `id` of `page`, up to its end.
+fn sectionOf(page: []const u8, id: []const u8) ![]const u8 {
+    var buf: [64]u8 = undefined;
+    const open = try std.fmt.bufPrint(&buf, "<section id=\"{s}\">", .{id});
+    const i = std.mem.indexOf(u8, page, open) orelse return error.TestUnexpectedResult;
+    return page[i .. i + std.mem.indexOf(u8, page[i..], "</section>").?];
+}
+
+test "Crane round by round: each workload's figures in every measurement round, its trend, no target step" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
     const m = try build(a, try roundOneRecords(a, 1.0, 1.0));
     const page = (try render(a, &m, .{})).index_html;
-    const i = std.mem.indexOf(u8, page, "id=\"crane-history\"").?;
-    const section = page[i .. i + std.mem.indexOf(u8, page[i..], "</section>").?];
-    try testing.expect(std.mem.indexOf(u8, section, "Round 0") != null);
-    try testing.expect(std.mem.indexOf(u8, section, "Round 1") != null);
+    const section = try sectionOf(page, "crane-history");
+    // A column per round, and the change since round 0 - nothing for round 0's source rebuilt
+    // for round 1's CPU target (a control, not a round).
+    try testing.expect(std.mem.indexOf(u8, section, "Time, Round 0</th>") != null);
+    try testing.expect(std.mem.indexOf(u8, section, "Time, Round 1</th>") != null);
+    try testing.expect(std.mem.indexOf(u8, section, "Memory, Round 1</th>") != null);
+    try testing.expectEqual(@as(usize, 2), std.mem.count(u8, section, "Since round 0</th>"));
+    try testing.expect(std.mem.indexOf(u8, section, "source</th>") == null);
+    try testing.expect(std.mem.indexOf(u8, section, ">Code</th>") == null);
+    try testing.expect(std.mem.indexOf(u8, section, ">Target</th>") == null);
     // dom.a: 40 -> 20 us per op (50%), memory 1000 -> 400 bytes (40%).
     try testing.expect(std.mem.indexOf(u8, section, "<code>dom.a</code>") != null);
     try testing.expect(std.mem.indexOf(u8, section, ">50%<") != null);
     try testing.expect(std.mem.indexOf(u8, section, ">40%<") != null);
+    // A trend per workload and measure: two rounds each, never a dashed step.
+    try testing.expectEqual(@as(usize, 4), std.mem.count(u8, section, "<svg class=\"chart-svg spark\""));
+    try testing.expectEqual(@as(usize, 4), std.mem.count(u8, section, "<line class=\"spark-line\""));
+    // Where the target's effect per workload is.
+    try testing.expect(std.mem.indexOf(u8, section, "href=\"#drift\"") != null);
     // The control's and the base's rows are in the full history, named.
     const history = page[std.mem.indexOf(u8, page, "id=\"history\"").?..];
     try testing.expect(std.mem.indexOf(u8, history, "<td>Crane control</td>") != null);
+    try testing.expect(std.mem.indexOf(u8, history, "<td>Crane base</td>") != null);
     // A single round has no round-by-round table.
     const r0 = [_]journal.Record{ try timed(a, 0, .crane, "abc", "dom.a", 0, 20, 100), try timed(a, 0, .chrome, "157", "dom.a", 0, 10, 400) };
     try testing.expect(std.mem.indexOf(u8, (try render(a, &(try build(a, &r0)), .{})).index_html, "id=\"crane-history\"") == null);
 }
 
-test "progress: Crane's headline round by round, the target's step apart from the code's" {
-    // The user, 2026-11-06: the page shows the progress Crane makes over time.
+test "progress: measurement rounds only, Crane against its own round 0, the browsers' rows as they stood" {
+    // The user, 2026-11-07, on the chart with a CPU-target point: "this graph is confusing for
+    // tracking Crane's progress".
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
     const m = try build(a, try roundOneRecords(a, 1.0, 1.0));
     const pts = try progress(a, &m);
-    try testing.expectEqual(@as(usize, 3), pts.len);
+    // Rounds only: round 1's base (round 0's source for apple_m1) is a control, not a point.
+    try testing.expectEqual(@as(usize, 2), pts.len);
+    try testing.expectEqual(@as(u32, 0), pts[0].round);
+    try testing.expectEqual(@as(u32, 1), pts[1].round);
     // Round 0: native, its target named by round 1's control (the same binary).
-    try testing.expectEqual(EngineName.crane, pts[0].engine);
     try testing.expectEqualStrings("9b0f1b1f382", pts[0].commit);
     try testing.expectEqualStrings("apple_m4 (native)", pts[0].target.?);
     try testing.expectEqualStrings("2026-11-05", pts[0].date);
-    // Round 0's source for apple_m1, measured in round 1: 44/10 and 11/5 of Chrome's.
-    try testing.expectEqual(EngineName.crane_base, pts[1].engine);
-    try testing.expectEqual(@as(u32, 1), pts[1].round);
-    try testing.expectEqual(@as(u32, 0), pts[1].source_round);
+    try testing.expectEqualStrings("aaaaaaaaaaa", pts[1].commit);
     try testing.expectEqualStrings("apple_m1", pts[1].target.?);
-    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(4.4 * 2.2)), pts[1].vs[0].time_ratio.?, 1e-12);
-    // Round 1, against Chrome's round-0 rows: 20/10 and 10/5.
-    try testing.expectEqualStrings("aaaaaaaaaaa", pts[2].commit);
-    try testing.expectApproxEqAbs(@as(f64, 2.0), pts[2].vs[0].time_ratio.?, 1e-12);
-    try testing.expectEqual(@as(?u32, 0), pts[2].vs[0].round);
+    // Crane against its own round 0: 1 there; round 1's time 20/40 and 10/10, memory
+    // 400/1000 and 1000/1000.
+    try testing.expectApproxEqAbs(@as(f64, 1.0), pts[0].since.time_ratio.?, 1e-12);
+    try testing.expectApproxEqAbs(@as(f64, 1.0), pts[0].since.memory_ratio.?, 1e-12);
+    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(0.5)), pts[1].since.time_ratio.?, 1e-12);
+    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(0.4)), pts[1].since.memory_ratio.?, 1e-12);
+    try testing.expectEqual(@as(usize, 2), pts[1].since.time_n);
+    // Against each browser's rows as they stood: Chrome's round-0 rows in both rounds,
+    // time 40/10 and 10/5, then 20/10 and 10/5.
     try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(8.0)), pts[0].vs[0].time_ratio.?, 1e-12);
-    // Since round 0: time 20/40 and 10/10, memory 400/1000 and 1000/1000.
+    try testing.expectApproxEqAbs(@as(f64, 2.0), pts[1].vs[0].time_ratio.?, 1e-12);
+    try testing.expectEqual(@as(?u32, 0), pts[1].vs[0].round);
+    // The card's figure is the last point's.
     const since = (try sinceFirst(a, &m)).?;
-    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(0.5)), since.time_ratio.?, 1e-12);
-    try testing.expectApproxEqAbs(@as(f64, std.math.sqrt(0.4)), since.memory_ratio.?, 1e-12);
-    try testing.expectEqual(@as(?u32, 0), since.round);
+    try testing.expectApproxEqAbs(pts[1].since.time_ratio.?, since.time_ratio.?, 1e-12);
+    // What the CPU target alone did: round 1 rebuilt round 0's source for apple_m1 (44/40,
+    // 11/10; memory the same).
+    const tc = try targetChanges(a, &m);
+    try testing.expectEqual(@as(usize, 1), tc.len);
+    try testing.expectEqual(@as(u32, 1), tc[0].round);
+    try testing.expectEqual(@as(u32, 0), tc[0].source_round);
+    try testing.expectEqualStrings("apple_m1", tc[0].target);
+    try testing.expectApproxEqAbs(@as(f64, 1.1), tc[0].versus.time_ratio.?, 1e-12);
+    try testing.expectApproxEqAbs(@as(f64, 1.0), tc[0].versus.memory_ratio.?, 1e-12);
 
     const out = try render(a, &m, .{});
     const page = out.index_html;
-    const i = std.mem.indexOf(u8, page, "id=\"progress\"").?;
-    const section = page[i .. i + std.mem.indexOf(u8, page[i..], "</section>").?];
-    // Near the top: right after the headline.
-    try testing.expect(i < std.mem.indexOf(u8, page, "id=\"drift\"").?);
-    // A chart and a table each for time and memory, the numbers in the tables.
-    try testing.expectEqual(@as(usize, 2), std.mem.count(u8, section, "<svg class=\"chart-svg perf-chart\""));
-    try testing.expectEqual(@as(usize, 2), std.mem.count(u8, section, "<table"));
-    try testing.expect(std.mem.indexOf(u8, section, "Round 0&#39;s source") != null);
-    try testing.expect(std.mem.indexOf(u8, section, ">283%<") != null);
-    try testing.expect(std.mem.indexOf(u8, section, ">200%<") != null);
-    // Each point says what its round changed, and where the target changed.
+    const section = try sectionOf(page, "progress");
+    // Right after the headline.
+    try testing.expect(std.mem.indexOf(u8, page, "id=\"progress\"").? < std.mem.indexOf(u8, page, "id=\"drift\"").?);
+    // First, Crane over time: two small charts, time and memory, ONE line each; lower is better.
+    const over = std.mem.indexOf(u8, section, "Crane over time</h3>").?;
+    const gap = std.mem.indexOf(u8, section, "The gap to the browsers</h3>").?;
+    try testing.expect(over < gap);
+    try testing.expect(std.mem.indexOf(u8, section[0..over], "<svg") == null);
+    try testing.expect(std.mem.indexOf(u8, section[0..over], "<table") == null);
+    try testing.expectEqual(@as(usize, 2), std.mem.count(u8, section, "<svg class=\"chart-svg trend-svg\""));
+    try testing.expectEqual(@as(usize, 2), std.mem.count(u8, section, "class=\"trend-line\""));
+    try testing.expectEqual(@as(usize, 2), std.mem.count(u8, section, "lower is better</figcaption>"));
+    try testing.expect(std.mem.indexOf(u8, section, ">71%</text>") != null);
+    try testing.expect(std.mem.indexOf(u8, section, ">63%</text>") != null);
+    try testing.expect(std.mem.indexOf(u8, section, ">Round 1</text>") != null);
+    try testing.expect(std.mem.indexOf(u8, section, ">aaaaaaaaaaa</text>") != null);
+    // No control point, no dashed step, no browser lines: a footnote says what the target did.
+    try testing.expect(std.mem.indexOf(u8, section, "source</") == null);
+    try testing.expect(std.mem.indexOf(u8, section, "Round 0&#39;s source") == null);
+    try testing.expect(std.mem.indexOf(u8, section, "perf-chart") == null);
+    try testing.expect(std.mem.indexOf(u8, section, "mark-line") == null);
+    try testing.expect(std.mem.indexOf(u8, section, "From round 1 Crane is built for one fixed CPU target, <code>apple_m1</code>; re-measuring round 0&rsquo;s source for it changed time by 1.100&times; and memory by 1.000&times;") != null);
+    // Each round says what it changed, with its figures.
     try testing.expect(std.mem.indexOf(u8, section, "Lane perf1") != null);
-    try testing.expect(std.mem.indexOf(u8, section, ">CPU target apple_m1</text>") != null);
-    try testing.expect(std.mem.indexOf(u8, section, "Since round 0, Crane&rsquo;s time is 70.7%") != null);
+    try testing.expect(std.mem.indexOf(u8, section, "time 70.7% and memory 63.2% of round 0&rsquo;s") != null);
+    // Nothing on the page draws a target step any more.
+    try testing.expect(std.mem.indexOf(u8, page, "step-target") == null);
+    try testing.expect(std.mem.indexOf(u8, page, "hollow") == null);
     // The description and the card name the progress.
     try testing.expect(std.mem.indexOf(u8, page, "Since round 0: 71% of its time and 63% of its memory.") != null);
-    // Every workload's history has its trend drawn, and its change since round 0.
-    const h = std.mem.indexOf(u8, page, "id=\"crane-history\"").?;
-    const hist = page[h .. h + std.mem.indexOf(u8, page[h..], "</section>").?];
-    try testing.expectEqual(@as(usize, 4), std.mem.count(u8, hist, "<svg class=\"chart-svg spark\""));
-    try testing.expect(std.mem.indexOf(u8, hist, "Since round 0</th>") != null);
     // Still no script: the content is all in the HTML.
     try testing.expect(std.mem.indexOf(u8, page, "<script") == null);
     // A single round has no progress section.
@@ -2147,6 +2280,73 @@ test "progress: Crane's headline round by round, the target's step apart from th
     const single = try build(a, &r0);
     try testing.expect((try sinceFirst(a, &single)) == null);
     try testing.expect(std.mem.indexOf(u8, (try render(a, &single, .{})).index_html, "id=\"progress\"") == null);
+}
+
+test "the gap to the browsers: a table of N.NN times each browser's per round, coloured by the change from the round before" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const m = try build(a, try roundOneRecords(a, 1.0, 1.0));
+    const page = (try render(a, &m, .{})).index_html;
+    const section = try sectionOf(page, "progress");
+    const gap = section[std.mem.indexOf(u8, section, "The gap to the browsers</h3>").?..];
+    // A table, not a chart; one row per browser with figures (the fixture has only Chrome).
+    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, gap, "<table"));
+    try testing.expect(std.mem.indexOf(u8, gap, "<svg") == null);
+    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, gap, "<th scope=\"row\">"));
+    try testing.expect(std.mem.indexOf(u8, gap, "<th scope=\"row\">Chrome") != null);
+    try testing.expect(std.mem.indexOf(u8, gap, "Safari") == null);
+    // The legend, one line.
+    try testing.expect(std.mem.indexOf(u8, gap, "1.00&times; = the browser&rsquo;s own time") != null);
+    try testing.expect(std.mem.indexOf(u8, gap, "lower is better") != null);
+    // Round 0's time: sqrt(4 * 2) = 2.83x Chrome's, with nothing before it to compare.
+    try testing.expect(std.mem.indexOf(u8, gap, "<td class=\"n\" data-label=\"Time, round 0\">2.83&times;</td>") != null);
+    // Round 1's: 2.00x, lower than round 0's - green. What it was is the column beside it,
+    // never repeated in the cell (the integrator, 2026-11-07).
+    try testing.expect(std.mem.indexOf(u8, gap, "<td class=\"n ratio-good\" data-label=\"Time, round 1\">2.00&times;</td>") != null);
+    try testing.expect(std.mem.indexOf(u8, gap, "(was") == null);
+    // Memory: 2.00x, then sqrt(0.8 * 2) = 1.26x.
+    try testing.expect(std.mem.indexOf(u8, gap, "data-label=\"Memory, round 0\">2.00&times;</td>") != null);
+    try testing.expect(std.mem.indexOf(u8, gap, "<td class=\"n ratio-good\" data-label=\"Memory, round 1\">1.26&times;</td>") != null);
+    // Its header: each measure across the rounds.
+    try testing.expect(std.mem.indexOf(u8, gap, "<th scope=\"colgroup\" colspan=\"2\" class=\"n\">Time</th>") != null);
+    try testing.expect(std.mem.indexOf(u8, gap, "<th scope=\"col\" class=\"n\">Round 1</th>") != null);
+}
+
+test "the gap's change marker: lower is green, higher red, a change within the noise limit uncoloured" {
+    try testing.expectEqual(Change.none, changeOf(null, 2.0));
+    try testing.expectEqual(Change.none, changeOf(2.0, null));
+    try testing.expectEqual(Change.better, changeOf(7.36, 5.97));
+    try testing.expectEqual(Change.worse, changeOf(5.97, 7.36));
+    // Within 5% (drift_limit, the drift control's own limit): no colour either way.
+    try testing.expectEqual(Change.steady, changeOf(2.0, 2.06));
+    try testing.expectEqual(Change.steady, changeOf(2.0, 1.92));
+    var out: Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try writeGapCell(&out.writer, "Time, round 2", "t", 7.36, 5.97);
+    try testing.expectEqualStrings("<td class=\"n ratio-bad\" data-label=\"Time, round 2\" title=\"t\">7.36&times;</td>", out.written());
+    out.clearRetainingCapacity();
+    try writeGapCell(&out.writer, "Memory, round 2", "", 2.06, 2.0);
+    try testing.expectEqualStrings("<td class=\"n\" data-label=\"Memory, round 2\">2.06&times;</td>", out.written());
+    out.clearRetainingCapacity();
+    try writeGapCell(&out.writer, "Time, round 1", "", null, 2.0);
+    try testing.expectEqualStrings("<td class=\"n\" data-label=\"Time, round 1\">&ndash;</td>", out.written());
+}
+
+test "the CPU target's footnote: what re-measuring a round's source for the new target did, within noise or not" {
+    var out: Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    const within: TargetChange = .{ .round = 1, .source_round = 0, .target = "apple_m1-fuse_aes", .versus = .{ .browser = .crane_control, .time_ratio = 0.991, .memory_ratio = 1.010 } };
+    try writeTargetNotes(&out.writer, &.{within});
+    try testing.expectEqualStrings("<p class=\"chart-note\">From round 1 Crane is built for one fixed CPU target, <code>apple_m1-fuse_aes</code>; re-measuring round 0&rsquo;s source for it changed time by 0.991&times; and memory by 1.010&times;, within noise (both within 5%).</p>\n", out.written());
+    out.clearRetainingCapacity();
+    var beyond = within;
+    beyond.versus.time_ratio = 1.1;
+    try writeTargetNotes(&out.writer, &.{beyond});
+    try testing.expect(std.mem.indexOf(u8, out.written(), "changed time by 1.100&times; and memory by 1.010&times;, beyond the 5% noise limit.") != null);
+    out.clearRetainingCapacity();
+    try writeTargetNotes(&out.writer, &.{});
+    try testing.expectEqual(@as(usize, 0), out.written().len);
 }
 
 test "every round has its note, in order" {

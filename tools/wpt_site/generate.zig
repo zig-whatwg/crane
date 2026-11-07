@@ -4,9 +4,10 @@
 //!
 //! Reads the progress report's accumulated state and history, the worklist,
 //! and any per-subtest wptreport streams, and writes the site to --out as
-//! finished HTML: index.html, one page per directory of the WPT tree, one per
-//! test file, the stylesheet and faces from tools/wpt_site/assets/, and the
-//! social card (card.png), and paths.json for the search. No page needs
+//! finished HTML: index.html, one page per directory of the WPT tree holding a
+//! section for each test file in it (no test file has a page of its own since
+//! 2026-11-07), 404.html, the stylesheet and faces from tools/wpt_site/assets/,
+//! the social card (card.png), and paths.json for the search. No page needs
 //! script for its content; site.js (an asset) enhances every page. See pages.zig for the pages,
 //! model.zig for the rules, card.zig for the card, and DESIGN.md.
 
@@ -64,6 +65,8 @@ pub const Inputs = struct {
     /// Set when the reference is invalid (generate then fails with
     /// error.InvalidReference): why.
     reference_diag: ?*reference.Diag = null,
+    /// How much HTML one page may carry (pages.Budget).
+    budget: pages_mod.Budget = .{},
 };
 
 /// The Crane commits from one generation's head to the next's:
@@ -141,16 +144,21 @@ pub const Summary = struct {
     files: usize = 0,
     detail_files: usize = 0,
     dir_pages: usize = 0,
-    file_pages: usize = 0,
+    /// Test files, each a section of its directory's page (or of a part page).
+    file_sections: usize = 0,
+    /// Directory pages over the budget with their passing subtests named,
+    /// which count them instead; and those still over it, split into parts.
+    counted_pages: usize = 0,
+    split_dirs: usize = 0,
+    part_pages: usize = 0,
     written: usize = 0,
     unchanged: usize = 0,
     removed: usize = 0,
     /// Every file the site holds, and their bytes.
     outputs: usize = 0,
     bytes: u64 = 0,
-    largest: u64 = 0,
-    largest_buf: [256]u8 = undefined,
-    largest_len: usize = 0,
+    /// The largest files the site holds, largest first.
+    largest: [10]Largest = @splat(.{}),
     generation: u64 = 0,
     head_buf: [40]u8 = undefined,
     head_len: usize = 0,
@@ -167,7 +175,28 @@ pub const Summary = struct {
     }
 
     pub fn largestPath(s: *const Summary) []const u8 {
-        return s.largest_buf[0..s.largest_len];
+        return s.largest[0].path();
+    }
+
+    fn noteSize(s: *Summary, rel: []const u8, bytes: u64) void {
+        var i: usize = s.largest.len;
+        while (i > 0 and bytes > s.largest[i - 1].bytes) i -= 1;
+        if (i == s.largest.len) return;
+        var j: usize = s.largest.len - 1;
+        while (j > i) : (j -= 1) s.largest[j] = s.largest[j - 1];
+        s.largest[i] = .{ .bytes = bytes };
+        s.largest[i].len = @min(rel.len, s.largest[i].buf.len);
+        @memcpy(s.largest[i].buf[0..s.largest[i].len], rel[0..s.largest[i].len]);
+    }
+};
+
+pub const Largest = struct {
+    bytes: u64 = 0,
+    buf: [256]u8 = undefined,
+    len: usize = 0,
+
+    pub fn path(l: *const Largest) []const u8 {
+        return l.buf[0..l.len];
     }
 };
 
@@ -452,11 +481,7 @@ const Output = struct {
         try o.written_paths.put(o.arena, try o.arena.dupe(u8, rel), {});
         o.summary.outputs += 1;
         o.summary.bytes += bytes.len;
-        if (bytes.len > o.summary.largest) {
-            o.summary.largest = bytes.len;
-            o.summary.largest_len = @min(rel.len, o.summary.largest_buf.len);
-            @memcpy(o.summary.largest_buf[0..o.summary.largest_len], rel[0..o.summary.largest_len]);
-        }
+        o.summary.noteSize(rel, bytes.len);
         if (o.dir.readFileAlloc(o.io, rel, o.gpa, .limited(bytes.len + 1))) |old| {
             defer o.gpa.free(old);
             if (std.mem.eql(u8, old, bytes)) {
@@ -498,6 +523,41 @@ const Output = struct {
             }
         }.lt);
         for (dirs.items) |d| o.dir.deleteDir(o.io, d) catch {};
+    }
+};
+
+/// A directory's test file sections (pages.writeFileSection), rendered from
+/// their result streams. The bytes live until the next `render`.
+const Sections = struct {
+    gpa: Allocator,
+    site: *const pages_mod.Site,
+    streams: *const std.StringArrayHashMapUnmanaged(std.ArrayList(Line)),
+    out: std.heap.ArenaAllocator,
+    detail: std.heap.ArenaAllocator,
+
+    fn deinit(s: *Sections) void {
+        s.out.deinit();
+        s.detail.deinit();
+    }
+
+    /// `files` (indices into `Site.files`), each one's section; `names`:
+    /// passing subtests named (`pages.SectionOptions`).
+    fn render(s: *Sections, files: []const usize, names: bool) ![]const []const u8 {
+        _ = s.out.reset(.retain_capacity);
+        const a = s.out.allocator();
+        const list = try a.alloc([]const u8, files.len);
+        for (files, list) |fi, *dst| {
+            _ = s.detail.reset(.retain_capacity);
+            const f = &s.site.files[fi];
+            const detail: []const pages_mod.SubtestRun = if (s.streams.getPtr(f.path)) |lines|
+                try parseDetail(s.detail.allocator(), lines.items)
+            else
+                &.{};
+            var w: Io.Writer.Allocating = .init(a);
+            try pages_mod.writeFileSection(&w.writer, s.gpa, s.site, f, detail, .{ .passing_names = names });
+            dst.* = w.written();
+        }
+        return list;
     }
 };
 
@@ -801,6 +861,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         .dirs = &dirs,
         .suites = dirs.getPtr("").?.dirs,
         .runs = &runs,
+        .main_run = pages_mod.mainRun(&runs),
         .history = generations,
         .wpt = in.wpt,
         .worklist_name = in.worklist_name,
@@ -835,26 +896,65 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         try o.put(try std.fmt.allocPrint(arena, "{s}.html", .{r.engine}), aw.written());
     }
 
+    aw.clearRetainingCapacity();
+    try pages_mod.write404(&aw.writer, &site);
+    try o.put("404.html", aw.written());
+
+    // Each directory's page, with a section for each test file in it, held
+    // to the budget (pages.Budget): every passing subtest named; over it,
+    // counted instead; still over it, the sections on part pages.
+    var sections: Sections = .{ .gpa = gpa, .site = &site, .streams = &streams, .out = .init(gpa), .detail = .init(gpa) };
+    defer sections.deinit();
+    const budget = in.budget.bytes;
     for (dir_keys) |k| {
         if (k.len == 0) continue;
+        const d = dirs.getPtr(k).?;
+        var body: pages_mod.DirBody = .{ .sections = try sections.render(d.files, true), .budget_bytes = budget };
         aw.clearRetainingCapacity();
-        try pages_mod.writeDirPage(&aw.writer, &site, dirs.getPtr(k).?);
+        try pages_mod.writeDirPage(&aw.writer, &site, d, body);
+        if (aw.written().len > budget and d.files.len > 0) {
+            body = .{ .sections = try sections.render(d.files, false), .counted = true, .budget_bytes = budget };
+            aw.clearRetainingCapacity();
+            try pages_mod.writeDirPage(&aw.writer, &site, d, body);
+            if (aw.written().len <= budget) {
+                summary.counted_pages += 1;
+            } else {
+                // Parts: the sections in order, a new part when the next would
+                // carry this one past what the page leaves for them.
+                var in_sections: usize = 0;
+                for (body.sections) |sec| in_sections += sec.len;
+                const room = budget -| (aw.written().len - in_sections);
+                const parts = try arena.alloc(usize, d.files.len);
+                var part: usize = 1;
+                var in_part: usize = 0;
+                for (body.sections, 0..) |sec, j| {
+                    if (in_part > 0 and in_part + sec.len > room) {
+                        part += 1;
+                        in_part = 0;
+                    }
+                    parts[j] = part;
+                    in_part += sec.len;
+                }
+                const split: pages_mod.DirBody = .{ .counted = true, .parts = parts, .part_count = part, .budget_bytes = budget };
+                var first: usize = 0;
+                while (first < d.files.len) {
+                    var end = first;
+                    while (end < d.files.len and parts[end] == parts[first]) end += 1;
+                    aw.clearRetainingCapacity();
+                    try pages_mod.writePartPage(&aw.writer, &site, d, parts[first], part, d.files[first..end], body.sections[first..end], split);
+                    var pbuf: [24]u8 = undefined;
+                    try o.put(try std.fmt.allocPrint(arena, "{s}{s}index.html", .{ k, pages_mod.partDir(&pbuf, parts[first]) }), aw.written());
+                    summary.part_pages += 1;
+                    first = end;
+                }
+                summary.split_dirs += 1;
+                aw.clearRetainingCapacity();
+                try pages_mod.writeDirPage(&aw.writer, &site, d, split);
+            }
+        }
         try o.put(try std.fmt.allocPrint(arena, "{s}index.html", .{k}), aw.written());
         summary.dir_pages += 1;
-    }
-
-    var detail_arena: std.heap.ArenaAllocator = .init(gpa);
-    defer detail_arena.deinit();
-    for (files) |*f| {
-        _ = detail_arena.reset(.retain_capacity);
-        const detail: []const pages_mod.SubtestRun = if (streams.getPtr(f.path)) |lines|
-            try parseDetail(detail_arena.allocator(), lines.items)
-        else
-            &.{};
-        aw.clearRetainingCapacity();
-        try pages_mod.writeFilePage(&aw.writer, &site, f, detail);
-        try o.put(try std.fmt.allocPrint(arena, "{s}/index.html", .{f.path}), aw.written());
-        summary.file_pages += 1;
+        summary.file_sections += d.files.len;
     }
 
     try o.prune();
@@ -1153,14 +1253,18 @@ pub fn main(init: std.process.Init) !void {
     );
     if (reference_json != null) std.debug.print("wpt-site: the reference run has a result for {d} of the worklist's files\n", .{summary.reference_files});
     std.debug.print(
-        "wpt-site: generation {d} (Crane {s}): {d} test files, {d} with subtest detail; {d} directory pages, {d} file pages; " ++
-            "{d} files in the site, {d} bytes (largest {s}, {d} bytes); {d} written, {d} unchanged, {d} removed, in {s}\n",
+        "wpt-site: generation {d} (Crane {s}): {d} test files, {d} with subtest detail; {d} directory pages holding {d} test file sections " ++
+            "({d} counting their passing subtests and {d} split into {d} part pages, to stay within {d} bytes); " ++
+            "{d} files in the site, {d} bytes; {d} written, {d} unchanged, {d} removed, in {s}\n",
         .{
-            summary.generation, summary.head(),    summary.files,   summary.detail_files,  summary.dir_pages,
-            summary.file_pages, summary.outputs,   summary.bytes,   summary.largestPath(), summary.largest,
-            summary.written,    summary.unchanged, summary.removed, out_path,
+            summary.generation,    summary.head(),        summary.files,      summary.detail_files, summary.dir_pages,
+            summary.file_sections, summary.counted_pages, summary.split_dirs, summary.part_pages,   pages_mod.Budget.default_bytes,
+            summary.outputs,       summary.bytes,         summary.written,    summary.unchanged,    summary.removed,
+            out_path,
         },
     );
+    std.debug.print("wpt-site: the largest files:\n", .{});
+    for (&summary.largest) |*l| if (l.bytes > 0) std.debug.print("  {d:>10}  {s}\n", .{ l.bytes, l.path() });
     if (commit) try commitSite(arena, io, out_path, summary);
 }
 
@@ -1320,7 +1424,7 @@ test "site: index.html opens with the WPT subtest numbers, written into the mark
     try expectHas(index, "<span class=\"fg-pass\">2</span><span class=\"fg-of\"> / 5</span>");
     // Its table links down to the directory and file pages.
     try expectHas(index, "<a href=\"dom/nodes/\"><span class=\"dir-no\">1.1</span>");
-    try expectHas(index, "<a href=\"dom/a.html/\">");
+    try expectHas(index, "<a href=\"dom/#a.html\">");
     // The revision history: a drawn chart and a table, no script.
     try expectHas(index, "<svg class=\"chart-svg chart-wide\"");
     try expectHas(index, "<td><code>5c8dd64da</code></td>");
@@ -1329,48 +1433,56 @@ test "site: index.html opens with the WPT subtest numbers, written into the mark
     try testing.expect(std.mem.indexOf(u8, index, "% of subtests") == null);
 }
 
-test "site: one page per directory and per test file, mirroring the WPT tree" {
+test "site: one page per directory, mirroring the WPT tree; each test file a section of its directory's page" {
     const gpa = testing.allocator;
     var f = try Fixture.init(fixture_stream);
     defer f.deinit();
     const s = try runFixture(gpa, &f, "out", fixture_worklist);
-    // dom/, dom/nodes/, url/ and five files.
+    // dom/, dom/nodes/, url/; five test files, each a section, none a page.
     try testing.expectEqual(@as(usize, 3), s.dir_pages);
-    try testing.expectEqual(@as(usize, 5), s.file_pages);
-    for ([_][]const u8{
-        "out/dom/index.html",        "out/dom/nodes/index.html",      "out/url/index.html",
-        "out/dom/a.html/index.html", "out/dom/b.html/index.html",     "out/dom/nodes/c.any.js/index.html",
-        "out/url/u.html/index.html", "out/url/never.html/index.html", "out/card.png",
-    }) |p| if (!exists(&f, p)) {
+    try testing.expectEqual(@as(usize, 5), s.file_sections);
+    try testing.expectEqual(@as(usize, 0), s.part_pages);
+    for ([_][]const u8{ "out/dom/index.html", "out/dom/nodes/index.html", "out/url/index.html", "out/card.png", "out/404.html" }) |p| if (!exists(&f, p)) {
         std.debug.print("\nmissing page {s}\n", .{p});
         return error.TestExpectedPage;
     };
+    for ([_][]const u8{ "out/dom/a.html", "out/dom/b.html", "out/dom/nodes/c.any.js", "out/url/u.html", "out/url/never.html" }) |p| {
+        try testing.expect(!exists(&f, p));
+    }
 
     const dom = try readOut(gpa, &f, "out/dom/index.html");
     defer gpa.free(dom);
     try expectHas(dom, "<h1 class=\"page-title\"><span class=\"secno\">1</span><code>dom/</code></h1>");
     try expectHas(dom, "<span class=\"fg-pass\">2</span><span class=\"fg-of\"> / 5</span>");
     try expectHas(dom, "<a href=\"../dom/nodes/\"><span class=\"dir-no\">1.1</span>");
-    try expectHas(dom, "<a href=\"../dom/a.html/\">");
-    try expectHas(dom, "<span class=\"gate gate-timeout g-block\">TIMEOUT</span>");
-    try expectHas(dom, "<span class=\"gate gate-partial\">With failures</span>");
     try expectHas(dom, "<link rel=\"stylesheet\" href=\"../site.css\">");
     // The rail marks the suite this page belongs to.
     try expectHas(dom, "<a href=\"../dom/\" aria-current=\"page\">");
+    // Each file directly in dom/ is a section of this page, its name its id,
+    // in name order; its summary is its row: name, subtests passing, failed, standing.
+    try expectHas(dom, "<details class=\"tf\" id=\"a.html\" data-gate=\"partial\" data-pass=\"2\" data-of=\"3\" data-failed=\"1\"><summary><span class=\"tf-name\"><code>a.<wbr>html</code></span><span class=\"tf-n\"><b>2</b> / 3<span class=\"tf-lbl\"> passing</span></span><span class=\"tf-fail\"><span class=\"fail\">1</span><span class=\"tf-lbl\"> failed</span></span><span class=\"tf-gate\"><span class=\"gate gate-partial\">With failures</span></span></summary>");
+    try expectHas(dom, "<details class=\"tf\" id=\"b.html\" data-gate=\"timeout\"");
+    try expectHas(dom, "<span class=\"gate gate-timeout g-block\">TIMEOUT</span>");
+    try expectBefore(dom, "id=\"a.html\"", "id=\"b.html\"");
+    // The column heads, once.
+    try expectHas(dom, "<div class=\"tf-head\"><span>Test file</span><span>Subtests passing</span><span>Failed</span><span>Standing</span></div>");
+    // A file in dom/nodes/ is on dom/nodes/'s page, not dom/'s.
+    try testing.expect(std.mem.indexOf(u8, dom, "id=\"c.any.js\"") == null);
 
     const nodes = try readOut(gpa, &f, "out/dom/nodes/index.html");
     defer gpa.free(nodes);
     try expectHas(nodes, "<li><a href=\"../../dom/\"><code>dom/</code></a></li><li aria-current=\"page\"><code>nodes/</code></li>");
+    try expectHas(nodes, "<details class=\"tf\" id=\"c.any.js\" data-gate=\"none-passed\"");
     try expectHas(nodes, "<span class=\"gate gate-none-passed g-block\">NONE-PASSED</span>");
 
-    const never = try readOut(gpa, &f, "out/url/never.html/index.html");
-    defer gpa.free(never);
-    try expectHas(never, "<span class=\"gate gate-unrun\">Not run</span>");
-    try expectHas(never, "It has no result yet.");
-    try expectHas(never, "<link rel=\"stylesheet\" href=\"../../site.css\">");
+    const url = try readOut(gpa, &f, "out/url/index.html");
+    defer gpa.free(url);
+    try expectHas(url, "<details class=\"tf\" id=\"never.html\" data-gate=\"unrun\"");
+    try expectHas(url, "<span class=\"tf-n\"><span class=\"quiet\">&mdash;</span><span class=\"tf-lbl\"> not run</span></span>");
+    try expectHas(url, "It has no result yet.");
 }
 
-test "site: a test file's page lists its subtests, failures opening in place" {
+test "site: a test file's section lists its subtests, failures opening in place, passing ones named under their count" {
     const gpa = testing.allocator;
     var f = try Fixture.init(fixture_stream);
     defer f.deinit();
@@ -1379,27 +1491,37 @@ test "site: a test file's page lists its subtests, failures opening in place" {
     // stream from another run, which must not be used.
     try testing.expectEqual(@as(usize, 2), s.detail_files);
 
-    const a = try readOut(gpa, &f, "out/dom/a.html/index.html");
-    defer gpa.free(a);
-    try expectHas(a, "<span class=\"fg-pass\">2</span><span class=\"fg-of\"> / 3</span>");
+    const dom = try readOut(gpa, &f, "out/dom/index.html");
+    defer gpa.free(dom);
+    const a = dom[std.mem.indexOf(u8, dom, "id=\"a.html\"").?..std.mem.indexOf(u8, dom, "id=\"b.html\"").?];
+    // The subtest that failed, with its id, opening in place to its message.
     try expectHas(a, "<details><summary><span class=\"mark\">FAIL</span><span class=\"sub-name\">two &lt;b&gt;&amp;</span></summary><pre class=\"msg\">assert_equals: expected 1 but got 2</pre></details>");
-    try expectHas(a, "<div class=\"sub-line\"><span class=\"mark\">PASS</span><span class=\"sub-name\">one</span></div>");
+    try expectHas(a, "<li class=\"sub s-fail\" id=\"s-");
+    // The two that passed: counted, and named in the harness's order under the count.
+    try expectHas(a, "<details class=\"passing\"><summary>2 passing subtests</summary><ol class=\"pass-list\"><li>one</li><li>three</li></ol></details>");
+    try testing.expect(std.mem.indexOf(u8, a, "s-pass") == null);
     try expectHas(a, "https://github.com/zig-whatwg/wpt/blob/50d8c16fa8219824aad90ef0ec02328e7ecbc8e5/dom/a.html");
-    try expectHas(a, "<code>sweep-abc1234</code>");
-    try expectHas(a, "/commit/abc1234\"><code>abc1234</code></a>");
-    try expectBefore(a, "\"sub-name\">one<", "\"sub-name\">two &lt;b&gt;&amp;<");
-    try expectBefore(a, "\"sub-name\">two &lt;b&gt;&amp;<", "\"sub-name\">three<");
+    // Its run is the generation's main one, which the index names: not here.
+    try testing.expect(std.mem.indexOf(u8, dom, "sweep-abc1234") == null);
+    try testing.expect(std.mem.indexOf(u8, dom, "<dt>Run</dt>") == null);
 
     // Two runs of c.any.js, each under its test URL, sorted.
-    const c = try readOut(gpa, &f, "out/dom/nodes/c.any.js/index.html");
+    const c = try readOut(gpa, &f, "out/dom/nodes/index.html");
     defer gpa.free(c);
     try expectBefore(c, "<code>/dom/nodes/c.any.html</code>", "<code>/dom/nodes/c.any.worker.html</code>");
 
-    const b = try readOut(gpa, &f, "out/dom/b.html/index.html");
-    defer gpa.free(b);
+    const b = dom[std.mem.indexOf(u8, dom, "id=\"b.html\"").?..];
     try expectHas(b, "No per-subtest data for this file.");
     try testing.expect(std.mem.indexOf(u8, b, "stale") == null);
     try expectHas(b, "<pre class=\"msg\">took too long</pre>");
+
+    // url/u.html's result came from another run than the main one: its section names it.
+    const url = try readOut(gpa, &f, "out/url/index.html");
+    defer gpa.free(url);
+    try expectHas(url, "<div><dt>Run</dt><dd><code>other/journal.shard0</code>");
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<code>sweep-abc1234</code> (3 files, <a href=\"https://github.com/zig-whatwg/crane/commit/abc1234\"><code>abc1234</code></a>");
 }
 
 test "site: a file past the detail limit keeps every non-passing subtest and counts the rest" {
@@ -1417,10 +1539,11 @@ test "site: a file past the detail limit keeps every non-passing subtest and cou
     defer f.deinit();
     _ = try runFixture(gpa, &f, "out", fixture_worklist);
 
-    const a = try readOut(gpa, &f, "out/dom/a.html/index.html");
+    const a = try readOut(gpa, &f, "out/dom/index.html");
     defer gpa.free(a);
     try testing.expectEqual(@as(usize, 6), std.mem.count(u8, a, "<li class=\"sub s-fail\""));
     try testing.expectEqual(@as(usize, 0), std.mem.count(u8, a, "<li class=\"sub s-pass\""));
+    try testing.expect(std.mem.indexOf(u8, a, "pass-list") == null);
     try expectHas(a, "504 passing subtests are not listed");
 }
 
@@ -1448,12 +1571,14 @@ test "site: no page needs script for any of its content" {
             std.debug.print("\n{s} needs script: {s}\n", .{ e.path, why });
             return error.TestPageNeedsScript;
         }
-        // Every page is a whole document with its numbers in it.
+        // Every page is a whole document with its numbers in it (but the
+        // 404 page, which carries no results, so it never changes).
         try testing.expect(std.mem.startsWith(u8, page, "<!doctype html>\n"));
         try testing.expect(std.mem.endsWith(u8, page, "</html>\n"));
-        try expectHas(page, "WPT subtests passing");
+        if (!std.mem.eql(u8, e.path, "404.html")) try expectHas(page, "WPT subtests passing");
     }
-    try testing.expectEqual(@as(usize, 9), pages);
+    // index.html, three directory pages and 404.html.
+    try testing.expectEqual(@as(usize, 5), pages);
 }
 
 test "site: every page loads site.js once, deferred, to enhance what its markup already says" {
@@ -1465,7 +1590,7 @@ test "site: every page loads site.js once, deferred, to enhance what its markup 
         .{ "out/index.html", "<script src=\"site.js\" defer></script>" },
         .{ "out/dom/index.html", "<script src=\"../site.js\" defer></script>" },
         .{ "out/dom/nodes/index.html", "<script src=\"../../site.js\" defer></script>" },
-        .{ "out/dom/a.html/index.html", "<script src=\"../../site.js\" defer></script>" },
+        .{ "out/404.html", "<script src=\"/crane/site.js\" defer></script>" },
     };
     for (cases) |c| {
         const page = try readOut(gpa, &f, c[0]);
@@ -1506,10 +1631,9 @@ test "site: listing rows carry the keys sorting and filtering read" {
     _ = try runFixture(gpa, &f, "out", fixture_worklist);
     const dom = try readOut(gpa, &f, "out/dom/index.html");
     defer gpa.free(dom);
-    try expectHas(dom, "<tr data-gate=\"timeout\"><th scope=\"row\"><a href=\"../dom/b.html/\">");
-    try expectHas(dom, "<tr data-gate=\"partial\"><th scope=\"row\"><a href=\"../dom/a.html/\">");
+    try expectHas(dom, "<details class=\"tf\" id=\"b.html\" data-gate=\"timeout\" data-pass=\"0\" data-of=\"0\" data-failed=\"0\">");
     // a.html: 2 of 3 passing, 1 failed.
-    try expectHas(dom, "<td class=\"n\" data-v=\"2\" data-of=\"3\"><b>2</b> / 3</td><td class=\"n\" data-v=\"1\"><span class=\"fail\">1</span></td>");
+    try expectHas(dom, "<details class=\"tf\" id=\"a.html\" data-gate=\"partial\" data-pass=\"2\" data-of=\"3\" data-failed=\"1\">");
     // dom/nodes/: 0 of 2 passing, one file, one blocking.
     try expectHas(dom, "<td class=\"n\" data-v=\"0\" data-of=\"2\"><b>0</b> / 2</td><td class=\"n\" data-v=\"1\">1</td><td data-v=\"1\">");
 }
@@ -1566,7 +1690,7 @@ test "site: unchanged input writes byte-identical files; a new generation rewrit
     }
 }
 
-test "site: a file that leaves the worklist loses its page; .git is never touched" {
+test "site: a file that leaves the worklist loses its section; an old test file page is removed; .git is never touched" {
     const gpa = testing.allocator;
     var f = try Fixture.init(fixture_stream);
     defer f.deinit();
@@ -1575,22 +1699,31 @@ test "site: a file that leaves the worklist loses its page; .git is never touche
     try f.tmp.dir.createDirPath(testing.io, "out/data/dirs");
     try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "out/data/dirs/dom.json", .data = "{}" });
     try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "out/site.js", .data = "old" });
+    // A test file's page as the site wrote them until 2026-11-07.
+    try f.tmp.dir.createDirPath(testing.io, "out/dom/b.html");
+    try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "out/dom/b.html/index.html", .data = "<!doctype html>old" });
     const smaller =
         \\dom/b.html
         \\url/u.html
         \\
     ;
     const s = try runFixture(gpa, &f, "out", smaller);
-    try testing.expect(s.removed >= 5);
-    try testing.expect(!exists(&f, "out/dom/a.html/index.html"));
+    // dom/nodes/index.html, the old file page, data/dirs/dom.json and site.js.
+    try testing.expectEqual(@as(usize, 4), s.removed);
     try testing.expect(!exists(&f, "out/dom/nodes/index.html"));
     try testing.expect(!exists(&f, "out/dom/nodes"));
+    const dom = try readOut(gpa, &f, "out/dom/index.html");
+    defer gpa.free(dom);
+    try testing.expect(std.mem.indexOf(u8, dom, "id=\"a.html\"") == null);
+    try expectHas(dom, "id=\"b.html\"");
+    // The old file page goes, with its directory.
+    try testing.expect(!exists(&f, "out/dom/b.html/index.html"));
+    try testing.expect(!exists(&f, "out/dom/b.html"));
     // The script-rendered site's leftovers go too.
     try testing.expect(!exists(&f, "out/data/dirs/dom.json"));
     try testing.expect(!exists(&f, "out/site.js"));
     try testing.expect(exists(&f, "out/.git"));
     try testing.expect(exists(&f, "out/.nojekyll"));
-    try testing.expect(exists(&f, "out/dom/b.html/index.html"));
 }
 
 test "site: /performance/ is perf_bench's: a regeneration leaves it alone and never stages it" {
@@ -1825,26 +1958,24 @@ test "site: an exempt file that would block is its own group, with its evidence,
     // The group, after the status and before the contents, with every browser's evidence.
     try expectBefore(index, "id=\"status\"", "id=\"exempt\"");
     try expectBefore(index, "id=\"exempt\"", "id=\"contents\"");
-    try expectHas(index, "<a href=\"dom/nodes/c.any.js/\"><code>dom/nodes/c.any.js</code></a> <span class=\"gate gate-exempt\">Exempt</span>");
+    try expectHas(index, "<a href=\"dom/nodes/#c.any.js\"><code>dom/nodes/c.any.js</code></a> <span class=\"gate gate-exempt\">Exempt</span>");
     try expectHas(index, "all three browsers keep the old behaviour on purpose");
     try expectHas(index, "<dt>Chrome</dt><dd>wpt.fyi run 6218298311311360: 0/2; intent: <a href=\"https://issues.chromium.org/issues/11\">");
     try expectHas(index, "<dt>Firefox</dt><dd>wpt.fyi run 4877098740350976: 0/2; intent: <a href=\"https://bugzilla.mozilla.org/show_bug.cgi?id=22\">");
     try expectHas(index, "<dt>Safari</dt><dd>wpt.fyi run 5164107446878208: 0/2; intent: <a href=\"https://github.com/WebKit/standards-positions/issues/33\">");
     // A listed file that does not block keeps its standing.
-    try expectHas(index, "<a href=\"url/u.html/\"><code>url/u.html</code></a> <span class=\"gate gate-clean\">Clean</span>");
+    try expectHas(index, "<a href=\"url/#u.html\"><code>url/u.html</code></a> <span class=\"gate gate-clean\">Clean</span>");
     try expectHas(index, "Not counted among them: 1 file that would block is <a href=\"#exempt\">exempt</a>");
 
-    // The file's own page says so, with the evidence.
-    const page = try readOut(gpa, &f, "out/dom/nodes/c.any.js/index.html");
-    defer gpa.free(page);
-    try expectHas(page, "<span class=\"gate gate-exempt\">Exempt</span>");
-    try expectHas(page, "Exempt from the 0.1 gate");
-    try expectHas(page, "https://github.com/WebKit/standards-positions/issues/33");
-    // Its directory counts it as exempt, not blocking.
+    // The file's own section says so, with the evidence, and its directory
+    // counts it as exempt, not blocking.
     const dir = try readOut(gpa, &f, "out/dom/nodes/index.html");
     defer gpa.free(dir);
+    try expectHas(dir, "<span class=\"gate gate-exempt\">Exempt</span>");
+    try expectHas(dir, "Exempt from the 0.1 gate");
+    try expectHas(dir, "https://github.com/WebKit/standards-positions/issues/33");
     try testing.expect(std.mem.indexOf(u8, dir, "Blocking files</dt><dd>1") == null);
-    try expectHas(dir, "<tr data-gate=\"exempt\"");
+    try expectHas(dir, "<details class=\"tf\" id=\"c.any.js\" data-gate=\"exempt\"");
 }
 
 test "site: no exemptions write the same bytes as before; an invalid one stops the site" {
@@ -1955,18 +2086,19 @@ test "site: a reference run is shown beside Crane's on the same files, never in 
     const dom = try readOut(gpa, &f, "out/dom/index.html");
     defer gpa.free(dom);
     try expectHas(dom, "<p class=\"figures-ref\"><span class=\"ref-name\">Chrome</span> <b>6</b> / 6 WPT subtests passing on the same files, <span class=\"quiet\">none blocking</span></p>");
-    try expectHas(dom, "<td class=\"n\" data-v=\"2\" data-of=\"3\"><b>2</b> / 3</td><td class=\"n\" data-v=\"3\" data-of=\"3\"><b>3</b> / 3</td>");
+    // Each file's row: Chrome's subtests passing beside Crane's.
+    try expectHas(dom, "<details class=\"tf\" id=\"a.html\" data-gate=\"partial\" data-pass=\"2\" data-of=\"3\" data-failed=\"1\" data-ref-pass=\"3\" data-ref-of=\"3\">");
+    try expectHas(dom, "<span class=\"tf-n\"><b>2</b> / 3<span class=\"tf-lbl\"> passing</span></span><span class=\"tf-ref\"><span class=\"tf-lbl\">Chrome </span><b>3</b> / 3</span>");
+    try expectHas(dom, "<div class=\"tf-head\"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>");
 
-    // A file page: Chrome's standing and count beside Crane's.
-    const b = try readOut(gpa, &f, "out/dom/b.html/index.html");
-    defer gpa.free(b);
-    try expectHas(b, "<div><dt>Chrome</dt><dd><span class=\"gate gate-clean\">Clean</span> <b>1</b> / 1 WPT subtests passing <span class=\"quiet\">runner status <code>OK</code></span></dd></div>");
-    const c = try readOut(gpa, &f, "out/dom/nodes/c.any.js/index.html");
+    // A file's section: Chrome's standing and count beside Crane's.
+    try expectHas(dom, "<div><dt>Chrome</dt><dd><span class=\"gate gate-clean\">Clean</span> <b>1</b> / 1 WPT subtests passing <span class=\"quiet\">runner status <code>OK</code></span></dd></div>");
+    const c = try readOut(gpa, &f, "out/dom/nodes/index.html");
     defer gpa.free(c);
     try expectHas(c, "1 of its test URLs has no Chrome result");
-    const never = try readOut(gpa, &f, "out/url/never.html/index.html");
+    const never = try readOut(gpa, &f, "out/url/index.html");
     defer gpa.free(never);
-    try expectHas(never, "<span class=\"gate gate-unrun\">Not run</span>");
+    try expectHas(never, "<details class=\"tf\" id=\"never.html\" data-gate=\"unrun\"");
     try expectHas(never, "<div><dt>Chrome</dt><dd><span class=\"gate gate-timeout g-block\">TIMEOUT</span> <b>1</b> / 2 WPT subtests passing");
 
     // The comparison page: Chrome ahead by most subtests first, then Crane ahead,
@@ -1975,11 +2107,11 @@ test "site: a reference run is shown beside Crane's on the same files, never in 
     defer gpa.free(cmp);
     try expectBefore(cmp, "id=\"ahead-ref\"", "id=\"ahead-crane\"");
     try expectBefore(cmp, "id=\"ahead-crane\"", "id=\"only-one\"");
-    try expectBefore(cmp, "<a href=\"dom/nodes/c.any.js/\">", "<a href=\"dom/a.html/\">");
-    try expectBefore(cmp, "<a href=\"dom/a.html/\">", "<a href=\"dom/b.html/\">");
-    try expectBefore(cmp, "<a href=\"dom/b.html/\">", "id=\"ahead-crane\"");
-    try expectBefore(cmp, "id=\"ahead-crane\"", "<a href=\"url/u.html/\">");
-    try expectBefore(cmp, "id=\"only-one\"", "<a href=\"url/never.html/\">");
+    try expectBefore(cmp, "<a href=\"dom/nodes/#c.any.js\">", "<a href=\"dom/#a.html\">");
+    try expectBefore(cmp, "<a href=\"dom/#a.html\">", "<a href=\"dom/#b.html\">");
+    try expectBefore(cmp, "<a href=\"dom/#b.html\">", "id=\"ahead-crane\"");
+    try expectBefore(cmp, "id=\"ahead-crane\"", "<a href=\"url/#u.html\">");
+    try expectBefore(cmp, "id=\"only-one\"", "<a href=\"url/#never.html\">");
     try expectHas(cmp, "<td class=\"n\" data-v=\"2\">+2</td>");
     try expectHas(cmp, "<table class=\"listing listing-compare\">");
     if (pages_mod.needsScript(cmp)) |why| {
@@ -2163,18 +2295,17 @@ test "site: a reference run's records are never Crane's" {
     const index = try readOut(gpa, &f, "out/index.html");
     defer gpa.free(index);
     try expectHas(index, "<span class=\"hl-pass\">5</span><span class=\"hl-of\"> / 8</span>");
-    const never = try readOut(gpa, &f, "out/url/never.html/index.html");
-    defer gpa.free(never);
-    try expectHas(never, "<span class=\"gate gate-unrun\">Not run</span>");
+    const u = try readOut(gpa, &f, "out/url/index.html");
+    defer gpa.free(u);
+    try expectHas(u, "<details class=\"tf\" id=\"never.html\" data-gate=\"unrun\"");
     // Chrome's stream line beside Crane's journal is not Crane's detail.
-    const b = try readOut(gpa, &f, "out/dom/b.html/index.html");
-    defer gpa.free(b);
+    const dom = try readOut(gpa, &f, "out/dom/index.html");
+    defer gpa.free(dom);
+    const b = dom[std.mem.indexOf(u8, dom, "id=\"b.html\"").?..];
     try testing.expect(std.mem.indexOf(u8, b, "chrome&rsquo;s") == null);
     try testing.expect(std.mem.indexOf(u8, b, "chrome's") == null);
     try expectHas(b, "No per-subtest data for this file.");
     // reference/ is never named as a run.
-    const u = try readOut(gpa, &f, "out/url/u.html/index.html");
-    defer gpa.free(u);
     try testing.expect(std.mem.indexOf(u8, u, "reference/stray") == null);
     // Without a reference given, there is no comparison.
     try testing.expect(!exists(&f, "out/chrome.html"));
@@ -2197,4 +2328,324 @@ test "site: no reference writes the same bytes as before; an invalid one stops t
     const crane_ref = try std.mem.replaceOwned(u8, gpa, fixture_reference, "\"engine\":\"chrome\",\n\"run\"", "\"engine\":\"crane\",\n\"run\"");
     defer gpa.free(crane_ref);
     try testing.expectError(error.InvalidReference, runFixtureRef(gpa, &f, "bad", crane_ref));
+}
+
+// ============================================================================
+// Tests: test files as sections of their directory's page (lane site1)
+// ============================================================================
+
+/// `href` resolved from the page at `page` (a path below the site root,
+/// "dom/nodes/index.html"), as the site's own path and fragment; null for an
+/// address outside the site.
+fn resolveHref(buf: []u8, page: []const u8, href: []const u8) ?struct { path: []const u8, fragment: []const u8 } {
+    if (std.mem.indexOf(u8, href, "://") != null or std.mem.startsWith(u8, href, "/") or std.mem.startsWith(u8, href, "data:")) return null;
+    const hash = std.mem.indexOfScalar(u8, href, '#') orelse href.len;
+    const fragment = if (hash < href.len) href[hash + 1 ..] else "";
+    var segs: [64][]const u8 = undefined;
+    var n: usize = 0;
+    var dir_it = std.mem.splitScalar(u8, page[0..(std.mem.lastIndexOfScalar(u8, page, '/') orelse 0)], '/');
+    while (dir_it.next()) |seg| if (seg.len > 0) {
+        segs[n] = seg;
+        n += 1;
+    };
+    var it = std.mem.splitScalar(u8, href[0..hash], '/');
+    while (it.next()) |seg| {
+        if (seg.len == 0 or std.mem.eql(u8, seg, ".")) continue;
+        if (std.mem.eql(u8, seg, "..")) {
+            if (n == 0) return null;
+            n -= 1;
+        } else {
+            segs[n] = seg;
+            n += 1;
+        }
+    }
+    var len: usize = 0;
+    for (segs[0..n]) |seg| {
+        @memcpy(buf[len..][0..seg.len], seg);
+        len += seg.len;
+        buf[len] = '/';
+        len += 1;
+    }
+    // A link to a directory is to its index.html; one ending in a file names it.
+    const ends_dir = hash == 0 or href[hash - 1] == '/' or n == 0;
+    if (!ends_dir) len -= 1 else {
+        @memcpy(buf[len..][0.."index.html".len], "index.html");
+        len += "index.html".len;
+    }
+    return .{ .path = buf[0..len], .fragment = fragment };
+}
+
+test "site: every link to a test file is its section on its directory's page, and lands there" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    const st = try f.state(gpa);
+    defer gpa.free(st);
+    var out = try f.tmp.dir.createDirPathOpen(testing.io, "out", .{ .open_options = .{ .iterate = true } });
+    defer out.close(testing.io);
+    // With a reference run (chrome.html) and an exemption (the index's exempt
+    // group), so every page that links to test files is written.
+    _ = try generate(gpa, testing.io, .{
+        .state_json = st,
+        .history_json = fixture_history,
+        .worklist_text = fixture_worklist,
+        .results = f.results,
+        .assets = null,
+        .wpt = fixture_wpt,
+        .reference_json = fixture_reference,
+        .exemptions_text = fixtureExemption("dom/nodes/c.any.js"),
+        .exemption_diag = &diag,
+    }, out);
+
+    // Each page links to the files it shows by their sections.
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<a href=\"dom/#a.html\">");
+    try expectHas(index, "<a href=\"dom/nodes/#c.any.js\"><code>dom/nodes/c.any.js</code></a>");
+    const cmp = try readOut(gpa, &f, "out/chrome.html");
+    defer gpa.free(cmp);
+    try expectHas(cmp, "<a href=\"url/#never.html\">");
+
+    // Every link on every page lands on a page the site has, and every link
+    // with a fragment on an element with that id - none on an old file page.
+    var walker = try out.walk(gpa);
+    defer walker.deinit();
+    var file_links: usize = 0;
+    while (try walker.next(testing.io)) |e| {
+        if (e.kind != .file or !std.mem.endsWith(u8, e.path, ".html") or std.mem.eql(u8, e.path, "404.html")) continue;
+        const page = try out.readFileAlloc(testing.io, e.path, gpa, .limited(1 << 24));
+        defer gpa.free(page);
+        var at: usize = 0;
+        while (std.mem.indexOfPos(u8, page, at, "href=\"")) |i| {
+            const start = i + "href=\"".len;
+            const end = std.mem.indexOfScalarPos(u8, page, start, '"').?;
+            at = end;
+            const href = page[start..end];
+            var buf: [512]u8 = undefined;
+            const r = resolveHref(&buf, e.path, href) orelse continue;
+            // Assets and the search's list are not pages; performance/ is perf_bench's.
+            if (!std.mem.endsWith(u8, r.path, ".html") or std.mem.startsWith(u8, r.path, "performance/")) continue;
+            const target = out.readFileAlloc(testing.io, r.path, gpa, .limited(1 << 24)) catch {
+                std.debug.print("\n{s}: link {s} -> {s}, which the site does not have\n", .{ e.path, href, r.path });
+                return error.TestBrokenLink;
+            };
+            defer gpa.free(target);
+            if (r.fragment.len == 0) continue;
+            if (std.mem.indexOfScalar(u8, r.fragment, '.') != null) file_links += 1;
+            var idbuf: [300]u8 = undefined;
+            const id = try std.fmt.bufPrint(&idbuf, "id=\"{s}\"", .{r.fragment});
+            if (std.mem.indexOf(u8, target, id) == null) {
+                std.debug.print("\n{s}: link {s} -> {s}, which has no {s}\n", .{ e.path, href, r.path, id });
+                return error.TestBrokenLink;
+            }
+        }
+    }
+    try testing.expect(file_links >= 10);
+}
+
+test "site: 404.html sends a test file's old page address to its section" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixture(gpa, &f, "out", fixture_worklist);
+    const nf = try readOut(gpa, &f, "out/404.html");
+    defer gpa.free(nf);
+    // Served at any missing address: its assets and home are named from the
+    // site's own path, never relative to where it is served.
+    try expectHas(nf, "<link rel=\"stylesheet\" href=\"/crane/site.css\">");
+    try expectHas(nf, "<script src=\"/crane/site.js\" defer></script>");
+    try expectHas(nf, "<li class=\"toc-suite\"><a href=\"/crane/dom/\">");
+    try testing.expect(pages_mod.needsScript(nf) == null);
+    // Its one relative link: a test file's old address's directory, for a
+    // reader without script; site.js adds the file's #name and goes there.
+    try expectHas(nf, "<a id=\"moved-to\" href=\"../\">");
+    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, nf, "href=\"../"));
+
+    // Every test file's old address maps to its section: `../` of the old
+    // address, then `#<name>` - and that section is there.
+    const files = [_][]const u8{ "dom/a.html", "dom/b.html", "dom/nodes/c.any.js", "url/u.html", "url/never.html" };
+    for (files) |p| {
+        var oldbuf: [256]u8 = undefined;
+        var tbuf: [256]u8 = undefined;
+        const name = p[std.mem.lastIndexOfScalar(u8, p, '/').? + 1 ..];
+        const dir = p[0 .. p.len - name.len];
+        const old = try std.fmt.bufPrint(&oldbuf, "/crane/{s}/", .{p});
+        const target = pages_mod.oldFileTarget(&tbuf, old).?;
+        var want_buf: [256]u8 = undefined;
+        try testing.expectEqualStrings(try std.fmt.bufPrint(&want_buf, "/crane/{s}#{s}", .{ dir, name }), target);
+        var with_index: [256]u8 = undefined;
+        var tbuf2: [256]u8 = undefined;
+        try testing.expectEqualStrings(target, pages_mod.oldFileTarget(&tbuf2, try std.fmt.bufPrint(&with_index, "/crane/{s}/index.html", .{p})).?);
+        // The plain link's rule: the old address's ../ is the section's page.
+        var rbuf: [512]u8 = undefined;
+        const r = resolveHref(&rbuf, old[1..], "../").?;
+        var pbuf: [256]u8 = undefined;
+        try testing.expectEqualStrings(try std.fmt.bufPrint(&pbuf, "crane/{s}index.html", .{dir}), r.path);
+        var page_buf: [256]u8 = undefined;
+        const page = try readOut(gpa, &f, try std.fmt.bufPrint(&page_buf, "out/{s}index.html", .{dir}));
+        defer gpa.free(page);
+        var idbuf: [256]u8 = undefined;
+        try expectHas(page, try std.fmt.bufPrint(&idbuf, "<details class=\"tf\" id=\"{s}\"", .{name}));
+    }
+    // A directory's address, the site's own, and a page that exists are not
+    // test files' old addresses.
+    var buf: [256]u8 = undefined;
+    try testing.expect(pages_mod.oldFileTarget(&buf, "/crane/dom/nodes/") == null);
+    try testing.expect(pages_mod.oldFileTarget(&buf, "/crane/dom/index.html") == null);
+    try testing.expect(pages_mod.oldFileTarget(&buf, "/crane/") == null);
+}
+
+/// fixture_stream, with dom/a.html given `n` passing subtests of long names
+/// beside its failure, so its section's passing names weigh something.
+fn heavyStream(gpa: Allocator, n: usize) ![]u8 {
+    var s: std.ArrayList(u8) = .empty;
+    errdefer s.deinit(gpa);
+    try s.appendSlice(gpa, "{\"test\":\"/dom/a.html\",\"status\":\"OK\",\"message\":null,\"subtests\":[{\"name\":\"two\",\"status\":\"FAIL\",\"message\":\"assert_equals: expected 1 but got 2\"}");
+    for (0..n) |i| try s.print(gpa, ",{{\"name\":\"a passing subtest whose name is long enough to weigh something on the page, number {d}\",\"status\":\"PASS\",\"message\":null}}", .{i});
+    try s.appendSlice(gpa, "]}\n");
+    const rest = fixture_stream[std.mem.indexOfScalar(u8, fixture_stream, '\n').? + 1 ..];
+    try s.appendSlice(gpa, rest);
+    return s.toOwnedSlice(gpa);
+}
+
+fn runBudget(gpa: Allocator, f: *Fixture, out_name: []const u8, bytes: usize) !Summary {
+    const st = try f.state(gpa);
+    defer gpa.free(st);
+    var out = try f.tmp.dir.createDirPathOpen(testing.io, out_name, .{ .open_options = .{ .iterate = true } });
+    defer out.close(testing.io);
+    return generate(gpa, testing.io, .{
+        .state_json = st,
+        .history_json = fixture_history,
+        .worklist_text = fixture_worklist,
+        .results = f.results,
+        .assets = null,
+        .wpt = fixture_wpt,
+        .budget = .{ .bytes = bytes },
+    }, out);
+}
+
+test "site: a directory page over its budget counts its passing subtests, and still over it splits into parts" {
+    const gpa = testing.allocator;
+    const stream = try heavyStream(gpa, 300);
+    defer gpa.free(stream);
+    var f = try Fixture.init(stream);
+    defer f.deinit();
+
+    // Within the budget: every passing subtest named.
+    const all = try runBudget(gpa, &f, "all", pages_mod.Budget.default_bytes);
+    try testing.expectEqual(@as(usize, 0), all.counted_pages);
+    const named = try readOut(gpa, &f, "all/dom/index.html");
+    defer gpa.free(named);
+    try expectHas(named, "<details class=\"passing\"><summary>300 passing subtests</summary>");
+
+    // One byte under it: dom/ counts them instead, and says so.
+    const one = try runBudget(gpa, &f, "counted", named.len - 1);
+    try testing.expect(one.counted_pages >= 1);
+    try testing.expectEqual(@as(usize, 0), one.split_dirs);
+    const counted = try readOut(gpa, &f, "counted/dom/index.html");
+    defer gpa.free(counted);
+    try testing.expect(counted.len <= named.len - 1);
+    try testing.expect(std.mem.indexOf(u8, counted, "pass-list") == null);
+    try expectHas(counted, "300 passing subtests, counted, not named on this page.");
+    try expectHas(counted, "Passing subtests are counted, not named: with every name this page would be larger than");
+    // The failure keeps its message.
+    try expectHas(counted, "assert_equals: expected 1 but got 2");
+
+    // Still over it: the sections go onto part pages, in name order; the
+    // directory's page keeps every file's row, with its id, leading to its
+    // part. (Well under the counted page: its note names the budget, so one
+    // byte under it could fit once the note's number has a digit fewer.)
+    const budget = counted.len - 500;
+    const split = try runBudget(gpa, &f, "split", budget);
+    try testing.expect(split.split_dirs >= 1);
+    const dom = try readOut(gpa, &f, "split/dom/index.html");
+    defer gpa.free(dom);
+    try testing.expect(dom.len <= budget);
+    try expectHas(dom, "<div class=\"tf tf-away\" id=\"a.html\" data-gate=\"partial\"");
+    try expectHas(dom, "<a class=\"tf-row\" href=\"~1/#a.html\">");
+    try expectHas(dom, "<a class=\"tf-row\" href=\"~2/#b.html\">");
+    try expectHas(dom, "test files here, on 2 pages");
+    try testing.expect(std.mem.indexOf(u8, dom, "<details class=\"tf\"") == null);
+    const p1 = try readOut(gpa, &f, "split/dom/~1/index.html");
+    defer gpa.free(p1);
+    const p2 = try readOut(gpa, &f, "split/dom/~2/index.html");
+    defer gpa.free(p2);
+    try expectHas(p1, "<details class=\"tf\" id=\"a.html\"");
+    try expectHas(p2, "<details class=\"tf\" id=\"b.html\"");
+    try testing.expect(std.mem.indexOf(u8, p1, "id=\"b.html\"") == null);
+    try expectHas(p1, "<link rel=\"stylesheet\" href=\"../../site.css\">");
+    try expectHas(p2, "<li aria-current=\"page\">part 2 of 2</li>");
+    try expectHas(p2, "<a href=\"../~1/\">Part 1</a>");
+    // Each part holds one file here: two would not fit (a file is never cut).
+    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, p1, "<details class=\"tf\""));
+    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, p2, "<details class=\"tf\""));
+    // The same input splits the same way: a rerun writes nothing.
+    const again = try runBudget(gpa, &f, "split", budget);
+    try testing.expectEqual(@as(usize, 0), again.written);
+    // Back within the budget, the parts go.
+    _ = try runBudget(gpa, &f, "split", pages_mod.Budget.default_bytes);
+    try testing.expect(!exists(&f, "split/dom/~1/index.html"));
+    try testing.expect(!exists(&f, "split/dom/~2"));
+}
+
+test "site: a directory page whose files' results did not move is byte-identical across a new generation and a new sweep" {
+    // Generation 207's commit rewrote 13,206 pages for ~50 moved results: every
+    // file page named its run, and every sweep is a new run.
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixture(gpa, &f, "one", fixture_worklist);
+
+    // The next sweep: a new run, with the same results for dom/, and a
+    // different one for url/u.html (from its own run, as before).
+    try f.tmp.dir.createDirPath(testing.io, "results/sweep-def5678");
+    try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "results/sweep-def5678/journal.shard1.jsonl", .data = "{}\n" });
+    try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "results/sweep-def5678/journal.shard1.wptreport.jsonl", .data = fixture_stream });
+    const st2 = try f.results.statFile(testing.io, "sweep-def5678/journal.shard1.jsonl", .{});
+    const m2 = @as(f64, @floatFromInt(st2.mtime.nanoseconds)) / 1e9;
+    const state2 = try std.fmt.allocPrint(gpa,
+        \\{{"dom/a.html":{{"path":"dom/a.html","status":"OK","passed":2,"failed":1,"timed_out":0,"notrun":0,"_journal":"journal.shard1.jsonl","_mtime":{d}}},
+        \\"dom/nodes/c.any.js":{{"path":"dom/nodes/c.any.js","status":"OK","passed":0,"failed":2,"timed_out":0,"notrun":0,"_journal":"journal.shard1.jsonl","_mtime":{d}}},
+        \\"dom/b.html":{{"path":"dom/b.html","status":"TIMEOUT","passed":0,"failed":0,"timed_out":0,"notrun":0,"message":"took too long","_journal":"journal.shard1.jsonl","_mtime":{d}}},
+        \\"url/u.html":{{"path":"url/u.html","status":"OK","passed":2,"failed":1,"timed_out":0,"notrun":0,"_journal":"journal.shard0.jsonl","_mtime":{d}}}}}
+    , .{ m2, m2, m2, f.other_mtime });
+    defer gpa.free(state2);
+    var out = try f.tmp.dir.openDir(testing.io, "one", .{ .iterate = true });
+    defer out.close(testing.io);
+    const before_dom = try readOut(gpa, &f, "one/dom/index.html");
+    defer gpa.free(before_dom);
+    const before_nodes = try readOut(gpa, &f, "one/dom/nodes/index.html");
+    defer gpa.free(before_nodes);
+    const before_url = try readOut(gpa, &f, "one/url/index.html");
+    defer gpa.free(before_url);
+    const before_404 = try readOut(gpa, &f, "one/404.html");
+    defer gpa.free(before_404);
+
+    _ = try generate(gpa, testing.io, .{
+        .state_json = state2,
+        .history_json = fixture_history_next,
+        .worklist_text = fixture_worklist,
+        .results = f.results,
+        .assets = null,
+        .wpt = fixture_wpt,
+    }, out);
+    const index = try readOut(gpa, &f, "one/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "Generation 3, recorded at Crane");
+    try expectHas(index, "<code>sweep-def5678/journal.shard1</code> (3 files");
+    // dom/ and dom/nodes/: same results, a new run - the same bytes.
+    const after_dom = try readOut(gpa, &f, "one/dom/index.html");
+    defer gpa.free(after_dom);
+    try testing.expectEqualStrings(before_dom, after_dom);
+    const after_nodes = try readOut(gpa, &f, "one/dom/nodes/index.html");
+    defer gpa.free(after_nodes);
+    try testing.expectEqualStrings(before_nodes, after_nodes);
+    const after_404 = try readOut(gpa, &f, "one/404.html");
+    defer gpa.free(after_404);
+    try testing.expectEqualStrings(before_404, after_404);
+    // url/: u.html's result moved, so its page did.
+    const after_url = try readOut(gpa, &f, "one/url/index.html");
+    defer gpa.free(after_url);
+    try testing.expect(!std.mem.eql(u8, before_url, after_url));
 }
