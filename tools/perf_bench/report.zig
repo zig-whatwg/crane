@@ -1043,13 +1043,21 @@ fn writeElementMemory(w: W, arena: Allocator, m: *const Model) !void {
         try w.writeAll("</tr>\n");
     }
     try w.writeAll("</tbody></table></div>\n");
-    try writeElementMethod(w, t);
+    try writeElementMethod(w, arena, t);
     try w.writeAll("</section>\n");
 }
 
 /// The method, as the rows say it was measured: which engines collected before each
 /// reading and how, the idle time, the runs.
-fn writeElementMethod(w: W, t: ElementTable) !void {
+/// "a", "a and b", "a, b and c".
+fn writeList(w: W, items: []const []const u8) !void {
+    for (items, 0..) |item, i| {
+        if (i > 0) try w.writeAll(if (i + 1 == items.len) " and " else ", ");
+        try w.writeAll(item);
+    }
+}
+
+fn writeElementMethod(w: W, arena: Allocator, t: ElementTable) !void {
     try w.writeAll("<p class=\"chart-note\">How: one case per page (<code>tests/perf/elements.json</code>), each page in a fresh launch, so memory one case freed cannot make another&rsquo;s read smaller. A page first makes everything but the nodes - a slot for each in an array, a host element, the markup to parse - so both readings hold it. The runner reads the footprint (phys_footprint, summed over the engine&rsquo;s processes, as everywhere on this page) when the page reports, and the page reports after ");
     var first = true;
     for (t.rows) |row| {
@@ -1088,7 +1096,27 @@ fn writeElementMethod(w: W, t: ElementTable) !void {
     if (min_runs) |lo| {
         if (lo == max_runs) try w.print(" ({d} each)", .{lo}) else try w.print(" ({d} to {d})", .{ lo, max_runs });
     }
-    try w.writeAll(", with the runs&rsquo; median absolute deviation beside it where that is 5% or more. The JS heap is Chrome&rsquo;s <code>performance.memory.usedJSHeapSize</code> (launched with <code>--enable-precise-memory-info</code>), the only engine here that tells a page its heap.</p>\n");
+    try w.writeAll(", with the runs&rsquo; median absolute deviation beside it where that is 5% or more. The JS heap is Chrome&rsquo;s <code>performance.memory.usedJSHeapSize</code> (launched with <code>--enable-precise-memory-info</code>), the only engine here that tells a page its heap.");
+    // The engines that render give a node in the document a layout object and a computed
+    // style; Crane and Lightpanda draw nothing. Said wherever one of them has a row.
+    var rendering: std.ArrayList([]const u8) = .empty;
+    for (t.rows) |row| switch (row.engine) {
+        .chrome, .firefox, .safari => try rendering.append(arena, row.engine.label()),
+        else => {},
+    };
+    if (rendering.items.len > 0) {
+        try w.writeAll(" In the engines that render - ");
+        try writeList(w, rendering.items);
+        try w.writeAll(" - a node in the document also gets a layout object and a computed style, so their figures for the nodes in the document and the parsed ones include rendering, which Crane and Lightpanda do not do; the nodes kept in an array, outside the document, are the DOM alone in every engine.");
+    }
+    // An engine whose own footprint moved a lot over the control's steps: its figures carry
+    // that drift's spread (Firefox frees memory while a fresh page idles).
+    for (t.rows) |row| {
+        const cd = row.control_delta orelse continue;
+        if (t.count == 0 or @abs(cd) / @as(f64, @floatFromInt(t.count)) < 50) continue;
+        try w.print(" {s}&rsquo;s footprint moved by {d:.1} MB between the two readings of the page that made nothing (the median over its runs), which its figures have subtracted, so they carry that drift&rsquo;s spread.", .{ row.engine.label(), cd / (1024.0 * 1024.0) });
+    }
+    try w.writeAll("</p>\n");
 }
 
 pub const Output = struct {
@@ -2812,4 +2840,9 @@ test "memory per element: (case - control) / N per run, the median and its devia
     // The method, as the rows say: who collected and how, who could not, the idle time, the runs.
     try testing.expect(std.mem.indexOf(u8, sec, "<code>TestUtils.gc()</code> twice in Crane, <code>gc()</code> twice, launched with <code>--js-flags=--expose-gc</code>, in Chrome) and then 3.0 s idle; Firefox let no page ask for a collection") != null);
     try testing.expect(std.mem.indexOf(u8, sec, "(1 to 3)") != null);
+    // Rendering is named for the engines that render, and a large control drift for its engine
+    // (Crane's control moved 1.1 MB over 1,000 nodes here: 1,100 B a node).
+    try testing.expect(std.mem.indexOf(u8, sec, "In the engines that render - Chrome and Firefox - a node in the document also gets a layout object") != null);
+    try testing.expect(std.mem.indexOf(u8, sec, "Crane&rsquo;s footprint moved by 1.0 MB between the two readings") != null);
+    try testing.expect(std.mem.indexOf(u8, sec, "Chrome&rsquo;s footprint moved") == null);
 }
