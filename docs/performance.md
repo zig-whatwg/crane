@@ -311,8 +311,9 @@ control" section. `perf_bench report` refuses to write a round whose browsers' r
 when it has no such control, or when the control is not within noise (both geometric means within
 5% of 100%). Where the window also has a base of the control's commit built for the fixed target
 (round 1: round 0's source for `apple_m1`), the base over the control is what the CPU target alone
-did (`targetAlone`), and "Crane, round by round" splits each workload's change into the code's
-(the tip over the base, one target) and the target's (the base over the control, one source).
+did (`targetAlone`): the drift control section shows it per workload, and the Progress section
+says it in one footnote sentence (`targetChanges`) - a methodology control, never a point of
+Crane's progress.
 
 ```bash
 # round 1: the tip and ReleaseFast for apple_m1, round 0's source for apple_m1, round 0's binary
@@ -348,23 +349,36 @@ HTML; the page uses the WPT site's stylesheet (`../site.css`) and lives at gh-pa
 `performance/`, which the WPT site's generator leaves alone and links to.
 
 **Progress over time** (the user, 2026-11-06: the page shows the progress Crane makes over
-time), from the second round on, all of it from the rounds' journals:
-- **Progress**, right after the headline: Crane's headline round by round (`report.zig`
-  `progress`) - its time and memory as a percentage of each browser's, each point against each
-  browser's rows as they stood then (its last-measured rows) - as a chart and a table each for
-  time and memory. Each point is labelled with its round, date, Crane commit, CPU target and what
-  the round changed. Where a round rebuilt an earlier round's source for its own CPU target (round
-  1: round 0's source for `apple_m1`), that build is a hollow point before the round's: the dashed
-  step into it is the target's, the step out of it the code's.
-- **Crane, round by round**: each workload's time and steady memory at every point, its change
-  since the first round (split into the code's and the target's where the round has both), and a
-  sparkline per measure.
+time; 2026-11-07, on the first version's chart of one line per browser with a CPU-target point:
+"this graph is confusing for tracking Crane's progress"), from the second round on, all of it from
+the rounds' journals. A point is a **measurement round** of Crane's release build, never a
+methodology control: a round's base and drift control (`crane_base`, `crane_control`) are not
+points (`report.zig` `progress`).
+- **Progress**, right after the headline, in two parts:
+  - **Crane over time**, first: two small charts, time and memory, each ONE line - Crane's
+    geometric mean as a share of its first round's (round 0 = 100%; `compareRounds` over the
+    workloads both rounds ran), lower is better. The x labels name the round, its date and
+    Crane's commit; each point is labelled with its value (`chart.zig` `trendChart`: a linear
+    scale from 0, 100% the reference line). A round that changed the CPU target and rebuilt an
+    earlier round's source for it gets one footnote sentence instead of a point (`targetChanges`:
+    round 1's apple_m1 rebuild of round 0's source changed time by 0.991x and memory by 1.010x,
+    within the 5% noise limit). Under the charts, each round's line: its date, commit, CPU target,
+    its two figures and what it changed (`round_notes`).
+  - **The gap to the browsers**: a table, one row per browser, of Crane's time and memory as
+    "N.NNx the browser's" in each round - the headline's geometric means, each round against each
+    browser's rows as they stood then (its last-measured rows, `Model.standing`). From the second
+    round on a cell says what it was ("5.97x (was 7.36x)"), green when lower than the round
+    before, red when higher, and uncoloured when the change is within the drift control's own 5%
+    limit (`changeOf`). At phone width each row lists its cells with their labels.
+- **Crane, round by round**: each workload's time and steady memory in every measurement round,
+  its change since the first round, and a sparkline per measure - Crane's own rounds only, with
+  no target step (what a target alone did per workload is the drift control's table).
 - **The card and the description** name the progress: Crane's time and memory against its first
   round's (`sinceFirst`), beside the gap to each browser.
 - The charts are inline SVG the tool draws (`tools/perf_bench/chart.zig`), on the WPT site's chart
-  classes, with a native tooltip per point; the numbers are in the tables beside them, and no
-  script is needed. The series colours are the first four categorical slots of the dataviz
-  reference palette, with their own steps for dark (`report.zig` `style`).
+  classes, with a native tooltip per point; every number is also in the HTML beside them, and no
+  script is needed. The line's colour is the first categorical slot of the dataviz reference
+  palette, with its own step for dark (`report.zig` `style`).
 - **What each round changed** is one line in `report.zig` `round_notes`, written when the round is
   published (a test holds every round to one); every figure beside it is the journals'.
 
