@@ -74,7 +74,9 @@ pub const InternalState = struct {
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
-    allocator: std.mem.Allocator,
+    // No allocator copy (lane perf2 batch 5): what the node allocates comes
+    // from its Browser's allocator, runtime.allocatorOf(instance) - the one
+    // it was made with (asserted in initOwn).
 
     /// NodeBase - THE source of truth for tree structure
     /// Contains: parent_node, first_child, last_child, previous_sibling, next_sibling
@@ -203,8 +205,11 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // builds).
     const internal = try Registry.create(instance);
     errdefer Registry.remove(instance);
+    // The allocator a node is made with is its Browser's (the realm's scope:
+    // Instance.init took its slot and block there): every later allocation
+    // for it goes through runtime.allocatorOf, which reads that scope.
+    std.debug.assert(allocator.ptr == runtime.allocatorOf(instance).ptr and allocator.vtable == runtime.allocatorOf(instance).vtable);
     internal.* = .{
-        .allocator = allocator,
         .node_type = node_type,
         .base = .{
             .allocator = allocator,
@@ -327,7 +332,7 @@ pub fn deinit(instance: *runtime.Instance) void {
                     }
                 } else {
                     // Large tree: allocate dynamic array
-                    const alloc_children = internal.allocator.alloc(*runtime.Instance, child_count) catch {
+                    const alloc_children = runtime.allocatorOf(instance).alloc(*runtime.Instance, child_count) catch {
                         // On allocation failure, fall back to iterating directly
                         // This is less safe but better than doing nothing
                         var child = node_base.first_child;
@@ -348,7 +353,7 @@ pub fn deinit(instance: *runtime.Instance) void {
                         interfaces.EventTarget.deinitChain(instance);
                         return;
                     };
-                    defer internal.allocator.free(alloc_children);
+                    defer runtime.allocatorOf(instance).free(alloc_children);
 
                     var child_base_walk = node_base.children();
                     while (child_base_walk.next()) |child_base| {
@@ -781,7 +786,7 @@ pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Create a live NodeList for this node's children: made through its
     // interface, made live over them by NodeList's step (dom.node_lists).
-    const list = try interfaces.NodeList.init(internal.allocator, instance.ctx);
+    const list = try interfaces.NodeList.init(runtime.allocatorOf(instance), instance.ctx);
     errdefer interfaces.NodeList.deinit(list);
     try dom_module.node_lists.childNodes(list, instance);
 
@@ -1363,8 +1368,8 @@ pub fn cloneANode(
 fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallback_registry: ?*runtime.Instance) !*runtime.Instance {
     const node_internal = getInternal(node) orelse return error.InvalidStateError;
 
-    // Get allocator from node's state
-    const allocator = node_internal.allocator;
+    // The node's Browser's allocator (runtime.allocatorOf)
+    const allocator = runtime.allocatorOf(node);
 
     // DOM 4.4 "clone a node" step 2: copy must implement the same interfaces as
     // node. A CharacterData copy built as a bare Node has no CharacterData
@@ -1431,8 +1436,8 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             const owner = document orelse node_internal.owner_document orelse
                 return error.InvalidStateError;
             // The getters below clone into ctx.allocator, so they must be freed
-            // with ctx.allocator - node_internal.allocator is not necessarily the
-            // same one.
+            // with ctx.allocator - the node's Browser's allocator is not
+            // necessarily the same one.
             const instance_allocator = node.ctx.allocator;
 
             // Each of these getters CLONES into ctx.allocator and transfers
@@ -1559,7 +1564,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             defer local_name.deinit(instance_allocator);
             var value = try interfaces.Attr.get_value(node);
             defer value.deinit(instance_allocator);
-            const copy = try interfaces.Attr.init(node_internal.allocator, owner.ctx);
+            const copy = try interfaces.Attr.init(allocator, owner.ctx);
             errdefer interfaces.Attr.deinit(copy);
             try setOwnerDocument(copy, owner);
             try dom_module.attr_nodes.name(
@@ -1908,8 +1913,8 @@ pub fn setLocalName(instance: *runtime.Instance, name: runtime.DOMString) !void 
     // the uppercase of the local name, owned by the node (its rare data).
     if (internal.node_base) |node_base| {
         const name_slice = name.asSlice();
-        const upper_name = try internal.allocator.alloc(u8, name_slice.len);
-        errdefer internal.allocator.free(upper_name);
+        const upper_name = try runtime.allocatorOf(instance).alloc(u8, name_slice.len);
+        errdefer runtime.allocatorOf(instance).free(upper_name);
         for (name_slice, 0..) |c, i| {
             upper_name[i] = std.ascii.toUpper(c);
         }

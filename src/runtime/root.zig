@@ -134,6 +134,15 @@ pub fn arenaOf(instance: *const Instance) *ArenaAllocator {
     return &BrowserScope.ofInstance(instance).arena;
 }
 
+/// The allocator of `instance`'s Browser (docs/instances.md): what its impl
+/// allocates the memory its state owns from - the allocator its constructor
+/// was given, which is its realm's Browser's (asserted where a node is made:
+/// Node's initOwn) - found from its address, so a state need not keep a copy
+/// (lane perf2 batch 5: 16 bytes per level per object).
+pub fn allocatorOf(instance: *const Instance) std.mem.Allocator {
+    return BrowserScope.ofInstance(instance).allocator;
+}
+
 // Compile-time utilities
 pub const buildVTable = @import("vtable_builder.zig").buildVTable;
 pub const buildVTableWithDeinit = @import("vtable_builder.zig").buildVTableWithDeinit;

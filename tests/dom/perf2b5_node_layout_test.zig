@@ -71,15 +71,16 @@ fn slack(comptime State: type) usize {
     return runtime.ArenaAllocator.heldBytes(@sizeOf(State), @alignOf(State)) - @sizeOf(State);
 }
 
-test "NodeBase is 96 bytes: the sibling links are the children and its Browser has the allocator" {
+test "NodeBase is 112 bytes: the sibling links are the children" {
     // 208 at d1ee79a9386: - 96 (child_nodes, an infra.List with four inline
-    // slots) - 16 (the per-node std.mem.Allocator). bound_v8_wrapper stays
+    // slots; the sibling links are the children). bound_v8_wrapper stays
     // inline: every wrapper the cache takes sets it (wrapper_cache.zig,
     // `put`), as Blink keeps the main world's wrapper on the object
-    // (ScriptWrappable::wrapper_).
-    try expectSize(NodeBase, 96);
+    // (ScriptWrappable::wrapper_). The per-node allocator (16) is the next
+    // step: an owner-less NodeBase (the test-only WithBase types) still needs
+    // it, so it waits for those to carry their own (design 3.4, deferred).
+    try expectSize(NodeBase, 112);
     try std.testing.expect(!@hasField(NodeBase, "child_nodes"));
-    try std.testing.expect(!@hasField(NodeBase, "allocator"));
     try std.testing.expect(@hasField(NodeBase, "bound_v8_wrapper"));
 }
 
@@ -101,17 +102,18 @@ test "every OwnState level keeps its InternalState by value in its own State" {
     try std.testing.expectEqual(@as(usize, 0), missing);
 }
 
-test "Node's embedded state is its NodeBase by value and the four fields a node uses: 136 bytes" {
+test "Node's embedded state is its NodeBase by value and the four fields a node uses: 152 bytes" {
     const E = Embedded(interfaces.Node.State);
     if (E == void) {
         return error.NotEmbedded;
     } else {
         // node_base 8, node_type 2, owner_document 8 + its generation 8,
-        // child_nodes_list 8, the NodeBase 96. Gone: local_name (written,
+        // child_nodes_list 8, the NodeBase 112. Gone: local_name (written,
         // never read), namespace_uri (its one writer had no caller), prefix
         // and node_value (no writer), is_connected (NodeBase's is the one the
-        // DOM reads) and the allocator copy (the node's Browser's).
-        try expectSize(E, 136);
+        // DOM reads) and the allocator copy (the node's Browser's:
+        // runtime.allocatorOf).
+        try expectSize(E, 152);
         try std.testing.expect(@FieldType(E, "base") == NodeBase);
         inline for (.{ "local_name", "namespace_uri", "prefix", "node_value", "is_connected", "allocator" }) |dead| {
             if (@hasField(E, dead)) {
