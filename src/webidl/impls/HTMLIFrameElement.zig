@@ -2123,6 +2123,10 @@ fn runBeforeUnload(list: *Navigables, id: u64) void {
             // The explicit provisional path preserves live XHR loaders;
             // a stop/open called by an owner callback remains observable.
             document_lifecycle.abortForNavigation(entry.document);
+            // A navigation the page started ends the load of each document it
+            // aborted before its load event (document_lifecycle.endLoad states
+            // the browsers); the browser's own navigation, above, does not.
+            if (runtime.SlabAllocator.generationOf(entry.document) == entry.generation) document_lifecycle.endLoad(entry.document);
         }
     }
     startFetch(navigationById(list, id) orelse return);
