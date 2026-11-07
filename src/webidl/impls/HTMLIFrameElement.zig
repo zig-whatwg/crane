@@ -3649,6 +3649,11 @@ fn embedderPolicyBlocks(integration: *IFrameIntegration, record: *Navigation, re
     // C157 9/9, F159 9/9, S27.2 6/9 (wpt.fyi 1eecaa0c30).
     const scheme = navigate_steps.schemeOf(response_url);
     const is_local_response = std.mem.eql(u8, scheme, "blob") or std.mem.eql(u8, scheme, "data");
+    // The reports' blockedURL is the response's URL list[0] (Fetch
+    // "serialize a response URL for reporting" step 2): the URL this
+    // navigation fetched first - its manual redirects (followManualRedirect)
+    // append to that list - never where they ended.
+    const reported_url = record.url;
     if (response.headers) |headers| if (!is_local_response) {
         const parent_origin = documentOriginOf(parent, allocator);
         defer if (parent_origin) |origin| allocator.free(origin);
@@ -3660,8 +3665,8 @@ fn embedderPolicyBlocks(integration: *IFrameIntegration, record: *Navigation, re
         // Fetch 3.7 steps 4 and 6: the reports, "corp" for the request's
         // destination - the container's local name.
         const destination = containerLocalName(integration);
-        if (check.report_only_blocks) queueEmbedderPolicyReport(parent, response_url, .{ .corp = destination }, parent_policy.report_only_reporting_endpoint, true);
-        if (check.enforced_by_embedder_policy) queueEmbedderPolicyReport(parent, response_url, .{ .corp = destination }, parent_policy.reporting_endpoint, false);
+        if (check.report_only_blocks) queueEmbedderPolicyReport(parent, reported_url, .{ .corp = destination }, parent_policy.report_only_reporting_endpoint, true);
+        if (check.enforced_by_embedder_policy) queueEmbedderPolicyReport(parent, reported_url, .{ .corp = destination }, parent_policy.reporting_endpoint, false);
         if (check.result == .blocked) return true;
     };
     // Step 4: a response with a reserved environment. "Create navigation
@@ -3692,11 +3697,11 @@ fn embedderPolicyBlocks(integration: *IFrameIntegration, record: *Navigation, re
     // "Check a navigation response's adherence to its embedder policy" step
     // 3: the report-only value's violation is reported.
     if (parent_policy.report_only_value.compatibleWithCrossOriginIsolation() and !compatible) {
-        queueEmbedderPolicyReport(parent, response_url, .navigation, parent_policy.report_only_reporting_endpoint, true);
+        queueEmbedderPolicyReport(parent, reported_url, .navigation, parent_policy.report_only_reporting_endpoint, true);
     }
     // Steps 4-6.
     if (!parent_policy.value.compatibleWithCrossOriginIsolation() or compatible) return false;
-    queueEmbedderPolicyReport(parent, response_url, .navigation, parent_policy.reporting_endpoint, false);
+    queueEmbedderPolicyReport(parent, reported_url, .navigation, parent_policy.reporting_endpoint, false);
     return true;
 }
 
@@ -3734,9 +3739,12 @@ fn queueEmbedderPolicyReport(container_document: *runtime.Instance, response_url
 fn queueEmbedderPolicyReportFallible(container_document: *runtime.Instance, response_url: []const u8, kind: EmbedderPolicyReportKind, endpoint: []const u8, report_only: bool) !void {
     const global = (try interfaces.Document.get_defaultView(container_document)) orelse return;
     const allocator = global.ctx.allocator;
-    // "Serializing a response URL for reporting": no credentials, no
-    // fragment.
-    const blocked_url = try @import("csp").violation_events.stripUrlForReports(allocator, response_url);
+    // HTML "queue a cross-origin embedder policy inheritance violation" step
+    // 1 (and Fetch's CORP report step 2): Fetch's "serializing a response URL
+    // for reporting" - not CSP §5.4's strip rule, which is CSP's own - so no
+    // credentials, no fragment, and a data:, blob: or about: URL whole.
+    // `response_url` is the response's URL list[0] (embedderPolicyBlocks).
+    const blocked_url = try dom_module.coep_reporting.serializeResponseUrlForReporting(allocator, &.{response_url});
     defer allocator.free(blocked_url);
     const disposition = if (report_only) "reporting" else "enforce";
     const body = switch (kind) {
