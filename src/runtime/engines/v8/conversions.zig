@@ -1467,8 +1467,33 @@ pub fn argReadConverts(comptime T: type, comptime Interface: ?type) bool {
         if (T == runtime.DOMString or T == []const u8) break :blk true;
         if (info == .@"enum") break :blk true;
         if (T == *runtime.Instance) break :blk Interface != null;
+        // A union, for a String value: its string arm (unionStringArm).
+        if (info == .@"union" and info.@"union".tag_type != null) {
+            const arm = unionStringArm(T) orelse break :blk false;
+            break :blk argReadConverts(zig017FieldsOf(info.@"union")[arm].type, null);
+        }
         break :blk false;
     };
+}
+
+/// The arm of union `T` a String value converts to: WebIDL 3.2.24 step 14,
+/// "If types includes a string type, return the result of converting V to
+/// that type" - DOMString, USVString or ByteString first, then an
+/// enumeration, as `convertValueAs`'s union dispatch picks it (its
+/// `string_idx`). Null when the union has none.
+fn unionStringArm(comptime T: type) ?usize {
+    comptime {
+        const fields = zig017FieldsOf(@typeInfo(T).@"union");
+        for (fields, 0..) |field, i| {
+            if (field.type == runtime.DOMString) return i;
+            const field_info = @typeInfo(field.type);
+            if (field_info == .pointer and field_info.pointer.size == .slice and field_info.pointer.child == u8) return i;
+        }
+        for (fields, 0..) |field, i| {
+            if (@typeInfo(field.type) == .@"enum") return i;
+        }
+        return null;
+    }
 }
 
 /// An argument of type `T` (`argReadConverts`) converted from `read` - what
@@ -1556,6 +1581,17 @@ pub fn fromArgumentRead(
     if (comptime type_info == .@"enum") {
         if (read.kind != .string or !read.fits) return null;
         return enumFromIdlValue(T, buffer[0..@intCast(read.length)]) orelse ConversionError.TypeError;
+    }
+    if (comptime type_info == .@"union") {
+        // A String reaches the union's string step (3.2.24 step 14) - no
+        // object, Boolean, Number or BigInt step applies to it - and converts
+        // as that arm, as convertValueAs's dispatch converts it; any other
+        // value goes through the general conversion and its earlier steps.
+        if (read.kind != .string) return null;
+        const arm = comptime unionStringArm(T).?;
+        const field = zig017FieldsOf(type_info.@"union")[arm];
+        const converted = (try fromArgumentRead(field.type, null, .modulo, false, allocator, info, index, read, buffer)) orelse return null;
+        return @unionInit(T, field.name, converted);
     }
     if (comptime T == *runtime.Instance) {
         const I = comptime Interface.?;
