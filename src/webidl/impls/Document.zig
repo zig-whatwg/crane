@@ -282,6 +282,9 @@ pub fn installHooks() void {
     // the removing steps that pass them on when their element leaves.
     @import("dom").pointer_states.install(.{ .get = &pointerState, .set = &setPointerState, .get_all = &pointerStates });
     @import("dom").mutation.registerRemovingStepsCallback(&@import("dom").pointer_states.removingSteps) catch @panic("pointer state removing steps allocation");
+    // A moved element under the pointer loses :hover as the browsers' next
+    // hit test makes it (dom.pointer_states.movingSteps).
+    @import("dom").mutation.registerMovingStepsCallback(&@import("dom").pointer_states.movingSteps) catch @panic("pointer state moving steps allocation");
     // User input (testdriver lane): the focusing steps designate a document's
     // focused area (src/html/focus.zig), and a top-level traversable's system
     // visibility state updates its documents' visibility state, through these

@@ -102,6 +102,36 @@ pub fn removingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
     }
 }
 
+/// DOM moving steps (Document registers them), for the moved subtree's root:
+/// the hovered designation in the moved subtree passes to the old parent,
+/// as at a removal; :active's designations stay.
+///
+/// A stated stand-in for a hit test Crane cannot do (no layout): the
+/// browsers keep the hover chain through a move - Blink's atomic move skips
+/// DetachLayoutTree, whose HoveredElementDetached and ActiveChainNodeDetached
+/// a removal runs (core/dom/element.cc, ContainerNode::RemoveBetween) - and
+/// re-hit-test at the next frame, so an element moved out from under the
+/// pointer loses :hover and the active chain stays
+/// (dom/nodes/moveBefore/hover-style-update.html, Chrome 157 and Firefox 159
+/// 2/2). Crane designates :hover by element (the pointer's last target), so
+/// the removal's answer - the old parent - stands in for that hit test.
+pub fn movingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
+    // The move's root alone (its descendants get no old parent).
+    const parent = old_parent orelse return;
+    if (node.node_type != NodeBase.ELEMENT_NODE) return;
+    if (!parent.is_connected and parent.node_type != NodeBase.DOCUMENT_NODE) return;
+    const impl = implementation.get() orelse return;
+    const parent_instance: *runtime.Instance = @ptrCast(@alignCast(parent.owner_instance orelse return));
+    const document = if (parent.node_type == NodeBase.DOCUMENT_NODE)
+        parent_instance
+    else
+        (interfaces.Node.get_ownerDocument(parent_instance) catch return) orelse return;
+    const element = impl.get(document, .hovered) orelse return;
+    const designated = instance_bridge.getNodeBase(element) orelse return;
+    if (!isShadowIncludingInclusiveDescendant(designated, node)) return;
+    impl.set(document, .hovered, successor(parent));
+}
+
 /// The element a designation passes to when its element is removed from
 /// `parent`: the parent element, or a shadow root's host.
 fn successor(parent: *NodeBase) ?*runtime.Instance {
