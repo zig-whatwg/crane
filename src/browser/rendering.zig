@@ -650,14 +650,15 @@ fn updateTheRendering(frames: *Frames) void {
         if (last_realm) |realm| if (realm.hasEngine()) Context.performMicrotaskCheckpoint(realm);
     }
 
-    // 16. Style and layout: the used CSS resources are selected here, after
-    // the animation callbacks and their microtasks, never by a style getter.
+    // 16. For each doc of docs: style and layout, the step's one owner
+    // (dom.update_the_rendering.styleAndLayout runs its parts in order: the
+    // used CSS resources, then the pending animations). Script can run:
+    // revalidate after each.
     for (documents.items) |document| {
         if (dispatchState(frames, &token) == null) break;
         if (!document.current()) continue;
-        dom_mod.style.engine.resource_loading.updateRendering(document.document);
+        update_the_rendering.styleAndLayout(document.document, frame);
     }
-    runOwnerStep(frames, &token, documents.items, .style_and_layout, frame);
     // 17. The focus fixup. Retain focusedAreaOf's existing no-blur deviation;
     // never fix up in a selector.
     for (documents.items) |document| {
