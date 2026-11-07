@@ -22,9 +22,11 @@
 //! - everything else combines as DISCRETE: V_start below p = 0.5, V_end from
 //!   it, and not additive (Values 4 3: addition of a not-additive type is
 //!   V_result = V_b). Value kinds whose smooth rules are not built yet
-//!   (transforms, shadows, filters, repeatable lists, non-legacy colors,
-//!   currentcolor mixes) fall back here and are listed in `pendingKinds` so
-//!   the gap stays visible.
+//!   (transform lists, non-legacy colors, currentcolor mixes) fall back here
+//!   and are listed in `pendingKinds` so the gap stays visible.
+//! - composites (pairs, repeatable lists, quads, shadow lists, positions):
+//!   component by component (Web Animations 1 5.2 "by computed value" and
+//!   "repeatable list"), discrete when any component pair does not combine.
 //!
 //! Range checking (Values 4 3.1) is NOT applied by these operations:
 //! "clamping is only applied to the final result of applying all
@@ -50,6 +52,13 @@ const Number = @import("numeric_values.zig").Number;
 const syntax_values = @import("syntax_values.zig");
 const syntax_definitions = @import("syntax_definitions.zig");
 const transform_functions = @import("transform_functions.zig");
+const border_radius = @import("border_radius.zig");
+const image_layers = @import("image_layers.zig");
+const image_size = @import("image_size.zig");
+const image_quad = @import("image_quad.zig");
+const text_shadow_values = @import("text_shadow_values.zig");
+const font_size_adjust = @import("font_size_adjust.zig");
+const text_indent = @import("text_indent.zig");
 
 const Longhand = properties.Longhand;
 const Value = values.Value;
@@ -97,8 +106,8 @@ pub fn animationType(l: Longhand) AnimationType {
 /// The value kinds that combine discretely today although their types have
 /// smooth rules (named so a reader sees the gap, not an approximation).
 pub const pendingKinds = [_][]const u8{
-    "transform_list", "text_shadow",      "layers",        "image_size",      "corner_radius", "font_settings",
-    "paint",          "color.expression", "color.current", "sizing_function", "grid_tracks",
+    "transform_list", "font_settings", "paint", "color.expression", "color.current", "sizing_function",
+    "grid_tracks",
 };
 
 // ============================================================================
@@ -108,16 +117,21 @@ pub const pendingKinds = [_][]const u8{
 /// Values 4 3 "interpolation" of the computed values `from` and `to` of
 /// `l` at `p` (any real: easing can extrapolate).
 pub fn interpolate(allocator: Allocator, l: Longhand, from: Value, to: Value, p: f64) Allocator.Error!Value {
-    // "p = 0 produces V_A and p = 1 produces V_B" (Values 4 3): exactly,
-    // with no calc() mix left over from a cancelled component.
-    if (p == 0) return retained(from);
+    // "p = 1 produces V_B" (Values 4 3). p = 0 is NOT short-cut to V_A: a
+    // smooth combination keeps the pair's combined type there - a
+    // length-percentage mix stays `calc(0% + 40px)` and an identity `none`
+    // is its function (`scale: 1`), as the WPT interpolation files expect at
+    // 0 and Chrome, Firefox and Safari return (vertical-align-interpolation,
+    // offset-distance-interpolation, scale-interpolation). At p = 1 the
+    // mix's zero length term drops (math_values' Q100 canonical form), so
+    // V_B is exact either way.
     if (p == 1) return retained(to);
     switch (animationType(l)) {
         .not_animatable, .discrete => return discrete(from, to, p),
         .visibility => return visibility(from, to, p),
         .by_computed_value => {},
     }
-    if (try smooth(allocator, from, to, p)) |v| return v;
+    if (try smooth(allocator, l, from, to, p)) |v| return v;
     return discrete(from, to, p);
 }
 
@@ -135,7 +149,7 @@ pub fn transitionable(allocator: Allocator, l: Longhand, from: Value, to: Value)
         .visibility => return (from == .keyword and from.keyword == .visible) or (to == .keyword and to.keyword == .visible),
         .by_computed_value => {},
     }
-    const combined = (try smooth(allocator, from, to, 0.5)) orelse return false;
+    const combined = (try smooth(allocator, l, from, to, 0.5)) orelse return false;
     combined.release();
     return true;
 }
@@ -178,7 +192,7 @@ fn roundInteger(x: f64) i32 {
 
 /// The smooth combination of two values of one kind; null when the pair
 /// has none (the caller combines them discretely).
-fn smooth(allocator: Allocator, from: Value, to: Value, p: f64) Allocator.Error!?Value {
+fn smooth(allocator: Allocator, l: Longhand, from: Value, to: Value, p: f64) Allocator.Error!?Value {
     switch (from) {
         .number => |a| if (to == .number) return .{ .number = lerp(a, to.number, p) },
         .integer => |a| if (to == .integer) return .{ .integer = roundInteger(lerp(@floatFromInt(a), @floatFromInt(to.integer), p)) },
@@ -194,6 +208,8 @@ fn smooth(allocator: Allocator, from: Value, to: Value, p: f64) Allocator.Error!
     if (shadowList(from) != null and shadowList(to) != null) return try mixBoxShadows(allocator, shadowList(from).?, shadowList(to).?, p, .interpolate);
     if (from == .transform_origin and to == .transform_origin) return try mixOrigins(allocator, from.transform_origin, 1 - p, to.transform_origin, p);
     if (from == .image_position and to == .image_position) return try mixPositions(allocator, from.image_position, 1 - p, to.image_position, p);
+    if (try mixComposite(allocator, l, from, to, .{ .ka = 1 - p, .kb = p })) |v| return v;
+    if (textShadowList(from) != null and textShadowList(to) != null) return try mixTextShadows(allocator, textShadowList(from).?, textShadowList(to).?, p, .interpolate);
     if (lengthPercentage(from) and lengthPercentage(to)) return try mixLengths(allocator, from, 1 - p, to, p);
     return null;
 }
@@ -237,6 +253,12 @@ pub fn add(allocator: Allocator, l: Longhand, underlying: Value, value: Value) A
     if (underlying == .image_position and value == .image_position) {
         if (try mixPositions(allocator, underlying.image_position, 1, value.image_position, 1)) |sum| return sum;
     }
+    if (l == .text_shadow) if (textShadowList(underlying)) |a| if (textShadowList(value)) |b| {
+        // A shadow list adds by appending (Backgrounds 3 6.1, which Text
+        // Decoration 3's text-shadow "as shadow list" names).
+        if (try concatTextShadows(allocator, a, b)) |sum| return sum;
+    };
+    if (try mixComposite(allocator, l, underlying, value, .{ .ka = 1, .kb = 1 })) |sum| return sum;
     return retained(value);
 }
 
@@ -247,6 +269,9 @@ pub fn accumulate(allocator: Allocator, l: Longhand, underlying: Value, value: V
     // their addition, which appends.
     if (l == .box_shadow) if (shadowList(underlying)) |a| if (shadowList(value)) |b| {
         if (try mixBoxShadows(allocator, a, b, 1, .accumulate)) |sum| return sum;
+    };
+    if (l == .text_shadow) if (textShadowList(underlying)) |a| if (textShadowList(value)) |b| {
+        if (try mixTextShadows(allocator, a, b, 1, .accumulate)) |sum| return sum;
     };
     // Filter Effects 1 11: filter lists accumulate function by function.
     if (l == .filter) if (filterList(underlying)) |a| if (filterList(value)) |b| {
@@ -777,28 +802,330 @@ fn mixOrigins(allocator: Allocator, a: *const box_transform_values.Origin, ka: f
 }
 
 /// A computed <position> (Values 4 9.1: "each coordinate combines as a
-/// <length-percentage>"), axis by axis; a complemented (right/bottom)
-/// offset that has not resolved to a plain value is pending (discrete).
+/// <length-percentage>"), axis by axis. A complemented (right/bottom) offset
+/// combines as its distance from the left/top edge, 100% minus it (Values 4
+/// 9.1's computed value), so `right 10px` meets `left 30px` as
+/// calc(100% - 10px) meets 30px (Blink CSSPositionAxisListInterpolationType
+/// converts the same way; Gecko computes `right 10px` to calc(100% - 10px)).
 fn mixPositions(allocator: Allocator, a: *const position_values.Position, ka: f64, b: *const position_values.Position, kb: f64) Allocator.Error!?Value {
     if (a.data != .computed or b.data != .computed or a.logical != b.logical) return null;
     var offsets: [2]position_values.Offset = undefined;
     var made: usize = 0;
-    errdefer for (offsets[0..made]) |o| o.value.release();
+    var done = false;
+    defer if (!done) for (offsets[0..made]) |o| o.value.release();
     for (a.data.computed, b.data.computed) |oa, ob| {
-        if (oa.complement or ob.complement) return null;
-        if (!lengthPercentage(oa.value) or !lengthPercentage(ob.value)) return null;
-    }
-    for (a.data.computed, b.data.computed) |oa, ob| {
-        const v = (try mixLengths(allocator, oa.value, ka, ob.value, kb)) orelse {
-            for (offsets[0..made]) |o| o.value.release();
-            return null;
-        };
+        const v = (try mixOffsets(allocator, oa, ka, ob, kb)) orelse return null;
         offsets[made] = .{ .value = v };
         made += 1;
     }
     const result = try allocator.create(position_values.Position);
     result.* = .{ .allocator = allocator, .data = .{ .computed = offsets }, .logical = a.logical };
+    done = true;
     return .{ .image_position = result };
+}
+
+/// Two computed offsets combined as length-percentages from the start edge.
+/// OWNED; null when either is not a length-percentage.
+fn mixOffsets(allocator: Allocator, a: position_values.Offset, ka: f64, b: position_values.Offset, kb: f64) Allocator.Error!?Value {
+    const xa = (try startOffset(allocator, a)) orelse return null;
+    defer xa.release();
+    const xb = (try startOffset(allocator, b)) orelse return null;
+    defer xb.release();
+    if (!lengthPercentage(xa) or !lengthPercentage(xb)) return null;
+    return try mixLengths(allocator, xa, ka, xb, kb);
+}
+
+/// A computed offset as its distance from the start edge: a complemented
+/// offset is 100% minus it (Values 4 9.1). OWNED; null for one that is not
+/// a length-percentage.
+fn startOffset(allocator: Allocator, o: position_values.Offset) Allocator.Error!?Value {
+    if (!o.complement) return retained(o.value);
+    if (!lengthPercentage(o.value)) return null;
+    return try mixLengths(allocator, .{ .length = Length.percent(100) }, 1, o.value, -1);
+}
+
+// ============================================================================
+// Composite values combined component by component (Web Animations 1 5.2
+// "by computed value" and "repeatable list"; CSS Values 4 section 3)
+// ============================================================================
+
+/// The weights of a linear combination a * ka + b * kb: interpolation at p
+/// is (1 - p, p); addition and accumulation are (1, 1) (Values 4 3).
+const Weights = struct { ka: f64, kb: f64 };
+
+/// The longhands whose Animation type is "repeatable list" (Web Animations 1
+/// 5.2): Backgrounds 3 background-position-x/-y and background-size,
+/// Masking 1 mask-position and mask-size.
+fn repeatableList(l: Longhand) bool {
+    return switch (l) {
+        .background_position_x, .background_position_y, .background_size, .mask_position, .mask_size => true,
+        else => false,
+    };
+}
+
+/// A composite pair combined component by component; null when the kinds,
+/// or any pair of components, do not combine (Web Animations 5.2: "the
+/// property values combine as discrete"). OWNED.
+///
+/// Engines (designs only): Blink CSSLengthPairInterpolationType (corner
+/// radii, border-spacing), CSSSizeListInterpolationType and
+/// CSSPositionAxisListInterpolationType over ListInterpolationFunctions'
+/// lowest common multiple, CSSBorderImageLengthBoxInterpolationType,
+/// CSSFontSizeAdjustInterpolationType, CSSTextIndentInterpolationType;
+/// Gecko's derived Animate for the same computed types.
+fn mixComposite(allocator: Allocator, l: Longhand, a: Value, b: Value, w: Weights) Allocator.Error!?Value {
+    if (repeatableList(l)) return try mixRepeatable(allocator, l, a, b, w);
+    if (a == .corner_radius and b == .corner_radius) return try mixCorners(allocator, a.corner_radius, b.corner_radius, w);
+    if (a == .image_quad or b == .image_quad) return try mixQuads(allocator, a, b, w);
+    if (a == .font_size_adjust and b == .font_size_adjust) return try mixFontSizeAdjust(allocator, a.font_size_adjust, b.font_size_adjust, w);
+    if (a == .indent or b == .indent) return try mixIndents(allocator, a, b, w);
+    return null;
+}
+
+/// One scalar component: <number>s as numbers (Values 4 5.3.1),
+/// <length-percentage>s as length-percentages (5.6.1), and identical
+/// keywords as themselves (Web Animations 5.2: a discrete component combines
+/// only when the two match). OWNED.
+fn mixScalar(allocator: Allocator, a: Value, ka: f64, b: Value, kb: f64) Allocator.Error!?Value {
+    if (a == .number and b == .number) return .{ .number = a.number * ka + b.number * kb };
+    if (lengthPercentage(a) and lengthPercentage(b)) return try mixLengths(allocator, a, ka, b, kb);
+    if (a == .keyword and b == .keyword and a.keyword == b.keyword) return retained(a);
+    return null;
+}
+
+/// A component of a property whose values are never negative (corner radii,
+/// border-spacing, background-size, the border-image quads, a shadow's
+/// blur). Values 4 3.1 clamps only the final value; these components are
+/// clamped where they are combined because their inputs are never negative,
+/// so only an extrapolated interpolation leaves the range, and the pair
+/// types have no clampFinal of their own (Blink's InterpolableLength
+/// clamps the same components with ValueRange::kNonNegative when it builds
+/// the value). Takes ownership.
+fn nonNegative(v: Value) Value {
+    return switch (v) {
+        .number => |n| if (n < 0) .{ .number = 0 } else v,
+        .length => |len| if (len.value < 0) .{ .length = .{ .value = 0, .unit = len.unit } } else v,
+        else => v,
+    };
+}
+
+/// Backgrounds 3 border-*-radius and Tables 3 border-spacing: a pair, each
+/// axis a length-percentage.
+fn mixCorners(allocator: Allocator, a: border_radius.Corner, b: border_radius.Corner, w: Weights) Allocator.Error!?Value {
+    const xa = a.axes();
+    const xb = b.axes();
+    var out: [2]Value = undefined;
+    var made: usize = 0;
+    defer for (out[0..made]) |v| v.release();
+    for (0..2) |i| {
+        out[i] = nonNegative((try mixScalar(allocator, xa[i], w.ka, xb[i], w.kb)) orelse return null);
+        made += 1;
+    }
+    return .{ .corner_radius = try border_radius.Corner.create(allocator, out[0], out[1]) };
+}
+
+/// The items of a layered value: a single value is a one-item list.
+fn layerItems(v: *const Value) []const Value {
+    return if (v.* == .layers) v.layers.items else @as(*const [1]Value, v);
+}
+
+/// Web Animations 1 5.2 "repeatable list": both lists repeated to the least
+/// common multiple of their lengths, then combined item by item; any item
+/// pair that does not combine makes the whole pair discrete.
+fn mixRepeatable(allocator: Allocator, l: Longhand, a: Value, b: Value, w: Weights) Allocator.Error!?Value {
+    const xs = layerItems(&a);
+    const ys = layerItems(&b);
+    if (xs.len == 0 or ys.len == 0) return null;
+    const n = xs.len / std.math.gcd(xs.len, ys.len) * ys.len;
+    const items = try allocator.alloc(Value, n);
+    var made: usize = 0;
+    defer {
+        for (items[0..made]) |v| v.release();
+        allocator.free(items);
+    }
+    for (0..n) |i| {
+        items[i] = (try mixLayer(allocator, xs[i % xs.len], ys[i % ys.len], w)) orelse return null;
+        made += 1;
+    }
+    if (n == 1) return retained(items[0]);
+    return .{ .layers = try image_layers.Layers.create(allocator, l, items) };
+}
+
+/// One item of a repeatable list: a background-size (two axes), or a
+/// background-position axis (a length-percentage from the start edge).
+fn mixLayer(allocator: Allocator, a: Value, b: Value, w: Weights) Allocator.Error!?Value {
+    if (a == .image_size or b == .image_size) return try mixSizes(allocator, a, b, w);
+    const xa = (try axisOffset(allocator, a)) orelse return null;
+    defer xa.release();
+    const xb = (try axisOffset(allocator, b)) orelse return null;
+    defer xb.release();
+    return try mixScalar(allocator, xa, w.ka, xb, w.kb);
+}
+
+/// A background-position-x/-y item as a length-percentage from the start
+/// edge (Backgrounds 3: "computed value: a list, each item a pair of offsets
+/// ... each given as a computed <length-percentage>"). OWNED.
+fn axisOffset(allocator: Allocator, v: Value) Allocator.Error!?Value {
+    if (v != .image_axis) return retained(v);
+    return switch (v.image_axis.data) {
+        .computed => |o| try startOffset(allocator, o),
+        .specified => null,
+    };
+}
+
+/// A background-size item's two axes; a single length is `<length> auto`.
+fn sizeAxes(v: Value) ?[2]Value {
+    return switch (v) {
+        .image_size => |s| s.axes,
+        .keyword => |k| if (k == .auto) .{ v, v } else null,
+        else => if (lengthPercentage(v)) .{ v, Value.kw(.auto) } else null,
+    };
+}
+
+/// Backgrounds 3 background-size: axis by axis, `auto` only with `auto`.
+fn mixSizes(allocator: Allocator, a: Value, b: Value, w: Weights) Allocator.Error!?Value {
+    const xa = sizeAxes(a) orelse return null;
+    const xb = sizeAxes(b) orelse return null;
+    var out: [2]Value = undefined;
+    var made: usize = 0;
+    defer for (out[0..made]) |v| v.release();
+    for (0..2) |i| {
+        out[i] = nonNegative((try mixScalar(allocator, xa[i], w.ka, xb[i], w.kb)) orelse return null);
+        made += 1;
+    }
+    return .{ .image_size = try image_size.Size.create(allocator, out) };
+}
+
+const QuadSides = struct { sides: [4]Value, fill: bool };
+
+/// A border-image-width/-outset/-slice value's four sides; a single value is
+/// all four.
+fn quadSides(v: Value) ?QuadSides {
+    return switch (v) {
+        .image_quad => |q| .{ .sides = q.sides, .fill = q.fill },
+        .number, .length, .calculation => .{ .sides = @splat(v), .fill = false },
+        .keyword => |k| if (k == .auto) .{ .sides = @splat(v), .fill = false } else null,
+        else => null,
+    };
+}
+
+/// Backgrounds 3 border-image-width/-outset/-slice: side by side, a number
+/// with a number and a length-percentage with a length-percentage, `auto`
+/// only with `auto`, and border-image-slice's `fill` equal on both sides.
+fn mixQuads(allocator: Allocator, a: Value, b: Value, w: Weights) Allocator.Error!?Value {
+    const qa = quadSides(a) orelse return null;
+    const qb = quadSides(b) orelse return null;
+    if (qa.fill != qb.fill) return null;
+    var out: [4]Value = undefined;
+    var made: usize = 0;
+    defer for (out[0..made]) |v| v.release();
+    for (0..4) |i| {
+        out[i] = nonNegative((try mixScalar(allocator, qa.sides[i], w.ka, qb.sides[i], w.kb)) orelse return null);
+        made += 1;
+    }
+    return .{ .image_quad = try image_quad.Quad.create(allocator, out, qa.fill) };
+}
+
+/// Fonts 5 font-size-adjust: "discrete if the keywords differ, otherwise by
+/// computed value type" - the same metric, both aspects numbers.
+fn mixFontSizeAdjust(allocator: Allocator, a: *const font_size_adjust.Adjust, b: *const font_size_adjust.Adjust, w: Weights) Allocator.Error!?Value {
+    if (a.metric != b.metric) return null;
+    const x = a.aspect orelse return null;
+    const y = b.aspect orelse return null;
+    if (x != .number or y != .number) return null;
+    const aspect: Value = .{ .number = @max(x.number * w.ka + y.number * w.kb, 0) };
+    return .{ .font_size_adjust = try font_size_adjust.Adjust.create(allocator, a.metric, aspect) };
+}
+
+const IndentParts = struct { offset: Value, flags: text_indent.Flags };
+
+fn indentParts(v: Value) ?IndentParts {
+    return switch (v) {
+        .indent => |i| .{ .offset = i.offset, .flags = i.flags },
+        else => if (lengthPercentage(v)) .{ .offset = v, .flags = .{} } else null,
+    };
+}
+
+/// Text 3 text-indent: "by computed value type, if the keywords match"
+/// (hanging and each-line), the length-percentage combined.
+fn mixIndents(allocator: Allocator, a: Value, b: Value, w: Weights) Allocator.Error!?Value {
+    const x = indentParts(a) orelse return null;
+    const y = indentParts(b) orelse return null;
+    if (x.flags.hanging != y.flags.hanging or x.flags.each_line != y.flags.each_line) return null;
+    if (!lengthPercentage(x.offset) or !lengthPercentage(y.offset)) return null;
+    const offset = (try mixLengths(allocator, x.offset, w.ka, y.offset, w.kb)) orelse return null;
+    defer offset.release();
+    return .{ .indent = try text_indent.Indent.create(allocator, offset, x.flags) };
+}
+
+// ============================================================================
+// text-shadow (Text Decoration 3 4: "as shadow list", Backgrounds 3 6.1)
+// ============================================================================
+
+const TextShadowItem = text_shadow_values.Shadow;
+
+/// The items of a computed text-shadow value; `none` is the empty list.
+fn textShadowList(v: Value) ?[]const TextShadowItem {
+    return switch (v) {
+        .text_shadow => |s| s.items,
+        .keyword => |k| if (k == .none) &.{} else null,
+        else => null,
+    };
+}
+
+/// Pairwise, the shorter list padded with transparent zero-length shadows
+/// (Backgrounds 3 6.1). A color that is not a legacy sRGB color (currentcolor
+/// before cause 5) is pending: the pair combines discretely.
+fn mixTextShadows(allocator: Allocator, a: []const TextShadowItem, b: []const TextShadowItem, p: f64, op: ShadowOp) Allocator.Error!?Value {
+    const n = @max(a.len, b.len);
+    if (n == 0) return Value.kw(.none);
+    const items = try allocator.alloc(TextShadowItem, n);
+    defer allocator.free(items);
+    const transparent: RgbaColor = .{ .r = 0, .g = 0, .b = 0, .a = 0 };
+    for (0..n) |i| {
+        const x: ?TextShadowItem = if (i < a.len) a[i] else null;
+        const y: ?TextShadowItem = if (i < b.len) b[i] else null;
+        const cx = if (x) |v| (if (v.color) |c| legacyRgba(c) else null) orelse return null else transparent;
+        const cy = if (y) |v| (if (v.color) |c| legacyRgba(c) else null) orelse return null else transparent;
+        var item: TextShadowItem = .{ .count = 3 };
+        item.color = .{ .rgba = switch (op) {
+            .interpolate => mixPremultiplied(cx, cy, p),
+            .accumulate => addPremultiplied(cx, cy),
+        } };
+        for (0..3) |k| {
+            const lx = textShadowLength(x, k) orelse return null;
+            const ly = textShadowLength(y, k) orelse return null;
+            const combined = switch (op) {
+                .interpolate => lerp(lx, ly, p),
+                .accumulate => lx + ly,
+            };
+            // The blur radius (the third length) is never negative.
+            item.lengths[k] = Value.px(if (k == 2) @max(combined, 0) else combined);
+        }
+        items[i] = item;
+    }
+    return .{ .text_shadow = try text_shadow_values.Shadows.create(allocator, items, true) };
+}
+
+/// Addition: the underlying list, then the effect's.
+fn concatTextShadows(allocator: Allocator, a: []const TextShadowItem, b: []const TextShadowItem) Allocator.Error!?Value {
+    if (a.len + b.len == 0) return Value.kw(.none);
+    const items = try allocator.alloc(TextShadowItem, a.len + b.len);
+    defer allocator.free(items);
+    @memcpy(items[0..a.len], a);
+    @memcpy(items[a.len..], b);
+    return .{ .text_shadow = try text_shadow_values.Shadows.create(allocator, items, true) };
+}
+
+/// A text shadow's k-th length in px (0 for a padding shadow); null for one
+/// that is not a px length.
+fn textShadowLength(item: ?TextShadowItem, k: usize) ?f64 {
+    const v = item orelse return 0;
+    if (k >= v.count) return 0;
+    return switch (v.lengths[k]) {
+        .length => |len| if (len.unit == .px) len.value else null,
+        else => null,
+    };
 }
 
 // ============================================================================
@@ -1115,11 +1442,18 @@ fn lengthMixes(a: Allocator) !void {
     defer out.deinit(a);
     try mixed.calculation.serialize(&out, a);
     try testing.expectEqualStrings("calc(25% + 5px)", out.items);
-    // The percentage cancels at p = 0: a plain length.
+    // p = 0 keeps the mixed type (Values 4 5.6.1; WPT vertical-align and
+    // offset-distance expect calc(0% + 10px) at 0); p = 1 is V_B.
     const back = try interpolate(a, .width, .{ .length = Length.px(10) }, .{ .length = Length.percent(50) }, 0);
     defer back.release();
-    try testing.expect(back == .length);
-    try testing.expectEqual(@as(f64, 10), back.length.value);
+    try testing.expect(back == .calculation);
+    out.clearRetainingCapacity();
+    try back.calculation.serialize(&out, a);
+    try testing.expectEqualStrings("calc(0% + 10px)", out.items);
+    const end = try interpolate(a, .width, .{ .length = Length.px(10) }, .{ .length = Length.percent(50) }, 1);
+    defer end.release();
+    try testing.expect(end == .length);
+    try testing.expectEqual(@as(f64, 50), end.length.value);
     const sum = try add(a, .width, .{ .length = Length.px(10) }, .{ .length = Length.percent(50) });
     defer sum.release();
     try testing.expect(sum == .calculation);
