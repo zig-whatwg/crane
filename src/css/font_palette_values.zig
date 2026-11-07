@@ -248,3 +248,28 @@ fn take(stream: *Stream, kind: tokens.TokenType) bool {
     _ = stream.next();
     return true;
 }
+
+/// CSS Fonts 4 9.1 font-palette, "Animation type: by computed value": two
+/// computed palettes interpolate as `palette-mix(in oklab, A, B p%)`
+/// (Fonts 4 9.2 palette-mix(); WPT css/css-fonts/animations/font-palette-
+/// interpolation.html, which Chrome and Safari pass), which simplifies to the
+/// palette when both sides are equivalent (Q33's `equivalent`, as computing a
+/// palette-mix() does). For 0 < p < 1; the caller keeps the endpoints. OWNED.
+pub fn interpolatePalettes(allocator: Allocator, a: Value, b: Value, p: f64) Allocator.Error!Value {
+    var entries: std.ArrayList(Entry) = .empty;
+    defer {
+        for (entries.items) |entry| entry.release();
+        entries.deinit(allocator);
+    }
+    try entries.ensureTotalCapacity(allocator, 2);
+    a.retain();
+    entries.appendAssumeCapacity(.{ .palette = a, .weight = null });
+    b.retain();
+    entries.appendAssumeCapacity(.{ .palette = b, .weight = Number.percent(p * 100) });
+    const method: gradients.Method = .{ .space = .oklab };
+    if (equivalent(method, entries.items)) |palette| {
+        palette.retain();
+        return palette;
+    }
+    return .{ .palette_mix = try Mix.take(allocator, method, &entries) };
+}

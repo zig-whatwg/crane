@@ -55,6 +55,9 @@ fn combined(allocator: Allocator, op: Op, name: []const u8, from: []const u8, to
 const cases = .{
     .{ Op.interpolate, "background-color", "currentcolor", "rgb(0, 68, 0)", 0.5, "rgb(0, 34, 0)" },
     .{ Op.interpolate, "background-color", "rgb(0, 68, 0)", "currentcolor", 0.25, "rgb(0, 51, 0)" },
+    // A shadow's currentcolor mixes the same way (Backgrounds 3 6.1).
+    .{ Op.interpolate, "box-shadow", "currentcolor 10px 10px", "rgb(0, 0, 255) 20px 20px", 0.5, "rgb(0, 0, 128) 15px 15px 0px 0px" },
+    .{ Op.interpolate, "text-shadow", "currentcolor 10px 10px", "rgb(0, 0, 255) 20px 20px", 0.5, "rgb(0, 0, 128) 15px 15px 0px" },
     // Legacy pairs keep premultiplied sRGB.
     .{ Op.interpolate, "background-color", "rgb(0, 0, 204)", "rgb(0, 68, 0)", 0.5, "rgb(0, 34, 102)" },
 };

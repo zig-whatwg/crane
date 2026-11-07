@@ -67,6 +67,8 @@ const motion_values = @import("motion_values.zig");
 const shape_interpolation = @import("shape_interpolation.zig");
 const transform_interpolation = @import("transform_interpolation.zig");
 const color_values = @import("color_values.zig");
+const font_palette_values = @import("font_palette_values.zig");
+const font_settings = @import("font_settings.zig");
 
 const Longhand = properties.Longhand;
 const Value = values.Value;
@@ -114,7 +116,7 @@ pub fn animationType(l: Longhand) AnimationType {
 /// The value kinds that combine discretely today although their types have
 /// smooth rules (named so a reader sees the gap, not an approximation).
 pub const pendingKinds = [_][]const u8{
-    "font_settings", "paint", "sizing_function", "grid_tracks",
+    "paint", "sizing_function", "grid_tracks",
 };
 
 // ============================================================================
@@ -241,6 +243,14 @@ fn smooth(allocator: Allocator, l: Longhand, from: Value, to: Value, p: f64) All
         else => {},
     }
     if (l == .transform) return try transform_interpolation.combine(allocator, from, to, p, .interpolate);
+    // Fonts 4 9.1: font-palette mixes inside (0, 1) and keeps each endpoint
+    // outside it (WPT font-palette-interpolation expects `light` at -0.25
+    // and 0, `dark` at 1.5).
+    if (l == .font_palette) {
+        if (p <= 0) return retained(from);
+        if (p >= 1) return retained(to);
+        return try font_palette_values.interpolatePalettes(allocator, from, to, p);
+    }
     if (individualTransform(from) != null or individualTransform(to) != null) return try mixTransforms(allocator, from, to, p, .interpolate);
     if (filterList(from) != null and filterList(to) != null) return try mixFilters(allocator, filterList(from).?, filterList(to).?, p, .interpolate);
     if (shadowList(from) != null and shadowList(to) != null) return try mixBoxShadows(allocator, shadowList(from).?, shadowList(to).?, p, .interpolate);
@@ -865,6 +875,7 @@ fn mixComposite(allocator: Allocator, l: Longhand, a: Value, b: Value, w: Weight
     if (a == .image_quad or b == .image_quad) return try mixQuads(allocator, a, b, w);
     if (a == .font_size_adjust and b == .font_size_adjust) return try mixFontSizeAdjust(allocator, a.font_size_adjust, b.font_size_adjust, w);
     if (a == .indent or b == .indent) return try mixIndents(allocator, a, b, w);
+    if (a == .font_settings and b == .font_settings) return try mixFontSettings(allocator, a.font_settings, b.font_settings, w);
     if (l == .offset_rotate) return try mixRotations(allocator, a, b, w);
     if (a == .motion_path and b == .motion_path) return try mixMotionPaths(allocator, a.motion_path, b.motion_path, w);
     if (a == .shape and b == .shape) {
@@ -1123,6 +1134,23 @@ fn mixFontSizeAdjust(allocator: Allocator, a: *const font_size_adjust.Adjust, b:
     return .{ .font_size_adjust = try font_size_adjust.Adjust.create(allocator, a.metric, aspect) };
 }
 
+/// Fonts 4 font-variation-settings ("Animation type: (see prose)"): two
+/// computed lists of the same axis tags (computed tags are last-wins and
+/// sorted, font_settings) interpolate each value as a <number>; any other
+/// pair is discrete, and font-feature-settings is discrete (Blink
+/// CSSFontVariationSettingsInterpolationType; WPT interpolation-per-property-
+/// 001's font-variation-settings cases).
+fn mixFontSettings(allocator: Allocator, a: *const font_settings.Settings, b: *const font_settings.Settings, w: Weights) Allocator.Error!?Value {
+    if (a.kind != .variation or b.kind != .variation or a.entries.len != b.entries.len) return null;
+    const entries = try allocator.alloc(font_settings.Entry, a.entries.len);
+    defer allocator.free(entries);
+    for (a.entries, b.entries, entries) |x, y, *out| {
+        if (!std.mem.eql(u8, &x.tag, &y.tag) or x.value != .number or y.value != .number) return null;
+        out.* = .{ .tag = x.tag, .value = .{ .number = x.value.number * w.ka + y.value.number * w.kb } };
+    }
+    return .{ .font_settings = try font_settings.Settings.create(allocator, .variation, entries) };
+}
+
 const IndentParts = struct { offset: Value, flags: text_indent.Flags };
 
 fn indentParts(v: Value) ?IndentParts {
@@ -1167,17 +1195,13 @@ fn mixTextShadows(allocator: Allocator, a: []const TextShadowItem, b: []const Te
     if (n == 0) return Value.kw(.none);
     const items = try allocator.alloc(TextShadowItem, n);
     defer allocator.free(items);
-    const transparent: RgbaColor = .{ .r = 0, .g = 0, .b = 0, .a = 0 };
+    var colors: ShadowColors = .{};
+    defer colors.release(allocator);
     for (0..n) |i| {
         const x: ?TextShadowItem = if (i < a.len) a[i] else null;
         const y: ?TextShadowItem = if (i < b.len) b[i] else null;
-        const cx = if (x) |v| (if (v.color) |c| legacyRgba(c) else null) orelse return null else transparent;
-        const cy = if (y) |v| (if (v.color) |c| legacyRgba(c) else null) orelse return null else transparent;
         var item: TextShadowItem = .{ .count = 3 };
-        item.color = .{ .rgba = switch (op) {
-            .interpolate => mixPremultiplied(cx, cy, p),
-            .accumulate => addPremultiplied(cx, cy),
-        } };
+        item.color = (try colors.mix(allocator, if (x) |v| v.color orelse .current else null, if (y) |v| v.color orelse .current else null, p, op)) orelse return null;
         for (0..3) |k| {
             const lx = textShadowLength(x, k) orelse return null;
             const ly = textShadowLength(y, k) orelse return null;
@@ -1192,6 +1216,38 @@ fn mixTextShadows(allocator: Allocator, a: []const TextShadowItem, b: []const Te
     }
     return .{ .text_shadow = try text_shadow_values.Shadows.create(allocator, items, true) };
 }
+
+/// The colors of one shadow list combination: each pair's color (a missing
+/// shadow's is transparent), owned here until the list holds its own
+/// references. Two legacy colors mix in premultiplied sRGB; any other pair
+/// interpolates through color_values (Oklab, or a color-mix() naming
+/// currentcolor: Backgrounds 3 6.1 "each shadow's color ... as <color>");
+/// only legacy pairs accumulate.
+const ShadowColors = struct {
+    owned: std.ArrayListUnmanaged(values.Color) = .empty,
+
+    fn mix(self: *ShadowColors, allocator: Allocator, x: ?values.Color, y: ?values.Color, p: f64, op: ShadowOp) Allocator.Error!?values.Color {
+        const transparent: values.Color = .{ .rgba = .{ .r = 0, .g = 0, .b = 0, .a = 0 } };
+        const cx = x orelse transparent;
+        const cy = y orelse transparent;
+        if (legacyRgba(cx)) |a| if (legacyRgba(cy)) |b| return .{ .rgba = switch (op) {
+            .interpolate => mixPremultiplied(a, b, p),
+            .accumulate => addPremultiplied(a, b),
+        } };
+        if (op != .interpolate) return null;
+        const color = (try color_values.interpolateColors(allocator, cx, cy, p)) orelse return null;
+        self.owned.append(allocator, color) catch |err| {
+            color.release();
+            return err;
+        };
+        return color;
+    }
+
+    fn release(self: *ShadowColors, allocator: Allocator) void {
+        for (self.owned.items) |c| c.release();
+        self.owned.deinit(allocator);
+    }
+};
 
 /// Addition: the underlying list, then the effect's.
 fn concatTextShadows(allocator: Allocator, a: []const TextShadowItem, b: []const TextShadowItem) Allocator.Error!?Value {
@@ -1242,19 +1298,15 @@ fn mixBoxShadows(allocator: Allocator, a: []const BoxShadowItem, b: []const BoxS
     if (n == 0) return Value.kw(.none);
     const items = try allocator.alloc(BoxShadowItem, n);
     defer allocator.free(items);
+    var colors: ShadowColors = .{};
+    defer colors.release(allocator);
     for (0..n) |i| {
         const x: ?BoxShadowItem = if (i < a.len) a[i] else null;
         const y: ?BoxShadowItem = if (i < b.len) b[i] else null;
         const inset = if (x) |v| v.inset else y.?.inset;
         if (x != null and y != null and x.?.inset != y.?.inset) return null;
-        const transparent: RgbaColor = .{ .r = 0, .g = 0, .b = 0, .a = 0 };
-        const cx = if (x) |v| (if (v.color) |c| legacyRgba(c) else null) orelse return null else transparent;
-        const cy = if (y) |v| (if (v.color) |c| legacyRgba(c) else null) orelse return null else transparent;
         var item: BoxShadowItem = .{ .inset = inset, .count = 4 };
-        item.color = .{ .rgba = switch (op) {
-            .interpolate => mixPremultiplied(cx, cy, p),
-            .accumulate => addPremultiplied(cx, cy),
-        } };
+        item.color = (try colors.mix(allocator, if (x) |v| v.color orelse .current else null, if (y) |v| v.color orelse .current else null, p, op)) orelse return null;
         for (0..4) |k| {
             const lx = shadowLength(x, k) orelse return null;
             const ly = shadowLength(y, k) orelse return null;
