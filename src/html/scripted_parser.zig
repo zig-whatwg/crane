@@ -167,6 +167,12 @@ pub const ByteStream = struct {
     /// in a child navigable whose container document is same origin with it
     /// (step 6).
     parent_encoding: ?[]const u8 = null,
+    /// The bytes are a fetched response's (HTTP(S)), given whole: the body's
+    /// end reaches the parser as a networking task of its own
+    /// (`DocumentParser.createComplete`). False for a document made from a
+    /// string - srcdoc, about:blank, a javascript: URL's result, the
+    /// embedder's markup - which the navigation answers without a fetch.
+    fetched: bool = false,
 };
 
 const encoding_sniffing = html_core.parser.encoding_sniffing;
@@ -332,6 +338,9 @@ pub const DocumentParser = struct {
     detached: bool = false,
     document_destroyed: bool = false,
     eof_processed: bool = false,
+    /// A fetched response's body given whole: its implied EOF waits for the
+    /// networking task `EofTask` (createComplete).
+    end_queued: bool = false,
     on_finished: *const fn (*runtime.Instance, *DocumentParser) void,
 
     pub fn create(
@@ -361,6 +370,19 @@ pub const DocumentParser = struct {
         }
         const self = try createWithInput(allocator, ctx, document, decoded orelse html, options, false, &navigationFinished);
         errdefer self.release();
+        // A fetched response's body given whole is still a network byte
+        // stream: HTML 13.2.2 "the input byte stream" ends with the implied
+        // EOF once no more bytes are available, which the network tells the
+        // parser as an event of its own - Blink's BodyLoadingFinished is a
+        // task separate from BodyDataReceived even for a body that came in
+        // one chunk. So its input is not complete yet: the bytes are parsed
+        // by this call, and the EOF - and "the end" with it - by a queued
+        // networking task (`EofTask`), the state the streamed path is in
+        // until its body ends (`readArrived`).
+        if (options.byte_stream) |stream| if (stream.fetched) {
+            self.input_stream.complete = false;
+            self.end_queued = true;
+        };
         if (sniffed) |result| {
             try self.raw_bytes.appendSlice(allocator, html);
             self.byte_stream_decoding = .{
@@ -1038,6 +1060,56 @@ pub const DocumentParser = struct {
     }
 };
 
+/// The networking task that ends a fetched response's body given whole
+/// (DocumentParser.createComplete): "when no more bytes are available", the
+/// implied EOF - the input is complete, and the parser processes the EOF,
+/// which runs "the end" once no parsing-blocking script holds it. A parser
+/// that stopped meanwhile (aborted by a navigation, document.open, a
+/// destroyed document) processes nothing: an aborted parser never runs "the
+/// end".
+const EofTask = struct {
+    parser: *DocumentParser,
+
+    fn queue(parser: *DocumentParser) void {
+        const loop = parser.ctx.getOptionalEventLoop() orelse return finish(parser);
+        const task = parser.allocator.create(EofTask) catch return finish(parser);
+        task.* = .{ .parser = parser };
+        parser.retain();
+        // A global task on the networking task source given the document's
+        // relevant global (HTML 7.5.1): runnable while it is fully active.
+        loop.queueTask(.{
+            .callback = &run,
+            .context = task,
+            .drop = &drop,
+            .document = parser.document,
+            .document_generation = parser.document_generation,
+        });
+    }
+
+    fn run(context: ?*anyopaque) void {
+        const self: *EofTask = @ptrCast(@alignCast(context.?));
+        const parser = self.parser;
+        parser.allocator.destroy(self);
+        defer parser.release();
+        finish(parser);
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *EofTask = @ptrCast(@alignCast(context.?));
+        const parser = self.parser;
+        parser.allocator.destroy(self);
+        parser.release();
+    }
+
+    fn finish(parser: *DocumentParser) void {
+        if (!parser.end_queued) return;
+        parser.end_queued = false;
+        if (parser.trace_failure != null or parser.detached or parser.eof_processed) return;
+        parser.input_stream.complete = true;
+        parser.finishIfPossible() catch |err| log.warn("navigation body: the parser stopped at its end: {}", .{err});
+    }
+};
+
 /// A navigation parser's response body, read as it arrives.
 const NetworkInput = struct {
     /// The body and its reader; null once the body has ended or the parser
@@ -1219,6 +1291,9 @@ pub fn parseHTMLWithScripting(
     parser.finishIfPossible() catch return error.TreeBuilderError;
     // What of the body arrived before the parser existed.
     if (parser.network != null) parser.readNetworkInput();
+    // The end of a fetched body given whole: a networking task of its own,
+    // queued after the tasks its scripts queued (createComplete).
+    if (parser.end_queued) EofTask.queue(parser);
 
     // Actual EOF detaches normally; open/abort/destruction detach without
     // EOF. A returned loading document still owns its suspended parser.

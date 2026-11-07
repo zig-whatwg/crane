@@ -51,6 +51,15 @@ pub const NavigationFetchResult = struct {
     /// (`awaitBody`). Owned.
     arriving: ?*ArrivingResponse = null,
 
+    /// Fetch made this response - an HTTP(S) fetch, or a scheme fetch of a
+    /// blob:, data: or file: URL ("create navigation params by fetching"):
+    /// its body reaches the document's parser as a byte stream whose end is
+    /// a networking task of its own (scripted_parser ByteStream.fetched).
+    /// False for what HTML makes without a fetch: about:blank, srcdoc, a
+    /// javascript: URL's result, the embedder's markup, a network error made
+    /// here.
+    fetched: bool = false,
+
     /// Whether the fetch was successful (2xx status)
     ok: bool,
 
@@ -663,6 +672,7 @@ pub fn resultFromResponse(
 ) NavigationFetchError!NavigationFetchResult {
     var result = NavigationFetchResult.init(allocator);
     errdefer result.deinit();
+    result.fetched = true;
 
     // Set status
     result.status = response.status;
@@ -824,6 +834,8 @@ fn handleAboutUrl(allocator: Allocator, url: []const u8) NavigationFetchError!Na
 fn handleDataUrl(allocator: Allocator, url: []const u8) NavigationFetchError!NavigationFetchResult {
     var result = NavigationFetchResult.init(allocator);
     errdefer result.deinit();
+    // Fetch's scheme fetch "data" makes this response.
+    result.fetched = true;
     result.final_url = try allocator.dupe(u8, url);
 
     // Fetch's data: URL processor, including step 2's excluded fragment.
@@ -872,6 +884,8 @@ const max_file_navigation_bytes: usize = 32 * 1024 * 1024;
 fn handleFileUrl(allocator: Allocator, url: []const u8) NavigationFetchError!NavigationFetchResult {
     var result = NavigationFetchResult.init(allocator);
     errdefer result.deinit();
+    // Fetch's scheme fetch "file" (left to the user agent) makes it.
+    result.fetched = true;
 
     result.final_url = allocator.dupe(u8, url) catch return NavigationFetchError.OutOfMemory;
     result.is_network_error = false;

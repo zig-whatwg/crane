@@ -125,6 +125,9 @@ pub const ByteStream = struct {
     /// it arrives (HTML 7.5.1); the bytes given with it are empty. The
     /// response's: the parse callback takes it (`BodyHandoff.take`).
     body: ?*navigation_fetch.BodyHandoff = null,
+    /// The response came from Fetch (NavigationFetchResult.fetched): its
+    /// end is a networking task of its own (scripted_parser ByteStream).
+    fetched: bool = false,
 };
 
 /// What "load an XML document" is given besides the response's bytes: its
@@ -1316,6 +1319,7 @@ pub const IFrameIntegration = struct {
                 .content_type = response.content_type,
                 .parent_same_origin = new_origin.isSameOrigin(self.container_origin),
                 .body = response.body_stream,
+                .fetched = response.fetched,
             }),
             .text => try self.commitTextDocument(body, response.content_type, computed),
             .media => try self.commitMediaDocument(final_url, document_type.mediaHostElement(computed), computed),
