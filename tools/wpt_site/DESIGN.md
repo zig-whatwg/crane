@@ -344,7 +344,7 @@ The one authored motion: a test file's or failed subtest's chevron (a rotated 1.
 
 ### Addresses
 - `/crane/`: the index; `#status`, `#contents`, `#history`, `#<suite>` (`#suite-<name>` for reserved names), and `#<path>` for the directory and file rows of a suite's table.
-- `/crane/<dir>/`: a directory page; `#<file>` a test file's section on it, `#s-<hash>` a subtest (48 bits of a hash of its test URL and name, suffixed when a name repeats). A browser that reveals a closed `<details>` for a fragment opens the section without script; site.js opens it for the rest.
+- `/crane/<dir>/`: a directory page; `#<file>` a test file's section on it, `#s-<hash>` a subtest (48 bits of a hash of its test URL and name, suffixed when a name repeats). Without script a file's address lands on its row, in the here wash, and a subtest's opens its section where the browser reveals a closed `<details>` around a fragment's target (HTML's ancestor-revealing algorithm); site.js opens both.
 - `/crane/<dir>/~<n>/`: part `n` of a directory over the page budget.
 - `/crane/<dir>/<file>/`: a test file's page until 2026-11-07; 404.html sends it to `/crane/<dir>/#<file>`.
 The first build's hash permalinks into the index (`#<dir>/<file>`) are sent to their sections by site.js.

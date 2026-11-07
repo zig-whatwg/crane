@@ -467,14 +467,14 @@
     if (document.getElementById("history")) return; // the index: its tables are short
     const box = document.querySelector("main .box.tests");
     if (!box) return;
-    const files = box.querySelector(".tf-list");
+    const fileList = box.querySelector(".tf-list");
     const dirs = box.querySelector("table.listing-dirs");
-    const fileRows = files ? [...files.querySelectorAll(":scope > .tf")] : [];
+    const fileRows = fileList ? [...fileList.querySelectorAll(":scope > .tf")] : [];
     const dirRows = dirs ? [...dirs.tBodies[0].rows] : [];
     const q0 = params();
 
     if (dirs) sortable(dirs, (col, dir) => setParams({ sort: `d${col}${dir === "ascending" ? "a" : "d"}` }));
-    const sortFilesBy = files ? sortableFiles(files, (col, dir) => setParams({ sort: `f${col}${dir === "ascending" ? "a" : "d"}` })) : null;
+    const sortFilesBy = fileList ? sortableFiles(fileList, (col, dir) => setParams({ sort: `f${col}${dir === "ascending" ? "a" : "d"}` })) : null;
     const sortParam = /^([fd])(\d)([ad])$/.exec(q0.get("sort") || "");
     if (sortParam) {
       const dir = sortParam[3] === "a" ? "ascending" : "descending";
@@ -516,7 +516,7 @@
         r.hidden = !on; dirsOn += on;
       }
       if (dirs) dirs.hidden = dirRows.every((r) => r.hidden);
-      if (files) files.hidden = fileRows.every((r) => r.hidden);
+      if (fileList) fileList.hidden = fileRows.every((r) => r.hidden);
       const part = (on, all, one, many) => (all ? `${on === all ? fmt(all) : `${fmt(on)} of ${fmt(all)}`} ${all === 1 ? one : many}` : null);
       const filtered = files < fileRows.length || dirsOn < dirRows.length;
       shown.textContent = (filtered ? "Showing " : "") +
@@ -706,9 +706,10 @@
   }
 
   // A test file's address (<dir>/#<file>) or a subtest's (#s-...): open its
-  // section, and the subtest's message, in place. Browsers that reveal a
-  // closed <details> for a fragment do this without script; this is for the
-  // rest, and for a file whose section is on a part page.
+  // section, and the subtest's message, in place. Without script the file's
+  // row is the target (the browser's ancestor revealing opens a closed
+  // <details> around a target, not the target itself); a file whose section
+  // is on a part page goes there.
   function revealTarget() {
     if (location.hash.length < 2) return;
     let id;
