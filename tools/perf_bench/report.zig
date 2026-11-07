@@ -1059,32 +1059,44 @@ fn writeList(w: W, items: []const []const u8) !void {
 
 fn writeElementMethod(w: W, arena: Allocator, t: ElementTable) !void {
     try w.writeAll("<p class=\"chart-note\">How: one case per page (<code>tests/perf/elements.json</code>), each page in a fresh launch, so memory one case freed cannot make another&rsquo;s read smaller. A page first makes everything but the nodes - a slot for each in an array, a host element, the markup to parse - so both readings hold it. The runner reads the footprint (phys_footprint, summed over the engine&rsquo;s processes, as everywhere on this page) when the page reports, and the page reports after ");
-    var first = true;
+    // Who collected and how: Crane's builds by TestUtils.gc(), Chrome by gc(); the others none.
+    var crane_builds: std.ArrayList([]const u8) = .empty;
+    var chrome_forced = false;
+    var none: std.ArrayList([]const u8) = .empty;
     for (t.rows) |row| {
-        if (!row.forced_gc) continue;
-        try w.writeAll(if (first) "a full collection it asks for (" else ", ");
-        first = false;
-        try w.writeAll(switch (row.engine) {
-            .crane, .crane_fast, .crane_base, .crane_control => "<code>TestUtils.gc()</code> twice in ",
-            .chrome => "<code>gc()</code> twice, launched with <code>--js-flags=--expose-gc</code>, in ",
-            .firefox, .safari, .lightpanda => "a collection in ",
-        });
-        try w.writeAll(row.engine.label());
+        if (!row.forced_gc) {
+            try none.append(arena, row.engine.label());
+            continue;
+        }
+        switch (row.engine) {
+            .crane, .crane_fast, .crane_base, .crane_control => try crane_builds.append(arena, row.engine.label()),
+            .chrome => chrome_forced = true,
+            .firefox, .safari, .lightpanda => try none.append(arena, row.engine.label()),
+        }
     }
-    if (!first) try w.writeAll(") and then ");
+    const any_forced = crane_builds.items.len > 0 or chrome_forced;
+    if (any_forced) {
+        try w.writeAll("a full collection it asks for (");
+        if (crane_builds.items.len > 0) {
+            try w.writeAll("<code>TestUtils.gc()</code> twice in ");
+            try writeList(w, crane_builds.items);
+        }
+        if (chrome_forced) {
+            if (crane_builds.items.len > 0) try w.writeAll("; ");
+            try w.writeAll("<code>gc()</code> twice in Chrome, launched with <code>--js-flags=--expose-gc</code>");
+        }
+        try w.writeAll(") and then ");
+    }
     var settle: ?f64 = null;
     for (t.rows) |row| {
         if (row.settle_ms) |v| settle = v;
     }
     if (settle) |v| try w.print("{d:.1} s idle", .{v / 1000.0}) else try w.writeAll("an idle time");
-    var none_first = true;
-    for (t.rows) |row| {
-        if (row.forced_gc) continue;
-        try w.writeAll(if (none_first) "; " else ", ");
-        none_first = false;
-        try w.writeAll(row.engine.label());
+    if (none.items.len > 0) {
+        try w.writeAll("; ");
+        try writeList(w, none.items);
+        try w.writeAll(" let no page ask for a collection, so their readings come after the idle time alone");
     }
-    if (!none_first) try w.writeAll(" let no page ask for a collection, so their readings come after the idle time alone");
     try w.writeAll(". Each figure is the median over the runs");
     var min_runs: ?u32 = null;
     var max_runs: u32 = 0;
@@ -2838,11 +2850,21 @@ test "memory per element: (case - control) / N per run, the median and its devia
     try testing.expect(std.mem.indexOf(u8, sec, "Crane 18.3&times;") != null);
     try testing.expect(std.mem.indexOf(u8, sec, ">timeout</td>") != null);
     // The method, as the rows say: who collected and how, who could not, the idle time, the runs.
-    try testing.expect(std.mem.indexOf(u8, sec, "<code>TestUtils.gc()</code> twice in Crane, <code>gc()</code> twice, launched with <code>--js-flags=--expose-gc</code>, in Chrome) and then 3.0 s idle; Firefox let no page ask for a collection") != null);
+    try testing.expect(std.mem.indexOf(u8, sec, "<code>TestUtils.gc()</code> twice in Crane; <code>gc()</code> twice in Chrome, launched with <code>--js-flags=--expose-gc</code>) and then 3.0 s idle; Firefox let no page ask for a collection") != null);
     try testing.expect(std.mem.indexOf(u8, sec, "(1 to 3)") != null);
     // Rendering is named for the engines that render, and a large control drift for its engine
     // (Crane's control moved 1.1 MB over 1,000 nodes here: 1,100 B a node).
     try testing.expect(std.mem.indexOf(u8, sec, "In the engines that render - Chrome and Firefox - a node in the document also gets a layout object") != null);
     try testing.expect(std.mem.indexOf(u8, sec, "Crane&rsquo;s footprint moved by 1.0 MB between the two readings") != null);
     try testing.expect(std.mem.indexOf(u8, sec, "Chrome&rsquo;s footprint moved") == null);
+}
+
+test "a list in a sentence: a, a and b, a, b and c" {
+    var out: Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    for ([_][]const []const u8{ &.{"Firefox"}, &.{ "Firefox", "Safari" }, &.{ "Firefox", "Safari", "Lightpanda" } }) |items| {
+        try writeList(&out.writer, items);
+        try out.writer.writeAll("|");
+    }
+    try testing.expectEqualStrings("Firefox|Firefox and Safari|Firefox, Safari and Lightpanda|", out.written());
 }
