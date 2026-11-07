@@ -31,7 +31,6 @@ test "NodeBase.getNodeDocument - Document node returns itself" {
     var doc_node = NodeBase{
         .allocator = allocator,
         .node_type = NodeBase.DOCUMENT_NODE,
-        .node_name = "#document",
         .parent_node = null,
         .first_child = null,
         .last_child = null,
@@ -39,11 +38,9 @@ test "NodeBase.getNodeDocument - Document node returns itself" {
         .next_sibling = null,
         .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null, // Document nodes have null owner_document
-        .registered_observers = infra.List(dom.node_base.RegisteredObserverType).init(allocator),
         .is_connected = true,
     };
     defer doc_node.child_nodes.deinit();
-    defer doc_node.registered_observers.deinit();
 
     // Per spec: For Document nodes, getNodeDocument returns itself
     const node_doc = doc_node.getNodeDocument();
@@ -61,7 +58,6 @@ test "NodeBase.getNodeDocument - Element node returns owner_document" {
     var doc_node = NodeBase{
         .allocator = allocator,
         .node_type = NodeBase.DOCUMENT_NODE,
-        .node_name = "#document",
         .parent_node = null,
         .first_child = null,
         .last_child = null,
@@ -69,11 +65,9 @@ test "NodeBase.getNodeDocument - Element node returns owner_document" {
         .next_sibling = null,
         .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
-        .registered_observers = infra.List(dom.node_base.RegisteredObserverType).init(allocator),
         .is_connected = true,
     };
     defer doc_node.child_nodes.deinit();
-    defer doc_node.registered_observers.deinit();
 
     // Cast to Document type pointer for owner_document field
     const doc_ptr: *dom.Document = @ptrCast(&doc_node);
@@ -117,7 +111,6 @@ test "adopt - changes node_document for entire subtree" {
     var doc1_node = NodeBase{
         .allocator = allocator,
         .node_type = NodeBase.DOCUMENT_NODE,
-        .node_name = "#document",
         .parent_node = null,
         .first_child = null,
         .last_child = null,
@@ -125,16 +118,13 @@ test "adopt - changes node_document for entire subtree" {
         .next_sibling = null,
         .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
-        .registered_observers = infra.List(dom.node_base.RegisteredObserverType).init(allocator),
         .is_connected = true,
     };
     defer doc1_node.child_nodes.deinit();
-    defer doc1_node.registered_observers.deinit();
 
     var doc2_node = NodeBase{
         .allocator = allocator,
         .node_type = NodeBase.DOCUMENT_NODE,
-        .node_name = "#document",
         .parent_node = null,
         .first_child = null,
         .last_child = null,
@@ -142,11 +132,9 @@ test "adopt - changes node_document for entire subtree" {
         .next_sibling = null,
         .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
-        .registered_observers = infra.List(dom.node_base.RegisteredObserverType).init(allocator),
         .is_connected = true,
     };
     defer doc2_node.child_nodes.deinit();
-    defer doc2_node.registered_observers.deinit();
 
     const doc1_ptr: *dom.Document = @ptrCast(&doc1_node);
     const doc2_ptr: *dom.Document = @ptrCast(&doc2_node);
@@ -183,7 +171,6 @@ test "adopt - updates attribute node documents for elements" {
     var doc1_node = NodeBase{
         .allocator = allocator,
         .node_type = NodeBase.DOCUMENT_NODE,
-        .node_name = "#document",
         .parent_node = null,
         .first_child = null,
         .last_child = null,
@@ -191,16 +178,13 @@ test "adopt - updates attribute node documents for elements" {
         .next_sibling = null,
         .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
-        .registered_observers = infra.List(dom.node_base.RegisteredObserverType).init(allocator),
         .is_connected = true,
     };
     defer doc1_node.child_nodes.deinit();
-    defer doc1_node.registered_observers.deinit();
 
     var doc2_node = NodeBase{
         .allocator = allocator,
         .node_type = NodeBase.DOCUMENT_NODE,
-        .node_name = "#document",
         .parent_node = null,
         .first_child = null,
         .last_child = null,
@@ -208,11 +192,9 @@ test "adopt - updates attribute node documents for elements" {
         .next_sibling = null,
         .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
-        .registered_observers = infra.List(dom.node_base.RegisteredObserverType).init(allocator),
         .is_connected = true,
     };
     defer doc2_node.child_nodes.deinit();
-    defer doc2_node.registered_observers.deinit();
 
     const doc1_ptr: *dom.Document = @ptrCast(&doc1_node);
     const doc2_ptr: *dom.Document = @ptrCast(&doc2_node);
@@ -248,7 +230,6 @@ test "adopt - same document is a no-op" {
     var doc_node = NodeBase{
         .allocator = allocator,
         .node_type = NodeBase.DOCUMENT_NODE,
-        .node_name = "#document",
         .parent_node = null,
         .first_child = null,
         .last_child = null,
@@ -256,11 +237,9 @@ test "adopt - same document is a no-op" {
         .next_sibling = null,
         .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
-        .registered_observers = infra.List(dom.node_base.RegisteredObserverType).init(allocator),
         .is_connected = true,
     };
     defer doc_node.child_nodes.deinit();
-    defer doc_node.registered_observers.deinit();
 
     const doc_ptr: *dom.Document = @ptrCast(&doc_node);
 
@@ -289,7 +268,6 @@ test "mutation - insert calls adopt before inserting" {
     var doc_node = NodeBase{
         .allocator = allocator,
         .node_type = NodeBase.DOCUMENT_NODE,
-        .node_name = "#document",
         .parent_node = null,
         .first_child = null,
         .last_child = null,
@@ -297,11 +275,9 @@ test "mutation - insert calls adopt before inserting" {
         .next_sibling = null,
         .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
-        .registered_observers = infra.List(dom.node_base.RegisteredObserverType).init(allocator),
         .is_connected = true,
     };
     defer doc_node.child_nodes.deinit();
-    defer doc_node.registered_observers.deinit();
 
     const doc_ptr: *dom.Document = @ptrCast(&doc_node);
 

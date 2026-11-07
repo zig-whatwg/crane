@@ -753,3 +753,11 @@ why = Not a code change: 1 -> 0 in generation 208's sweep ("Expected startTime t
 pair.1 = base 1/1; tip 0/1
 pair.2 = base 1/1; tip 0/1
 pair.3 = base 0/1; tip 1/1
+
+[permissions/permissions-cg.https.html]
+generation = 208
+kind = fixed
+why = PermissionStatus was not kept while it had a change listener (Permissions 6.3.5 "must not be garbage collected if it has an event listener whose type is change"). A collection between addEventListener and test_driver.set_permission took the status, and its permission-store registration with it, so no change event came (OK -> TIMEOUT in generation 208's sweep; the path's second flip after generation 183's flake disposition, so a bug under the one-flake rule; the user chose to hold generation 208's publication until it was fixed, 2026-11-07). Fixed by lane listen1: src/dom/event_listener_changes.zig (WebKit's eventListenersDidChange shape) plus a PermissionStatus keep while it has a change listener, released on the last removal and at its global's teardown. Repro: crane/ls1-permission-status-listener-keep.https.html (case 1 is this file with the collection forced into a later task) on frozen ReleaseSafe runners on chat.local: base main-0f7c8a5f49 fails 10/10 runs, tip 52a3ccd326e 0/10; the file alone is OK 10/10 on both. Tip-only FULL A/B vs generation 208: TIMEOUT 0 -> OK 1. Evidence: chat.local ~/crane-work/listen1-bins/win-52a3ccd326e/ and listen1's merge report (held-files 2026-11-07 15:30 UTC).
+commit = ebdec7ae67f
+test = tests/html/ls1_permission_status_keep_test.zig
+repro = before 10/10; after 0/10

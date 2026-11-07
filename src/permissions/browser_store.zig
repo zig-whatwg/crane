@@ -19,6 +19,10 @@ pub const BrowserStore = struct {
     const Entry = struct {
         listener: *runtime.Instance,
         generation: u64,
+        /// The listener's realm, recorded on its own thread when it
+        /// listened: compared (`listenersIn`), never dereferenced - an
+        /// entry of another thread's realm is never read through.
+        realm: runtime.Context,
         thread: std.Thread.Id,
         sink: ?*runtime.TaskSink,
         deliver: Deliver,
@@ -67,6 +71,7 @@ pub const BrowserStore = struct {
         try self.entries.append(self.allocator, .{
             .listener = listener,
             .generation = runtime.SlabAllocator.generationOf(listener),
+            .realm = listener.ctx,
             .thread = std.Thread.getCurrentId(),
             .sink = sink,
             .deliver = deliver,
@@ -89,6 +94,26 @@ pub const BrowserStore = struct {
             self.freeEntry(self.entries.swapRemove(i));
         }
         if (self.entries.items.len == 0) self.entries.clearAndFree(self.allocator);
+    }
+
+    /// A status registered here, as `listenersIn` gives it: its slab
+    /// generation says whether the slot is still that status.
+    pub const Listener = struct { instance: *runtime.Instance, generation: u64 };
+
+    /// The statuses registered from `realm`, OWNED by the caller (free with
+    /// `allocator`). Read under the lock; the caller - on `realm`'s own
+    /// thread - checks each generation before reading a status, since one
+    /// may be torn down between this read and that.
+    pub fn listenersIn(self: *BrowserStore, realm: runtime.Context, allocator: std.mem.Allocator) std.mem.Allocator.Error![]Listener {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        var found: std.ArrayListUnmanaged(Listener) = .empty;
+        errdefer found.deinit(allocator);
+        for (self.entries.items) |entry| {
+            if (entry.realm != realm) continue;
+            try found.append(allocator, .{ .instance = entry.listener, .generation = entry.generation });
+        }
+        return found.toOwnedSlice(allocator);
     }
 
     pub fn get(self: *BrowserStore, key: []const u8, descriptor: types.PermissionDescriptor) ?types.PermissionState {

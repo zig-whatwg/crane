@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const infra = @import("infra");
+const runtime = @import("runtime");
 const Allocator = std.mem.Allocator;
 const interfaces = @import("interfaces");
 
@@ -44,10 +45,6 @@ pub const NodeBase = struct {
     owner_instance: ?*anyopaque = null,
 
     node_type: u16,
-    node_name: []const u8,
-    /// Tracks whether node_name was dynamically allocated (vs a string literal).
-    /// Used to determine if node_name should be freed during cleanup.
-    node_name_allocated: bool = false,
 
     // Tree structure - BOTH patterns for O(1) access in all directions
     // Parent pointer
@@ -65,9 +62,9 @@ pub const NodeBase = struct {
     // Document ownership
     owner_document: ?*DocumentType = null,
 
-    /// DOM §7.1 - Registered observer list
-    /// List of registered mutation observers watching this node
-    registered_observers: infra.List(RegisteredObserverType),
+    /// The fields few nodes use - the registered observer list, the node
+    /// name - or null while none has been needed (NodeRareData).
+    rare: ?*NodeRareData = null,
 
     /// Connection status - true when root is a document
     /// Used by isConnected getter
@@ -173,6 +170,119 @@ pub const NodeBase = struct {
         /// refcount.zig.
         removal_held: bool = false,
     };
+
+    // ========================================================================
+    // Rare data (lane perf2 batch 4, R6 part 1)
+    // ========================================================================
+
+    /// The node's rare data, or null when none was ever needed.
+    pub fn rareData(self: *const NodeBase) ?*NodeRareData {
+        return self.rare;
+    }
+
+    /// The node's rare data, made on first use (WebKit `ensureRareData`) and
+    /// kept, never moved, until the node's teardown (`deinitRareData`).
+    fn ensureRareData(self: *NodeBase) error{OutOfMemory}!*NodeRareData {
+        if (self.rare) |rare| return rare;
+        const rare = try self.allocator.create(NodeRareData);
+        rare.* = .{};
+        self.rare = rare;
+        if (self.domMemory()) |memory| memory.add(@sizeOf(NodeRareData));
+        return rare;
+    }
+
+    /// The DOM memory of this node's Browser (runtime.BrowserScope.dom_memory),
+    /// which counts what the node holds so V8 can schedule collections by it
+    /// (runtime.own_state.nodeDomMemory): its rare data and its registered
+    /// observer entries are counted here, as they are made and freed. Null for
+    /// a NodeBase no Instance owns (the test-only WithBase types), and after
+    /// the node's teardown unregistered it - nothing is counted for it then.
+    fn domMemory(self: *const NodeBase) ?*runtime.gc.ExternalMemory {
+        const owner = self.owner_instance orelse return null;
+        const instance: *const runtime.Instance = @ptrCast(@alignCast(owner));
+        return &runtime.BrowserScope.ofInstance(instance).dom_memory;
+    }
+
+    /// The node's teardown, after its registered observers were released
+    /// (dom.observer_registrations.releaseList): frees an owned node name and
+    /// the block. Nothing may be registered on the node any more.
+    pub fn deinitRareData(self: *NodeBase) void {
+        const rare = self.rare orelse return;
+        std.debug.assert(rare.registered_observers.first == null);
+        if (rare.node_name_allocated) self.allocator.free(rare.node_name);
+        self.allocator.destroy(rare);
+        self.rare = null;
+        if (self.domMemory()) |memory| memory.sub(@sizeOf(NodeRareData));
+    }
+
+    /// The node name a node type gave its NodeBase, or "" - every node but
+    /// the HTML and SVG script, iframe, embed, object and frame elements
+    /// (and the test-only WithBase types). Not DOM's nodeName: a brand the
+    /// insertion, removing and post-connection steps dispatch on. Read only
+    /// through here, so a tag of its own (Z4/R12) changes only this.
+    pub fn nodeName(self: *const NodeBase) []const u8 {
+        const rare = self.rare orelse return "";
+        return rare.node_name;
+    }
+
+    /// Whether the node owns its name (`setOwnedNodeName`).
+    pub fn hasOwnedNodeName(self: *const NodeBase) bool {
+        const rare = self.rare orelse return false;
+        return rare.node_name_allocated;
+    }
+
+    /// Name the node with `name`, which outlives it (a literal).
+    pub fn setStaticNodeName(self: *NodeBase, name: []const u8) error{OutOfMemory}!void {
+        const rare = try self.ensureRareData();
+        if (rare.node_name_allocated) self.allocator.free(rare.node_name);
+        rare.node_name = name;
+        rare.node_name_allocated = false;
+    }
+
+    /// Name the node with `name`, allocated from the node's allocator: the
+    /// node owns it from here and frees it with its rare data. On failure
+    /// the caller still owns it.
+    pub fn setOwnedNodeName(self: *NodeBase, name: []const u8) error{OutOfMemory}!void {
+        const rare = try self.ensureRareData();
+        if (rare.node_name_allocated) self.allocator.free(rare.node_name);
+        rare.node_name = name;
+        rare.node_name_allocated = true;
+    }
+
+    /// DOM 4.3: the node's registered observer list, in order - registration
+    /// order, transient registered observers appended like any other.
+    pub fn registeredObservers(self: *const NodeBase) RegisteredObserverIterator {
+        const rare = self.rare orelse return .{ .next_link = null };
+        return .{ .next_link = rare.registered_observers.first };
+    }
+
+    /// Whether anything is registered on the node.
+    pub fn hasRegisteredObservers(self: *const NodeBase) bool {
+        const rare = self.rare orelse return false;
+        return rare.registered_observers.first != null;
+    }
+
+    /// Append `registered` to the node's registered observer list (observe()
+    /// step 8, "remove" step 15): one record, allocated from the node's
+    /// allocator, that stays where it is until it is removed.
+    pub fn appendRegisteredObserver(self: *NodeBase, registered: RegisteredObserverType) error{OutOfMemory}!*RegisteredObserverType {
+        const rare = try self.ensureRareData();
+        const record = try self.allocator.create(ObserverRegistration);
+        record.* = .{ .registered = registered };
+        rare.registered_observers.append(&record.link);
+        if (self.domMemory()) |memory| memory.add(@sizeOf(ObserverRegistration));
+        return &record.registered;
+    }
+
+    /// Remove `registered` - one of this node's - from its registered
+    /// observer list and free its record. Constant time.
+    pub fn removeRegisteredObserver(self: *NodeBase, registered: *RegisteredObserverType) void {
+        const rare = self.rare.?;
+        const record: *ObserverRegistration = @fieldParentPtr("registered", registered);
+        rare.registered_observers.remove(&record.link);
+        self.allocator.destroy(record);
+        if (self.domMemory()) |memory| memory.sub(@sizeOf(ObserverRegistration));
+    }
 
     /// The one write of `parent_node` (WebKit `Node::setParentNode`): the
     /// pointer and the parent bit of `rc` together. The holds a link moves
@@ -341,6 +451,45 @@ pub const NodeBase = struct {
             return @ptrCast(self);
         }
         return self.owner_document;
+    }
+};
+
+/// The fields few nodes ever use, kept out of every NodeBase (WebKit
+/// NodeRareData, Blink NodeRareData, Gecko nsINode::nsSlots): allocated once,
+/// on first use, from the node's allocator, and never moved or reallocated -
+/// Blink 601c5205e1d5 fixed a corruption from rare data that reallocated
+/// while a caller held a pointer into it. Freed by the node's own teardown
+/// (NodeBase.deinitRareData).
+pub const NodeRareData = struct {
+    /// DOM 4.3: "Each node has a registered observer list (a list of zero or
+    /// more registered observers), which is initially empty." Intrusive:
+    /// one ObserverRegistration per entry, appended at the tail, removed in
+    /// constant time - the order is the list's.
+    registered_observers: std.DoublyLinkedList = .{},
+    /// NodeBase.nodeName's, and whether the node owns it.
+    node_name: []const u8 = "",
+    node_name_allocated: bool = false,
+};
+
+/// One entry of a node's registered observer list: its link and the
+/// registered observer (or transient registered observer). A separate
+/// allocation of the node's, so an entry never moves while the list grows.
+pub const ObserverRegistration = struct {
+    link: std.DoublyLinkedList.Node = .{},
+    registered: RegisteredObserverType,
+};
+
+/// A walk of a node's registered observer list, head to tail. It reads each
+/// entry's successor before handing the entry out, so the entry it handed out
+/// last may be removed (NodeBase.removeRegisteredObserver) during the walk.
+pub const RegisteredObserverIterator = struct {
+    next_link: ?*std.DoublyLinkedList.Node,
+
+    pub fn next(self: *RegisteredObserverIterator) ?*RegisteredObserverType {
+        const link = self.next_link orelse return null;
+        self.next_link = link.next;
+        const record: *ObserverRegistration = @fieldParentPtr("link", link);
+        return &record.registered;
     }
 };
 

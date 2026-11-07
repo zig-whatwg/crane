@@ -32,25 +32,26 @@ pub const TextWithBase = struct {
 
     /// Initialize a new Text node
     pub fn init(allocator: Allocator, data: []const u8) !TextWithBase {
-        return .{
+        var node: TextWithBase = .{
             .base = NodeBase{
                 .allocator = allocator,
                 .node_type = NodeBase.TEXT_NODE,
-                .node_name = "#text",
                 .parent_node = null,
                 .child_nodes = @import("infra").List(*NodeBase).init(allocator),
                 .owner_document = null,
-                .registered_observers = @import("infra").List(node_base.RegisteredObserverType).init(allocator),
             },
             .data = try allocator.dupe(u8, data),
         };
+        errdefer allocator.free(node.data);
+        try node.base.setStaticNodeName("#text");
+        return node;
     }
 
     /// Clean up resources
     pub fn deinit(self: *TextWithBase) void {
         self.base.allocator.free(self.data);
         self.base.child_nodes.deinit();
-        self.base.registered_observers.deinit();
+        self.base.deinitRareData();
     }
 
     /// Upcast Text to NodeBase
@@ -106,25 +107,26 @@ pub const CommentWithBase = struct {
 
     /// Initialize a new Comment node
     pub fn init(allocator: Allocator, data: []const u8) !CommentWithBase {
-        return .{
+        var node: CommentWithBase = .{
             .base = NodeBase{
                 .allocator = allocator,
                 .node_type = NodeBase.COMMENT_NODE,
-                .node_name = "#comment",
                 .parent_node = null,
                 .child_nodes = @import("infra").List(*NodeBase).init(allocator),
                 .owner_document = null,
-                .registered_observers = @import("infra").List(node_base.RegisteredObserverType).init(allocator),
             },
             .data = try allocator.dupe(u8, data),
         };
+        errdefer allocator.free(node.data);
+        try node.base.setStaticNodeName("#comment");
+        return node;
     }
 
     /// Clean up resources
     pub fn deinit(self: *CommentWithBase) void {
         self.base.allocator.free(self.data);
         self.base.child_nodes.deinit();
-        self.base.registered_observers.deinit();
+        self.base.deinitRareData();
     }
 
     /// Upcast Comment to NodeBase

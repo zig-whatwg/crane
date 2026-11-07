@@ -29,7 +29,6 @@ const DOCUMENT_TYPE_NODE = NodeBase.DOCUMENT_TYPE_NODE;
 const DOCUMENT_FRAGMENT_NODE = NodeBase.DOCUMENT_FRAGMENT_NODE;
 
 // Local DOM modules
-const RegisteredObserver = @import("registered_observer.zig").RegisteredObserver;
 const tree_helpers = @import("tree_helpers.zig");
 const shadow_dom_algorithms = @import("shadow_dom_algorithms.zig");
 const mutation_observer = @import("mutation_observer_algorithms.zig");
@@ -422,10 +421,10 @@ fn createTransientObserversForRemovedNode(node: anytype, parent: anytype) !void 
     while (current_ancestor) |ancestor| : (current_ancestor = ancestor.parent_node) {
         // Appending below never touches this list: node is not an ancestor
         // of its old parent.
-        for (0..ancestor.registered_observers.len) |i| {
-            const registered = ancestor.registered_observers.get(i) orelse continue;
+        var entries = ancestor.registeredObservers();
+        while (entries.next()) |registered| {
             if (!registered.options.subtree) continue;
-            try removed.registered_observers.append(.{
+            _ = try removed.appendRegisteredObserver(.{
                 .observer = registered.observer,
                 .observer_generation = registered.observer_generation,
                 .options = registered.options,
@@ -3036,12 +3035,9 @@ test "a callback registered twice runs once" {
     var parent: NodeBase = .{
         .allocator = std.testing.allocator,
         .node_type = NodeBase.DOCUMENT_FRAGMENT_NODE,
-        .node_name = "#document-fragment",
         .child_nodes = infra.List(*NodeBase).init(std.testing.allocator),
-        .registered_observers = infra.List(RegisteredObserver).init(std.testing.allocator),
     };
     defer parent.child_nodes.deinit();
-    defer parent.registered_observers.deinit();
     runChildrenChangedSteps(&parent, .inserted);
     try std.testing.expectEqual(@as(usize, 1), Counter.calls);
 }

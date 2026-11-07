@@ -335,7 +335,7 @@ fn collectTextContent(node: *const Node, list: *infra.List(u8)) !void {
     // If this is a Text node (type 3), append its content
     if (node.node_type == Node.TEXT_NODE) {
         // node_name contains the text data for Text nodes
-        try list.appendSlice(node.node_name);
+        try list.appendSlice(node.nodeName());
     }
 
     // Recursively process children
