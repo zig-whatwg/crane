@@ -380,7 +380,8 @@ pub fn get_scrollParent(instance: *runtime.Instance) anyerror!?*runtime.Instance
 pub fn get_offsetParent(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     // Would need layout backend to determine this properly
     // The offsetParent is the nearest positioned ancestor
-    _ = instance;
+    // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
+    dom.style.engine.updateStyleForRead(instance);
     return null;
 }
 
@@ -388,28 +389,32 @@ pub fn get_offsetParent(instance: *runtime.Instance) anyerror!?*runtime.Instance
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-htmlelement-offsettop
 pub fn get_offsetTop(instance: *runtime.Instance) anyerror!i32 {
     // Requires layout computation
-    _ = instance;
+    // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
+    dom.style.engine.updateStyleForRead(instance);
     return 0;
 }
 
 /// Getter for offsetLeft
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-htmlelement-offsetleft
 pub fn get_offsetLeft(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
+    // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
+    dom.style.engine.updateStyleForRead(instance);
     return 0;
 }
 
 /// Getter for offsetWidth
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-htmlelement-offsetwidth
 pub fn get_offsetWidth(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
+    // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
+    dom.style.engine.updateStyleForRead(instance);
     return 0;
 }
 
 /// Getter for offsetHeight
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-htmlelement-offsetheight
 pub fn get_offsetHeight(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
+    // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
+    dom.style.engine.updateStyleForRead(instance);
     return 0;
 }
 
