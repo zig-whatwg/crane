@@ -75,6 +75,7 @@ fn heldSubtreeStaysWhole() !void {
     try page.run(churn);
     for (0..2) |_| try page.collect();
     try page.run(
+        \\(() => {
         \\if (range.startContainer.parentNode.id !== 'b1') throw new Error('range start: ' + range.startContainer.parentNode.id);
         \\if (range.endContainer.data !== 'y') throw new Error('range end: ' + range.endContainer.data);
         \\if (it.referenceNode.id !== 'b1') throw new Error('iterator: ' + it.referenceNode.id);
@@ -88,9 +89,11 @@ fn heldSubtreeStaysWhole() !void {
         \\document.getElementById('s1').remove();
         \\const queued = mo.takeRecords();
         \\if (queued.length !== 1 || queued[0].removedNodes[0].id !== 's1') throw new Error('queued record');
+        \\})();
         \\0;
     );
-    // Every holder lets go.
+    // Every holder lets go (the reads ran in a function: a top-level `const`
+    // of a classic script stays in the page's global lexical scope).
     try page.run("delete globalThis.range; delete globalThis.it; delete globalThis.tw; mo.disconnect(); delete globalThis.mo; delete globalThis.kept; 0;");
     for (0..4) |_| try page.collect();
     try testing.expectEqual(@as(usize, 0), liveOf(page.browser, "HTMLParagraphElement"));
@@ -134,6 +137,7 @@ fn holdersOutliveAFramesSubtree() !void {
     for (0..2) |_| try page.collect();
     // Each read is the node it was, or nothing: never a node that took its block.
     try page.run(
+        \\(() => {
         \\const seen = [];
         \\const read = (f) => { try { const v = f(); if (v != null) seen.push(String(v)); } catch (e) {} };
         \\read(() => range.startContainer.parentNode.id);
@@ -147,6 +151,7 @@ fn holdersOutliveAFramesSubtree() !void {
         \\  if (v === 'churn' || v === 'q' || v === 'w') throw new Error('a holder read a block another node took: ' + seen.join(','));
         \\  if (!['fb', 'y', 'x', 'fi'].includes(v)) throw new Error('unexpected read: ' + seen.join(','));
         \\}
+        \\})();
         \\delete globalThis.range; delete globalThis.it; delete globalThis.tw; mo.disconnect(); delete globalThis.mo; delete globalThis.kept;
         \\0;
     );
