@@ -3671,7 +3671,29 @@ fn lifecycleAbortForNavigation(document: *runtime.Instance) void {
 fn abortDocument(document: *runtime.Instance, for_navigation: bool) void {
     // Fetch cancellation can synchronously drop delivery tasks. Normal load
     // continuation is already forbidden before any cancellation callback.
-    if (getInternal(document)) |internal| internal.script_delivery_continuation_suppressed = true;
+    if (getInternal(document)) |internal| {
+        internal.script_delivery_continuation_suppressed = true;
+        // A navigation that aborts a document whose load event has not fired
+        // (its readiness is not "complete" yet) ends its load: it never fires
+        // load or pageshow, nor its container's load (completeLoading).
+        // Stated deviation from HTML, whose "the end" step 9 task fires load
+        // whatever aborted the document after its parser stopped - golden
+        // rule 2, the majority: Firefox and Safari pass
+        // replace-before-load/a-user-click.html and
+        // location-assign-user-click.html (a navigation while an image delays
+        // the load event; the frame's first load event is the new
+        // document's), Chrome fails both (wpt.fyi 94f58d592d); no newer spec.
+        // Gecko's mechanism: nsDocumentViewer::LoadComplete(aStatus) fires
+        // load and pageshow only for a successful status, and the new load's
+        // Stop() completes the old one as NS_BINDING_ABORTED. With the parse
+        // of a fully received body ending in its own task (as Firefox's
+        // parser flushes it), a planned form navigation queued by the
+        // parse's script runs after "interactive" and before the load task -
+        // replace-before-load/form-submit.html and the other two pass by this
+        // rule, while an unhandledrejection queued by the same script still
+        // follows "interactive" (promise-rejection-event-during-parse.html).
+        if (for_navigation and internal.ready_state != ._complete_) internal.load_aborted = true;
+    }
     const realm = document.ctx;
     const had_engine = realm.hasEngine();
     const pin: ?engine.Owned = if (had_engine)
@@ -4769,6 +4791,15 @@ fn completeLoadingWithChild(container: *runtime.Instance) void {
 /// destroys it); then the completely loaded time; then the parent's own
 /// completion.
 fn completeLoading(document: *runtime.Instance) void {
+    // A navigation aborted it before this task ran (abortDocument): its load
+    // ends without load, pageshow or its container's load - as Gecko's
+    // nsDocumentViewer::LoadComplete for an NS_BINDING_ABORTED load. Its
+    // readiness still becomes "complete" (as "abort a parser" step 5 leaves
+    // a document whose parser a navigation aborted).
+    if (getInternal(document)) |internal| if (internal.load_aborted) {
+        updateReadiness(document, ._complete_);
+        return;
+    };
     // Step 9.1: "Update the current document readiness to "complete"."
     updateReadiness(document, ._complete_);
     // Steps 9.2-9.3: no browsing context, nothing more.
