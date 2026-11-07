@@ -12,6 +12,11 @@
 //                                                          the page is ready at (an app's data
 //                                                          rendered), else the load event is
 //   perf.idle(name)                                        the page loads and is left alone
+//   perf.retain(name, { setup(n), create(n) })             objects made and kept: the footprint is
+//                                                          read before `create(count)` and after,
+//                                                          each time after a collection where the
+//                                                          engine lets a page ask for one, and
+//                                                          `settle` ms of idle time
 // `run` may return a promise; a sample then ends when it settles. `this` in setup, run and
 // teardown is one object per workload, for its state. A setup that throws perf.Unsupported
 // marks the workload unsupported in this engine (the message says what is missing).
@@ -19,7 +24,15 @@
 // The URL's query: perf=<token> (from the runner), iterations, warmup, steps (a chain's
 // length), step (this document's place in the chain), settle (ms the page is left alone after
 // each timed workload's teardown, and before its done mark, for the steady footprint the runner
-// reads at the `settled` and `done` marks).
+// reads at the `settled` and `done` marks; a retained page's idle time before each reading),
+// count (how many objects a retained page makes and keeps).
+//
+// A retained page (docs/performance.md, "Memory per element") holds everything it makes in
+// `this` from setup on, so nothing it keeps is garbage at either reading; what `setup` makes
+// (an array with a slot per object, a string to parse) is made before the first reading and
+// held to the end, so the difference between the readings is the objects alone. A page makes
+// one case and the runner launches each case in a fresh process: memory one case freed would
+// otherwise stay in the allocators and make the next case read smaller.
 (function () {
   'use strict';
   const params = new URLSearchParams(location.search);
@@ -29,11 +42,15 @@
   const steps = Math.max(0, +(params.get('steps') || 0));
   const step = Math.max(0, +(params.get('step') || 0));
   const settle = Math.max(0, +(params.get('settle') || 0));
+  const count = Math.max(0, +(params.get('count') || 0));
   const idle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const workloads = [];
   let chainName = null;
   let chainReady = null;
   let idleName = null;
+  let retained = null;
+  // What a retained page made, held until the page ends.
+  let kept = null;
 
   class Unsupported extends Error {}
 
@@ -104,6 +121,52 @@
     await post('done', {});
   }
 
+  // A full collection, where the engine lets a page ask for one: the TestUtils Standard's
+  // TestUtils.gc() (Crane's console), or gc() where the engine exposes it (Chrome with
+  // --js-flags=--expose-gc). Twice, as gc_bench does: one pass can leave what only becomes
+  // unreachable once the first has cleared what referenced it. Says which it used.
+  async function collect() {
+    if (typeof TestUtils === 'object' && TestUtils && typeof TestUtils.gc === 'function') {
+      await TestUtils.gc();
+      await TestUtils.gc();
+      return 'TestUtils.gc';
+    }
+    if (typeof gc === 'function') {
+      gc();
+      gc();
+      return 'gc';
+    }
+    return 'none';
+  }
+
+  // The JS heap where the engine tells a page (Chrome's performance.memory), else null.
+  function jsHeap() {
+    const m = performance.memory;
+    return m && typeof m.usedJSHeapSize === 'number' ? m.usedJSHeapSize : null;
+  }
+
+  async function runRetained() {
+    const w = retained;
+    const ctx = {};
+    kept = ctx;
+    try {
+      if (w.setup) await w.setup.call(ctx, count);
+      let method = await collect();
+      await idle(settle);
+      await post('before', { workload: w.name, gc: method, js_heap: jsHeap() });
+      const t0 = performance.now();
+      const r = w.create.call(ctx, count);
+      if (r && typeof r.then === 'function') await r;
+      const ms = performance.now() - t0;
+      method = await collect();
+      await idle(settle);
+      await post('after', { workload: w.name, ops: count, wall_ms: [ms], gc: method, js_heap: jsHeap() });
+    } catch (e) {
+      await post('error', { workload: w.name, message: describe(e), unsupported: e instanceof Unsupported });
+    }
+    await post('done', { kept: kept === ctx });
+  }
+
   async function runChain(loadMs) {
     await post('step', { workload: chainName, step, load_ms: loadMs });
     if (step + 1 < steps) {
@@ -139,6 +202,7 @@
       }
       await post('loaded', { load_ms: loadMs });
       if (idleName) return;
+      if (retained) return runRetained();
       runTimed();
     }, 0);
   }
@@ -150,6 +214,7 @@
     },
     chain(name, ready) { chainName = name; chainReady = ready || null; },
     idle(name) { idleName = name; },
+    retain(name, spec) { retained = { name, setup: spec.setup, create: spec.create }; },
     // For a page's own scripts: a deterministic pseudo-random sequence, so every engine
     // gets the same data.
     random(seed) {

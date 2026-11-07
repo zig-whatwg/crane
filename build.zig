@@ -5571,11 +5571,19 @@ pub fn build(b: *std.Build) void {
     perf_suite_check.addArgs(&.{ "check-suite", "--suite=tests/perf/suite.json", "--root=tests/perf" });
     perf_suite_check.has_side_effects = true;
     test_step.dependOn(&perf_suite_check.step);
+    // The memory-per-element pages are a suite of their own (one case per
+    // page, `retained`), so suite.json stays the pages every round repeats.
+    const elements_suite_check = b.addRunArtifact(perf_bench_exe);
+    elements_suite_check.setCwd(b.path("."));
+    elements_suite_check.addArgs(&.{ "check-suite", "--suite=tests/perf/elements.json", "--root=tests/perf" });
+    elements_suite_check.has_side_effects = true;
+    test_step.dependOn(&elements_suite_check.step);
     // `zig build perf-bench-test`: the tool's tests and the suite check
     // alone, with build_mode's (the console's release modes).
     const perf_bench_test_step = b.step("perf-bench-test", "Run tools/perf_bench's tests, the suite check, the WPT site's tests and the runner build-mode tests alone");
     perf_bench_test_step.dependOn(&run_perf_bench_tests.step);
     perf_bench_test_step.dependOn(&perf_suite_check.step);
+    perf_bench_test_step.dependOn(&elements_suite_check.step);
     // The WPT site's tests too: /performance/'s card draws with its atlas,
     // and the site leaves performance/ alone and links to it.
     perf_bench_test_step.dependOn(&run_wpt_site_tests.step);

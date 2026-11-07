@@ -304,7 +304,31 @@ pub const Launch = struct {
     cwd: ?[]const u8 = null,
 };
 
+/// What a page asks of its engine's launch beyond the page itself.
+pub const LaunchOptions = struct {
+    /// A retained page (suite kind `retained`, docs/performance.md "Memory
+    /// per element"): its readings come after a full collection where the
+    /// page can ask for one, and beside the JS heap where the engine tells
+    /// a page. Only Chrome has launch switches for them
+    /// (`chrome_collect_flags`); Crane's console has TestUtils.gc() (the
+    /// TestUtils Standard, in every build: -Denable-test-utils defaults to
+    /// true), and Firefox, Safari and Lightpanda have no switch that gives a
+    /// page either.
+    collect: bool = false,
+};
+
+/// Chrome's switches for a retained page: `gc()` on the global
+/// (`--js-flags=--expose-gc`, a V8 flag), and performance.memory's figures
+/// precise and fresh at each read (`--enable-precise-memory-info`; without
+/// it Blink may round them into buckets and serve them from a cache,
+/// third_party/blink/renderer/core/timing/memory_info.cc).
+pub const chrome_collect_flags = [_][]const u8{ "--js-flags=--expose-gc", "--enable-precise-memory-info" };
+
 pub fn launch(arena: Allocator, pin: Pin, url: []const u8, profile: []const u8, port: u16) Allocator.Error!Launch {
+    return launchWith(arena, pin, url, profile, port, .{});
+}
+
+pub fn launchWith(arena: Allocator, pin: Pin, url: []const u8, profile: []const u8, port: u16, options: LaunchOptions) Allocator.Error!Launch {
     var argv: std.ArrayList([]const u8) = .empty;
     var flags: std.ArrayList([]const u8) = .empty;
     switch (pin.name) {
@@ -323,6 +347,10 @@ pub fn launch(arena: Allocator, pin: Pin, url: []const u8, profile: []const u8, 
                 try argv.append(arena, f);
                 try flags.append(arena, f);
             }
+            if (options.collect) for (chrome_collect_flags) |f| {
+                try argv.append(arena, f);
+                try flags.append(arena, f);
+            };
             try argv.append(arena, try std.fmt.allocPrint(arena, "--user-data-dir={s}", .{profile}));
             try flags.append(arena, "--user-data-dir=<profile>");
             try argv.append(arena, url);
@@ -499,6 +527,38 @@ test "each engine's command line, and the flags the journal records" {
     try expectStrings(&.{ "/usr/bin/safaridriver", "-p", "4444" }, safari.argv);
     try testing.expectEqual(@as(usize, 4), safari.names.len);
     try testing.expectEqual(Drive.webdriver, safari.drive);
+}
+
+test "a retained page: Chrome's page may ask for a collection and read its JS heap; nothing else changes" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const sha = "abababababababababababababababababababababababababababababababab";
+    const url = "http://127.0.0.1:8000/memory/elements-detached-div.html?perf=t";
+    const chrome_pin: Pin = .{ .name = .chrome, .version = "157", .build = "b", .binary = "/c/chrome", .sha256 = sha };
+    const plain = try launch(a, chrome_pin, url, "/p/1", 0);
+    const collecting = try launchWith(a, chrome_pin, url, "/p/1", 0, .{ .collect = true });
+    // The two switches, after the quiet-profile flags, before the profile
+    // and the URL; recorded in the row's flags.
+    try testing.expectEqual(plain.argv.len + 2, collecting.argv.len);
+    try expectStrings(plain.argv[0 .. chrome_flags.len + 1], collecting.argv[0 .. chrome_flags.len + 1]);
+    try expectStrings(&chrome_collect_flags, collecting.argv[chrome_flags.len + 1 .. chrome_flags.len + 3]);
+    try expectStrings(plain.argv[chrome_flags.len + 1 ..], collecting.argv[chrome_flags.len + 3 ..]);
+    try expectStrings(&chrome_collect_flags, collecting.flags[chrome_flags.len .. chrome_flags.len + 2]);
+    // Every page that is not a retained one launches Chrome as before.
+    for (plain.flags) |f| try testing.expect(!std.mem.startsWith(u8, f, "--js-flags") and !std.mem.eql(u8, f, "--enable-precise-memory-info"));
+    // The other engines have no such switch: their launch is the same.
+    inline for (.{
+        Pin{ .name = .crane, .version = "v", .build = "b", .binary = "/b/repl", .sha256 = sha, .commit = "c", .optimize = "o", .v8 = "v8" },
+        Pin{ .name = .firefox, .version = "159", .build = "b", .binary = "/f/firefox", .sha256 = sha },
+        Pin{ .name = .lightpanda, .version = "n", .build = "b", .binary = "/l/lightpanda", .sha256 = sha },
+        Pin{ .name = .safari, .version = "27.2", .build = "b", .binary = "/s", .sha256 = sha, .webdriver = "/usr/bin/safaridriver" },
+    }) |pin| {
+        const x = try launch(a, pin, url, "/p/2", 9333);
+        const y = try launchWith(a, pin, url, "/p/2", 9333, .{ .collect = true });
+        try expectStrings(x.argv, y.argv);
+        try expectStrings(x.flags, y.flags);
+    }
 }
 
 test "Safari's app is its launch's own: none running before it, and ended after it" {

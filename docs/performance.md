@@ -98,6 +98,7 @@ statement, the workload says so: that is its browser equivalent.
 | `startup.idle-page` | from launching the engine to that page's load event: start-up, reported apart so no other row includes it | |
 | `memory.page-growth` | 30 documents in one tab, each with 2,000 elements and listeners: the footprint's slope per page | |
 | `memory.instances` | 1 to 4 engines side by side on a small page: the footprint's slope per added instance | |
+| `elements.*` | memory per element, a suite of its own (`tests/perf/elements.json`): see "Memory per element" | |
 
 Rendering and layout are not Crane's (it draws nothing), so no workload times them; the
 browsers' footprints include their rendering processes, as running them headless does.
@@ -111,6 +112,47 @@ the engine heap and the live global handles. The statements have browser equival
 above); the measurement has none: a full collection forced between batches (`--gc`: what is
 retained, not how fast), instructions counted for one process, and the engine adapter's counters.
 Those rows stay Crane-only, with their history.
+
+## Memory per element
+
+What one kept node costs each engine (the user, 2026-11-07: "can we get our nodes even
+smaller?", and "yes" to a fair comparison with the browsers). The browsers' published object
+sizes - Blink's Element at 80 bytes, Lightpanda's at 74 - leave out the JS wrapper and the side
+tables, so they are not a comparison; this measures the whole engine, the same way in each.
+
+- **Its own suite**, `tests/perf/elements.json`: six pages of kind `retained`
+  (`tests/perf/memory/elements-*.html`, the cases in `elements.js`), so `suite.json` stays the
+  pages every round repeats. One case per page, and each page in a fresh launch: memory one case
+  freed stays in its allocators, and a second case in the same process would reuse it and read
+  smaller.
+- **A case** (`perf.retain(name, { setup(n), create(n) })`, harness.js): `setup` makes everything
+  but the nodes - a slot for each in an array, a host element, the markup to parse - and the
+  harness holds it to the end, so both readings hold it; then the page asks for a full collection
+  where the engine lets it (`TestUtils.gc()` twice in Crane's console; `gc()` twice in Chrome,
+  launched with `--js-flags=--expose-gc`; Firefox, Safari and Lightpanda let a page ask for none),
+  idles `settle_ms`, and posts `before`; makes and keeps `count` nodes; collects and idles again,
+  and posts `after`. The runner reads the process set's footprint at each mark, as for every row.
+- **The cases**, N = 100,000 in every engine: divs kept in a JS array; divs appended to the
+  document; divs with two attributes (the same two values on each); text nodes; spans made by
+  the fragment parser (innerHTML, the markup one flat string made in setup); and **the control**,
+  the same steps with nothing made.
+- **The figure** (`report.zig` `elementTable`): per run, (the case's footprint difference - the
+  control's median difference) / N; the median over the runs, with the median absolute deviation
+  shown where it is 5% or more. Where the engine tells a page its JS heap (Chrome's
+  `performance.memory.usedJSHeapSize`, launched with `--enable-precise-memory-info`), the same
+  figure for the heap beside it.
+- **The journal**: one row of kind `retained` per case and run - `ops` = N, `footprint_start` /
+  `footprint_end` the two readings, `wall_ms` the one sample of making them, counters `forced_gc`
+  (1 when both readings followed a collection the page asked for), `settle_ms`, and
+  `js_heap_before` / `js_heap_after` where reported. The report keeps these rows out of every
+  other section: the headline, the round tables, the progress and the drift controls are the
+  suite's alone.
+
+```bash
+zig-out/bin/perf_bench run --suite=tests/perf/elements.json --root=tests/perf --out=<dir> --round=<n> \
+  --runs=5 --pin=crane.pin --pin=crane_fast.pin --pin=chrome.pin --pin=firefox.pin --pin=safari.pin \
+  --pin=lightpanda.pin --stop-file=<STOP>
+```
 
 ## How it is measured
 
@@ -236,13 +278,13 @@ its tests byte for byte; `perf_bench validate` reads journals the same way. The 
 | `round`, `time` | the perf round (0: the baseline), and the launch's UTC time |
 | `host` | name, OS, arch, CPU, cores, memory |
 | `engine` | name (`crane`, `crane_fast`, `crane_base`, `crane_control`, `chrome`, `firefox`, `safari`, `lightpanda`), version, build; Crane's commit, optimize modes, CPU target (`target_cpu`, absent from round 0's rows) and V8; the binary, its SHA-256, the launch flags |
-| `page`, `workload`, `kind`, `run` | what ran: `timed`, `chain`, `idle`, `startup`, `instances`, `gc_bench` |
+| `page`, `workload`, `kind`, `run` | what ran: `timed`, `chain`, `idle`, `startup`, `instances`, `gc_bench`, `retained` |
 | `status`, `message` | `ok`, `error`, `timeout`, `crash` or `unsupported`, and why |
 | `ops`, `wall_ms` | operations per sample and each sample's time (a chain: each step's load) |
 | `cpu_ms`, `instructions` | the process set's between the workload's marks |
 | `memory` | footprint at start and end, peak, steady (`footprint_settled`), resident at end, processes |
 | `series` | a chain's footprint per step; instances' total with 1..k running |
-| `counters` | Crane-only figures (gc_bench rows) |
+| `counters` | figures beyond the common ones: gc_bench rows' (Crane only), retained rows' collection, idle time and JS heap |
 | `launch_ms` | launch to the page's load mark |
 
 Journals are kept by round, outside git (`wpt-results/perf/rounds/<round>/...`, two levels below
