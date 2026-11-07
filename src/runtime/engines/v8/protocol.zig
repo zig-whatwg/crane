@@ -86,6 +86,10 @@ pub const capabilities: engine.Capabilities = .{
     // and Location templates, per-realm security tokens, and
     // FunctionTemplate::SetAcceptAnyReceiver (cross_origin.zig).
     .cross_origin_objects = .emulated,
+    // The binding of each CrossOriginProperties(Window) member, the
+    // indexed and named getters and the opener setter call the realm's
+    // report_window_access (protocol_realms.reportWindowAccess).
+    .window_access_reporting = .native,
     // Isolate::SetWasmStreamingCallback: V8 defines compileStreaming and
     // instantiateStreaming and hands each fulfilled source to the host
     // (protocol_webassembly.zig).

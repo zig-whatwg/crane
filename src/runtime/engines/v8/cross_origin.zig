@@ -100,6 +100,36 @@ pub fn acceptsAnyReceiver(comptime iface: []const u8, comptime js_name: []const 
     return false;
 }
 
+/// The property name HTML 7.1.3.3's access report check is told for `use`
+/// of member `js_name` of interface `iface` (WindowRealmOptions.
+/// report_window_access), or null: Window's CrossOriginProperties members
+/// for the uses the table lists - Chromium's make_report_coop_access
+/// (bind_gen/interface.py) reports exactly the [CrossOrigin] members, a
+/// getter unless it says Setter only - and the opener setter, which
+/// Chromium's DOMWindow::setOpenerForBindings reports as "opener".
+/// Deviation: a same-origin Window's `self` and `frames` - and `window` too,
+/// in a realm restored from the snapshot (context_manager's hydration step
+/// 16) - are own data properties whose value is its global
+/// (protocol_realms bindWindowToGlobal), not accessors, so no binding runs
+/// for their same-origin [[Get]] and only the cross-origin one (this
+/// table's members) reports.
+pub fn windowAccessProperty(comptime iface: []const u8, comptime js_name: []const u8, comptime use: Use) ?[]const u8 {
+    @setEvalBranchQuota(100_000);
+    if (comptime !std.mem.eql(u8, iface, "Window")) return null;
+    if (comptime use == .setter and std.mem.eql(u8, js_name, "opener")) return "opener";
+    inline for (window_properties) |property| {
+        if (comptime std.mem.eql(u8, property.name, js_name)) {
+            const listed = switch (use) {
+                .operation => property.isOperation(),
+                .getter => property.needs_getter,
+                .setter => property.needs_setter,
+            };
+            return if (listed) property.name else null;
+        }
+    }
+    return null;
+}
+
 /// Whether interface `iface`'s members run WebIDL's security check at all:
 /// the interfaces a Window or a Location implements (acceptsAnyReceiver).
 pub fn isSecurityChecked(comptime iface: []const u8) bool {
@@ -241,6 +271,8 @@ fn childNamed(isolate: *v8.Isolate, window_ptr: ?*anyopaque, name: [*]const u8, 
     _ = isolate;
     const window = instanceOf(window_ptr) orelse return null;
     const child = dom.cross_origin.childNavigableNamed(window, name[0..name_len]) orelse return null;
+    // HTML 7.1.3.3's access report check (Chromium reports "named").
+    protocol_realms.reportWindowAccess(window, "named");
     const proxy = protocol_realms.windowProxyOf(child) orelse return null;
     defer v8.v8_Object_Dispose(proxy);
     return v8.v8_Global_Clone(@ptrCast(proxy));

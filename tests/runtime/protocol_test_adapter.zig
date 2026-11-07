@@ -38,6 +38,7 @@ pub const capabilities: engine.Capabilities = .{
     .code_generation_checks = .unsupported,
     .html_constructor = .unsupported,
     .cross_origin_objects = .unsupported,
+    .window_access_reporting = .unsupported,
     .webassembly_streaming = .unsupported,
     .wrap_tracking = .unsupported,
     .host_clock = .unsupported,

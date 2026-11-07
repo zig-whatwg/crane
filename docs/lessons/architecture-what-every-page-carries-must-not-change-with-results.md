@@ -13,3 +13,5 @@
 3. Write files only when their bytes change, and prune what is no longer generated; test that a rerun writes 0 files.
 
 **Takeaway**: **Keep results out of the shared frame; only the page a result belongs to may change.**
+
+**Update (2026-11-07, lane site1)**: the frame was not the only way in. Each test file's page named the run that recorded its result, and every sweep is a new run, so generation 207's commit rewrote 13,206 pages for ~50 moved results. See [A value every run renews must not reach every page](architecture-a-value-every-run-renews-must-not-reach-every-page.md): name the generation's main run once, on the index, and test a new sweep with unchanged results, not only a new generation.

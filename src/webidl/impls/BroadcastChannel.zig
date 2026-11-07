@@ -20,9 +20,15 @@
 //! Stated, not modelled:
 //! - The strong reference from the global while a channel that is not closed
 //!   has `message` or `messageerror` listeners: a channel is held from its
-//!   construction until close() or its realm's end, listeners or not (Blink
-//!   reads listeners at GC time, in HasPendingActivity; nothing here tells a
-//!   channel when one is added).
+//!   construction until close() or its document's destruction (its worker's
+//!   end), listeners or not (Blink reads listeners at GC time, in
+//!   HasPendingActivity; nothing here tells a channel when one is added).
+//!   The hold is one counted keep (`InternalState.kept`), ended once: by
+//!   close(), or by the unloading document cleanup step `endInRealm` - Blink's
+//!   BroadcastChannel is an ExecutionContextLifecycleObserver whose
+//!   ContextDestroyed ends it (CloseInternal), and its ActiveScriptWrappable
+//!   keeps nothing of a destroyed context. Never by the channel's teardown,
+//!   which runs only once the wrapper the keep was counted on is gone.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -49,6 +55,9 @@ pub const InternalState = struct {
     /// The channel name. Owned.
     name: []u8 = &.{},
     closed: bool = false,
+    /// The constructor's keep (engine.keepPlatformObjectAlive) is held:
+    /// ended once, by close() or `endInRealm`.
+    kept: bool = false,
 };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
@@ -61,6 +70,9 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 const Entry = struct {
     instance: *runtime.Instance,
     generation: u64,
+    /// The channel's realm, compared, never dereferenced (an entry of
+    /// another thread's realm is never read through).
+    realm: runtime.Context,
     /// The channel name. Owned.
     name: []u8,
     /// Its relevant settings object's complete canonical storage key.
@@ -141,6 +153,23 @@ const Registry = struct {
         return list;
     }
 
+    /// Take `realm`'s channels off the list, into `out` (the caller's).
+    fn takeRealm(self: *Registry, realm: runtime.Context, out: *std.ArrayListUnmanaged(Entry), allocator: std.mem.Allocator) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        var i: usize = 0;
+        while (i < self.entries.items.len) {
+            if (self.entries.items[i].realm != realm) {
+                i += 1;
+                continue;
+            }
+            // No room to hand it over: it stays listed, and its channel
+            // stays a destination until close() or the channel's teardown.
+            out.append(allocator, self.entries.items[i]) catch return;
+            _ = self.entries.orderedRemove(i);
+        }
+    }
+
     fn remove(self: *Registry, instance: *runtime.Instance) void {
         const removed: ?Entry = blk: {
             std.Io.Threaded.mutexLockUncancelable(&self.mutex);
@@ -169,6 +198,7 @@ fn register(instance: *runtime.Instance) !void {
     try registry.add(.{
         .instance = instance,
         .generation = runtime.SlabAllocator.generationOf(instance),
+        .realm = instance.ctx,
         .name = name,
         .storage_key = storage_key,
         .sink = sink.retain(),
@@ -199,8 +229,13 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     unregister(instance);
-    // An open channel's keep goes with it; a closed one's went at close().
-    if (getInternal(instance)) |internal| if (!internal.closed) engine.releasePlatformObject(instance);
+    // Releases nothing: the teardown runs only once the wrapper the keep was
+    // counted on is gone - collected, its count with it (in a detached
+    // realm the keep is an edge from the global, which the collector took
+    // too), or with its realm's end. Releasing here ended a keep that no
+    // longer existed ("releasePlatformObject on BroadcastChannel ... with no
+    // keepPlatformObjectAlive left to end", the Debug runner, 2026-11-06).
+    if (getInternal(instance)) |internal| internal.kept = false;
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.allocator.free(internal.name);
@@ -219,9 +254,48 @@ pub fn call_constructor(ctx: runtime.Context, name: runtime.DOMString) !*runtime
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.name = try internal.allocator.dupe(u8, name.asSlice());
     try register(instance);
-    // Held while it can hear a message (the file comment says how far).
+    // Held while it can hear a message (the file comment says how far). The
+    // binding wraps the new instance as `this` once this returns, and the
+    // wrapper takes the keep over (WrapperCache.set): the path every
+    // constructor with pending activity takes (Worker, WebSocket).
     engine.keepPlatformObjectAlive(instance);
+    internal.kept = true;
     return instance;
+}
+
+/// End the constructor's keep, once.
+fn endKeep(instance: *runtime.Instance, internal: *InternalState) void {
+    if (!internal.kept) return;
+    internal.kept = false;
+    engine.releasePlatformObject(instance);
+}
+
+/// Installed once at process start: a destroyed document's (or ended
+/// worker's) channels are no destinations and no longer kept.
+pub fn installHooks() void {
+    dom.unloading_cleanup.install(&endInRealm);
+}
+
+/// An unloading document cleanup step (dom.unloading_cleanup), which also
+/// runs when a worker's global scope ends: `realm`'s channels leave the
+/// Browser's list and their keeps end, while its wrapper cache still counts
+/// them. HTML's postMessage step 1 ("If this's relevant global object is a
+/// Window whose associated Document is not fully active, then return")
+/// already makes no channel of a destroyed document a destination; Blink
+/// ends the channel at ContextDestroyed (CloseInternal). The closed flag is
+/// left as script set it: postMessage on such a channel returns at step 1.
+fn endInRealm(realm: runtime.Context) void {
+    const registry = Registry.of(realm) orelse return;
+    var taken: std.ArrayListUnmanaged(Entry) = .empty;
+    defer taken.deinit(realm.allocator);
+    registry.takeRealm(realm, &taken, realm.allocator);
+    for (taken.items) |entry| {
+        registry.free(entry);
+        // This thread's own channel: read only while its slot is its own.
+        if (runtime.SlabAllocator.generationOf(entry.instance) != entry.generation) continue;
+        const internal = getInternal(entry.instance) orelse continue;
+        endKeep(entry.instance, internal);
+    }
 }
 
 /// "The name getter steps are to return this's channel name."
@@ -242,7 +316,7 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
     if (internal.closed) return;
     internal.closed = true;
     unregister(instance);
-    engine.releasePlatformObject(instance);
+    endKeep(instance, internal);
 }
 
 /// The postMessage(message) method steps.

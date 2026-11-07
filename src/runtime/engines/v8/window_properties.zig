@@ -381,6 +381,11 @@ fn namedPropertyGetter(
 
     const result = WindowImpl.getNamedProperty(window, name) catch return .kNo;
     if (result) |js_val| {
+        // HTML 7.1.3.3's access report check for a name the named getter
+        // answers (Chromium reports "named"; access-reporting/
+        // property-named-getter: an iframe's name and an element's id, never
+        // a global or a missing name).
+        @import("protocol_realms.zig").reportWindowAccess(window, "named");
         // Acquired only on this path: every early return above would leak it.
         const context = getContextFromHolder(info) orelse return .kNo;
         defer v8.v8_Context_Dispose(context);

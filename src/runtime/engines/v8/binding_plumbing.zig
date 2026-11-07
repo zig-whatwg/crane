@@ -549,6 +549,11 @@ pub const Operation = struct {
         frame: *CallFrame,
         result_owned: *bool,
     ) anyerror!?*v8.Value,
+    /// HTML's access report check for a CrossOriginProperties(Window)
+    /// member (Chromium's make_report_coop_access): the property name the
+    /// realm's report_window_access is told before the member's steps
+    /// (protocol_realms.reportWindowAccess), or null for every other member.
+    window_access: ?[]const u8 = null,
 };
 
 /// An operation function's steps (the generic MethodCallback's callback,
@@ -700,6 +705,9 @@ fn operationBody(info: *const v8.FunctionCallbackInfo, self: *const Operation) v
     // Step 3: too few arguments is a TypeError, in the
     // operation's realm, before any is converted.
     if (throwIfTooFewArguments(self, info, &frame)) return;
+
+    // HTML 7.1.3.3: the access is checked for a report before the steps.
+    if (self.window_access) |property| @import("protocol_realms.zig").reportWindowAccess(instance, property);
 
     // Call the method with appropriate arguments
     // CROSS-REALM SUPPORT: the frame gives the method's realm for a result
@@ -975,6 +983,11 @@ pub const Getter = struct {
     read: ?*const fn (info: *const v8.FunctionCallbackInfo, instance: *runtime.Instance, this_handle: ?*v8.Object, error_realm: *ErrorRealm) void,
     /// A constant's getter (no instance): sets its value.
     read_constant: ?*const fn (info: *const v8.FunctionCallbackInfo) void,
+    /// HTML's access report check for a CrossOriginProperties(Window)
+    /// member (Chromium's make_report_coop_access): the property name the
+    /// realm's report_window_access is told before the member's steps
+    /// (protocol_realms.reportWindowAccess), or null for every other member.
+    window_access: ?[]const u8 = null,
 
     pub const Kind = enum {
         /// The impl's getter returns void: a skipped property.
@@ -1026,7 +1039,7 @@ pub fn attributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter
 
     // `window` needs no Window (see answerWindowGetter).
     if (self.answers_window) {
-        if (answerWindowGetter(info)) return;
+        if (answerWindowGetter(info, self.window_access)) return;
     }
 
     // Instance getter - extract instance from 'this' and call.
@@ -1285,6 +1298,10 @@ pub fn attributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter
     // testharness.js relies on this: (function(global_scope){...})(self)
     // If we return a wrapped Window instance instead of the actual global, the
     // exposed functions won't be accessible as global variables.
+    // HTML 7.1.3.3: the access is checked for a report before the steps
+    // (DOMWindow::ReportCoopAccess in Chromium's generated getter).
+    if (self.window_access) |property| @import("protocol_realms.zig").reportWindowAccess(instance, property);
+
     if (self.returns_global_this) {
         // Return info.This() - the actual receiver object
         // For a property access on the global, this is the global proxy
@@ -1767,7 +1784,7 @@ pub fn recordSameObjectEdge(isolate: *v8.Isolate, owner: *v8.Object, prop_name: 
 /// attached but its Window freed, so looking the Window up made `w.window`
 /// throw where `w.self` answered (self-et-al.window.js). Answers false for
 /// any other `this`, which the generic path brand-checks.
-pub fn answerWindowGetter(info: *const v8.FunctionCallbackInfo) bool {
+pub fn answerWindowGetter(info: *const v8.FunctionCallbackInfo, window_access: ?[]const u8) bool {
     const isolate = info.getIsolate();
     // V8 enters the getter's creation context: the method's realm.
     const method_ctx = v8.v8_Isolate_GetCurrentContext(isolate) orelse return false;
@@ -1777,6 +1794,17 @@ pub fn answerWindowGetter(info: *const v8.FunctionCallbackInfo) bool {
     const this_obj = info.getThis();
     defer v8.v8_Object_Dispose(this_obj);
     if (!v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) return false;
+    // HTML 7.1.3.3's access report check, for the method's realm's Window.
+    // The global's Window field (null once the realm has ended) answers the
+    // check's first question - has the Browser started its access
+    // monitoring? - before realmWindow looks the Window up.
+    if (window_access) |property| {
+        const held = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+        const monitored = if (held) |window| @import("protocol_realms.zig").windowAccessMonitored(@ptrCast(@alignCast(window))) else true;
+        if (monitored) {
+            if (realmWindow(method_ctx, method_global)) |window| @import("protocol_realms.zig").reportWindowAccess(@ptrCast(@alignCast(window)), property);
+        }
+    }
     // Copied into the return value; ours is released above.
     info.setReturnValue(@ptrCast(method_global));
     return true;
@@ -1864,6 +1892,11 @@ pub const Setter = struct {
         value: *SetterValue,
         value_handed_over: *bool,
     ) void,
+    /// HTML's access report check for a CrossOriginProperties(Window)
+    /// member (Chromium's make_report_coop_access): the property name the
+    /// realm's report_window_access is told before the member's steps
+    /// (protocol_realms.reportWindowAccess), or null for every other member.
+    window_access: ?[]const u8 = null,
 };
 
 /// A setter's value, info[0], as a Global made only when its conversion
@@ -2122,6 +2155,9 @@ fn setterBody(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
         }
         return;
     }
+
+    // HTML 7.1.3.3: the access is checked for a report before the steps.
+    if (self.window_access) |property| @import("protocol_realms.zig").reportWindowAccess(instance, property);
 
     self.write(info, instance, &frame, &value, &value_handed_over);
 }
