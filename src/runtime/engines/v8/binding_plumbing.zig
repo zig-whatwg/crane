@@ -2313,12 +2313,10 @@ pub fn finishOperation(
 
     // Convert return value to V8
     // CROSS-REALM SUPPORT: the method's realm (the frame's function context)
-    // for object creation
-    const return_context = frame.functionContext() orelse {
-        result_owned.* = true;
-        return v8.v8_Undefined(isolate);
-    };
-    return try convertReturnValue(ReturnType, byte_string, zig_result, allocator, isolate, return_context, result_owned);
+    // for object creation - asked of the frame only by the results made in
+    // it (a union's or a dictionary's object): a void, a wrapper or a handle
+    // makes no context (perf3 phase 1b: every void operation made one).
+    return try convertReturnValue(ReturnType, byte_string, zig_result, allocator, isolate, frame, result_owned);
 }
 
 /// Convert Zig return value to V8 Value
@@ -2328,7 +2326,7 @@ pub fn convertReturnValue(
     result: anytype,
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
-    v8_context: *v8.Context,
+    frame: *CallFrame,
     owned: *bool,
 ) !?*v8.Value {
     // Suppress unused parameter warning - allocator used only in recursive calls
@@ -2349,7 +2347,7 @@ pub fn convertReturnValue(
     // Handle error union - unwrap it
     if (type_info == .error_union) {
         const PayloadType = type_info.error_union.payload;
-        return convertReturnValue(PayloadType, byte_string, result, std.heap.page_allocator, isolate, v8_context, owned);
+        return convertReturnValue(PayloadType, byte_string, result, std.heap.page_allocator, isolate, frame, owned);
     }
 
     // Handle void return
@@ -2366,7 +2364,7 @@ pub fn convertReturnValue(
     if (type_info == .optional) {
         if (result) |value| {
             const ChildType = type_info.optional.child;
-            return convertReturnValue(ChildType, false, value, std.heap.page_allocator, isolate, v8_context, owned);
+            return convertReturnValue(ChildType, false, value, std.heap.page_allocator, isolate, frame, owned);
         } else {
             owned.* = true;
             return @ptrCast(v8.v8_Null(isolate));
@@ -2481,6 +2479,10 @@ pub fn convertReturnValue(
     // `owned` was left false for every union, so FormData.get kept
     // the String of every string entry it returned.
     if (type_info == .@"union") {
+        const v8_context = frame.functionContext() orelse {
+            owned.* = true;
+            return v8.v8_Undefined(isolate);
+        };
         const converted = conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
             owned.* = true;
             return v8.v8_Undefined(isolate);
@@ -2503,6 +2505,10 @@ pub fn convertReturnValue(
         // (conv.releaseReturnedDictionaryHandles).
         owned.* = comptime conv.dictionaryValueIsOwned(ReturnType);
         defer conv.releaseReturnedDictionaryHandles(ReturnType, result);
+        const v8_context = frame.functionContext() orelse {
+            owned.* = true;
+            return v8.v8_Undefined(isolate);
+        };
         return conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
             owned.* = true;
             return v8.v8_Undefined(isolate);
