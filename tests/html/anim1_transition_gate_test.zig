@@ -31,7 +31,7 @@ fn noDeclarationNoFrame() !void {
         \\div.style.opacity = '0.5';
         \\div.setAttribute('style', 'opacity: 0.25; color: green');
     );
-    try std.testing.expect(!dom.style.engine.declaresTransitions(document));
+    try std.testing.expect(!dom.style.engine.declaresAnimations(document));
     try std.testing.expect(page.browser.event_loop.?.frames.timer_id == null);
 }
 
@@ -54,7 +54,7 @@ fn styleAttributeOpensTheGate() !void {
     try std.testing.expect(!counts.version.rendering_watch);
     // CSSOM writes the attribute: "handle attribute changes" sees the value.
     try page.run("div.style.transition = 'opacity 1s';");
-    try std.testing.expect(dom.style.engine.declaresTransitions(document));
+    try std.testing.expect(dom.style.engine.declaresAnimations(document));
     try std.testing.expect(counts.version.rendering_watch);
     try std.testing.expect(page.browser.event_loop.?.frames.timer_id != null);
     // After that frame the watch is armed again: the next mutation asks.
@@ -79,7 +79,7 @@ fn sheetOpensTheGate() !void {
         \\document.head.appendChild(style);
         \\style.sheet.insertRule('.fade { transition: opacity 1s }');
     );
-    try std.testing.expect(dom.style.engine.declaresTransitions(document));
+    try std.testing.expect(dom.style.engine.declaresAnimations(document));
 }
 
 test "a sheet rule that declares a transition opens the gate" {
