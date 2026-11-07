@@ -181,7 +181,7 @@ components:
 
 The site reads as a specification document of the WHATWG and W3C kind, not a CI dashboard. It has a numbered contents rail, a header block that says which version this is, a "Status of this document" section that states scope before any number appears, one numbered section per suite, and a closing "Revision history" section. Spec-paper white, near-black ink, link blue and hairline rules carry the page. Colour is kept for meaning: conformance green for passing, red for failure, grey for blocking and a pale amber for notes, each held to one job.
 
-Density follows a working reference document: long-form serif prose at a comfortable measure, then compact tabular data in bordered boxes. The page opens with its numbers: the WPT subtests passing out of those reported, in large type, with failed, timed out, not run, test files and blocking files beneath it (the user's requirement, 2026-09-30). Every suite, directory and test file then opens with its own subtest numbers. There are no stat cards and no pass percentage. Drill-down is a set of pages that mirror the WPT tree: a page per directory and a page per test file, each with a stable URL, and on a test file's page each failed subtest opens in place to its message.
+Density follows a working reference document: long-form serif prose at a comfortable measure, then compact tabular data in bordered boxes. The page opens with its numbers: the WPT subtests passing out of those reported, in large type, with failed, timed out, not run, test files and blocking files beneath it (the user's requirement, 2026-09-30). Every suite, directory and test file then opens with its own subtest numbers. There are no stat cards and no pass percentage. Drill-down is a set of pages that mirror the WPT tree: a page per directory, with a stable URL, on which each test file is a section that opens in place to its subtests, and each failed subtest in place to its message.
 
 Every page is finished HTML written by the generator (tools/wpt_site/pages.zig): no page needs script for any of its content, and one deferred script, `site.js`, enhances every page (the interactive subtest history chart, sorting, filtering, search). Built code-led from the direction contract (THESIS / OWN-WORLD / STORY / FIRST VIEWPORT / FORM: "Living Standard"), with no approved comp; the static rewrite (2026-09-30) kept the world and replaced the client-rendered mechanics. Where the contract and the build differ, this file records the build.
 
@@ -190,7 +190,7 @@ Every page is finished HTML written by the generator (tools/wpt_site/pages.zig):
 - Three faces, three jobs: book serif for prose, a workhorse sans with tabular figures for data, monospace for paths and messages.
 - Colour is semantic and rationed. Green means passing, red means failure, grey means blocking and amber means a note.
 - Flat paper with hairline borders; depth comes from rules and a faint grey tint, never from shadows.
-- One authored motion: a failed subtest's chevron turns as its message opens in place (native `<details>`).
+- One authored motion: a chevron turns as a test file or a failed subtest opens in place (native `<details>`).
 - Light and dark renditions from the same token names.
 
 ## Colors
@@ -260,13 +260,17 @@ The palette is restrained: neutral paper and ink with a single blue for navigati
 
 ## Layout
 
-**Pages.** `index.html` is the record. Each directory of the WPT tree has a page at `<dir>/` (`dom/nodes/`), and each test file one at `<dir>/<file>/` (`dom/nodes/Node-cloneNode.html/`): the WPT path is the URL, as on wpt.fyi. Links are relative, so the site works under any base. Only index.html changes when a generation records nothing new; directory and file pages change only with their own results, the worklist or the WPT revision.
+**Pages.** `index.html` is the record. Each directory of the WPT tree has a page at `<dir>/` (`dom/nodes/`): the WPT path is the URL, as on wpt.fyi. A test file has no page of its own (since 2026-11-07, lane site1: one page per test file made 13,169 of the site's 14,245 files, and GitHub Pages' deploy timed out syncing them): it is a section of its directory's page, at `<dir>/#<file>` (`dom/nodes/#Node-cloneNode.html`). Links are relative, so the site works under any base. Only index.html changes when a generation records nothing new; a directory page changes only with its own files' results, the worklist or the WPT revision - never with the run that recorded a result, unless that run is not the generation's main one (generation 207 rewrote 13,206 pages because each file page named its sweep).
+
+**Page budget.** A page carries at most about 2 MB of HTML (`pages.Budget`). A directory over it counts its passing subtests without naming them; one still over it puts its file sections on part pages, `<dir>/~1/`, `<dir>/~2/`, cut in name order, and its own page lists every file as a row that leads to its part and keeps the file's id, so `<dir>/#<file>` still lands. A single file's section is never cut.
+
+**404.html.** GitHub Pages serves one page for every missing address. It names its assets from the site's own path (`/crane/`), says that test files are now sections, and gives one relative link, `../`, which from a test file's old address (`<dir>/<file>/`) is its directory's page; site.js adds `#<file>` and goes there (`pages.oldFileTarget`, the same rule).
 
 **Frame.** A two-column grid: the contents rail (`spacing.rail`, 17.5rem) and the document. The document comes first in the source, so every reader meets the numbers first; the grid places the rail in the left column. The rail is sticky, full viewport height and scrolls on its own. The document is padded `2.25rem clamp(1rem, 4vw, 3.5rem) 4rem` on the right and bottom; its left padding is `gutter + clamp(1rem, 3vw, 2.5rem)`, which leaves the numbered margin free. The document is capped at 78rem.
 
 **Index order.** The title; the headline (passed / reported, its caption, then failed, timed out, not run, test files and blocking files), between hairlines; the subtitle with the last-updated date; a four-column definition list (This version, Runs, WPT revision, History with the sparkline). Then the unnumbered front matter, "Status of this document": prose at the measure beside the note box. Then "Contents", a numbered list of the suites with each one's subtests passing, files and blocking count. Then one numbered section per suite, and last the back matter, "Revision history", numbered one past the last suite, and the footer. Sections are spaced by `spacing.section` (3rem).
 
-**Section interior.** A suite section opens with its heading (a link to the suite's page) and its own figures, then the two boxes side by side: Conformance at 15-19rem, Tests taking the rest, with a 1.5rem gap. The Conformance box is sticky at 1rem while its Tests box scrolls past it. A directory page has the same shape under a breadcrumb and a heading of its path. A test file page has its figures, a definition list (Standing, Run, Test source), the harness message if any, and its subtests.
+**Section interior.** A suite section opens with its heading (a link to the suite's page) and its own figures, then the two boxes side by side: Conformance at 15-19rem, Tests taking the rest, with a 1.5rem gap. The Conformance box is sticky at 1rem while its Tests box scrolls past it. A directory page has the same shape under a breadcrumb and a heading of its path. A directory page's Tests box lists its test files below its directories, each a section that opens in place.
 
 **Responsive.**
 - At 82rem and below, the front matter stacks (the note goes under the prose at the measure) and the header definition list becomes two columns.
@@ -306,7 +310,7 @@ The headline (index) and a section's figures share one grammar: passed at weight
 
 ### Contents rail
 - **Style:** `paper-2` ground, a right hairline, and a CONTENTS label. Entries: Subtest totals (the top of the index), Status of this document, each suite (a right-aligned number, the name in mono, a tabular file count) and Revision history. Every entry links into the index.
-- **Current:** on a directory or file page, the suite the page belongs to is `aria-current="page"`, with the here wash, link blue and a 600-weight name. There is no scroll-spy; the index marks no entry.
+- **Current:** on a directory or part page, the suite the page belongs to is `aria-current="page"`, with the here wash, link blue and a 600-weight name. There is no scroll-spy; the index marks no entry.
 - **Hover:** the here wash at 70%.
 - **Narrow:** see Layout.
 
@@ -320,12 +324,12 @@ A numbered list under "Contents", a hairline between rows: number, suite path (a
 ### Tests tables
 - **Head:** TESTS label, and on the index a link to the suite's page; on a directory page, how many directories and files it holds.
 - **Directories:** Directory (its N.i number when the list is a suite's, the path in mono at 600, a link), Subtests passing (passed in ink 600, " / reported"), Test files, Standing (a red "n blocking" or a quiet "none blocking", and a 4.5rem mini meter).
-- **Test files:** Test file (the name in mono, a link to its page), Subtests passing, Failed, Standing (the file's word, below).
+- **Test files:** on the index, Test file (the name in mono, a link to its section on its directory's page), Subtests passing, Failed, Standing (the file's word, below). On a directory page, the list of test file sections below.
 - **Long lists:** on the index, a suite with more than 24 files directly in it names them in one summary row ("309 test files directly in xhr/: passed / reported subtests passing, n blocking") that links to the suite's page, which lists them all. Rows on the index carry the path as their id, so `#xhr/resources/` still lands on its row.
 - Sticky-free `paper-2` column heads; row hover is a faint `paper-2` wash; a targeted row takes the here wash.
 
-### Test file page
-A breadcrumb (Crane WPT results › each directory › the file), the file name as the heading, its figures, then Standing (the word, and the runner's own status), Run (the run id, its date and Crane commit link) and Test source (the file at the pinned WPT revision). The harness message, if any, sits in a mono `paper-2` well. Under "Subtests", each test URL of the file (each global and variant) has a head with its URL, status and passed / total when there is more than one, or when its status is not OK. Subtests are a list in the harness's order with hairlines: a chevron column, the mark (4.6rem), and the serif name, then a ¶. A subtest with a message is a native `<details>`: its summary is the row, and it opens in place to the message in a mono `paper-2` well (max 18rem, scrolls). Past 500 subtests, only those that did not pass are listed, and the page says how many passing ones it counts. A file without per-subtest data says so, with its counts.
+### Test file section
+On its directory's page, in the Tests box under a head row of column names (Test file, Subtests passing, the reference engine, Failed, Standing; sort buttons once site.js runs), each test file is a native `<details class="tf">` with the file's name as its id. Its summary is the file's row: a chevron, the name in mono link blue, passed / reported, the reference run's passed / reported, failed (red when non-zero), and the standing word; words for readers who do not see the heads ("passing", "failed", the engine's name) sit in visually hidden `tf-lbl` spans, and the engine's name shows at narrow widths. Opened, it holds what a test file page held: Standing (the word, and the runner's own status), the reference run's standing, Run (only when the file's result came from a run other than the generation's main one, which the index names), Test source (the file at the pinned WPT revision), an exemption note, the harness message in a mono `paper-2` well, then each test URL of the file (each global and variant) with a head when there is more than one or its status is not OK. The subtests that did not pass are a list in the harness's order with hairlines: a chevron column, the mark (4.6rem), and the serif name, then a ¶ (`#s-<hash>`). A subtest with a message is a native `<details>` that opens in place to it (max 18rem, scrolls). The passing subtests follow as a count, "135 passing subtests", which opens to their names in a two-column serif list; on a page over the budget, the count alone. Past 500 subtests in a file, only those that did not pass are listed, and it says how many passing ones it counts. A file without per-subtest data says so, with its counts.
 
 ### Status words
 - **File standing:** Clean in green; With failures, No subtests and Not run in secondary ink; NONE-PASSED, TIMEOUT, ERROR and CRASH in blocking grey on the blocking wash with a 2px radius. A test URL's non-OK status uses the blocking treatment.
@@ -336,13 +340,14 @@ A breadcrumb (Crane WPT results › each directory › the file), the file name 
 An amber ground, amber hairline and 3px radius, with 1rem 1.25rem padding and a 52rem maximum width. Its text is held to the measure. A sans 600 label in note ink (a sentence, not an eyebrow: "How to read a section", "Two changes of rule sit inside this history") opens serif prose. The front-matter note carries the standing legend as a definition list of key swatches.
 
 ### Disclosure
-The one authored motion: a failed subtest's chevron (a rotated 1.4px border in secondary ink) turns 90 degrees over 180ms on `cubic-bezier(0.16, 1, 0.3, 1)` as its `<details>` opens; the generations table's twisty does the same. Under `prefers-reduced-motion: reduce` it is instant.
+The one authored motion: a test file's or failed subtest's chevron (a rotated 1.4px border in secondary ink) turns 90 degrees over 180ms on `cubic-bezier(0.16, 1, 0.3, 1)` as its `<details>` opens; the passing-subtests count and the generations table's twisty do the same. Under `prefers-reduced-motion: reduce` it is instant.
 
 ### Addresses
 - `/crane/`: the index; `#status`, `#contents`, `#history`, `#<suite>` (`#suite-<name>` for reserved names), and `#<path>` for the directory and file rows of a suite's table.
-- `/crane/<dir>/`: a directory page.
-- `/crane/<dir>/<file>/`: a test file page; `#s-<hash>` a subtest on it (a hash of its test URL and name, suffixed when a name repeats).
-The first build's hash permalinks into the index (`#<dir>/<file>`, `#<dir>/<file>?sub=<name>`) are sent to their pages by site.js.
+- `/crane/<dir>/`: a directory page; `#<file>` a test file's section on it, `#s-<hash>` a subtest (48 bits of a hash of its test URL and name, suffixed when a name repeats). Without script a file's address lands on its row, in the here wash, and a subtest's opens its section where the browser reveals a closed `<details>` around a fragment's target (HTML's ancestor-revealing algorithm); site.js opens both.
+- `/crane/<dir>/~<n>/`: part `n` of a directory over the page budget.
+- `/crane/<dir>/<file>/`: a test file's page until 2026-11-07; 404.html sends it to `/crane/<dir>/#<file>`.
+The first build's hash permalinks into the index (`#<dir>/<file>`) are sent to their sections by site.js.
 
 ### History chart
 - **Sparkline:** 168 x 30 in the header's History row, the same stacked drawing without axes. It links to #history with "N generations since <date>".
@@ -356,15 +361,16 @@ The first build's hash permalinks into the index (`#<dir>/<file>`, `#<dir>/<file
 - **Index:** a front-matter section, "Crane and Chrome" (`#versus`, after the scope and any exempt group, before the contents): a sentence giving the run's identity (Chrome and ChromeDriver versions, channel, date, runner, processes, host, WPT revision, the worklist's Crane commit), both directions of difference linked to the comparison page, then two boxes side by side - THE SAME FILES (subtests passing / reported, failed, timed out, not run, blocking, clean and run files, one column per engine) and WALL TIME (the worklist's wall clock and CPU per engine, one empty test's harness cost per runner, the start-up, and the estimated harness and test shares of the wall clock) - and an amber note on how the two are compared (URL coverage, each engine's own harness, how the overhead was measured).
 - **Directory and suite figures:** a line under the figures, "Chrome passed / reported WPT subtests passing on the same files" with its blocking count, in the data sans at secondary ink.
 - **Tests tables:** a column named for the engine beside Crane's subtests passing (the same passed / reported cell, a dash where it has no result). The standing column stays last, so its sort keeps working; at narrow widths the reference column gives way as the third count always did.
-- **Test file page:** a definition row named for the engine: its standing word, passed / reported, its runner status, and how many of the file's test URLs it has no result for.
+- **Test file section:** a column in its row, and a definition row named for the engine: its standing word, passed / reported, its runner status, and how many of the file's test URLs it has no result for.
 - **The comparison page** (`<engine>.html`, at the root): the figures for Crane and the reference line, the run's identity, then "Where Chrome passes subtests Crane does not" (most first), "Where Crane passes subtests Chrome does not", and "Files only one of them ran", each a sortable listing (Test file, Crane, Chrome, ahead by, both standings).
 - **The rail** gains one front entry, "Crane and Chrome", named by the engine alone: no version or number reaches the frame every page carries.
 
 ### What site.js adds elsewhere
 - **Sortable columns** on every tests table: each head is a button; names sort A to Z first, the share passing lowest first, other counts highest first, so failures surface first; `aria-sort` and an arrow mark the column.
-- **A directory page's filter:** a name filter and standing chips for its test files (All, Blocking, With failures, Clean, No subtests, Not run, each with its count), "Showing N of M directories, n of m test files", and the view kept in the URL (`?q=`, `?show=`, `?sort=`).
+- **A directory page's filter:** a name filter and standing chips for its test files (All, Blocking, With failures, Clean, No subtests, Not run, each with its count), "Showing N of M directories, n of m test files", sorting the file list by its head row, and the view kept in the URL (`?q=`, `?show=`, `?sort=`). A linked file the filter hides is shown again.
 - **The search:** "Find a test" at the top of the rail (at the top of the page where the rail follows the document), `/` to focus; it loads `paths.json` on first use and lists up to twelve directories and test files, file name first and its directory beneath, arrows and Enter to go.
-- **A test file's subtests:** result chips (Failed, Timed out, Not run, Other, Passed), a name filter, "Open all messages" and "Close all"; a link to a subtest (`#s-<hash>`, or the first site's `?sub=<name>`) opens its message.
+- **A test file's subtests:** the first time a section with eight or more listed subtests opens, result chips (Failed, Timed out, Not run, Other), a name filter, "Open all messages" and "Close all"; a link to a file or a subtest opens its section and its message; a file's address on a split directory's page goes to its part.
+- **404.html:** a test file's old page address goes to its section (`oldFileTarget`).
 - **The rail** marks the suite section being read on the index.
 
 ### Social card
