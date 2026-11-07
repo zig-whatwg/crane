@@ -7071,8 +7071,9 @@ fn historyHasState(context: *anyopaque, document_state: u64) bool {
 /// its timers and tasks resume, and pageshow fires, persisted. False when
 /// the cache does not hold the entry's document: the caller fetches it.
 ///
-/// The navigation API's reactivation (its entries, dispose) and pagereveal
-/// are phase C's.
+/// The navigation API's part of the reactivation (its activation, its
+/// entries, dispose) is its Navigation object's (dom.navigation_api.reactivate);
+/// pagereveal is phase C's.
 fn restoreFromBfcache(integration: *IFrameIntegration, bc: *html_core.BrowsingContext, entry_id: u64, from_entry_id: u64) bool {
     if (integration.iframe_element != null) return false;
     const history = bc.joint_history orelse return false;
@@ -7142,6 +7143,11 @@ fn restoreFromBfcache(integration: *IFrameIntegration, bc: *html_core.BrowsingCo
     // API's activation, a traverse from the entry the traversal left.
     const previous = if (history.entryById(from_entry_id)) |from| history.snapshot(from) catch null else null;
     history.recordActivation(entry_id, .traverse, previous) catch {};
+    // Step 7 on the document's existing activation, and "reactivate" step 3
+    // ("update the navigation API entries for reactivation": its dispose
+    // events queued, to fire after pageshow) - the navigation API's part,
+    // which its Navigation object does (dom.navigation_api.reactivate).
+    dom_module.navigation_api.reactivate(page.window);
 
     // Step 9: "reactivate" - its tasks and timers resume, then pageshow.
     dom_module.bfcache.reactivate(&page);
