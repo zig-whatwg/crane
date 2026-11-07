@@ -70,8 +70,10 @@ fn mutationAllocationFailure() !void {
     // succeeds. A failure from preInsert would still route through
     // options.mutationError.
     failing.fail_index = failing.alloc_index;
-    defer failing.fail_index = std.math.maxInt(usize);
-    try options.add(select, option, .notPassed());
+    const added = options.add(select, option, .notPassed());
+    failing.fail_index = std.math.maxInt(usize);
+    try added;
+    // Read with the allocator back: the option is linked and is the select's.
     try testing.expectEqual(select, (try interfaces.Node.get_parentNode(option)).?);
     try testing.expectEqual(@as(u32, 1), try interfaces.HTMLSelectElement.get_length(select));
 }
