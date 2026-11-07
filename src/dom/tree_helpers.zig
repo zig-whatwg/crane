@@ -74,7 +74,8 @@ pub fn getChildAt(node: anytype, index: usize) ?*Node {
 /// Find the index of a child node (DOM 4.2.1: its number of preceding
 /// siblings, a walk), or null when it is not `parent`'s child
 pub fn getChildIndex(parent: anytype, child: anytype) ?usize {
-    if (child.parent_node != @as(?*const Node, parent)) return null;
+    const actual = child.parent_node orelse return null;
+    if (@intFromPtr(actual) != @intFromPtr(parent)) return null;
     return child.index();
 }
 
