@@ -44,11 +44,9 @@ const TestDocument = struct {
             .root = NodeBase{
                 .allocator = allocator,
                 .node_type = NodeBase.DOCUMENT_NODE,
-                .node_name = "#document",
                 .parent_node = null,
                 .child_nodes = infra.List(*NodeBase).init(allocator),
                 .owner_document = null,
-                .registered_observers = infra.List(dom.node_base.RegisteredObserverType).init(allocator),
             },
             .children = .empty,
             .elements = .empty,
@@ -64,7 +62,6 @@ const TestDocument = struct {
         self.elements.deinit(self.allocator);
         self.children.deinit(self.allocator);
         self.root.child_nodes.deinit();
-        self.root.registered_observers.deinit();
     }
 
     /// Create an element and track it for cleanup

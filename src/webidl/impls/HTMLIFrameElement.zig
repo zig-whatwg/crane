@@ -7825,7 +7825,7 @@ fn iframeRemovingStepsCallback(node: *NodeBase, old_parent: ?*NodeBase) void {
     // Check if this is an iframe element by looking at the node_name.
     // For HTML elements, node_name is the uppercase tag name (e.g., "IFRAME").
     // We also check for lowercase "iframe" for robustness.
-    if (!std.ascii.eqlIgnoreCase(node.node_name, "iframe")) return;
+    if (!std.ascii.eqlIgnoreCase(node.nodeName(), "iframe")) return;
 
     // Get the runtime.Instance from the NodeBase using the instance bridge
     const instance_ptr = instance_bridge.getInstance(node) orelse return;
@@ -7854,7 +7854,7 @@ fn iframeRemovingStepsCallback(node: *NodeBase, old_parent: ?*NodeBase) void {
 /// destroyed (see `IFrameIntegration.retireRealmContext`).
 fn iframePostConnectionSteps(node: *NodeBase) void {
     if (node.node_type != 1) return;
-    if (!std.ascii.eqlIgnoreCase(node.node_name, "iframe")) return;
+    if (!std.ascii.eqlIgnoreCase(node.nodeName(), "iframe")) return;
     const instance_ptr = instance_bridge.getInstance(node) orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
     const internal = getInternal(instance) orelse return;

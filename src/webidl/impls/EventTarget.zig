@@ -102,8 +102,16 @@ pub const InternalState = struct {
 
     /// Set on an entry made lazily (`lazyInternal`), for an EventTarget whose
     /// impl never ran EventTarget's init - and so never runs its deinit,
-    /// which is what removes an entry. Null for every other entry.
-    lazy: ?LazyEntry = null,
+    /// which is what removes an entry. Its `realm` is null for every other
+    /// entry (`LazyEntry.made`).
+    lazy: LazyEntry = .{},
+
+    /// The target's owner asked to hear every change of this event listener
+    /// list (dom.event_listener_changes.watch): each list change below calls
+    /// `dom.event_listener_changes.changed`. False for every other target,
+    /// which pays one byte test per change (WebKit calls its virtual
+    /// eventListenersDidChange for every target).
+    listeners_watched: bool = false,
 
     /// A Window's "current event" (HTML), which `window.event` returns: the
     /// event whose listener is running in the Window's realm, or null for
@@ -174,6 +182,13 @@ pub const InternalState = struct {
     }
 };
 
+// Every node carries an InternalState: the watch flag sits in the room the
+// lazy entry's optional tag took (`LazyEntry`), so it cost no byte - 64
+// before it, 64 with it.
+comptime {
+    if (@sizeOf(InternalState) > 64) @compileError(std.fmt.comptimePrint("EventTarget's InternalState grew past 64 bytes: {d}", .{@sizeOf(InternalState)}));
+}
+
 /// What an entry made lazily records about the instance it was made for.
 ///
 /// 236 impls of EventTarget's descendants (EventSource until 2026-10-01,
@@ -185,18 +200,26 @@ pub const InternalState = struct {
 /// browser's end released its listener's handle into the disposed isolate
 /// (eventsource/format-bom.any.js, at a sweep shard's exit: "Check failed:
 /// node->IsInUse()").
+///
+/// Not an optional: a `?LazyEntry` spent 8 bytes on its tag, in a state every
+/// node carries; a null `realm` says "not made lazily" instead.
 const LazyEntry = struct {
-    /// The instance's realm. Its end releases the entry (`releaseRealmEntries`,
-    /// an unloading cleanup step), while the realm's agent lives: listeners
-    /// go with their realm.
-    realm: runtime.Context,
+    /// The instance's realm, or null for an entry not made lazily. Its end
+    /// releases the entry (`releaseRealmEntries`, an unloading cleanup step),
+    /// while the realm's agent lives: listeners go with their realm.
+    realm: ?runtime.Context = null,
     /// INTERIM until every EventTarget impl chains init/deinit (queue): the
     /// instance's slab generation. An entry whose instance was freed stays
     /// here until its realm ends, keyed by an address the slab hands out
     /// again; the instance that gets the slot must not inherit the dead
     /// one's listeners (`getInternalFromRegistry`). A chained impl removes
     /// its entry in deinit, and then this goes.
-    generation: u64,
+    generation: u64 = 0,
+
+    /// Whether the entry was made lazily (`lazyInternal`).
+    fn made(self: LazyEntry) bool {
+        return self.realm != null;
+    }
 };
 
 /// The internal state of an EventTarget whose impl chains EventTarget's
@@ -230,6 +253,25 @@ pub fn installHooks() void {
         .has_listeners = hasListeners,
     });
     dom_module.event_listener_types.install(hasListenersOfType);
+    dom_module.event_listener_changes.install(watchListeners);
+}
+
+/// dom.event_listener_changes.watch: from now on, every change of
+/// `target`'s event listener list calls the owners' steps
+/// (`listenersChanged`). Its owner calls this from its construction steps.
+fn watchListeners(target: *runtime.Instance) error{OutOfMemory}!void {
+    const internal = lazyInternal(target) catch return error.OutOfMemory;
+    internal.listeners_watched = true;
+}
+
+/// After `target`'s event listener list changed - a listener appended, or
+/// one removed - tell its owner, if it asked (dom.event_listener_changes;
+/// WebKit's EventTarget::eventListenersDidChange, called after
+/// addEventListener, a removeEventListener that removed, and
+/// removeAllEventListeners). One byte test for every other target. Never
+/// from a teardown: the list goes with the target.
+inline fn listenersChanged(internal: *const InternalState, target: *runtime.Instance) void {
+    if (internal.listeners_watched) dom_module.event_listener_changes.changed(target);
 }
 
 /// EventTarget's own construction steps, the first of every EventTarget's
@@ -414,8 +456,8 @@ fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
     // this instance now has. The listeners are the dead instance's: they go
     // now - its realm still lives, or its end would have released the entry -
     // and this instance has none.
-    if (internal.lazy) |lazy| {
-        if (lazy.generation != runtime.SlabAllocator.generationOf(instance)) {
+    if (internal.lazy.made()) {
+        if (internal.lazy.generation != runtime.SlabAllocator.generationOf(instance)) {
             const stale = registry.take(@intFromPtr(instance));
             registry.unlock();
             if (stale) |entry| releaseEntry(@intFromPtr(instance), entry);
@@ -437,7 +479,7 @@ fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) 
     // (see `LazyEntry`): it goes before the new one takes its place, rather
     // than being overwritten with its listeners still held.
     if (map.get(@intFromPtr(instance))) |old| {
-        if (old != internal and old.lazy != null) stale = registry.take(@intFromPtr(instance));
+        if (old != internal and old.lazy.made()) stale = registry.take(@intFromPtr(instance));
     }
     registry.guard.beforeInsert(map);
     try map.put(@intFromPtr(instance), internal);
@@ -487,8 +529,8 @@ fn releaseRealmEntries(environment: runtime.Context) void {
         defer keys.deinit(std.heap.page_allocator);
         var it = map.iterator();
         while (it.next()) |entry| {
-            const lazy = entry.value_ptr.*.lazy orelse continue;
-            if (lazy.realm == environment) keys.append(std.heap.page_allocator, entry.key_ptr.*) catch continue;
+            const realm = entry.value_ptr.*.lazy.realm orelse continue;
+            if (realm == environment) keys.append(std.heap.page_allocator, entry.key_ptr.*) catch continue;
         }
         // Room first: an entry taken out must reach `releaseEntry`. Out of
         // memory, the entries stay in the map for the Browser's end.
@@ -579,6 +621,7 @@ const SignalRemoval = struct {
             existing.removed = true;
             releaseRecord(internal, existing.*);
             _ = list.remove(i) catch unreachable;
+            listenersChanged(internal, self.target);
             return;
         }
     }
@@ -645,6 +688,8 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
         releaseRecord(internal, updated_listener);
         return err;
     };
+    // Appended: its owner hears of it before step 6 can fail.
+    listenersChanged(internal, instance);
 
     // Step 6: If listener's signal is not null, then add the following abort
     // steps to it: remove an event listener with eventTarget and listener.
@@ -665,7 +710,8 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
 /// DOM §2.7 - remove an event listener
 /// To remove an event listener, given an EventTarget object eventTarget and
 /// an event listener listener, run these steps:
-fn removeAnEventListener(internal: *InternalState, realm: runtime.Context, listener: EventListenerRecord) void {
+fn removeAnEventListener(internal: *InternalState, instance: *runtime.Instance, listener: EventListenerRecord) void {
+    const realm = instance.ctx;
     // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
 
     // Early exit if no listeners have been added yet
@@ -699,6 +745,7 @@ fn removeAnEventListener(internal: *InternalState, realm: runtime.Context, liste
             existing_type.deinit(internal.allocator);
 
             _ = list.remove(i) catch unreachable;
+            listenersChanged(internal, instance);
             return;
         }
         i += 1;
@@ -773,6 +820,7 @@ pub fn activateEventHandler(instance: *runtime.Instance, event_type: []const u8)
         .event_handler = true,
         .handler_serial = serial,
     });
+    listenersChanged(internal, instance);
 }
 
 /// HTML "deactivate an event handler", steps 3-5.
@@ -791,6 +839,7 @@ pub fn deactivateEventHandler(instance: *runtime.Instance, event_type: []const u
         var existing_type = existing.type;
         existing_type.deinit(internal.allocator);
         _ = list.remove(i) catch {};
+        listenersChanged(internal, instance);
         return;
     }
 }
@@ -815,6 +864,7 @@ pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
     // what its record owns released. Dispatch looks listeners up by id in
     // this list, and the flag keeps honest anything holding a copy.
     const list = internal.event_listener_list orelse return;
+    const removed_any = list.len > 0;
     while (list.len > 0) {
         const index = list.len - 1;
         const slot = &list.toSliceMut()[index];
@@ -823,6 +873,7 @@ pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
         _ = list.remove(index) catch break;
         releaseRecord(internal, record);
     }
+    if (removed_any) listenersChanged(internal, target);
 }
 
 /// "Getting the current value of the event handler" (HTML §8.1.8.1):
@@ -1173,7 +1224,7 @@ pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DO
         .capture = capture,
     };
 
-    removeAnEventListener(internal, instance.ctx, listener);
+    removeAnEventListener(internal, instance, listener);
 }
 
 /// Operation: dispatchEvent
@@ -1486,7 +1537,7 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
         // dispatch cannot reach it. Its callback is then this call's to
         // release, after the call.
         var expired: ?engine.CallbackInterface = null;
-        if (candidate.once) expired = detachListener(internal, candidate);
+        if (candidate.once) expired = detachListener(internal, current_target, candidate);
         defer if (expired) |value| value.release();
 
         // Step 2.11
@@ -1535,8 +1586,11 @@ fn findListener(internal: *InternalState, candidate: Invocation) ?usize {
 /// DOM §2.7 "remove an event listener", for inner invoke's step 2.5.
 ///
 /// Returns the callback WITHOUT releasing it - the caller owns it until the
-/// callback has finished running.
-fn detachListener(internal: *InternalState, candidate: Invocation) ?engine.CallbackInterface {
+/// callback has finished running. `target` is the list's: its owner hears
+/// of the removal, before the callback runs (WebKit's
+/// innerInvokeEventListeners removes a once listener through
+/// removeEventListener, which calls eventListenersDidChange).
+fn detachListener(internal: *InternalState, target: *runtime.Instance, candidate: Invocation) ?engine.CallbackInterface {
     const index = findListener(internal, candidate) orelse return null;
     const list = internal.event_listener_list orelse return null;
 
@@ -1544,6 +1598,7 @@ fn detachListener(internal: *InternalState, candidate: Invocation) ?engine.Callb
     const removed = list.remove(index) catch return null;
     var removed_type = removed.type;
     removed_type.deinit(internal.allocator);
+    listenersChanged(internal, target);
 
     return removed.callback;
 }

@@ -143,7 +143,7 @@ pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) a
 /// The SVG script element `node` stands for, if it is one.
 fn svgScriptOf(node: *NodeBase) ?*runtime.Instance {
     if (node.node_type != 1) return null;
-    if (!std.ascii.eqlIgnoreCase(node.node_name, "script")) return null;
+    if (!std.ascii.eqlIgnoreCase(node.nodeName(), "script")) return null;
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(node) orelse return null));
     if (instance.stateAs(State) == null) return null;
     return instance;

@@ -64,7 +64,7 @@ pub fn init(
     // an element's naming leaves empty. Named here, as the iframe and script
     // elements are.
     if (dom.instance_bridge.getNodeBase(instance)) |node_base| {
-        if (!node_base.node_name_allocated) node_base.node_name = "EMBED";
+        if (!node_base.hasOwnedNodeName()) try node_base.setStaticNodeName("EMBED");
     }
     // From the runtime arena, as the iframe's state is: an element torn
     // down with its tree may never run its own deinit.
@@ -105,7 +105,7 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
 /// The instance of `node` when it is an embed element.
 fn embedOf(node: *dom.NodeBase) ?*InternalState {
-    if (node.node_type != 1 or !std.ascii.eqlIgnoreCase(node.node_name, "embed")) return null;
+    if (node.node_type != 1 or !std.ascii.eqlIgnoreCase(node.nodeName(), "embed")) return null;
     const ptr = dom.instance_bridge.getInstance(node) orelse return null;
     return getInternal(@ptrCast(@alignCast(ptr)));
 }
