@@ -119,6 +119,13 @@ pub const arraybuffer_view = @import("arraybuffer_view.zig");
 // Memory allocators
 pub const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
 pub const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
+/// The state arena's size classes: the scheme it uses and every scheme's classes
+/// (lane perf2 batch 5; the fallback is one constant away).
+pub const arena_classes = struct {
+    pub const ClassScheme = @import("arena_allocator.zig").ClassScheme;
+    pub const scheme = @import("arena_allocator.zig").class_scheme;
+    pub const SizeClasses = @import("arena_allocator.zig").SizeClasses;
+};
 
 /// The arena of `instance`'s Browser (docs/instances.md): where its state,
 /// and the internal state its impl keeps for it, are allocated and returned.

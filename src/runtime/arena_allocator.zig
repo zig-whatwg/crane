@@ -19,6 +19,90 @@
 
 const std = @import("std");
 
+/// How the state arena rounds a request to a block it can recycle.
+///
+/// Lane perf2 batch 5 (tmp/plans/perf2b5-design.md 3.1): a node is ONE State
+/// block now - the generated State with every level's InternalState and the
+/// NodeBase by value (runtime.FlattenedState, Z7) - so the block's class is a
+/// node's whole storage. Power-of-two classes put a div's ~1,250 bytes in a
+/// 2,048-byte block and a Document's 2,168-byte state in 4,096 (lane nav2
+/// batch 7). Classes trade slack against reuse: a freed block serves only
+/// requests of its own class, and finer classes are narrower bands - jemalloc
+/// and PartitionAlloc keep four to eight per doubling, macOS malloc a 16-byte
+/// quantum to 1 KiB and 512 bytes above. The choice is MEASURED (the perf
+/// window's memory rows, both schemes) and stays one constant away.
+pub const ClassScheme = enum {
+    /// Every multiple of 16 bytes to 4 KiB, then 8 and 16 KiB: a block holds
+    /// its request with less than 16 bytes to spare.
+    quantum16,
+    /// 16-byte steps to 512 bytes, then eight classes per doubling to 16 KiB:
+    /// at most 12.5% slack, wider bands to recycle in.
+    eighths,
+    /// Powers of two from 16 bytes to 16 KiB: the classes before batch 5.
+    powers_of_two,
+};
+
+/// The scheme the state arena uses.
+pub const class_scheme: ClassScheme = .quantum16;
+
+/// The size classes of `scheme`, for requests of 8 bytes to `max_size`.
+pub fn SizeClasses(comptime scheme: ClassScheme) type {
+    return struct {
+        /// The largest request a class holds; past it nothing is recycled.
+        pub const max_size: usize = 16 * 1024;
+
+        /// How many classes there are (one free list each).
+        pub const count: usize = switch (scheme) {
+            .quantum16 => 4096 / 16 + 2,
+            .eighths => 512 / 16 + 5 * 8,
+            .powers_of_two => 14 - 4 + 1,
+        };
+
+        /// The class of a request of `size` bytes, 8 <= size <= max_size.
+        pub fn of(size: usize) usize {
+            std.debug.assert(size >= 8 and size <= max_size);
+            switch (scheme) {
+                .quantum16 => {
+                    if (size <= 4096) return (size + 15) / 16 - 1;
+                    return if (size <= 8192) 256 else 257;
+                },
+                .eighths => {
+                    if (size <= 512) return (size + 15) / 16 - 1;
+                    // The doubling (base, 2 * base] the size falls in, and its
+                    // eighth: classes base + k * base / 8, k = 1..8.
+                    const d: usize = std.math.log2_int(usize, size - 1);
+                    const base = @as(usize, 1) << @intCast(d);
+                    const step = base / 8;
+                    const k = (size - base + step - 1) / step;
+                    return 32 + (d - 9) * 8 + (k - 1);
+                },
+                .powers_of_two => {
+                    const shift = std.math.log2_int_ceil(usize, @max(size, 16));
+                    return shift - 4;
+                },
+            }
+        }
+
+        /// The bytes a block of `class` holds.
+        pub fn bytes(class: usize) usize {
+            std.debug.assert(class < count);
+            switch (scheme) {
+                .quantum16 => {
+                    if (class < 256) return (class + 1) * 16;
+                    return if (class == 256) 8192 else 16384;
+                },
+                .eighths => {
+                    if (class < 32) return (class + 1) * 16;
+                    const i = class - 32;
+                    const base = @as(usize, 1) << @intCast(9 + i / 8);
+                    return base + (i % 8 + 1) * (base / 8);
+                },
+                .powers_of_two => return @as(usize, 1) << @intCast(class + 4),
+            }
+        }
+    };
+}
+
 /// Arena allocator for variable-sized FullState structs
 pub const ArenaAllocator = struct {
     /// Underlying arena allocator
@@ -46,7 +130,7 @@ pub const ArenaAllocator = struct {
     /// holds the Window, the Document and every node still in the tree, so a
     /// blanket reset would free live state along with dead. Reuse touches only
     /// blocks their owners have already given up.
-    free_lists: [size_class_count]?*FreeBlock = @splat(null),
+    free_lists: [Classes.count]?*FreeBlock = @splat(null),
     /// Blocks recycled rather than taken from the arena. Diagnostic: if this stays
     /// at zero while a discard loop runs, states are not being returned at all.
     total_recycled: usize = 0,
@@ -66,38 +150,25 @@ pub const ArenaAllocator = struct {
         next: ?*FreeBlock,
     };
 
-    /// Size classes are powers of two from 16 bytes to 16 KiB.
-    ///
-    /// Exact-size lists would be ideal but there are 1,263 distinct state types;
-    /// power-of-two classes keep the table small while guaranteeing a block is
-    /// never handed to a request larger than itself - the failure that would turn
-    /// into silent corruption far from here.
-    const min_class_shift = 4; // 16 bytes
-    const max_class_shift = 14; // 16 KiB
-    const size_class_count = max_class_shift - min_class_shift + 1;
+    /// The size classes (`class_scheme`, `SizeClasses`).
+    const Classes = SizeClasses(class_scheme);
 
     /// The class a request of `size`/`alignment` belongs to, or null if it must not
     /// be recycled.
     ///
-    /// Null for anything under 16 bytes (no room for the next pointer), anything
+    /// Null for anything under 8 bytes (no room for the next pointer), anything
     /// over 16 KiB (rare, and pooling them would hold a lot of memory hostage), and
-    /// anything needing alignment beyond the class size.
+    /// anything needing more than a pointer's alignment (a class block is aligned
+    /// to a pointer).
     fn sizeClassOf(size: usize, alignment: usize) ?usize {
         if (size < @sizeOf(FreeBlock) or alignment > @alignOf(FreeBlock)) return null;
-
-        var shift: usize = min_class_shift;
-        while (shift <= max_class_shift) : (shift += 1) {
-            const class_size = @as(usize, 1) << @intCast(shift);
-            if (size <= class_size and alignment <= class_size) {
-                return shift - min_class_shift;
-            }
-        }
-        return null;
+        if (size > Classes.max_size) return null;
+        return Classes.of(size);
     }
 
     /// Bytes a block of the given class holds.
     fn classSize(class: usize) usize {
-        return @as(usize, 1) << @intCast(class + min_class_shift);
+        return Classes.bytes(class);
     }
 
     /// The bytes a state of `size`/`alignment` holds once made: its class's

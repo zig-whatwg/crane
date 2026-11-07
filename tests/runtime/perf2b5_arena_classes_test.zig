@@ -57,3 +57,31 @@ test "a freed block serves its own 16-byte class only: a smaller request in it, 
     arena.destroyRaw(larger, 1_297, 8);
     arena.destroyRaw(smaller_class, 1_280, 8);
 }
+
+test "every scheme's classes hold their requests, rise with them, and bound their slack" {
+    const classes = runtime.arena_classes;
+    inline for (.{ classes.ClassScheme.quantum16, classes.ClassScheme.eighths, classes.ClassScheme.powers_of_two }) |scheme| {
+        const C = classes.SizeClasses(scheme);
+        var previous: usize = 0;
+        var size: usize = 8;
+        while (size <= C.max_size) : (size += 1) {
+            const class = C.of(size);
+            const held = C.bytes(class);
+            try testing.expect(class < C.count);
+            try testing.expect(held >= size);
+            // A class is the smallest that holds the request.
+            if (class > 0) try testing.expect(C.bytes(class - 1) < size);
+            try testing.expect(class >= previous);
+            previous = class;
+            switch (scheme) {
+                .quantum16 => if (size <= 4096) try testing.expect(held - size < 16),
+                .eighths => if (size > 512) try testing.expect((held - size) * 8 <= held),
+                .powers_of_two => {},
+            }
+        }
+        // Every class is used.
+        try testing.expectEqual(C.count - 1, C.of(C.max_size));
+    }
+    // The arena's own scheme is the exact one (the fallback: `class_scheme`).
+    try testing.expectEqual(classes.ClassScheme.quantum16, classes.scheme);
+}
