@@ -3,6 +3,5 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
-const dictionaries = @import("dictionaries");
 
-pub const ReportList = []const dictionaries.Report;
+pub const ReportList = []const *runtime.Instance;

@@ -3084,6 +3084,7 @@ fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, wai
         // browsingContext's virtual browsing context group ID to a new unique
         // identifier."
         if (integration.browsing_context) |bc| bc.startVirtualGroup();
+        if (integration.browsing_context) |bc| dom_module.coop_reporting.startMonitoring(bc);
     }
     defer integration.next_new_window_proxy = false;
     // "Create and initialize a Document object" step 7: the keying of the
@@ -6283,6 +6284,7 @@ fn attachRealm(
         // HTML IsPlatformObjectSameOrigin [cross_origin_objects]; it reads no
         // host (this one lives only while the realm is made).
         .is_platform_object_same_origin = if (engine.capabilities.cross_origin_objects != .unsupported) dom_module.cross_origin.isPlatformObjectSameOrigin else null,
+        .report_window_access = if (engine.capabilities.window_access_reporting != .unsupported) dom_module.coop_reporting.checkAccess else null,
         .host = &frame_window,
         // HTML 8.1.3.5, for [SecureContext] exposure (WebIDL 3.3.13): the
         // caller's answer for the document the realm is made for. A realm
