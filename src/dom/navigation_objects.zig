@@ -70,6 +70,12 @@ pub const ActivationInit = struct {
 pub const Activations = struct {
     /// A new NavigationActivation in `realm`.
     create: *const fn (realm: runtime.Context, init: ActivationInit) anyerror!*runtime.Instance,
+    /// HTML "update document for history step application" step 7 for a
+    /// document that already has an activation: `activation`'s old entry,
+    /// new entry and navigation type become `init`'s (Chromium's
+    /// NavigationActivation::Update, from NavigationApi::SetEntriesForRestore
+    /// on a back/forward cache restore).
+    update: *const fn (activation: *runtime.Instance, init: ActivationInit) void,
 };
 
 /// The event "fire the pageswap event" step 5 fires.
@@ -177,6 +183,12 @@ pub fn createTransition(realm: runtime.Context, init: TransitionInit) !*runtime.
 pub fn createActivation(realm: runtime.Context, init: ActivationInit) !*runtime.Instance {
     const impl = activations.get() orelse return error.NotSupported;
     return impl.create(realm, init);
+}
+
+/// See Activations.update. Nothing without the implementation.
+pub fn updateActivation(activation: *runtime.Instance, init: ActivationInit) void {
+    const impl = activations.get() orelse return;
+    impl.update(activation, init);
 }
 
 pub fn createPageSwapEvent(realm: runtime.Context, activation: ?*runtime.Instance) !*runtime.Instance {

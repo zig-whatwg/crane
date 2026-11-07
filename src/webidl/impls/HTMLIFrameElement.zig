@@ -1849,6 +1849,34 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // The same snapshot, serialized, for the navigation's request (its
     // origin, startFetch).
     if (options.source_document) |source| record.request_origin = documentOriginOf(source, allocator);
+    // "Create navigation params by fetching" step 3 for a traversal no
+    // document started ("apply the history step" populating the entry
+    // again): the request's origin is the entry's document state's initiator
+    // origin, and its referrer the document state's request referrer - those
+    // of the navigation that first populated it, not the document the
+    // navigable shows now. Chrome and Firefox pass history-traversal/
+    // document-state.https.html's "document repopulation case" (Safari fails;
+    // wpt.fyi 94f58d592d).
+    // Deviation, stated: not for a reload (the traversal to the entry the
+    // navigable is on). The spec's step applies to it too, but the same file's
+    // "used on location.reload()" fails in Chrome 157, Firefox 159 and Safari
+    // 27.2, and a reload sent with a cross-site initiator loses its
+    // SameSite=Strict cookies: cookies/samesite/form-get-blank-reload.https.html
+    // and window-open-reload.https.html "Reloaded cross-site ... are strictly
+    // same-site" pass in all three (RFC 6265bis treats a reload as same-site)
+    // - golden rule 2, all three browsers.
+    if (options.traversal_entry != 0 and options.traversal_entry != options.traversal_from and options.source_document == null) {
+        if (browsing_context.jointHistory() catch null) |history| {
+            if (history.entryById(options.traversal_entry)) |entry| {
+                if (record.request_origin == null) if (entry.initiator_origin) |o| {
+                    record.request_origin = allocator.dupe(u8, o) catch null;
+                };
+                if (record.referrer == null) if (entry.request_referrer) |r| {
+                    record.referrer = allocator.dupe(u8, r) catch null;
+                };
+            }
+        }
+    }
     list.putNavigation(id, record) catch {
         record.destroy();
         return;
@@ -1859,6 +1887,15 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         queueNavigationTask(integration, id, &runJavascriptNavigation);
         return;
     }
+    // Not a spec step (golden rule 2, all three browsers): a cross-document
+    // navigation that has become the navigable's ongoing navigation cancels
+    // every planned form navigation aimed at this navigable whose task has
+    // not run - as Blink's FrameLoader::WillStartNavigation ->
+    // CancelProvisionalLoaderForNewNavigation -> Frame::CancelFormSubmission
+    // (dom.form_submission.cancelPlannedNavigationsTo states the evidence).
+    // A javascript: URL (above) cancels none, as Blink's javascript: URL path
+    // never reaches WillStartNavigation.
+    if (active) |doc| dom_module.form_submission.cancelPlannedNavigationsTo(doc, browsing_context.id);
     // Step 21: the navigate event - for a navigation from a document same
     // origin(-domain) with the active one, to a fetch scheme, when the
     // active document is not the initial about:blank. (A traversal's
@@ -2086,6 +2123,10 @@ fn runBeforeUnload(list: *Navigables, id: u64) void {
             // The explicit provisional path preserves live XHR loaders;
             // a stop/open called by an owner callback remains observable.
             document_lifecycle.abortForNavigation(entry.document);
+            // A navigation the page started ends the load of each document it
+            // aborted before its load event (document_lifecycle.endLoad states
+            // the browsers); the browser's own navigation, above, does not.
+            if (runtime.SlabAllocator.generationOf(entry.document) == entry.generation) document_lifecycle.endLoad(entry.document);
         }
     }
     startFetch(navigationById(list, id) orelse return);
@@ -4309,7 +4350,13 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     // makes, should a navigation leave it (`mayKeepInBfcache`).
     if (document_state) |state| {
         if (integration.browsing_context) |bc| {
-            if (bc.jointHistory() catch null) |history| history.setKeepableResponse(state, keepableResponse(record, response, final_url));
+            if (bc.jointHistory() catch null) |history| {
+                history.setKeepableResponse(state, keepableResponse(record, response, final_url));
+                // HTML "navigate" step 22's document state: its initiator
+                // origin and request referrer, which a traversal that
+                // populates it again sends (`navigate`, below step 19).
+                history.setInitiator(state, record.request_origin, record.referrer);
+            }
         }
     }
     if (record.history_policy_container) |*container| {
@@ -7035,8 +7082,9 @@ fn historyHasState(context: *anyopaque, document_state: u64) bool {
 /// its timers and tasks resume, and pageshow fires, persisted. False when
 /// the cache does not hold the entry's document: the caller fetches it.
 ///
-/// The navigation API's reactivation (its entries, dispose) and pagereveal
-/// are phase C's.
+/// The navigation API's part of the reactivation (its activation, its
+/// entries, dispose) is its Navigation object's (dom.navigation_api.reactivate);
+/// pagereveal is phase C's.
 fn restoreFromBfcache(integration: *IFrameIntegration, bc: *html_core.BrowsingContext, entry_id: u64, from_entry_id: u64) bool {
     if (integration.iframe_element != null) return false;
     const history = bc.joint_history orelse return false;
@@ -7106,6 +7154,11 @@ fn restoreFromBfcache(integration: *IFrameIntegration, bc: *html_core.BrowsingCo
     // API's activation, a traverse from the entry the traversal left.
     const previous = if (history.entryById(from_entry_id)) |from| history.snapshot(from) catch null else null;
     history.recordActivation(entry_id, .traverse, previous) catch {};
+    // Step 7 on the document's existing activation, and "reactivate" step 3
+    // ("update the navigation API entries for reactivation": its dispose
+    // events queued, to fire after pageshow) - the navigation API's part,
+    // which its Navigation object does (dom.navigation_api.reactivate).
+    dom_module.navigation_api.reactivate(page.window);
 
     // Step 9: "reactivate" - its tasks and timers resume, then pageshow.
     dom_module.bfcache.reactivate(&page);

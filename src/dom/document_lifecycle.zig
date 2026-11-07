@@ -47,6 +47,10 @@ pub const Implementation = struct {
     abort: *const fn (document: *runtime.Instance) void,
     /// Navigation's provisional abort, before the replacement commits.
     abort_for_navigation: *const fn (document: *runtime.Instance) void,
+    /// A navigation the page itself started aborted `document` before its
+    /// load event fired: its load ends without load, pageshow or its
+    /// container's load (Document's completeLoading).
+    end_load: *const fn (document: *runtime.Instance) void,
     /// Abort a document and its descendants, step 3.2: propagate the
     /// descendant's unsalvageable state to the root after its abort task.
     propagate_abort: *const fn (parent: *runtime.Instance, child: *runtime.Instance) void,
@@ -236,6 +240,13 @@ pub fn abortForNavigation(document: *runtime.Instance) void {
     impl.abort_for_navigation(document);
 }
 
+/// End `document`'s load after a navigation its own page started aborted it:
+/// see Implementation.end_load. Nothing without an implementation.
+pub fn endLoad(document: *runtime.Instance) void {
+    const impl = implementation.get() orelse return;
+    impl.end_load(document);
+}
+
 /// HTML "abort a document and its descendants" step 3.2: if child's
 /// salvageable state is false, parent's becomes false as well. Neither
 /// document's activity changes merely because it cannot enter the bfcache.
@@ -337,6 +348,7 @@ test "without an installed implementation nothing is asked of a document" {
     markInitialAboutBlank(&document);
     unload(&document);
     abort(&document);
+    endLoad(&document);
     propagateAbort(&document, &document);
     destroy(&document);
     setAboutBaseUrl(&document, "http://x.test/");
