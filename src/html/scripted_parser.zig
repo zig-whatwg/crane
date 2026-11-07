@@ -970,7 +970,9 @@ pub const DocumentParser = struct {
         // FinishedLoading, which finishes the parser), and in WebKit
         // (DocumentLoader::dataReceived, then finishedLoading).
         const body_ended = pipe.state != .open;
-        const end_later = body_ended and took_bytes;
+        // With no event loop (a context built for tests) there is no later
+        // task: the end is processed now, as before.
+        const end_later = body_ended and took_bytes and self.ctx.getOptionalEventLoop() != null;
         if (end_later) try self.receiveBytes("", false, true);
         if (body_ended and !end_later) {
             // HTML 7.5.1: "When no more bytes are available", the implied
