@@ -85,6 +85,41 @@ pub const PropertyAttribute = struct {
     pub const DontDelete: c_int = 1 << 2;
 };
 
+/// What `v8_FunctionCallbackInfo_ReadArgument` read of an argument, with no
+/// handle: the C++ side's `ArgumentRead`, field for field (perf3 phase 1b,
+/// call_frame.zig).
+pub const ArgumentRead = extern struct {
+    kind: Kind,
+    /// A string's UTF-8 (WTF-8) length in bytes: what was written when
+    /// `fits`, else what a buffer must hold
+    /// (`v8_FunctionCallbackInfo_ReadArgumentString`).
+    length: i32,
+    /// A Number's value.
+    number: f64,
+    /// ToBoolean of the value, whatever its kind (it runs no script).
+    boolean: bool,
+    /// The whole string is in the buffer.
+    fits: bool,
+    /// An object's internal fields 0 and 1 (through a legacy platform
+    /// object's proxy, as `this` is read); null when it has none, and for a
+    /// function.
+    instance: ?*anyopaque,
+    type_info: ?*anyopaque,
+
+    pub const Kind = enum(i32) {
+        missing = 0,
+        undefined = 1,
+        null = 2,
+        boolean = 3,
+        number = 4,
+        string = 5,
+        object = 6,
+        /// A Symbol, a BigInt: the general conversion decides.
+        other = 7,
+        _,
+    };
+};
+
 /// FunctionCallbackInfo - Encapsulates information about a function call from JavaScript
 pub const FunctionCallbackInfo = opaque {
     /// Get the V8 isolate for this callback
@@ -192,6 +227,27 @@ pub const FunctionCallbackInfo = opaque {
     pub inline fn getFunctionCreationContext(self: *const FunctionCallbackInfo) ?*Context {
         return v8_FunctionCallbackInfo_GetFunctionCreationContext(self);
     }
+
+    /// What the callback's target is, read as
+    /// v8_FunctionCallbackInfo_GetFunctionCreationContext reads it: 1 a
+    /// FunctionTemplateInfo, 2 a function, 3 anything else, 0 none. For tests.
+    pub extern fn v8_Debug_FunctionCallbackTargetKind(self: *const FunctionCallbackInfo) c_int;
+
+    /// A string result, `length` bytes of ASCII (`one_byte`) or well-formed
+    /// UTF-8, made in the callback's own HandleScope and set into the return
+    /// slot: no handle (perf3 phase 1b). Undefined when V8 refuses the length.
+    pub extern fn v8_FunctionCallbackInfo_SetReturnString(self: *const FunctionCallbackInfo, bytes: [*]const u8, length: c_int, one_byte: bool) void;
+
+    /// A null result: the root, no handle.
+    pub extern fn v8_FunctionCallbackInfo_SetReturnNull(self: *const FunctionCallbackInfo) void;
+
+    /// Argument `index`, read with no handle (`ArgumentRead`): a String's
+    /// WTF-8 into `buffer` when it fits.
+    pub extern fn v8_FunctionCallbackInfo_ReadArgument(self: *const FunctionCallbackInfo, index: c_int, out: *ArgumentRead, buffer: [*]u8, capacity: c_int) void;
+
+    /// A String argument too long for ReadArgument's buffer, whole, into
+    /// `buffer` of `length` bytes; the bytes written, or -1.
+    pub extern fn v8_FunctionCallbackInfo_ReadArgumentString(self: *const FunctionCallbackInfo, index: c_int, buffer: [*]u8, length: c_int) c_int;
 
     /// Get the NewTarget for constructor calls.
     /// Returns the function that was called with 'new', which may be different from
@@ -1663,6 +1719,13 @@ pub extern fn v8_Global_DisposeCallbackValue(global: ?*Value) void;
 /// Tests: how many Globals carry a realm tag, and whether `global` does.
 pub extern fn v8_Debug_RealmTaggedHandleCount() usize;
 pub extern fn v8_Debug_IsRealmTagged(global: ?*Value) bool;
+/// The wrapper class id on a Global's node: the ledger's kind (low byte) and
+/// the map flags (0x8000 armed, 0x4000 realm-tagged). For tests.
+pub extern fn v8_Debug_HandleClassId(handle: ?*anyopaque) u16;
+/// Write a Global's node class id. For tests.
+pub extern fn v8_Debug_SetHandleClassId(handle: ?*anyopaque, class_id: u16) void;
+/// The address of a Global's node in V8's global-handle table. For tests.
+pub extern fn v8_Debug_HandleNode(handle: ?*anyopaque) ?*anyopaque;
 
 /// Run `body(data)` with V8's automatic microtask execution suppressed
 /// (Isolate::SuppressMicrotaskExecutionScope, held on the C++ stack).
