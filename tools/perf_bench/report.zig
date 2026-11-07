@@ -868,7 +868,6 @@ const style =
     \\.perf .chart-note, .perf .gap-legend { max-width: var(--measure); font: 400 0.88rem/1.45 var(--sans); color: var(--ink-2); }
     \\.perf .gap td.n { color: var(--ink); }
     \\.perf .gap td.ratio-good { color: var(--pass, #2e7d32); } .perf .gap td.ratio-bad { color: var(--fail, #b3261e); }
-    \\.perf .gap .was { color: var(--ink-2); font-size: 0.86em; }
     \\.perf .gap thead th[scope="colgroup"] { text-align: center; }
     \\.perf .gap-wrap { display: inline-block; max-width: 100%; max-height: none; vertical-align: top; }
     \\.perf .listing.gap { width: auto; }
@@ -984,7 +983,7 @@ fn writeHeadline(w: W, vs: []const Versus, round: u32) !void {
 ///   target (`targetChanges`); and what each round changed, with its figures (`round_notes`);
 /// - "The gap to the browsers": a table of Crane's time and memory as a multiple of each
 ///   browser's, round by round, against each browser's rows as they stood (`Model.standing`, the
-///   headline's rows), with the change from the round before (`changeOf`).
+///   headline's rows), coloured by the change from the round before (`changeOf`).
 fn writeProgress(w: W, arena: Allocator, m: *const Model) !void {
     const pts = try progress(arena, m);
     if (pts.len < 2) return;
@@ -1108,8 +1107,9 @@ fn writeGap(w: W, arena: Allocator, pts: []const ProgressPoint) !void {
     try w.writeAll("</tbody></table></div>\n");
 }
 
-/// One cell of the gap: "5.97x", and from the second round on "(was 7.36x)", green when lower than
-/// the round before, red when higher, uncoloured within the noise limit (`changeOf`).
+/// One cell of the gap: "5.97x", from the second round on green when lower than the round before,
+/// red when higher, uncoloured within the noise limit (`changeOf`). What it was is the column beside
+/// it, never repeated in the cell (the integrator, 2026-11-07).
 fn writeGapCell(w: W, label: []const u8, title: []const u8, cur: ?f64, prev: ?f64) !void {
     const c = cur orelse {
         try w.writeAll("<td class=\"n\" data-label=\"");
@@ -1130,9 +1130,7 @@ fn writeGapCell(w: W, label: []const u8, title: []const u8, cur: ?f64, prev: ?f6
         try html.text(w, title);
         try w.writeAll("\"");
     }
-    try w.print(">{d:.2}&times;", .{c});
-    if (prev) |p| try w.print(" <span class=\"was\">(was {d:.2}&times;)</span>", .{p});
-    try w.writeAll("</td>");
+    try w.print(">{d:.2}&times;</td>", .{c});
 }
 
 fn writePercent1(w: W, ratio: ?f64) !void {
@@ -2284,7 +2282,7 @@ test "progress: measurement rounds only, Crane against its own round 0, the brow
     try testing.expect(std.mem.indexOf(u8, (try render(a, &single, .{})).index_html, "id=\"progress\"") == null);
 }
 
-test "the gap to the browsers: a table of N.NN times each browser's per round, with the change from the round before" {
+test "the gap to the browsers: a table of N.NN times each browser's per round, coloured by the change from the round before" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -2303,11 +2301,13 @@ test "the gap to the browsers: a table of N.NN times each browser's per round, w
     try testing.expect(std.mem.indexOf(u8, gap, "lower is better") != null);
     // Round 0's time: sqrt(4 * 2) = 2.83x Chrome's, with nothing before it to compare.
     try testing.expect(std.mem.indexOf(u8, gap, "<td class=\"n\" data-label=\"Time, round 0\">2.83&times;</td>") != null);
-    // Round 1's: 2.00x, lower than round 0's - green, and what it was.
-    try testing.expect(std.mem.indexOf(u8, gap, "<td class=\"n ratio-good\" data-label=\"Time, round 1\">2.00&times; <span class=\"was\">(was 2.83&times;)</span></td>") != null);
+    // Round 1's: 2.00x, lower than round 0's - green. What it was is the column beside it,
+    // never repeated in the cell (the integrator, 2026-11-07).
+    try testing.expect(std.mem.indexOf(u8, gap, "<td class=\"n ratio-good\" data-label=\"Time, round 1\">2.00&times;</td>") != null);
+    try testing.expect(std.mem.indexOf(u8, gap, "(was") == null);
     // Memory: 2.00x, then sqrt(0.8 * 2) = 1.26x.
     try testing.expect(std.mem.indexOf(u8, gap, "data-label=\"Memory, round 0\">2.00&times;</td>") != null);
-    try testing.expect(std.mem.indexOf(u8, gap, "<td class=\"n ratio-good\" data-label=\"Memory, round 1\">1.26&times; <span class=\"was\">(was 2.00&times;)</span></td>") != null);
+    try testing.expect(std.mem.indexOf(u8, gap, "<td class=\"n ratio-good\" data-label=\"Memory, round 1\">1.26&times;</td>") != null);
     // Its header: each measure across the rounds.
     try testing.expect(std.mem.indexOf(u8, gap, "<th scope=\"colgroup\" colspan=\"2\" class=\"n\">Time</th>") != null);
     try testing.expect(std.mem.indexOf(u8, gap, "<th scope=\"col\" class=\"n\">Round 1</th>") != null);
@@ -2324,10 +2324,10 @@ test "the gap's change marker: lower is green, higher red, a change within the n
     var out: Io.Writer.Allocating = .init(testing.allocator);
     defer out.deinit();
     try writeGapCell(&out.writer, "Time, round 2", "t", 7.36, 5.97);
-    try testing.expectEqualStrings("<td class=\"n ratio-bad\" data-label=\"Time, round 2\" title=\"t\">7.36&times; <span class=\"was\">(was 5.97&times;)</span></td>", out.written());
+    try testing.expectEqualStrings("<td class=\"n ratio-bad\" data-label=\"Time, round 2\" title=\"t\">7.36&times;</td>", out.written());
     out.clearRetainingCapacity();
     try writeGapCell(&out.writer, "Memory, round 2", "", 2.06, 2.0);
-    try testing.expectEqualStrings("<td class=\"n\" data-label=\"Memory, round 2\">2.06&times; <span class=\"was\">(was 2.00&times;)</span></td>", out.written());
+    try testing.expectEqualStrings("<td class=\"n\" data-label=\"Memory, round 2\">2.06&times;</td>", out.written());
     out.clearRetainingCapacity();
     try writeGapCell(&out.writer, "Time, round 1", "", null, 2.0);
     try testing.expectEqualStrings("<td class=\"n\" data-label=\"Time, round 1\">&ndash;</td>", out.written());

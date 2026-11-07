@@ -367,9 +367,9 @@ points (`report.zig` `progress`).
   - **The gap to the browsers**: a table, one row per browser, of Crane's time and memory as
     "N.NNx the browser's" in each round - the headline's geometric means, each round against each
     browser's rows as they stood then (its last-measured rows, `Model.standing`). From the second
-    round on a cell says what it was ("5.97x (was 7.36x)"), green when lower than the round
-    before, red when higher, and uncoloured when the change is within the drift control's own 5%
-    limit (`changeOf`). At phone width each row lists its cells with their labels.
+    round on a cell is green when lower than the round before (whose column sits beside it), red
+    when higher, and uncoloured when the change is within the drift control's own 5% limit
+    (`changeOf`). At phone width each row lists its cells with their labels.
 - **Crane, round by round**: each workload's time and steady memory in every measurement round,
   its change since the first round, and a sparkline per measure - Crane's own rounds only, with
   no target step (what a target alone did per workload is the drift control's table).
