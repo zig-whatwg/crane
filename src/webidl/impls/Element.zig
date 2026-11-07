@@ -72,7 +72,10 @@ fn forgetAttrNode(element: *runtime.Instance, attr: *runtime.Instance) void {
 
 /// Internal state for Element implementation
 pub const InternalState = struct {
-    allocator: std.mem.Allocator,
+    // No allocator copy (lane perf3 D1, perf2 b5's path): what this state
+    // owns is its Browser's allocator's, found from the element's address -
+    // `allocatorOf(instance)` - which initOwn asserts IS the allocator the
+    // element was made with. 16 bytes per element.
 
     /// The attribute list, the ID and classes, and the qualified name: the
     /// part the rest of the tree reads, through `dom.element_data.of`
@@ -126,26 +129,26 @@ pub const InternalState = struct {
     /// (`styleAttributeChangeSteps`), which then skip their CSP check.
     appending_clone: bool = false,
 
-    pub fn init(allocator: std.mem.Allocator) InternalState {
+    pub fn init() InternalState {
         return .{
-            .allocator = allocator,
             .data = ElementData.init(),
             .slot = runtime.DOMString.initEmpty(),
         };
     }
 
-    pub fn deinit(self: *InternalState) void {
+    /// Free what the state owns, through its element's Browser's allocator.
+    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
         if (self.references) |refs| {
-            refs.deinit(self.allocator);
-            self.allocator.destroy(refs);
+            refs.deinit(allocator);
+            allocator.destroy(refs);
             self.references = null;
         }
         if (self.style) |style_state| style_state.destroy();
         self.style = null;
         if (self.custom_element_definition) |definition| definition.deinit();
-        self.slot.deinit(self.allocator);
+        self.slot.deinit(allocator);
         if (self.is_value) |*v| {
-            v.deinit(self.allocator);
+            v.deinit(allocator);
         }
 
         // The cached NamedNodeMap goes WHOLE with its element: its destructor
@@ -173,8 +176,8 @@ pub const InternalState = struct {
 
         // The attributes' Attr nodes go first, then the list with the names.
         var index: usize = 0;
-        while (self.data.storedAt(index)) |attribute| : (index += 1) detachAttrNode(null, self, attribute);
-        self.data.deinit(self.allocator);
+        while (self.data.storedAt(index)) |attribute| : (index += 1) detachAttrNode(null, self, allocator, attribute);
+        self.data.deinit(allocator);
     }
 };
 
@@ -300,12 +303,12 @@ fn customElementData(instance: *runtime.Instance) ?dom.custom_elements.ElementDa
 
 fn initializeCustomElement(instance: *runtime.Instance, prefix: ?[]const u8, is_value: ?[]const u8, state: CustomElementState) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    var owned_is = if (is_value) |value| try runtime.DOMString.initDupe(internal.allocator, value) else null;
-    errdefer if (owned_is) |*value| value.deinit(internal.allocator);
-    const owned_prefix = if (prefix) |value| try runtime.DOMString.initDupe(internal.allocator, value) else null;
-    if (internal.data.prefix) |*value| value.deinit(internal.allocator);
+    var owned_is = if (is_value) |value| try runtime.DOMString.initDupe(allocatorOf(instance), value) else null;
+    errdefer if (owned_is) |*value| value.deinit(allocatorOf(instance));
+    const owned_prefix = if (prefix) |value| try runtime.DOMString.initDupe(allocatorOf(instance), value) else null;
+    if (internal.data.prefix) |*value| value.deinit(allocatorOf(instance));
     internal.data.prefix = owned_prefix;
-    if (internal.is_value) |*value| value.deinit(internal.allocator);
+    if (internal.is_value) |*value| value.deinit(allocatorOf(instance));
     internal.is_value = owned_is;
     internal.custom_element_state = state;
 }
@@ -335,7 +338,14 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
-    internal.* = InternalState.init(allocator);
+    // The allocator an element is made with IS its Browser's (the realm's
+    // scope, which issued its slot and block): every later allocation for
+    // its state, and every free, goes through `allocatorOf`, which reads that
+    // scope - so the state is freed through the allocator that made it. Pinned
+    // here on every element made, in the safe builds the tests and the WPT
+    // runner use (perf2 b5 asserts the same for every node in Node's).
+    std.debug.assert(allocator.ptr == allocatorOf(instance).ptr and allocator.vtable == allocatorOf(instance).vtable);
+    internal.* = InternalState.init();
 }
 
 /// Get Element's internal state
@@ -366,7 +376,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
             internal.shadow_root = null;
         }
         if (internal.references != null) dom.element_references.State.releaseUnwrapped(instance);
-        internal.deinit();
+        internal.deinit(allocatorOf(instance));
     }
     Registry.remove(instance);
 }
@@ -379,7 +389,18 @@ fn forgetHost(shadow: *runtime.Instance) void {
 /// dom.teardown_sweeps: at its Browser's end, every Element state still in
 /// `scope`'s table - an orphan's no teardown reached - frees what it owns.
 fn sweepRemaining(scope: *runtime.BrowserScope) void {
-    Registry.deinitAllAndClear(scope);
+    Registry.sweep(scope, {}, sweepOne);
+}
+
+fn sweepOne(_: void, instance: *runtime.Instance, internal: *InternalState) void {
+    internal.deinit(allocatorOf(instance));
+}
+
+/// The allocator of `instance`'s Browser: what Element's state allocates and
+/// frees with, found from the element's address (BrowserScope.ofInstance) -
+/// the allocator it was made with (initOwn asserts it).
+fn allocatorOf(instance: *const runtime.Instance) std.mem.Allocator {
+    return runtime.BrowserScope.ofInstance(instance).allocator;
 }
 
 // =============================================================================
@@ -393,7 +414,7 @@ pub fn setNamespaceURI(instance: *runtime.Instance, namespace: ?[]const u8) !voi
 
     // Free existing namespace if any
     if (internal.data.namespace_uri) |*ns| {
-        ns.deinit(internal.allocator);
+        ns.deinit(allocatorOf(instance));
         internal.data.namespace_uri = null;
     }
 
@@ -404,7 +425,7 @@ pub fn setNamespaceURI(instance: *runtime.Instance, namespace: ?[]const u8) !voi
         internal.data.namespace_uri = if (dom.element_data.internNamespace(ns)) |static|
             runtime.DOMString.initInterned(static)
         else
-            try runtime.DOMString.initDupe(internal.allocator, ns);
+            try runtime.DOMString.initDupe(allocatorOf(instance), ns);
     }
 }
 
@@ -415,13 +436,13 @@ pub fn setPrefix(instance: *runtime.Instance, prefix: ?[]const u8) !void {
 
     // Free existing prefix if any
     if (internal.data.prefix) |*p| {
-        p.deinit(internal.allocator);
+        p.deinit(allocatorOf(instance));
         internal.data.prefix = null;
     }
 
     // Set new prefix if provided
     if (prefix) |p| {
-        internal.data.prefix = try runtime.DOMString.initDupe(internal.allocator, p);
+        internal.data.prefix = try runtime.DOMString.initDupe(allocatorOf(instance), p);
     }
 }
 
@@ -432,7 +453,7 @@ pub fn setLocalName(instance: *runtime.Instance, local_name: []const u8) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Free existing local name
-    internal.data.local_name.deinit(internal.allocator);
+    internal.data.local_name.deinit(allocatorOf(instance));
 
     // Try to use interned tag name for common HTML elements - on an exact
     // match only: a local name is case-sensitive.
@@ -441,7 +462,7 @@ pub fn setLocalName(instance: *runtime.Instance, local_name: []const u8) !void {
         internal.data.local_name = runtime.DOMString.initInterned(interned);
     } else {
         // Fall back to allocation for custom/unknown elements
-        internal.data.local_name = try runtime.DOMString.initDupe(internal.allocator, local_name);
+        internal.data.local_name = try runtime.DOMString.initDupe(allocatorOf(instance), local_name);
     }
 }
 
@@ -566,7 +587,7 @@ pub fn get_classList(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Create a new DOMTokenList
     // Use interface instead of impl (per Golden Rule #13)
-    const token_list = interfaces.DOMTokenList.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    const token_list = interfaces.DOMTokenList.init(allocatorOf(instance), instance.ctx) catch return error.OutOfMemory;
     errdefer interfaces.DOMTokenList.deinit(token_list);
 
     // Initialize with current class attribute value
@@ -606,7 +627,7 @@ pub fn get_attributes(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Create a NamedNodeMap whose element is this one (its construction
     // argument)
-    const named_node_map = interfaces.NamedNodeMap.initWith(internal.allocator, instance.ctx, .{ .element = instance }) catch return error.OutOfMemory;
+    const named_node_map = interfaces.NamedNodeMap.initWith(allocatorOf(instance), instance.ctx, .{ .element = instance }) catch return error.OutOfMemory;
     errdefer interfaces.NamedNodeMap.deinit(named_node_map);
 
     // The map reads this element's list whenever it is asked - it is live -
@@ -665,7 +686,7 @@ pub fn get_part(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Create a DOMTokenList for the part attribute
     // Use interface instead of impl (per Golden Rule #13)
-    const token_list = interfaces.DOMTokenList.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    const token_list = interfaces.DOMTokenList.init(allocatorOf(instance), instance.ctx) catch return error.OutOfMemory;
     errdefer interfaces.DOMTokenList.deinit(token_list);
 
     // Find current part attribute value
@@ -960,7 +981,7 @@ fn lookupName(instance: *runtime.Instance, internal: *const InternalState, name:
     if (!has_upper or !isHtmlElementInHtmlDocument(instance, internal)) return .{ .slice = name };
 
     if (name.len <= buffer.len) return .{ .slice = std.ascii.lowerString(buffer[0..name.len], name) };
-    const owned = try std.ascii.allocLowerString(internal.allocator, name);
+    const owned = try std.ascii.allocLowerString(allocatorOf(instance), name);
     return .{ .slice = owned, .owned = owned };
 }
 
@@ -1031,7 +1052,7 @@ fn attributeChangeSteps(
     if (namespace != null) return;
     const internal = getInternal(instance) orelse return;
 
-    if (internal.references) |refs| refs.attributeChanged(internal.allocator, local_name);
+    if (internal.references) |refs| refs.attributeChanged(allocatorOf(instance), local_name);
 
     // DOM §4.9: "If localName is id, namespace is null, and value is null or
     // the empty string, then unset element's ID. Otherwise, if localName is
@@ -1068,7 +1089,7 @@ fn attributeChangeSteps(
     } else if (std.mem.eql(u8, local_name, "slot")) {
         // DOM 4.2.2.2: the slottable's name follows its slot attribute, and
         // a changed name re-assigns it.
-        replaceCachedValue(internal, &internal.slot, value);
+        replaceCachedValue(allocatorOf(instance), &internal.slot, value);
         dom.shadow_dom_algorithms.slottableNameChanged(instance, old_value, value);
     }
 
@@ -1099,12 +1120,12 @@ fn sameAttributeValue(old_value: ?[]const u8, value: ?[]const u8) bool {
     return std.mem.eql(u8, old, new);
 }
 
-fn replaceCachedValue(internal: *InternalState, cache: *runtime.DOMString, value: ?[]const u8) void {
-    cache.deinit(internal.allocator);
+fn replaceCachedValue(allocator: std.mem.Allocator, cache: *runtime.DOMString, value: ?[]const u8) void {
+    cache.deinit(allocator);
     cache.* = runtime.DOMString.initEmpty();
     if (value) |v| {
         // A failed copy leaves the cache empty; the attribute itself is set.
-        cache.* = runtime.DOMString.initDupe(internal.allocator, v) catch runtime.DOMString.initEmpty();
+        cache.* = runtime.DOMString.initDupe(allocator, v) catch runtime.DOMString.initEmpty();
     }
 }
 
@@ -1113,13 +1134,13 @@ fn replaceCachedValue(internal: *InternalState, cache: *runtime.DOMString, value
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-change
 fn changeAttribute(instance: *runtime.Instance, internal: *InternalState, index: usize, value: []const u8) !void {
     if (index >= internal.data.getAttributeCount()) return error.InvalidStateError;
-    const new_value = try internal.allocator.dupe(u8, value);
+    const new_value = try allocatorOf(instance).dupe(u8, value);
 
     // Step 1: "Let oldValue be attribute's value." Step 2: "Set attribute's
     // value to value." The old value is freed once the change steps below
     // have read it - and re-derived the ID and classes from the list.
     const old_value = internal.data.setValueAt(index, new_value);
-    defer internal.allocator.free(old_value);
+    defer allocatorOf(instance).free(old_value);
     // The name record, not the list: it does not move with the list.
     const name = internal.data.storedAt(index).?.name;
 
@@ -1152,7 +1173,7 @@ fn appendAttribute(
     local_name: []const u8,
     value: []const u8,
 ) !void {
-    const allocator = internal.allocator;
+    const allocator = allocatorOf(instance);
     const name = try attributeName(allocator, namespace, prefix, local_name);
     errdefer if (name.isOwned()) name.destroy(allocator);
     const value_copy = try allocator.dupe(u8, value);
@@ -1178,12 +1199,12 @@ fn removeAttributeAt(instance: *runtime.Instance, internal: *InternalState, inde
     // Steps 1 and 2: "Let element be attribute's element. Remove attribute
     // from element's attribute list." The attribute - its name record and
     // value - is ours until the changes below have read them.
-    const attribute = internal.data.takeAttributeAt(internal.allocator, index);
-    defer ElementData.freeAttribute(internal.allocator, attribute);
+    const attribute = internal.data.takeAttributeAt(allocatorOf(instance), index);
+    defer ElementData.freeAttribute(allocatorOf(instance), attribute);
 
     // Step 3: "Set attribute's element to null." - its Attr node, if script
     // has one, keeps the value it had here.
-    detachAttrNode(instance, internal, attribute);
+    detachAttrNode(instance, internal, allocatorOf(instance), attribute);
 
     // Step 4: "Handle attribute changes for attribute with element,
     // attribute's value, and null."
@@ -1241,7 +1262,7 @@ fn removeAttributeByName(instance: *runtime.Instance, qualified_name: []const u8
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     var buffer: [64]u8 = undefined;
     const name = try lookupName(instance, internal, qualified_name, &buffer);
-    defer name.deinit(internal.allocator);
+    defer name.deinit(allocatorOf(instance));
     // Step 1: "Let attr be the result of getting an attribute given
     // qualifiedName and element."
     // Step 2: "If attr is non-null, then remove attr."
@@ -1397,9 +1418,9 @@ fn setAriaAttribute(instance: *runtime.Instance, aria_name: []const u8, value: ?
 }
 
 /// Allocate reflection state only for elements that use it.
-fn ensureReferences(internal: *InternalState) !*dom.element_references.State {
+fn ensureReferences(instance: *runtime.Instance, internal: *InternalState) !*dom.element_references.State {
     if (internal.references) |refs| return refs;
-    const refs = try internal.allocator.create(dom.element_references.State);
+    const refs = try allocatorOf(instance).create(dom.element_references.State);
     refs.* = .{};
     internal.references = refs;
     return refs;
@@ -1419,7 +1440,7 @@ fn setAriaElementRef(instance: *runtime.Instance, aria_attr: []const u8, element
         return;
     };
     if (target.stateAs(interfaces.Element.State) == null) return error.TypeError;
-    const refs = try ensureReferences(internal);
+    const refs = try ensureReferences(instance, internal);
     // Steps 2-3: mutation resets the previous association, then install it.
     try setAttributeValue(instance, aria_attr, "", null, null);
     refs.single = dom.custom_elements.KeptInstance.of(target);
@@ -1427,7 +1448,7 @@ fn setAriaElementRef(instance: *runtime.Instance, aria_attr: []const u8, element
 
 fn getAriaElements(instance: *runtime.Instance, comptime attribute: []const u8) !?runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return dom.element_references.getArray(instance, try ensureReferences(internal), internal.allocator, attribute);
+    return dom.element_references.getArray(instance, try ensureReferences(instance, internal), allocatorOf(instance), attribute);
 }
 
 fn setAriaElements(instance: *runtime.Instance, comptime attribute: []const u8, value: ?runtime.JSValue) !void {
@@ -1436,13 +1457,14 @@ fn setAriaElements(instance: *runtime.Instance, comptime attribute: []const u8, 
         return;
     };
     const weak = dom.custom_elements.KeptInstance.of(instance);
-    const allocator = (getInternal(instance) orelse return error.InvalidStateError).allocator;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    const allocator = allocatorOf(instance);
     var converted = try dom.element_references.Converted.init(engine.currentRealm() orelse instance.ctx, allocator, input);
     defer converted.deinit();
     // Iteration can run script, reenter the setter or close the owner realm.
     _ = weak.get() orelse return error.InvalidStateError;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try dom.element_references.setArray(instance, try ensureReferences(internal), allocator, attribute, converted.nodes.toSlice());
+    try dom.element_references.setArray(instance, try ensureReferences(instance, internal), allocator, attribute, converted.nodes.toSlice());
 }
 
 /// Setter for innerHTML
@@ -1466,8 +1488,8 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
     // Step 1: "Let compliantString be the result of invoking the get trusted
     // type compliant string algorithm with TrustedHTML, this's relevant
     // global object, the given value, "Element innerHTML", and "script"."
-    const compliant = try dom.trusted_types.compliantStringFor(internal.allocator, .html, instance, value, "Element innerHTML");
-    defer internal.allocator.free(compliant);
+    const compliant = try dom.trusted_types.compliantStringFor(allocatorOf(instance), .html, instance, value, "Element innerHTML");
+    defer allocatorOf(instance).free(compliant);
     const html_string: []const u8 = compliant;
 
     const target = try dom.template_contents.insertionTarget(instance);
@@ -1515,8 +1537,8 @@ pub fn set_outerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
     // invoking the get trusted type compliant string algorithm with
     // TrustedHTML, this's relevant global object, the given value, "Element
     // outerHTML", and "script"."
-    const compliant = try dom.trusted_types.compliantStringFor(internal.allocator, .html, instance, value, "Element outerHTML");
-    defer internal.allocator.free(compliant);
+    const compliant = try dom.trusted_types.compliantStringFor(allocatorOf(instance), .html, instance, value, "Element outerHTML");
+    defer allocatorOf(instance).free(compliant);
 
     // Steps 2–4: only a detached element is a no-op; a Document parent is
     // specifically NoModificationAllowedError, not HierarchyRequestError.
@@ -1545,7 +1567,7 @@ pub fn set_outerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
 
     // Step 6: parse with the adjusted parent as context.
     const fragment = @import("html").dom_parser.parseFragment(
-        internal.allocator,
+        allocatorOf(instance),
         instance.ctx,
         compliant,
         context,
@@ -1676,7 +1698,7 @@ pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
     // qualifiedName, lowercased for an HTML element in an HTML document.
     var buffer: [64]u8 = undefined;
     const name = try lookupName(instance, internal, qualifiedName.asSlice(), &buffer);
-    defer name.deinit(internal.allocator);
+    defer name.deinit(allocatorOf(instance));
     // Step 2: "If attr is null, return null."
     const index = internal.data.indexOfQualifiedName(name.slice) orelse return null;
     // Step 3: "Return attr's value."
@@ -1690,7 +1712,7 @@ pub fn call_hasAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
     // Step 1: lowercase for an HTML element in an HTML document.
     var buffer: [64]u8 = undefined;
     const name = try lookupName(instance, internal, qualifiedName.asSlice(), &buffer);
-    defer name.deinit(internal.allocator);
+    defer name.deinit(allocatorOf(instance));
     // Step 2: "Return true if this has an attribute whose qualified name is
     // qualifiedName; otherwise false."
     return internal.data.indexOfQualifiedName(name.slice) != null;
@@ -1745,7 +1767,7 @@ pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instan
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Return empty DOMRectList (no layout = no client rects)
-    return interfaces.DOMRectList.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    return interfaces.DOMRectList.init(allocatorOf(instance), instance.ctx) catch return error.OutOfMemory;
 }
 
 /// Operation: scrollBy
@@ -1805,7 +1827,7 @@ pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: ?runtime.
 /// script asks for one, and the same node is handed out after that - the
 /// design of Blink's Element::EnsureAttr and WebKit's Element::ensureAttr.
 fn ensureAttrNode(instance: *runtime.Instance, internal: *InternalState, index: usize) !*runtime.Instance {
-    const allocator = internal.allocator;
+    const allocator = allocatorOf(instance);
     // The attribute by value: its name record and value, not a pointer into
     // the list. `Attr.init` and the Attr hooks below change no attribute, so
     // the record is still this attribute's after them.
@@ -1830,8 +1852,8 @@ fn ensureAttrNode(instance: *runtime.Instance, internal: *InternalState, index: 
 /// one was made, keeps the value and loses its element, and this element stops
 /// keeping it - `element` null when the element is being torn down, where the
 /// edge goes with its wrapper.
-fn detachAttrNode(element: ?*runtime.Instance, internal: *InternalState, attribute: Attribute) void {
-    const link = internal.data.takeAttrNode(internal.allocator, attribute.name) orelse return;
+fn detachAttrNode(element: ?*runtime.Instance, internal: *InternalState, allocator: std.mem.Allocator, attribute: Attribute) void {
+    const link = internal.data.takeAttrNode(allocator, attribute.name) orelse return;
     if (element) |e| forgetAttrNode(e, link.instance);
     // A teardown sweep - or the collector, with the element - may have freed
     // the node first.
@@ -1843,7 +1865,7 @@ fn detachAttrNode(element: ?*runtime.Instance, internal: *InternalState, attribu
 fn adoptAttrNode(instance: *runtime.Instance, internal: *InternalState, index: usize, attr: *runtime.Instance) !void {
     const attribute = internal.data.storedAt(index) orelse return error.InvalidStateError;
     try dom.attr_nodes.attach(attr, instance);
-    const old = try internal.data.setAttrNode(internal.allocator, attribute.name, dom.element_data.AttrNodeLink.to(attr));
+    const old = try internal.data.setAttrNode(allocatorOf(instance), attribute.name, dom.element_data.AttrNodeLink.to(attr));
     if (old) |previous| forgetAttrNode(instance, previous.instance);
     traceAttrNode(instance, attr);
 }
@@ -1898,8 +1920,8 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
     // compliant attribute value with attr's local name, attr's namespace,
     // element, and attr's value." A default policy runs script: everything
     // below reads the attribute and the element again, after it.
-    const verified = try dom.trusted_types.getCompliantAttributeValue(internal.allocator, local_name.asSlice(), namespace, instance, .{ .string = value.asSlice() });
-    defer internal.allocator.free(verified);
+    const verified = try dom.trusted_types.getCompliantAttributeValue(allocatorOf(instance), local_name.asSlice(), namespace, instance, .{ .string = value.asSlice() });
+    defer allocatorOf(instance).free(verified);
 
     // Step 2: "If attr's element is neither null nor element, throw an
     // "InUseAttributeError" DOMException."
@@ -1934,7 +1956,7 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
     // "Set oldAttribute's element to null": oldAttr - the node script may
     // already hold, or one made now to hand back - keeps its last value.
     const old_attr = try ensureAttrNode(instance, internal, old_index);
-    detachAttrNode(instance, internal, internal.data.storedAt(old_index).?);
+    detachAttrNode(instance, internal, allocatorOf(instance), internal.data.storedAt(old_index).?);
     try replaceAttributeAt(instance, internal, old_index, prefix, verified);
     // Found again by name: the change steps can run script.
     if (internal.data.indexOfAttribute(namespace, local_name.asSlice())) |index| {
@@ -1950,7 +1972,7 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-replace
 fn replaceAttributeAt(instance: *runtime.Instance, internal: *InternalState, index: usize, prefix: ?[]const u8, value: []const u8) !void {
-    const allocator = internal.allocator;
+    const allocator = allocatorOf(instance);
     const old_name = (internal.data.storedAt(index) orelse return error.InvalidStateError).name;
     // newAttribute has oldAttribute's namespace and local name: its name
     // record is the same one unless the prefix differs.
@@ -2063,7 +2085,7 @@ pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runt
     // element's descendants, the same one for the same argument while it
     // lives (dom.live_collections.collectionFor).
     var classes = std.mem.tokenizeAny(u8, names_slice, "\t\n\x0c\r ");
-    if (classes.next() == null) return interfaces.HTMLCollection.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+    if (classes.next() == null) return interfaces.HTMLCollection.init(allocatorOf(instance), instance.ctx) catch return error.OutOfMemory;
     return dom.live_collections.collectionFor(instance, .{ .class_names = names_slice });
 }
 
@@ -2253,7 +2275,7 @@ pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime
     // this."
     var buffer: [64]u8 = undefined;
     const name = try lookupName(instance, internal, qualifiedName.asSlice(), &buffer);
-    defer name.deinit(internal.allocator);
+    defer name.deinit(allocatorOf(instance));
     const index = internal.data.indexOfQualifiedName(name.slice) orelse return null;
     return try ensureAttrNode(instance, internal, index);
 }
@@ -2348,7 +2370,7 @@ pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: runtime.
     // Step 2: lowercase for an HTML element in an HTML document.
     var buffer: [64]u8 = undefined;
     const name = try lookupName(instance, internal, qualifiedName.asSlice(), &buffer);
-    defer name.deinit(internal.allocator);
+    defer name.deinit(allocatorOf(instance));
 
     // Step 3: "Let attribute be the first attribute in this's attribute list
     // whose qualified name is qualifiedName, and null otherwise."
@@ -2403,13 +2425,13 @@ pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
     // Step 2: lowercase for an HTML element in an HTML document.
     var buffer: [64]u8 = undefined;
     const name = try lookupName(instance, internal, qualifiedName.asSlice(), &buffer);
-    defer name.deinit(internal.allocator);
+    defer name.deinit(allocatorOf(instance));
 
     // Step 3: "Let verifiedValue be the result of calling get trusted type
     // compliant attribute value with qualifiedName, null, this, and value."
     // A default policy runs script: step 4 looks the attribute up after it.
-    const verified = try dom.trusted_types.getCompliantAttributeValue(internal.allocator, name.slice, null, instance, dom.trusted_types.inputFrom(value));
-    defer internal.allocator.free(verified);
+    const verified = try dom.trusted_types.getCompliantAttributeValue(allocatorOf(instance), name.slice, null, instance, dom.trusted_types.inputFrom(value));
+    defer allocatorOf(instance).free(verified);
 
     // Step 4: "Let attribute be the first attribute in this's attribute list
     // whose qualified name is qualifiedName, and null otherwise."
@@ -2713,7 +2735,7 @@ pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!runtime.JSVa
     // in order; otherwise a new list." A sequence<DOMString> is a new Array
     // of the current realm: an impl's return value is the JavaScript value,
     // as in URLSearchParams.getAll.
-    const allocator = internal.allocator;
+    const allocator = allocatorOf(instance);
     const values = try allocator.alloc(runtime.JSValue, internal.data.getAttributeCount());
     defer allocator.free(values);
     // The qualified names made here ("prefix:localName"); a local name alone

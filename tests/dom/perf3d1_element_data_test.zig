@@ -120,8 +120,11 @@ test "Element's InternalState fits a 512-byte arena block" {
         std.debug.print("Element.InternalState: {d} bytes in a {d}-byte block\n", .{ size, block });
         return error.ElementStateTooLarge;
     }
-    // 848 at 5b07812bf00, in a 1,024-byte block.
-    try testing.expect(size <= 400);
+    // 848 at 5b07812bf00, in a 1,024-byte block: - 432 (ElementData's
+    // diet) - 16 (Element's allocator copy: the element's Browser's,
+    // found from its address).
+    try expectSize(ElementState, 400);
+    try testing.expect(!@hasField(ElementState, "allocator"));
 }
 
 // ============================================================================
