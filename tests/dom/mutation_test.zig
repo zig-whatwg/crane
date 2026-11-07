@@ -24,19 +24,6 @@ const mutation = dom.mutation;
 // node_document Tests (DOM §4.2.5)
 // ============================================================================
 
-/// Link `child` as `parent`'s last child (a node's children are its sibling
-/// links: NodeBase.children; lane perf2 batch 5).
-fn linkTestChild(parent: *NodeBase, child: *NodeBase) void {
-    child.previous_sibling = parent.last_child;
-    child.next_sibling = null;
-    if (parent.last_child) |last| {
-        last.next_sibling = child;
-    } else {
-        parent.first_child = child;
-    }
-    parent.last_child = child;
-}
-
 test "NodeBase.getNodeDocument - Document node returns itself" {
     const allocator = std.testing.allocator;
 
@@ -153,9 +140,10 @@ test "adopt - changes node_document for entire subtree" {
     defer child.deinit();
     child.base.owner_document = doc1_ptr;
 
-    // Manually set up parent-child relationship (simplified, not using full mutation)
-    linkTestChild(&parent.base, &child.base);
-    child.base.parent_node = &parent.base;
+    // Set up the parent-child relationship (simplified, not the full insert):
+    // the links and the parent write with the holds it moves (refcount), so
+    // the reference counts' checks see a consistent subtree.
+    _ = try parent.appendChild(&child.base);
 
     // Verify initial state
     try std.testing.expectEqual(doc1_ptr, parent.base.owner_document.?);

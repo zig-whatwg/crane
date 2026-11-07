@@ -205,10 +205,11 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // builds).
     const internal = try Registry.create(instance);
     errdefer Registry.remove(instance);
-    // The allocator a node is made with is its Browser's (the realm's scope:
-    // Instance.init took its slot and block there): every later allocation
-    // for it goes through runtime.allocatorOf, which reads that scope.
-    std.debug.assert(allocator.ptr == runtime.allocatorOf(instance).ptr and allocator.vtable == runtime.allocatorOf(instance).vtable);
+    // What the node's state allocates later comes from its Browser's
+    // allocator (runtime.allocatorOf: the realm's scope, which issued its
+    // slot and block) - in a Browser, the allocator it was made with. A test
+    // may make one with another (an allocation-failure wrapper): its state's
+    // allocations and frees still agree, all through its Browser's.
     internal.* = .{
         .node_type = node_type,
         .base = .{
@@ -1913,8 +1914,9 @@ pub fn setLocalName(instance: *runtime.Instance, name: runtime.DOMString) !void 
     // the uppercase of the local name, owned by the node (its rare data).
     if (internal.node_base) |node_base| {
         const name_slice = name.asSlice();
-        const upper_name = try runtime.allocatorOf(instance).alloc(u8, name_slice.len);
-        errdefer runtime.allocatorOf(instance).free(upper_name);
+        // The NodeBase owns it, and frees it with its own allocator.
+        const upper_name = try node_base.allocator.alloc(u8, name_slice.len);
+        errdefer node_base.allocator.free(upper_name);
         for (name_slice, 0..) |c, i| {
             upper_name[i] = std.ascii.toUpper(c);
         }
