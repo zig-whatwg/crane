@@ -11,6 +11,12 @@
 //!   error   a workload threw (`unsupported`: it needs what the engine lacks)
 //!   log     a line for the run's log
 //!   done    the page has finished
+//!   before  a retained page's objects are about to be made: the reading is
+//!           the footprint before them (`gc`: the collection the page asked
+//!           for first - "TestUtils.gc", "gc" or "none"; `js_heap`: the JS
+//!           heap the engine told the page, when it does)
+//!   after   ... and have been made and kept: `ops` of them, `wall_ms` the
+//!           one sample of making them, `gc` and `js_heap` as for before
 //! A timed record's CPU and instructions are the process set's between its
 //! begin and end readings; its memory, the footprints at both and the peak
 //! the 50 ms sampler saw between them.
@@ -31,7 +37,17 @@ pub const Mark = struct {
     step: u32 = 0,
     message: []const u8 = "",
     unsupported: bool = false,
+    /// before, after: the collection the page asked for before the reading.
+    gc: []const u8 = "",
+    /// before, after: the engine's JS heap as the page read it, bytes.
+    js_heap: ?f64 = null,
 };
+
+/// Whether a before or after mark's page could ask the engine for a full
+/// collection (`TestUtils.gc()`, or `gc()` where the engine exposes it).
+pub fn forcedGc(gc: []const u8) bool {
+    return gc.len > 0 and !std.mem.eql(u8, gc, "none");
+}
 
 pub fn parseMark(arena: Allocator, body: []const u8) !Mark {
     return std.json.parseFromSliceLeaky(Mark, arena, body, .{ .ignore_unknown_fields = true });
@@ -87,6 +103,10 @@ pub const Collector = struct {
     chain_series: std.ArrayList(u64) = .empty,
     /// Workloads the page reported an error for: name -> (message, unsupported).
     failed: std.StringArrayHashMapUnmanaged(Failure) = .empty,
+    /// A retained page's before mark, until its after mark.
+    before: ?Before = null,
+
+    const Before = struct { gc: []const u8, js_heap: ?f64 };
 
     const Failure = struct { message: []const u8, unsupported: bool };
 
@@ -160,6 +180,44 @@ pub const Collector = struct {
             if (r.wall_ms.len == 0 or r.ops == 0) {
                 r.status = .@"error";
                 r.message = "the end mark carried no samples";
+            }
+            try self.records.append(self.arena, r);
+        } else if (std.mem.eql(u8, t, "before")) {
+            if (self.page.kind != .retained or !self.listed(mark.workload)) return self.note("before of a workload that is not this retained page's: {s}", .{mark.workload});
+            const p = try self.arena.create(Pending);
+            p.* = .{ .workload = try self.arena.dupe(u8, mark.workload), .begin = reading.*, .footprint_start = footprint, .peak = footprint };
+            self.pending = p;
+            self.before = .{ .gc = try self.arena.dupe(u8, mark.gc), .js_heap = mark.js_heap };
+        } else if (std.mem.eql(u8, t, "after")) {
+            const p = self.pending orelse return self.note("after without before: {s}", .{mark.workload});
+            const b = self.before orelse return self.note("after without before: {s}", .{mark.workload});
+            if (!std.mem.eql(u8, p.workload, mark.workload)) return self.note("after of {s} while {s} ran", .{ mark.workload, p.workload });
+            self.pending = null;
+            self.before = null;
+            var r = self.record(p.workload, .retained);
+            r.ops = mark.ops;
+            r.wall_ms = try self.arena.dupe(f64, mark.wall_ms);
+            r.memory = .{
+                .footprint_start = p.footprint_start,
+                .footprint_end = footprint,
+                .footprint_peak = @max(p.peak, @max(footprint, p.footprint_start)),
+                .resident_end = reading.resident(),
+                .processes = @intCast(reading.count),
+            };
+            // Both readings came after a collection only if the page could
+            // ask for one both times.
+            var counters: std.ArrayList(journal.Counter) = .empty;
+            try counters.append(self.arena, .{ .name = "forced_gc", .value = if (forcedGc(b.gc) and forcedGc(mark.gc)) 1 else 0 });
+            // The idle time before each reading (the suite's, on the page's URL).
+            try counters.append(self.arena, .{ .name = "settle_ms", .value = @floatFromInt(self.page.settle_ms) });
+            if (b.js_heap) |before_heap| if (mark.js_heap) |after_heap| {
+                try counters.append(self.arena, .{ .name = "js_heap_before", .value = before_heap });
+                try counters.append(self.arena, .{ .name = "js_heap_after", .value = after_heap });
+            };
+            r.counters = counters.items;
+            if (r.wall_ms.len != 1 or r.ops == 0) {
+                r.status = .@"error";
+                r.message = "the after mark carried no count or no sample";
             }
             try self.records.append(self.arena, r);
         } else if (std.mem.eql(u8, t, "step")) {
@@ -292,6 +350,7 @@ pub const Collector = struct {
                 .chain => .chain,
                 .idle => .idle,
                 .instances => .instances,
+                .retained => .retained,
             });
             if (self.failed.get(w)) |f| {
                 r.status = if (f.unsupported) .unsupported else .@"error";
@@ -461,6 +520,72 @@ test "steady memory: each workload's settled footprint, and the page's own row" 
     try testing.expectEqual(@as(?u64, 500), page.memory.?.footprint_settled);
     try testing.expectEqual(@as(u64, 900), page.memory.?.footprint_peak);
     for (records) |r| try journal.validate(r);
+}
+
+test "retained: the footprint before and after the objects, one record, no page or startup row" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const page: suite.Page = .{ .page = "memory/elements-detached-div.html", .kind = .retained, .count = 1000, .settle_ms = 3000, .workloads = &.{"elements.detached-div"} };
+    var c: Collector = .{ .arena = a, .base = test_base, .page = page };
+    try c.onMark(.{ .type = "loaded", .load_ms = 20 }, 300, &fakeReading(9, 0, 40_000));
+    try c.onMark(.{ .type = "before", .workload = "elements.detached-div", .gc = "gc", .js_heap = 1_000_000 }, 3_400, &fakeReading(9, 0, 50_000));
+    c.notePeak(400_000);
+    try c.onMark(.{ .type = "after", .workload = "elements.detached-div", .ops = 1000, .wall_ms = &.{2.5}, .gc = "gc", .js_heap = 1_100_000 }, 6_500, &fakeReading(9, 0, 330_000));
+    try c.onMark(.{ .type = "done" }, 6_600, &fakeReading(9, 0, 330_000));
+    try testing.expect(c.done);
+    const records = try c.finish(.done);
+    try testing.expectEqual(@as(usize, 1), records.len);
+    const r = records[0];
+    try journal.validate(r);
+    try testing.expectEqual(journal.Kind.retained, r.kind);
+    try testing.expectEqual(@as(u64, 1000), r.ops);
+    try testing.expectEqual(@as(u64, 50_000), r.memory.?.footprint_start);
+    try testing.expectEqual(@as(u64, 330_000), r.memory.?.footprint_end);
+    try testing.expectEqual(@as(u64, 400_000), r.memory.?.footprint_peak);
+    try testing.expectEqualSlices(f64, &.{2.5}, r.wall_ms);
+    try testing.expectEqual(@as(usize, 4), r.counters.len);
+    try testing.expectEqualStrings("forced_gc", r.counters[0].name);
+    try testing.expectEqual(@as(f64, 1), r.counters[0].value);
+    try testing.expectEqualStrings("settle_ms", r.counters[1].name);
+    try testing.expectEqual(@as(f64, 3000), r.counters[1].value);
+    try testing.expectEqualStrings("js_heap_before", r.counters[2].name);
+    try testing.expectEqual(@as(f64, 1_000_000), r.counters[2].value);
+    try testing.expectEqual(@as(f64, 1_100_000), r.counters[3].value);
+}
+
+test "retained: an engine a page cannot ask to collect, one that reports no JS heap, and a case cut short" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const page: suite.Page = .{ .page = "memory/elements-text-node.html", .kind = .retained, .count = 10, .settle_ms = 100, .workloads = &.{"elements.text-node"} };
+    var c: Collector = .{ .arena = a, .base = test_base, .page = page };
+    try c.onMark(.{ .type = "before", .workload = "elements.text-node", .gc = "none" }, 1, &fakeReading(9, 0, 100));
+    try c.onMark(.{ .type = "after", .workload = "elements.text-node", .ops = 10, .wall_ms = &.{0.1}, .gc = "none" }, 2, &fakeReading(9, 0, 90));
+    const records = try c.finish(.done);
+    try testing.expectEqual(@as(usize, 1), records.len);
+    try journal.validate(records[0]);
+    // No collection: said so, and no JS heap figures.
+    try testing.expectEqual(@as(usize, 2), records[0].counters.len);
+    try testing.expectEqual(@as(f64, 0), records[0].counters[0].value);
+    // A footprint that fell is recorded as read (the report says what it means).
+    try testing.expectEqual(@as(u64, 90), records[0].memory.?.footprint_end);
+    try testing.expectEqual(@as(u64, 100), records[0].memory.?.footprint_peak);
+
+    // An after without its before is noted, not recorded; the case then has no result.
+    var d: Collector = .{ .arena = a, .base = test_base, .page = page };
+    try d.onMark(.{ .type = "after", .workload = "elements.text-node", .ops = 10, .wall_ms = &.{0.1} }, 2, &fakeReading(9, 0, 90));
+    try testing.expect(std.mem.indexOf(u8, d.log.items, "after without before") != null);
+    const t = try d.finish(.{ .timeout = 120 });
+    try testing.expectEqual(@as(usize, 1), t.len);
+    try testing.expectEqual(journal.Kind.retained, t[0].kind);
+    try testing.expectEqual(journal.Status.timeout, t[0].status);
+    try journal.validate(t[0]);
+
+    // A before mark on a page that is not a retained one is noted and ignored.
+    var e: Collector = .{ .arena = a, .base = test_base, .page = .{ .page = "p.html", .kind = .timed, .workloads = &.{"dom.a"} } };
+    try e.onMark(.{ .type = "before", .workload = "dom.a" }, 1, &fakeReading(9, 0, 1));
+    try testing.expect(e.pending == null);
 }
 
 test "marks: a JSON body, unknown fields ignored" {

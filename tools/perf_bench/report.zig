@@ -34,6 +34,12 @@
 //!   - the history: each workload's figures round by round, a browser's by
 //!     version (an updated browser is a new data point);
 //!   - the Crane-only rows (gc_bench), round by round;
+//!   - memory per element (the user, 2026-11-07: "can we get our nodes
+//!     even smaller?", and "yes" to a fair comparison with the browsers):
+//!     what one kept node costs each engine - the retained pages' rows
+//!     (`retained`, tests/perf/elements.json), kept out of every other
+//!     section, so the headline, the round tables and the progress are the
+//!     suite's alone (`elementTable`);
 //!   - Open Graph and Twitter summary_large_image metadata with the
 //!     headline, and the 1200x630 card (card.zig).
 //!
@@ -86,6 +92,15 @@ pub const Cell = struct {
     growth: ?f64 = null,
     /// gc_bench rows: their counters (median over runs), by name.
     counters: []const journal.Counter = &.{},
+    /// retained rows: each ok run's footprint after its objects less its
+    /// footprint before them (bytes; it can be negative), and the same for
+    /// the JS heap where the engine reports it.
+    run_deltas: []const f64 = &.{},
+    run_js_deltas: []const f64 = &.{},
+    /// retained rows: how many ok runs read both footprints after a
+    /// collection the page asked for (`forced_gc`), and their idle time.
+    forced_gc_runs: u32 = 0,
+    settle_ms: ?f64 = null,
     /// The newest record's time: which version of an engine is current.
     latest_time: []const u8 = "",
     engine_info: journal.Engine,
@@ -105,7 +120,7 @@ pub const Cell = struct {
         return switch (c.kind) {
             .timed => c.perOpUs(),
             .chain, .startup, .gc_bench => c.time_ms,
-            .idle, .instances => null,
+            .idle, .instances, .retained => null,
         };
     }
 
@@ -136,6 +151,9 @@ pub const Model = struct {
     cells: []Cell,
     rounds: []u32,
     latest_round: u32,
+    /// The retained pages' cells (memory per element), apart from `cells`:
+    /// no headline, table, progress or drift reads them (`elementTable`).
+    retained: []Cell = &.{},
 
     /// The cell of `engine` for `workload` in `round`, at the engine's newest
     /// version there.
@@ -188,8 +206,28 @@ fn eqlCellKey(c: Cell, r: journal.Record) bool {
     return c.round == r.round and c.engine == r.engine.name and std.mem.eql(u8, c.version, r.engine.version) and std.mem.eql(u8, c.workload, r.workload);
 }
 
-/// The model of `records` (all rounds).
+/// The model of `records` (all rounds). A retained row (memory per element)
+/// goes to `Model.retained`, never to `cells`: its figure is not a
+/// workload's, and its rows never make or move a round of the suite.
 pub fn build(arena: Allocator, records: []const journal.Record) !Model {
+    var suite_records: std.ArrayList(journal.Record) = .empty;
+    var retained_records: std.ArrayList(journal.Record) = .empty;
+    for (records) |r| try (if (r.kind == .retained) &retained_records else &suite_records).append(arena, r);
+    const cells = try cellsOf(arena, suite_records.items);
+    var rounds: std.ArrayList(u32) = .empty;
+    for (cells) |c| if (std.mem.indexOfScalar(u32, rounds.items, c.round) == null) try rounds.append(arena, c.round);
+    std.mem.sort(u32, rounds.items, {}, std.sort.asc(u32));
+    return .{
+        .cells = cells,
+        .rounds = rounds.items,
+        .latest_round = if (rounds.items.len > 0) rounds.items[rounds.items.len - 1] else 0,
+        .retained = try cellsOf(arena, retained_records.items),
+    };
+}
+
+/// `records` grouped into cells - one per (round, engine, version,
+/// workload) - each summarised.
+fn cellsOf(arena: Allocator, records: []const journal.Record) ![]Cell {
     var cells: std.ArrayList(Cell) = .empty;
     var groups: std.ArrayList(std.ArrayList(journal.Record)) = .empty;
     for (records) |r| {
@@ -212,11 +250,7 @@ pub fn build(arena: Allocator, records: []const journal.Record) !Model {
         try groups.items[i].append(arena, r);
     }
     for (cells.items, groups.items) |*c, g| try summarise(arena, c, g.items);
-
-    var rounds: std.ArrayList(u32) = .empty;
-    for (cells.items) |c| if (std.mem.indexOfScalar(u32, rounds.items, c.round) == null) try rounds.append(arena, c.round);
-    std.mem.sort(u32, rounds.items, {}, std.sort.asc(u32));
-    return .{ .cells = cells.items, .rounds = rounds.items, .latest_round = if (rounds.items.len > 0) rounds.items[rounds.items.len - 1] else 0 };
+    return cells.items;
 }
 
 fn summarise(arena: Allocator, c: *Cell, runs: []const journal.Record) !void {
@@ -228,6 +262,8 @@ fn summarise(arena: Allocator, c: *Cell, runs: []const journal.Record) !void {
     var peak: std.ArrayList(u64) = .empty;
     var growth: std.ArrayList(f64) = .empty;
     var counter_names: std.ArrayList([]const u8) = .empty;
+    var deltas: std.ArrayList(f64) = .empty;
+    var js_deltas: std.ArrayList(f64) = .empty;
     for (runs) |r| {
         c.runs += 1;
         if (std.mem.order(u8, r.time, c.latest_time) == .gt) {
@@ -252,7 +288,15 @@ fn summarise(arena: Allocator, c: *Cell, runs: []const journal.Record) !void {
         }
         if (stats.slope(r.series)) |s| try growth.append(arena, s);
         for (r.counters) |k| if (!containsStr(counter_names.items, k.name)) try counter_names.append(arena, k.name);
+        if (r.kind == .retained) if (r.memory) |m| {
+            try deltas.append(arena, @as(f64, @floatFromInt(m.footprint_end)) - @as(f64, @floatFromInt(m.footprint_start)));
+            if (counterOf(r.counters, "js_heap_before")) |b| if (counterOf(r.counters, "js_heap_after")) |a| try js_deltas.append(arena, a - b);
+            if ((counterOf(r.counters, "forced_gc") orelse 0) == 1) c.forced_gc_runs += 1;
+            if (counterOf(r.counters, "settle_ms")) |v| c.settle_ms = v;
+        };
     }
+    c.run_deltas = deltas.items;
+    c.run_js_deltas = js_deltas.items;
     c.time_ms = try stats.median(arena, times.items);
     c.spread = try stats.relativeMad(arena, times.items);
     c.cpu_ms = try stats.median(arena, cpus.items);
@@ -271,6 +315,11 @@ fn summarise(arena: Allocator, c: *Cell, runs: []const journal.Record) !void {
         if (try stats.median(arena, vals.items)) |m| try counters.append(arena, .{ .name = name, .value = m });
     }
     c.counters = counters.items;
+}
+
+fn counterOf(counters: []const journal.Counter, name: []const u8) ?f64 {
+    for (counters) |k| if (std.mem.eql(u8, k.name, name)) return k.value;
+    return null;
 }
 
 fn containsStr(list: []const []const u8, s: []const u8) bool {
@@ -765,6 +814,282 @@ fn ratioOf(subject: ?f64, other: ?f64) ?f64 {
 }
 
 /// Every file of /performance/ for `m`: name -> bytes.
+/// The retained page that makes nothing (tests/perf/memory/elements-control.html): the
+/// same steps as every case, so its difference between the readings is the footprint's
+/// own drift over those steps, which each case's figure has subtracted (the integrator,
+/// 2026-11-07: bytes per element = (case - control) / N).
+pub const element_control = "elements.control";
+
+/// One engine's figure for one case of memory per element.
+pub const ElementFigure = struct {
+    /// Bytes per object: each run's (case difference - the control's median difference) / N,
+    /// the median over the runs.
+    bytes: ?f64 = null,
+    /// The runs' median absolute deviation of that figure, bytes per object.
+    mad: ?f64 = null,
+    /// The same for the JS heap, where the engine tells a page (Chrome's performance.memory).
+    js_bytes: ?f64 = null,
+    runs: u32 = 0,
+    ok: u32 = 0,
+    failure: ?journal.Status = null,
+    message: ?[]const u8 = null,
+};
+
+/// One engine's row of memory per element.
+pub const ElementRow = struct {
+    engine: EngineName,
+    version: []const u8,
+    /// The round its rows come from: a browser keeps its last rows, a Crane build's are its
+    /// round's own (`Model.standing`'s rule).
+    round: u32,
+    /// Every ok run of the control and the cases read both footprints after a collection the
+    /// page asked for (`forced_gc`); false when the engine let the page ask for none.
+    forced_gc: bool,
+    settle_ms: ?f64,
+    /// The control's median difference, bytes: what each figure has subtracted.
+    control_delta: ?f64,
+    /// One per `ElementTable.cases`.
+    figures: []const ElementFigure,
+};
+
+pub const ElementTable = struct {
+    round: u32,
+    /// N: the objects each case made and kept.
+    count: u64,
+    /// The cases, in the order they ran, without the control.
+    cases: []const []const u8,
+    rows: []const ElementRow,
+};
+
+/// The order of the rows: Crane's builds first, then the browsers.
+const element_engines = [_]EngineName{ .crane, .crane_fast, .crane_base, .chrome, .firefox, .safari, .lightpanda };
+
+/// `engine`'s retained cell for `workload` in `round`, at the engine's newest version there.
+fn retainedCell(m: *const Model, round: u32, engine: EngineName, workload: []const u8) ?*const Cell {
+    var best: ?*const Cell = null;
+    for (m.retained) |*c| {
+        if (c.round != round or c.engine != engine or !std.mem.eql(u8, c.workload, workload)) continue;
+        if (best == null or std.mem.order(u8, c.latest_time, best.?.latest_time) == .gt) best = c;
+    }
+    return best;
+}
+
+/// Memory per element, from the retained rows of the latest round that has any: for each
+/// engine and case, bytes per object - each run's (case difference - the control's median
+/// difference) / N, the median over the runs. A browser without rows in that round keeps
+/// its latest earlier round's; a Crane build's rows are its round's own.
+pub fn elementTable(arena: Allocator, m: *const Model) !?ElementTable {
+    var round: ?u32 = null;
+    for (m.retained) |c| {
+        if (round == null or c.round > round.?) round = c.round;
+    }
+    const r = round orelse return null;
+    var cases: std.ArrayList([]const u8) = .empty;
+    for (m.retained) |c| {
+        if (c.round > r or std.mem.eql(u8, c.workload, element_control) or containsStr(cases.items, c.workload)) continue;
+        try cases.append(arena, c.workload);
+    }
+    var count: u64 = 0;
+    var rows: std.ArrayList(ElementRow) = .empty;
+    for (element_engines) |e| {
+        // The round this engine's rows stand from.
+        var from: ?u32 = null;
+        for (m.retained) |c| {
+            if (c.engine != e or c.round > r) continue;
+            if (e.isCrane() and c.round != r) continue;
+            if (from == null or c.round > from.?) from = c.round;
+        }
+        const er = from orelse continue;
+        const control = retainedCell(m, er, e, element_control);
+        const control_delta: ?f64 = if (control) |cc| try stats.median(arena, cc.run_deltas) else null;
+        const control_js: ?f64 = if (control) |cc| try stats.median(arena, cc.run_js_deltas) else null;
+        var figures: std.ArrayList(ElementFigure) = .empty;
+        var version: []const u8 = "";
+        var forced = true;
+        var any_ok = false;
+        var settle: ?f64 = null;
+        if (control) |cc| {
+            version = cc.version;
+            settle = cc.settle_ms;
+            if (cc.ok > 0) any_ok = true;
+            if (cc.forced_gc_runs < cc.ok) forced = false;
+        }
+        for (cases.items) |w| {
+            var f: ElementFigure = .{};
+            const cell = retainedCell(m, er, e, w) orelse {
+                try figures.append(arena, f);
+                continue;
+            };
+            version = cell.version;
+            f.runs = cell.runs;
+            f.ok = cell.ok;
+            f.failure = cell.failure;
+            f.message = cell.message;
+            if (cell.settle_ms) |v| settle = v;
+            if (cell.ok > 0) {
+                any_ok = true;
+                if (cell.forced_gc_runs < cell.ok) forced = false;
+                if (count == 0) count = cell.ops;
+            }
+            if (cell.ops > 0) if (control_delta) |cd| {
+                const n: f64 = @floatFromInt(cell.ops);
+                var per: std.ArrayList(f64) = .empty;
+                for (cell.run_deltas) |d| try per.append(arena, (d - cd) / n);
+                if (try stats.median(arena, per.items)) |med| {
+                    f.bytes = med;
+                    var dev: std.ArrayList(f64) = .empty;
+                    for (per.items) |v| try dev.append(arena, @abs(v - med));
+                    f.mad = try stats.median(arena, dev.items);
+                }
+                if (control_js) |cj| if (try stats.median(arena, cell.run_js_deltas)) |jd| {
+                    f.js_bytes = (jd - cj) / n;
+                };
+            };
+            try figures.append(arena, f);
+        }
+        try rows.append(arena, .{
+            .engine = e,
+            .version = version,
+            .round = er,
+            .forced_gc = forced and any_ok,
+            .settle_ms = settle,
+            .control_delta = control_delta,
+            .figures = figures.items,
+        });
+    }
+    return .{ .round = r, .count = count, .cases = cases.items, .rows = rows.items };
+}
+
+/// A case's column heading.
+fn caseLabel(workload: []const u8) []const u8 {
+    const labels = [_][2][]const u8{
+        .{ "elements.detached-div", "Div, kept in an array" },
+        .{ "elements.attached-div", "Div, in the document" },
+        .{ "elements.div-two-attributes", "Div, 2 attributes" },
+        .{ "elements.text-node", "Text node" },
+        .{ "elements.parser-span", "Span, parsed (innerHTML)" },
+    };
+    for (labels) |l| if (std.mem.eql(u8, l[0], workload)) return l[1];
+    return workload;
+}
+
+/// Bytes per object: whole bytes, grouped ("2,740 B"), one decimal under 10.
+fn writePerElement(w: W, b: f64) !void {
+    if (@abs(b) >= 10) {
+        if (b < 0) try w.writeAll("&minus;");
+        try html.num(w, @intFromFloat(@round(@abs(b))));
+    } else try w.print("{d:.1}", .{b});
+    try w.writeAll(" B");
+}
+
+/// "Memory per element": Crane's row first, then each browser, bytes per object per case;
+/// under each browser's figure, Crane's as a multiple of it; the JS heap's share where the
+/// engine tells a page; the method under the table, from the rows themselves.
+fn writeElementMemory(w: W, arena: Allocator, m: *const Model) !void {
+    const t = (try elementTable(arena, m)) orelse return;
+    if (t.rows.len == 0 or t.cases.len == 0) return;
+    const crane_row: ?ElementRow = for (t.rows) |row| {
+        if (row.engine == .crane) break row;
+    } else null;
+    try w.writeAll("<section id=\"memory-per-element\"><h2>Memory per element</h2>\n<p>What one kept node costs each engine, in bytes: the footprint of the engine&rsquo;s processes after ");
+    try html.num(w, t.count);
+    try w.writeAll(" nodes were made and kept, less the footprint before, less the same difference for a page that made none, divided by ");
+    try html.num(w, t.count);
+    try w.writeAll(". Lower is better. Under each browser&rsquo;s figure is Crane&rsquo;s as a multiple of it.</p>\n");
+    try w.writeAll("<div class=\"table-wrap\"><table class=\"listing elements\"><thead><tr><th scope=\"col\">Engine</th><th scope=\"col\">Version</th>");
+    for (t.cases) |c| {
+        try w.writeAll("<th scope=\"col\" class=\"n\">");
+        try html.text(w, caseLabel(c));
+        try w.writeAll("</th>");
+    }
+    try w.writeAll("</tr></thead><tbody>\n");
+    for (t.rows) |row| {
+        try w.print("<tr><th scope=\"row\">{s}</th><td><code>", .{row.engine.label()});
+        try html.text(w, row.version);
+        try w.writeAll("</code>");
+        if (row.round != t.round) try w.print(" (round {d})", .{row.round});
+        try w.writeAll("</td>");
+        for (row.figures, 0..) |f, i| {
+            if (f.ok == 0 and f.runs > 0) {
+                try w.writeAll("<td class=\"n fail\" title=\"");
+                if (f.message) |msg| try html.text(w, msg[0..@min(msg.len, 300)]);
+                try w.writeAll("\">");
+                try w.writeAll(if (f.failure) |st| @tagName(st) else "failed");
+                try w.writeAll("</td>");
+                continue;
+            }
+            const b = f.bytes orelse {
+                try w.writeAll("<td class=\"n\">&ndash;</td>");
+                continue;
+            };
+            try w.writeAll("<td class=\"n\">");
+            try writePerElement(w, b);
+            if (f.mad) |d| if (@abs(b) > 0 and d / @abs(b) >= 0.05) {
+                try w.writeAll(" <span class=\"quiet\" title=\"the runs' median absolute deviation\">&plusmn;");
+                try writePerElement(w, d);
+                try w.writeAll("</span>");
+            };
+            if (f.js_bytes) |j| {
+                try w.writeAll("<br><span class=\"quiet\">JS heap ");
+                try writePerElement(w, j);
+                try w.writeAll("</span>");
+            }
+            if (!row.engine.isCrane()) if (crane_row) |cr| if (cr.figures[i].bytes) |cb| if (b > 0) {
+                try w.print("<br><span class=\"quiet\">Crane {d:.1}&times;</span>", .{cb / b});
+            };
+            try w.writeAll("</td>");
+        }
+        try w.writeAll("</tr>\n");
+    }
+    try w.writeAll("</tbody></table></div>\n");
+    try writeElementMethod(w, t);
+    try w.writeAll("</section>\n");
+}
+
+/// The method, as the rows say it was measured: which engines collected before each
+/// reading and how, the idle time, the runs.
+fn writeElementMethod(w: W, t: ElementTable) !void {
+    try w.writeAll("<p class=\"chart-note\">How: one case per page (<code>tests/perf/elements.json</code>), each page in a fresh launch, so memory one case freed cannot make another&rsquo;s read smaller. A page first makes everything but the nodes - a slot for each in an array, a host element, the markup to parse - so both readings hold it. The runner reads the footprint (phys_footprint, summed over the engine&rsquo;s processes, as everywhere on this page) when the page reports, and the page reports after ");
+    var first = true;
+    for (t.rows) |row| {
+        if (!row.forced_gc) continue;
+        try w.writeAll(if (first) "a full collection it asks for (" else ", ");
+        first = false;
+        try w.writeAll(switch (row.engine) {
+            .crane, .crane_fast, .crane_base, .crane_control => "<code>TestUtils.gc()</code> twice in ",
+            .chrome => "<code>gc()</code> twice, launched with <code>--js-flags=--expose-gc</code>, in ",
+            .firefox, .safari, .lightpanda => "a collection in ",
+        });
+        try w.writeAll(row.engine.label());
+    }
+    if (!first) try w.writeAll(") and then ");
+    var settle: ?f64 = null;
+    for (t.rows) |row| {
+        if (row.settle_ms) |v| settle = v;
+    }
+    if (settle) |v| try w.print("{d:.1} s idle", .{v / 1000.0}) else try w.writeAll("an idle time");
+    var none_first = true;
+    for (t.rows) |row| {
+        if (row.forced_gc) continue;
+        try w.writeAll(if (none_first) "; " else ", ");
+        none_first = false;
+        try w.writeAll(row.engine.label());
+    }
+    if (!none_first) try w.writeAll(" let no page ask for a collection, so their readings come after the idle time alone");
+    try w.writeAll(". Each figure is the median over the runs");
+    var min_runs: ?u32 = null;
+    var max_runs: u32 = 0;
+    for (t.rows) |row| for (row.figures) |f| {
+        if (f.ok == 0) continue;
+        if (min_runs == null or f.ok < min_runs.?) min_runs = f.ok;
+        max_runs = @max(max_runs, f.ok);
+    };
+    if (min_runs) |lo| {
+        if (lo == max_runs) try w.print(" ({d} each)", .{lo}) else try w.print(" ({d} to {d})", .{ lo, max_runs });
+    }
+    try w.writeAll(", with the runs&rsquo; median absolute deviation beside it where that is 5% or more. The JS heap is Chrome&rsquo;s <code>performance.memory.usedJSHeapSize</code> (launched with <code>--enable-precise-memory-info</code>), the only engine here that tells a page its heap.</p>\n");
+}
+
 pub const Output = struct {
     index_html: []const u8,
     card_png: []const u8,
@@ -828,6 +1153,7 @@ fn writePage(w: W, arena: Allocator, m: *const Model, vs: []const Versus, o: Opt
 
     try writeHeadline(w, vs, m.latest_round);
     try writeProgress(w, arena, m);
+    try writeElementMemory(w, arena, m);
     try writeDrift(w, arena, m);
     try writeBaseTip(w, arena, m);
     if (o.remeasured) |rm| try writeRemeasured(w, arena, m, rm);
@@ -2356,4 +2682,132 @@ test "every round has its note, in order" {
     }
     try testing.expect(roundNote(1) != null);
     try testing.expect(roundNote(99) == null);
+}
+
+/// A retained row: `workload`'s objects (1,000) made and kept, the footprint `start` before and
+/// `end` after; `forced`: both readings after a collection the page asked for; `js`: the JS
+/// heap before and after, where the engine reports it.
+fn retainedRow(arena: Allocator, round: u32, name: EngineName, version: []const u8, workload: []const u8, run: u32, start: u64, end: u64, forced: bool, js: ?[2]f64) !journal.Record {
+    var counters: std.ArrayList(journal.Counter) = .empty;
+    try counters.append(arena, .{ .name = "forced_gc", .value = if (forced) 1 else 0 });
+    try counters.append(arena, .{ .name = "settle_ms", .value = 3000 });
+    if (js) |j| {
+        try counters.append(arena, .{ .name = "js_heap_before", .value = j[0] });
+        try counters.append(arena, .{ .name = "js_heap_after", .value = j[1] });
+    }
+    return .{
+        .format = journal.format_name,
+        .round = round,
+        .time = "2026-11-07T19:00:00Z",
+        .host = host,
+        .engine = engineOf(name, version),
+        .page = "memory/elements-x.html",
+        .workload = workload,
+        .kind = .retained,
+        .run = run,
+        .status = .ok,
+        .ops = 1000,
+        .wall_ms = try arena.dupe(f64, &.{1.5}),
+        .memory = .{ .footprint_start = start, .footprint_end = end, .footprint_peak = @max(start, end), .resident_end = 0, .processes = 1 },
+        .counters = counters.items,
+    };
+}
+
+test "memory per element stays out of the headline, the round tables and the progress" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const suite_rows = [_]journal.Record{
+        try timed(a, 1, .crane, "abc", "dom.a", 0, 20, 100),
+        try timed(a, 1, .chrome, "157", "dom.a", 0, 10, 400),
+    };
+    const without = try build(a, &suite_rows);
+    // The same rows with memory-per-element rows beside them, of a later round.
+    var all: std.ArrayList(journal.Record) = .empty;
+    try all.appendSlice(a, &suite_rows);
+    try all.append(a, try retainedRow(a, 2, .crane, "def", element_control, 0, 50_000_000, 50_100_000, true, null));
+    try all.append(a, try retainedRow(a, 2, .crane, "def", "elements.detached-div", 0, 50_000_000, 52_850_000, true, null));
+    try all.append(a, try retainedRow(a, 2, .chrome, "157", element_control, 0, 400_000_000, 400_000_000, true, .{ 1e6, 1e6 }));
+    try all.append(a, try retainedRow(a, 2, .chrome, "157", "elements.detached-div", 0, 400_000_000, 400_130_000, true, .{ 1e6, 1.08e6 }));
+    const with = try build(a, all.items);
+    // The suite's model is untouched: its rounds, its cells, its comparisons.
+    try testing.expectEqual(without.latest_round, with.latest_round);
+    try testing.expectEqualSlices(u32, without.rounds, with.rounds);
+    try testing.expectEqual(without.cells.len, with.cells.len);
+    try testing.expectEqual(@as(usize, 4), with.retained.len);
+    const v0 = try versus(a, &without, 1, .chrome);
+    const v1 = try versus(a, &with, 1, .chrome);
+    try testing.expectEqual(v0.time_ratio, v1.time_ratio);
+    try testing.expectEqual(v0.memory_ratio, v1.memory_ratio);
+    // The page is the same page with one section more.
+    const p0 = (try render(a, &without, .{})).index_html;
+    const p1 = (try render(a, &with, .{})).index_html;
+    try testing.expect(std.mem.indexOf(u8, p0, "memory-per-element") == null);
+    const start = std.mem.indexOf(u8, p1, "<section id=\"memory-per-element\">").?;
+    const end = std.mem.indexOfPos(u8, p1, start, "</section>\n").? + "</section>\n".len;
+    try testing.expectEqualStrings(p0, try std.mem.concat(a, u8, &.{ p1[0..start], p1[end..] }));
+}
+
+test "memory per element: (case - control) / N per run, the median and its deviation, Crane first" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var records: std.ArrayList(journal.Record) = .empty;
+    // Crane: the control drifts 1.0-1.2 MB over its steps (median 1.1 MB); the case's
+    // three runs grow 3.80, 3.85 and 3.90 MB: (d - 1.1 MB) / 1,000 = 2,700, 2,750, 2,800 B.
+    for ([_]u64{ 1_000_000, 1_200_000, 1_100_000 }, 0..) |d, i| try records.append(a, try retainedRow(a, 2, .crane, "def", element_control, @intCast(i), 50_000_000, 50_000_000 + d, true, null));
+    for ([_]u64{ 3_800_000, 3_850_000, 3_900_000 }, 0..) |d, i| try records.append(a, try retainedRow(a, 2, .crane, "def", "elements.detached-div", @intCast(i), 50_000_000, 50_000_000 + d, true, null));
+    // Chrome: its control's footprint FELL 10 KB (a page can drift either way), its JS heap
+    // stood still; the case's 120, 130, 140 KB, of which the JS heap 80 KB.
+    for (0..3) |i| try records.append(a, try retainedRow(a, 2, .chrome, "157", element_control, @intCast(i), 400_010_000, 400_000_000, true, .{ 1e6, 1e6 }));
+    for ([_]u64{ 110_000, 120_000, 130_000 }, 0..) |d, i| try records.append(a, try retainedRow(a, 2, .chrome, "157", "elements.detached-div", @intCast(i), 400_000_000, 400_000_000 + d, true, .{ 1e6, 1.08e6 }));
+    // Firefox: no collection a page can ask for; a case that timed out in one run.
+    try records.append(a, try retainedRow(a, 2, .firefox, "159.0.1", element_control, 0, 300_000_000, 300_000_000, false, null));
+    try records.append(a, try retainedRow(a, 2, .firefox, "159.0.1", "elements.detached-div", 0, 300_000_000, 300_150_000, false, null));
+    var timeout = try retainedRow(a, 2, .firefox, "159.0.1", "elements.text-node", 0, 0, 0, false, null);
+    timeout.status = .timeout;
+    timeout.message = "no result in 300 s";
+    timeout.memory = null;
+    try records.append(a, timeout);
+    const m = try build(a, records.items);
+    const t = (try elementTable(a, &m)).?;
+    try testing.expectEqual(@as(u32, 2), t.round);
+    try testing.expectEqual(@as(u64, 1000), t.count);
+    try testing.expectEqual(@as(usize, 2), t.cases.len);
+    try testing.expectEqualStrings("elements.detached-div", t.cases[0]);
+    try testing.expectEqualStrings("elements.text-node", t.cases[1]);
+    try testing.expectEqual(@as(usize, 3), t.rows.len);
+    try testing.expectEqual(EngineName.crane, t.rows[0].engine);
+    try testing.expectEqual(EngineName.chrome, t.rows[1].engine);
+    try testing.expectEqual(EngineName.firefox, t.rows[2].engine);
+    const crane = t.rows[0];
+    try testing.expect(crane.forced_gc);
+    try testing.expectApproxEqAbs(@as(f64, 1_100_000), crane.control_delta.?, 1e-6);
+    try testing.expectApproxEqAbs(@as(f64, 2750), crane.figures[0].bytes.?, 1e-9);
+    try testing.expectApproxEqAbs(@as(f64, 50), crane.figures[0].mad.?, 1e-9);
+    try testing.expectEqual(@as(?f64, null), crane.figures[0].js_bytes);
+    // Chrome: (120 KB + 10 KB) / 1,000 = 130 B, of which the JS heap 80 B.
+    const chrome = t.rows[1];
+    try testing.expectApproxEqAbs(@as(f64, 130), chrome.figures[0].bytes.?, 1e-9);
+    try testing.expectApproxEqAbs(@as(f64, 80), chrome.figures[0].js_bytes.?, 1e-9);
+    const firefox = t.rows[2];
+    try testing.expect(!firefox.forced_gc);
+    try testing.expectApproxEqAbs(@as(f64, 150), firefox.figures[0].bytes.?, 1e-9);
+    try testing.expectEqual(journal.Status.timeout, firefox.figures[1].failure.?);
+
+    const page = (try render(a, &m, .{})).index_html;
+    const sec = try sectionOf(page, "memory-per-element");
+    try testing.expect(std.mem.indexOf(u8, sec, "<h2>Memory per element</h2>") != null);
+    try testing.expect(std.mem.indexOf(u8, sec, "after 1,000 nodes were made and kept") != null);
+    // Crane's row before every browser's.
+    try testing.expect(std.mem.indexOf(u8, sec, "<th scope=\"row\">Crane</th>").? < std.mem.indexOf(u8, sec, "<th scope=\"row\">Chrome</th>").?);
+    try testing.expect(std.mem.indexOf(u8, sec, "2,750 B") != null);
+    // Chrome's runs spread 10 B around 130 B (7.7%, shown); Crane's 50 B around 2,750 B (1.8%, not).
+    try testing.expect(std.mem.indexOf(u8, sec, "130 B <span class=\"quiet\" title=\"the runs' median absolute deviation\">&plusmn;10 B</span><br><span class=\"quiet\">JS heap 80 B</span><br><span class=\"quiet\">Crane 21.2&times;</span>") != null);
+    try testing.expect(std.mem.indexOf(u8, sec, "2,750 B</td>") != null);
+    try testing.expect(std.mem.indexOf(u8, sec, "Crane 18.3&times;") != null);
+    try testing.expect(std.mem.indexOf(u8, sec, ">timeout</td>") != null);
+    // The method, as the rows say: who collected and how, who could not, the idle time, the runs.
+    try testing.expect(std.mem.indexOf(u8, sec, "<code>TestUtils.gc()</code> twice in Crane, <code>gc()</code> twice, launched with <code>--js-flags=--expose-gc</code>, in Chrome) and then 3.0 s idle; Firefox let no page ask for a collection") != null);
+    try testing.expect(std.mem.indexOf(u8, sec, "(1 to 3)") != null);
 }

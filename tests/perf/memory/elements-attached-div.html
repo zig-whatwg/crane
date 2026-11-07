@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Memory per element: attached divs</title>
+<!-- One case of the memory-per-element measurement (docs/performance.md, "Memory per element"):
+     count divs made with createElement, appended to the document. The footprint is read before and after; the case is in elements.js. -->
+<script src="../harness.js"></script>
+<script src="elements.js"></script>
+<body>
+<script>perf.retain('elements.attached-div', elementCases.attachedDiv);</script>

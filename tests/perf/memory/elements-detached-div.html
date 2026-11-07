@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Memory per element: detached divs</title>
+<!-- One case of the memory-per-element measurement (docs/performance.md, "Memory per element"):
+     count divs made with createElement, kept in a JS array. The footprint is read before and after; the case is in elements.js. -->
+<script src="../harness.js"></script>
+<script src="elements.js"></script>
+<body>
+<script>perf.retain('elements.detached-div', elementCases.detachedDiv);</script>

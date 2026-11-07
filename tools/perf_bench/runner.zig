@@ -414,7 +414,7 @@ pub const Runner = struct {
                 .argv => 0,
                 else => try freePort(self.io),
             };
-            const l = try engines.launch(arena, pin, url, profile, protocol_port);
+            const l = try engines.launchWith(arena, pin, url, profile, protocol_port, .{ .collect = page.kind == .retained });
             if (k == 0) collector.base.engine.flags = l.flags;
 
             var env = try self.config.environ.clone(arena);
@@ -466,7 +466,7 @@ pub const Runner = struct {
         }
 
         if (started > 0 and ending == .done) switch (page.kind) {
-            .timed, .chain => ending = self.waitFor(&collector, &processes[0], &drivers[0], page, .done, 0),
+            .timed, .chain, .retained => ending = self.waitFor(&collector, &processes[0], &drivers[0], page, .done, 0),
             .idle => {
                 ending = self.waitFor(&collector, &processes[0], &drivers[0], page, .loaded_count, 1);
                 if (ending == .done) {
@@ -529,9 +529,7 @@ pub const Runner = struct {
     }
 
     fn pageUrl(self: *const Runner, arena: Allocator, page: suite_mod.Page, token: []const u8) ![]const u8 {
-        return std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/{s}?perf={s}&iterations={d}&warmup={d}&steps={d}&settle={d}", .{
-            self.server.port(), page.page, token, self.config.iterations, self.config.warmup, page.steps, self.config.settle_ms,
-        });
+        return pageUrlFor(arena, self.server.port(), page, token, self.config.iterations, self.config.warmup, self.config.settle_ms);
     }
 
     fn writeRecords(self: *Runner, records: []const journal.Record) !void {
@@ -545,6 +543,20 @@ pub const Runner = struct {
         try self.journal_writer.interface.flush();
     }
 };
+
+/// The URL a launch opens: the page, with the harness's query
+/// (tests/perf/harness.js). A retained page's settle time is its own (the
+/// suite's `settle_ms`, the idle time before each reading) and it adds the
+/// number of objects to make, `count`, so every engine makes the same
+/// number; every other page's URL is what it always was.
+pub fn pageUrlFor(arena: Allocator, port: u16, page: suite_mod.Page, token: []const u8, iterations: u32, warmup: u32, settle_ms: u32) ![]const u8 {
+    if (page.kind == .retained) return std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/{s}?perf={s}&iterations={d}&warmup={d}&steps={d}&settle={d}&count={d}", .{
+        port, page.page, token, iterations, warmup, page.steps, page.settle_ms, page.count,
+    });
+    return std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/{s}?perf={s}&iterations={d}&warmup={d}&steps={d}&settle={d}", .{
+        port, page.page, token, iterations, warmup, page.steps, settle_ms,
+    });
+}
 
 /// Ends `pids` by exact pid: SIGTERM to each, then SIGKILL to any still
 /// there after `grace_ms`. How many needed SIGKILL. Never by name: a name
@@ -718,6 +730,22 @@ test "ending processes by exact pid: TERM first, KILL after the grace time" {
     // Only the one that ignored TERM needed KILL; both were gone when it returned.
     try testing.expectEqual(@as(usize, 1), killed);
     try testing.expect(gone[0] and gone[1]);
+}
+
+test "a page's URL: a retained page's count and settle time; every other page's as it was" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // The URL every page had before retained pages existed, byte for byte.
+    const timed: suite_mod.Page = .{ .page = "workloads/attributes.html", .kind = .timed, .workloads = &.{"dom.getter-loop"} };
+    try testing.expectEqualStrings("http://127.0.0.1:8123/workloads/attributes.html?perf=chrome.2.0.0&iterations=10&warmup=3&steps=0&settle=500", try pageUrlFor(a, 8123, timed, "chrome.2.0.0", 10, 3, 500));
+    const chain: suite_mod.Page = .{ .page = "load/news.html", .kind = .chain, .steps = 10, .workloads = &.{"load.news"} };
+    try testing.expectEqualStrings("http://127.0.0.1:8123/load/news.html?perf=t.0&iterations=10&warmup=3&steps=10&settle=500", try pageUrlFor(a, 8123, chain, "t.0", 10, 3, 500));
+    const idle: suite_mod.Page = .{ .page = "memory/idle.html", .kind = .idle, .settle_ms = 3000, .workloads = &.{"memory.idle-page"} };
+    try testing.expectEqualStrings("http://127.0.0.1:8123/memory/idle.html?perf=t.0&iterations=10&warmup=3&steps=0&settle=500", try pageUrlFor(a, 8123, idle, "t.0", 10, 3, 500));
+    // A retained page: its own settle time and its count.
+    const retained: suite_mod.Page = .{ .page = "memory/elements-detached-div.html", .kind = .retained, .count = 100000, .settle_ms = 3000, .workloads = &.{"elements.detached-div"} };
+    try testing.expectEqualStrings("http://127.0.0.1:8123/memory/elements-detached-div.html?perf=crane.17.0.0&iterations=10&warmup=3&steps=0&settle=3000&count=100000", try pageUrlFor(a, 8123, retained, "crane.17.0.0", 10, 3, 500));
 }
 
 test "a launch is refused while its engine's app is already running" {

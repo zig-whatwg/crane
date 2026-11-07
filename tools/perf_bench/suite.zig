@@ -23,6 +23,12 @@ pub const PageKind = enum {
     idle,
     /// `instances` engines side by side on the page, each left idle.
     instances,
+    /// Objects made and kept (`perf.retain`): the page makes `count` of
+    /// them and keeps them, and the footprint is read once before and once
+    /// after - each reading after a collection where the engine lets a page
+    /// ask for one, and `settle_ms` of idle time (docs/performance.md,
+    /// "Memory per element").
+    retained,
 };
 
 pub const Page = struct {
@@ -39,6 +45,9 @@ pub const Page = struct {
     settle_ms: u32 = 0,
     /// instances: how many engines side by side.
     instances: u32 = 0,
+    /// retained: how many objects the page makes and keeps - the same
+    /// number in every engine (it is on the page's URL).
+    count: u32 = 0,
 };
 
 pub const Suite = struct {
@@ -57,6 +66,7 @@ pub const Error = error{
     IdleWithoutSettle,
     InstancesBelowTwo,
     OneWorkloadPerPage,
+    RetainedWithoutCount,
 };
 
 pub fn parse(arena: Allocator, bytes: []const u8) !Suite {
@@ -91,6 +101,15 @@ pub fn validate(s: Suite) Error!void {
                 if (p.settle_ms == 0) return error.IdleWithoutSettle;
                 if (p.workloads.len != 1) return error.OneWorkloadPerPage;
             },
+            // One case per page, so each is a fresh process: memory freed
+            // in one case stays in the footprint (an allocator keeps what
+            // it was given), and a second case in the same process would
+            // reuse it and read as smaller.
+            .retained => {
+                if (p.count == 0) return error.RetainedWithoutCount;
+                if (p.settle_ms == 0) return error.IdleWithoutSettle;
+                if (p.workloads.len != 1) return error.OneWorkloadPerPage;
+            },
         }
     }
 }
@@ -101,6 +120,7 @@ fn declarer(kind: PageKind) []const u8 {
         .timed => "perf.add(",
         .chain => "perf.chain(",
         .idle, .instances => "perf.idle(",
+        .retained => "perf.retain(",
     };
 }
 
@@ -197,6 +217,15 @@ test "a suite's rules" {
     try testing.expectError(error.BadWorkloadName, parse(a,
         \\{"format":"crane-perf-suite/1","pages":[{"page":"a.html","kind":"timed","workloads":["Xa"]}]}
     ));
+    try testing.expectError(error.RetainedWithoutCount, parse(a,
+        \\{"format":"crane-perf-suite/1","pages":[{"page":"a.html","kind":"retained","settle_ms":10,"workloads":["x.a"]}]}
+    ));
+    try testing.expectError(error.IdleWithoutSettle, parse(a,
+        \\{"format":"crane-perf-suite/1","pages":[{"page":"a.html","kind":"retained","count":10,"workloads":["x.a"]}]}
+    ));
+    try testing.expectError(error.OneWorkloadPerPage, parse(a,
+        \\{"format":"crane-perf-suite/1","pages":[{"page":"a.html","kind":"retained","count":10,"settle_ms":10,"workloads":["x.a","x.b"]}]}
+    ));
     try testing.expectError(error.UnknownField, parse(a,
         \\{"format":"crane-perf-suite/1","pages":[{"page":"a.html","kind":"timed","workloads":["x.a"],"step":3}]}
     ));
@@ -210,6 +239,22 @@ test "the names a page declares" {
     try testing.expectEqual(@as(usize, 2), names.len);
     try testing.expectEqualStrings("dom.a", names[0]);
     try testing.expectEqualStrings("dom.b", names[1]);
+}
+
+test "a retained page: one case, its count and its settle time" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const s = try parse(a,
+        \\{"format":"crane-perf-suite/1","pages":[{"page":"memory/elements-detached-div.html","kind":"retained","count":100000,"settle_ms":3000,"workloads":["elements.detached-div"]}]}
+    );
+    try testing.expectEqual(PageKind.retained, s.pages[0].kind);
+    try testing.expectEqual(@as(u32, 100000), s.pages[0].count);
+    // The page declares its case with perf.retain(...).
+    const pages = [_][2][]const u8{.{ "memory/elements-detached-div.html", "perf.retain('elements.detached-div', cases.detachedDiv);" }};
+    try testing.expectEqual(@as(usize, 0), (try check(a, s, @as([]const [2][]const u8, &pages), Pages.read)).len);
+    const undeclared = [_][2][]const u8{.{ "memory/elements-detached-div.html", "perf.add('elements.detached-div', {});" }};
+    try testing.expectEqual(@as(usize, 1), (try check(a, s, @as([]const [2][]const u8, &undeclared), Pages.read)).len);
 }
 
 const Pages = struct {
