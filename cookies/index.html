@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>cookies/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -55,15 +55,58 @@
 <tr><th scope="row"><a href="../cookies/value/"><span class="dir-no">9.14</span><code>value/</code></a></th><td class="n" data-v="117" data-of="119"><b>117</b> / 119</td><td class="n" data-v="115" data-of="119"><b>115</b> / 119</td><td class="n" data-v="3">3</td><td data-v="0"><span class="tally"><span class="quiet">none blocking</span><span class="mini" aria-hidden="true"><span class="m-clean" style="width:33.333%"></span><span class="m-partial" style="width:66.667%"></span></span></span></td></tr>
 </tbody>
 </table>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../cookies/cookie-enabled-noncookie-frame.html/"><code>cookie-<wbr>enabled-<wbr>noncookie-<wbr>frame.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../cookies/meta-blocked.html/"><code>meta-<wbr>blocked.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../cookies/navigated-away.html/"><code>navigated-<wbr>away.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../cookies/set-and-delete-document-cookie.window.js/"><code>set-<wbr>and-<wbr>delete-<wbr>document-<wbr>cookie.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="cookie-enabled-noncookie-frame.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>cookie-<wbr>enabled-<wbr>noncookie-<wbr>frame.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/cookies/cookie-enabled-noncookie-frame.html"><code>cookies/<wbr>cookie-<wbr>enabled-<wbr>noncookie-<wbr>frame.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>navigator.cookieEnabled behavior on frames without cookie access</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="meta-blocked.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>meta-<wbr>blocked.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/cookies/meta-blocked.html"><code>cookies/<wbr>meta-<wbr>blocked.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Cookie is not set from `&lt;meta&gt;`.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="navigated-away.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>navigated-<wbr>away.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/cookies/navigated-away.html"><code>cookies/<wbr>navigated-<wbr>away.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>document.cookie behavior on documents without browser context</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="set-and-delete-document-cookie.window.js" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>set-<wbr>and-<wbr>delete-<wbr>document-<wbr>cookie.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/cookies/set-and-delete-document-cookie.window.js"><code>cookies/<wbr>set-<wbr>and-<wbr>delete-<wbr>document-<wbr>cookie.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Deleting a cookie via a past expiration date via document.cookie</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

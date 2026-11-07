@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>css/mediaqueries/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,15 +36,79 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">4 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../css/mediaqueries/aspect-ratio-serialization.html/"><code>aspect-<wbr>ratio-<wbr>serialization.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../css/mediaqueries/at-custom-media-parsing.html/"><code>at-<wbr>custom-<wbr>media-<wbr>parsing.<wbr>html</code></a></th><td class="n" data-v="7" data-of="14"><b>7</b> / 14</td><td class="n" data-v="7" data-of="14"><b>7</b> / 14</td><td class="n" data-v="7"><span class="fail">7</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../css/mediaqueries/match-media-parsing.html/"><code>match-<wbr>media-<wbr>parsing.<wbr>html</code></a></th><td class="n" data-v="26" data-of="34"><b>26</b> / 34</td><td class="n" data-v="34" data-of="34"><b>34</b> / 34</td><td class="n" data-v="8"><span class="fail">8</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../css/mediaqueries/mq-escaped-serialization.html/"><code>mq-<wbr>escaped-<wbr>serialization.<wbr>html</code></a></th><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="aspect-ratio-serialization.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>aspect-<wbr>ratio-<wbr>serialization.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/mediaqueries/aspect-ratio-serialization.html"><code>css/<wbr>mediaqueries/<wbr>aspect-<wbr>ratio-<wbr>serialization.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>&lt;ratio&gt; serializes with spaces around the integer.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="at-custom-media-parsing.html" data-gate="partial" data-pass="7" data-of="14" data-failed="7" data-ref-pass="7" data-ref-of="14"><summary><span class="tf-name"><code>at-<wbr>custom-<wbr>media-<wbr>parsing.<wbr>html</code></span><span class="tf-n"><b>7</b> / 14<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>7</b> / 14</span><span class="tf-fail"><span class="fail">7</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>7</b> / 14 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/mediaqueries/at-custom-media-parsing.html"><code>css/<wbr>mediaqueries/<wbr>at-<wbr>custom-<wbr>media-<wbr>parsing.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-717ffd39254a"><details><summary><span class="mark">FAIL</span><span class="sub-name">@custom-media --query (max-width: 30em) is valid</span></summary><pre class="msg">assert_equals: expected 1 but got 0</pre></details><a class="self" href="#s-717ffd39254a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7b04b279dbba"><details><summary><span class="mark">FAIL</span><span class="sub-name">@custom-media --query (color), (hover) is valid</span></summary><pre class="msg">assert_equals: expected 1 but got 0</pre></details><a class="self" href="#s-7b04b279dbba" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-04c9f24ed0ad"><details><summary><span class="mark">FAIL</span><span class="sub-name">@custom-media --query not all and (hover: hover) is valid</span></summary><pre class="msg">assert_equals: expected 1 but got 0</pre></details><a class="self" href="#s-04c9f24ed0ad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b6a688bfd0b4"><details><summary><span class="mark">FAIL</span><span class="sub-name">@custom-media --query true is valid</span></summary><pre class="msg">assert_equals: expected 1 but got 0</pre></details><a class="self" href="#s-b6a688bfd0b4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0992deef9af0"><details><summary><span class="mark">FAIL</span><span class="sub-name">@custom-media --query false is valid</span></summary><pre class="msg">assert_equals: expected 1 but got 0</pre></details><a class="self" href="#s-0992deef9af0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-120e2ef388e7"><details><summary><span class="mark">FAIL</span><span class="sub-name">@custom-media -- true is valid</span></summary><pre class="msg">assert_equals: expected 1 but got 0</pre></details><a class="self" href="#s-120e2ef388e7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3e3e0e7ee3f4"><details><summary><span class="mark">FAIL</span><span class="sub-name">@custom-media --foo/* */(width &gt; 42px) is valid</span></summary><pre class="msg">assert_equals: expected 1 but got 0</pre></details><a class="self" href="#s-3e3e0e7ee3f4" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>7 passing subtests</summary><ol class="pass-list"><li>@custom-media query () is invalid</li><li>@custom-media query (max-width: 30em) is invalid</li><li>@custom-media --query(max-width: 30em) is invalid</li><li>@custom-media --query(max-width: 30em) ! is invalid</li><li>@custom-media -query(max-width: 30em) is invalid</li><li>@custom-media --query true! is invalid</li><li>@custom-media --query false true is invalid</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="match-media-parsing.html" data-gate="partial" data-pass="26" data-of="34" data-failed="8" data-ref-pass="34" data-ref-of="34"><summary><span class="tf-name"><code>match-<wbr>media-<wbr>parsing.<wbr>html</code></span><span class="tf-n"><b>26</b> / 34<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>34</b> / 34</span><span class="tf-fail"><span class="fail">8</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>34</b> / 34 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/mediaqueries/match-media-parsing.html"><code>css/<wbr>mediaqueries/<wbr>match-<wbr>media-<wbr>parsing.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-c28dd1b4f4b8"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test parsing &#39; ( color   &#39; with matchMedia</span></summary><pre class="msg">assert_equals: expected &quot;(color)&quot; but got &quot;not all&quot;</pre></details><a class="self" href="#s-c28dd1b4f4b8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e07084fdc5e0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test parsing &#39;(min-resolution: calc(1x))&#39; with matchMedia</span></summary><pre class="msg">assert_equals: expected &quot;(min-resolution: calc(1dppx))&quot; but got &quot;(min-resolution: calc(1x))&quot;</pre></details><a class="self" href="#s-e07084fdc5e0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b665988cf483"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test parsing &#39;(resolution: calc(2x))&#39; with matchMedia</span></summary><pre class="msg">assert_equals: expected &quot;(resolution: calc(2dppx))&quot; but got &quot;(resolution: calc(2x))&quot;</pre></details><a class="self" href="#s-b665988cf483" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2b2d3a3daf59"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test parsing &#39;(max-resolution: calc(7x))&#39; with matchMedia</span></summary><pre class="msg">assert_equals: expected &quot;(max-resolution: calc(7dppx))&quot; but got &quot;(max-resolution: calc(7x))&quot;</pre></details><a class="self" href="#s-2b2d3a3daf59" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a0dfe3b5a34b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test parsing &#39;(resolution: calc(1x + 2x))&#39; with matchMedia</span></summary><pre class="msg">assert_equals: expected &quot;(resolution: calc(3dppx))&quot; but got &quot;(resolution: calc(1x + 2x))&quot;</pre></details><a class="self" href="#s-a0dfe3b5a34b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-de5a2896ed56"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test parsing &#39;(resolution: calc(5x - 2x))&#39; with matchMedia</span></summary><pre class="msg">assert_equals: expected &quot;(resolution: calc(3dppx))&quot; but got &quot;(resolution: calc(5x - 2x))&quot;</pre></details><a class="self" href="#s-de5a2896ed56" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ba526a5cee5f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test parsing &#39;(resolution: calc(1x * 3))&#39; with matchMedia</span></summary><pre class="msg">assert_equals: expected &quot;(resolution: calc(3dppx))&quot; but got &quot;(resolution: calc(1x * 3))&quot;</pre></details><a class="self" href="#s-ba526a5cee5f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a5c213737d94"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test parsing &#39;(resolution: calc(6x / 2))&#39; with matchMedia</span></summary><pre class="msg">assert_equals: expected &quot;(resolution: calc(3dppx))&quot; but got &quot;(resolution: calc(6x / 2))&quot;</pre></details><a class="self" href="#s-a5c213737d94" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>26 passing subtests</summary><ol class="pass-list"><li>Test parsing &#39;&#39; with matchMedia</li><li>Test parsing &#39; &#39; with matchMedia</li><li>Test parsing &#39;all&#39; with matchMedia</li><li>Test parsing &#39; all&#39; with matchMedia</li><li>Test parsing &#39;   all   &#39; with matchMedia</li><li>Test parsing &#39;all,all&#39; with matchMedia</li><li>Test parsing &#39; all , all &#39; with matchMedia</li><li>Test parsing &#39;(color)&#39; with matchMedia</li><li>Test parsing &#39;(color&#39; with matchMedia</li><li>Test parsing &#39; (color)&#39; with matchMedia</li><li>Test parsing &#39; ( color  )  &#39; with matchMedia</li><li>Test parsing &#39;color)&#39; with matchMedia</li><li>Test parsing &#39;  color)&#39; with matchMedia</li><li>Test parsing &#39;  color ), ( color&#39; with matchMedia</li><li>Test parsing &#39; foo &#39; with matchMedia</li><li>Test parsing &#39;,&#39; with matchMedia</li><li>Test parsing &#39; , &#39; with matchMedia</li><li>Test parsing &#39;,,&#39; with matchMedia</li><li>Test parsing &#39;  ,  ,  &#39; with matchMedia</li><li>Test parsing &#39; foo,&#39; with matchMedia</li><li>Test parsing &#39;(min-resolution: 1x)&#39; with matchMedia</li><li>Test parsing &#39;(resolution: 2x)&#39; with matchMedia</li><li>Test parsing &#39;(max-resolution: 7x)&#39; with matchMedia</li><li>Test parsing &#39;(resolution: 2dppx)&#39; with matchMedia</li><li>Test parsing &#39;(resolution: 600dpi)&#39; with matchMedia</li><li>Test parsing &#39;(resolution: 77dpcm)&#39; with matchMedia</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="mq-escaped-serialization.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>mq-<wbr>escaped-<wbr>serialization.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/mediaqueries/mq-escaped-serialization.html"><code>css/<wbr>mediaqueries/<wbr>mq-<wbr>escaped-<wbr>serialization.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-6d8c963ca168"><details><summary><span class="mark">FAIL</span><span class="sub-name">Serialization of media query escapes identifiers when necessary</span></summary><pre class="msg">assert_equals: expected &quot;\\{screen and (--\\(FOO: bar)&quot; but got &quot;\\{screen and (--\\(foo: bar)&quot;</pre></details><a class="self" href="#s-6d8c963ca168" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

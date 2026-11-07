@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>fetch/fetch-later/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -46,18 +46,94 @@
 <tr><th scope="row"><a href="../../fetch/fetch-later/send-on-discard/"><code>send-<wbr>on-<wbr>discard/</code></a></th><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3">3</td><td data-v="0"><span class="tally"><span class="quiet">none blocking</span><span class="mini" aria-hidden="true"><span class="m-clean" style="width:100.000%"></span></span></span></td></tr>
 </tbody>
 </table>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../fetch/fetch-later/activate-after.https.window.js/"><code>activate-<wbr>after.<wbr>https.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../fetch/fetch-later/basic.https.window.js/"><code>basic.<wbr>https.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="23" data-of="23"><b>23</b> / 23</td><td class="n" data-v="22" data-of="23"><b>22</b> / 23</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../fetch/fetch-later/basic.https.worker.js/"><code>basic.<wbr>https.<wbr>worker.<wbr>js</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../fetch/fetch-later/iframe.https.window.js/"><code>iframe.<wbr>https.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../fetch/fetch-later/new-window.https.window.js/"><code>new-<wbr>window.<wbr>https.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="12" data-of="12"><b>12</b> / 12</td><td class="n" data-v="4" data-of="12"><b>4</b> / 12</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../fetch/fetch-later/non-secure.window.js/"><code>non-<wbr>secure.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../fetch/fetch-later/send-on-deactivate.https.window.js/"><code>send-<wbr>on-<wbr>deactivate.<wbr>https.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="activate-after.https.window.js" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>activate-<wbr>after.<wbr>https.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/fetch-later/activate-after.https.window.js"><code>fetch/<wbr>fetch-<wbr>later/<wbr>activate-<wbr>after.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>fetchLater() sends out based on activateAfter.</li><li>fetchLater() sends out based on activateAfter, even if document is in BFCache.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="basic.https.window.js" data-gate="clean" data-pass="23" data-of="23" data-failed="0" data-ref-pass="22" data-ref-of="23"><summary><span class="tf-name"><code>basic.<wbr>https.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>23</b> / 23<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>22</b> / 23</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>22</b> / 23 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/fetch-later/basic.https.window.js"><code>fetch/<wbr>fetch-<wbr>later/<wbr>basic.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>23 passing subtests</summary><ol class="pass-list"><li>fetchLater() cannot be called without request.</li><li>fetchLater() with same-origin (https) URL does not throw.</li><li>fetchLater() with http://localhost URL does not throw.</li><li>fetchLater() with https://localhost URL does not throw.</li><li>fetchLater() with http://127.0.0.1 URL does not throw.</li><li>fetchLater() with https://127.0.0.1 URL does not throw.</li><li>fetchLater() with http://[::1] URL does not throw.</li><li>fetchLater() with https://[::1] URL does not throw.</li><li>fetchLater() with https://example.com URL does not throw.</li><li>fetchLater() throws TypeError on non-trustworthy http URL.</li><li>fetchLater() throws TypeError on file:// scheme.</li><li>fetchLater() throws TypeError on ftp:// scheme.</li><li>fetchLater() throws TypeError on ssh:// scheme.</li><li>fetchLater() throws TypeError on wss:// scheme.</li><li>fetchLater() throws TypeError on about: scheme.</li><li>fetchLater() throws TypeError on javascript: scheme.</li><li>fetchLater() throws TypeError on data: scheme.</li><li>fetchLater() throws TypeError on blob: scheme.</li><li>fetchLater() throws RangeError on negative activateAfter.</li><li>fetchLater()&#39;s return tells the deferred request is not yet sent.</li><li>fetchLater() throws TypeError when mutating its returned state.</li><li>fetchLater() throws AbortError when its initial abort signal is aborted.</li><li>fetchLater() does not throw error when it is aborted before sending.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="basic.https.worker.js" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>basic.<wbr>https.<wbr>worker.<wbr>js</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/fetch-later/basic.https.worker.js"><code>fetch/<wbr>fetch-<wbr>later/<wbr>basic.<wbr>https.<wbr>worker.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>fetchLater() is not supported in worker.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="iframe.https.window.js" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>iframe.<wbr>https.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/fetch-later/iframe.https.window.js"><code>fetch/<wbr>fetch-<wbr>later/<wbr>iframe.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>A blank iframe can trigger fetchLater.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="new-window.https.window.js" data-gate="clean" data-pass="12" data-of="12" data-failed="0" data-ref-pass="4" data-ref-of="12"><summary><span class="tf-name"><code>new-<wbr>window.<wbr>https.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>12</b> / 12<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 12</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>4</b> / 12 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/fetch-later/new-window.https.window.js"><code>fetch/<wbr>fetch-<wbr>later/<wbr>new-<wbr>window.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>12 passing subtests</summary><ol class="pass-list"><li>A blank window[target=&#39;&#39;][features=&#39;&#39;] can trigger fetchLater.</li><li>A same-origin window[target=&#39;&#39;][features=&#39;&#39;] can trigger fetchLater.</li><li>A cross-origin window[target=&#39;&#39;][features=&#39;&#39;] can trigger fetchLater.</li><li>A blank window[target=&#39;&#39;][features=&#39;popup&#39;] can trigger fetchLater.</li><li>A same-origin window[target=&#39;&#39;][features=&#39;popup&#39;] can trigger fetchLater.</li><li>A cross-origin window[target=&#39;&#39;][features=&#39;popup&#39;] can trigger fetchLater.</li><li>A blank window[target=&#39;_blank&#39;][features=&#39;&#39;] can trigger fetchLater.</li><li>A same-origin window[target=&#39;_blank&#39;][features=&#39;&#39;] can trigger fetchLater.</li><li>A cross-origin window[target=&#39;_blank&#39;][features=&#39;&#39;] can trigger fetchLater.</li><li>A blank window[target=&#39;_blank&#39;][features=&#39;popup&#39;] can trigger fetchLater.</li><li>A same-origin window[target=&#39;_blank&#39;][features=&#39;popup&#39;] can trigger fetchLater.</li><li>A cross-origin window[target=&#39;_blank&#39;][features=&#39;popup&#39;] can trigger fetchLater.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="non-secure.window.js" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>non-<wbr>secure.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/fetch-later/non-secure.window.js"><code>fetch/<wbr>fetch-<wbr>later/<wbr>non-<wbr>secure.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>fetchLater() is not supported in non-secure context.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="send-on-deactivate.https.window.js" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>send-<wbr>on-<wbr>deactivate.<wbr>https.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/fetch-later/send-on-deactivate.https.window.js"><code>fetch/<wbr>fetch-<wbr>later/<wbr>send-<wbr>on-<wbr>deactivate.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>fetchLater() sends on page entering BFCache if BackgroundSync is off.</li><li>Call fetchLater() when BFCached with activateAfter=0 sends immediately.</li><li>fetchLater() sends on navigating away a page w/o BFCache.</li><li>fetchLater() does not send aborted request on navigating away a page w/o BFCache.</li><li>fetchLater() with activateAfter=1m sends on page entering BFCache if BackgroundSync is off.</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

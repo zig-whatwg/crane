@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>selection/shadow-dom/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,13 +36,34 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">2 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../selection/shadow-dom/cross-shadow-boundary-extend.html/"><code>cross-<wbr>shadow-<wbr>boundary-<wbr>extend.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../selection/shadow-dom/selection-at-nodes-not-part-of-flattened-tree.html/"><code>selection-<wbr>at-<wbr>nodes-<wbr>not-<wbr>part-<wbr>of-<wbr>flattened-<wbr>tree.<wbr>html</code></a></th><td class="n" data-v="24" data-of="24"><b>24</b> / 24</td><td class="n" data-v="24" data-of="24"><b>24</b> / 24</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="cross-shadow-boundary-extend.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>cross-<wbr>shadow-<wbr>boundary-<wbr>extend.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/selection/shadow-dom/cross-shadow-boundary-extend.html"><code>selection/<wbr>shadow-<wbr>dom/<wbr>cross-<wbr>shadow-<wbr>boundary-<wbr>extend.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Test that extending Selection collapses it if crossing a shadow DOM boundary</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="selection-at-nodes-not-part-of-flattened-tree.html" data-gate="clean" data-pass="24" data-of="24" data-failed="0" data-ref-pass="24" data-ref-of="24"><summary><span class="tf-name"><code>selection-<wbr>at-<wbr>nodes-<wbr>not-<wbr>part-<wbr>of-<wbr>flattened-<wbr>tree.<wbr>html</code></span><span class="tf-n"><b>24</b> / 24<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>24</b> / 24</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>24</b> / 24 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/selection/shadow-dom/selection-at-nodes-not-part-of-flattened-tree.html"><code>selection/<wbr>shadow-<wbr>dom/<wbr>selection-<wbr>at-<wbr>nodes-<wbr>not-<wbr>part-<wbr>of-<wbr>flattened-<wbr>tree.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>24 passing subtests</summary><ol class="pass-list"><li>Test Selection API working with nodes in not part of flattened tree</li><li>Collapse selection after the &lt;span&gt; which is not part of the flattened tree</li><li>Extend selection from end of the host to start of the host</li><li>Extend selection from start of the host to end of the host</li><li>Select all children of the host</li><li>Select set base to start of the host and extent to end of the host</li><li>Select set base to end of the host and extent to start of the host</li><li>containsNode of non-assigned node should return false (when all children of the host is selected)</li><li>containsNode of non-assigned node should return false (when the host is selected)</li><li>containsNode of non-assigned node child should return false (when all children of the host is selected)</li><li>containsNode of non-assigned node child should return false (when the host is selected)</li><li>getRangeAt(0).comparePoint of start of non-assigned node should return 0 (when all children of the host is selected)</li><li>getRangeAt(0).comparePoint of start of non-assigned node should return 0 (when the host is selected)</li><li>getRangeAt(0).comparePoint of start of non-assigned node child should return 0 (when all children of the host is selected)</li><li>getRangeAt(0).comparePoint of start of non-assigned node child should return 0 (when the host is selected)</li><li>Test Selection API working with nodes in not part of flattened tree 1</li><li>Collapse selection to end of the default text</li><li>Extend selection from end of the default span to start of the default span</li><li>Extend selection from start of the default span to end of the default span</li><li>Select all children of the default span</li><li>Select set base to start of the default span and extent to end of the default span</li><li>Select set base to end of the default span and extent to start of the default span</li><li>containsNode of the default span child should return false (when all children of the default span is selected)</li><li>getRangeAt(0).comparePoint of the start of the default span child should return 0 (when all children of the default span is selected)</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

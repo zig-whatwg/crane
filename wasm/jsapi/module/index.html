@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>wasm/jsapi/module/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,16 +36,95 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">5 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/jsapi/module/constructor.any.js/"><code>constructor.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="20" data-of="20"><b>20</b> / 20</td><td class="n" data-v="20" data-of="20"><b>20</b> / 20</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/jsapi/module/customSections.any.js/"><code>customSections.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="18" data-of="18"><b>18</b> / 18</td><td class="n" data-v="18" data-of="18"><b>18</b> / 18</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/jsapi/module/exports.any.js/"><code>exports.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="22" data-of="22"><b>22</b> / 22</td><td class="n" data-v="22" data-of="22"><b>22</b> / 22</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/jsapi/module/imports.any.js/"><code>imports.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="22" data-of="22"><b>22</b> / 22</td><td class="n" data-v="22" data-of="22"><b>22</b> / 22</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/jsapi/module/toString.any.js/"><code>toString.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="constructor.any.js" data-gate="clean" data-pass="20" data-of="20" data-failed="0" data-ref-pass="20" data-ref-of="20"><summary><span class="tf-name"><code>constructor.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>20</b> / 20<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>20</b> / 20</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>20</b> / 20 WPT subtests passing <span class="quiet">runner status <code>OK</code></span> <span class="quiet">1 of its test URLs has no Chrome result</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/jsapi/module/constructor.any.js"><code>wasm/<wbr>jsapi/<wbr>module/<wbr>constructor.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/module/constructor.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>10</b> / 10</span></h3>
+<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>name</li><li>length</li><li>No arguments</li><li>Calling</li><li>Invalid arguments</li><li>Empty buffer</li><li>Invalid code</li><li>Prototype</li><li>Extensibility</li><li>Stray argument</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/module/constructor.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>10</b> / 10</span></h3>
+<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>name</li><li>length</li><li>No arguments</li><li>Calling</li><li>Invalid arguments</li><li>Empty buffer</li><li>Invalid code</li><li>Prototype</li><li>Extensibility</li><li>Stray argument</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="customSections.any.js" data-gate="clean" data-pass="18" data-of="18" data-failed="0" data-ref-pass="18" data-ref-of="18"><summary><span class="tf-name"><code>customSections.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>18</b> / 18<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>18</b> / 18</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>18</b> / 18 WPT subtests passing <span class="quiet">runner status <code>OK</code></span> <span class="quiet">1 of its test URLs has no Chrome result</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/jsapi/module/customSections.any.js"><code>wasm/<wbr>jsapi/<wbr>module/<wbr>customSections.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/module/customSections.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 9</span></h3>
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>Missing arguments</li><li>Non-Module arguments</li><li>Branding</li><li>Empty module</li><li>Empty module: array caching</li><li>Custom sections</li><li>Custom sections with surrogate pairs</li><li>Custom sections with U+FFFD</li><li>Stray argument</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/module/customSections.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>9</b> / 9</span></h3>
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>Missing arguments</li><li>Non-Module arguments</li><li>Branding</li><li>Empty module</li><li>Empty module: array caching</li><li>Custom sections</li><li>Custom sections with surrogate pairs</li><li>Custom sections with U+FFFD</li><li>Stray argument</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="exports.any.js" data-gate="clean" data-pass="22" data-of="22" data-failed="0" data-ref-pass="22" data-ref-of="22"><summary><span class="tf-name"><code>exports.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>22</b> / 22<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>22</b> / 22</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>22</b> / 22 WPT subtests passing <span class="quiet">runner status <code>OK</code></span> <span class="quiet">1 of its test URLs has no Chrome result</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/jsapi/module/exports.any.js"><code>wasm/<wbr>jsapi/<wbr>module/<wbr>exports.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/module/exports.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
+<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>Missing arguments</li><li>Non-Module arguments</li><li>Branding</li><li>Return type</li><li>Empty module</li><li>Empty module: array caching</li><li>exports</li><li>exports with empty name: function</li><li>exports with empty name: table</li><li>exports with empty name: global</li><li>Stray argument</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/module/exports.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
+<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>Missing arguments</li><li>Non-Module arguments</li><li>Branding</li><li>Return type</li><li>Empty module</li><li>Empty module: array caching</li><li>exports</li><li>exports with empty name: function</li><li>exports with empty name: table</li><li>exports with empty name: global</li><li>Stray argument</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="imports.any.js" data-gate="clean" data-pass="22" data-of="22" data-failed="0" data-ref-pass="22" data-ref-of="22"><summary><span class="tf-name"><code>imports.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>22</b> / 22<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>22</b> / 22</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>22</b> / 22 WPT subtests passing <span class="quiet">runner status <code>OK</code></span> <span class="quiet">1 of its test URLs has no Chrome result</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/jsapi/module/imports.any.js"><code>wasm/<wbr>jsapi/<wbr>module/<wbr>imports.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/module/imports.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
+<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>Missing arguments</li><li>Non-Module arguments</li><li>Branding</li><li>Return type</li><li>Empty module</li><li>Empty module: array caching</li><li>imports</li><li>imports with empty module name</li><li>imports with empty names</li><li>imports with empty module names and names</li><li>Stray argument</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/module/imports.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
+<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>Missing arguments</li><li>Non-Module arguments</li><li>Branding</li><li>Return type</li><li>Empty module</li><li>Empty module: array caching</li><li>imports</li><li>imports with empty module name</li><li>imports with empty names</li><li>imports with empty module names and names</li><li>Stray argument</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="toString.any.js" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>toString.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span> <span class="quiet">1 of its test URLs has no Chrome result</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/jsapi/module/toString.any.js"><code>wasm/<wbr>jsapi/<wbr>module/<wbr>toString.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/module/toString.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Object.prototype.toString on an Module</li><li>@@toStringTag exists on the prototype with the appropriate descriptor</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/module/toString.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Object.prototype.toString on an Module</li><li>@@toStringTag exists on the prototype with the appropriate descriptor</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

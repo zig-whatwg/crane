@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>css/css-size-adjust/parsing/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,14 +36,61 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">3 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="none-passed"><th scope="row"><a href="../../../css/css-size-adjust/parsing/text-size-adjust-computed.html/"><code>text-<wbr>size-<wbr>adjust-<wbr>computed.<wbr>html</code></a></th><td class="n" data-v="0" data-of="6"><b>0</b> / 6</td><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="6"><span class="fail">6</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-size-adjust/parsing/text-size-adjust-invalid.html/"><code>text-<wbr>size-<wbr>adjust-<wbr>invalid.<wbr>html</code></a></th><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../../css/css-size-adjust/parsing/text-size-adjust-valid.html/"><code>text-<wbr>size-<wbr>adjust-<wbr>valid.<wbr>html</code></a></th><td class="n" data-v="0" data-of="7"><b>0</b> / 7</td><td class="n" data-v="7" data-of="7"><b>7</b> / 7</td><td class="n" data-v="7"><span class="fail">7</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="text-size-adjust-computed.html" data-gate="none-passed" data-pass="0" data-of="6" data-failed="6" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>text-<wbr>size-<wbr>adjust-<wbr>computed.<wbr>html</code></span><span class="tf-n"><b>0</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="fail">6</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-size-adjust/parsing/text-size-adjust-computed.html"><code>css/<wbr>css-<wbr>size-<wbr>adjust/<wbr>parsing/<wbr>text-<wbr>size-<wbr>adjust-<wbr>computed.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-0c4602d9c44d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property text-size-adjust value &#39;auto&#39;</span></summary><pre class="msg">assert_true: text-size-adjust doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-0c4602d9c44d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cfddf765bf74"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property text-size-adjust value &#39;none&#39;</span></summary><pre class="msg">assert_true: text-size-adjust doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-cfddf765bf74" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-927e90847436"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property text-size-adjust value &#39;200%&#39;</span></summary><pre class="msg">assert_true: text-size-adjust doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-927e90847436" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-82533c10ec28"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property text-size-adjust value &#39;100%&#39;</span></summary><pre class="msg">assert_true: text-size-adjust doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-82533c10ec28" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0a7c173bc036"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property text-size-adjust value &#39;0%&#39;</span></summary><pre class="msg">assert_true: text-size-adjust doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-0a7c173bc036" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-71f15dd88272"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property text-size-adjust value &#39;calc(10% * sibling-index())&#39;</span></summary><pre class="msg">assert_true: text-size-adjust doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-71f15dd88272" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="text-size-adjust-invalid.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>text-<wbr>size-<wbr>adjust-<wbr>invalid.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-size-adjust/parsing/text-size-adjust-invalid.html"><code>css/<wbr>css-<wbr>size-<wbr>adjust/<wbr>parsing/<wbr>text-<wbr>size-<wbr>adjust-<wbr>invalid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>e.style[&#39;text-size-adjust&#39;] = &quot;reverse&quot; should not set the property value</li><li>e.style[&#39;text-size-adjust&#39;] = &quot;0&quot; should not set the property value</li><li>e.style[&#39;text-size-adjust&#39;] = &quot;10px&quot; should not set the property value</li><li>e.style[&#39;text-size-adjust&#39;] = &quot;-100%&quot; should not set the property value</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="text-size-adjust-valid.html" data-gate="none-passed" data-pass="0" data-of="7" data-failed="7" data-ref-pass="7" data-ref-of="7"><summary><span class="tf-name"><code>text-<wbr>size-<wbr>adjust-<wbr>valid.<wbr>html</code></span><span class="tf-n"><b>0</b> / 7<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>7</b> / 7</span><span class="tf-fail"><span class="fail">7</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>7</b> / 7 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-size-adjust/parsing/text-size-adjust-valid.html"><code>css/<wbr>css-<wbr>size-<wbr>adjust/<wbr>parsing/<wbr>text-<wbr>size-<wbr>adjust-<wbr>valid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-d3bc456c8fdb"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;text-size-adjust&#39;] = &quot;auto&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-d3bc456c8fdb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-122dfef5a958"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;text-size-adjust&#39;] = &quot;none&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-122dfef5a958" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d35c751940a4"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;text-size-adjust&#39;] = &quot;200%&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-d35c751940a4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5fe21589aa01"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;text-size-adjust&#39;] = &quot;100%&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-5fe21589aa01" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-34cb5cc48d24"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;text-size-adjust&#39;] = &quot;0%&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-34cb5cc48d24" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9ee602cccaf1"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;text-size-adjust&#39;] = &quot;calc(10% + 5%)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-9ee602cccaf1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5f2067d815ad"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;text-size-adjust&#39;] = &quot;calc(10% * sibling-index())&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-5f2067d815ad" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

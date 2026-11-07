@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>web-animations/timing-model/timelines/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,16 +36,82 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">5 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../../web-animations/timing-model/timelines/document-timelines.html/"><code>document-<wbr>timelines.<wbr>html</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../web-animations/timing-model/timelines/sibling-iframe-timeline.html/"><code>sibling-<wbr>iframe-<wbr>timeline.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../../web-animations/timing-model/timelines/timelines.html/"><code>timelines.<wbr>html</code></a></th><td class="n" data-v="4" data-of="5"><b>4</b> / 5</td><td class="n" data-v="3" data-of="5"><b>3</b> / 5</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../../web-animations/timing-model/timelines/update-and-send-events-replacement.html/"><code>update-<wbr>and-<wbr>send-<wbr>events-<wbr>replacement.<wbr>html</code></a></th><td class="n" data-v="39" data-of="42"><b>39</b> / 42</td><td class="n" data-v="42" data-of="42"><b>42</b> / 42</td><td class="n" data-v="3"><span class="fail">3</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../../web-animations/timing-model/timelines/update-and-send-events.html/"><code>update-<wbr>and-<wbr>send-<wbr>events.<wbr>html</code></a></th><td class="n" data-v="7" data-of="9"><b>7</b> / 9</td><td class="n" data-v="7" data-of="9"><b>7</b> / 9</td><td class="n" data-v="2"><span class="fail">2</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="document-timelines.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>document-<wbr>timelines.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/timing-model/timelines/document-timelines.html"><code>web-<wbr>animations/<wbr>timing-<wbr>model/<wbr>timelines/<wbr>document-<wbr>timelines.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Document timelines report current time relative to navigationStart</li><li>Child frames do not report negative initial times</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="sibling-iframe-timeline.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>sibling-<wbr>iframe-<wbr>timeline.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/timing-model/timelines/sibling-iframe-timeline.html"><code>web-<wbr>animations/<wbr>timing-<wbr>model/<wbr>timelines/<wbr>sibling-<wbr>iframe-<wbr>timeline.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>animation tied to another frame&#39;s timeline runs properly</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="timelines.html" data-gate="partial" data-pass="4" data-of="5" data-failed="1" data-ref-pass="3" data-ref-of="5"><summary><span class="tf-name"><code>timelines.<wbr>html</code></span><span class="tf-n"><b>4</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 5</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>3</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/timing-model/timelines/timelines.html"><code>web-<wbr>animations/<wbr>timing-<wbr>model/<wbr>timelines/<wbr>timelines.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-78a11c3e3b05"><details><summary><span class="mark">FAIL</span><span class="sub-name">Runs finished promise before animation events</span></summary><pre class="msg">Cannot read properties of undefined (reading &#39;ready&#39;)</pre></details><a class="self" href="#s-78a11c3e3b05" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>Timeline time increases once per animation frame</li><li>Timeline time increases once per animation frame in an iframe</li><li>Timeline time should be the same for all RAF callbacks in an animation frame</li><li>Performs a microtask checkpoint after updating timelines</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="update-and-send-events-replacement.html" data-gate="partial" data-pass="39" data-of="42" data-failed="3" data-ref-pass="42" data-ref-of="42"><summary><span class="tf-name"><code>update-<wbr>and-<wbr>send-<wbr>events-<wbr>replacement.<wbr>html</code></span><span class="tf-n"><b>39</b> / 42<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>42</b> / 42</span><span class="tf-fail"><span class="fail">3</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>42</b> / 42 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/timing-model/timelines/update-and-send-events-replacement.html"><code>web-<wbr>animations/<wbr>timing-<wbr>model/<wbr>timelines/<wbr>update-<wbr>and-<wbr>send-<wbr>events-<wbr>replacement.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-e1e17bae4128"><details><summary><span class="mark">FAIL</span><span class="sub-name">Does NOT remove a CSS animation tied to markup</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;replaceState&#39;)&quot;</pre></details><a class="self" href="#s-e1e17bae4128" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-49eb750ecaa1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Removes a CSS animation no longer tied to markup</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of undefined (reading &#39;playState&#39;)&quot;</pre></details><a class="self" href="#s-49eb750ecaa1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d2ef5d241afd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Removes a CSS transition no longer tied to markup</span></summary><pre class="msg">assert_equals: expected &quot;idle&quot; but got &quot;running&quot;</pre></details><a class="self" href="#s-d2ef5d241afd" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>39 passing subtests</summary><ol class="pass-list"><li>Removes an animation when another covers the same properties</li><li>Removes an animation after another animation finishes</li><li>Removes an animation after multiple other animations finish</li><li>Removes an animation after it finishes</li><li>Removes an animation after seeking another animation</li><li>Removes an animation after seeking it</li><li>Removes an animation after updating the fill mode of another animation</li><li>Removes an animation after updating its fill mode</li><li>Removes an animation after updating another animation&#39;s effect to one with different timing</li><li>Removes an animation after updating its effect to one with different timing</li><li>Removes an animation after updating another animation&#39;s timeline</li><li>Removes an animation after updating its timeline</li><li>Removes an animation after updating another animation&#39;s effect&#39;s properties</li><li>Removes an animation after updating its effect&#39;s properties</li><li>Removes an animation after updating another animation&#39;s effect to one with different properties</li><li>Removes an animation after updating its effect to one with different properties</li><li>Removes an animation when another animation uses a shorthand</li><li>Removes an animation that uses a shorthand</li><li>Removes an animation by another animation using logical properties</li><li>Removes an animation using logical properties</li><li>Removes an animation by another animation using logical properties after updating the context</li><li>Removes an animation after updating another animation&#39;s effect&#39;s target</li><li>Removes an animation after updating its effect&#39;s target</li><li>Removes an animation after updating another animation&#39;s effect to one with a different target</li><li>Removes an animation after updating its effect to one with a different target</li><li>Does NOT remove a CSS transition tied to markup</li><li>Dispatches an event when removing</li><li>Does NOT dispatch a remove event twice</li><li>Does NOT remove an animation after making a redundant change to another animation&#39;s current time</li><li>Does NOT remove an animation after making a redundant change to its current time</li><li>Does NOT remove an animation after making a redundant change to another animation&#39;s timeline</li><li>Does NOT remove an animation after making a redundant change to its timeline</li><li>Does NOT remove an animation after making a redundant change to another animation&#39;s effect&#39;s properties</li><li>Does NOT remove an animation after making a redundant change to its effect&#39;s properties</li><li>Updates ALL timelines before checking for replacement</li><li>Dispatches remove events after finish events</li><li>Fires remove event before requestAnimationFrame</li><li>Queues all remove events before running them</li><li>Performs removal in deeply nested iframes</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="update-and-send-events.html" data-gate="partial" data-pass="7" data-of="9" data-failed="2" data-ref-pass="7" data-ref-of="9"><summary><span class="tf-name"><code>update-<wbr>and-<wbr>send-<wbr>events.<wbr>html</code></span><span class="tf-n"><b>7</b> / 9<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>7</b> / 9</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>7</b> / 9 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/timing-model/timelines/update-and-send-events.html"><code>web-<wbr>animations/<wbr>timing-<wbr>model/<wbr>timelines/<wbr>update-<wbr>and-<wbr>send-<wbr>events.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-b8532ebb4e11"><details><summary><span class="mark">FAIL</span><span class="sub-name">Sorts finish events by composite order</span></summary><pre class="msg">assert_array_equals: finish events for various animation type should be sorted by composite order lengths differ, expected array [&quot;CSSTransition:finish&quot;, &quot;CSSAnimation:finish&quot;, &quot;ScriptAnimation:finish&quot;] length 3, got [&quot;CSSTransition:finish&quot;, &quot;ScriptAnimation:finish&quot;] length 2</pre></details><a class="self" href="#s-b8532ebb4e11" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6968d1450e08"><details><summary><span class="mark">FAIL</span><span class="sub-name">Sorts cancel events by composite order</span></summary><pre class="msg">assert_approx_equals: A rAF callback should happen in the same frame expected 94.875 +/- 0.001 but got 78.125</pre></details><a class="self" href="#s-6968d1450e08" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>7 passing subtests</summary><ol class="pass-list"><li>Fires cancel event before requestAnimationFrame</li><li>Fires finish event before requestAnimationFrame</li><li>Sorts finish events by scheduled event time</li><li>Queues a cancel event in transitionstart event callback</li><li>Sorts events for the same transition</li><li>Playback events with the same timeline retain the order in which they arequeued</li><li>All timelines are updated before running microtasks</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

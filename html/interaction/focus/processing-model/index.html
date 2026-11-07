@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>html/interaction/focus/processing-model/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,15 +36,73 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">4 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="partial"><th scope="row"><a href="../../../../html/interaction/focus/processing-model/focus-fixup-rule-one-no-dialogs.html/"><code>focus-<wbr>fixup-<wbr>rule-<wbr>one-<wbr>no-<wbr>dialogs.<wbr>html</code></a></th><td class="n" data-v="1" data-of="8"><b>1</b> / 8</td><td class="n" data-v="2" data-of="8"><b>2</b> / 8</td><td class="n" data-v="7"><span class="fail">7</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../../../html/interaction/focus/processing-model/focusVisible.html/"><code>focusVisible.<wbr>html</code></a></th><td class="n" data-v="1" data-of="5"><b>1</b> / 5</td><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="4"><span class="fail">4</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../html/interaction/focus/processing-model/legend-focusable.html/"><code>legend-<wbr>focusable.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../html/interaction/focus/processing-model/legend.html/"><code>legend.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="focus-fixup-rule-one-no-dialogs.html" data-gate="partial" data-pass="1" data-of="8" data-failed="7" data-ref-pass="2" data-ref-of="8"><summary><span class="tf-name"><code>focus-<wbr>fixup-<wbr>rule-<wbr>one-<wbr>no-<wbr>dialogs.<wbr>html</code></span><span class="tf-n"><b>1</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 8</span><span class="tf-fail"><span class="fail">7</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>2</b> / 8 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/interaction/focus/processing-model/focus-fixup-rule-one-no-dialogs.html"><code>html/<wbr>interaction/<wbr>focus/<wbr>processing-<wbr>model/<wbr>focus-<wbr>fixup-<wbr>rule-<wbr>one-<wbr>no-<wbr>dialogs.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-92a20efdb63c"><details><summary><span class="mark">FAIL</span><span class="sub-name">#button1</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-92a20efdb63c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a262a4d06115"><details><summary><span class="mark">FAIL</span><span class="sub-name">#button2</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-a262a4d06115" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dd4c22dcdd08"><details><summary><span class="mark">FAIL</span><span class="sub-name">#button4</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-dd4c22dcdd08" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-91f67c654a6e"><details><summary><span class="mark">FAIL</span><span class="sub-name">#button5</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-91f67c654a6e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-be9c78a214b6"><details><summary><span class="mark">FAIL</span><span class="sub-name">#div</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-be9c78a214b6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2a23833790a2"><details><summary><span class="mark">FAIL</span><span class="sub-name">#editable</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-2a23833790a2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6aba785ba80d"><details><summary><span class="mark">FAIL</span><span class="sub-name">#button6</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;NotSupportedError: This feature is not yet implemented&quot;</pre></details><a class="self" href="#s-6aba785ba80d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>#button3</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focusVisible.html" data-gate="partial" data-pass="1" data-of="5" data-failed="4" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>focusVisible.<wbr>html</code></span><span class="tf-n"><b>1</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="fail">4</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/interaction/focus/processing-model/focusVisible.html"><code>html/<wbr>interaction/<wbr>focus/<wbr>processing-<wbr>model/<wbr>focusVisible.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-7a97f04b3328"><details><summary><span class="mark">FAIL</span><span class="sub-name">FocusOptions.focusVisible: button</span></summary><pre class="msg">assert_equals: :focus-visible expected true but got false</pre></details><a class="self" href="#s-7a97f04b3328" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d5f6b973e004"><details><summary><span class="mark">FAIL</span><span class="sub-name">FocusOptions.focusVisible: input</span></summary><pre class="msg">assert_equals: :focus-visible expected false but got true</pre></details><a class="self" href="#s-d5f6b973e004" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-92264ff3b5f4"><details><summary><span class="mark">FAIL</span><span class="sub-name">FocusOptions.focusVisible: #contenteditable</span></summary><pre class="msg">assert_equals: :focus-visible expected false but got true</pre></details><a class="self" href="#s-92264ff3b5f4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7dfb45884820"><details><summary><span class="mark">FAIL</span><span class="sub-name">FocusOptions.focusVisible: #tabindex</span></summary><pre class="msg">assert_equals: :focus-visible expected true but got false</pre></details><a class="self" href="#s-7dfb45884820" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>FocusOptions.focusVisible: #not_focusable</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="legend-focusable.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>legend-<wbr>focusable.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <b>0</b> / 1 WPT subtests passing <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/interaction/focus/processing-model/legend-focusable.html"><code>html/<wbr>interaction/<wbr>focus/<wbr>processing-<wbr>model/<wbr>legend-<wbr>focusable.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>legend focusable</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="legend.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>legend.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/interaction/focus/processing-model/legend.html"><code>html/<wbr>interaction/<wbr>focus/<wbr>processing-<wbr>model/<wbr>legend.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>legend</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

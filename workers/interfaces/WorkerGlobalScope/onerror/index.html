@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>workers/interfaces/WorkerGlobalScope/onerror/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,19 +36,106 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">8 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../../../workers/interfaces/WorkerGlobalScope/onerror/exception-in-onerror.html/"><code>exception-<wbr>in-<wbr>onerror.<wbr>html</code></a></th><td class="n" data-v="16" data-of="16"><b>16</b> / 16</td><td class="n" data-v="16" data-of="16"><b>16</b> / 16</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../workers/interfaces/WorkerGlobalScope/onerror/handled.html/"><code>handled.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../workers/interfaces/WorkerGlobalScope/onerror/message-classic-DOMException.html/"><code>message-<wbr>classic-<wbr>DOMException.<wbr>html</code></a></th><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../workers/interfaces/WorkerGlobalScope/onerror/message-classic-Error.html/"><code>message-<wbr>classic-<wbr>Error.<wbr>html</code></a></th><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../workers/interfaces/WorkerGlobalScope/onerror/message-module-DOMException.html/"><code>message-<wbr>module-<wbr>DOMException.<wbr>html</code></a></th><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="8" data-of="10"><b>8</b> / 10</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../workers/interfaces/WorkerGlobalScope/onerror/message-module-Error.html/"><code>message-<wbr>module-<wbr>Error.<wbr>html</code></a></th><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../workers/interfaces/WorkerGlobalScope/onerror/not-handled.html/"><code>not-<wbr>handled.<wbr>html</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../workers/interfaces/WorkerGlobalScope/onerror/propagate-to-window-onerror.html/"><code>propagate-<wbr>to-<wbr>window-<wbr>onerror.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="exception-in-onerror.html" data-gate="clean" data-pass="16" data-of="16" data-failed="0" data-ref-pass="16" data-ref-of="16"><summary><span class="tf-name"><code>exception-<wbr>in-<wbr>onerror.<wbr>html</code></span><span class="tf-n"><b>16</b> / 16<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>16</b> / 16</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>16</b> / 16 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/workers/interfaces/WorkerGlobalScope/onerror/exception-in-onerror.html"><code>workers/<wbr>interfaces/<wbr>WorkerGlobalScope/<wbr>onerror/<wbr>exception-<wbr>in-<wbr>onerror.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>16 passing subtests</summary><ol class="pass-list"><li>Throw in worker initialization: classic: listener</li><li>Throw in worker initialization: classic: handler</li><li>Throw in setTimeout(function): classic: listener</li><li>Throw in setTimeout(function): classic: handler</li><li>Throw in setTimeout(string): classic: listener</li><li>Throw in setTimeout(string): classic: handler</li><li>Throw in message handler: classic: listener</li><li>Throw in message handler: classic: handler</li><li>Throw in worker initialization: module: listener</li><li>Throw in worker initialization: module: handler</li><li>Throw in setTimeout(function): module: listener</li><li>Throw in setTimeout(function): module: handler</li><li>Throw in setTimeout(string): module: listener</li><li>Throw in setTimeout(string): module: handler</li><li>Throw in message handler: module: listener</li><li>Throw in message handler: module: handler</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="handled.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>handled.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/workers/interfaces/WorkerGlobalScope/onerror/handled.html"><code>workers/<wbr>interfaces/<wbr>WorkerGlobalScope/<wbr>onerror/<wbr>handled.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>onerror, &quot;handled&quot;</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="message-classic-DOMException.html" data-gate="clean" data-pass="10" data-of="10" data-failed="0" data-ref-pass="10" data-ref-of="10"><summary><span class="tf-name"><code>message-<wbr>classic-<wbr>DOMException.<wbr>html</code></span><span class="tf-n"><b>10</b> / 10<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>10</b> / 10</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>10</b> / 10 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/workers/interfaces/WorkerGlobalScope/onerror/message-classic-DOMException.html"><code>workers/<wbr>interfaces/<wbr>WorkerGlobalScope/<wbr>onerror/<wbr>message-<wbr>classic-<wbr>DOMException.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>Throw DOMException-TypeError in toplevel: classic: listener</li><li>Throw DOMException-TypeError in toplevel: classic: handler</li><li>Throw DOMException-TypeError in setTimeout-function: classic: listener</li><li>Throw DOMException-TypeError in setTimeout-function: classic: handler</li><li>Throw DOMException-TypeError in setTimeout-string: classic: listener</li><li>Throw DOMException-TypeError in setTimeout-string: classic: handler</li><li>Throw DOMException-TypeError in onmessage: classic: listener</li><li>Throw DOMException-TypeError in onmessage: classic: handler</li><li>Throw DOMException-TypeError in onerror: classic: listener</li><li>Throw DOMException-TypeError in onerror: classic: handler</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="message-classic-Error.html" data-gate="clean" data-pass="10" data-of="10" data-failed="0" data-ref-pass="10" data-ref-of="10"><summary><span class="tf-name"><code>message-<wbr>classic-<wbr>Error.<wbr>html</code></span><span class="tf-n"><b>10</b> / 10<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>10</b> / 10</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>10</b> / 10 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/workers/interfaces/WorkerGlobalScope/onerror/message-classic-Error.html"><code>workers/<wbr>interfaces/<wbr>WorkerGlobalScope/<wbr>onerror/<wbr>message-<wbr>classic-<wbr>Error.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>Throw Error in toplevel: classic: listener</li><li>Throw Error in toplevel: classic: handler</li><li>Throw Error in setTimeout-function: classic: listener</li><li>Throw Error in setTimeout-function: classic: handler</li><li>Throw Error in setTimeout-string: classic: listener</li><li>Throw Error in setTimeout-string: classic: handler</li><li>Throw Error in onmessage: classic: listener</li><li>Throw Error in onmessage: classic: handler</li><li>Throw Error in onerror: classic: listener</li><li>Throw Error in onerror: classic: handler</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="message-module-DOMException.html" data-gate="clean" data-pass="10" data-of="10" data-failed="0" data-ref-pass="8" data-ref-of="10"><summary><span class="tf-name"><code>message-<wbr>module-<wbr>DOMException.<wbr>html</code></span><span class="tf-n"><b>10</b> / 10<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 10</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>8</b> / 10 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/workers/interfaces/WorkerGlobalScope/onerror/message-module-DOMException.html"><code>workers/<wbr>interfaces/<wbr>WorkerGlobalScope/<wbr>onerror/<wbr>message-<wbr>module-<wbr>DOMException.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>Throw DOMException-TypeError in toplevel: module: listener</li><li>Throw DOMException-TypeError in toplevel: module: handler</li><li>Throw DOMException-TypeError in setTimeout-function: module: listener</li><li>Throw DOMException-TypeError in setTimeout-function: module: handler</li><li>Throw DOMException-TypeError in setTimeout-string: module: listener</li><li>Throw DOMException-TypeError in setTimeout-string: module: handler</li><li>Throw DOMException-TypeError in onmessage: module: listener</li><li>Throw DOMException-TypeError in onmessage: module: handler</li><li>Throw DOMException-TypeError in onerror: module: listener</li><li>Throw DOMException-TypeError in onerror: module: handler</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="message-module-Error.html" data-gate="clean" data-pass="10" data-of="10" data-failed="0" data-ref-pass="10" data-ref-of="10"><summary><span class="tf-name"><code>message-<wbr>module-<wbr>Error.<wbr>html</code></span><span class="tf-n"><b>10</b> / 10<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>10</b> / 10</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>10</b> / 10 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/workers/interfaces/WorkerGlobalScope/onerror/message-module-Error.html"><code>workers/<wbr>interfaces/<wbr>WorkerGlobalScope/<wbr>onerror/<wbr>message-<wbr>module-<wbr>Error.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>Throw Error in toplevel: module: listener</li><li>Throw Error in toplevel: module: handler</li><li>Throw Error in setTimeout-function: module: listener</li><li>Throw Error in setTimeout-function: module: handler</li><li>Throw Error in setTimeout-string: module: listener</li><li>Throw Error in setTimeout-string: module: handler</li><li>Throw Error in onmessage: module: listener</li><li>Throw Error in onmessage: module: handler</li><li>Throw Error in onerror: module: listener</li><li>Throw Error in onerror: module: handler</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="not-handled.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>not-<wbr>handled.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/workers/interfaces/WorkerGlobalScope/onerror/not-handled.html"><code>workers/<wbr>interfaces/<wbr>WorkerGlobalScope/<wbr>onerror/<wbr>not-<wbr>handled.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Not handled evaluation error =&gt; Worker.onerror handler</li><li>Not handled evaluation error =&gt; Worker error listener</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="propagate-to-window-onerror.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>propagate-<wbr>to-<wbr>window-<wbr>onerror.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/workers/interfaces/WorkerGlobalScope/onerror/propagate-to-window-onerror.html"><code>workers/<wbr>interfaces/<wbr>WorkerGlobalScope/<wbr>onerror/<wbr>propagate-<wbr>to-<wbr>window-<wbr>onerror.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>onerror, &quot;not handled&quot; with only window.onerror defined</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

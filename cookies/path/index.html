@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>cookies/path/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,16 +36,70 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">5 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../cookies/path/default.html/"><code>default.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../cookies/path/match-percent-encoded.https.window.js/"><code>match-<wbr>percent-<wbr>encoded.<wbr>https.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../cookies/path/match-segment-boundaries.https.window.js/"><code>match-<wbr>segment-<wbr>boundaries.<wbr>https.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../cookies/path/match.html/"><code>match.<wbr>html</code></a></th><td class="n" data-v="16" data-of="16"><b>16</b> / 16</td><td class="n" data-v="16" data-of="16"><b>16</b> / 16</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../cookies/path/non-ascii-path-attribute.https.window.js/"><code>non-<wbr>ascii-<wbr>path-<wbr>attribute.<wbr>https.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="7" data-of="7"><b>7</b> / 7</td><td class="n" data-v="7" data-of="7"><b>7</b> / 7</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="default.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>default.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/cookies/path/default.html"><code>cookies/<wbr>path/<wbr>default.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Test for default cookie path</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="match-percent-encoded.https.window.js" data-gate="clean" data-pass="10" data-of="10" data-failed="0" data-ref-pass="10" data-ref-of="10"><summary><span class="tf-name"><code>match-<wbr>percent-<wbr>encoded.<wbr>https.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>10</b> / 10<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>10</b> / 10</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>10</b> / 10 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/cookies/path/match-percent-encoded.https.window.js"><code>cookies/<wbr>path/<wbr>match-<wbr>percent-<wbr>encoded.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>CONTROL a cookie for the probed path is visible in it</li><li>CONTROL a cookie for a prefix of the probed path is visible in it</li><li>A Path attribute where a literal space does not match a percent-encoded space</li><li>A Path attribute where a percent-encoded space matches a percent-encoded space</li><li>A Path attribute where a non-ASCII byte is not reachable at the percent-encoding of that byte</li><li>A Path attribute where a non-ASCII byte is not reachable at the percent-encoding of its isomorphic decoding</li><li>A Path attribute where a multi-byte non-ASCII sequence is not reachable at the percent-encoding of those bytes</li><li>A Path attribute where a multi-byte non-ASCII sequence is not reachable at the percent-encoding of its isomorphic decoding</li><li>A Path attribute where an already percent-encoded non-ASCII byte matches, being ASCII itself</li><li>cleanup: unregister the service worker</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="match-segment-boundaries.https.window.js" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>match-<wbr>segment-<wbr>boundaries.<wbr>https.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/cookies/path/match-segment-boundaries.https.window.js"><code>cookies/<wbr>path/<wbr>match-<wbr>segment-<wbr>boundaries.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>A Path equal to the request path matches</li><li>A Path that is a prefix ending at a segment boundary matches</li><li>A Path that is a prefix ending in a slash matches</li><li>A Path that is a prefix not ending at a segment boundary does not match</li><li>A Path that is the request path followed by a slash does not match</li><li>A Path that is the request path followed by a segment does not match</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="match.html" data-gate="clean" data-pass="16" data-of="16" data-failed="0" data-ref-pass="16" data-ref-of="16"><summary><span class="tf-name"><code>match.<wbr>html</code></span><span class="tf-n"><b>16</b> / 16<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>16</b> / 16</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>16</b> / 16 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/cookies/path/match.html"><code>cookies/<wbr>path/<wbr>match.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>16 passing subtests</summary><ol class="pass-list"><li>`document.cookie` on /cookies/resources/echo-cookie.html sets cookie with path: /</li><li>`document.cookie` on /cookies/resources/echo-cookie.html sets cookie with path: match.html</li><li>`document.cookie` on /cookies/resources/echo-cookie.html sets cookie with path: cookies</li><li>`document.cookie` on /cookies/resources/echo-cookie.html sets cookie with path: /cookies</li><li>`document.cookie` on /cookies/resources/echo-cookie.html sets cookie with path: /cookies/</li><li>`document.cookie` on /cookies/resources/echo-cookie.html sets cookie with path: /cookies/resources/echo-cookie.html</li><li>`document.cookie` on /cookies/resources/echo-cookie.html DOES NOT set cookie for path: /cook</li><li>`document.cookie` on /cookies/resources/echo-cookie.html DOES NOT set cookie for path: /w/</li><li>`Set-Cookie` on /cookies/resources/echo-cookie.html sets cookie with path: /</li><li>`Set-Cookie` on /cookies/resources/echo-cookie.html sets cookie with path: match.html</li><li>`Set-Cookie` on /cookies/resources/echo-cookie.html sets cookie with path: cookies</li><li>`Set-Cookie` on /cookies/resources/echo-cookie.html sets cookie with path: /cookies</li><li>`Set-Cookie` on /cookies/resources/echo-cookie.html sets cookie with path: /cookies/</li><li>`Set-Cookie` on /cookies/resources/echo-cookie.html sets cookie with path: /cookies/resources/echo-cookie.html</li><li>`Set-Cookie` on /cookies/resources/echo-cookie.html DOES NOT set cookie for path: /cook</li><li>`Set-Cookie` on /cookies/resources/echo-cookie.html DOES NOT set cookie for path: /w/</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="non-ascii-path-attribute.https.window.js" data-gate="clean" data-pass="7" data-of="7" data-failed="0" data-ref-pass="7" data-ref-of="7"><summary><span class="tf-name"><code>non-<wbr>ascii-<wbr>path-<wbr>attribute.<wbr>https.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>7</b> / 7<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>7</b> / 7</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>7</b> / 7 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/cookies/path/non-ascii-path-attribute.https.window.js"><code>cookies/<wbr>path/<wbr>non-<wbr>ascii-<wbr>path-<wbr>attribute.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>7 passing subtests</summary><ol class="pass-list"><li>A later Path attribute overrides an earlier one</li><li>A non-ASCII byte in the value is not a parse failure</li><li>A non-ASCII Path attribute followed by a valid one is not a parse failure</li><li>A non-ASCII byte in the winning Path attribute is a parse failure</li><li>A Path attribute with non-ASCII bytes appended does not match that path</li><li>A non-ASCII Path attribute does not fall back to the default path</li><li>A lone non-ASCII byte in the winning Path attribute is a parse failure</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

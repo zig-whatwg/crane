@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>wasm/jsapi/table/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,16 +36,95 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">5 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/jsapi/table/constructor.any.js/"><code>constructor.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="64" data-of="64"><b>64</b> / 64</td><td class="n" data-v="64" data-of="64"><b>64</b> / 64</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/jsapi/table/get-set.any.js/"><code>get-<wbr>set.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="64" data-of="64"><b>64</b> / 64</td><td class="n" data-v="64" data-of="64"><b>64</b> / 64</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/jsapi/table/grow.any.js/"><code>grow.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="36" data-of="36"><b>36</b> / 36</td><td class="n" data-v="36" data-of="36"><b>36</b> / 36</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/jsapi/table/length.any.js/"><code>length.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="8" data-of="8"><b>8</b> / 8</td><td class="n" data-v="8" data-of="8"><b>8</b> / 8</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/jsapi/table/toString.any.js/"><code>toString.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="constructor.any.js" data-gate="clean" data-pass="64" data-of="64" data-failed="0" data-ref-pass="64" data-ref-of="64"><summary><span class="tf-name"><code>constructor.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>64</b> / 64<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>64</b> / 64</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>64</b> / 64 WPT subtests passing <span class="quiet">runner status <code>OK</code></span> <span class="quiet">1 of its test URLs has no Chrome result</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/jsapi/table/constructor.any.js"><code>wasm/<wbr>jsapi/<wbr>table/<wbr>constructor.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/table/constructor.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>32</b> / 32</span></h3>
+<details class="passing"><summary>32 passing subtests</summary><ol class="pass-list"><li>name</li><li>length</li><li>No arguments</li><li>Calling</li><li>Empty descriptor</li><li>Invalid descriptor argument</li><li>Undefined initial value in descriptor</li><li>Undefined element value in descriptor</li><li>Out-of-range initial value in descriptor: NaN</li><li>Out-of-range maximum value in descriptor: NaN</li><li>Out-of-range initial value in descriptor: Infinity</li><li>Out-of-range maximum value in descriptor: Infinity</li><li>Out-of-range initial value in descriptor: -Infinity</li><li>Out-of-range maximum value in descriptor: -Infinity</li><li>Out-of-range initial value in descriptor: -1</li><li>Out-of-range maximum value in descriptor: -1</li><li>Out-of-range initial value in descriptor: 4294967296</li><li>Out-of-range maximum value in descriptor: 4294967296</li><li>Out-of-range initial value in descriptor: 68719476736</li><li>Out-of-range maximum value in descriptor: 68719476736</li><li>Initial value exceeds maximum</li><li>Basic (zero)</li><li>Basic (non-zero)</li><li>Stray argument</li><li>Proxy descriptor</li><li>Type conversion for descriptor.element</li><li>Order of evaluation for descriptor</li><li>initialize externref table with default value</li><li>initialize table with a wrong element value</li><li>initialize anyfunc table with default value</li><li>initialize anyfunc table with a bad default value</li><li>initialize anyfunc table with a bad default value and a bad descriptor</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/table/constructor.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>32</b> / 32</span></h3>
+<details class="passing"><summary>32 passing subtests</summary><ol class="pass-list"><li>name</li><li>length</li><li>No arguments</li><li>Calling</li><li>Empty descriptor</li><li>Invalid descriptor argument</li><li>Undefined initial value in descriptor</li><li>Undefined element value in descriptor</li><li>Out-of-range initial value in descriptor: NaN</li><li>Out-of-range maximum value in descriptor: NaN</li><li>Out-of-range initial value in descriptor: Infinity</li><li>Out-of-range maximum value in descriptor: Infinity</li><li>Out-of-range initial value in descriptor: -Infinity</li><li>Out-of-range maximum value in descriptor: -Infinity</li><li>Out-of-range initial value in descriptor: -1</li><li>Out-of-range maximum value in descriptor: -1</li><li>Out-of-range initial value in descriptor: 4294967296</li><li>Out-of-range maximum value in descriptor: 4294967296</li><li>Out-of-range initial value in descriptor: 68719476736</li><li>Out-of-range maximum value in descriptor: 68719476736</li><li>Initial value exceeds maximum</li><li>Basic (zero)</li><li>Basic (non-zero)</li><li>Stray argument</li><li>Proxy descriptor</li><li>Type conversion for descriptor.element</li><li>Order of evaluation for descriptor</li><li>initialize externref table with default value</li><li>initialize table with a wrong element value</li><li>initialize anyfunc table with default value</li><li>initialize anyfunc table with a bad default value</li><li>initialize anyfunc table with a bad default value and a bad descriptor</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="get-set.any.js" data-gate="clean" data-pass="64" data-of="64" data-failed="0" data-ref-pass="64" data-ref-of="64"><summary><span class="tf-name"><code>get-<wbr>set.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>64</b> / 64<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>64</b> / 64</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>64</b> / 64 WPT subtests passing <span class="quiet">runner status <code>OK</code></span> <span class="quiet">1 of its test URLs has no Chrome result</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/jsapi/table/get-set.any.js"><code>wasm/<wbr>jsapi/<wbr>table/<wbr>get-<wbr>set.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/table/get-set.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>32</b> / 32</span></h3>
+<details class="passing"><summary>32 passing subtests</summary><ol class="pass-list"><li>Missing arguments: get</li><li>Branding: get</li><li>Missing arguments: set</li><li>Branding: set</li><li>Basic</li><li>Growing</li><li>Setting out-of-bounds</li><li>Setting non-function</li><li>Setting non-wasm function</li><li>Setting non-wasm arrow function</li><li>Getting out-of-range argument: undefined</li><li>Setting out-of-range argument: undefined</li><li>Getting out-of-range argument: NaN</li><li>Setting out-of-range argument: NaN</li><li>Getting out-of-range argument: Infinity</li><li>Setting out-of-range argument: Infinity</li><li>Getting out-of-range argument: -Infinity</li><li>Setting out-of-range argument: -Infinity</li><li>Getting out-of-range argument: -1</li><li>Setting out-of-range argument: -1</li><li>Getting out-of-range argument: 4294967296</li><li>Setting out-of-range argument: 4294967296</li><li>Getting out-of-range argument: 68719476736</li><li>Setting out-of-range argument: 68719476736</li><li>Getting out-of-range argument: &quot;0x100000000&quot;</li><li>Setting out-of-range argument: &quot;0x100000000&quot;</li><li>Getting out-of-range argument: object &quot;[object Object]&quot;</li><li>Setting out-of-range argument: object &quot;[object Object]&quot;</li><li>Order of argument conversion</li><li>Stray argument</li><li>Arguments for anyfunc table set</li><li>Arguments for externref table set</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/table/get-set.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>32</b> / 32</span></h3>
+<details class="passing"><summary>32 passing subtests</summary><ol class="pass-list"><li>Missing arguments: get</li><li>Branding: get</li><li>Missing arguments: set</li><li>Branding: set</li><li>Basic</li><li>Growing</li><li>Setting out-of-bounds</li><li>Setting non-function</li><li>Setting non-wasm function</li><li>Setting non-wasm arrow function</li><li>Getting out-of-range argument: undefined</li><li>Setting out-of-range argument: undefined</li><li>Getting out-of-range argument: NaN</li><li>Setting out-of-range argument: NaN</li><li>Getting out-of-range argument: Infinity</li><li>Setting out-of-range argument: Infinity</li><li>Getting out-of-range argument: -Infinity</li><li>Setting out-of-range argument: -Infinity</li><li>Getting out-of-range argument: -1</li><li>Setting out-of-range argument: -1</li><li>Getting out-of-range argument: 4294967296</li><li>Setting out-of-range argument: 4294967296</li><li>Getting out-of-range argument: 68719476736</li><li>Setting out-of-range argument: 68719476736</li><li>Getting out-of-range argument: &quot;0x100000000&quot;</li><li>Setting out-of-range argument: &quot;0x100000000&quot;</li><li>Getting out-of-range argument: object &quot;[object Object]&quot;</li><li>Setting out-of-range argument: object &quot;[object Object]&quot;</li><li>Order of argument conversion</li><li>Stray argument</li><li>Arguments for anyfunc table set</li><li>Arguments for externref table set</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="grow.any.js" data-gate="clean" data-pass="36" data-of="36" data-failed="0" data-ref-pass="36" data-ref-of="36"><summary><span class="tf-name"><code>grow.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>36</b> / 36<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>36</b> / 36</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>36</b> / 36 WPT subtests passing <span class="quiet">runner status <code>OK</code></span> <span class="quiet">1 of its test URLs has no Chrome result</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/jsapi/table/grow.any.js"><code>wasm/<wbr>jsapi/<wbr>table/<wbr>grow.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/table/grow.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>18</b> / 18</span></h3>
+<details class="passing"><summary>18 passing subtests</summary><ol class="pass-list"><li>Missing arguments</li><li>Branding</li><li>Basic</li><li>Reached maximum</li><li>Exceeded maximum</li><li>Out-of-range argument: undefined</li><li>Out-of-range argument: NaN</li><li>Out-of-range argument: Infinity</li><li>Out-of-range argument: -Infinity</li><li>Out-of-range argument: -1</li><li>Out-of-range argument: 4294967296</li><li>Out-of-range argument: 68719476736</li><li>Out-of-range argument: &quot;0x100000000&quot;</li><li>Out-of-range argument: object &quot;[object Object]&quot;</li><li>Stray argument</li><li>Grow with exported-function argument</li><li>Grow with non-function argument</li><li>Grow with JS-function argument</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/table/grow.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>18</b> / 18</span></h3>
+<details class="passing"><summary>18 passing subtests</summary><ol class="pass-list"><li>Missing arguments</li><li>Branding</li><li>Basic</li><li>Reached maximum</li><li>Exceeded maximum</li><li>Out-of-range argument: undefined</li><li>Out-of-range argument: NaN</li><li>Out-of-range argument: Infinity</li><li>Out-of-range argument: -Infinity</li><li>Out-of-range argument: -1</li><li>Out-of-range argument: 4294967296</li><li>Out-of-range argument: 68719476736</li><li>Out-of-range argument: &quot;0x100000000&quot;</li><li>Out-of-range argument: object &quot;[object Object]&quot;</li><li>Stray argument</li><li>Grow with exported-function argument</li><li>Grow with non-function argument</li><li>Grow with JS-function argument</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="length.any.js" data-gate="clean" data-pass="8" data-of="8" data-failed="0" data-ref-pass="8" data-ref-of="8"><summary><span class="tf-name"><code>length.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>8</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 8</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>8</b> / 8 WPT subtests passing <span class="quiet">runner status <code>OK</code></span> <span class="quiet">1 of its test URLs has no Chrome result</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/jsapi/table/length.any.js"><code>wasm/<wbr>jsapi/<wbr>table/<wbr>length.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/table/length.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 4</span></h3>
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>Branding</li><li>Stray argument</li><li>Setting (sloppy mode)</li><li>Setting (strict mode)</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/table/length.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 4</span></h3>
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>Branding</li><li>Stray argument</li><li>Setting (sloppy mode)</li><li>Setting (strict mode)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="toString.any.js" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>toString.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span> <span class="quiet">1 of its test URLs has no Chrome result</span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/jsapi/table/toString.any.js"><code>wasm/<wbr>jsapi/<wbr>table/<wbr>toString.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/table/toString.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Object.prototype.toString on an Table</li><li>@@toStringTag exists on the prototype with the appropriate descriptor</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/jsapi/table/toString.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Object.prototype.toString on an Table</li><li>@@toStringTag exists on the prototype with the appropriate descriptor</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

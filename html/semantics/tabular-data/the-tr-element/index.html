@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>html/semantics/tabular-data/the-tr-element/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,16 +36,70 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">5 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../../../html/semantics/tabular-data/the-tr-element/cells.html/"><code>cells.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../html/semantics/tabular-data/the-tr-element/deleteCell.html/"><code>deleteCell.<wbr>html</code></a></th><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../html/semantics/tabular-data/the-tr-element/insertCell.html/"><code>insertCell.<wbr>html</code></a></th><td class="n" data-v="7" data-of="7"><b>7</b> / 7</td><td class="n" data-v="7" data-of="7"><b>7</b> / 7</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../html/semantics/tabular-data/the-tr-element/rowIndex.html/"><code>rowIndex.<wbr>html</code></a></th><td class="n" data-v="12" data-of="12"><b>12</b> / 12</td><td class="n" data-v="12" data-of="12"><b>12</b> / 12</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../html/semantics/tabular-data/the-tr-element/sectionRowIndex.html/"><code>sectionRowIndex.<wbr>html</code></a></th><td class="n" data-v="19" data-of="19"><b>19</b> / 19</td><td class="n" data-v="19" data-of="19"><b>19</b> / 19</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="cells.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>cells.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/tabular-data/the-tr-element/cells.html"><code>html/<wbr>semantics/<wbr>tabular-<wbr>data/<wbr>the-<wbr>tr-<wbr>element/<wbr>cells.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>HTMLTableRowElement cells ignores nested tables and non-HTML elements</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="deleteCell.html" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>deleteCell.<wbr>html</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/tabular-data/the-tr-element/deleteCell.html"><code>html/<wbr>semantics/<wbr>tabular-<wbr>data/<wbr>the-<wbr>tr-<wbr>element/<wbr>deleteCell.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>HTMLTableRowElement deleteCell(0)</li><li>HTMLTableRowElement deleteCell(-1)</li><li>HTMLTableRowElement deleteCell(-2)</li><li>HTMLTableRowElement deleteCell(cells.length)</li><li>HTMLTableRowElement deleteCell(-1) with no cells</li><li>HTMLTableRowElement deleteCell(0) with no cells</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="insertCell.html" data-gate="clean" data-pass="7" data-of="7" data-failed="0" data-ref-pass="7" data-ref-of="7"><summary><span class="tf-name"><code>insertCell.<wbr>html</code></span><span class="tf-n"><b>7</b> / 7<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>7</b> / 7</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>7</b> / 7 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/tabular-data/the-tr-element/insertCell.html"><code>html/<wbr>semantics/<wbr>tabular-<wbr>data/<wbr>the-<wbr>tr-<wbr>element/<wbr>insertCell.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>7 passing subtests</summary><ol class="pass-list"><li>HTMLTableRowElement insertCell(0)</li><li>HTMLTableRowElement insertCell(-1)</li><li>HTMLTableRowElement insertCell(cells.length)</li><li>HTMLTableRowElement insertCell()</li><li>HTMLTableRowElement insertCell(-2)</li><li>HTMLTableRowElement insertCell(cells.length + 1)</li><li>HTMLTableRowElement insertCell will not copy table&#39;s prefix</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="rowIndex.html" data-gate="clean" data-pass="12" data-of="12" data-failed="0" data-ref-pass="12" data-ref-of="12"><summary><span class="tf-name"><code>rowIndex.<wbr>html</code></span><span class="tf-n"><b>12</b> / 12<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>12</b> / 12</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>12</b> / 12 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/tabular-data/the-tr-element/rowIndex.html"><code>html/<wbr>semantics/<wbr>tabular-<wbr>data/<wbr>the-<wbr>tr-<wbr>element/<wbr>rowIndex.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>12 passing subtests</summary><ol class="pass-list"><li>HTMLTableRowElement.rowIndex</li><li>HTMLTableRowElement.rowIndex 1</li><li>HTMLTableRowElement.rowIndex 2</li><li>HTMLTableRowElement.rowIndex 3</li><li>HTMLTableRowElement.rowIndex 4</li><li>HTMLTableRowElement.rowIndex 5</li><li>HTMLTableRowElement.rowIndex 6</li><li>HTMLTableRowElement.rowIndex 7</li><li>HTMLTableRowElement.rowIndex 8</li><li>HTMLTableRowElement.rowIndex 9</li><li>HTMLTableRowElement.rowIndex 10</li><li>HTMLTableRowElement.rowIndex 11</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="sectionRowIndex.html" data-gate="clean" data-pass="19" data-of="19" data-failed="0" data-ref-pass="19" data-ref-of="19"><summary><span class="tf-name"><code>sectionRowIndex.<wbr>html</code></span><span class="tf-n"><b>19</b> / 19<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>19</b> / 19</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>19</b> / 19 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/tabular-data/the-tr-element/sectionRowIndex.html"><code>html/<wbr>semantics/<wbr>tabular-<wbr>data/<wbr>the-<wbr>tr-<wbr>element/<wbr>sectionRowIndex.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>19 passing subtests</summary><ol class="pass-list"><li>Row in thead in HTML</li><li>Row in implicit tbody in HTML</li><li>Other row in implicit tbody in HTML</li><li>Row in explicit tbody in HTML</li><li>Row in tfoot in HTML</li><li>Row in thead in nested table in HTML</li><li>Row in implicit tbody in nested table in HTML</li><li>Row in explicit tbody in nested table in HTML</li><li>Row in script-created table</li><li>Row in script-created div in table</li><li>Row in script-created thead in table</li><li>Row in script-created tbody in table</li><li>Row in script-created tfoot in table</li><li>Row in script-created tr in tbody in table</li><li>Row in script-created td in tr in tbody in table</li><li>Row in script-created nested table</li><li>Row in script-created thead in nested table</li><li>Row in script-created tbody in nested table</li><li>Row in script-created tfoot in nested table</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

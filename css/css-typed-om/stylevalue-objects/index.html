@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>css/css-typed-om/stylevalue-objects/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,15 +36,58 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">4 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-typed-om/stylevalue-objects/parse-invalid.html/"><code>parse-<wbr>invalid.<wbr>html</code></a></th><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-typed-om/stylevalue-objects/parse.html/"><code>parse.<wbr>html</code></a></th><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-typed-om/stylevalue-objects/parseAll-invalid.html/"><code>parseAll-<wbr>invalid.<wbr>html</code></a></th><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-typed-om/stylevalue-objects/parseAll.html/"><code>parseAll.<wbr>html</code></a></th><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="parse-invalid.html" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>parse-<wbr>invalid.<wbr>html</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-typed-om/stylevalue-objects/parse-invalid.html"><code>css/<wbr>css-<wbr>typed-<wbr>om/<wbr>stylevalue-<wbr>objects/<wbr>parse-<wbr>invalid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>CSSStyleValue.parse() with empty property name throws TypeError</li><li>CSSStyleValue.parse() with unsupported property name throws TypeError</li><li>CSSStyleValue.parse() with invalid value for valid property throws TypeError</li><li>CSSStyleValue.parse() with invalid value for shorthand property throws TypeError</li><li>CSSStyleValue.parse() with invalid value for custom property throws TypeError</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="parse.html" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>parse.<wbr>html</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-typed-om/stylevalue-objects/parse.html"><code>css/<wbr>css-<wbr>typed-<wbr>om/<wbr>stylevalue-<wbr>objects/<wbr>parse.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>CSSStyleValue.parse() with a valid property returns a CSSStyleValue</li><li>CSSStyleValue.parse() is not case sensitive</li><li>CSSStyleValue.parse() with a valid list-valued property returns a CSSStyleValue</li><li>CSSStyleValue.parse() with a valid shorthand property returns a CSSStyleValue</li><li>CSSStyleValue.parse() with a valid custom property returns a CSSStyleValue</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="parseAll-invalid.html" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>parseAll-<wbr>invalid.<wbr>html</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-typed-om/stylevalue-objects/parseAll-invalid.html"><code>css/<wbr>css-<wbr>typed-<wbr>om/<wbr>stylevalue-<wbr>objects/<wbr>parseAll-<wbr>invalid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>CSSStyleValue.parseAll() with empty property name throws TypeError</li><li>CSSStyleValue.parseAll() with unsupported property name throws TypeError</li><li>CSSStyleValue.parseAll() with invalid value for valid property throws TypeError</li><li>CSSStyleValue.parseAll() with invalid value for shorthand property throws TypeError</li><li>CSSStyleValue.parseAll() with invalid value for custom property throws TypeError</li><li>CSSStyleValue.parseAll() with invalid value for property throws TypeError</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="parseAll.html" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>parseAll.<wbr>html</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-typed-om/stylevalue-objects/parseAll.html"><code>css/<wbr>css-<wbr>typed-<wbr>om/<wbr>stylevalue-<wbr>objects/<wbr>parseAll.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>CSSStyleValue.parseAll() with a valid property returns a list with a single CSSStyleValue</li><li>CSSStyleValue.parseAll() is not case sensitive</li><li>CSSStyleValue.parseAll() with a valid list-valued property returns a list with a single CSSStyleValue</li><li>CSSStyleValue.parseAll() with a valid shorthand property returns a CSSStyleValue</li><li>CSSStyleValue.parseAll() with a valid custom property returns a list with a single CSSStyleValue</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

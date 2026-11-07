@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>content-security-policy/nonce-hiding/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,19 +36,128 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">8 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="none-passed"><th scope="row"><a href="../../content-security-policy/nonce-hiding/dangling-html-or-body.html/"><code>dangling-<wbr>html-<wbr>or-<wbr>body.<wbr>html</code></a></th><td class="n" data-v="0" data-of="2"><b>0</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2"><span class="fail">2</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/nonce-hiding/nonce-hiding-move-document.html/"><code>nonce-<wbr>hiding-<wbr>move-<wbr>document.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../content-security-policy/nonce-hiding/nonces-css-selector.html/"><code>nonces-<wbr>css-<wbr>selector.<wbr>html</code></a></th><td class="n" data-v="6" data-of="9"><b>6</b> / 9</td><td class="n" data-v="9" data-of="9"><b>9</b> / 9</td><td class="n" data-v="3"><span class="fail">3</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../content-security-policy/nonce-hiding/nonces.html/"><code>nonces.<wbr>html</code></a></th><td class="n" data-v="32" data-of="44"><b>32</b> / 44</td><td class="n" data-v="44" data-of="44"><b>44</b> / 44</td><td class="n" data-v="12"><span class="fail">12</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/nonce-hiding/script-nonces-hidden-meta.sub.html/"><code>script-<wbr>nonces-<wbr>hidden-<wbr>meta.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="11" data-of="11"><b>11</b> / 11</td><td class="n" data-v="11" data-of="11"><b>11</b> / 11</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/nonce-hiding/script-nonces-hidden.html/"><code>script-<wbr>nonces-<wbr>hidden.<wbr>html</code></a></th><td class="n" data-v="12" data-of="12"><b>12</b> / 12</td><td class="n" data-v="12" data-of="12"><b>12</b> / 12</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/nonce-hiding/svgscript-nonces-hidden-meta.sub.html/"><code>svgscript-<wbr>nonces-<wbr>hidden-<wbr>meta.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="9" data-of="9"><b>9</b> / 9</td><td class="n" data-v="9" data-of="9"><b>9</b> / 9</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/nonce-hiding/svgscript-nonces-hidden.html/"><code>svgscript-<wbr>nonces-<wbr>hidden.<wbr>html</code></a></th><td class="n" data-v="9" data-of="9"><b>9</b> / 9</td><td class="n" data-v="9" data-of="9"><b>9</b> / 9</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="dangling-html-or-body.html" data-gate="none-passed" data-pass="0" data-of="2" data-failed="2" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>dangling-<wbr>html-<wbr>or-<wbr>body.<wbr>html</code></span><span class="tf-n"><b>0</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/nonce-hiding/dangling-html-or-body.html"><code>content-<wbr>security-<wbr>policy/<wbr>nonce-<wbr>hiding/<wbr>dangling-<wbr>html-<wbr>or-<wbr>body.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-9f86ce40e270"><details><summary><span class="mark">FAIL</span><span class="sub-name">Nonces don&#39;t leak via CSS side-channels when a dangling body is injected.</span></summary><pre class="msg">assert_equals: expected &quot;none&quot; but got &quot;url(\&quot;http://web-platform.test:8000/security/resources/abe.png\&quot;)&quot;</pre></details><a class="self" href="#s-9f86ce40e270" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-34841c21728a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Nonces don&#39;t leak via CSS side-channels when a dangling html is injected.</span></summary><pre class="msg">assert_equals: expected &quot;none&quot; but got &quot;url(\&quot;http://web-platform.test:8000/security/resources/abe.png\&quot;)&quot;</pre></details><a class="self" href="#s-34841c21728a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="nonce-hiding-move-document.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>nonce-<wbr>hiding-<wbr>move-<wbr>document.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/nonce-hiding/nonce-hiding-move-document.html"><code>content-<wbr>security-<wbr>policy/<wbr>nonce-<wbr>hiding/<wbr>nonce-<wbr>hiding-<wbr>move-<wbr>document.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Nonce isn&#39;t lost on document move</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="nonces-css-selector.html" data-gate="partial" data-pass="6" data-of="9" data-failed="3" data-ref-pass="9" data-ref-of="9"><summary><span class="tf-name"><code>nonces-<wbr>css-<wbr>selector.<wbr>html</code></span><span class="tf-n"><b>6</b> / 9<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>9</b> / 9</span><span class="tf-fail"><span class="fail">3</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>9</b> / 9 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/nonce-hiding/nonces-css-selector.html"><code>content-<wbr>security-<wbr>policy/<wbr>nonce-<wbr>hiding/<wbr>nonces-<wbr>css-<wbr>selector.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-b3b51f13db0b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Nonce on math tag don&#39;t leak via CSS side-channels.</span></summary><pre class="msg">assert_equals: expected &quot;none&quot; but got &quot;url(\&quot;http://web-platform.test:8000/security/resources/abe.png\&quot;)&quot;</pre></details><a class="self" href="#s-b3b51f13db0b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-889624394418"><details><summary><span class="mark">FAIL</span><span class="sub-name">Nonce on mrow tag don&#39;t leak via CSS side-channels.</span></summary><pre class="msg">assert_equals: expected &quot;none&quot; but got &quot;url(\&quot;http://web-platform.test:8000/security/resources/abe.png\&quot;)&quot;</pre></details><a class="self" href="#s-889624394418" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3d78db2275b0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Nonce on mtext tag don&#39;t leak via CSS side-channels.</span></summary><pre class="msg">assert_equals: expected &quot;none&quot; but got &quot;url(\&quot;http://web-platform.test:8000/security/resources/abe.png\&quot;)&quot;</pre></details><a class="self" href="#s-3d78db2275b0" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>Nonce on BODY tag don&#39;t leak via CSS side-channels.</li><li>Nonce on DIV tag don&#39;t leak via CSS side-channels.</li><li>Nonce on SCRIPT tag don&#39;t leak via CSS side-channels.</li><li>Nonce on svg tag don&#39;t leak via CSS side-channels.</li><li>Nonce on g tag don&#39;t leak via CSS side-channels.</li><li>Nonce on script tag don&#39;t leak via CSS side-channels.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="nonces.html" data-gate="partial" data-pass="32" data-of="44" data-failed="12" data-ref-pass="44" data-ref-of="44"><summary><span class="tf-name"><code>nonces.<wbr>html</code></span><span class="tf-n"><b>32</b> / 44<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>44</b> / 44</span><span class="tf-fail"><span class="fail">12</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>44</b> / 44 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/nonce-hiding/nonces.html"><code>content-<wbr>security-<wbr>policy/<wbr>nonce-<wbr>hiding/<wbr>nonces.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-794c91d6b5d2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Basic nonce tests for math in MathML namespace</span></summary><pre class="msg">assert_equals: Initial IDL attribute value expected (string) &quot;&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-794c91d6b5d2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-492fa90b0456"><details><summary><span class="mark">FAIL</span><span class="sub-name">Ensure that removal of content attribute does not affect IDL attribute for math in MathML namespace</span></summary><pre class="msg">assert_equals: IDL attribute is modified after content attribute set expected (string) &quot;x&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-492fa90b0456" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-61aee4b3609e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test empty nonces for math in MathML namespace</span></summary><pre class="msg">assert_equals: expected (string) &quot;&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-61aee4b3609e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-826f2be69aa6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Ensure that cloned node retains nonce for math in MathML namespace</span></summary><pre class="msg">assert_equals: IDL attribute expected (string) &quot;x&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-826f2be69aa6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-22b4447e988d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Basic nonce tests for mrow in MathML namespace</span></summary><pre class="msg">assert_equals: Initial IDL attribute value expected (string) &quot;&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-22b4447e988d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-312b1f9194a0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Ensure that removal of content attribute does not affect IDL attribute for mrow in MathML namespace</span></summary><pre class="msg">assert_equals: IDL attribute is modified after content attribute set expected (string) &quot;x&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-312b1f9194a0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-85c3edfc05a4"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test empty nonces for mrow in MathML namespace</span></summary><pre class="msg">assert_equals: expected (string) &quot;&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-85c3edfc05a4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0c43853650dc"><details><summary><span class="mark">FAIL</span><span class="sub-name">Ensure that cloned node retains nonce for mrow in MathML namespace</span></summary><pre class="msg">assert_equals: IDL attribute expected (string) &quot;x&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-0c43853650dc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6c0d535f7410"><details><summary><span class="mark">FAIL</span><span class="sub-name">Basic nonce tests for mtext in MathML namespace</span></summary><pre class="msg">assert_equals: Initial IDL attribute value expected (string) &quot;&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-6c0d535f7410" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-678d1b446b8b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Ensure that removal of content attribute does not affect IDL attribute for mtext in MathML namespace</span></summary><pre class="msg">assert_equals: IDL attribute is modified after content attribute set expected (string) &quot;x&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-678d1b446b8b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-334696802afc"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test empty nonces for mtext in MathML namespace</span></summary><pre class="msg">assert_equals: expected (string) &quot;&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-334696802afc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-450f630cb288"><details><summary><span class="mark">FAIL</span><span class="sub-name">Ensure that cloned node retains nonce for mtext in MathML namespace</span></summary><pre class="msg">assert_equals: IDL attribute expected (string) &quot;x&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-450f630cb288" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>32 passing subtests</summary><ol class="pass-list"><li>Basic nonce tests for meh in HTML namespace</li><li>Ensure that removal of content attribute does not affect IDL attribute for meh in HTML namespace</li><li>Test empty nonces for meh in HTML namespace</li><li>Ensure that cloned node retains nonce for meh in HTML namespace</li><li>Basic nonce tests for div in HTML namespace</li><li>Ensure that removal of content attribute does not affect IDL attribute for div in HTML namespace</li><li>Test empty nonces for div in HTML namespace</li><li>Ensure that cloned node retains nonce for div in HTML namespace</li><li>Basic nonce tests for script in HTML namespace</li><li>Ensure that removal of content attribute does not affect IDL attribute for script in HTML namespace</li><li>Test empty nonces for script in HTML namespace</li><li>Ensure that cloned node retains nonce for script in HTML namespace</li><li>Basic nonce tests for meh in SVG namespace</li><li>Ensure that removal of content attribute does not affect IDL attribute for meh in SVG namespace</li><li>Test empty nonces for meh in SVG namespace</li><li>Ensure that cloned node retains nonce for meh in SVG namespace</li><li>Basic nonce tests for svg in SVG namespace</li><li>Ensure that removal of content attribute does not affect IDL attribute for svg in SVG namespace</li><li>Test empty nonces for svg in SVG namespace</li><li>Ensure that cloned node retains nonce for svg in SVG namespace</li><li>Basic nonce tests for script in SVG namespace</li><li>Ensure that removal of content attribute does not affect IDL attribute for script in SVG namespace</li><li>Test empty nonces for script in SVG namespace</li><li>Ensure that cloned node retains nonce for script in SVG namespace</li><li>Basic nonce tests for style in HTML namespace</li><li>Ensure that removal of content attribute does not affect IDL attribute for style in HTML namespace</li><li>Test empty nonces for style in HTML namespace</li><li>Ensure that cloned node retains nonce for style in HTML namespace</li><li>Basic nonce tests for link in HTML namespace</li><li>Ensure that removal of content attribute does not affect IDL attribute for link in HTML namespace</li><li>Test empty nonces for link in HTML namespace</li><li>Ensure that cloned node retains nonce for link in HTML namespace</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="script-nonces-hidden-meta.sub.html" data-gate="clean" data-pass="11" data-of="11" data-failed="0" data-ref-pass="11" data-ref-of="11"><summary><span class="tf-name"><code>script-<wbr>nonces-<wbr>hidden-<wbr>meta.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>11</b> / 11<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>11</b> / 11</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>11</b> / 11 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/nonce-hiding/script-nonces-hidden-meta.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>nonce-<wbr>hiding/<wbr>script-<wbr>nonces-<wbr>hidden-<wbr>meta.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>Reading &#39;nonce&#39; content attribute and IDL attribute.</li><li>Cloned node retains nonce.</li><li>Cloned node retains nonce when inserted.</li><li>Writing &#39;nonce&#39; content attribute.</li><li>Writing &#39;nonce&#39; IDL attribute.</li><li>Document-written script executes.</li><li>Document-written script&#39;s nonce value.</li><li>createElement.nonce.</li><li>setAttribute(&#39;nonce&#39;) overwrites &#39;.nonce&#39; upon insertion.</li><li>createElement.setAttribute.</li><li>Nonces leak via CSS side-channels.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="script-nonces-hidden.html" data-gate="clean" data-pass="12" data-of="12" data-failed="0" data-ref-pass="12" data-ref-of="12"><summary><span class="tf-name"><code>script-<wbr>nonces-<wbr>hidden.<wbr>html</code></span><span class="tf-n"><b>12</b> / 12<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>12</b> / 12</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>12</b> / 12 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/nonce-hiding/script-nonces-hidden.html"><code>content-<wbr>security-<wbr>policy/<wbr>nonce-<wbr>hiding/<wbr>script-<wbr>nonces-<wbr>hidden.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>12 passing subtests</summary><ol class="pass-list"><li>Reading &#39;nonce&#39; content attribute and IDL attribute.</li><li>Cloned node retains nonce.</li><li>Cloned node retains nonce when inserted.</li><li>Writing &#39;nonce&#39; content attribute.</li><li>Writing &#39;nonce&#39; IDL attribute.</li><li>Document-written script executes.</li><li>Document-written script&#39;s nonce value.</li><li>createElement.nonce.</li><li>setAttribute(&#39;nonce&#39;) overwrites &#39;.nonce&#39; upon insertion.</li><li>createElement.setAttribute.</li><li>Custom elements expose the correct events.</li><li>Nonces don&#39;t leak via CSS side-channels.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="svgscript-nonces-hidden-meta.sub.html" data-gate="clean" data-pass="9" data-of="9" data-failed="0" data-ref-pass="9" data-ref-of="9"><summary><span class="tf-name"><code>svgscript-<wbr>nonces-<wbr>hidden-<wbr>meta.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>9</b> / 9<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>9</b> / 9</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>9</b> / 9 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/nonce-hiding/svgscript-nonces-hidden-meta.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>nonce-<wbr>hiding/<wbr>svgscript-<wbr>nonces-<wbr>hidden-<wbr>meta.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>Reading &#39;nonce&#39; content attribute and IDL attribute.</li><li>Cloned node retains nonce.</li><li>Cloned node retains nonce when inserted.</li><li>Writing &#39;nonce&#39; content attribute.</li><li>Writing &#39;nonce&#39; IDL attribute.</li><li>Document-written script executes.</li><li>Document-written script&#39;s nonce value.</li><li>createElement.nonce.</li><li>createElement.setAttribute.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="svgscript-nonces-hidden.html" data-gate="clean" data-pass="9" data-of="9" data-failed="0" data-ref-pass="9" data-ref-of="9"><summary><span class="tf-name"><code>svgscript-<wbr>nonces-<wbr>hidden.<wbr>html</code></span><span class="tf-n"><b>9</b> / 9<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>9</b> / 9</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>9</b> / 9 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/nonce-hiding/svgscript-nonces-hidden.html"><code>content-<wbr>security-<wbr>policy/<wbr>nonce-<wbr>hiding/<wbr>svgscript-<wbr>nonces-<wbr>hidden.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>Reading &#39;nonce&#39; content attribute and IDL attribute.</li><li>Cloned node retains nonce.</li><li>Cloned node retains nonce when inserted.</li><li>Writing &#39;nonce&#39; content attribute.</li><li>Writing &#39;nonce&#39; IDL attribute.</li><li>Document-written script executes.</li><li>Document-written script&#39;s nonce value.</li><li>createElement.nonce.</li><li>createElement.setAttribute.</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

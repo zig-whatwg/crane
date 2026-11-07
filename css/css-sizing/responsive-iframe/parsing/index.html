@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>css/css-sizing/responsive-iframe/parsing/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,13 +36,46 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">2 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="none-passed"><th scope="row"><a href="../../../../css/css-sizing/responsive-iframe/parsing/frame-sizing-computed.html/"><code>frame-<wbr>sizing-<wbr>computed.<wbr>html</code></a></th><td class="n" data-v="0" data-of="5"><b>0</b> / 5</td><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="5"><span class="fail">5</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../../../css/css-sizing/responsive-iframe/parsing/frame-sizing-valid.html/"><code>frame-<wbr>sizing-<wbr>valid.<wbr>html</code></a></th><td class="n" data-v="0" data-of="5"><b>0</b> / 5</td><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="5"><span class="fail">5</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="frame-sizing-computed.html" data-gate="none-passed" data-pass="0" data-of="5" data-failed="5" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>frame-<wbr>sizing-<wbr>computed.<wbr>html</code></span><span class="tf-n"><b>0</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="fail">5</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-sizing/responsive-iframe/parsing/frame-sizing-computed.html"><code>css/<wbr>css-<wbr>sizing/<wbr>responsive-<wbr>iframe/<wbr>parsing/<wbr>frame-<wbr>sizing-<wbr>computed.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-c9c08143cd61"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property frame-sizing value &#39;auto&#39;</span></summary><pre class="msg">assert_true: frame-sizing doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-c9c08143cd61" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3de470eea311"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property frame-sizing value &#39;content-width&#39;</span></summary><pre class="msg">assert_true: frame-sizing doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-3de470eea311" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e78f9160ef3c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property frame-sizing value &#39;content-height&#39;</span></summary><pre class="msg">assert_true: frame-sizing doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-e78f9160ef3c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5d132ee413af"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property frame-sizing value &#39;content-inline-size&#39;</span></summary><pre class="msg">assert_true: frame-sizing doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-5d132ee413af" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-eb445941cd3f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property frame-sizing value &#39;content-block-size&#39;</span></summary><pre class="msg">assert_true: frame-sizing doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-eb445941cd3f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="frame-sizing-valid.html" data-gate="none-passed" data-pass="0" data-of="5" data-failed="5" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>frame-<wbr>sizing-<wbr>valid.<wbr>html</code></span><span class="tf-n"><b>0</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="fail">5</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-sizing/responsive-iframe/parsing/frame-sizing-valid.html"><code>css/<wbr>css-<wbr>sizing/<wbr>responsive-<wbr>iframe/<wbr>parsing/<wbr>frame-<wbr>sizing-<wbr>valid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-43647cdbb793"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;frame-sizing&#39;] = &quot;auto&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-43647cdbb793" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7425df79a8a3"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;frame-sizing&#39;] = &quot;content-width&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-7425df79a8a3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4ee91ccdc645"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;frame-sizing&#39;] = &quot;content-height&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-4ee91ccdc645" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fb618f17e36c"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;frame-sizing&#39;] = &quot;content-inline-size&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-fb618f17e36c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-94c8778ac517"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;frame-sizing&#39;] = &quot;content-block-size&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-94c8778ac517" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

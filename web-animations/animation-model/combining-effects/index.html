@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>web-animations/animation-model/combining-effects/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,14 +36,54 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">3 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="none-passed"><th scope="row"><a href="../../../web-animations/animation-model/combining-effects/applying-interpolated-transform.html/"><code>applying-<wbr>interpolated-<wbr>transform.<wbr>html</code></a></th><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../web-animations/animation-model/combining-effects/applying-the-composited-result.html/"><code>applying-<wbr>the-<wbr>composited-<wbr>result.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../../web-animations/animation-model/combining-effects/effect-composition.html/"><code>effect-<wbr>composition.<wbr>html</code></a></th><td class="n" data-v="13" data-of="17"><b>13</b> / 17</td><td class="n" data-v="17" data-of="17"><b>17</b> / 17</td><td class="n" data-v="4"><span class="fail">4</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="applying-interpolated-transform.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>applying-<wbr>interpolated-<wbr>transform.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/animation-model/combining-effects/applying-interpolated-transform.html"><code>web-<wbr>animations/<wbr>animation-<wbr>model/<wbr>combining-<wbr>effects/<wbr>applying-<wbr>interpolated-<wbr>transform.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-49467579027d"><details><summary><span class="mark">FAIL</span><span class="sub-name"> apply interpolated transform on multiple keyframes</span></summary><pre class="msg">assert_approx_equals: expected matrix(1, 0, 0, 1, 190, 0) but got matrix(1, 0, 0, 1, 200, 0): undefined expected 190 +/- 0.0001 but got 200</pre></details><a class="self" href="#s-49467579027d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="applying-the-composited-result.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>applying-<wbr>the-<wbr>composited-<wbr>result.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/animation-model/combining-effects/applying-the-composited-result.html"><code>web-<wbr>animations/<wbr>animation-<wbr>model/<wbr>combining-<wbr>effects/<wbr>applying-<wbr>the-<wbr>composited-<wbr>result.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Finishing an animation that does not fill forwards causes its animation style to be cleared</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="effect-composition.html" data-gate="partial" data-pass="13" data-of="17" data-failed="4" data-ref-pass="17" data-ref-of="17"><summary><span class="tf-name"><code>effect-<wbr>composition.<wbr>html</code></span><span class="tf-n"><b>13</b> / 17<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>17</b> / 17</span><span class="tf-fail"><span class="fail">4</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>17</b> / 17 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/animation-model/combining-effects/effect-composition.html"><code>web-<wbr>animations/<wbr>animation-<wbr>model/<wbr>combining-<wbr>effects/<wbr>effect-<wbr>composition.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-03aab107a263"><details><summary><span class="mark">FAIL</span><span class="sub-name">accumulate onto an underlying animation value with implicit from values</span></summary><pre class="msg">assert_equals: Animated style at 50% expected &quot;matrix(1, 0, 0, 1, 50, 50)&quot; but got &quot;matrix(1, 0, 0, 1, 0, 100)&quot;</pre></details><a class="self" href="#s-03aab107a263" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c48b6a9e5fc5"><details><summary><span class="mark">FAIL</span><span class="sub-name">accumulate onto an underlying animation value with implicit to values</span></summary><pre class="msg">assert_equals: Animated style at 50% expected &quot;matrix(1, 0, 0, 1, 50, 50)&quot; but got &quot;matrix(1, 0, 0, 1, 0, 100)&quot;</pre></details><a class="self" href="#s-c48b6a9e5fc5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-394af37eb8c9"><details><summary><span class="mark">FAIL</span><span class="sub-name">add onto an underlying animation value with implicit from values</span></summary><pre class="msg">assert_equals: Animated style at 50% expected &quot;matrix(1, 0, 0, 1, 50, 50)&quot; but got &quot;matrix(1, 0, 0, 1, 0, 100)&quot;</pre></details><a class="self" href="#s-394af37eb8c9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-36ba0a3675da"><details><summary><span class="mark">FAIL</span><span class="sub-name">add onto an underlying animation value with implicit to values</span></summary><pre class="msg">assert_equals: Animated style at 50% expected &quot;matrix(1, 0, 0, 1, 50, 50)&quot; but got &quot;matrix(1, 0, 0, 1, 0, 100)&quot;</pre></details><a class="self" href="#s-36ba0a3675da" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>13 passing subtests</summary><ol class="pass-list"><li>accumulate onto the base value</li><li>accumulate onto the base value when the interval does not include the 0 or 1 keyframe</li><li>accumulate onto an underlying animation value</li><li>Composite when mixing accumulate and replace</li><li>accumulate specified on a keyframe overrides the composite mode of the effect</li><li>unspecified composite mode on a keyframe is overriden by setting accumulate of the effect</li><li>add onto the base value</li><li>add onto the base value when the interval does not include the 0 or 1 keyframe</li><li>add onto an underlying animation value</li><li>Composite when mixing add and replace</li><li>add specified on a keyframe overrides the composite mode of the effect</li><li>unspecified composite mode on a keyframe is overriden by setting add of the effect</li><li>Composite replace fully replaces the underlying animation value</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

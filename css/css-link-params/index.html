@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>css/css-link-params/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,12 +36,35 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">1 test file here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="none-passed"><th scope="row"><a href="../../css/css-link-params/link-parameters-computed.html/"><code>link-<wbr>parameters-<wbr>computed.<wbr>html</code></a></th><td class="n" data-v="0" data-of="12"><b>0</b> / 12</td><td class="n" data-v="0" data-of="12"><b>0</b> / 12</td><td class="n" data-v="12"><span class="fail">12</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="link-parameters-computed.html" data-gate="none-passed" data-pass="0" data-of="12" data-failed="12" data-ref-pass="0" data-ref-of="12"><summary><span class="tf-name"><code>link-<wbr>parameters-<wbr>computed.<wbr>html</code></span><span class="tf-n"><b>0</b> / 12<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 12</span><span class="tf-fail"><span class="fail">12</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 12 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-link-params/link-parameters-computed.html"><code>css/<wbr>css-<wbr>link-<wbr>params/<wbr>link-<wbr>parameters-<wbr>computed.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-256878b4bfa7"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property link-parameters value &#39;none&#39;</span></summary><pre class="msg">assert_true: link-parameters doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-256878b4bfa7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0475eb053751"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property link-parameters value &#39;param(--a, orange)&#39;</span></summary><pre class="msg">assert_true: link-parameters doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-0475eb053751" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ed30e39a9c8a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property link-parameters value &#39;param(--a, orange), param(--b, blue)&#39;</span></summary><pre class="msg">assert_true: link-parameters doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-ed30e39a9c8a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ecc85c051a56"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property link-parameters value &#39;param(--b, 1), param(--a, 2), param(--b, 3)&#39;</span></summary><pre class="msg">assert_true: link-parameters doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-ecc85c051a56" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5ff2febb8ae1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property link-parameters value &#39;param(ident(&quot;--a&quot;), orange)&#39;</span></summary><pre class="msg">assert_true: link-parameters doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-5ff2febb8ae1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0caff2e5bbba"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property link-parameters value &#39;param(--a, )&#39;</span></summary><pre class="msg">assert_true: link-parameters doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-0caff2e5bbba" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4e9b2c65015a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property link-parameters value &#39;param(--a, ), param(--b, )&#39;</span></summary><pre class="msg">assert_true: link-parameters doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-4e9b2c65015a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-877bab9ecddc"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property link-parameters value &#39;param(--a, var(--custom))&#39;</span></summary><pre class="msg">assert_true: link-parameters doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-877bab9ecddc" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-233133fab11b"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property link-parameters value &#39;param(--a, var(--missing))&#39;</span></summary><pre class="msg">assert_true: link-parameters doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-233133fab11b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8b8b1eb30138"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property link-parameters value &#39;param(--a, var(--missing, blue))&#39;</span></summary><pre class="msg">assert_true: link-parameters doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-8b8b1eb30138" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2f63072cac1f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property link-parameters value &#39;param(--a, var(--one))&#39;</span></summary><pre class="msg">assert_true: link-parameters doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-2f63072cac1f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bffe7bdbe8e1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property link-parameters value &#39;param(var(--one), orange)&#39;</span></summary><pre class="msg">assert_true: link-parameters doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-bffe7bdbe8e1" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

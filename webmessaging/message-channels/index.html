@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>webmessaging/message-channels/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,20 +36,153 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">9 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../webmessaging/message-channels/basics.any.js/"><code>basics.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../webmessaging/message-channels/close.any.js/"><code>close.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="12" data-of="12"><b>12</b> / 12</td><td class="n" data-v="10" data-of="12"><b>10</b> / 12</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../webmessaging/message-channels/cross-document.html/"><code>cross-<wbr>document.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../webmessaging/message-channels/detached-iframe.window.js/"><code>detached-<wbr>iframe.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../webmessaging/message-channels/dictionary-transferrable.any.js/"><code>dictionary-<wbr>transferrable.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../webmessaging/message-channels/implied-start.any.js/"><code>implied-<wbr>start.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../webmessaging/message-channels/no-start.any.js/"><code>no-<wbr>start.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../webmessaging/message-channels/worker-post-after-close.any.js/"><code>worker-<wbr>post-<wbr>after-<wbr>close.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../webmessaging/message-channels/worker.any.js/"><code>worker.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="basics.any.js" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>basics.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/webmessaging/message-channels/basics.any.js"><code>webmessaging/<wbr>message-<wbr>channels/<wbr>basics.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/basics.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>basic messagechannel test</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/basics.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>basic messagechannel test</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="close.any.js" data-gate="clean" data-pass="12" data-of="12" data-failed="0" data-ref-pass="10" data-ref-of="12"><summary><span class="tf-name"><code>close.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>12</b> / 12<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>10</b> / 12</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>10</b> / 12 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/webmessaging/message-channels/close.any.js"><code>webmessaging/<wbr>message-<wbr>channels/<wbr>close.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/close.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>6</b> / 6</span></h3>
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>Message sent to closed port should not arrive.</li><li>Message sent from closed port should not arrive.</li><li>Message sent to closed port from transferred port should not arrive.</li><li>Inflight messages should be delivered even when sending port is closed afterwards.</li><li>Close in onmessage should not cancel inflight messages.</li><li>close() detaches a MessagePort (but not the one its entangled with)</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/close.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>6</b> / 6</span></h3>
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>Message sent to closed port should not arrive.</li><li>Message sent from closed port should not arrive.</li><li>Message sent to closed port from transferred port should not arrive.</li><li>Inflight messages should be delivered even when sending port is closed afterwards.</li><li>Close in onmessage should not cancel inflight messages.</li><li>close() detaches a MessagePort (but not the one its entangled with)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="cross-document.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>cross-<wbr>document.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/webmessaging/message-channels/cross-document.html"><code>webmessaging/<wbr>message-<wbr>channels/<wbr>cross-<wbr>document.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>cross-document channel</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="detached-iframe.window.js" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>detached-<wbr>iframe.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/webmessaging/message-channels/detached-iframe.window.js"><code>webmessaging/<wbr>message-<wbr>channels/<wbr>detached-<wbr>iframe.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>MessageChannel created from a detached iframe should not send messages (remove after create)</li><li>MessageChannel created from a detached iframe should not send messages (remove before create)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="dictionary-transferrable.any.js" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>dictionary-<wbr>transferrable.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/webmessaging/message-channels/dictionary-transferrable.any.js"><code>webmessaging/<wbr>message-<wbr>channels/<wbr>dictionary-<wbr>transferrable.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/dictionary-transferrable.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>basic messagechannel with transfer</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/dictionary-transferrable.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>basic messagechannel with transfer</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="implied-start.any.js" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>implied-<wbr>start.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/webmessaging/message-channels/implied-start.any.js"><code>webmessaging/<wbr>message-<wbr>channels/<wbr>implied-<wbr>start.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/implied-start.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>onmessage implied start()</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/implied-start.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>onmessage implied start()</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="no-start.any.js" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>no-<wbr>start.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/webmessaging/message-channels/no-start.any.js"><code>webmessaging/<wbr>message-<wbr>channels/<wbr>no-<wbr>start.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/no-start.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>without start()</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/no-start.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>without start()</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="worker-post-after-close.any.js" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>worker-<wbr>post-<wbr>after-<wbr>close.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/webmessaging/message-channels/worker-post-after-close.any.js"><code>webmessaging/<wbr>message-<wbr>channels/<wbr>worker-<wbr>post-<wbr>after-<wbr>close.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/worker-post-after-close.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>MessageChannel/MessagePort should not work after a worker self.close()</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/worker-post-after-close.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>MessageChannel/MessagePort should not work after a worker self.close()</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="worker.any.js" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>worker.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/webmessaging/message-channels/worker.any.js"><code>webmessaging/<wbr>message-<wbr>channels/<wbr>worker.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/worker.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>MessageChannel/MessagePort created and used after a worker self.close()</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/webmessaging/message-channels/worker.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>MessageChannel/MessagePort created and used after a worker self.close()</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

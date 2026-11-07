@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>custom-elements/upgrading/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,18 +36,94 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">7 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../custom-elements/upgrading/Document-importNode-customized-builtins.html/"><code>Document-<wbr>importNode-<wbr>customized-<wbr>builtins.<wbr>html</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../custom-elements/upgrading/Document-importNode.html/"><code>Document-<wbr>importNode.<wbr>html</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../custom-elements/upgrading/Node-cloneNode-customized-builtins.html/"><code>Node-<wbr>cloneNode-<wbr>customized-<wbr>builtins.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../custom-elements/upgrading/Node-cloneNode.html/"><code>Node-<wbr>cloneNode.<wbr>html</code></a></th><td class="n" data-v="9" data-of="9"><b>9</b> / 9</td><td class="n" data-v="9" data-of="9"><b>9</b> / 9</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../custom-elements/upgrading/upgrade-custom-element-error-event.html/"><code>upgrade-<wbr>custom-<wbr>element-<wbr>error-<wbr>event.<wbr>html</code></a></th><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="1" data-of="4"><b>1</b> / 4</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../custom-elements/upgrading/upgrading-enqueue-reactions.html/"><code>upgrading-<wbr>enqueue-<wbr>reactions.<wbr>html</code></a></th><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../custom-elements/upgrading/upgrading-parser-created-element.html/"><code>upgrading-<wbr>parser-<wbr>created-<wbr>element.<wbr>html</code></a></th><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="Document-importNode-customized-builtins.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>Document-<wbr>importNode-<wbr>customized-<wbr>builtins.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/upgrading/Document-importNode-customized-builtins.html"><code>custom-<wbr>elements/<wbr>upgrading/<wbr>Document-<wbr>importNode-<wbr>customized-<wbr>builtins.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>built-in: document.importNode() should import custom elements successfully</li><li>built-in: document.importNode() should import &quot;undefined&quot; custom elements successfully</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="Document-importNode.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>Document-<wbr>importNode.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/upgrading/Document-importNode.html"><code>custom-<wbr>elements/<wbr>upgrading/<wbr>Document-<wbr>importNode.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>autonomous: document.importNode() should import custom elements successfully</li><li>autonomous: document.importNode() should import &quot;undefined&quot; custom elements successfully</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="Node-cloneNode-customized-builtins.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>Node-<wbr>cloneNode-<wbr>customized-<wbr>builtins.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/upgrading/Node-cloneNode-customized-builtins.html"><code>custom-<wbr>elements/<wbr>upgrading/<wbr>Node-<wbr>cloneNode-<wbr>customized-<wbr>builtins.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Node.prototype.cloneNode(false) must be able to clone as a customized built-in element when it has an inconsistent &quot;is&quot; attribute</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="Node-cloneNode.html" data-gate="clean" data-pass="9" data-of="9" data-failed="0" data-ref-pass="9" data-ref-of="9"><summary><span class="tf-name"><code>Node-<wbr>cloneNode.<wbr>html</code></span><span class="tf-n"><b>9</b> / 9<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>9</b> / 9</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>9</b> / 9 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/upgrading/Node-cloneNode.html"><code>custom-<wbr>elements/<wbr>upgrading/<wbr>Node-<wbr>cloneNode.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>Node.prototype.cloneNode(false) must be able to clone a custom element</li><li>Node.prototype.cloneNode(false) must be able to clone as a autonomous custom element when it contains is attribute</li><li>Node.prototype.cloneNode(false) must be able to clone a custom element inside an iframe</li><li>Node.prototype.cloneNode(true) must be able to clone a descendent custom element</li><li>Node.prototype.cloneNode(true) must set parentNode, previousSibling, and nextSibling before upgrading custom elements</li><li>HTMLElement constructor must throw an TypeError when the top of the construction stack is marked AlreadyConstructed due to a custom element constructor constructing itself after super() call</li><li>HTMLElement constructor must throw an TypeError when the top of the construction stack is marked AlreadyConstructed due to a custom element constructor constructing itself before super() call</li><li>Upgrading a custom element must throw TypeError when the custom element&#39;s constructor returns another element</li><li>Inserting an element must not try to upgrade a custom element when it had already failed to upgrade once</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="upgrade-custom-element-error-event.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="1" data-ref-of="4"><summary><span class="tf-name"><code>upgrade-<wbr>custom-<wbr>element-<wbr>error-<wbr>event.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>1</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/upgrading/upgrade-custom-element-error-event.html"><code>custom-<wbr>elements/<wbr>upgrading/<wbr>upgrade-<wbr>custom-<wbr>element-<wbr>error-<wbr>event.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>autonomous: exception thrown in constructor is reported to definition&#39;s global</li><li>autonomous: exception thrown by spec due to invalid element state is reported to definition&#39;s global</li><li>customized built-in: exception thrown in constructor is reported to definition&#39;s global</li><li>customized built-in: exception thrown by spec due to not returning the same value is reported to definition&#39;s global</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="upgrading-enqueue-reactions.html" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>upgrading-<wbr>enqueue-<wbr>reactions.<wbr>html</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/upgrading/upgrading-enqueue-reactions.html"><code>custom-<wbr>elements/<wbr>upgrading/<wbr>upgrading-<wbr>enqueue-<wbr>reactions.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>Upgrading a custom element must enqueue attributeChangedCallback on each attribute</li><li>Upgrading a custom element not must enqueue attributeChangedCallback on unobserved attributes</li><li>Upgrading a custom element must enqueue connectedCallback if the element in the document</li><li>Upgrading a custom element must enqueue attributeChangedCallback before connectedCallback</li><li>Upgrading a custom element must not invoke attributeChangedCallback and connectedCallback when the element failed to upgrade</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="upgrading-parser-created-element.html" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>upgrading-<wbr>parser-<wbr>created-<wbr>element.<wbr>html</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/upgrading/upgrading-parser-created-element.html"><code>custom-<wbr>elements/<wbr>upgrading/<wbr>upgrading-<wbr>parser-<wbr>created-<wbr>element.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>Element.prototype.createElement must add an unresolved custom element to the upgrade candidates map</li><li>HTMLElement constructor must throw an TypeError when the top of the construction stack is marked AlreadyConstructed due to a custom element constructor constructing itself after super() call</li><li>HTMLElement constructor must throw an TypeError when the top of the construction stack is marked AlreadyConstructed due to a custom element constructor constructing itself before super() call</li><li>Upgrading a custom element must throw an TypeError when the returned element is not SameValue as the upgraded element</li><li>Upgrading a custom element whose constructor returns a Text node must throw</li><li>Upgrading a custom element whose constructor returns an Element must throw</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

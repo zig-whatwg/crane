@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>beacon/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -42,17 +42,87 @@
 <tr><th scope="row"><a href="../beacon/headers/"><span class="dir-no">5.1</span><code>headers/</code></a></th><td class="n" data-v="24" data-of="24"><b>24</b> / 24</td><td class="n" data-v="22" data-of="24"><b>22</b> / 24</td><td class="n" data-v="10">10</td><td data-v="0"><span class="tally"><span class="quiet">none blocking</span><span class="mini" aria-hidden="true"><span class="m-clean" style="width:100.000%"></span></span></span></td></tr>
 </tbody>
 </table>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../beacon/beacon-basic.https.window.js/"><code>beacon-<wbr>basic.<wbr>https.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="25" data-of="25"><b>25</b> / 25</td><td class="n" data-v="25" data-of="25"><b>25</b> / 25</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../beacon/beacon-cors.https.window.js/"><code>beacon-<wbr>cors.<wbr>https.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../beacon/beacon-navigate.https.window.js/"><code>beacon-<wbr>navigate.<wbr>https.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../beacon/beacon-redirect.https.window.js/"><code>beacon-<wbr>redirect.<wbr>https.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="8" data-of="8"><b>8</b> / 8</td><td class="n" data-v="8" data-of="8"><b>8</b> / 8</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../beacon/beacon-url-encoding-euc-kr.https.html/"><code>beacon-<wbr>url-<wbr>encoding-<wbr>euc-<wbr>kr.<wbr>https.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../beacon/idlharness.any.js/"><code>idlharness.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="30" data-of="30"><b>30</b> / 30</td><td class="n" data-v="30" data-of="30"><b>30</b> / 30</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="beacon-basic.https.window.js" data-gate="clean" data-pass="25" data-of="25" data-failed="0" data-ref-pass="25" data-ref-of="25"><summary><span class="tf-name"><code>beacon-<wbr>basic.<wbr>https.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>25</b> / 25<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>25</b> / 25</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>25</b> / 25 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/beacon/beacon-basic.https.window.js"><code>beacon/<wbr>beacon-<wbr>basic.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>25 passing subtests</summary><ol class="pass-list"><li>simple case: with no payload</li><li>simple case: with null payload</li><li>simple case: type = string and size = empty</li><li>simple case: type = arraybuffer and size = empty</li><li>simple case: type = form and size = empty</li><li>simple case: type = blob and size = empty</li><li>simple case: type = string and size = small</li><li>simple case: type = arraybuffer and size = small</li><li>simple case: type = form and size = small</li><li>simple case: type = blob and size = small</li><li>simple case: type = string and size = large</li><li>simple case: type = arraybuffer and size = large</li><li>simple case: type = form and size = large</li><li>simple case: type = blob and size = large</li><li>simple case: type = string and size = max</li><li>simple case: type = arraybuffer and size = max</li><li>simple case: type = blob and size = max</li><li>Too large payload should be rejected: type = string</li><li>Too large payload should be rejected: type = arraybuffer</li><li>Too large payload should be rejected: type = form</li><li>Too large payload should be rejected: type = blob</li><li>Payload size restriction should be accumulated: type = string</li><li>Payload size restriction should be accumulated: type = arraybuffer</li><li>Payload size restriction should be accumulated: type = blob</li><li>sendBeacon() with a stream does not work due to the keepalive flag being set</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="beacon-cors.https.window.js" data-gate="clean" data-pass="10" data-of="10" data-failed="0" data-ref-pass="10" data-ref-of="10"><summary><span class="tf-name"><code>beacon-<wbr>cors.<wbr>https.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>10</b> / 10<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>10</b> / 10</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>10</b> / 10 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/beacon/beacon-cors.https.window.js"><code>beacon/<wbr>beacon-<wbr>cors.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>/common/redirect.py does not support CORS</li><li>cross-origin, CORS-safelisted: type = string</li><li>cross-origin, CORS-safelisted: type = arraybuffer</li><li>cross-origin, CORS-safelisted: type = form</li><li>cross-origin, CORS-safelisted: type = blob</li><li>cross-origin, non-CORS-safelisted: failure case (with redirect)</li><li>cross-origin, non-CORS-safelisted: failure case (without redirect)</li><li>cross-origin, non-CORS-safelisted[credentials=false]</li><li>cross-origin, non-CORS-safelisted[credentials=true]</li><li>cross-origin, non-CORS-safelisted success-case (with redirect)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="beacon-navigate.https.window.js" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>beacon-<wbr>navigate.<wbr>https.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/beacon/beacon-navigate.https.window.js"><code>beacon/<wbr>beacon-<wbr>navigate.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>The frame navigates away after calling sendBeacon[type = string].</li><li>The frame navigates away after calling sendBeacon[type = arraybuffer].</li><li>The frame navigates away after calling sendBeacon[type = form].</li><li>The frame navigates away after calling sendBeacon[type = blob].</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="beacon-redirect.https.window.js" data-gate="clean" data-pass="8" data-of="8" data-failed="0" data-ref-pass="8" data-ref-of="8"><summary><span class="tf-name"><code>beacon-<wbr>redirect.<wbr>https.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>8</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 8</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>8</b> / 8 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/beacon/beacon-redirect.https.window.js"><code>beacon/<wbr>beacon-<wbr>redirect.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>8 passing subtests</summary><ol class="pass-list"><li>cross-origin, CORS-safelisted: status = 307, type = string</li><li>cross-origin, CORS-safelisted: status = 307, type = arraybuffer</li><li>cross-origin, CORS-safelisted: status = 307, type = form</li><li>cross-origin, CORS-safelisted: status = 307, type = blob</li><li>cross-origin, CORS-safelisted: status = 308, type = string</li><li>cross-origin, CORS-safelisted: status = 308, type = arraybuffer</li><li>cross-origin, CORS-safelisted: status = 308, type = form</li><li>cross-origin, CORS-safelisted: status = 308, type = blob</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="beacon-url-encoding-euc-kr.https.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>beacon-<wbr>url-<wbr>encoding-<wbr>euc-<wbr>kr.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/beacon/beacon-url-encoding-euc-kr.https.html"><code>beacon/<wbr>beacon-<wbr>url-<wbr>encoding-<wbr>euc-<wbr>kr.<wbr>https.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>beacon-url-encoding-euc-kr</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="idlharness.any.js" data-gate="clean" data-pass="30" data-of="30" data-failed="0" data-ref-pass="30" data-ref-of="30"><summary><span class="tf-name"><code>idlharness.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>30</b> / 30<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>30</b> / 30</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>30</b> / 30 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/beacon/idlharness.any.js"><code>beacon/<wbr>idlharness.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/beacon/idlharness.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>16</b> / 16</span></h3>
+<details class="passing"><summary>16 passing subtests</summary><ol class="pass-list"><li>idl_test setup</li><li>idl_test validation</li><li>Partial interface Navigator: original interface defined</li><li>Partial interface Navigator: member names are unique</li><li>Partial interface Navigator[2]: member names are unique</li><li>Partial interface mixin NavigatorID: member names are unique</li><li>Navigator includes NavigatorID: member names are unique</li><li>Navigator includes NavigatorLanguage: member names are unique</li><li>Navigator includes NavigatorOnLine: member names are unique</li><li>Navigator includes NavigatorContentUtils: member names are unique</li><li>Navigator includes NavigatorCookies: member names are unique</li><li>Navigator includes NavigatorPlugins: member names are unique</li><li>Navigator includes NavigatorConcurrentHardware: member names are unique</li><li>Navigator interface: operation sendBeacon(USVString, optional BodyInit?)</li><li>Navigator interface: navigator must inherit property &quot;sendBeacon(USVString, optional BodyInit?)&quot; with the proper type</li><li>Navigator interface: calling sendBeacon(USVString, optional BodyInit?) on navigator with too few arguments must throw TypeError</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/beacon/idlharness.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>14</b> / 14</span></h3>
+<details class="passing"><summary>14 passing subtests</summary><ol class="pass-list"><li>idl_test setup</li><li>idl_test validation</li><li>Partial interface Navigator: original interface defined</li><li>Partial interface Navigator: member names are unique</li><li>Partial interface Navigator[2]: member names are unique</li><li>Partial interface mixin NavigatorID: member names are unique</li><li>Navigator includes NavigatorID: member names are unique</li><li>Navigator includes NavigatorLanguage: member names are unique</li><li>Navigator includes NavigatorOnLine: member names are unique</li><li>Navigator includes NavigatorContentUtils: member names are unique</li><li>Navigator includes NavigatorCookies: member names are unique</li><li>Navigator includes NavigatorPlugins: member names are unique</li><li>Navigator includes NavigatorConcurrentHardware: member names are unique</li><li>Navigator interface: navigator must not have property &quot;sendBeacon&quot;</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

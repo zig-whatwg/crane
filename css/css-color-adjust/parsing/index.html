@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>css/css-color-adjust/parsing/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,15 +36,63 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">4 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-color-adjust/parsing/color-scheme-computed.html/"><code>color-<wbr>scheme-<wbr>computed.<wbr>html</code></a></th><td class="n" data-v="13" data-of="13"><b>13</b> / 13</td><td class="n" data-v="13" data-of="13"><b>13</b> / 13</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-color-adjust/parsing/color-scheme-invalid.html/"><code>color-<wbr>scheme-<wbr>invalid.<wbr>html</code></a></th><td class="n" data-v="16" data-of="16"><b>16</b> / 16</td><td class="n" data-v="16" data-of="16"><b>16</b> / 16</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-color-adjust/parsing/color-scheme-valid.html/"><code>color-<wbr>scheme-<wbr>valid.<wbr>html</code></a></th><td class="n" data-v="22" data-of="22"><b>22</b> / 22</td><td class="n" data-v="22" data-of="22"><b>22</b> / 22</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../../css/css-color-adjust/parsing/print-color-adjust.html/"><code>print-<wbr>color-<wbr>adjust.<wbr>html</code></a></th><td class="n" data-v="0" data-of="4"><b>0</b> / 4</td><td class="n" data-v="2" data-of="4"><b>2</b> / 4</td><td class="n" data-v="4"><span class="fail">4</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="color-scheme-computed.html" data-gate="clean" data-pass="13" data-of="13" data-failed="0" data-ref-pass="13" data-ref-of="13"><summary><span class="tf-name"><code>color-<wbr>scheme-<wbr>computed.<wbr>html</code></span><span class="tf-n"><b>13</b> / 13<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>13</b> / 13</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>13</b> / 13 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-color-adjust/parsing/color-scheme-computed.html"><code>css/<wbr>css-<wbr>color-<wbr>adjust/<wbr>parsing/<wbr>color-<wbr>scheme-<wbr>computed.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>13 passing subtests</summary><ol class="pass-list"><li>Property color-scheme value &#39;normal&#39;</li><li>Property color-scheme value &#39;light dark&#39;</li><li>Property color-scheme value &#39;dark light&#39;</li><li>Property color-scheme value &#39;light unknown&#39;</li><li>Property color-scheme value &#39;only light&#39;</li><li>Property color-scheme value &#39;only light dark&#39;</li><li>Property color-scheme value &#39;light light&#39;</li><li>Property color-scheme value &#39;light only&#39;</li><li>Property color-scheme value &#39;none&#39;</li><li>Property color-scheme value &#39;initial&#39;</li><li>Property color-scheme value &#39;inherit&#39;</li><li>Property color-scheme value &#39;unset&#39;</li><li>Property color-scheme value &#39;revert&#39;</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="color-scheme-invalid.html" data-gate="clean" data-pass="16" data-of="16" data-failed="0" data-ref-pass="16" data-ref-of="16"><summary><span class="tf-name"><code>color-<wbr>scheme-<wbr>invalid.<wbr>html</code></span><span class="tf-n"><b>16</b> / 16<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>16</b> / 16</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>16</b> / 16 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-color-adjust/parsing/color-scheme-invalid.html"><code>css/<wbr>css-<wbr>color-<wbr>adjust/<wbr>parsing/<wbr>color-<wbr>scheme-<wbr>invalid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>16 passing subtests</summary><ol class="pass-list"><li>e.style[&#39;color-scheme&#39;] = &quot;only normal&quot; should not set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;normal dark&quot; should not set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;normal purple&quot; should not set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light normal&quot; should not set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light, dark&quot; should not set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light inherit&quot; should not set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light initial&quot; should not set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light unset&quot; should not set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light revert&quot; should not set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light revert-layer&quot; should not set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;default&quot; should not set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light default&quot; should not set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;only&quot; should not set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;only only&quot; should not set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light only dark&quot; should not set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;only light only&quot; should not set the property value</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="color-scheme-valid.html" data-gate="clean" data-pass="22" data-of="22" data-failed="0" data-ref-pass="22" data-ref-of="22"><summary><span class="tf-name"><code>color-<wbr>scheme-<wbr>valid.<wbr>html</code></span><span class="tf-n"><b>22</b> / 22<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>22</b> / 22</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>22</b> / 22 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-color-adjust/parsing/color-scheme-valid.html"><code>css/<wbr>css-<wbr>color-<wbr>adjust/<wbr>parsing/<wbr>color-<wbr>scheme-<wbr>valid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>22 passing subtests</summary><ol class="pass-list"><li>e.style[&#39;color-scheme&#39;] = &quot;normal&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;dark&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light dark&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;dark light&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;only light&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light only&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light dark only&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light light&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;dark dark&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light purple&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;purple dark interesting&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;none&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;light none&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;inherit&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;initial&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;unset&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;revert&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;only light dark&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;only light light&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;only light purple&quot; should set the property value</li><li>e.style[&#39;color-scheme&#39;] = &quot;only none&quot; should set the property value</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="print-color-adjust.html" data-gate="none-passed" data-pass="0" data-of="4" data-failed="4" data-ref-pass="2" data-ref-of="4"><summary><span class="tf-name"><code>print-<wbr>color-<wbr>adjust.<wbr>html</code></span><span class="tf-n"><b>0</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 4</span><span class="tf-fail"><span class="fail">4</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>2</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-color-adjust/parsing/print-color-adjust.html"><code>css/<wbr>css-<wbr>color-<wbr>adjust/<wbr>parsing/<wbr>print-<wbr>color-<wbr>adjust.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-13dd3247c274"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;print-color-adjust&#39;] = &quot;exact&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-13dd3247c274" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-71c7b6e5c786"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;print-color-adjust&#39;] = &quot;economy&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-71c7b6e5c786" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a5128b312904"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color-adjust&#39;] = &quot;exact&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-a5128b312904" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cebaf06cdb2b"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;color-adjust&#39;] = &quot;economy&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-cebaf06cdb2b" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

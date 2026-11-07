@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>css/css-view-transitions/navigation/with-types/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,12 +36,39 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">1 test file here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="none-passed"><th scope="row"><a href="../../../../css/css-view-transitions/navigation/with-types/at-rule-with-types-parsing.html/"><code>at-<wbr>rule-<wbr>with-<wbr>types-<wbr>parsing.<wbr>html</code></a></th><td class="n" data-v="0" data-of="16"><b>0</b> / 16</td><td class="n" data-v="16" data-of="16"><b>16</b> / 16</td><td class="n" data-v="16"><span class="fail">16</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="at-rule-with-types-parsing.html" data-gate="none-passed" data-pass="0" data-of="16" data-failed="16" data-ref-pass="16" data-ref-of="16"><summary><span class="tf-name"><code>at-<wbr>rule-<wbr>with-<wbr>types-<wbr>parsing.<wbr>html</code></span><span class="tf-n"><b>0</b> / 16<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>16</b> / 16</span><span class="tf-fail"><span class="fail">16</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>16</b> / 16 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-view-transitions/navigation/with-types/at-rule-with-types-parsing.html"><code>css/<wbr>css-<wbr>view-<wbr>transitions/<wbr>navigation/<wbr>with-<wbr>types/<wbr>at-<wbr>rule-<wbr>with-<wbr>types-<wbr>parsing.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-c88261d5dc1f"><details><summary><span class="mark">FAIL</span><span class="sub-name">types: nOnE shoud result in []</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-c88261d5dc1f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-738e4fa77ce6"><details><summary><span class="mark">FAIL</span><span class="sub-name">types: abc shoud result in [&quot;abc&quot;]</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-738e4fa77ce6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3f66d9b55e7e"><details><summary><span class="mark">FAIL</span><span class="sub-name">types: abc xyz shoud result in [&quot;abc&quot;,&quot;xyz&quot;]</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-3f66d9b55e7e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4c7befadd4ea"><details><summary><span class="mark">FAIL</span><span class="sub-name">types: abc\ xyz shoud result in [&quot;abc xyz&quot;]</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-4c7befadd4ea" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f6eba0fa0574"><details><summary><span class="mark">FAIL</span><span class="sub-name">types:    abc 	xyz  shoud result in [&quot;abc&quot;,&quot;xyz&quot;]</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-f6eba0fa0574" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-95ddbff33d85"><details><summary><span class="mark">FAIL</span><span class="sub-name">types: abc none shoud result in []</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-95ddbff33d85" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-787809335e18"><details><summary><span class="mark">FAIL</span><span class="sub-name">types: abc, def shoud result in []</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-787809335e18" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9250664cd93a"><details><summary><span class="mark">FAIL</span><span class="sub-name">types: dEfAuLt shoud result in []</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-9250664cd93a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-552fb45a7332"><details><summary><span class="mark">FAIL</span><span class="sub-name">types: abc -ua-something shoud result in []</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-552fb45a7332" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-804744eacfce"><details><summary><span class="mark">FAIL</span><span class="sub-name">types: abc -uA-something shoud result in [&quot;abc&quot;,&quot;-uA-something&quot;]</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-804744eacfce" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-de78f24f15cd"><details><summary><span class="mark">FAIL</span><span class="sub-name">types: abc -ok-something shoud result in [&quot;abc&quot;,&quot;-ok-something&quot;]</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-de78f24f15cd" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7e60757a631d"><details><summary><span class="mark">FAIL</span><span class="sub-name">types: abc abc shoud result in [&quot;abc&quot;,&quot;abc&quot;]</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-7e60757a631d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1f2f5bebca47"><details><summary><span class="mark">FAIL</span><span class="sub-name">types: abc ABC shoud result in [&quot;abc&quot;,&quot;ABC&quot;]</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-1f2f5bebca47" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f887fb1a2e46"><details><summary><span class="mark">FAIL</span><span class="sub-name">types: 123 shoud result in []</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-f887fb1a2e46" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9ae61453d330"><details><summary><span class="mark">FAIL</span><span class="sub-name">types: * shoud result in []</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-9ae61453d330" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-be1af519f8d7"><details><summary><span class="mark">FAIL</span><span class="sub-name">types: *11 abc shoud result in []</span></summary><pre class="msg">Cannot read properties of null (reading &#39;types&#39;)</pre></details><a class="self" href="#s-be1af519f8d7" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

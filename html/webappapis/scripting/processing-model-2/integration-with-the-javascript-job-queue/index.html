@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,15 +36,65 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">4 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../../../../html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/promise-job-detached-iframe.html/"><code>promise-<wbr>job-<wbr>detached-<wbr>iframe.<wbr>html</code></a></th><td class="n" data-v="14" data-of="14"><b>14</b> / 14</td><td class="n" data-v="14" data-of="14"><b>14</b> / 14</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../../html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/promise-job-entry-different-function-realm.html/"><code>promise-<wbr>job-<wbr>entry-<wbr>different-<wbr>function-<wbr>realm.<wbr>html</code></a></th><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../../html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/promise-job-entry.html/"><code>promise-<wbr>job-<wbr>entry.<wbr>html</code></a></th><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../../../../html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/promise-job-incumbent.html/"><code>promise-<wbr>job-<wbr>incumbent.<wbr>html</code></a></th><td class="n" data-v="6" data-of="11"><b>6</b> / 11</td><td class="n" data-v="6" data-of="11"><b>6</b> / 11</td><td class="n" data-v="5"><span class="fail">5</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="promise-job-detached-iframe.html" data-gate="clean" data-pass="14" data-of="14" data-failed="0" data-ref-pass="14" data-ref-of="14"><summary><span class="tf-name"><code>promise-<wbr>job-<wbr>detached-<wbr>iframe.<wbr>html</code></span><span class="tf-n"><b>14</b> / 14<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>14</b> / 14</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>14</b> / 14 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/promise-job-detached-iframe.html"><code>html/<wbr>webappapis/<wbr>scripting/<wbr>processing-<wbr>model-<wbr>2/<wbr>integration-<wbr>with-<wbr>the-<wbr>javascript-<wbr>job-<wbr>queue/<wbr>promise-<wbr>job-<wbr>detached-<wbr>iframe.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>14 passing subtests</summary><ol class="pass-list"><li>Reaction job should run even if onFulfilled handler belongs to detached iframe</li><li>Reaction job should run even if onRejected handler belongs to detached iframe</li><li>Reaction job should not be skipped if onFulfilled handler belongs to fully active global</li><li>Reaction job should not be skipped if onRejected handler belongs to fully active global</li><li>Thenable job for fulfilled promise should run even if it belongs to detached iframe</li><li>Thenable job for rejected promise should run even if it belongs to detached iframe</li><li>No job with detached iframe&#39;s realm should be used for Promise.reject on fulfilled promise</li><li>No job with detached iframe&#39;s realm should be used for Promise.reject on rejected promise</li><li>Thenable job created by reaction job for fulfillment should run even if it belongs to detached iframe</li><li>Thenable job created by reaction job for rejection should run even if it belongs to detached iframe</li><li>Thenable job created by Promise.all should run even if it belongs to detached iframe</li><li>Thenable job created by Promise.allSettled should run even if it belongs to detached iframe</li><li>Thenable job created by Promise.any should run even if it belongs to detached iframe</li><li>Thenable job created by Promise.race should run even if it belongs to detached iframe</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="promise-job-entry-different-function-realm.html" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>promise-<wbr>job-<wbr>entry-<wbr>different-<wbr>function-<wbr>realm.<wbr>html</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/promise-job-entry-different-function-realm.html"><code>html/<wbr>webappapis/<wbr>scripting/<wbr>processing-<wbr>model-<wbr>2/<wbr>integration-<wbr>with-<wbr>the-<wbr>javascript-<wbr>job-<wbr>queue/<wbr>promise-<wbr>job-<wbr>entry-<wbr>different-<wbr>function-<wbr>realm.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>Fulfillment handler on fulfilled promise</li><li>Rejection handler on rejected promise</li><li>Fulfillment handler on pending-then-fulfilled promise</li><li>Rejection handler on pending-then-rejected promise</li><li>Thenable resolution</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="promise-job-entry.html" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>promise-<wbr>job-<wbr>entry.<wbr>html</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/promise-job-entry.html"><code>html/<wbr>webappapis/<wbr>scripting/<wbr>processing-<wbr>model-<wbr>2/<wbr>integration-<wbr>with-<wbr>the-<wbr>javascript-<wbr>job-<wbr>queue/<wbr>promise-<wbr>job-<wbr>entry.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>Sanity check: this all works as expected with no promises involved</li><li>Fulfillment handler on fulfilled promise</li><li>Rejection handler on rejected promise</li><li>Fulfillment handler on pending-then-fulfilled promise</li><li>Rejection handler on pending-then-rejected promise</li><li>Thenable resolution</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="promise-job-incumbent.html" data-gate="partial" data-pass="6" data-of="11" data-failed="5" data-ref-pass="6" data-ref-of="11"><summary><span class="tf-name"><code>promise-<wbr>job-<wbr>incumbent.<wbr>html</code></span><span class="tf-n"><b>6</b> / 11<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 11</span><span class="tf-fail"><span class="fail">5</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>6</b> / 11 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/promise-job-incumbent.html"><code>html/<wbr>webappapis/<wbr>scripting/<wbr>processing-<wbr>model-<wbr>2/<wbr>integration-<wbr>with-<wbr>the-<wbr>javascript-<wbr>job-<wbr>queue/<wbr>promise-<wbr>job-<wbr>incumbent.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-da79e03209b3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fulfillment handler on fulfilled promise, using backup incumbent settings object stack</span></summary><pre class="msg">assert_equals: expected &quot;http://web-platform.test:8000/html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/resources/promise-job-incumbent-incumbent.html&quot; but got &quot;http://web-platform.test:8000/html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/promise-job-incumbent.html&quot;</pre></details><a class="self" href="#s-da79e03209b3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5a58ae4614a6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Rejection handler on rejected promise, using backup incumbent settings object stack</span></summary><pre class="msg">assert_equals: expected &quot;http://web-platform.test:8000/html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/resources/promise-job-incumbent-incumbent.html&quot; but got &quot;http://web-platform.test:8000/html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/promise-job-incumbent.html&quot;</pre></details><a class="self" href="#s-5a58ae4614a6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4dfce86867c2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fulfillment handler on pending-then-fulfilled promise, using backup incumbent settings object stack</span></summary><pre class="msg">assert_equals: expected &quot;http://web-platform.test:8000/html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/resources/promise-job-incumbent-incumbent.html&quot; but got &quot;http://web-platform.test:8000/html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/resources/current/current.html&quot;</pre></details><a class="self" href="#s-4dfce86867c2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-71c0bd8e0efa"><details><summary><span class="mark">FAIL</span><span class="sub-name">Rejection handler on pending-then-rejected promise, using backup incumbent settings object stack</span></summary><pre class="msg">assert_equals: expected &quot;http://web-platform.test:8000/html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/resources/promise-job-incumbent-incumbent.html&quot; but got &quot;http://web-platform.test:8000/html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/resources/current/current.html&quot;</pre></details><a class="self" href="#s-71c0bd8e0efa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8965e2544f83"><details><summary><span class="mark">FAIL</span><span class="sub-name">Thenable resolution, using backup incumbent settings object stack</span></summary><pre class="msg">assert_equals: expected &quot;http://web-platform.test:8000/html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/resources/promise-job-incumbent-incumbent.html&quot; but got &quot;http://web-platform.test:8000/html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/promise-job-incumbent.html&quot;</pre></details><a class="self" href="#s-8965e2544f83" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>Sanity check: this all works as expected with no promises involved</li><li>Fulfillment handler on fulfilled promise</li><li>Rejection handler on rejected promise</li><li>Fulfillment handler on pending-then-fulfilled promise</li><li>Rejection handler on pending-then-rejected promise</li><li>Thenable resolution</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

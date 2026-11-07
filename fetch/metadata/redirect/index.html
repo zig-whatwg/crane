@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>fetch/metadata/redirect/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,14 +36,58 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">3 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="timeout"><th scope="row"><a href="../../../fetch/metadata/redirect/multiple-redirect-https-downgrade-upgrade.sub.html/"><code>multiple-<wbr>redirect-<wbr>https-<wbr>downgrade-<wbr>upgrade.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="21" data-of="22"><b>21</b> / 22</td><td class="n" data-v="26" data-of="26"><b>26</b> / 26</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="4"><span class="gate gate-timeout g-block">TIMEOUT</span></td></tr>
-<tr data-gate="timeout"><th scope="row"><a href="../../../fetch/metadata/redirect/redirect-http-upgrade.sub.html/"><code>redirect-<wbr>http-<wbr>upgrade.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="21" data-of="22"><b>21</b> / 22</td><td class="n" data-v="26" data-of="26"><b>26</b> / 26</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="4"><span class="gate gate-timeout g-block">TIMEOUT</span></td></tr>
-<tr data-gate="timeout"><th scope="row"><a href="../../../fetch/metadata/redirect/redirect-https-downgrade.sub.html/"><code>redirect-<wbr>https-<wbr>downgrade.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="21" data-of="22"><b>21</b> / 22</td><td class="n" data-v="26" data-of="26"><b>26</b> / 26</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="4"><span class="gate gate-timeout g-block">TIMEOUT</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="multiple-redirect-https-downgrade-upgrade.sub.html" data-gate="timeout" data-pass="21" data-of="22" data-failed="0" data-ref-pass="26" data-ref-of="26"><summary><span class="tf-name"><code>multiple-<wbr>redirect-<wbr>https-<wbr>downgrade-<wbr>upgrade.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>21</b> / 22<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>26</b> / 26</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-timeout g-block">TIMEOUT</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>26</b> / 26 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/metadata/redirect/multiple-redirect-https-downgrade-upgrade.sub.html"><code>fetch/<wbr>metadata/<wbr>redirect/<wbr>multiple-<wbr>redirect-<wbr>https-<wbr>downgrade-<wbr>upgrade.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/fetch/metadata/redirect/multiple-redirect-https-downgrade-upgrade.sub.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>21</b> / 22</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-c93fc12c9fdf"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Https downgrade-upgrade track</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-c93fc12c9fdf" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>21 passing subtests</summary><ol class="pass-list"><li>Https downgrade-upgrade top level navigation</li><li>Https downgrade-upgrade embed</li><li>Https downgrade-upgrade object</li><li>Https downgrade-upgrade preload</li><li>Https downgrade-upgrade stylesheet</li><li>Https downgrade-upgrade top level navigation: sec-fetch-dest</li><li>Https downgrade-upgrade top level navigation: sec-fetch-mode</li><li>Https downgrade-upgrade top level navigation: sec-fetch-site</li><li>Https downgrade-upgrade top level navigation: sec-fetch-user</li><li>Https downgrade-upgrade embed: sec-fetch-dest</li><li>Https downgrade-upgrade embed: sec-fetch-mode</li><li>Https downgrade-upgrade embed: sec-fetch-site</li><li>Https downgrade-upgrade embed: sec-fetch-user</li><li>Https downgrade-upgrade object: sec-fetch-dest</li><li>Https downgrade-upgrade object: sec-fetch-mode</li><li>Https downgrade-upgrade object: sec-fetch-site</li><li>Https downgrade-upgrade object: sec-fetch-user</li><li>Https downgrade-upgrade stylesheet: sec-fetch-dest</li><li>Https downgrade-upgrade stylesheet: sec-fetch-mode</li><li>Https downgrade-upgrade stylesheet: sec-fetch-site</li><li>Https downgrade-upgrade stylesheet: sec-fetch-user</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="redirect-http-upgrade.sub.html" data-gate="timeout" data-pass="21" data-of="22" data-failed="0" data-ref-pass="26" data-ref-of="26"><summary><span class="tf-name"><code>redirect-<wbr>http-<wbr>upgrade.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>21</b> / 22<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>26</b> / 26</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-timeout g-block">TIMEOUT</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>26</b> / 26 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/metadata/redirect/redirect-http-upgrade.sub.html"><code>fetch/<wbr>metadata/<wbr>redirect/<wbr>redirect-<wbr>http-<wbr>upgrade.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/fetch/metadata/redirect/redirect-http-upgrade.sub.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>21</b> / 22</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-0a4208ca8d66"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Http upgrade track</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-0a4208ca8d66" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>21 passing subtests</summary><ol class="pass-list"><li>Http upgrade top level navigation</li><li>Http upgrade embed</li><li>Http upgrade object</li><li>Http upgrade preload</li><li>Http upgrade stylesheet</li><li>Http upgrade top level navigation: sec-fetch-dest</li><li>Http upgrade top level navigation: sec-fetch-mode</li><li>Http upgrade top level navigation: sec-fetch-site</li><li>Http upgrade top level navigation: sec-fetch-user</li><li>Http upgrade embed: sec-fetch-dest</li><li>Http upgrade embed: sec-fetch-mode</li><li>Http upgrade embed: sec-fetch-site</li><li>Http upgrade embed: sec-fetch-user</li><li>Http upgrade object: sec-fetch-dest</li><li>Http upgrade object: sec-fetch-mode</li><li>Http upgrade object: sec-fetch-site</li><li>Http upgrade object: sec-fetch-user</li><li>Http upgrade stylesheet: sec-fetch-dest</li><li>Http upgrade stylesheet: sec-fetch-mode</li><li>Http upgrade stylesheet: sec-fetch-site</li><li>Http upgrade stylesheet: sec-fetch-user</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="redirect-https-downgrade.sub.html" data-gate="timeout" data-pass="21" data-of="22" data-failed="0" data-ref-pass="26" data-ref-of="26"><summary><span class="tf-name"><code>redirect-<wbr>https-<wbr>downgrade.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>21</b> / 22<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>26</b> / 26</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-timeout g-block">TIMEOUT</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>26</b> / 26 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/metadata/redirect/redirect-https-downgrade.sub.html"><code>fetch/<wbr>metadata/<wbr>redirect/<wbr>redirect-<wbr>https-<wbr>downgrade.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/fetch/metadata/redirect/redirect-https-downgrade.sub.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>21</b> / 22</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-57b1dc705757"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Https downgrade track</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-57b1dc705757" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>21 passing subtests</summary><ol class="pass-list"><li>Https downgrade top level navigation</li><li>Https downgrade embed</li><li>Https downgrade object</li><li>Https downgrade preload</li><li>Https downgrade stylesheet</li><li>Https downgrade top level navigation: sec-fetch-dest</li><li>Https downgrade top level navigation: sec-fetch-mode</li><li>Https downgrade top level navigation: sec-fetch-site</li><li>Https downgrade top level navigation: sec-fetch-user</li><li>Https downgrade embed: sec-fetch-dest</li><li>Https downgrade embed: sec-fetch-mode</li><li>Https downgrade embed: sec-fetch-site</li><li>Https downgrade embed: sec-fetch-user</li><li>Https downgrade object: sec-fetch-dest</li><li>Https downgrade object: sec-fetch-mode</li><li>Https downgrade object: sec-fetch-site</li><li>Https downgrade object: sec-fetch-user</li><li>Https downgrade stylesheet: sec-fetch-dest</li><li>Https downgrade stylesheet: sec-fetch-mode</li><li>Https downgrade stylesheet: sec-fetch-site</li><li>Https downgrade stylesheet: sec-fetch-user</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>css/css-cascade/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -42,12 +42,22 @@
 <tr><th scope="row"><a href="../../css/css-cascade/parsing/"><code>parsing/</code></a></th><td class="n" data-v="54" data-of="58"><b>54</b> / 58</td><td class="n" data-v="58" data-of="58"><b>58</b> / 58</td><td class="n" data-v="5">5</td><td data-v="0"><span class="tally"><span class="quiet">none blocking</span><span class="mini" aria-hidden="true"><span class="m-clean" style="width:80.000%"></span><span class="m-partial" style="width:20.000%"></span></span></span></td></tr>
 </tbody>
 </table>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../css/css-cascade/at-scope-parsing.html/"><code>at-<wbr>scope-<wbr>parsing.<wbr>html</code></a></th><td class="n" data-v="43" data-of="43"><b>43</b> / 43</td><td class="n" data-v="43" data-of="43"><b>43</b> / 43</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="at-scope-parsing.html" data-gate="clean" data-pass="43" data-of="43" data-failed="0" data-ref-pass="43" data-ref-of="43"><summary><span class="tf-name"><code>at-<wbr>scope-<wbr>parsing.<wbr>html</code></span><span class="tf-n"><b>43</b> / 43<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>43</b> / 43</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>43</b> / 43 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-cascade/at-scope-parsing.html"><code>css/<wbr>css-<wbr>cascade/<wbr>at-<wbr>scope-<wbr>parsing.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>43 passing subtests</summary><ol class="pass-list"><li>@scope (.a) is valid</li><li>@scope (.a + .b) is valid</li><li>@scope (.a:hover) is valid</li><li>@scope (.a:hover, #b, div) is valid</li><li>@scope (:is(div, span)) is valid</li><li>@scope (.a) to (.b) is valid</li><li>@scope (.a)to (.b) is valid</li><li>@scope (.a) to (.b:hover, #c, div) is valid</li><li>@scope is valid</li><li>@scope to (.a) is valid</li><li>@scope (.a) to (&amp;) is valid</li><li>@scope (.a) to (&amp; &gt; &amp;) is valid</li><li>@scope (.a) to (&gt; .b) is valid</li><li>@scope (.a) to (+ .b) is valid</li><li>@scope (.a) to (~ .b) is valid</li><li>@scope () is not valid</li><li>@scope to () is not valid</li><li>@scope () to () is not valid</li><li>@scope (.c &lt;&gt; .d) is not valid</li><li>@scope (.a, .c &lt;&gt; .d) is not valid</li><li>@scope (.a &lt;&gt; .b, .c) is not valid</li><li>@scope (div::before) is not valid</li><li>@scope (div::after) is not valid</li><li>@scope (slotted(div)) is not valid</li><li>@scope (.a) to (div::before) is not valid</li><li>@scope (&gt; &amp;) to (&gt;&gt;) is not valid</li><li>@scope div is not valid</li><li>@scope (.a) unknown (.c) is not valid</li><li>@scope (.a) to unknown (.c) is not valid</li><li>@scope (.a) 1px (.c) is not valid</li><li>@scope (.a) to unknown(c) is not valid</li><li>@scope unknown(.a) is not valid</li><li>@scope 1px is not valid</li><li>@scope creep is not valid</li><li>@scope ))) is not valid</li><li>@scope ( is not valid</li><li>@scope ( {} is not valid</li><li>@scope to is not valid</li><li>@scope } is not valid</li><li>@scope (.a is not valid</li><li>@scope (.a to (.b) is not valid</li><li>@scope ( to (.b) is not valid</li><li>@scope (.a) from (.c) is not valid</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

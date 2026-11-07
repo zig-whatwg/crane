@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>dom/abort/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,17 +36,102 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">6 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../dom/abort/AbortSignal.any.js/"><code>AbortSignal.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../dom/abort/abort-signal-any.any.js/"><code>abort-<wbr>signal-<wbr>any.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="28" data-of="28"><b>28</b> / 28</td><td class="n" data-v="28" data-of="28"><b>28</b> / 28</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../dom/abort/abort-signal-timeout.html/"><code>abort-<wbr>signal-<wbr>timeout.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../dom/abort/event.any.js/"><code>event.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="32" data-of="32"><b>32</b> / 32</td><td class="n" data-v="32" data-of="32"><b>32</b> / 32</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../dom/abort/reason-constructor.html/"><code>reason-<wbr>constructor.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../dom/abort/timeout.any.js/"><code>timeout.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="AbortSignal.any.js" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>AbortSignal.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/abort/AbortSignal.any.js"><code>dom/<wbr>abort/<wbr>AbortSignal.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/dom/abort/AbortSignal.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>the AbortSignal.abort() static returns an already aborted signal</li><li>signal returned by AbortSignal.abort() should not fire abort event</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/dom/abort/AbortSignal.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>the AbortSignal.abort() static returns an already aborted signal</li><li>signal returned by AbortSignal.abort() should not fire abort event</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="abort-signal-any.any.js" data-gate="clean" data-pass="28" data-of="28" data-failed="0" data-ref-pass="28" data-ref-of="28"><summary><span class="tf-name"><code>abort-<wbr>signal-<wbr>any.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>28</b> / 28<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>28</b> / 28</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>28</b> / 28 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/abort/abort-signal-any.any.js"><code>dom/<wbr>abort/<wbr>abort-<wbr>signal-<wbr>any.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/dom/abort/abort-signal-any.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>14</b> / 14</span></h3>
+<details class="passing"><summary>14 passing subtests</summary><ol class="pass-list"><li>AbortSignal.any() works with an empty array of signals</li><li>AbortSignal.any() follows a single signal (using AbortController)</li><li>AbortSignal.any() follows multiple signals (using AbortController)</li><li>AbortSignal.any() returns an aborted signal if passed an aborted signal (using AbortController)</li><li>AbortSignal.any() can be passed the same signal more than once (using AbortController)</li><li>AbortSignal.any() uses the first instance of a duplicate signal (using AbortController)</li><li>AbortSignal.any() signals are composable (using AbortController)</li><li>AbortSignal.any() works with signals returned by AbortSignal.timeout() (using AbortController)</li><li>AbortSignal.any() works with intermediate signals (using AbortController)</li><li>Abort events for AbortSignal.any() signals fire in the right order (using AbortController)</li><li>Dependent signals for AbortSignal.any() are marked aborted before abort events fire (using AbortController)</li><li>Dependent signals for AbortSignal.any() are aborted correctly for reentrant aborts (using AbortController)</li><li>Dependent signals for AbortSignal.any() should use the same DOMException instance from the already aborted source signal (using AbortController)</li><li>Dependent signals for AbortSignal.any() should use the same DOMException instance from the source signal being aborted later (using AbortController)</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/dom/abort/abort-signal-any.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>14</b> / 14</span></h3>
+<details class="passing"><summary>14 passing subtests</summary><ol class="pass-list"><li>AbortSignal.any() works with an empty array of signals</li><li>AbortSignal.any() follows a single signal (using AbortController)</li><li>AbortSignal.any() follows multiple signals (using AbortController)</li><li>AbortSignal.any() returns an aborted signal if passed an aborted signal (using AbortController)</li><li>AbortSignal.any() can be passed the same signal more than once (using AbortController)</li><li>AbortSignal.any() uses the first instance of a duplicate signal (using AbortController)</li><li>AbortSignal.any() signals are composable (using AbortController)</li><li>AbortSignal.any() works with signals returned by AbortSignal.timeout() (using AbortController)</li><li>AbortSignal.any() works with intermediate signals (using AbortController)</li><li>Abort events for AbortSignal.any() signals fire in the right order (using AbortController)</li><li>Dependent signals for AbortSignal.any() are marked aborted before abort events fire (using AbortController)</li><li>Dependent signals for AbortSignal.any() are aborted correctly for reentrant aborts (using AbortController)</li><li>Dependent signals for AbortSignal.any() should use the same DOMException instance from the already aborted source signal (using AbortController)</li><li>Dependent signals for AbortSignal.any() should use the same DOMException instance from the source signal being aborted later (using AbortController)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="abort-signal-timeout.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>abort-<wbr>signal-<wbr>timeout.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/abort/abort-signal-timeout.html"><code>dom/<wbr>abort/<wbr>abort-<wbr>signal-<wbr>timeout.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Signal returned by AbortSignal.timeout() is not aborted after frame detach</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="event.any.js" data-gate="clean" data-pass="32" data-of="32" data-failed="0" data-ref-pass="32" data-ref-of="32"><summary><span class="tf-name"><code>event.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>32</b> / 32<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>32</b> / 32</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>32</b> / 32 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/abort/event.any.js"><code>dom/<wbr>abort/<wbr>event.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/dom/abort/event.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>16</b> / 16</span></h3>
+<details class="passing"><summary>16 passing subtests</summary><ol class="pass-list"><li>AbortController abort() should fire event synchronously</li><li>controller.signal should always return the same object</li><li>controller.abort() should do nothing the second time it is called</li><li>event handler should not be called if added after controller.abort()</li><li>the abort event should have the right properties</li><li>AbortController abort(reason) should set signal.reason</li><li>aborting AbortController without reason creates an &quot;AbortError&quot; DOMException</li><li>AbortController abort(undefined) creates an &quot;AbortError&quot; DOMException</li><li>AbortController abort(null) should set signal.reason</li><li>static aborting signal should have right properties</li><li>static aborting signal with reason should set signal.reason</li><li>throwIfAborted() should throw abort.reason if signal aborted</li><li>throwIfAborted() should throw primitive abort.reason if signal aborted</li><li>throwIfAborted() should not throw if signal not aborted</li><li>AbortSignal.reason returns the same DOMException</li><li>AbortController.signal.reason returns the same DOMException</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/dom/abort/event.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>16</b> / 16</span></h3>
+<details class="passing"><summary>16 passing subtests</summary><ol class="pass-list"><li>AbortController abort() should fire event synchronously</li><li>controller.signal should always return the same object</li><li>controller.abort() should do nothing the second time it is called</li><li>event handler should not be called if added after controller.abort()</li><li>the abort event should have the right properties</li><li>AbortController abort(reason) should set signal.reason</li><li>aborting AbortController without reason creates an &quot;AbortError&quot; DOMException</li><li>AbortController abort(undefined) creates an &quot;AbortError&quot; DOMException</li><li>AbortController abort(null) should set signal.reason</li><li>static aborting signal should have right properties</li><li>static aborting signal with reason should set signal.reason</li><li>throwIfAborted() should throw abort.reason if signal aborted</li><li>throwIfAborted() should throw primitive abort.reason if signal aborted</li><li>throwIfAborted() should not throw if signal not aborted</li><li>AbortSignal.reason returns the same DOMException</li><li>AbortController.signal.reason returns the same DOMException</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="reason-constructor.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>reason-<wbr>constructor.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/abort/reason-constructor.html"><code>dom/<wbr>abort/<wbr>reason-<wbr>constructor.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>AbortSignal.reason.constructor should be from iframe</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="timeout.any.js" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>timeout.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/abort/timeout.any.js"><code>dom/<wbr>abort/<wbr>timeout.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/dom/abort/timeout.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 3</span></h3>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>AbortSignal.timeout() returns a non-aborted signal</li><li>Signal returned by AbortSignal.timeout() times out</li><li>AbortSignal timeouts fire in order</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/dom/abort/timeout.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 3</span></h3>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>AbortSignal.timeout() returns a non-aborted signal</li><li>Signal returned by AbortSignal.timeout() times out</li><li>AbortSignal timeouts fire in order</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>css/css-cascade/parsing/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,16 +36,81 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">5 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-cascade/parsing/all-invalid.html/"><code>all-<wbr>invalid.<wbr>html</code></a></th><td class="n" data-v="7" data-of="7"><b>7</b> / 7</td><td class="n" data-v="7" data-of="7"><b>7</b> / 7</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-cascade/parsing/all-valid.html/"><code>all-<wbr>valid.<wbr>html</code></a></th><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../../css/css-cascade/parsing/layer-import-parsing.html/"><code>layer-<wbr>import-<wbr>parsing.<wbr>html</code></a></th><td class="n" data-v="9" data-of="13"><b>9</b> / 13</td><td class="n" data-v="13" data-of="13"><b>13</b> / 13</td><td class="n" data-v="4"><span class="fail">4</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-cascade/parsing/layer.html/"><code>layer.<wbr>html</code></a></th><td class="n" data-v="11" data-of="11"><b>11</b> / 11</td><td class="n" data-v="11" data-of="11"><b>11</b> / 11</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-cascade/parsing/supports-import-parsing.html/"><code>supports-<wbr>import-<wbr>parsing.<wbr>html</code></a></th><td class="n" data-v="24" data-of="24"><b>24</b> / 24</td><td class="n" data-v="24" data-of="24"><b>24</b> / 24</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="all-invalid.html" data-gate="clean" data-pass="7" data-of="7" data-failed="0" data-ref-pass="7" data-ref-of="7"><summary><span class="tf-name"><code>all-<wbr>invalid.<wbr>html</code></span><span class="tf-n"><b>7</b> / 7<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>7</b> / 7</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>7</b> / 7 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-cascade/parsing/all-invalid.html"><code>css/<wbr>css-<wbr>cascade/<wbr>parsing/<wbr>all-<wbr>invalid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>7 passing subtests</summary><ol class="pass-list"><li>e.style[&#39;all&#39;] = &quot;auto&quot; should not set the property value</li><li>e.style[&#39;all&#39;] = &quot;none&quot; should not set the property value</li><li>e.style[&#39;all&#39;] = &quot;filter&quot; should not set the property value</li><li>e.style[&#39;all&#39;] = &quot;unset inherit&quot; should not set the property value</li><li>e.style[&#39;all&#39;] = &quot;inherit initial&quot; should not set the property value</li><li>e.style[&#39;all&#39;] = &quot;initial unset&quot; should not set the property value</li><li>e.style[&#39;all&#39;] = &quot;opacity transform&quot; should not set the property value</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="all-valid.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>all-<wbr>valid.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-cascade/parsing/all-valid.html"><code>css/<wbr>css-<wbr>cascade/<wbr>parsing/<wbr>all-<wbr>valid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>e.style[&#39;all&#39;] = &quot;initial&quot; should set the property value</li><li>e.style[&#39;all&#39;] = &quot;inherit&quot; should set the property value</li><li>e.style[&#39;all&#39;] = &quot;unset&quot; should set the property value</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="layer-import-parsing.html" data-gate="partial" data-pass="9" data-of="13" data-failed="4" data-ref-pass="13" data-ref-of="13"><summary><span class="tf-name"><code>layer-<wbr>import-<wbr>parsing.<wbr>html</code></span><span class="tf-n"><b>9</b> / 13<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>13</b> / 13</span><span class="tf-fail"><span class="fail">4</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>13</b> / 13 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-cascade/parsing/layer-import-parsing.html"><code>css/<wbr>css-<wbr>cascade/<wbr>parsing/<wbr>layer-<wbr>import-<wbr>parsing.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-f6b21af44383"><details><summary><span class="mark">FAIL</span><span class="sub-name">@import url(&quot;nonexist.css&quot;) layer(); should still be a valid import rule with an invalid layer declaration</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-f6b21af44383" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e144f629f01b"><details><summary><span class="mark">FAIL</span><span class="sub-name">@import url(&quot;nonexist.css&quot;) layer(A B); should still be a valid import rule with an invalid layer declaration</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-e144f629f01b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5cb67a98b285"><details><summary><span class="mark">FAIL</span><span class="sub-name">@import url(&quot;nonexist.css&quot;) layer(A . B); should still be a valid import rule with an invalid layer declaration</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-5cb67a98b285" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4dee0efcc81a"><details><summary><span class="mark">FAIL</span><span class="sub-name">@import url(&quot;nonexist.css&quot;) layer(A, B, C); should still be a valid import rule with an invalid layer declaration</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-4dee0efcc81a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>@import url(&quot;nonexist.css&quot;) layer; should be a valid layered import rule</li><li>@import url(&quot;nonexist.css&quot;) layer(A); should be a valid layered import rule</li><li>@import url(&quot;nonexist.css&quot;) layer(A.B); should be a valid layered import rule</li><li>@import url(nonexist.css) layer; should be a valid layered import rule</li><li>@import url(nonexist.css) layer(A); should be a valid layered import rule</li><li>@import url(nonexist.css) layer(A.B); should be a valid layered import rule</li><li>@import &quot;nonexist.css&quot; layer; should be a valid layered import rule</li><li>@import &quot;nonexist.css&quot; layer(A); should be a valid layered import rule</li><li>@import &quot;nonexist.css&quot; layer(A.B); should be a valid layered import rule</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="layer.html" data-gate="clean" data-pass="11" data-of="11" data-failed="0" data-ref-pass="11" data-ref-of="11"><summary><span class="tf-name"><code>layer.<wbr>html</code></span><span class="tf-n"><b>11</b> / 11<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>11</b> / 11</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>11</b> / 11 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-cascade/parsing/layer.html"><code>css/<wbr>css-<wbr>cascade/<wbr>parsing/<wbr>layer.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>@layer A; should be a valid rule</li><li>@layer A, B, C; should be a valid rule</li><li>@layer A.A; should be a valid rule</li><li>@layer A, B.C.D, C; should be a valid rule</li><li>@layer; should be an invalid rule</li><li>@layer A . A; should be an invalid rule</li><li>@layer {
+} should be a valid rule</li><li>@layer A {
+} should be a valid rule</li><li>@layer A.B {
+} should be a valid rule</li><li>@layer A . B {
+} should be an invalid rule</li><li>@layer A, B, C {
+} should be an invalid rule</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="supports-import-parsing.html" data-gate="clean" data-pass="24" data-of="24" data-failed="0" data-ref-pass="24" data-ref-of="24"><summary><span class="tf-name"><code>supports-<wbr>import-<wbr>parsing.<wbr>html</code></span><span class="tf-n"><b>24</b> / 24<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>24</b> / 24</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>24</b> / 24 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-cascade/parsing/supports-import-parsing.html"><code>css/<wbr>css-<wbr>cascade/<wbr>parsing/<wbr>supports-<wbr>import-<wbr>parsing.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>24 passing subtests</summary><ol class="pass-list"><li>@import url(&quot;nonexist.css&quot;) supports(); should be an invalid import rule due to an invalid supports() declaration</li><li>@import url(&quot;nonexist.css&quot;) supports(foo: bar); should be an invalid import rule due to an invalid supports() declaration</li><li>@import url(&quot;nonexist.css&quot;) supports(display:block); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) supports((display:flex)); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) supports(not (display: flex)); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) supports((display: flex) and (display: block)); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) supports((display: flex) or (display: block)); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) supports((display: flex) or (foo: bar)); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) supports(display: block !important); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) layer supports(); should be an invalid import rule due to an invalid supports() declaration</li><li>@import url(&quot;nonexist.css&quot;) layer supports(foo: bar); should be an invalid import rule due to an invalid supports() declaration</li><li>@import url(&quot;nonexist.css&quot;) layer(A) supports((display: flex) or (foo: bar)); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) layer(A.B) supports((display: flex) and (foo: bar)); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) supports(selector(a)); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) supports(selector(p a)); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) supports(selector(p &gt; a)); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) supports(selector(p + a)); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) supports(font-tech(color-colrv1)); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) supports(font-format(opentype)); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) supports(at-rule(@import)); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) supports(at-rule(@doesnotexist)); should be a valid supports() import rule</li><li>@import url(nonexist.css) supports(display:block); should be a valid supports() import rule</li><li>@import &quot;nonexist.css&quot; supports(display:block); should be a valid supports() import rule</li><li>@import url(&quot;nonexist.css&quot;) supports; should still be a valid import rule with an invalid supports() declaration</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>css/css-forms/parsing/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,14 +36,62 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">3 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="partial"><th scope="row"><a href="../../../css/css-forms/parsing/checkmark-pseudo-element.html/"><code>checkmark-<wbr>pseudo-<wbr>element.<wbr>html</code></a></th><td class="n" data-v="15" data-of="16"><b>15</b> / 16</td><td class="n" data-v="16" data-of="16"><b>16</b> / 16</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../../css/css-forms/parsing/picker-icon-pseudo-element.html/"><code>picker-<wbr>icon-<wbr>pseudo-<wbr>element.<wbr>html</code></a></th><td class="n" data-v="15" data-of="16"><b>15</b> / 16</td><td class="n" data-v="16" data-of="16"><b>16</b> / 16</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../../css/css-forms/parsing/picker-select-pseudo-element.html/"><code>picker-<wbr>select-<wbr>pseudo-<wbr>element.<wbr>html</code></a></th><td class="n" data-v="12" data-of="20"><b>12</b> / 20</td><td class="n" data-v="20" data-of="20"><b>20</b> / 20</td><td class="n" data-v="8"><span class="fail">8</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="checkmark-pseudo-element.html" data-gate="partial" data-pass="15" data-of="16" data-failed="1" data-ref-pass="16" data-ref-of="16"><summary><span class="tf-name"><code>checkmark-<wbr>pseudo-<wbr>element.<wbr>html</code></span><span class="tf-n"><b>15</b> / 16<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>16</b> / 16</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>16</b> / 16 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-forms/parsing/checkmark-pseudo-element.html"><code>css/<wbr>css-<wbr>forms/<wbr>parsing/<wbr>checkmark-<wbr>pseudo-<wbr>element.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-248b1547f1bd"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;*::checkmark&quot; should be a valid selector</span></summary><pre class="msg">assert_equals: serialization should be canonical expected &quot;::checkmark&quot; but got &quot;*::checkmark&quot;</pre></details><a class="self" href="#s-248b1547f1bd" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>15 passing subtests</summary><ol class="pass-list"><li>&quot;::checkmark&quot; should be a valid selector</li><li>&quot;foo.bar[baz]::checkmark&quot; should be a valid selector</li><li>&quot;::checkmark *&quot; should be an invalid selector</li><li>&quot;::checkmark::checkmark&quot; should be an invalid selector</li><li>&quot;::before::checkmark&quot; should be an invalid selector</li><li>&quot;::after::checkmark&quot; should be an invalid selector</li><li>&quot;::marker::checkmark&quot; should be an invalid selector</li><li>&quot;::placeholder::checkmark&quot; should be an invalid selector</li><li>&quot;::checkmark::before&quot; should be an invalid selector</li><li>&quot;::checkmark::after&quot; should be an invalid selector</li><li>&quot;::checkmark::marker&quot; should be an invalid selector</li><li>&quot;::checkmark::placeholder&quot; should be an invalid selector</li><li>&quot;::slotted(*)::checkmark::slotted(*)&quot; should be an invalid selector</li><li>&quot;::slotted(*)::checkmark&quot; should be a valid selector</li><li>&quot;::part(foo)::checkmark&quot; should be a valid selector</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="picker-icon-pseudo-element.html" data-gate="partial" data-pass="15" data-of="16" data-failed="1" data-ref-pass="16" data-ref-of="16"><summary><span class="tf-name"><code>picker-<wbr>icon-<wbr>pseudo-<wbr>element.<wbr>html</code></span><span class="tf-n"><b>15</b> / 16<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>16</b> / 16</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>16</b> / 16 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-forms/parsing/picker-icon-pseudo-element.html"><code>css/<wbr>css-<wbr>forms/<wbr>parsing/<wbr>picker-<wbr>icon-<wbr>pseudo-<wbr>element.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-8d4b49c47624"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;*::picker-icon&quot; should be a valid selector</span></summary><pre class="msg">assert_equals: serialization should be canonical expected &quot;::picker-icon&quot; but got &quot;*::picker-icon&quot;</pre></details><a class="self" href="#s-8d4b49c47624" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>15 passing subtests</summary><ol class="pass-list"><li>&quot;::picker-icon&quot; should be a valid selector</li><li>&quot;foo.bar[baz]::picker-icon&quot; should be a valid selector</li><li>&quot;::picker-icon *&quot; should be an invalid selector</li><li>&quot;::picker-icon::picker-icon&quot; should be an invalid selector</li><li>&quot;::before::picker-icon&quot; should be an invalid selector</li><li>&quot;::after::picker-icon&quot; should be an invalid selector</li><li>&quot;::marker::picker-icon&quot; should be an invalid selector</li><li>&quot;::placeholder::picker-icon&quot; should be an invalid selector</li><li>&quot;::picker-icon::before&quot; should be an invalid selector</li><li>&quot;::picker-icon::after&quot; should be an invalid selector</li><li>&quot;::picker-icon::marker&quot; should be an invalid selector</li><li>&quot;::picker-icon::placeholder&quot; should be an invalid selector</li><li>&quot;::slotted(*)::picker-icon::slotted(*)&quot; should be an invalid selector</li><li>&quot;::slotted(*)::picker-icon&quot; should be a valid selector</li><li>&quot;::part(foo)::picker-icon&quot; should be a valid selector</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="picker-select-pseudo-element.html" data-gate="partial" data-pass="12" data-of="20" data-failed="8" data-ref-pass="20" data-ref-of="20"><summary><span class="tf-name"><code>picker-<wbr>select-<wbr>pseudo-<wbr>element.<wbr>html</code></span><span class="tf-n"><b>12</b> / 20<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>20</b> / 20</span><span class="tf-fail"><span class="fail">8</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>20</b> / 20 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-forms/parsing/picker-select-pseudo-element.html"><code>css/<wbr>css-<wbr>forms/<wbr>parsing/<wbr>picker-<wbr>select-<wbr>pseudo-<wbr>element.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-4f22d59d7940"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;*::picker(select)&quot; should be a valid selector</span></summary><pre class="msg">assert_equals: serialization should be canonical expected &quot;::picker(select)&quot; but got &quot;*::picker(select)&quot;</pre></details><a class="self" href="#s-4f22d59d7940" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c0ba3991c6f1"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;::picker(foo)&quot; should be an invalid selector</span></summary><pre class="msg">assert_throws_dom: &quot;::picker(foo)&quot; should throw in querySelector function &quot;() =&gt; document.querySelector(selector)&quot; did not throw</pre></details><a class="self" href="#s-c0ba3991c6f1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7197240dcac5"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;::picker(SELECT)&quot; should be a valid selector</span></summary><pre class="msg">assert_equals: serialization should be canonical expected &quot;::picker(select)&quot; but got &quot;::picker(SELECT)&quot;</pre></details><a class="self" href="#s-7197240dcac5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4a6f0a1e4548"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;::picker(select)::picker(select)&quot; should be a valid selector</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-4a6f0a1e4548" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e5138599b87b"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;::picker(select)::before&quot; should be a valid selector</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-e5138599b87b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7750108b4590"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;::picker(select)::after&quot; should be a valid selector</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-7750108b4590" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ffcaa1222c0d"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;::picker(select)::marker&quot; should be a valid selector</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-ffcaa1222c0d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4907289fa135"><details><summary><span class="mark">FAIL</span><span class="sub-name">&quot;::picker(select)::placeholder&quot; should be a valid selector</span></summary><pre class="msg">SyntaxError</pre></details><a class="self" href="#s-4907289fa135" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>12 passing subtests</summary><ol class="pass-list"><li>&quot;::picker(select)&quot; should be a valid selector</li><li>&quot;foo.bar[baz]::picker(select)&quot; should be a valid selector</li><li>&quot;::picker(select) *&quot; should be an invalid selector</li><li>&quot;::picker()&quot; should be an invalid selector</li><li>&quot;::picker&quot; should be an invalid selector</li><li>&quot;::before::picker(select)&quot; should be an invalid selector</li><li>&quot;::after::picker(select)&quot; should be an invalid selector</li><li>&quot;::marker::picker(select)&quot; should be an invalid selector</li><li>&quot;::placeholder::picker(select)&quot; should be an invalid selector</li><li>&quot;::slotted(*)::picker(select)::slotted(*)&quot; should be an invalid selector</li><li>&quot;::slotted(*)::picker(select)&quot; should be a valid selector</li><li>&quot;::part(foo)::picker(select)&quot; should be a valid selector</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

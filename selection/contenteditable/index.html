@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>selection/contenteditable/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,15 +36,64 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">4 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../selection/contenteditable/cefalse-on-boundaries.html/"><code>cefalse-<wbr>on-<wbr>boundaries.<wbr>html</code></a></th><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../selection/contenteditable/collapse.html/"><code>collapse.<wbr>html</code></a></th><td class="n" data-v="1" data-of="3"><b>1</b> / 3</td><td class="n" data-v="0" data-of="3"><b>0</b> / 3</td><td class="n" data-v="2"><span class="fail">2</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../selection/contenteditable/initial-selection-during-focus-event-propagation.html/"><code>initial-<wbr>selection-<wbr>during-<wbr>focus-<wbr>event-<wbr>propagation.<wbr>html</code></a></th><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../selection/contenteditable/modify-around-non-editable-span.html/"><code>modify-<wbr>around-<wbr>non-<wbr>editable-<wbr>span.<wbr>html</code></a></th><td class="n" data-v="16" data-of="16"><b>16</b> / 16</td><td class="n" data-v="16" data-of="16"><b>16</b> / 16</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="cefalse-on-boundaries.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>cefalse-<wbr>on-<wbr>boundaries.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/selection/contenteditable/cefalse-on-boundaries.html"><code>selection/<wbr>contenteditable/<wbr>cefalse-<wbr>on-<wbr>boundaries.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>Selection can start on cE=false element at the beginning of the cE=true element</li><li>Selection can end on cE=false element at the end of the cE=true element</li><li>Selection can start and end on cE=false elements at the boundaries of cE=true element</li><li>Range#selectNodeContents() correctly select contents of cE=true element with cE=false elements on boundaries</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="collapse.html" data-gate="partial" data-pass="1" data-of="3" data-failed="2" data-ref-pass="0" data-ref-of="3"><summary><span class="tf-name"><code>collapse.<wbr>html</code></span><span class="tf-n"><b>1</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 3</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/selection/contenteditable/collapse.html"><code>selection/<wbr>contenteditable/<wbr>collapse.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-46d66277325d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Selection.collapse() must succeed for the ancestor</span></summary><pre class="msg">assert_equals: expected Element node &lt;div contenteditable=&quot;&quot; id=&quot;host3&quot;&gt;
+  &lt;div contenteditabl... but got Element node &lt;div contenteditable=&quot;&quot; id=&quot;host4&quot;&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-46d66277325d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4cba3696a545"><details><summary><span class="mark">FAIL</span><span class="sub-name">Selection.collapse() must succeed for the descendant</span></summary><pre class="msg">assert_equals: expected Element node &lt;div contenteditable=&quot;&quot; id=&quot;host3&quot;&gt;
+  &lt;div contenteditabl... but got Element node &lt;button id=&quot;button&quot;&gt;&lt;/button&gt;</pre></details><a class="self" href="#s-4cba3696a545" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Selection.collapse() must succeed across siblings</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="initial-selection-during-focus-event-propagation.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>initial-<wbr>selection-<wbr>during-<wbr>focus-<wbr>event-<wbr>propagation.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/selection/contenteditable/initial-selection-during-focus-event-propagation.html"><code>selection/<wbr>contenteditable/<wbr>initial-<wbr>selection-<wbr>during-<wbr>focus-<wbr>event-<wbr>propagation.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>Selection should&#39;ve already been initialized into the editing host when `focus` event is dispatched</li><li>at the window</li><li>at the editing host</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="modify-around-non-editable-span.html" data-gate="clean" data-pass="16" data-of="16" data-failed="0" data-ref-pass="16" data-ref-of="16"><summary><span class="tf-name"><code>modify-<wbr>around-<wbr>non-<wbr>editable-<wbr>span.<wbr>html</code></span><span class="tf-n"><b>16</b> / 16<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>16</b> / 16</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>16</b> / 16 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/selection/contenteditable/modify-around-non-editable-span.html"><code>selection/<wbr>contenteditable/<wbr>modify-<wbr>around-<wbr>non-<wbr>editable-<wbr>span.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>16 passing subtests</summary><ol class="pass-list"><li>getSelection().modify(&quot;move&quot;, &quot;forward&quot;, &quot;character&quot;) when &quot; []&lt;span contenteditable=false&gt;&quot;</li><li>getSelection().modify(&quot;move&quot;, &quot;forward&quot;, &quot;character&quot;) when &quot;editable[]&lt;span contenteditable=false&gt;&quot;</li><li>getSelection().modify(&quot;move&quot;, &quot;right&quot;, &quot;character&quot;) when &quot; []&lt;span contenteditable=false&gt;&quot;</li><li>getSelection().modify(&quot;move&quot;, &quot;right&quot;, &quot;character&quot;) when &quot;editable[]&lt;span contenteditable=false&gt;&quot;</li><li>getSelection().modify(&quot;move&quot;, &quot;backward&quot;, &quot;character&quot;) when &quot; &lt;span contenteditable=false&gt;...&lt;/span&gt;[]editable&quot;</li><li>getSelection().modify(&quot;move&quot;, &quot;backward&quot;, &quot;character&quot;) when &quot;editable&lt;span contenteditable=false&gt;...&lt;/span&gt;[] &quot;</li><li>getSelection().modify(&quot;move&quot;, &quot;left&quot;, &quot;character&quot;) when &quot; &lt;span contenteditable=false&gt;...&lt;/span&gt;[]editable&quot;</li><li>getSelection().modify(&quot;move&quot;, &quot;left&quot;, &quot;character&quot;) when &quot;editable&lt;span contenteditable=false&gt;...&lt;/span&gt;[] &quot;</li><li>getSelection().modify(&quot;move&quot;, &quot;forward&quot;, &quot;character&quot;) after getSelection().selectAllChildren(editingHost) when &quot; []&lt;span contenteditable=false&gt;&quot;</li><li>getSelection().modify(&quot;move&quot;, &quot;forward&quot;, &quot;character&quot;) after getSelection().selectAllChildren(editingHost) when &quot;editable[]&lt;span contenteditable=false&gt;&quot;</li><li>getSelection().modify(&quot;move&quot;, &quot;right&quot;, &quot;character&quot;) after getSelection().selectAllChildren(editingHost) when &quot; []&lt;span contenteditable=false&gt;&quot;</li><li>getSelection().modify(&quot;move&quot;, &quot;right&quot;, &quot;character&quot;) after getSelection().selectAllChildren(editingHost) when &quot;editable[]&lt;span contenteditable=false&gt;&quot;</li><li>getSelection().modify(&quot;move&quot;, &quot;backward&quot;, &quot;character&quot;) after getSelection().selectAllChildren(editingHost) when &quot; &lt;span contenteditable=false&gt;...&lt;/span&gt;[]editable&quot;</li><li>getSelection().modify(&quot;move&quot;, &quot;backward&quot;, &quot;character&quot;) after getSelection().selectAllChildren(editingHost) when &quot;editable&lt;span contenteditable=false&gt;...&lt;/span&gt;[] &quot;</li><li>getSelection().modify(&quot;move&quot;, &quot;left&quot;, &quot;character&quot;) after getSelection().selectAllChildren(editingHost) when &quot; &lt;span contenteditable=false&gt;...&lt;/span&gt;[]editable&quot;</li><li>getSelection().modify(&quot;move&quot;, &quot;left&quot;, &quot;character&quot;) after getSelection().selectAllChildren(editingHost) when &quot;editable&lt;span contenteditable=false&gt;...&lt;/span&gt;[] &quot;</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

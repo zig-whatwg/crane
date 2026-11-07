@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>selection/anonymous/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,13 +36,34 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">2 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../selection/anonymous/details-mutate.html/"><code>details-<wbr>mutate.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../selection/anonymous/setBaseAndExtent-start-or-end-in-anonymous-shadow-container.html/"><code>setBaseAndExtent-<wbr>start-<wbr>or-<wbr>end-<wbr>in-<wbr>anonymous-<wbr>shadow-<wbr>container.<wbr>html</code></a></th><td class="n" data-v="11" data-of="11"><b>11</b> / 11</td><td class="n" data-v="11" data-of="11"><b>11</b> / 11</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="details-mutate.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>details-<wbr>mutate.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/selection/anonymous/details-mutate.html"><code>selection/<wbr>anonymous/<wbr>details-<wbr>mutate.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Manipulating selection after clicking &lt;details&gt; shouldn&#39;t cause a crash</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="setBaseAndExtent-start-or-end-in-anonymous-shadow-container.html" data-gate="clean" data-pass="11" data-of="11" data-failed="0" data-ref-pass="11" data-ref-of="11"><summary><span class="tf-name"><code>setBaseAndExtent-<wbr>start-<wbr>or-<wbr>end-<wbr>in-<wbr>anonymous-<wbr>shadow-<wbr>container.<wbr>html</code></span><span class="tf-n"><b>11</b> / 11<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>11</b> / 11</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>11</b> / 11 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/selection/anonymous/setBaseAndExtent-start-or-end-in-anonymous-shadow-container.html"><code>selection/<wbr>anonymous/<wbr>setBaseAndExtent-<wbr>start-<wbr>or-<wbr>end-<wbr>in-<wbr>anonymous-<wbr>shadow-<wbr>container.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>setBaseAndExtent(use, 0, use, 1) in &quot;&lt;svg&gt;&lt;use&gt;&lt;circle&gt;&lt;/circle&gt;&lt;/use&gt;&lt;/svg&gt;&quot;</li><li>setBaseAndExtent(use, 0, circle, 0) in &quot;&lt;svg&gt;&lt;use&gt;&lt;circle&gt;&lt;/circle&gt;&lt;/use&gt;&lt;/svg&gt;&quot;</li><li>setBaseAndExtent(use, 1, circle, 0) in &quot;&lt;svg&gt;&lt;use&gt;\n&lt;circle&gt;&lt;/circle&gt;&lt;/use&gt;&lt;/svg&gt;&quot;</li><li>setBaseAndExtent(circle, 0, use, 1) in &quot;&lt;svg&gt;&lt;use&gt;&lt;circle&gt;&lt;/circle&gt;&lt;/use&gt;&lt;/svg&gt;&quot;</li><li>setBaseAndExtent(details, 0, summary, 0) in &quot;&lt;details&gt;&lt;summary&gt;ABC&lt;/summary&gt;DEF&lt;/details&gt;&quot;</li><li>setBaseAndExtent(details, 1, summary, 0) in &quot;&lt;details&gt;\n&lt;summary&gt;ABC&lt;/summary&gt;DEF&lt;/details&gt;&quot;</li><li>setBaseAndExtent(details, 0, summary &gt; #text, 0) in &quot;&lt;details&gt;&lt;summary&gt;ABC&lt;/summary&gt;DEF&lt;/details&gt;&quot;</li><li>setBaseAndExtent(details, 0, summary + #text, 0) in &quot;&lt;details&gt;&lt;summary&gt;ABC&lt;/summary&gt;DEF&lt;/details&gt;&quot;</li><li>setBaseAndExtent(details, 1, summary + #text, 0) in &quot;&lt;details&gt;\n&lt;summary&gt;ABC&lt;/summary&gt;DEF&lt;/details&gt;&quot;</li><li>setBaseAndExtent(details, 0, p+p, 0) in &quot;&lt;details&gt;&lt;summary&gt;ABC&lt;/summary&gt;&lt;p&gt;DEF&lt;/p&gt;&lt;p&gt;GHI&lt;/p&gt;&lt;/details&gt;&quot;</li><li>setBaseAndExtent(details, 1, p+p, 0) in &quot;&lt;details&gt;\n&lt;summary&gt;ABC&lt;/summary&gt;&lt;p&gt;DEF&lt;/p&gt;&lt;p&gt;GHI&lt;/p&gt;&lt;/details&gt;&quot;</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

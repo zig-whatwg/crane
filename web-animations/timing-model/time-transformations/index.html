@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>web-animations/timing-model/time-transformations/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,12 +36,22 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">1 test file here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../../web-animations/timing-model/time-transformations/transformed-progress.html/"><code>transformed-<wbr>progress.<wbr>html</code></a></th><td class="n" data-v="33" data-of="33"><b>33</b> / 33</td><td class="n" data-v="33" data-of="33"><b>33</b> / 33</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="transformed-progress.html" data-gate="clean" data-pass="33" data-of="33" data-failed="0" data-ref-pass="33" data-ref-of="33"><summary><span class="tf-name"><code>transformed-<wbr>progress.<wbr>html</code></span><span class="tf-n"><b>33</b> / 33<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>33</b> / 33</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>33</b> / 33 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/timing-model/time-transformations/transformed-progress.html"><code>web-<wbr>animations/<wbr>timing-<wbr>model/<wbr>time-<wbr>transformations/<wbr>transformed-<wbr>progress.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>33 passing subtests</summary><ol class="pass-list"><li>Transformed progress for step-start function</li><li>Transformed progress for steps(1, start) function</li><li>Transformed progress for steps(2, start) function</li><li>Transformed progress for step-end function</li><li>Transformed progress for steps(1) function</li><li>Transformed progress for steps(1, end) function</li><li>Transformed progress for steps(2, end) function</li><li>Transformed progress for linear function</li><li>Transformed progress for ease function</li><li>Transformed progress for ease-in function</li><li>Transformed progress for ease-in-out function</li><li>Transformed progress for ease-out function</li><li>Transformed progress for easing function which produces values greater than 1</li><li>Transformed progress for easing function which produces values less than 1</li><li>Test bounds point of step-start easing</li><li>Test start bounds of step-start easing with no delay</li><li>Test bounds point of step-start easing with reverse direction</li><li>Test bounds point of step-start easing with iterationStart not at a transition point</li><li>Test bounds point of step-start easing with iterationStart and delay</li><li>Test bounds point of step-start easing with iterationStart and reverse direction</li><li>Test bounds point of step(4, start) easing with iterationStart 0.75 and delay</li><li>Test bounds point of step-start easing with alternate direction</li><li>Test bounds point of step-start easing with alternate-reverse direction</li><li>Test bounds point of step-end easing</li><li>Test bounds point of step-end easing with iterationStart and delay</li><li>Test bounds point of step-end easing with iterationStart not at a transition point</li><li>Test bounds point of steps(jump-both) easing</li><li>Test bounds point of steps(jump-both) easing with iterationStart and delay</li><li>Test bounds point of steps(jump-both) easing with iterationStart not at a transition point</li><li>Test bounds point of steps(jump-none) easing</li><li>Test bounds point of steps(jump-none) easing with iterationStart and delay</li><li>Test bounds point of steps(jump-none) easing with iterationStart not at a transition point</li><li>Test global timing function with values outside [0,1] with a step timing function on the keyframe</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

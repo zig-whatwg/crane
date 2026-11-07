@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>content-security-policy/inheritance/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,35 +36,312 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">24 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/auxiliary-blank-document.html/"><code>auxiliary-<wbr>blank-<wbr>document.<wbr>html</code></a></th><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="2" data-of="3"><b>2</b> / 3</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/blob-inherits-from-meta-http-equiv-with-invalid-characters.html/"><code>blob-<wbr>inherits-<wbr>from-<wbr>meta-<wbr>http-<wbr>equiv-<wbr>with-<wbr>invalid-<wbr>characters.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/blob-url-in-child-frame-self-navigate-inherits.sub.html/"><code>blob-<wbr>url-<wbr>in-<wbr>child-<wbr>frame-<wbr>self-<wbr>navigate-<wbr>inherits.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/blob-url-in-main-window-self-navigate-inherits.sub.html/"><code>blob-<wbr>url-<wbr>in-<wbr>main-<wbr>window-<wbr>self-<wbr>navigate-<wbr>inherits.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/blob-url-inherits-from-initiator.sub.html/"><code>blob-<wbr>url-<wbr>inherits-<wbr>from-<wbr>initiator.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/document-write-iframe.html/"><code>document-<wbr>write-<wbr>iframe.<wbr>html</code></a></th><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/frame-src-javascript-url.html/"><code>frame-<wbr>src-<wbr>javascript-<wbr>url.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/history-iframe.sub.html/"><code>history-<wbr>iframe.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="8" data-of="8"><b>8</b> / 8</td><td class="n" data-v="8" data-of="8"><b>8</b> / 8</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/history.sub.html/"><code>history.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/iframe-all-local-schemes-inherit-self.sub.html/"><code>iframe-<wbr>all-<wbr>local-<wbr>schemes-<wbr>inherit-<wbr>self.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/iframe-all-local-schemes.sub.html/"><code>iframe-<wbr>all-<wbr>local-<wbr>schemes.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/iframe-srcdoc-history-inheritance.html/"><code>iframe-<wbr>srcdoc-<wbr>history-<wbr>inheritance.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/iframe-srcdoc-inheritance.html/"><code>iframe-<wbr>srcdoc-<wbr>inheritance.<wbr>html</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../content-security-policy/inheritance/inheritance-from-initiator.sub.html/"><code>inheritance-<wbr>from-<wbr>initiator.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="16" data-of="19"><b>16</b> / 19</td><td class="n" data-v="16" data-of="19"><b>16</b> / 19</td><td class="n" data-v="3"><span class="fail">3</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/inherited-csp-list-modifications-are-local.html/"><code>inherited-<wbr>csp-<wbr>list-<wbr>modifications-<wbr>are-<wbr>local.<wbr>html</code></a></th><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/javascript-url-open-in-main-window.html/"><code>javascript-<wbr>url-<wbr>open-<wbr>in-<wbr>main-<wbr>window.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/javascript-url-srcdoc-cross-origin-iframe-inheritance.html/"><code>javascript-<wbr>url-<wbr>srcdoc-<wbr>cross-<wbr>origin-<wbr>iframe-<wbr>inheritance.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/location-reload.html/"><code>location-<wbr>reload.<wbr>html</code></a></th><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/sandboxed-blob-scheme.html/"><code>sandboxed-<wbr>blob-<wbr>scheme.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/sandboxed-data-scheme.html/"><code>sandboxed-<wbr>data-<wbr>scheme.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/unsandboxed-blob-scheme.html/"><code>unsandboxed-<wbr>blob-<wbr>scheme.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/unsandboxed-data-scheme.html/"><code>unsandboxed-<wbr>data-<wbr>scheme.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/window-open-local-after-network-scheme.sub.html/"><code>window-<wbr>open-<wbr>local-<wbr>after-<wbr>network-<wbr>scheme.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/inheritance/window.html/"><code>window.<wbr>html</code></a></th><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="auxiliary-blank-document.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="2" data-ref-of="3"><summary><span class="tf-name"><code>auxiliary-<wbr>blank-<wbr>document.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <b>2</b> / 3 WPT subtests passing <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/auxiliary-blank-document.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>auxiliary-<wbr>blank-<wbr>document.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>window.open() inherits CSPs on initial about:blank.</li><li>For transient doc, violation event occurs in auxiliary, not opener window.</li><li>window.open() inherits CSPs on transient about:blank.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="blob-inherits-from-meta-http-equiv-with-invalid-characters.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>blob-<wbr>inherits-<wbr>from-<wbr>meta-<wbr>http-<wbr>equiv-<wbr>with-<wbr>invalid-<wbr>characters.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/blob-inherits-from-meta-http-equiv-with-invalid-characters.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>blob-<wbr>inherits-<wbr>from-<wbr>meta-<wbr>http-<wbr>equiv-<wbr>with-<wbr>invalid-<wbr>characters.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>blob: URL inherits CSP from a meta tag whose contents have newline characters.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="blob-url-in-child-frame-self-navigate-inherits.sub.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>blob-<wbr>url-<wbr>in-<wbr>child-<wbr>frame-<wbr>self-<wbr>navigate-<wbr>inherits.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/blob-url-in-child-frame-self-navigate-inherits.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>blob-<wbr>url-<wbr>in-<wbr>child-<wbr>frame-<wbr>self-<wbr>navigate-<wbr>inherits.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Violation report status OK.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="blob-url-in-main-window-self-navigate-inherits.sub.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>blob-<wbr>url-<wbr>in-<wbr>main-<wbr>window-<wbr>self-<wbr>navigate-<wbr>inherits.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/blob-url-in-main-window-self-navigate-inherits.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>blob-<wbr>url-<wbr>in-<wbr>main-<wbr>window-<wbr>self-<wbr>navigate-<wbr>inherits.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Violation report status OK.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="blob-url-inherits-from-initiator.sub.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>blob-<wbr>url-<wbr>inherits-<wbr>from-<wbr>initiator.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/blob-url-inherits-from-initiator.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>blob-<wbr>url-<wbr>inherits-<wbr>from-<wbr>initiator.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Initiator is same-origin with target frame.</li><li>Initiator is cross-origin with target frame.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="document-write-iframe.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>document-<wbr>write-<wbr>iframe.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/document-write-iframe.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>document-<wbr>write-<wbr>iframe.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>document.open() keeps inherited CSPs on initial about:blank.</li><li>document.open() does not change delivered CSPs.</li><li>document.open() keeps inherited CSPs on transient about:blank.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="frame-src-javascript-url.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>frame-<wbr>src-<wbr>javascript-<wbr>url.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/frame-src-javascript-url.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>frame-<wbr>src-<wbr>javascript-<wbr>url.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>&lt;iframe src=&#39;javascript:...&#39;&gt;&#39;s inherits policy (dynamically inserted &lt;iframe&gt; is blocked)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="history-iframe.sub.html" data-gate="clean" data-pass="8" data-of="8" data-failed="0" data-ref-pass="8" data-ref-of="8"><summary><span class="tf-name"><code>history-<wbr>iframe.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>8</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 8</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>8</b> / 8 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/history-iframe.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>history-<wbr>iframe.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>8 passing subtests</summary><ol class="pass-list"><li>History navigation in iframe: &quot;about:blank&quot; document is navigated back from history same-origin.</li><li>History navigation in iframe: &quot;about:blank&quot; document is navigated back from history cross-origin.</li><li>History navigation in iframe: blob URL document is navigated back from history same-origin.</li><li>History navigation in iframe: blob URL document is navigated back from history cross-origin.</li><li>History navigation in iframe: data URL document is navigated back from history same-origin.</li><li>History navigation in iframe: data URL document is navigated back from history cross-origin.</li><li>History navigation in iframe: srcdoc iframe is navigated back from history same-origin.</li><li>History navigation in iframe: srcdoc iframe is navigated back from history cross-origin.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="history.sub.html" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>history.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/history.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>history.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>History navigation: &quot;about:blank&quot; document is navigated back from history same-origin.</li><li>History navigation: &quot;about:blank&quot; document is navigated back from history cross-origin.</li><li>History navigation: blob URL document is navigated back from history same-origin.</li><li>History navigation: blob URL document is navigated back from history cross-origin.</li><li>History navigation: blob URL document is navigated back from history (without bfcache on Firefox) same-origin.</li><li>History navigation: blob URL document is navigated back from history (without bfcache on Firefox) cross-origin.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="iframe-all-local-schemes-inherit-self.sub.html" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>iframe-<wbr>all-<wbr>local-<wbr>schemes-<wbr>inherit-<wbr>self.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/iframe-all-local-schemes-inherit-self.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>iframe-<wbr>all-<wbr>local-<wbr>schemes-<wbr>inherit-<wbr>self.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>&lt;iframe&gt;&#39;s about:blank inherits policy.</li><li>&lt;iframe srcdoc&gt;&#39;s inherits policy.</li><li>&lt;iframe src=&#39;blob:...&#39;&gt;&#39;s inherits policy.</li><li>&lt;iframe src=&#39;data:...&#39;&gt;&#39;s inherits policy.</li><li>&lt;iframe src=&#39;javascript:...&#39;&gt;&#39;s inherits policy.</li><li>&lt;iframe sandbox src=&#39;blob:...&#39;&gt;&#39;s inherits policy. (opaque origin sandbox)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="iframe-all-local-schemes.sub.html" data-gate="clean" data-pass="10" data-of="10" data-failed="0" data-ref-pass="10" data-ref-of="10"><summary><span class="tf-name"><code>iframe-<wbr>all-<wbr>local-<wbr>schemes.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>10</b> / 10<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>10</b> / 10</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>10</b> / 10 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/iframe-all-local-schemes.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>iframe-<wbr>all-<wbr>local-<wbr>schemes.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>&lt;iframe&gt;&#39;s about:blank inherits policy.</li><li>window about:blank inherits policy.</li><li>&lt;iframe srcdoc&gt;&#39;s inherits policy.</li><li>&lt;iframe src=&#39;blob:...&#39;&gt;&#39;s inherits policy.</li><li>window url=&#39;blob:...&#39; inherits policy.</li><li>&lt;iframe src=&#39;data:...&#39;&gt;&#39;s inherits policy.</li><li>&lt;iframe src=&#39;javascript:...&#39;&gt;&#39;s inherits policy (static &lt;img&gt; is blocked)</li><li>window url=&#39;javascript:...&#39;&gt;&#39;s inherits policy (static &lt;img&gt; is blocked)</li><li>&lt;iframe src=&#39;javascript:...&#39;&gt;&#39;s inherits policy (dynamically inserted &lt;img&gt; is blocked)</li><li>&lt;iframe sandbox src=&#39;blob:...&#39;&gt;&#39;s inherits policy. (opaque origin sandbox)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="iframe-srcdoc-history-inheritance.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>iframe-<wbr>srcdoc-<wbr>history-<wbr>inheritance.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/iframe-srcdoc-history-inheritance.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>iframe-<wbr>srcdoc-<wbr>history-<wbr>inheritance.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>iframe-srcdoc-history-inheritance</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="iframe-srcdoc-inheritance.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>iframe-<wbr>srcdoc-<wbr>inheritance.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/iframe-srcdoc-inheritance.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>iframe-<wbr>srcdoc-<wbr>inheritance.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>First image should be blocked</li><li>Second image should be blocked</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="inheritance-from-initiator.sub.html" data-gate="partial" data-pass="16" data-of="19" data-failed="3" data-ref-pass="16" data-ref-of="19"><summary><span class="tf-name"><code>inheritance-<wbr>from-<wbr>initiator.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>16</b> / 19<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>16</b> / 19</span><span class="tf-fail"><span class="fail">3</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>16</b> / 19 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/inheritance-from-initiator.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>inheritance-<wbr>from-<wbr>initiator.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/content-security-policy/inheritance/inheritance-from-initiator.sub.html?scheme=blob</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 5</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-2a2b7ef80577"><details><summary><span class="mark">FAIL</span><span class="sub-name">blob: Changing contentWindow.location inherits from who changed it (apart from javascript:, which keeps target policies, and blob:, which always inherits from creator).</span></summary><pre class="msg">assert_equals: expected &quot;p&quot; but got &quot;a&quot;</pre></details><a class="self" href="#s-2a2b7ef80577" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1bcafbcc033c"><details><summary><span class="mark">FAIL</span><span class="sub-name">blob: window.open() inherits from caller (apart from javascript:, which keeps target policies, and blob:, which always inherits from creator).</span></summary><pre class="msg">assert_equals: expected &quot;p&quot; but got &quot;a&quot;</pre></details><a class="self" href="#s-1bcafbcc033c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3ba563aa9bf7"><details><summary><span class="mark">FAIL</span><span class="sub-name">blob: Click on anchor inherits from owner of the anchor (apart from javascript:, which keeps target policies, and blob:, which always inherits from creator).</span></summary><pre class="msg">assert_equals: expected &quot;p&quot; but got &quot;b&quot;</pre></details><a class="self" href="#s-3ba563aa9bf7" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>blob: Setting src inherits from parent (apart from javascript:, which keeps target policies).</li><li>blob: Changing contentWindow.location indirectly inherits from who changed it directly (apart from javascript:, which keeps target policies).</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/content-security-policy/inheritance/inheritance-from-initiator.sub.html?scheme=data</code> <span class="gate">OK</span> <span class="fcount"><b>7</b> / 7</span></h3>
+<details class="passing"><summary>7 passing subtests</summary><ol class="pass-list"><li>data: Setting src inherits from parent (apart from javascript:, which keeps target policies).</li><li>data: Changing contentWindow.location inherits from who changed it (apart from javascript:, which keeps target policies, and blob:, which always inherits from creator).</li><li>data: Changing contentWindow.location indirectly inherits from who changed it directly (apart from javascript:, which keeps target policies).</li><li>data: window.open() inherits from caller (apart from javascript:, which keeps target policies, and blob:, which always inherits from creator).</li><li>data: Click on anchor inherits from owner of the anchor (apart from javascript:, which keeps target policies, and blob:, which always inherits from creator).</li><li>data: Form submission through submit() inherits  from owner of form (apart from javascript:, which keeps target policies).</li><li>data: Form submission through button click inherits from owner of form (apart from javascript:, which keeps target policies).</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/content-security-policy/inheritance/inheritance-from-initiator.sub.html?scheme=javascript</code> <span class="gate">OK</span> <span class="fcount"><b>7</b> / 7</span></h3>
+<details class="passing"><summary>7 passing subtests</summary><ol class="pass-list"><li>javascript: Setting src inherits from parent (apart from javascript:, which keeps target policies).</li><li>javascript: Changing contentWindow.location inherits from who changed it (apart from javascript:, which keeps target policies, and blob:, which always inherits from creator).</li><li>javascript: Changing contentWindow.location indirectly inherits from who changed it directly (apart from javascript:, which keeps target policies).</li><li>javascript: window.open() inherits from caller (apart from javascript:, which keeps target policies, and blob:, which always inherits from creator).</li><li>javascript: Click on anchor inherits from owner of the anchor (apart from javascript:, which keeps target policies, and blob:, which always inherits from creator).</li><li>javascript: Form submission through submit() inherits  from owner of form (apart from javascript:, which keeps target policies).</li><li>javascript: Form submission through button click inherits from owner of form (apart from javascript:, which keeps target policies).</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="inherited-csp-list-modifications-are-local.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>inherited-<wbr>csp-<wbr>list-<wbr>modifications-<wbr>are-<wbr>local.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/inherited-csp-list-modifications-are-local.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>inherited-<wbr>csp-<wbr>list-<wbr>modifications-<wbr>are-<wbr>local.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>Test that parent document image loads</li><li>Test that embedded iframe document image does not load</li><li>Test that spv event is fired</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="javascript-url-open-in-main-window.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>javascript-<wbr>url-<wbr>open-<wbr>in-<wbr>main-<wbr>window.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/javascript-url-open-in-main-window.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>javascript-<wbr>url-<wbr>open-<wbr>in-<wbr>main-<wbr>window.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Executing Javascript URL keeps enforcing previous CSPs of the document.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="javascript-url-srcdoc-cross-origin-iframe-inheritance.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>javascript-<wbr>url-<wbr>srcdoc-<wbr>cross-<wbr>origin-<wbr>iframe-<wbr>inheritance.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/javascript-url-srcdoc-cross-origin-iframe-inheritance.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>javascript-<wbr>url-<wbr>srcdoc-<wbr>cross-<wbr>origin-<wbr>iframe-<wbr>inheritance.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Nested cross-origin iframe should be blocked by frame-src &#39;self&#39;.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="location-reload.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>location-<wbr>reload.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/location-reload.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>location-<wbr>reload.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>location.reload() of empty iframe.</li><li>location.reload() of blob URL iframe.</li><li>location.reload() of srcdoc iframe.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="sandboxed-blob-scheme.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>sandboxed-<wbr>blob-<wbr>scheme.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/sandboxed-blob-scheme.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>sandboxed-<wbr>blob-<wbr>scheme.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Violation report status OK.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="sandboxed-data-scheme.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>sandboxed-<wbr>data-<wbr>scheme.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/sandboxed-data-scheme.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>sandboxed-<wbr>data-<wbr>scheme.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Violation report status OK.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="unsandboxed-blob-scheme.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>unsandboxed-<wbr>blob-<wbr>scheme.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/unsandboxed-blob-scheme.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>unsandboxed-<wbr>blob-<wbr>scheme.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Violation report status OK.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="unsandboxed-data-scheme.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>unsandboxed-<wbr>data-<wbr>scheme.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/unsandboxed-data-scheme.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>unsandboxed-<wbr>data-<wbr>scheme.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Violation report status OK.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="window-open-local-after-network-scheme.sub.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>window-<wbr>open-<wbr>local-<wbr>after-<wbr>network-<wbr>scheme.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/window-open-local-after-network-scheme.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>window-<wbr>open-<wbr>local-<wbr>after-<wbr>network-<wbr>scheme.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Popup being navigated to about:blank was same-origin.</li><li>Popup being navigated to about:blank was cross-origin.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="window.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>window.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/window.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>window.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>window.open() inherits policy.</li><li>`document.write` into `window.open()` inherits policy.</li><li>window.open(&#39;blob:...&#39;) inherits policy.</li><li>window.open(&#39;javascript:...&#39;) inherits policy.</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

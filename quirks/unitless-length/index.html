@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>quirks/unitless-length/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,17 +36,97 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">6 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="partial"><th scope="row"><a href="../../quirks/unitless-length/excluded-properties-001.html/"><code>excluded-<wbr>properties-<wbr>001.<wbr>html</code></a></th><td class="n" data-v="54" data-of="55"><b>54</b> / 55</td><td class="n" data-v="55" data-of="55"><b>55</b> / 55</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../quirks/unitless-length/excluded-properties-002.html/"><code>excluded-<wbr>properties-<wbr>002.<wbr>html</code></a></th><td class="n" data-v="10" data-of="11"><b>10</b> / 11</td><td class="n" data-v="11" data-of="11"><b>11</b> / 11</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../quirks/unitless-length/excluded-properties-003.html/"><code>excluded-<wbr>properties-<wbr>003.<wbr>html</code></a></th><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../quirks/unitless-length/limited-quirks.html/"><code>limited-<wbr>quirks.<wbr>html</code></a></th><td class="n" data-v="1581" data-of="1581"><b>1,581</b> / 1,581</td><td class="n" data-v="1581" data-of="1581"><b>1,581</b> / 1,581</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../quirks/unitless-length/no-quirks.html/"><code>no-<wbr>quirks.<wbr>html</code></a></th><td class="n" data-v="1581" data-of="1581"><b>1,581</b> / 1,581</td><td class="n" data-v="1581" data-of="1581"><b>1,581</b> / 1,581</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../quirks/unitless-length/quirks.html/"><code>quirks.<wbr>html</code></a></th><td class="n" data-v="1585" data-of="1590"><b>1,585</b> / 1,590</td><td class="n" data-v="1590" data-of="1590"><b>1,590</b> / 1,590</td><td class="n" data-v="5"><span class="fail">5</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="excluded-properties-001.html" data-gate="partial" data-pass="54" data-of="55" data-failed="1" data-ref-pass="55" data-ref-of="55"><summary><span class="tf-name"><code>excluded-<wbr>properties-<wbr>001.<wbr>html</code></span><span class="tf-n"><b>54</b> / 55<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>55</b> / 55</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>55</b> / 55 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/quirks/unitless-length/excluded-properties-001.html"><code>quirks/<wbr>unitless-<wbr>length/<wbr>excluded-<wbr>properties-<wbr>001.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-d9afb3966b59"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property inset does not support quirky length</span></summary><pre class="msg">assert_equals: expected &quot;567px&quot; but got &quot;1234px&quot;</pre></details><a class="self" href="#s-d9afb3966b59" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>54 passing subtests</summary><ol class="pass-list"><li>Property background-position-x does not support quirky length</li><li>Property background-position-y does not support quirky length</li><li>Property block-size does not support quirky length</li><li>Property border-bottom-left-radius does not support quirky length</li><li>Property border-bottom-right-radius does not support quirky length</li><li>Property border-top-left-radius does not support quirky length</li><li>Property border-top-right-radius does not support quirky length</li><li>Property column-gap does not support quirky length</li><li>Property column-rule-width does not support quirky length</li><li>Property column-width does not support quirky length</li><li>Property flex-basis does not support quirky length</li><li>Property grid-auto-columns does not support quirky length</li><li>Property grid-auto-rows does not support quirky length</li><li>Property grid-template-columns does not support quirky length</li><li>Property grid-template-rows does not support quirky length</li><li>Property inline-size does not support quirky length</li><li>Property inset-block does not support quirky length</li><li>Property inset-block-end does not support quirky length</li><li>Property inset-block-start does not support quirky length</li><li>Property inset-inline does not support quirky length</li><li>Property inset-inline-end does not support quirky length</li><li>Property inset-inline-start does not support quirky length</li><li>Property margin-block-end does not support quirky length</li><li>Property margin-block-start does not support quirky length</li><li>Property margin-inline-end does not support quirky length</li><li>Property margin-inline-start does not support quirky length</li><li>Property min-block-size does not support quirky length</li><li>Property min-inline-size does not support quirky length</li><li>Property offset-distance does not support quirky length</li><li>Property outline-offset does not support quirky length</li><li>Property outline-width does not support quirky length</li><li>Property padding-block-end does not support quirky length</li><li>Property padding-block-start does not support quirky length</li><li>Property padding-inline-end does not support quirky length</li><li>Property padding-inline-start does not support quirky length</li><li>Property perspective does not support quirky length</li><li>Property row-gap does not support quirky length</li><li>Property scroll-margin-block-end does not support quirky length</li><li>Property scroll-margin-block-start does not support quirky length</li><li>Property scroll-margin-bottom does not support quirky length</li><li>Property scroll-margin-inline-end does not support quirky length</li><li>Property scroll-margin-inline-start does not support quirky length</li><li>Property scroll-margin-left does not support quirky length</li><li>Property scroll-margin-right does not support quirky length</li><li>Property scroll-margin-top does not support quirky length</li><li>Property scroll-padding-block-end does not support quirky length</li><li>Property scroll-padding-block-start does not support quirky length</li><li>Property scroll-padding-bottom does not support quirky length</li><li>Property scroll-padding-inline-end does not support quirky length</li><li>Property scroll-padding-inline-start does not support quirky length</li><li>Property scroll-padding-left does not support quirky length</li><li>Property scroll-padding-right does not support quirky length</li><li>Property scroll-padding-top does not support quirky length</li><li>Property shape-margin does not support quirky length</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="excluded-properties-002.html" data-gate="partial" data-pass="10" data-of="11" data-failed="1" data-ref-pass="11" data-ref-of="11"><summary><span class="tf-name"><code>excluded-<wbr>properties-<wbr>002.<wbr>html</code></span><span class="tf-n"><b>10</b> / 11<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>11</b> / 11</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>11</b> / 11 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/quirks/unitless-length/excluded-properties-002.html"><code>quirks/<wbr>unitless-<wbr>length/<wbr>excluded-<wbr>properties-<wbr>002.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-cae90a75063e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property background-blend-mode does not support quirky length</span></summary><pre class="msg">assert_unreached: Property background-blend-mode not supported Reached unreachable code</pre></details><a class="self" href="#s-cae90a75063e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>Property background-size does not support quirky length</li><li>Property box-shadow does not support quirky length</li><li>Property clip-path does not support quirky length</li><li>Property column-span does not support quirky length</li><li>Property filter does not support quirky length</li><li>Property mask does not support quirky length</li><li>Property object-position does not support quirky length</li><li>Property perspective-origin does not support quirky length</li><li>Property text-shadow does not support quirky length</li><li>Property transform-origin does not support quirky length</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="excluded-properties-003.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>excluded-<wbr>properties-<wbr>003.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/quirks/unitless-length/excluded-properties-003.html"><code>quirks/<wbr>unitless-<wbr>length/<wbr>excluded-<wbr>properties-<wbr>003.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-b120eb516716"><details><summary><span class="mark">FAIL</span><span class="sub-name">inset does not support quirky length values</span></summary><pre class="msg">assert_equals: inset rejects quirky length &quot;1&quot; expected &quot;5px 6px 7px 8px&quot; but got &quot;1px&quot;</pre></details><a class="self" href="#s-b120eb516716" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="limited-quirks.html" data-gate="clean" data-pass="1581" data-of="1581" data-failed="0" data-ref-pass="1581" data-ref-of="1581"><summary><span class="tf-name"><code>limited-<wbr>quirks.<wbr>html</code></span><span class="tf-n"><b>1,581</b> / 1,581<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1,581</b> / 1,581</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1,581</b> / 1,581 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/quirks/unitless-length/limited-quirks.html"><code>quirks/<wbr>unitless-<wbr>length/<wbr>limited-<wbr>quirks.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<p class="omitted">1,581 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
+</div>
+</details>
+<details class="tf" id="no-quirks.html" data-gate="clean" data-pass="1581" data-of="1581" data-failed="0" data-ref-pass="1581" data-ref-of="1581"><summary><span class="tf-name"><code>no-<wbr>quirks.<wbr>html</code></span><span class="tf-n"><b>1,581</b> / 1,581<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1,581</b> / 1,581</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1,581</b> / 1,581 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/quirks/unitless-length/no-quirks.html"><code>quirks/<wbr>unitless-<wbr>length/<wbr>no-<wbr>quirks.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<p class="omitted">1,581 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
+</div>
+</details>
+<details class="tf" id="quirks.html" data-gate="partial" data-pass="1585" data-of="1590" data-failed="5" data-ref-pass="1590" data-ref-of="1590"><summary><span class="tf-name"><code>quirks.<wbr>html</code></span><span class="tf-n"><b>1,585</b> / 1,590<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1,590</b> / 1,590</span><span class="tf-fail"><span class="fail">5</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1,590</b> / 1,590 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/quirks/unitless-length/quirks.html"><code>quirks/<wbr>unitless-<wbr>length/<wbr>quirks.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-c929a475147c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Excluded property border-top:red solid 1</span></summary><pre class="msg">assert_equals: quirk was supported expected &quot;0px&quot; but got &quot;1px&quot;</pre></details><a class="self" href="#s-c929a475147c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ca4f64f04e17"><details><summary><span class="mark">FAIL</span><span class="sub-name">Excluded property border-right:red solid 1</span></summary><pre class="msg">assert_equals: quirk was supported expected &quot;0px&quot; but got &quot;1px&quot;</pre></details><a class="self" href="#s-ca4f64f04e17" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-46e67f08c8f0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Excluded property border-bottom:red solid 1</span></summary><pre class="msg">assert_equals: quirk was supported expected &quot;0px&quot; but got &quot;1px&quot;</pre></details><a class="self" href="#s-46e67f08c8f0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-82d2bec6af45"><details><summary><span class="mark">FAIL</span><span class="sub-name">Excluded property border-left:red solid 1</span></summary><pre class="msg">assert_equals: quirk was supported expected &quot;0px&quot; but got &quot;1px&quot;</pre></details><a class="self" href="#s-82d2bec6af45" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-40b04ab1c4a5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Excluded property border:red solid 1</span></summary><pre class="msg">assert_equals: quirk was supported expected &quot;0px&quot; but got &quot;1px&quot;</pre></details><a class="self" href="#s-40b04ab1c4a5" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<p class="omitted">1,585 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

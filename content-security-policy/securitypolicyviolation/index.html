@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>content-security-policy/securitypolicyviolation/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,45 +36,434 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">34 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/blockeduri-eval.html/"><code>blockeduri-<wbr>eval.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/blockeduri-inline.html/"><code>blockeduri-<wbr>inline.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/blockeduri-ws-wss-scheme.html/"><code>blockeduri-<wbr>ws-<wbr>wss-<wbr>scheme.<wbr>html</code></a></th><td class="n" data-v="0" data-of="4"><b>0</b> / 4</td><td class="n" data-v="0" data-of="4"><b>0</b> / 4</td><td class="n" data-v="4"><span class="fail">4</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/constructor-required-fields.html/"><code>constructor-<wbr>required-<wbr>fields.<wbr>html</code></a></th><td class="n" data-v="14" data-of="14"><b>14</b> / 14</td><td class="n" data-v="14" data-of="14"><b>14</b> / 14</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/idlharness.window.js/"><code>idlharness.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="34" data-of="34"><b>34</b> / 34</td><td class="n" data-v="34" data-of="34"><b>34</b> / 34</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/img-src-redirect-upgrade-reporting.https.html/"><code>img-<wbr>src-<wbr>redirect-<wbr>upgrade-<wbr>reporting.<wbr>https.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/img-src-redirect.sub.html/"><code>img-<wbr>src-<wbr>redirect.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/inside-dedicated-worker.html/"><code>inside-<wbr>dedicated-<wbr>worker.<wbr>html</code></a></th><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/inside-service-worker.https.html/"><code>inside-<wbr>service-<wbr>worker.<wbr>https.<wbr>html</code></a></th><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/inside-shared-worker.html/"><code>inside-<wbr>shared-<wbr>worker.<wbr>html</code></a></th><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/script-sample-no-opt-in.html/"><code>script-<wbr>sample-<wbr>no-<wbr>opt-<wbr>in.<wbr>html</code></a></th><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/script-sample.html/"><code>script-<wbr>sample.<wbr>html</code></a></th><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/securitypolicyviolation-block-cross-origin-image-from-script.sub.html/"><code>securitypolicyviolation-<wbr>block-<wbr>cross-<wbr>origin-<wbr>image-<wbr>from-<wbr>script.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/securitypolicyviolation-block-cross-origin-image.sub.html/"><code>securitypolicyviolation-<wbr>block-<wbr>cross-<wbr>origin-<wbr>image.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/securitypolicyviolation-block-image-from-script.sub.html/"><code>securitypolicyviolation-<wbr>block-<wbr>image-<wbr>from-<wbr>script.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/securitypolicyviolation-block-image.sub.html/"><code>securitypolicyviolation-<wbr>block-<wbr>image.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/source-file-blob-scheme.html/"><code>source-<wbr>file-<wbr>blob-<wbr>scheme.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/source-file-data-scheme.html/"><code>source-<wbr>file-<wbr>data-<wbr>scheme.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/source-file.html/"><code>source-<wbr>file.<wbr>html</code></a></th><td class="n" data-v="16" data-of="17"><b>16</b> / 17</td><td class="n" data-v="17" data-of="17"><b>17</b> / 17</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/style-sample-no-opt-in.html/"><code>style-<wbr>sample-<wbr>no-<wbr>opt-<wbr>in.<wbr>html</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/style-sample.html/"><code>style-<wbr>sample.<wbr>html</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/targeting-for-inline-handler-connected-after-set.html/"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>connected-<wbr>after-<wbr>set.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/targeting-for-inline-handler-in-markup-disconnected-after-set.html/"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>in-<wbr>markup-<wbr>disconnected-<wbr>after-<wbr>set.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/targeting-for-inline-handler-in-markup-then-disconnected.html/"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>in-<wbr>markup-<wbr>then-<wbr>disconnected.<wbr>html</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/targeting-for-inline-handler-in-markup.html/"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>in-<wbr>markup.<wbr>html</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/targeting-for-inline-handler-in-shadow-dom.html/"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>in-<wbr>shadow-<wbr>dom.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/targeting-for-inline-handler-on-disconnected-element.html/"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>on-<wbr>disconnected-<wbr>element.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/targeting-for-inline-handler-on-element-in-disconnected-document-fragment.html/"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>on-<wbr>element-<wbr>in-<wbr>disconnected-<wbr>document-<wbr>fragment.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/targeting-for-inline-handler-on-main-frame-element-moved-to-subframe.html/"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>on-<wbr>main-<wbr>frame-<wbr>element-<wbr>moved-<wbr>to-<wbr>subframe.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/targeting-for-inline-handler-on-subframe-element.html/"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>on-<wbr>subframe-<wbr>element.<wbr>html</code></a></th><td class="n" data-v="9" data-of="9"><b>9</b> / 9</td><td class="n" data-v="9" data-of="9"><b>9</b> / 9</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/targeting-for-inline-script-without-nonce.html/"><code>targeting-<wbr>for-<wbr>inline-<wbr>script-<wbr>without-<wbr>nonce.<wbr>html</code></a></th><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/targeting-for-inline-style-in-shadow-dom.html/"><code>targeting-<wbr>for-<wbr>inline-<wbr>style-<wbr>in-<wbr>shadow-<wbr>dom.<wbr>html</code></a></th><td class="n" data-v="9" data-of="9"><b>9</b> / 9</td><td class="n" data-v="9" data-of="9"><b>9</b> / 9</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/targeting-for-inline-style.html/"><code>targeting-<wbr>for-<wbr>inline-<wbr>style.<wbr>html</code></a></th><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/securitypolicyviolation/upgrade-insecure-requests-reporting.https.html/"><code>upgrade-<wbr>insecure-<wbr>requests-<wbr>reporting.<wbr>https.<wbr>html</code></a></th><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="blockeduri-eval.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>blockeduri-<wbr>eval.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/blockeduri-eval.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>blockeduri-<wbr>eval.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Eval violations have a blockedURI of &#39;eval&#39;</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="blockeduri-inline.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>blockeduri-<wbr>inline.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/blockeduri-inline.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>blockeduri-<wbr>inline.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Inline violations have a blockedURI of &#39;inline&#39;</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="blockeduri-ws-wss-scheme.html" data-gate="none-passed" data-pass="0" data-of="4" data-failed="4" data-ref-pass="0" data-ref-of="4"><summary><span class="tf-name"><code>blockeduri-<wbr>ws-<wbr>wss-<wbr>scheme.<wbr>html</code></span><span class="tf-n"><b>0</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 4</span><span class="tf-fail"><span class="fail">4</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/blockeduri-ws-wss-scheme.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>blockeduri-<wbr>ws-<wbr>wss-<wbr>scheme.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-b527c63dfcff"><details><summary><span class="mark">FAIL</span><span class="sub-name">ws</span></summary><pre class="msg">assert_equals: expected &quot;http://web-platform.test:8000/path&quot; but got &quot;ws://web-platform.test:8000/path&quot;</pre></details><a class="self" href="#s-b527c63dfcff" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dfb09b2b1321"><details><summary><span class="mark">FAIL</span><span class="sub-name">wss</span></summary><pre class="msg">assert_equals: expected &quot;https://web-platform.test:8000/path&quot; but got &quot;wss://web-platform.test:8000/path&quot;</pre></details><a class="self" href="#s-dfb09b2b1321" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-069308796069"><details><summary><span class="mark">FAIL</span><span class="sub-name">cross-origin</span></summary><pre class="msg">assert_equals: expected &quot;https://www1.web-platform.test:8000/path&quot; but got &quot;wss://www1.web-platform.test:8000/path&quot;</pre></details><a class="self" href="#s-069308796069" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2075838a88a3"><details><summary><span class="mark">FAIL</span><span class="sub-name">redirect</span></summary><pre class="msg">promise_test: Unhandled rejection with value: &quot;timeout&quot;</pre></details><a class="self" href="#s-2075838a88a3" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="constructor-required-fields.html" data-gate="clean" data-pass="14" data-of="14" data-failed="0" data-ref-pass="14" data-ref-of="14"><summary><span class="tf-name"><code>constructor-<wbr>required-<wbr>fields.<wbr>html</code></span><span class="tf-n"><b>14</b> / 14<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>14</b> / 14</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>14</b> / 14 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/constructor-required-fields.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>constructor-<wbr>required-<wbr>fields.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>14 passing subtests</summary><ol class="pass-list"><li>SecurityPolicyViolationEvent constructor should throw with no parameters</li><li>SecurityPolicyViolationEvent constructor works with an init dict</li><li>SecurityPolicyViolationEvent constructor does not require documentURI</li><li>SecurityPolicyViolationEvent constructor does not require violatedDirective</li><li>SecurityPolicyViolationEvent constructor does not require effectiveDirective</li><li>SecurityPolicyViolationEvent constructor does not require originalPolicy</li><li>SecurityPolicyViolationEvent constructor does not require disposition</li><li>SecurityPolicyViolationEvent constructor does not require statusCode</li><li>SecurityPolicyViolationEvent constructor does not require referrer</li><li>SecurityPolicyViolationEvent constructor does not require blockedURI</li><li>SecurityPolicyViolationEvent constructor does not require sourceFile</li><li>SecurityPolicyViolationEvent constructor does not require sample</li><li>SecurityPolicyViolationEvent constructor does not require lineNumber</li><li>SecurityPolicyViolationEvent constructor does not require columnNumber</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="idlharness.window.js" data-gate="clean" data-pass="34" data-of="34" data-failed="0" data-ref-pass="34" data-ref-of="34"><summary><span class="tf-name"><code>idlharness.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>34</b> / 34<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>34</b> / 34</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>34</b> / 34 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/idlharness.window.js"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>idlharness.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>34 passing subtests</summary><ol class="pass-list"><li>idl_test setup</li><li>idl_test validation</li><li>SecurityPolicyViolationEvent interface: existence and properties of interface object</li><li>SecurityPolicyViolationEvent interface object length</li><li>SecurityPolicyViolationEvent interface object name</li><li>SecurityPolicyViolationEvent interface: existence and properties of interface prototype object</li><li>SecurityPolicyViolationEvent interface: existence and properties of interface prototype object&#39;s &quot;constructor&quot; property</li><li>SecurityPolicyViolationEvent interface: existence and properties of interface prototype object&#39;s @@unscopables property</li><li>SecurityPolicyViolationEvent interface: attribute documentURI</li><li>SecurityPolicyViolationEvent interface: attribute referrer</li><li>SecurityPolicyViolationEvent interface: attribute blockedURI</li><li>SecurityPolicyViolationEvent interface: attribute effectiveDirective</li><li>SecurityPolicyViolationEvent interface: attribute violatedDirective</li><li>SecurityPolicyViolationEvent interface: attribute originalPolicy</li><li>SecurityPolicyViolationEvent interface: attribute sourceFile</li><li>SecurityPolicyViolationEvent interface: attribute sample</li><li>SecurityPolicyViolationEvent interface: attribute disposition</li><li>SecurityPolicyViolationEvent interface: attribute statusCode</li><li>SecurityPolicyViolationEvent interface: attribute lineNumber</li><li>SecurityPolicyViolationEvent interface: attribute columnNumber</li><li>SecurityPolicyViolationEvent must be primary interface of new SecurityPolicyViolationEvent(&quot;securitypolicyviolation&quot;)</li><li>Stringification of new SecurityPolicyViolationEvent(&quot;securitypolicyviolation&quot;)</li><li>SecurityPolicyViolationEvent interface: new SecurityPolicyViolationEvent(&quot;securitypolicyviolation&quot;) must inherit property &quot;documentURI&quot; with the proper type</li><li>SecurityPolicyViolationEvent interface: new SecurityPolicyViolationEvent(&quot;securitypolicyviolation&quot;) must inherit property &quot;referrer&quot; with the proper type</li><li>SecurityPolicyViolationEvent interface: new SecurityPolicyViolationEvent(&quot;securitypolicyviolation&quot;) must inherit property &quot;blockedURI&quot; with the proper type</li><li>SecurityPolicyViolationEvent interface: new SecurityPolicyViolationEvent(&quot;securitypolicyviolation&quot;) must inherit property &quot;effectiveDirective&quot; with the proper type</li><li>SecurityPolicyViolationEvent interface: new SecurityPolicyViolationEvent(&quot;securitypolicyviolation&quot;) must inherit property &quot;violatedDirective&quot; with the proper type</li><li>SecurityPolicyViolationEvent interface: new SecurityPolicyViolationEvent(&quot;securitypolicyviolation&quot;) must inherit property &quot;originalPolicy&quot; with the proper type</li><li>SecurityPolicyViolationEvent interface: new SecurityPolicyViolationEvent(&quot;securitypolicyviolation&quot;) must inherit property &quot;sourceFile&quot; with the proper type</li><li>SecurityPolicyViolationEvent interface: new SecurityPolicyViolationEvent(&quot;securitypolicyviolation&quot;) must inherit property &quot;sample&quot; with the proper type</li><li>SecurityPolicyViolationEvent interface: new SecurityPolicyViolationEvent(&quot;securitypolicyviolation&quot;) must inherit property &quot;disposition&quot; with the proper type</li><li>SecurityPolicyViolationEvent interface: new SecurityPolicyViolationEvent(&quot;securitypolicyviolation&quot;) must inherit property &quot;statusCode&quot; with the proper type</li><li>SecurityPolicyViolationEvent interface: new SecurityPolicyViolationEvent(&quot;securitypolicyviolation&quot;) must inherit property &quot;lineNumber&quot; with the proper type</li><li>SecurityPolicyViolationEvent interface: new SecurityPolicyViolationEvent(&quot;securitypolicyviolation&quot;) must inherit property &quot;columnNumber&quot; with the proper type</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="img-src-redirect-upgrade-reporting.https.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>img-<wbr>src-<wbr>redirect-<wbr>upgrade-<wbr>reporting.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/img-src-redirect-upgrade-reporting.https.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>img-<wbr>src-<wbr>redirect-<wbr>upgrade-<wbr>reporting.<wbr>https.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Image that redirects to http:// URL prohibited by Report-Only must generate a violation report, even with upgrade-insecure-requests</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="img-src-redirect.sub.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>img-<wbr>src-<wbr>redirect.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/img-src-redirect.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>img-<wbr>src-<wbr>redirect.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>The blocked URI in the security policy violation event should be the original URI before redirects.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="inside-dedicated-worker.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>inside-<wbr>dedicated-<wbr>worker.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/inside-dedicated-worker.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>inside-<wbr>dedicated-<wbr>worker.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>No SecurityPolicyViolation event fired for successful load.</li><li>SecurityPolicyViolation event fired on global.</li><li>SecurityPolicyViolation event fired on global with the correct blockedURI.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="inside-service-worker.https.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>inside-<wbr>service-<wbr>worker.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/inside-service-worker.https.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>inside-<wbr>service-<wbr>worker.<wbr>https.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>No SecurityPolicyViolation event fired for successful load.</li><li>SecurityPolicyViolation event fired on global.</li><li>SecurityPolicyViolation event fired on global with the correct blockedURI.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="inside-shared-worker.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>inside-<wbr>shared-<wbr>worker.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/inside-shared-worker.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>inside-<wbr>shared-<wbr>worker.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>No SecurityPolicyViolation event fired for successful load.</li><li>SecurityPolicyViolation event fired on global.</li><li>SecurityPolicyViolation event fired on global with the correct blockedURI.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="script-sample-no-opt-in.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>script-<wbr>sample-<wbr>no-<wbr>opt-<wbr>in.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/script-sample-no-opt-in.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>script-<wbr>sample-<wbr>no-<wbr>opt-<wbr>in.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>Inline script should not have a sample.</li><li>Inline event handlers should not have a sample.</li><li>JavaScript URLs in iframes should not have a sample.</li><li>eval()-alikes should not have a sample.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="script-sample.html" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>script-<wbr>sample.<wbr>html</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/script-sample.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>script-<wbr>sample.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>Inline script should have a sample.</li><li>Inline event handlers should have a sample.</li><li>JavaScript URLs in iframes should have a sample.</li><li>eval() should have a sample.</li><li>setInterval() should have a sample.</li><li>setTimeout() should have a sample.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="securitypolicyviolation-block-cross-origin-image-from-script.sub.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>securitypolicyviolation-<wbr>block-<wbr>cross-<wbr>origin-<wbr>image-<wbr>from-<wbr>script.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/securitypolicyviolation-block-cross-origin-image-from-script.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>securitypolicyviolation-<wbr>block-<wbr>cross-<wbr>origin-<wbr>image-<wbr>from-<wbr>script.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-453a7aeab079"><details><summary><span class="mark">FAIL</span><span class="sub-name">Non-redirected cross-origin URLs are not stripped.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-453a7aeab079" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="securitypolicyviolation-block-cross-origin-image.sub.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>securitypolicyviolation-<wbr>block-<wbr>cross-<wbr>origin-<wbr>image.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/securitypolicyviolation-block-cross-origin-image.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>securitypolicyviolation-<wbr>block-<wbr>cross-<wbr>origin-<wbr>image.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-d75c43c099c1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Non-redirected cross-origin URLs are not stripped.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-d75c43c099c1" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="securitypolicyviolation-block-image-from-script.sub.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>securitypolicyviolation-<wbr>block-<wbr>image-<wbr>from-<wbr>script.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/securitypolicyviolation-block-image-from-script.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>securitypolicyviolation-<wbr>block-<wbr>image-<wbr>from-<wbr>script.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-0749c313d6f5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Non-redirected cross-origin URLs are not stripped.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-0749c313d6f5" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="securitypolicyviolation-block-image.sub.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>securitypolicyviolation-<wbr>block-<wbr>image.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/securitypolicyviolation-block-image.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>securitypolicyviolation-<wbr>block-<wbr>image.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-de6b33944606"><details><summary><span class="mark">FAIL</span><span class="sub-name">Non-redirected same-origin URLs are not stripped.</span></summary><pre class="msg">TypeError</pre></details><a class="self" href="#s-de6b33944606" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="source-file-blob-scheme.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>source-<wbr>file-<wbr>blob-<wbr>scheme.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/source-file-blob-scheme.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>source-<wbr>file-<wbr>blob-<wbr>scheme.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Violations from data:-URL scripts have a sourceFile of &#39;blob&#39;</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="source-file-data-scheme.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>source-<wbr>file-<wbr>data-<wbr>scheme.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/source-file-data-scheme.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>source-<wbr>file-<wbr>data-<wbr>scheme.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Violations from data:-URL scripts have a sourceFile of &#39;data&#39;</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="source-file.html" data-gate="partial" data-pass="16" data-of="17" data-failed="1" data-ref-pass="17" data-ref-of="17"><summary><span class="tf-name"><code>source-<wbr>file.<wbr>html</code></span><span class="tf-n"><b>16</b> / 17<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>17</b> / 17</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>17</b> / 17 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/source-file.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>source-<wbr>file.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-966367e470cf"><details><summary><span class="mark">FAIL</span><span class="sub-name">Query</span></summary><pre class="msg">assert_equals: expected &quot;https://dummy.test/script1.js&quot; but got &quot;https://dummy.test/script1.js?query&quot;</pre></details><a class="self" href="#s-966367e470cf" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>16 passing subtests</summary><ol class="pass-list"><li>Basic HTTPS URL</li><li>Basic HTTP URL</li><li>Basic WSS URL</li><li>Basic WS URL</li><li>Fragment</li><li>Port</li><li>User:password</li><li>User</li><li>Invalid URL</li><li>file:</li><li>Custom protocol</li><li>about:blank</li><li>about:custom</li><li>data:</li><li>blob:</li><li>javascript:</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="style-sample-no-opt-in.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>style-<wbr>sample-<wbr>no-<wbr>opt-<wbr>in.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/style-sample-no-opt-in.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>style-<wbr>sample-<wbr>no-<wbr>opt-<wbr>in.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Inline style blocks should not have a sample.</li><li>Inline style attributes should not have a sample.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="style-sample.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>style-<wbr>sample.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/style-sample.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>style-<wbr>sample.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Inline style blocks should have a sample.</li><li>Inline style attributes should have a sample.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="targeting-for-inline-handler-connected-after-set.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>connected-<wbr>after-<wbr>set.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/targeting-for-inline-handler-connected-after-set.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>connected-<wbr>after-<wbr>set.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>targeting-for-inline-handler-connected-after-set</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="targeting-for-inline-handler-in-markup-disconnected-after-set.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>in-<wbr>markup-<wbr>disconnected-<wbr>after-<wbr>set.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/targeting-for-inline-handler-in-markup-disconnected-after-set.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>in-<wbr>markup-<wbr>disconnected-<wbr>after-<wbr>set.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>targeting-for-inline-handler-in-markup-disconnected-after-set</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="targeting-for-inline-handler-in-markup-then-disconnected.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>in-<wbr>markup-<wbr>then-<wbr>disconnected.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/targeting-for-inline-handler-in-markup-then-disconnected.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>in-<wbr>markup-<wbr>then-<wbr>disconnected.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>targeting-for-inline-handler-in-markup-then-disconnected</li><li>targeting-for-inline-handler-in-markup-then-disconnected 1</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="targeting-for-inline-handler-in-markup.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>in-<wbr>markup.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/targeting-for-inline-handler-in-markup.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>in-<wbr>markup.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>targeting-for-inline-handler-in-markup</li><li>targeting-for-inline-handler-in-markup 1</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="targeting-for-inline-handler-in-shadow-dom.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>in-<wbr>shadow-<wbr>dom.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/targeting-for-inline-handler-in-shadow-dom.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>in-<wbr>shadow-<wbr>dom.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>targeting-for-inline-handler-in-shadow-dom</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="targeting-for-inline-handler-on-disconnected-element.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>on-<wbr>disconnected-<wbr>element.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/targeting-for-inline-handler-on-disconnected-element.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>on-<wbr>disconnected-<wbr>element.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>targeting-for-inline-handler-on-disconnected-element</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="targeting-for-inline-handler-on-element-in-disconnected-document-fragment.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>on-<wbr>element-<wbr>in-<wbr>disconnected-<wbr>document-<wbr>fragment.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/targeting-for-inline-handler-on-element-in-disconnected-document-fragment.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>on-<wbr>element-<wbr>in-<wbr>disconnected-<wbr>document-<wbr>fragment.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>targeting-for-inline-handler-on-element-in-disconnected-document-fragment</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="targeting-for-inline-handler-on-main-frame-element-moved-to-subframe.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>on-<wbr>main-<wbr>frame-<wbr>element-<wbr>moved-<wbr>to-<wbr>subframe.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/targeting-for-inline-handler-on-main-frame-element-moved-to-subframe.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>on-<wbr>main-<wbr>frame-<wbr>element-<wbr>moved-<wbr>to-<wbr>subframe.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>targeting-for-inline-handler-on-main-frame-element-moved-to-subframe</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="targeting-for-inline-handler-on-subframe-element.html" data-gate="clean" data-pass="9" data-of="9" data-failed="0" data-ref-pass="9" data-ref-of="9"><summary><span class="tf-name"><code>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>on-<wbr>subframe-<wbr>element.<wbr>html</code></span><span class="tf-n"><b>9</b> / 9<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>9</b> / 9</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>9</b> / 9 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/targeting-for-inline-handler-on-subframe-element.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>targeting-<wbr>for-<wbr>inline-<wbr>handler-<wbr>on-<wbr>subframe-<wbr>element.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>targeting-for-inline-handler-on-subframe-element</li><li>assert_equals(e.blockedURI, &quot;inline&quot;)</li><li>assert_equals(e.lineNumber, 11)</li><li>assert_in_array(e.columnNumber, [7, 19])</li><li>assert_equals(e.target, d)</li><li>assert_equals(e.blockedURI, &quot;inline&quot;) 1</li><li>assert_equals(e.lineNumber, 11) 1</li><li>assert_in_array(e.columnNumber, [7, 19]) 1</li><li>assert_equals(e.target, d) 1</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="targeting-for-inline-script-without-nonce.html" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>targeting-<wbr>for-<wbr>inline-<wbr>script-<wbr>without-<wbr>nonce.<wbr>html</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/targeting-for-inline-script-without-nonce.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>targeting-<wbr>for-<wbr>inline-<wbr>script-<wbr>without-<wbr>nonce.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>targeting-for-inline-script-without-nonce</li><li>assert_equals(e.blockedURI, &quot;inline&quot;)</li><li>assert_equals(e.lineNumber, 20)</li><li>assert_in_array(e.columnNumber, [1, 21])</li><li>assert_equals(e.target, document.getElementById(&quot;target&quot;))</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="targeting-for-inline-style-in-shadow-dom.html" data-gate="clean" data-pass="9" data-of="9" data-failed="0" data-ref-pass="9" data-ref-of="9"><summary><span class="tf-name"><code>targeting-<wbr>for-<wbr>inline-<wbr>style-<wbr>in-<wbr>shadow-<wbr>dom.<wbr>html</code></span><span class="tf-n"><b>9</b> / 9<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>9</b> / 9</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>9</b> / 9 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/targeting-for-inline-style-in-shadow-dom.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>targeting-<wbr>for-<wbr>inline-<wbr>style-<wbr>in-<wbr>shadow-<wbr>dom.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>targeting-for-inline-style-in-shadow-dom</li><li>assert_equals(e.blockedURI, &quot;inline&quot;)</li><li>assert_equals(e.lineNumber, 12)</li><li>assert_in_array(e.columnNumber, [12, 23])</li><li>assert_equals(e.target, style)</li><li>assert_equals(e.blockedURI, &quot;inline&quot;) 1</li><li>assert_equals(e.lineNumber, 12) 1</li><li>assert_in_array(e.columnNumber, [12, 23]) 1</li><li>assert_equals(e.target, document.getElementById(&quot;target&quot;))</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="targeting-for-inline-style.html" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>targeting-<wbr>for-<wbr>inline-<wbr>style.<wbr>html</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/targeting-for-inline-style.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>targeting-<wbr>for-<wbr>inline-<wbr>style.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>targeting-for-inline-style</li><li>assert_equals(e.blockedURI, &quot;inline&quot;)</li><li>assert_equals(e.lineNumber, 20)</li><li>assert_in_array(e.columnNumber, [1, 20])</li><li>assert_equals(e.target, document.getElementById(&quot;target&quot;))</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="upgrade-insecure-requests-reporting.https.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>upgrade-<wbr>insecure-<wbr>requests-<wbr>reporting.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/securitypolicyviolation/upgrade-insecure-requests-reporting.https.html"><code>content-<wbr>security-<wbr>policy/<wbr>securitypolicyviolation/<wbr>upgrade-<wbr>insecure-<wbr>requests-<wbr>reporting.<wbr>https.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>Upgraded image is reported</li><li>Upgraded iframe is reported</li><li>Navigated iframe is upgraded and reported</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

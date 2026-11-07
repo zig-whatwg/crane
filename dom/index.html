@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>dom/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -48,14 +48,60 @@
 <tr><th scope="row"><a href="../dom/traversal/"><span class="dir-no">14.7</span><code>traversal/</code></a></th><td class="n" data-v="1608" data-of="1608"><b>1,608</b> / 1,608</td><td class="n" data-v="1606" data-of="1608"><b>1,606</b> / 1,608</td><td class="n" data-v="18">18</td><td data-v="0"><span class="tally"><span class="quiet">none blocking</span><span class="mini" aria-hidden="true"><span class="m-clean" style="width:100.000%"></span></span></span></td></tr>
 </tbody>
 </table>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../dom/idlharness.any.js/"><code>idlharness.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="657" data-of="657"><b>657</b> / 657</td><td class="n" data-v="657" data-of="657"><b>657</b> / 657</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../dom/idlharness.window.js/"><code>idlharness.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="1979" data-of="1979"><b>1,979</b> / 1,979</td><td class="n" data-v="1942" data-of="1979"><b>1,942</b> / 1,979</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../dom/interface-objects.html/"><code>interface-<wbr>objects.<wbr>html</code></a></th><td class="n" data-v="23" data-of="23"><b>23</b> / 23</td><td class="n" data-v="23" data-of="23"><b>23</b> / 23</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="idlharness.any.js" data-gate="clean" data-pass="657" data-of="657" data-failed="0" data-ref-pass="657" data-ref-of="657"><summary><span class="tf-name"><code>idlharness.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>657</b> / 657<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>657</b> / 657</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>657</b> / 657 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/idlharness.any.js"><code>dom/<wbr>idlharness.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/dom/idlharness.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>219</b> / 219</span></h3>
+<p class="omitted">219 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/dom/idlharness.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>219</b> / 219</span></h3>
+<p class="omitted">219 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/dom/idlharness.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>219</b> / 219</span></h3>
+<p class="omitted">219 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
+</div>
+</details>
+<details class="tf" id="idlharness.window.js" data-gate="clean" data-pass="1979" data-of="1979" data-failed="0" data-ref-pass="1942" data-ref-of="1979"><summary><span class="tf-name"><code>idlharness.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>1,979</b> / 1,979<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1,942</b> / 1,979</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>1,942</b> / 1,979 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/idlharness.window.js"><code>dom/<wbr>idlharness.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/dom/idlharness.window.html?exclude=Node</code> <span class="gate">OK</span> <span class="fcount"><b>1,366</b> / 1,366</span></h3>
+<p class="omitted">1,366 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/dom/idlharness.window.html?include=Node</code> <span class="gate">OK</span> <span class="fcount"><b>613</b> / 613</span></h3>
+<p class="omitted">613 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
+</div>
+</details>
+<details class="tf" id="interface-objects.html" data-gate="clean" data-pass="23" data-of="23" data-failed="0" data-ref-pass="23" data-ref-of="23"><summary><span class="tf-name"><code>interface-<wbr>objects.<wbr>html</code></span><span class="tf-n"><b>23</b> / 23<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>23</b> / 23</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>23</b> / 23 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/interface-objects.html"><code>dom/<wbr>interface-<wbr>objects.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>23 passing subtests</summary><ol class="pass-list"><li>Interface objects properties should not be Enumerable</li><li>Should be able to delete Event.</li><li>Should be able to delete CustomEvent.</li><li>Should be able to delete EventTarget.</li><li>Should be able to delete AbortController.</li><li>Should be able to delete AbortSignal.</li><li>Should be able to delete Node.</li><li>Should be able to delete Document.</li><li>Should be able to delete DOMImplementation.</li><li>Should be able to delete DocumentFragment.</li><li>Should be able to delete ProcessingInstruction.</li><li>Should be able to delete DocumentType.</li><li>Should be able to delete Element.</li><li>Should be able to delete Attr.</li><li>Should be able to delete CharacterData.</li><li>Should be able to delete Text.</li><li>Should be able to delete Comment.</li><li>Should be able to delete NodeIterator.</li><li>Should be able to delete TreeWalker.</li><li>Should be able to delete NodeFilter.</li><li>Should be able to delete NodeList.</li><li>Should be able to delete HTMLCollection.</li><li>Should be able to delete DOMTokenList.</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

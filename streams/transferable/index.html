@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>streams/transferable/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,22 +36,235 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">11 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="error"><th scope="row"><a href="../../streams/transferable/deserialize-error.window.js/"><code>deserialize-<wbr>error.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="0" data-of="2"><b>0</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="5"><span class="gate gate-error g-block">ERROR</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../streams/transferable/readable-stream.html/"><code>readable-<wbr>stream.<wbr>html</code></a></th><td class="n" data-v="0" data-of="16"><b>0</b> / 16</td><td class="n" data-v="16" data-of="16"><b>16</b> / 16</td><td class="n" data-v="16"><span class="fail">16</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../streams/transferable/reason.html/"><code>reason.<wbr>html</code></a></th><td class="n" data-v="2" data-of="26"><b>2</b> / 26</td><td class="n" data-v="26" data-of="26"><b>26</b> / 26</td><td class="n" data-v="24"><span class="fail">24</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../streams/transferable/service-worker.https.html/"><code>service-<wbr>worker.<wbr>https.<wbr>html</code></a></th><td class="n" data-v="1" data-of="3"><b>1</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="2"><span class="fail">2</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../streams/transferable/shared-worker.html/"><code>shared-<wbr>worker.<wbr>html</code></a></th><td class="n" data-v="0" data-of="2"><b>0</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2"><span class="fail">2</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../streams/transferable/transfer-with-messageport.window.js/"><code>transfer-<wbr>with-<wbr>messageport.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="3" data-of="10"><b>3</b> / 10</td><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="7"><span class="fail">7</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../streams/transferable/transform-stream-members.any.js/"><code>transform-<wbr>stream-<wbr>members.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="8" data-of="8"><b>8</b> / 8</td><td class="n" data-v="0" data-of="8"><b>0</b> / 8</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../streams/transferable/transform-stream.html/"><code>transform-<wbr>stream.<wbr>html</code></a></th><td class="n" data-v="3" data-of="5"><b>3</b> / 5</td><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="2"><span class="fail">2</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../streams/transferable/window.html/"><code>window.<wbr>html</code></a></th><td class="n" data-v="0" data-of="4"><b>0</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="4"><span class="fail">4</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../streams/transferable/worker.html/"><code>worker.<wbr>html</code></a></th><td class="n" data-v="0" data-of="3"><b>0</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3"><span class="fail">3</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../streams/transferable/writable-stream.html/"><code>writable-<wbr>stream.<wbr>html</code></a></th><td class="n" data-v="1" data-of="8"><b>1</b> / 8</td><td class="n" data-v="8" data-of="8"><b>8</b> / 8</td><td class="n" data-v="7"><span class="fail">7</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="deserialize-error.window.js" data-gate="error" data-pass="0" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>deserialize-<wbr>error.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>0</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-error g-block">ERROR</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-error g-block">ERROR</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/transferable/deserialize-error.window.js"><code>streams/<wbr>transferable/<wbr>deserialize-<wbr>error.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">Unhandled rejection: DataCloneError</pre></div>
+<div class="run">
+<h3 class="run-head"><code>/streams/transferable/deserialize-error.window.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>0</b> / 2</span></h3>
+<pre class="msg harness-msg">Unhandled rejection: DataCloneError</pre>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-51cdf0d227b7"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">a WritableStream deserialization failure should result in a DataCloneError</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-51cdf0d227b7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-timeout" id="s-48a293809253"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">a ReadableStream deserialization failure should result in a DataCloneError</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-48a293809253" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="readable-stream.html" data-gate="none-passed" data-pass="0" data-of="16" data-failed="16" data-ref-pass="16" data-ref-of="16"><summary><span class="tf-name"><code>readable-<wbr>stream.<wbr>html</code></span><span class="tf-n"><b>0</b> / 16<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>16</b> / 16</span><span class="tf-fail"><span class="fail">16</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>16</b> / 16 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/transferable/readable-stream.html"><code>streams/<wbr>transferable/<wbr>readable-<wbr>stream.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-19aed0f2f75e"><details><summary><span class="mark">FAIL</span><span class="sub-name">sending one chunk through a transferred stream should work</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-19aed0f2f75e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4580bad1c223"><details><summary><span class="mark">FAIL</span><span class="sub-name">sending ten chunks through a transferred stream should work</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-4580bad1c223" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-51bde2625daf"><details><summary><span class="mark">FAIL</span><span class="sub-name">sending ten chunks one at a time should work</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-51bde2625daf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e30cffc1392d"><details><summary><span class="mark">FAIL</span><span class="sub-name">sending ten chunks on demand should work</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-e30cffc1392d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0bafd495bcbb"><details><summary><span class="mark">FAIL</span><span class="sub-name">transferring a stream should relieve backpressure</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-0bafd495bcbb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-18ede280b33a"><details><summary><span class="mark">FAIL</span><span class="sub-name">transferring a stream should add one chunk to the queue size</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-18ede280b33a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5fc163391d6b"><details><summary><span class="mark">FAIL</span><span class="sub-name">the extra queue from transferring is counted in chunks</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-5fc163391d6b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d82aa14273cb"><details><summary><span class="mark">FAIL</span><span class="sub-name">cancel should be propagated to the original</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-d82aa14273cb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4bc98619b874"><details><summary><span class="mark">FAIL</span><span class="sub-name">cancel should abort a pending read()</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-4bc98619b874" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-59e530820547"><details><summary><span class="mark">FAIL</span><span class="sub-name">stream cancel should not wait for underlying source cancel</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-59e530820547" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-551f05a4af7c"><details><summary><span class="mark">FAIL</span><span class="sub-name">serialization should not happen until the value is read</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-551f05a4af7c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b7acf9c2ff70"><details><summary><span class="mark">FAIL</span><span class="sub-name">transferring a non-serializable chunk should error both sides</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-b7acf9c2ff70" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a77f2493fc90"><details><summary><span class="mark">FAIL</span><span class="sub-name">errors should be passed through</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-a77f2493fc90" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-973135c3fb59"><details><summary><span class="mark">FAIL</span><span class="sub-name">race between cancel() and error() should leave sides in different states</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-973135c3fb59" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7b673e7c6d27"><details><summary><span class="mark">FAIL</span><span class="sub-name">race between cancel() and close() should be benign</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-7b673e7c6d27" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1043d4526efd"><details><summary><span class="mark">FAIL</span><span class="sub-name">race between cancel() and enqueue() should be benign</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-1043d4526efd" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="reason.html" data-gate="partial" data-pass="2" data-of="26" data-failed="24" data-ref-pass="26" data-ref-of="26"><summary><span class="tf-name"><code>reason.<wbr>html</code></span><span class="tf-n"><b>2</b> / 26<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>26</b> / 26</span><span class="tf-fail"><span class="fail">24</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>26</b> / 26 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/transferable/reason.html"><code>streams/<wbr>transferable/<wbr>reason.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-2484676bd5f1"><details><summary><span class="mark">FAIL</span><span class="sub-name">reason with a simple value of &#39;hi&#39; should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-2484676bd5f1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d1c62c4eb8d7"><details><summary><span class="mark">FAIL</span><span class="sub-name">reason with a simple value of &#39;	
+&#39; should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-d1c62c4eb8d7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-889b73a9ac5e"><details><summary><span class="mark">FAIL</span><span class="sub-name">reason with a simple value of &#39;7&#39; should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-889b73a9ac5e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-db2e65992b68"><details><summary><span class="mark">FAIL</span><span class="sub-name">reason with a simple value of &#39;3&#39; should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-db2e65992b68" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e3d2de7aacaf"><details><summary><span class="mark">FAIL</span><span class="sub-name">reason with a simple value of &#39;undefined&#39; should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-e3d2de7aacaf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-be20176b5c1d"><details><summary><span class="mark">FAIL</span><span class="sub-name">reason with a simple value of &#39;null&#39; should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-be20176b5c1d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a900ee5027d9"><details><summary><span class="mark">FAIL</span><span class="sub-name">reason with a simple value of &#39;true&#39; should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-a900ee5027d9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-8c04e7a50bf9"><details><summary><span class="mark">FAIL</span><span class="sub-name">reason with a simple value of &#39;false&#39; should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-8c04e7a50bf9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e1fb2559b745"><details><summary><span class="mark">FAIL</span><span class="sub-name">reason with a simple value of &#39;NaN&#39; should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-e1fb2559b745" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bc35e5c34dc3"><details><summary><span class="mark">FAIL</span><span class="sub-name">reason with a simple value of &#39;Infinity&#39; should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-bc35e5c34dc3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f724045c9efa"><details><summary><span class="mark">FAIL</span><span class="sub-name">objects that can be completely expressed in JSON should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-f724045c9efa" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1aea8d032757"><details><summary><span class="mark">FAIL</span><span class="sub-name">objects that cannot be expressed in JSON should also be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-1aea8d032757" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-077c202743e4"><details><summary><span class="mark">FAIL</span><span class="sub-name">the type and message of a TypeError should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-077c202743e4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-400bc0173c10"><details><summary><span class="mark">FAIL</span><span class="sub-name">other attributes of a TypeError should not be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-400bc0173c10" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bc5cd9bf8614"><details><summary><span class="mark">FAIL</span><span class="sub-name">a TypeError message should be converted to a string</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-bc5cd9bf8614" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0e04fa9832c4"><details><summary><span class="mark">FAIL</span><span class="sub-name">a TypeError message should not be preserved if it is a getter</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-0e04fa9832c4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-91dbad5e85d3"><details><summary><span class="mark">FAIL</span><span class="sub-name">a TypeError message should not be preserved if it is inherited</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-91dbad5e85d3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-382479f87c61"><details><summary><span class="mark">FAIL</span><span class="sub-name">DOMException errors should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-382479f87c61" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9c8b3a8cb1d8"><details><summary><span class="mark">FAIL</span><span class="sub-name">EvalError should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-9c8b3a8cb1d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4dcb110bb61d"><details><summary><span class="mark">FAIL</span><span class="sub-name">RangeError should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-4dcb110bb61d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a1f4c9b90eb9"><details><summary><span class="mark">FAIL</span><span class="sub-name">ReferenceError should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-a1f4c9b90eb9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7403d6dbba1f"><details><summary><span class="mark">FAIL</span><span class="sub-name">SyntaxError should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-7403d6dbba1f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0e02f6ea70f5"><details><summary><span class="mark">FAIL</span><span class="sub-name">TypeError should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-0e02f6ea70f5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c66a254aadc8"><details><summary><span class="mark">FAIL</span><span class="sub-name">URIError should be preserved</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-c66a254aadc8" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>reason with a type of &#39;symbol&#39; should be rejected and error the stream</li><li>reason with a type of &#39;function&#39; should be rejected and error the stream</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="service-worker.https.html" data-gate="partial" data-pass="1" data-of="3" data-failed="2" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>service-<wbr>worker.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>1</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/transferable/service-worker.https.html"><code>streams/<wbr>transferable/<wbr>service-<wbr>worker.<wbr>https.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-5519186b7c98"><details><summary><span class="mark">FAIL</span><span class="sub-name">serviceWorker.controller.postMessage should be able to transfer a ReadableStream</span></summary><pre class="msg">DataCloneError</pre></details><a class="self" href="#s-5519186b7c98" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b2dc0bcab7b8"><details><summary><span class="mark">FAIL</span><span class="sub-name">postMessage in a service worker should be able to transfer ReadableStream</span></summary><pre class="msg">promise_test: Unhandled rejection with value: &quot;DataCloneError&quot;</pre></details><a class="self" href="#s-b2dc0bcab7b8" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>service-worker</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="shared-worker.html" data-gate="none-passed" data-pass="0" data-of="2" data-failed="2" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>shared-<wbr>worker.<wbr>html</code></span><span class="tf-n"><b>0</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/transferable/shared-worker.html"><code>streams/<wbr>transferable/<wbr>shared-<wbr>worker.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-db139678c40d"><details><summary><span class="mark">FAIL</span><span class="sub-name">worker.postMessage should be able to transfer a ReadableStream</span></summary><pre class="msg">DataCloneError</pre></details><a class="self" href="#s-db139678c40d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aa039114c988"><details><summary><span class="mark">FAIL</span><span class="sub-name">postMessage in a worker should be able to transfer a ReadableStream</span></summary><pre class="msg">promise_test: Unhandled rejection with value: &quot;DataCloneError&quot;</pre></details><a class="self" href="#s-aa039114c988" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="transfer-with-messageport.window.js" data-gate="partial" data-pass="3" data-of="10" data-failed="7" data-ref-pass="10" data-ref-of="10"><summary><span class="tf-name"><code>transfer-<wbr>with-<wbr>messageport.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>3</b> / 10<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>10</b> / 10</span><span class="tf-fail"><span class="fail">7</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>10</b> / 10 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/transferable/transfer-with-messageport.window.js"><code>streams/<wbr>transferable/<wbr>transfer-<wbr>with-<wbr>messageport.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-fc13c5256877"><details><summary><span class="mark">FAIL</span><span class="sub-name">Transferring a MessagePort with a ReadableStream should set `.ports`</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-fc13c5256877" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-29d626fa2369"><details><summary><span class="mark">FAIL</span><span class="sub-name">Transferring a MessagePort with a WritableStream should set `.ports`</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-29d626fa2369" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ca788e488381"><details><summary><span class="mark">FAIL</span><span class="sub-name">Transferring a MessagePort with a TransformStream should set `.ports`</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-ca788e488381" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e6c367be79e7"><details><summary><span class="mark">FAIL</span><span class="sub-name">Transferring a MessagePort with a ReadableStream should set `.ports`, advanced</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-e6c367be79e7" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-96c94bb98f3a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Transferring a MessagePort with a WritableStream should set `.ports`, advanced</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-96c94bb98f3a" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-82179897f789"><details><summary><span class="mark">FAIL</span><span class="sub-name">Transferring a MessagePort with a TransformStream should set `.ports`, advanced</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-82179897f789" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4ccd02977338"><details><summary><span class="mark">FAIL</span><span class="sub-name">Transferring a MessagePort with multiple streams should set `.ports`</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-4ccd02977338" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>ReadableStream must not be serializable</li><li>WritableStream must not be serializable</li><li>TransformStream must not be serializable</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="transform-stream-members.any.js" data-gate="clean" data-pass="8" data-of="8" data-failed="0" data-ref-pass="0" data-ref-of="8"><summary><span class="tf-name"><code>transform-<wbr>stream-<wbr>members.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>8</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 8</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 8 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/transferable/transform-stream-members.any.js"><code>streams/<wbr>transferable/<wbr>transform-<wbr>stream-<wbr>members.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/streams/transferable/transform-stream-members.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 4</span></h3>
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>Transferring [object TransformStream],[object ReadableStream] should fail</li><li>Transferring [object ReadableStream],[object TransformStream] should fail</li><li>Transferring [object TransformStream],[object WritableStream] should fail</li><li>Transferring [object WritableStream],[object TransformStream] should fail</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/transferable/transform-stream-members.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>4</b> / 4</span></h3>
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>Transferring [object TransformStream],[object ReadableStream] should fail</li><li>Transferring [object ReadableStream],[object TransformStream] should fail</li><li>Transferring [object TransformStream],[object WritableStream] should fail</li><li>Transferring [object WritableStream],[object TransformStream] should fail</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="transform-stream.html" data-gate="partial" data-pass="3" data-of="5" data-failed="2" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>transform-<wbr>stream.<wbr>html</code></span><span class="tf-n"><b>3</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/transferable/transform-stream.html"><code>streams/<wbr>transferable/<wbr>transform-<wbr>stream.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-69c298611f65"><details><summary><span class="mark">FAIL</span><span class="sub-name">window.postMessage should be able to transfer a TransformStream</span></summary><pre class="msg">DataCloneError</pre></details><a class="self" href="#s-69c298611f65" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3342e3b3c1de"><details><summary><span class="mark">FAIL</span><span class="sub-name">piping through transferred transforms should work</span></summary><pre class="msg">DataCloneError</pre></details><a class="self" href="#s-3342e3b3c1de" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>a TransformStream with a locked writable should not be transferable</li><li>a TransformStream with a locked readable should not be transferable</li><li>a TransformStream with both sides locked should not be transferable</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="window.html" data-gate="none-passed" data-pass="0" data-of="4" data-failed="4" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>window.<wbr>html</code></span><span class="tf-n"><b>0</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="fail">4</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/transferable/window.html"><code>streams/<wbr>transferable/<wbr>window.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-e591bc9b23cf"><details><summary><span class="mark">FAIL</span><span class="sub-name">window.postMessage should be able to transfer a ReadableStream</span></summary><pre class="msg">DataCloneError</pre></details><a class="self" href="#s-e591bc9b23cf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-45dbf23bc6ef"><details><summary><span class="mark">FAIL</span><span class="sub-name">port.postMessage should be able to transfer a ReadableStream</span></summary><pre class="msg">DataCloneError</pre></details><a class="self" href="#s-45dbf23bc6ef" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2b76bd1834d0"><details><summary><span class="mark">FAIL</span><span class="sub-name">the same ReadableStream posted multiple times should arrive together</span></summary><pre class="msg">DataCloneError</pre></details><a class="self" href="#s-2b76bd1834d0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2a4fa47e1a4a"><details><summary><span class="mark">FAIL</span><span class="sub-name">transfer to and from an iframe should work</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-2a4fa47e1a4a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="worker.html" data-gate="none-passed" data-pass="0" data-of="3" data-failed="3" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>worker.<wbr>html</code></span><span class="tf-n"><b>0</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="fail">3</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/transferable/worker.html"><code>streams/<wbr>transferable/<wbr>worker.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-cf444c28c53c"><details><summary><span class="mark">FAIL</span><span class="sub-name">worker.postMessage should be able to transfer a ReadableStream</span></summary><pre class="msg">DataCloneError</pre></details><a class="self" href="#s-cf444c28c53c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-60587a53818f"><details><summary><span class="mark">FAIL</span><span class="sub-name">postMessage in a worker should be able to transfer a ReadableStream</span></summary><pre class="msg">promise_test: Unhandled rejection with value: &quot;error in worker&quot;</pre></details><a class="self" href="#s-60587a53818f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c973e8e38811"><details><summary><span class="mark">FAIL</span><span class="sub-name">terminating a worker should not error the stream</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-c973e8e38811" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="writable-stream.html" data-gate="partial" data-pass="1" data-of="8" data-failed="7" data-ref-pass="8" data-ref-of="8"><summary><span class="tf-name"><code>writable-<wbr>stream.<wbr>html</code></span><span class="tf-n"><b>1</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 8</span><span class="tf-fail"><span class="fail">7</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>8</b> / 8 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/transferable/writable-stream.html"><code>streams/<wbr>transferable/<wbr>writable-<wbr>stream.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-386d0435d181"><details><summary><span class="mark">FAIL</span><span class="sub-name">window.postMessage should be able to transfer a WritableStream</span></summary><pre class="msg">DataCloneError</pre></details><a class="self" href="#s-386d0435d181" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c54ddb5e1389"><details><summary><span class="mark">FAIL</span><span class="sub-name">window.postMessage should be able to transfer a {readable, writable} pair</span></summary><pre class="msg">DataCloneError</pre></details><a class="self" href="#s-c54ddb5e1389" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fb6211421afe"><details><summary><span class="mark">FAIL</span><span class="sub-name">desiredSize for a newly-transferred stream should be 1</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-fb6211421afe" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5d6aac715216"><details><summary><span class="mark">FAIL</span><span class="sub-name">effective queue size of a transferred writable should be 2</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-5d6aac715216" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-825076d67195"><details><summary><span class="mark">FAIL</span><span class="sub-name">second write should wait for first underlying write to complete</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-825076d67195" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-454fe4ba6a77"><details><summary><span class="mark">FAIL</span><span class="sub-name">abort() should work</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-454fe4ba6a77" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-439a751080c5"><details><summary><span class="mark">FAIL</span><span class="sub-name">writing a unclonable object should error the stream</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;DataCloneError: DataCloneError&quot;</pre></details><a class="self" href="#s-439a751080c5" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>a locked WritableStream should not be transferable</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

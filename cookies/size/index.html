@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>cookies/size/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,13 +36,34 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">2 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../cookies/size/attributes.www.sub.html/"><code>attributes.<wbr>www.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="14" data-of="14"><b>14</b> / 14</td><td class="n" data-v="14" data-of="14"><b>14</b> / 14</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../cookies/size/name-and-value.html/"><code>name-<wbr>and-<wbr>value.<wbr>html</code></a></th><td class="n" data-v="11" data-of="11"><b>11</b> / 11</td><td class="n" data-v="11" data-of="11"><b>11</b> / 11</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="attributes.www.sub.html" data-gate="clean" data-pass="14" data-of="14" data-failed="0" data-ref-pass="14" data-ref-of="14"><summary><span class="tf-name"><code>attributes.<wbr>www.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>14</b> / 14<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>14</b> / 14</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>14</b> / 14 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/cookies/size/attributes.www.sub.html"><code>cookies/<wbr>size/<wbr>attributes.<wbr>www.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>14 passing subtests</summary><ol class="pass-list"><li>Too long path attribute (&gt;1024 bytes) is ignored; previous valid path wins.</li><li>Too long path attribute (&gt;1024 bytes) is ignored; next valid path wins.</li><li>Max size path attribute (1024 bytes) is not ignored</li><li>Too long path attribute (&gt;1024 bytes) is ignored</li><li>Too long domain attribute (&gt;1024 bytes) is ignored; previous valid domain wins.</li><li>Too long domain attribute (&gt;1024 bytes) is ignored; next valid domain wins.</li><li>Max size domain attribute (1024 bytes) is not ignored</li><li>Too long domain attribute (&gt;1024 bytes) is ignored</li><li>Set cookie with max size name/value pair and max size attribute value</li><li>Set cookie with max size name/value pair and multiple max size attributes (&gt;8k bytes total)</li><li>Max length Max-Age attribute value (1024 bytes) doesn&#39;t cause cookie rejection</li><li>Too long Max-Age attribute value (&gt;1024 bytes) doesn&#39;t cause cookie rejection</li><li>Max length negative Max-Age attribute value (1024 bytes) doesn&#39;t get ignored</li><li>Too long negative Max-Age attribute value (&gt;1024 bytes) gets ignored</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="name-and-value.html" data-gate="clean" data-pass="11" data-of="11" data-failed="0" data-ref-pass="11" data-ref-of="11"><summary><span class="tf-name"><code>name-<wbr>and-<wbr>value.<wbr>html</code></span><span class="tf-n"><b>11</b> / 11<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>11</b> / 11</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>11</b> / 11 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/cookies/size/name-and-value.html"><code>cookies/<wbr>size/<wbr>name-<wbr>and-<wbr>value.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>Set max-size cookie with largest possible name and value (4096 bytes)</li><li>Ignore cookie with name larger than 4096 and 1 byte value</li><li>Set max-size value-less cookie</li><li>Ignore value-less cookie with name larger than 4096 bytes</li><li>Set max-size cookie with largest possible value (4095 bytes)</li><li>Ignore named cookie (with non-zero length) and value larger than 4095 bytes</li><li>Ignore named cookie with length larger than 4095 bytes, and a non-zero value</li><li>Set max-size name-less cookie</li><li>Ignore name-less cookie with value larger than 4096 bytes</li><li>Ignore name-less cookie (without leading =) with value larger than 4096 bytes</li><li>Set max-size cookie that also has an attribute</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

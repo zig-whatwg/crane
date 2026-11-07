@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>shadow-dom/focus/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,44 +36,410 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">33 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/DocumentOrShadowRoot-activeElement.html/"><code>DocumentOrShadowRoot-<wbr>activeElement.<wbr>html</code></a></th><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/ShadowRoot-delegatesFocus.html/"><code>ShadowRoot-<wbr>delegatesFocus.<wbr>html</code></a></th><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/blur-on-shadow-host-delegatesFocus.html/"><code>blur-<wbr>on-<wbr>shadow-<wbr>host-<wbr>delegatesFocus.<wbr>html</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/click-focus-delegatesFocus-click.html/"><code>click-<wbr>focus-<wbr>delegatesFocus-<wbr>click.<wbr>html</code></a></th><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/click-focus-delegatesFocus-tabindex-varies.html/"><code>click-<wbr>focus-<wbr>delegatesFocus-<wbr>tabindex-<wbr>varies.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/click-focus-delegatesFocus-tabindex-zero.html/"><code>click-<wbr>focus-<wbr>delegatesFocus-<wbr>tabindex-<wbr>zero.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../shadow-dom/focus/click-focus-slot-ancestor.html/"><code>click-<wbr>focus-<wbr>slot-<wbr>ancestor.<wbr>html</code></a></th><td class="n" data-v="1" data-of="3"><b>1</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="2"><span class="fail">2</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/delegatesFocus-tabindex-change.html/"><code>delegatesFocus-<wbr>tabindex-<wbr>change.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-autofocus.html/"><code>focus-<wbr>autofocus.<wbr>html</code></a></th><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-click-on-shadow-host.html/"><code>focus-<wbr>click-<wbr>on-<wbr>shadow-<wbr>host.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-method-delegatesFocus-nested-browsing-context.html/"><code>focus-<wbr>method-<wbr>delegatesFocus-<wbr>nested-<wbr>browsing-<wbr>context.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-method-delegatesFocus.html/"><code>focus-<wbr>method-<wbr>delegatesFocus.<wbr>html</code></a></th><td class="n" data-v="15" data-of="15"><b>15</b> / 15</td><td class="n" data-v="15" data-of="15"><b>15</b> / 15</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-method-with-delegatesFocus.html/"><code>focus-<wbr>method-<wbr>with-<wbr>delegatesFocus.<wbr>html</code></a></th><td class="n" data-v="8" data-of="8"><b>8</b> / 8</td><td class="n" data-v="8" data-of="8"><b>8</b> / 8</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-preserved-on-slot-reorder.html/"><code>focus-<wbr>preserved-<wbr>on-<wbr>slot-<wbr>reorder.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-pseudo-matches-on-shadow-host.html/"><code>focus-<wbr>pseudo-<wbr>matches-<wbr>on-<wbr>shadow-<wbr>host.<wbr>html</code></a></th><td class="n" data-v="20" data-of="20"><b>20</b> / 20</td><td class="n" data-v="0" data-of="0"><span class="quiet">none reported</span></td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-selector-delegatesFocus.html/"><code>focus-<wbr>selector-<wbr>delegatesFocus.<wbr>html</code></a></th><td class="n" data-v="12" data-of="12"><b>12</b> / 12</td><td class="n" data-v="0" data-of="12"><b>0</b> / 12</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-shadowhost-display-none.html/"><code>focus-<wbr>shadowhost-<wbr>display-<wbr>none.<wbr>html</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0" data-of="2"><b>0</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-slot-box-generated-tabindex-0.html/"><code>focus-<wbr>slot-<wbr>box-<wbr>generated-<wbr>tabindex-<wbr>0.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-tab-on-shadow-host.html/"><code>focus-<wbr>tab-<wbr>on-<wbr>shadow-<wbr>host.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-tabindex-order-shadow-negative-delegatesFocus.html/"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>negative-<wbr>delegatesFocus.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-tabindex-order-shadow-negative.html/"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>negative.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-tabindex-order-shadow-slot-one.html/"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>slot-<wbr>one.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-tabindex-order-shadow-varying-delegatesFocus.html/"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>varying-<wbr>delegatesFocus.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-tabindex-order-shadow-varying-tabindex-2.html/"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>varying-<wbr>tabindex-<wbr>2.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-tabindex-order-shadow-varying-tabindex-3.html/"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>varying-<wbr>tabindex-<wbr>3.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-tabindex-order-shadow-varying-tabindex.html/"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>varying-<wbr>tabindex.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-tabindex-order-shadow-zero-delegatesFocus.html/"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>delegatesFocus.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-tabindex-order-shadow-zero-host-negative.html/"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>host-<wbr>negative.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-tabindex-order-shadow-zero-host-not-set-scrollable.html/"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>host-<wbr>not-<wbr>set-<wbr>scrollable.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-tabindex-order-shadow-zero-host-not-set.html/"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>host-<wbr>not-<wbr>set.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-tabindex-order-shadow-zero-host-one.html/"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>host-<wbr>one.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-tabindex-order-shadow-zero-host-scrollable.html/"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>host-<wbr>scrollable.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../shadow-dom/focus/focus-tabindex-order-shadow-zero.html/"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="DocumentOrShadowRoot-activeElement.html" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>DocumentOrShadowRoot-<wbr>activeElement.<wbr>html</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/DocumentOrShadowRoot-activeElement.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>DocumentOrShadowRoot-<wbr>activeElement.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>activeElement on document &amp; shadow root when focused element is in the shadow tree</li><li>activeElement on document &amp; shadow root when focused element is in the document</li><li>activeElement on document &amp; shadow root when focused element is slotted</li><li>activeElement on a neighboring host when focused element is in another shadow tree</li><li>activeElement when focused element is in a nested shadow tree</li><li>activeElement when focused element is in a parent shadow tree</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="ShadowRoot-delegatesFocus.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>ShadowRoot-<wbr>delegatesFocus.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/ShadowRoot-delegatesFocus.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>ShadowRoot-<wbr>delegatesFocus.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>default delegatesFocus value</li><li>delegatesFocus set to false in init dict</li><li>delegatesFocus set to true in init dict</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="blur-on-shadow-host-delegatesFocus.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>blur-<wbr>on-<wbr>shadow-<wbr>host-<wbr>delegatesFocus.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/blur-on-shadow-host-delegatesFocus.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>blur-<wbr>on-<wbr>shadow-<wbr>host-<wbr>delegatesFocus.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Calling blur() on shadow host with delegatesFocus should remove the focus.</li><li>Calling blur() on shadow host with delegatesFocus when the focus is on a slotted element should not remove the focus.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="click-focus-delegatesFocus-click.html" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>click-<wbr>focus-<wbr>delegatesFocus-<wbr>click.<wbr>html</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/click-focus-delegatesFocus-click.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>click-<wbr>focus-<wbr>delegatesFocus-<wbr>click.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>call click() on host with delegatesFocus, all tabindex=0</li><li>call click() on slotted element in delegatesFocus shadow tree, all tabindex=0</li><li>click on the host with delegatesFocus with another host with delegatesFocus and a focusable child</li><li>click on the host with delegatesFocus with another host with no delegatesFocus and a focusable child</li><li>click on the host with no delegatesFocus with another host with delegatesFocus and a focusable child</li><li>click on the host with no delegatesFocus with another host with no delegatesFocus and a focusable child</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="click-focus-delegatesFocus-tabindex-varies.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>click-<wbr>focus-<wbr>delegatesFocus-<wbr>tabindex-<wbr>varies.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/click-focus-delegatesFocus-tabindex-varies.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>click-<wbr>focus-<wbr>delegatesFocus-<wbr>tabindex-<wbr>varies.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>click on host with delegatesFocus, #aboveSlot tabindex = 2, #slot and #slotted tabindex = 1</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="click-focus-delegatesFocus-tabindex-zero.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>click-<wbr>focus-<wbr>delegatesFocus-<wbr>tabindex-<wbr>zero.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/click-focus-delegatesFocus-tabindex-zero.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>click-<wbr>focus-<wbr>delegatesFocus-<wbr>tabindex-<wbr>zero.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>click on host with delegatesFocus, all tabindex=0 except spacer</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="click-focus-slot-ancestor.html" data-gate="partial" data-pass="1" data-of="3" data-failed="2" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>click-<wbr>focus-<wbr>slot-<wbr>ancestor.<wbr>html</code></span><span class="tf-n"><b>1</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/click-focus-slot-ancestor.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>click-<wbr>focus-<wbr>slot-<wbr>ancestor.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-5aa617178eb1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Select on non-focusable slot inside focusable div will select text</span></summary><pre class="msg">assert_equals: expected Text node &quot;Text to click and select&quot; but got null</pre></details><a class="self" href="#s-5aa617178eb1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-48690b1ae159"><details><summary><span class="mark">FAIL</span><span class="sub-name">Select on non-focusable non-editable slot in a contenteditable shadow DOM and inside focusable div will select text</span></summary><pre class="msg">assert_equals: focus is on contenteditable container only expected null but got Element node &lt;div id=&quot;shadowDiv&quot; tabindex=&quot;0&quot;&gt;&lt;slot&gt;&lt;/slot&gt;&lt;/div&gt;</pre></details><a class="self" href="#s-48690b1ae159" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Clicking on non-focusable slot inside focusable div will make the flat-tree focusable ancestor get focused</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="delegatesFocus-tabindex-change.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>delegatesFocus-<wbr>tabindex-<wbr>change.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/delegatesFocus-tabindex-change.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>delegatesFocus-<wbr>tabindex-<wbr>change.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Setting tabindex on the shadow host of a focused element with delegatesFocus should not change focus.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-autofocus.html" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>focus-<wbr>autofocus.<wbr>html</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-autofocus.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>autofocus.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>The second input should be focused since it has autofocus</li><li>Focus should not be delegated to the autofocus element because the inner host doesn&#39;t have delegates focus</li><li>Focus should be delegated to the autofocus element when the inner host has delegates focus</li><li>Focus should not be delegated to the slotted elements</li><li>Focus should be delegated to the nested div which has autofocus based on the tree order</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-click-on-shadow-host.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>click-<wbr>on-<wbr>shadow-<wbr>host.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-click-on-shadow-host.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>click-<wbr>on-<wbr>shadow-<wbr>host.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>:focus should be applied to the host and the child node when the focus is moved by mouse click</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-method-delegatesFocus-nested-browsing-context.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>method-<wbr>delegatesFocus-<wbr>nested-<wbr>browsing-<wbr>context.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-method-delegatesFocus-nested-browsing-context.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>method-<wbr>delegatesFocus-<wbr>nested-<wbr>browsing-<wbr>context.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>focus delegate step should not be run when the focus target is a shadow-including inclusive ancestor of the current focus.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-method-delegatesFocus.html" data-gate="clean" data-pass="15" data-of="15" data-failed="0" data-ref-pass="15" data-ref-of="15"><summary><span class="tf-name"><code>focus-<wbr>method-<wbr>delegatesFocus.<wbr>html</code></span><span class="tf-n"><b>15</b> / 15<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>15</b> / 15</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>15</b> / 15 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-method-delegatesFocus.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>method-<wbr>delegatesFocus.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>15 passing subtests</summary><ol class="pass-list"><li>focus() on host with delegatesFocus, all tabindex=0</li><li>focus() on host with delegatesFocus &amp; tabindex =-1, all other tabindex=0</li><li>focus() on host with delegatesFocus &amp; no tabindex, all other tabindex=0</li><li>focus() on host with delegatesFocus &amp; tabindex = 0, all other tabindex=-1</li><li>focus() on host with delegatesFocus, all without tabindex</li><li>focus() on host with delegatesFocus, all tabindex=-1</li><li>focus() on host with delegatesFocus &amp; tabindex=0, #belowSlots with tabindex=0</li><li>focus() on host with delegatesFocus &amp; tabindex=0, #outside with tabindex=0</li><li>focus() on host with delegatesFocus &amp; tabindex=0, #aboveSlots and #belowSlots with tabindex=0</li><li>focus() on host with delegatesFocus &amp; tabindex=0, #aboveSlots with tabindex=0 and #belowSlots with tabindex=1</li><li>focus() on host with delegatesFocus &amp; tabindex=0, #slottedToFirstSlot, #slottedToSecondSlot, #belowSlots  with tabindex=0</li><li>focus() on host with delegatesFocus and already-focused non-first shadow descendant</li><li>focus() on host with delegatesFocus with another host with no delegatesFocus and a focusable child</li><li>focus() on host with delegatesFocus with another host with delegatesFocus and a focusable child</li><li>focus() on host with delegatesFocus and slotted focusable children</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-method-with-delegatesFocus.html" data-gate="clean" data-pass="8" data-of="8" data-failed="0" data-ref-pass="8" data-ref-of="8"><summary><span class="tf-name"><code>focus-<wbr>method-<wbr>with-<wbr>delegatesFocus.<wbr>html</code></span><span class="tf-n"><b>8</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 8</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>8</b> / 8 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-method-with-delegatesFocus.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>method-<wbr>with-<wbr>delegatesFocus.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>8 passing subtests</summary><ol class="pass-list"><li>xshadow0 is not focusable without tabindex.</li><li>xshadow1 becomes focusable with tabindex.</li><li>on focus(), focusable xshadow2 with delegatesFocus=true delegates focus into its inner element.</li><li>if an element within shadow is focused, focusing on shadow host should not slide focus to its inner element.</li><li>xshadow2.focus() shouldn&#39;t move focus to #one when its inner element is already focused.</li><li>focus() inside shadow DOM should not focus its shadow host, nor focusable siblings.</li><li>If any element including shadow host is not focusable, focus doesn&#39;t change.</li><li>If no element is focusable within a delegatesFocus shadow root, the host can&#39;t get focus regardless of host&#39;s tabIndex.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-preserved-on-slot-reorder.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>preserved-<wbr>on-<wbr>slot-<wbr>reorder.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-preserved-on-slot-reorder.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>preserved-<wbr>on-<wbr>slot-<wbr>reorder.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Reordering a slot wrapper in the shadow tree preserves focus on the slotted element</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-pseudo-matches-on-shadow-host.html" data-gate="clean" data-pass="20" data-of="20" data-failed="0" data-ref-pass="0" data-ref-of="0"><summary><span class="tf-name"><code>focus-<wbr>pseudo-<wbr>matches-<wbr>on-<wbr>shadow-<wbr>host.<wbr>html</code></span><span class="tf-n"><b>20</b> / 20<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><span class="quiet">none reported</span></span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">none reported</span> WPT subtests passing <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-pseudo-matches-on-shadow-host.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>pseudo-<wbr>matches-<wbr>on-<wbr>shadow-<wbr>host.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>20 passing subtests</summary><ol class="pass-list"><li>:focus must not match a shadow host with {mode:open, delegatesFocus:false} shadow root that does not contain the focused element</li><li>:focus must match a shadow host with {mode:open, delegatesFocus:false} shadow root that contains the focused element</li><li>:focus must not match a shadow host with {mode:open, delegatesFocus:false} shadow root contains the focused element assigned to a slot</li><li>:focus must match all shadow hosts which are ancestors of a foccused element; {mode:open, delegatesFocus:false}</li><li>:focus behavior on tree structure changes; {mode:open, delegatesFocus:false}</li><li>:focus must not match a shadow host with {mode:open, delegatesFocus:true} shadow root that does not contain the focused element</li><li>:focus must match a shadow host with {mode:open, delegatesFocus:true} shadow root that contains the focused element</li><li>:focus must not match a shadow host with {mode:open, delegatesFocus:true} shadow root contains the focused element assigned to a slot</li><li>:focus must match all shadow hosts which are ancestors of a foccused element; {mode:open, delegatesFocus:true}</li><li>:focus behavior on tree structure changes; {mode:open, delegatesFocus:true}</li><li>:focus must not match a shadow host with {mode:closed, delegatesFocus:false} shadow root that does not contain the focused element</li><li>:focus must match a shadow host with {mode:closed, delegatesFocus:false} shadow root that contains the focused element</li><li>:focus must not match a shadow host with {mode:closed, delegatesFocus:false} shadow root contains the focused element assigned to a slot</li><li>:focus must match all shadow hosts which are ancestors of a foccused element; {mode:closed, delegatesFocus:false}</li><li>:focus behavior on tree structure changes; {mode:closed, delegatesFocus:false}</li><li>:focus must not match a shadow host with {mode:closed, delegatesFocus:true} shadow root that does not contain the focused element</li><li>:focus must match a shadow host with {mode:closed, delegatesFocus:true} shadow root that contains the focused element</li><li>:focus must not match a shadow host with {mode:closed, delegatesFocus:true} shadow root contains the focused element assigned to a slot</li><li>:focus must match all shadow hosts which are ancestors of a foccused element; {mode:closed, delegatesFocus:true}</li><li>:focus behavior on tree structure changes; {mode:closed, delegatesFocus:true}</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-selector-delegatesFocus.html" data-gate="clean" data-pass="12" data-of="12" data-failed="0" data-ref-pass="0" data-ref-of="12"><summary><span class="tf-name"><code>focus-<wbr>selector-<wbr>delegatesFocus.<wbr>html</code></span><span class="tf-n"><b>12</b> / 12<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 12</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 12 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-selector-delegatesFocus.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>selector-<wbr>delegatesFocus.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>12 passing subtests</summary><ol class="pass-list"><li>:focus applies to host with delegatesFocus=true when the shadow root&#39;s descendant has focus</li><li>:focus does not apply to host with delegatesFocus=true when slotted element has focus</li><li>:focus applies to host with delegatesFocus=true when an element in a nested shadow tree with delegatesFocus=true is focused</li><li>:focus should be removed from hosts with delegatesFocus=true when none of the elements in a nested shadow tree with delegatesFocus=true is focused</li><li>:focus applies to host with delegatesFocus=true when an element in a nested shadow tree with delegatesFocus=false is focused</li><li>:focus should be removed from hosts with delegatesFocus=true when none of the elements in a nested shadow tree with delegatesFocus=false is focused</li><li>:focus applies to host with delegatesFocus=false when the shadow root&#39;s descendant has focus</li><li>:focus does not apply to host with delegatesFocus=false when slotted element has focus</li><li>:focus applies to host with delegatesFocus=false when an element in a nested shadow tree with delegatesFocus=true is focused</li><li>:focus should be removed from hosts with delegatesFocus=false when none of the elements in a nested shadow tree with delegatesFocus=true is focused</li><li>:focus applies to host with delegatesFocus=false when an element in a nested shadow tree with delegatesFocus=false is focused</li><li>:focus should be removed from hosts with delegatesFocus=false when none of the elements in a nested shadow tree with delegatesFocus=false is focused</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-shadowhost-display-none.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="0" data-ref-of="2"><summary><span class="tf-name"><code>focus-<wbr>shadowhost-<wbr>display-<wbr>none.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-shadowhost-display-none.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>shadowhost-<wbr>display-<wbr>none.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>when shadow host itself is focused, it should match display:none, lose focus then becomes display:block again.</li><li>when shadow host with delegatesFocus=true has focused element inside the shadow, it should also match display:none, then lose focus and become display:block again.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-slot-box-generated-tabindex-0.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>slot-<wbr>box-<wbr>generated-<wbr>tabindex-<wbr>0.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-slot-box-generated-tabindex-0.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>slot-<wbr>box-<wbr>generated-<wbr>tabindex-<wbr>0.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>slot with tabindex=0 that generates a box should be focusable</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-tab-on-shadow-host.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>tab-<wbr>on-<wbr>shadow-<wbr>host.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-tab-on-shadow-host.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>tab-<wbr>on-<wbr>shadow-<wbr>host.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>:focus should be applied to the host and :focus-visible should be applied to the child node when the focus is moved by &lt;tab&gt;</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-tabindex-order-shadow-negative-delegatesFocus.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>negative-<wbr>delegatesFocus.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-tabindex-order-shadow-negative-delegatesFocus.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>negative-<wbr>delegatesFocus.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Order when all tabindex=-1 is and delegatesFocus = true</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-tabindex-order-shadow-negative.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>negative.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-tabindex-order-shadow-negative.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>negative.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Order when all elements in shadow tree has negative tabindex</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-tabindex-order-shadow-slot-one.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>slot-<wbr>one.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-tabindex-order-shadow-slot-one.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>slot-<wbr>one.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Order when all tabindex=0, except for one slot that has tabindex=1</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-tabindex-order-shadow-varying-delegatesFocus.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>varying-<wbr>delegatesFocus.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-tabindex-order-shadow-varying-delegatesFocus.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>varying-<wbr>delegatesFocus.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Order when tabindex varies and delegatesFocus = true</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-tabindex-order-shadow-varying-tabindex-2.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>varying-<wbr>tabindex-<wbr>2.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-tabindex-order-shadow-varying-tabindex-2.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>varying-<wbr>tabindex-<wbr>2.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Order with different tabindex on host</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-tabindex-order-shadow-varying-tabindex-3.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>varying-<wbr>tabindex-<wbr>3.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-tabindex-order-shadow-varying-tabindex-3.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>varying-<wbr>tabindex-<wbr>3.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Order with different tabindex on host</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-tabindex-order-shadow-varying-tabindex.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>varying-<wbr>tabindex.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-tabindex-order-shadow-varying-tabindex.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>varying-<wbr>tabindex.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Order with various tabindex values</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-tabindex-order-shadow-zero-delegatesFocus.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>delegatesFocus.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-tabindex-order-shadow-zero-delegatesFocus.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>delegatesFocus.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Order when all tabindex=0 is and delegatesFocus = true</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-tabindex-order-shadow-zero-host-negative.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>host-<wbr>negative.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-tabindex-order-shadow-zero-host-negative.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>host-<wbr>negative.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Order when all tabindex=0 except for host, which has tabindex=-1</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-tabindex-order-shadow-zero-host-not-set-scrollable.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>host-<wbr>not-<wbr>set-<wbr>scrollable.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-tabindex-order-shadow-zero-host-not-set-scrollable.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>host-<wbr>not-<wbr>set-<wbr>scrollable.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Order when all tabindex=0 except scrollable host (tabindex not set)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-tabindex-order-shadow-zero-host-not-set.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>host-<wbr>not-<wbr>set.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-tabindex-order-shadow-zero-host-not-set.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>host-<wbr>not-<wbr>set.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Order when all tabindex=0 except host (tabindex not set)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-tabindex-order-shadow-zero-host-one.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>host-<wbr>one.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-tabindex-order-shadow-zero-host-one.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>host-<wbr>one.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Order when all tabindex=0 except for host, which has tabindex=1</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-tabindex-order-shadow-zero-host-scrollable.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>host-<wbr>scrollable.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-tabindex-order-shadow-zero-host-scrollable.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero-<wbr>host-<wbr>scrollable.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Order when all tabindex=0 and host is scrollable</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="focus-tabindex-order-shadow-zero.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/shadow-dom/focus/focus-tabindex-order-shadow-zero.html"><code>shadow-<wbr>dom/<wbr>focus/<wbr>focus-<wbr>tabindex-<wbr>order-<wbr>shadow-<wbr>zero.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Order when all tabindex=0 is and delegatesFocus = false</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

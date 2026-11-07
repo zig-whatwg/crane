@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>wasm/serialization/module/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,27 +36,246 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">16 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/serialization/module/broadcastchannel-success-and-failure.html/"><code>broadcastchannel-<wbr>success-<wbr>and-<wbr>failure.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/serialization/module/broadcastchannel-success.html/"><code>broadcastchannel-<wbr>success.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="timeout"><th scope="row"><a href="../../../wasm/serialization/module/cross-origin-module-sharing-fails.html/"><code>cross-<wbr>origin-<wbr>module-<wbr>sharing-<wbr>fails.<wbr>html</code></a></th><td class="n" data-v="0" data-of="2"><b>0</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="4"><span class="gate gate-timeout g-block">TIMEOUT</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/serialization/module/identity-not-preserved.html/"><code>identity-<wbr>not-<wbr>preserved.<wbr>html</code></a></th><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/serialization/module/nested-worker-success.any.js/"><code>nested-<wbr>worker-<wbr>success.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="1" data-of="2"><b>1</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/serialization/module/no-transferring.html/"><code>no-<wbr>transferring.<wbr>html</code></a></th><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/serialization/module/serialization-via-history.html/"><code>serialization-<wbr>via-<wbr>history.<wbr>html</code></a></th><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/serialization/module/serialization-via-idb.any.js/"><code>serialization-<wbr>via-<wbr>idb.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../../wasm/serialization/module/serialization-via-notifications-api.any.js/"><code>serialization-<wbr>via-<wbr>notifications-<wbr>api.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="0" data-of="4"><b>0</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="4"><span class="fail">4</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="timeout"><th scope="row"><a href="../../../wasm/serialization/module/share-module-cross-origin-fails.sub.html/"><code>share-<wbr>module-<wbr>cross-<wbr>origin-<wbr>fails.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="4"><span class="gate gate-timeout g-block">TIMEOUT</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/serialization/module/window-domain-success.sub.html/"><code>window-<wbr>domain-<wbr>success.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/serialization/module/window-messagechannel-success.html/"><code>window-<wbr>messagechannel-<wbr>success.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/serialization/module/window-serviceworker-failure.https.html/"><code>window-<wbr>serviceworker-<wbr>failure.<wbr>https.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/serialization/module/window-sharedworker-failure.html/"><code>window-<wbr>sharedworker-<wbr>failure.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/serialization/module/window-similar-but-cross-origin-success.sub.html/"><code>window-<wbr>similar-<wbr>but-<wbr>cross-<wbr>origin-<wbr>success.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../wasm/serialization/module/window-simple-success.html/"><code>window-<wbr>simple-<wbr>success.<wbr>html</code></a></th><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="broadcastchannel-success-and-failure.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>broadcastchannel-<wbr>success-<wbr>and-<wbr>failure.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <b>0</b> / 1 WPT subtests passing <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/broadcastchannel-success-and-failure.html"><code>wasm/<wbr>serialization/<wbr>module/<wbr>broadcastchannel-<wbr>success-<wbr>and-<wbr>failure.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>WebAssembly.Module cannot cross agent clusters, BroadcastChannel edition</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="broadcastchannel-success.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>broadcastchannel-<wbr>success.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <b>0</b> / 1 WPT subtests passing <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/broadcastchannel-success.html"><code>wasm/<wbr>serialization/<wbr>module/<wbr>broadcastchannel-<wbr>success.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Structured cloning of WebAssembly.Module: BroadcastChannel within the same agent cluster</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="cross-origin-module-sharing-fails.html" data-gate="timeout" data-pass="0" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>cross-<wbr>origin-<wbr>module-<wbr>sharing-<wbr>fails.<wbr>html</code></span><span class="tf-n"><b>0</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-timeout g-block">TIMEOUT</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/cross-origin-module-sharing-fails.html"><code>wasm/<wbr>serialization/<wbr>module/<wbr>cross-<wbr>origin-<wbr>module-<wbr>sharing-<wbr>fails.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/wasm/serialization/module/cross-origin-module-sharing-fails.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 2</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-fb1c2f781750"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">postMessaging a wasm module to an iframe in a different agent cluster fails</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-fb1c2f781750" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-notrun" id="s-d71203a60b16"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">postMessaging a wasm module to a cross-origin iframe in the same agent cluster fails</span></div><a class="self" href="#s-d71203a60b16" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="identity-not-preserved.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>identity-<wbr>not-<wbr>preserved.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/identity-not-preserved.html"><code>wasm/<wbr>serialization/<wbr>module/<wbr>identity-<wbr>not-<wbr>preserved.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>postMessaging to this window does not give back the same WebAssembly.Module</li><li>postMessaging to a worker and back does not give back the same WebAssembly.Module</li><li>postMessaging to an iframe and back does not give back the same WebAssembly.Module</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="nested-worker-success.any.js" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="1" data-ref-of="2"><summary><span class="tf-name"><code>nested-<wbr>worker-<wbr>success.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>1</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/nested-worker-success.any.js"><code>wasm/<wbr>serialization/<wbr>module/<wbr>nested-<wbr>worker-<wbr>success.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/wasm/serialization/module/nested-worker-success.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>postMessaging to a dedicated sub-worker allows them to see each others&#39; modifications</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/serialization/module/nested-worker-success.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>postMessaging to a dedicated sub-worker allows them to see each others&#39; modifications</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="no-transferring.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>no-<wbr>transferring.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/no-transferring.html"><code>wasm/<wbr>serialization/<wbr>module/<wbr>no-<wbr>transferring.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>Trying to transfer a WebAssembly.Module to this window throws</li><li>Trying to transfer a WebAssembly.Module to a worker throws</li><li>Trying to transfer a WebAssembly.Module through a MessagePort throws</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="serialization-via-history.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>serialization-<wbr>via-<wbr>history.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/serialization-via-history.html"><code>wasm/<wbr>serialization/<wbr>module/<wbr>serialization-<wbr>via-<wbr>history.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>history.pushState(): simple case</li><li>history.pushState(): is interleaved correctly</li><li>history.replaceState(): simple case</li><li>history.replaceState(): is interleaved correctly</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="serialization-via-idb.any.js" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>serialization-<wbr>via-<wbr>idb.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/serialization-via-idb.any.js"><code>wasm/<wbr>serialization/<wbr>module/<wbr>serialization-<wbr>via-<wbr>idb.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/wasm/serialization/module/serialization-via-idb.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>WebAssembly.Module cloning via IndexedDB: basic case</li><li>WebAssembly.Module cloning via the IndexedDB: is interleaved correctly</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/serialization/module/serialization-via-idb.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>WebAssembly.Module cloning via IndexedDB: basic case</li><li>WebAssembly.Module cloning via the IndexedDB: is interleaved correctly</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="serialization-via-notifications-api.any.js" data-gate="none-passed" data-pass="0" data-of="4" data-failed="4" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>serialization-<wbr>via-<wbr>notifications-<wbr>api.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>0</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="fail">4</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/serialization-via-notifications-api.any.js"><code>wasm/<wbr>serialization/<wbr>module/<wbr>serialization-<wbr>via-<wbr>notifications-<wbr>api.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/wasm/serialization/module/serialization-via-notifications-api.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-046e6801b240"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.Module cloning via the Notifications API&#39;s data member: basic case</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+    new Notification(&quot;Bob: Hi&quot;, { data: createEmptyWasmModule() });
+  }&quot; threw object &quot;ReferenceError: Notification is not defined&quot; that is not a DOMException DataCloneError: property &quot;code&quot; is equal to undefined, expected 25</pre></details><a class="self" href="#s-046e6801b240" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d1562d5aa49a"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.Module cloning via the Notifications API&#39;s data member: is interleaved correctly</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+    new Notification(&quot;Bob: Hi&quot;, { data: [
+      { get x() { getter1Called = true; return 5; } },
+      createEmptyWasmModule(),
+      { get x() { getter2Called = true; return 5; } }
+    ]});
+  }&quot; threw object &quot;ReferenceError: Notification is not defined&quot; that is not a DOMException DataCloneError: property &quot;code&quot; is equal to undefined, expected 25</pre></details><a class="self" href="#s-d1562d5aa49a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/wasm/serialization/module/serialization-via-notifications-api.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-06b274839ef1"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.Module cloning via the Notifications API&#39;s data member: basic case</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+    new Notification(&quot;Bob: Hi&quot;, { data: createEmptyWasmModule() });
+  }&quot; threw object &quot;ReferenceError: Notification is not defined&quot; that is not a DOMException DataCloneError: property &quot;code&quot; is equal to undefined, expected 25</pre></details><a class="self" href="#s-06b274839ef1" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-faa3e002ce1e"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.Module cloning via the Notifications API&#39;s data member: is interleaved correctly</span></summary><pre class="msg">assert_throws_dom: function &quot;() =&gt; {
+    new Notification(&quot;Bob: Hi&quot;, { data: [
+      { get x() { getter1Called = true; return 5; } },
+      createEmptyWasmModule(),
+      { get x() { getter2Called = true; return 5; } }
+    ]});
+  }&quot; threw object &quot;ReferenceError: Notification is not defined&quot; that is not a DOMException DataCloneError: property &quot;code&quot; is equal to undefined, expected 25</pre></details><a class="self" href="#s-faa3e002ce1e" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="share-module-cross-origin-fails.sub.html" data-gate="timeout" data-pass="0" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>share-<wbr>module-<wbr>cross-<wbr>origin-<wbr>fails.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-timeout g-block">TIMEOUT</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/share-module-cross-origin-fails.sub.html"><code>wasm/<wbr>serialization/<wbr>module/<wbr>share-<wbr>module-<wbr>cross-<wbr>origin-<wbr>fails.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/wasm/serialization/module/share-module-cross-origin-fails.sub.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 1</span></h3>
+<ol class="subtests">
+<li class="sub s-timeout" id="s-63f2b3db7bff"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">postMessaging a wasm module to a cross-origin iframe fails</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-63f2b3db7bff" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="window-domain-success.sub.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>window-<wbr>domain-<wbr>success.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <b>0</b> / 1 WPT subtests passing <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/window-domain-success.sub.html"><code>wasm/<wbr>serialization/<wbr>module/<wbr>window-<wbr>domain-<wbr>success.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>postMessaging to a same-origin-domain (but not same-origin) iframe allows them to instantiate</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="window-messagechannel-success.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>window-<wbr>messagechannel-<wbr>success.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/window-messagechannel-success.html"><code>wasm/<wbr>serialization/<wbr>module/<wbr>window-<wbr>messagechannel-<wbr>success.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>postMessaging to a dedicated worker via MessageChannel allows them to instantiate</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="window-serviceworker-failure.https.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>window-<wbr>serviceworker-<wbr>failure.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/window-serviceworker-failure.https.html"><code>wasm/<wbr>serialization/<wbr>module/<wbr>window-<wbr>serviceworker-<wbr>failure.<wbr>https.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>WebAssembly.Module cannot cross agent clusters, service worker edition</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="window-sharedworker-failure.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>window-<wbr>sharedworker-<wbr>failure.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/window-sharedworker-failure.html"><code>wasm/<wbr>serialization/<wbr>module/<wbr>window-<wbr>sharedworker-<wbr>failure.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>WebAssembly.Modules cannot cross agent clusters, shared worker edition</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="window-similar-but-cross-origin-success.sub.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="0" data-ref-of="1"><summary><span class="tf-name"><code>window-<wbr>similar-<wbr>but-<wbr>cross-<wbr>origin-<wbr>success.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <b>0</b> / 1 WPT subtests passing <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/window-similar-but-cross-origin-success.sub.html"><code>wasm/<wbr>serialization/<wbr>module/<wbr>window-<wbr>similar-<wbr>but-<wbr>cross-<wbr>origin-<wbr>success.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>postMessaging to a not same-origin-domain, but similar origin, iframe allows them to instantiate</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="window-simple-success.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>window-<wbr>simple-<wbr>success.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/serialization/module/window-simple-success.html"><code>wasm/<wbr>serialization/<wbr>module/<wbr>window-<wbr>simple-<wbr>success.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>postMessaging to a dedicated worker allows them to instantiate</li><li>postMessaging to a same-origin iframe allows them to instantiate</li><li>postMessaging to a same-origin deeply-nested iframe allows them to instantiate</li><li>postMessaging to a same-origin opened window allows them to instantiate</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

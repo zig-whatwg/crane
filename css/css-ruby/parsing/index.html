@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>css/css-ruby/parsing/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,19 +36,123 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">8 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-ruby/parsing/ruby-align-invalid.html/"><code>ruby-<wbr>align-<wbr>invalid.<wbr>html</code></a></th><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../../css/css-ruby/parsing/ruby-align-valid.html/"><code>ruby-<wbr>align-<wbr>valid.<wbr>html</code></a></th><td class="n" data-v="0" data-of="4"><b>0</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="4"><span class="fail">4</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-ruby/parsing/ruby-merge-invalid.html/"><code>ruby-<wbr>merge-<wbr>invalid.<wbr>html</code></a></th><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="6" data-of="6"><b>6</b> / 6</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../../css/css-ruby/parsing/ruby-merge-valid.html/"><code>ruby-<wbr>merge-<wbr>valid.<wbr>html</code></a></th><td class="n" data-v="0" data-of="3"><b>0</b> / 3</td><td class="n" data-v="0" data-of="3"><b>0</b> / 3</td><td class="n" data-v="3"><span class="fail">3</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-ruby/parsing/ruby-overhang-invalid.html/"><code>ruby-<wbr>overhang-<wbr>invalid.<wbr>html</code></a></th><td class="n" data-v="11" data-of="11"><b>11</b> / 11</td><td class="n" data-v="11" data-of="11"><b>11</b> / 11</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../../css/css-ruby/parsing/ruby-overhang-valid.html/"><code>ruby-<wbr>overhang-<wbr>valid.<wbr>html</code></a></th><td class="n" data-v="0" data-of="3"><b>0</b> / 3</td><td class="n" data-v="3" data-of="3"><b>3</b> / 3</td><td class="n" data-v="3"><span class="fail">3</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../css/css-ruby/parsing/ruby-position-invalid.html/"><code>ruby-<wbr>position-<wbr>invalid.<wbr>html</code></a></th><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="5" data-of="5"><b>5</b> / 5</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../../css/css-ruby/parsing/ruby-position-valid.html/"><code>ruby-<wbr>position-<wbr>valid.<wbr>html</code></a></th><td class="n" data-v="0" data-of="3"><b>0</b> / 3</td><td class="n" data-v="2" data-of="3"><b>2</b> / 3</td><td class="n" data-v="3"><span class="fail">3</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="ruby-align-invalid.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>ruby-<wbr>align-<wbr>invalid.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-ruby/parsing/ruby-align-invalid.html"><code>css/<wbr>css-<wbr>ruby/<wbr>parsing/<wbr>ruby-<wbr>align-<wbr>invalid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>e.style[&#39;ruby-align&#39;] = &quot;auto&quot; should not set the property value</li><li>e.style[&#39;ruby-align&#39;] = &quot;left&quot; should not set the property value</li><li>e.style[&#39;ruby-align&#39;] = &quot;10px&quot; should not set the property value</li><li>e.style[&#39;ruby-align&#39;] = &quot;center start&quot; should not set the property value</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="ruby-align-valid.html" data-gate="none-passed" data-pass="0" data-of="4" data-failed="4" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>ruby-<wbr>align-<wbr>valid.<wbr>html</code></span><span class="tf-n"><b>0</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="fail">4</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-ruby/parsing/ruby-align-valid.html"><code>css/<wbr>css-<wbr>ruby/<wbr>parsing/<wbr>ruby-<wbr>align-<wbr>valid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-519d3c908dcb"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;ruby-align&#39;] = &quot;start&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-519d3c908dcb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-05195469c50e"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;ruby-align&#39;] = &quot;center&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-05195469c50e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a590b1d54d87"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;ruby-align&#39;] = &quot;space-between&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-a590b1d54d87" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-a8339cdd0d8c"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;ruby-align&#39;] = &quot;space-around&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-a8339cdd0d8c" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="ruby-merge-invalid.html" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>ruby-<wbr>merge-<wbr>invalid.<wbr>html</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-ruby/parsing/ruby-merge-invalid.html"><code>css/<wbr>css-<wbr>ruby/<wbr>parsing/<wbr>ruby-<wbr>merge-<wbr>invalid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>e.style[&#39;ruby-merge&#39;] = &quot;none&quot; should not set the property value</li><li>e.style[&#39;ruby-merge&#39;] = &quot;collapse&quot; should not set the property value</li><li>e.style[&#39;ruby-merge&#39;] = &quot;10px&quot; should not set the property value</li><li>e.style[&#39;ruby-merge&#39;] = &quot;merge separate&quot; should not set the property value</li><li>e.style[&#39;ruby-merge&#39;] = &quot;merge auto&quot; should not set the property value</li><li>e.style[&#39;ruby-merge&#39;] = &quot;auto separate&quot; should not set the property value</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="ruby-merge-valid.html" data-gate="none-passed" data-pass="0" data-of="3" data-failed="3" data-ref-pass="0" data-ref-of="3"><summary><span class="tf-name"><code>ruby-<wbr>merge-<wbr>valid.<wbr>html</code></span><span class="tf-n"><b>0</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 3</span><span class="tf-fail"><span class="fail">3</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-ruby/parsing/ruby-merge-valid.html"><code>css/<wbr>css-<wbr>ruby/<wbr>parsing/<wbr>ruby-<wbr>merge-<wbr>valid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-76d2375ceb2e"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;ruby-merge&#39;] = &quot;separate&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-76d2375ceb2e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-21cece030b0d"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;ruby-merge&#39;] = &quot;merge&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-21cece030b0d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5b2ad11ad577"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;ruby-merge&#39;] = &quot;auto&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-5b2ad11ad577" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="ruby-overhang-invalid.html" data-gate="clean" data-pass="11" data-of="11" data-failed="0" data-ref-pass="11" data-ref-of="11"><summary><span class="tf-name"><code>ruby-<wbr>overhang-<wbr>invalid.<wbr>html</code></span><span class="tf-n"><b>11</b> / 11<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>11</b> / 11</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>11</b> / 11 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-ruby/parsing/ruby-overhang-invalid.html"><code>css/<wbr>css-<wbr>ruby/<wbr>parsing/<wbr>ruby-<wbr>overhang-<wbr>invalid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>e.style[&#39;ruby-overhang&#39;] = &quot;auto none&quot; should not set the property value</li><li>e.style[&#39;ruby-overhang&#39;] = &quot;none auto&quot; should not set the property value</li><li>e.style[&#39;ruby-overhang&#39;] = &quot;auto auto&quot; should not set the property value</li><li>e.style[&#39;ruby-overhang&#39;] = &quot;none none&quot; should not set the property value</li><li>e.style[&#39;ruby-overhang&#39;] = &quot;auto 2px&quot; should not set the property value</li><li>e.style[&#39;ruby-overhang&#39;] = &quot;none 2px&quot; should not set the property value</li><li>e.style[&#39;ruby-overhang&#39;] = &quot;simple&quot; should not set the property value</li><li>e.style[&#39;ruby-overhang&#39;] = &quot;auto spaces&quot; should not set the property value</li><li>e.style[&#39;ruby-overhang&#39;] = &quot;spaces auto&quot; should not set the property value</li><li>e.style[&#39;ruby-overhang&#39;] = &quot;none spaces&quot; should not set the property value</li><li>e.style[&#39;ruby-overhang&#39;] = &quot;spaces none&quot; should not set the property value</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="ruby-overhang-valid.html" data-gate="none-passed" data-pass="0" data-of="3" data-failed="3" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>ruby-<wbr>overhang-<wbr>valid.<wbr>html</code></span><span class="tf-n"><b>0</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="fail">3</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-ruby/parsing/ruby-overhang-valid.html"><code>css/<wbr>css-<wbr>ruby/<wbr>parsing/<wbr>ruby-<wbr>overhang-<wbr>valid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-ec533bb0d446"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;ruby-overhang&#39;] = &quot;auto&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-ec533bb0d446" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-d5c0c9e60e9f"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;ruby-overhang&#39;] = &quot;none&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-d5c0c9e60e9f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-27bb15d8da71"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;ruby-overhang&#39;] = &quot;spaces&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-27bb15d8da71" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="ruby-position-invalid.html" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>ruby-<wbr>position-<wbr>invalid.<wbr>html</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-ruby/parsing/ruby-position-invalid.html"><code>css/<wbr>css-<wbr>ruby/<wbr>parsing/<wbr>ruby-<wbr>position-<wbr>invalid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>e.style[&#39;ruby-position&#39;] = &quot;auto&quot; should not set the property value</li><li>e.style[&#39;ruby-position&#39;] = &quot;center&quot; should not set the property value</li><li>e.style[&#39;ruby-position&#39;] = &quot;above&quot; should not set the property value</li><li>e.style[&#39;ruby-position&#39;] = &quot;10px 20px&quot; should not set the property value</li><li>e.style[&#39;ruby-position&#39;] = &quot;over under&quot; should not set the property value</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="ruby-position-valid.html" data-gate="none-passed" data-pass="0" data-of="3" data-failed="3" data-ref-pass="2" data-ref-of="3"><summary><span class="tf-name"><code>ruby-<wbr>position-<wbr>valid.<wbr>html</code></span><span class="tf-n"><b>0</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 3</span><span class="tf-fail"><span class="fail">3</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>2</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-ruby/parsing/ruby-position-valid.html"><code>css/<wbr>css-<wbr>ruby/<wbr>parsing/<wbr>ruby-<wbr>position-<wbr>valid.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-a863cdf02ed3"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;ruby-position&#39;] = &quot;over&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-a863cdf02ed3" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-1b9267d2dfd8"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;ruby-position&#39;] = &quot;under&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-1b9267d2dfd8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ca2fc5be25e3"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;ruby-position&#39;] = &quot;inter-character&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-ca2fc5be25e3" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

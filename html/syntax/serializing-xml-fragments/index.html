@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>html/syntax/serializing-xml-fragments/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,12 +36,22 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">1 test file here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../../html/syntax/serializing-xml-fragments/outerHTML.html/"><code>outerHTML.<wbr>html</code></a></th><td class="n" data-v="112" data-of="112"><b>112</b> / 112</td><td class="n" data-v="112" data-of="112"><b>112</b> / 112</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="outerHTML.html" data-gate="clean" data-pass="112" data-of="112" data-failed="0" data-ref-pass="112" data-ref-of="112"><summary><span class="tf-name"><code>outerHTML.<wbr>html</code></span><span class="tf-n"><b>112</b> / 112<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>112</b> / 112</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>112</b> / 112 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/syntax/serializing-xml-fragments/outerHTML.html"><code>html/<wbr>syntax/<wbr>serializing-<wbr>xml-<wbr>fragments/<wbr>outerHTML.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>112 passing subtests</summary><ol class="pass-list"><li>HTML Test: element.outerHTML to verify XML fragment serialization algorithm</li><li>Node for a</li><li>Node for abbr</li><li>Node for address</li><li>Node for article</li><li>Node for aside</li><li>Node for audio</li><li>Node for b</li><li>Node for bdi</li><li>Node for bdo</li><li>Node for blockquote</li><li>Node for body</li><li>Node for button</li><li>Node for canvas</li><li>Node for caption</li><li>Node for cite</li><li>Node for code</li><li>Node for colgroup</li><li>Node for data</li><li>Node for datalist</li><li>Node for dd</li><li>Node for del</li><li>Node for details</li><li>Node for dfn</li><li>Node for dialog</li><li>Node for div</li><li>Node for dl</li><li>Node for dt</li><li>Node for em</li><li>Node for fieldset</li><li>Node for figcaption</li><li>Node for figure</li><li>Node for footer</li><li>Node for form</li><li>Node for h1</li><li>Node for h2</li><li>Node for h3</li><li>Node for h4</li><li>Node for h5</li><li>Node for h6</li><li>Node for head</li><li>Node for header</li><li>Node for html</li><li>Node for i</li><li>Node for iframe</li><li>Node for ins</li><li>Node for kbd</li><li>Node for label</li><li>Node for legend</li><li>Node for li</li><li>Node for main</li><li>Node for map</li><li>Node for mark</li><li>Node for menu</li><li>Node for meter</li><li>Node for nav</li><li>Node for noscript</li><li>Node for object</li><li>Node for ol</li><li>Node for optgroup</li><li>Node for option</li><li>Node for output</li><li>Node for p</li><li>Node for pre</li><li>Node for progress</li><li>Node for q</li><li>Node for rp</li><li>Node for rt</li><li>Node for ruby</li><li>Node for s</li><li>Node for samp</li><li>Node for script</li><li>Node for search</li><li>Node for section</li><li>Node for select</li><li>Node for slot</li><li>Node for small</li><li>Node for span</li><li>Node for strong</li><li>Node for style</li><li>Node for sub</li><li>Node for sup</li><li>Node for summary</li><li>Node for table</li><li>Node for tbody</li><li>Node for td</li><li>Node for template</li><li>Node for textarea</li><li>Node for tfoot</li><li>Node for th</li><li>Node for thead</li><li>Node for time</li><li>Node for title</li><li>Node for tr</li><li>Node for u</li><li>Node for ul</li><li>Node for var</li><li>Node for video</li><li>Node for area</li><li>Node for base</li><li>Node for br</li><li>Node for col</li><li>Node for embed</li><li>Node for hr</li><li>Node for img</li><li>Node for input</li><li>Node for link</li><li>Node for meta</li><li>Node for param</li><li>Node for source</li><li>Node for track</li><li>Node for wbr</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

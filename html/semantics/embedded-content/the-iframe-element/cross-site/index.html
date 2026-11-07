@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>html/semantics/embedded-content/the-iframe-element/cross-site/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,16 +36,83 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">5 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="partial"><th scope="row"><a href="../../../../../html/semantics/embedded-content/the-iframe-element/cross-site/iframe-loading-lazy-cross-site.sub.html/"><code>iframe-<wbr>loading-<wbr>lazy-<wbr>cross-<wbr>site.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="1" data-of="2"><b>1</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../../html/semantics/embedded-content/the-iframe-element/cross-site/iframe-loading-lazy-in-scroller-cross-site.sub.html/"><code>iframe-<wbr>loading-<wbr>lazy-<wbr>in-<wbr>scroller-<wbr>cross-<wbr>site.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../../../../html/semantics/embedded-content/the-iframe-element/cross-site/iframe-loading-lazy-in-scroller-far-cross-site.sub.html/"><code>iframe-<wbr>loading-<wbr>lazy-<wbr>in-<wbr>scroller-<wbr>far-<wbr>cross-<wbr>site.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../../../../html/semantics/embedded-content/the-iframe-element/cross-site/iframe-loading-lazy-nested-cross-site.sub.html/"><code>iframe-<wbr>loading-<wbr>lazy-<wbr>nested-<wbr>cross-<wbr>site.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="2" data-of="4"><b>2</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="2"><span class="fail">2</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="partial"><th scope="row"><a href="../../../../../html/semantics/embedded-content/the-iframe-element/cross-site/iframe-loading-lazy-siblings-cross-site.sub.html/"><code>iframe-<wbr>loading-<wbr>lazy-<wbr>siblings-<wbr>cross-<wbr>site.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="2" data-of="4"><b>2</b> / 4</td><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="2"><span class="fail">2</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="iframe-loading-lazy-cross-site.sub.html" data-gate="partial" data-pass="1" data-of="2" data-failed="1" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>iframe-<wbr>loading-<wbr>lazy-<wbr>cross-<wbr>site.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>1</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/embedded-content/the-iframe-element/cross-site/iframe-loading-lazy-cross-site.sub.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>the-<wbr>iframe-<wbr>element/<wbr>cross-<wbr>site/<wbr>iframe-<wbr>loading-<wbr>lazy-<wbr>cross-<wbr>site.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-d6146b44deba"><details><summary><span class="mark">FAIL</span><span class="sub-name">Below-viewport iframes load lazily</span></summary><pre class="msg">assert_true: The window load event should have fired before the below-viewport iframe loads expected true got false</pre></details><a class="self" href="#s-d6146b44deba" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>In-viewport iframes load eagerly</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="iframe-loading-lazy-in-scroller-cross-site.sub.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>iframe-<wbr>loading-<wbr>lazy-<wbr>in-<wbr>scroller-<wbr>cross-<wbr>site.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/embedded-content/the-iframe-element/cross-site/iframe-loading-lazy-in-scroller-cross-site.sub.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>the-<wbr>iframe-<wbr>element/<wbr>cross-<wbr>site/<wbr>iframe-<wbr>loading-<wbr>lazy-<wbr>in-<wbr>scroller-<wbr>cross-<wbr>site.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Test that lazy-loaded iframes load when near viewport.</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="iframe-loading-lazy-in-scroller-far-cross-site.sub.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>iframe-<wbr>loading-<wbr>lazy-<wbr>in-<wbr>scroller-<wbr>far-<wbr>cross-<wbr>site.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/embedded-content/the-iframe-element/cross-site/iframe-loading-lazy-in-scroller-far-cross-site.sub.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>the-<wbr>iframe-<wbr>element/<wbr>cross-<wbr>site/<wbr>iframe-<wbr>loading-<wbr>lazy-<wbr>in-<wbr>scroller-<wbr>far-<wbr>cross-<wbr>site.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-6f57dade7d56"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test that lazy-loaded iframes do not load when far from viewport.</span></summary><pre class="msg">assert_unreached: Lazy-loading iframe far from viewport should not load. Reached unreachable code</pre></details><a class="self" href="#s-6f57dade7d56" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
+</div>
+</details>
+<details class="tf" id="iframe-loading-lazy-nested-cross-site.sub.html" data-gate="partial" data-pass="2" data-of="4" data-failed="2" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>iframe-<wbr>loading-<wbr>lazy-<wbr>nested-<wbr>cross-<wbr>site.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>2</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/embedded-content/the-iframe-element/cross-site/iframe-loading-lazy-nested-cross-site.sub.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>the-<wbr>iframe-<wbr>element/<wbr>cross-<wbr>site/<wbr>iframe-<wbr>loading-<wbr>lazy-<wbr>nested-<wbr>cross-<wbr>site.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-c8f68092ef3e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Below-viewport iframes load lazily</span></summary><pre class="msg">assert_true: The outer window load event should have fired before the outer below-viewport iframe loads expected true got false</pre></details><a class="self" href="#s-c8f68092ef3e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ca31ef75ee9a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Below-viewport iframe nested in a cross-site frame loads lazily</span></summary><pre class="msg">assert_true: The nested window load event should have fired before the nested below-viewport iframe loads expected true got false</pre></details><a class="self" href="#s-ca31ef75ee9a" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>In-viewport iframes load eagerly</li><li>In-viewport iframe nested in a cross-site frame loads eagerly</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="iframe-loading-lazy-siblings-cross-site.sub.html" data-gate="partial" data-pass="2" data-of="4" data-failed="2" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>iframe-<wbr>loading-<wbr>lazy-<wbr>siblings-<wbr>cross-<wbr>site.<wbr>sub.<wbr>html</code></span><span class="tf-n"><b>2</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/embedded-content/the-iframe-element/cross-site/iframe-loading-lazy-siblings-cross-site.sub.html"><code>html/<wbr>semantics/<wbr>embedded-<wbr>content/<wbr>the-<wbr>iframe-<wbr>element/<wbr>cross-<wbr>site/<wbr>iframe-<wbr>loading-<wbr>lazy-<wbr>siblings-<wbr>cross-<wbr>site.<wbr>sub.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-fail" id="s-1d1012219537"><details><summary><span class="mark">FAIL</span><span class="sub-name">Below-viewport left iframe loads lazily</span></summary><pre class="msg">assert_true: The window load event should have fired before the left below-viewport iframe loads expected true got false</pre></details><a class="self" href="#s-1d1012219537" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-ef50cccbe7e1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Below-viewport right iframe loads lazily</span></summary><pre class="msg">assert_true: The window load event should have fired before the right below-viewport iframe loads expected true got false</pre></details><a class="self" href="#s-ef50cccbe7e1" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>In-viewport left iframe loads eagerly</li><li>In-viewport right iframe loads eagerly</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>subresource-integrity/integrity-policy/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,15 +36,73 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">4 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../subresource-integrity/integrity-policy/parsing.html/"><code>parsing.<wbr>html</code></a></th><td class="n" data-v="22" data-of="22"><b>22</b> / 22</td><td class="n" data-v="22" data-of="22"><b>22</b> / 22</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../subresource-integrity/integrity-policy/preload-script-with-integrity.https.html/"><code>preload-<wbr>script-<wbr>with-<wbr>integrity.<wbr>https.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../subresource-integrity/integrity-policy/script.https.html/"><code>script.<wbr>https.<wbr>html</code></a></th><td class="n" data-v="24" data-of="24"><b>24</b> / 24</td><td class="n" data-v="24" data-of="24"><b>24</b> / 24</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../subresource-integrity/integrity-policy/style.https.html/"><code>style.<wbr>https.<wbr>html</code></a></th><td class="n" data-v="24" data-of="24"><b>24</b> / 24</td><td class="n" data-v="8" data-of="24"><b>8</b> / 24</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="parsing.html" data-gate="clean" data-pass="22" data-of="22" data-failed="0" data-ref-pass="22" data-ref-of="22"><summary><span class="tf-name"><code>parsing.<wbr>html</code></span><span class="tf-n"><b>22</b> / 22<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>22</b> / 22</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>22</b> / 22 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/subresource-integrity/integrity-policy/parsing.html"><code>subresource-<wbr>integrity/<wbr>integrity-<wbr>policy/<wbr>parsing.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/subresource-integrity/integrity-policy/parsing.html?type=enforce</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
+<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>Ensure that test is working with a valid destination</li><li>Ensure that test is working with a valid destination and source</li><li>Ensure that an empty header does not block</li><li>Ensure that a destination header with a token value does not parse</li><li>Ensure that a destination header with an inner list of strings does not parse</li><li>Ensure that a destination header with an inner list of single-quote strings does not parse</li><li>Ensure that a destination header with an unclosed inner list does not parse</li><li>Ensure that a destination header with a malformed inner list does not parse</li><li>Ensure that an unknown destination does not enforce a policy</li><li>Ensure that an unknown source causes the policy to not be enforced</li><li>Ensure that an invalid source causes the policy to not be enforced</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/subresource-integrity/integrity-policy/parsing.html?type=report</code> <span class="gate">OK</span> <span class="fcount"><b>11</b> / 11</span></h3>
+<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>Ensure that test is working with a valid destination</li><li>Ensure that test is working with a valid destination and source</li><li>Ensure that an empty header does not block</li><li>Ensure that a destination header with a token value does not parse</li><li>Ensure that a destination header with an inner list of strings does not parse</li><li>Ensure that a destination header with an inner list of single-quote strings does not parse</li><li>Ensure that a destination header with an unclosed inner list does not parse</li><li>Ensure that a destination header with a malformed inner list does not parse</li><li>Ensure that an unknown destination does not enforce a policy</li><li>Ensure that an unknown source causes the policy to not be enforced</li><li>Ensure that an invalid source causes the policy to not be enforced</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="preload-script-with-integrity.https.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>preload-<wbr>script-<wbr>with-<wbr>integrity.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/subresource-integrity/integrity-policy/preload-script-with-integrity.https.html"><code>subresource-<wbr>integrity/<wbr>integrity-<wbr>policy/<wbr>preload-<wbr>script-<wbr>with-<wbr>integrity.<wbr>https.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Script with integrity in initial HTML should not trigger Integrity-Policy reports (tests preload scanner)</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="script.https.html" data-gate="clean" data-pass="24" data-of="24" data-failed="0" data-ref-pass="24" data-ref-of="24"><summary><span class="tf-name"><code>script.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>24</b> / 24<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>24</b> / 24</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>24</b> / 24 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/subresource-integrity/integrity-policy/script.https.html"><code>subresource-<wbr>integrity/<wbr>integrity-<wbr>policy/<wbr>script.<wbr>https.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/subresource-integrity/integrity-policy/script.https.html?reporting=false</code> <span class="gate">OK</span> <span class="fcount"><b>12</b> / 12</span></h3>
+<details class="passing"><summary>12 passing subtests</summary><ol class="pass-list"><li>Ensure that a script without integrity did not run</li><li>Ensure that a script with unknown integrity algorithm did not run</li><li>Ensure that a script without integrity algorithm runs and gets reported in report-only mode</li><li>Ensure that a no-cors script gets blocked</li><li>Ensure that ReportingObserver gets called without endpoints</li><li>Ensure that a script with integrity runs</li><li>Ensure that a data URI script with no integrity runs</li><li>Ensure that a no-CORS data URI script with no integrity runs</li><li>Ensure that a blob URL script with no integrity runs</li><li>Ensure that a no-CORS blob URL script with no integrity runs</li><li>Ensure that an about:blank URL script with no integrity does not trigger a report</li><li>Ensure that a no-CORS about:blank URL script with no integrity does not trigger a report</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/subresource-integrity/integrity-policy/script.https.html?reporting=true</code> <span class="gate">OK</span> <span class="fcount"><b>12</b> / 12</span></h3>
+<details class="passing"><summary>12 passing subtests</summary><ol class="pass-list"><li>Ensure that a script without integrity did not run</li><li>Ensure that a script with unknown integrity algorithm did not run</li><li>Ensure that a script without integrity algorithm runs and gets reported in report-only mode</li><li>Ensure that a no-cors script gets blocked</li><li>Ensure that ReportingObserver gets called without endpoints</li><li>Ensure that a script with integrity runs</li><li>Ensure that a data URI script with no integrity runs</li><li>Ensure that a no-CORS data URI script with no integrity runs</li><li>Ensure that a blob URL script with no integrity runs</li><li>Ensure that a no-CORS blob URL script with no integrity runs</li><li>Ensure that an about:blank URL script with no integrity does not trigger a report</li><li>Ensure that a no-CORS about:blank URL script with no integrity does not trigger a report</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="style.https.html" data-gate="clean" data-pass="24" data-of="24" data-failed="0" data-ref-pass="8" data-ref-of="24"><summary><span class="tf-name"><code>style.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>24</b> / 24<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 24</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <b>8</b> / 24 WPT subtests passing <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/subresource-integrity/integrity-policy/style.https.html"><code>subresource-<wbr>integrity/<wbr>integrity-<wbr>policy/<wbr>style.<wbr>https.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/subresource-integrity/integrity-policy/style.https.html?reporting=false</code> <span class="gate">OK</span> <span class="fcount"><b>12</b> / 12</span></h3>
+<details class="passing"><summary>12 passing subtests</summary><ol class="pass-list"><li>Ensure that a style without integrity did not run</li><li>Ensure that a style with unknown integrity algorithm did not run</li><li>Ensure that a style without integrity algorithm runs and gets reported in report-only mode</li><li>Ensure that a no-cors style gets blocked</li><li>Ensure that ReportingObserver gets called without endpoints</li><li>Ensure that a style with integrity runs</li><li>Ensure that a data URI style with no integrity runs</li><li>Ensure that a no-CORS data URI style with no integrity runs</li><li>Ensure that a blob URL style with no integrity runs</li><li>Ensure that a no-CORS blob URL style with no integrity runs</li><li>Ensure that an about:blank URL style with no integrity does not trigger a report</li><li>Ensure that a no-CORS about:blank URL style with no integrity does not trigger a report</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/subresource-integrity/integrity-policy/style.https.html?reporting=true</code> <span class="gate">OK</span> <span class="fcount"><b>12</b> / 12</span></h3>
+<details class="passing"><summary>12 passing subtests</summary><ol class="pass-list"><li>Ensure that a style without integrity did not run</li><li>Ensure that a style with unknown integrity algorithm did not run</li><li>Ensure that a style without integrity algorithm runs and gets reported in report-only mode</li><li>Ensure that a no-cors style gets blocked</li><li>Ensure that ReportingObserver gets called without endpoints</li><li>Ensure that a style with integrity runs</li><li>Ensure that a data URI style with no integrity runs</li><li>Ensure that a no-CORS data URI style with no integrity runs</li><li>Ensure that a blob URL style with no integrity runs</li><li>Ensure that a no-CORS blob URL style with no integrity runs</li><li>Ensure that an about:blank URL style with no integrity does not trigger a report</li><li>Ensure that a no-CORS about:blank URL style with no integrity does not trigger a report</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

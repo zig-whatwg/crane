@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>streams/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -47,14 +47,96 @@
 <tr><th scope="row"><a href="../streams/writable-streams/"><span class="dir-no">38.6</span><code>writable-<wbr>streams/</code></a></th><td class="n" data-v="784" data-of="784"><b>784</b> / 784</td><td class="n" data-v="784" data-of="784"><b>784</b> / 784</td><td class="n" data-v="16">16</td><td data-v="0"><span class="tally"><span class="quiet">none blocking</span><span class="mini" aria-hidden="true"><span class="m-clean" style="width:100.000%"></span></span></span></td></tr>
 </tbody>
 </table>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="partial"><th scope="row"><a href="../streams/idlharness.any.js/"><code>idlharness.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="896" data-of="912"><b>896</b> / 912</td><td class="n" data-v="904" data-of="912"><b>904</b> / 912</td><td class="n" data-v="16"><span class="fail">16</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../streams/queuing-strategies-size-function-per-global.window.js/"><code>queuing-<wbr>strategies-<wbr>size-<wbr>function-<wbr>per-<wbr>global.<wbr>window.<wbr>js</code></a></th><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="2" data-of="2"><b>2</b> / 2</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../streams/queuing-strategies.any.js/"><code>queuing-<wbr>strategies.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="80" data-of="80"><b>80</b> / 80</td><td class="n" data-v="80" data-of="80"><b>80</b> / 80</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="idlharness.any.js" data-gate="partial" data-pass="896" data-of="912" data-failed="16" data-ref-pass="904" data-ref-of="912"><summary><span class="tf-name"><code>idlharness.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>896</b> / 912<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>904</b> / 912</span><span class="tf-fail"><span class="fail">16</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>904</b> / 912 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/idlharness.any.js"><code>streams/<wbr>idlharness.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/streams/idlharness.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>224</b> / 228</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-82249f912d81"><details><summary><span class="mark">FAIL</span><span class="sub-name">ReadableStreamDefaultReader interface: attribute closed</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-82249f912d81" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-cdd8992dc6b9"><details><summary><span class="mark">FAIL</span><span class="sub-name">ReadableStreamBYOBReader interface: attribute closed</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-cdd8992dc6b9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-dba1045a5645"><details><summary><span class="mark">FAIL</span><span class="sub-name">WritableStreamDefaultWriter interface: attribute closed</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-dba1045a5645" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-4cbf51da7b84"><details><summary><span class="mark">FAIL</span><span class="sub-name">WritableStreamDefaultWriter interface: attribute ready</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-4cbf51da7b84" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<p class="omitted">224 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/idlharness.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>224</b> / 228</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-22f1adfb619b"><details><summary><span class="mark">FAIL</span><span class="sub-name">ReadableStreamDefaultReader interface: attribute closed</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-22f1adfb619b" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-fd179c431e95"><details><summary><span class="mark">FAIL</span><span class="sub-name">ReadableStreamBYOBReader interface: attribute closed</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-fd179c431e95" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-248444e67b42"><details><summary><span class="mark">FAIL</span><span class="sub-name">WritableStreamDefaultWriter interface: attribute closed</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-248444e67b42" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-316c9ac37ff0"><details><summary><span class="mark">FAIL</span><span class="sub-name">WritableStreamDefaultWriter interface: attribute ready</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-316c9ac37ff0" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<p class="omitted">224 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/idlharness.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>224</b> / 228</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-0adfd60c1a8d"><details><summary><span class="mark">FAIL</span><span class="sub-name">ReadableStreamDefaultReader interface: attribute closed</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-0adfd60c1a8d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-0f89fa108cad"><details><summary><span class="mark">FAIL</span><span class="sub-name">ReadableStreamBYOBReader interface: attribute closed</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-0f89fa108cad" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f8cca81f6a5d"><details><summary><span class="mark">FAIL</span><span class="sub-name">WritableStreamDefaultWriter interface: attribute closed</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-f8cca81f6a5d" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-bc8da6e4f43d"><details><summary><span class="mark">FAIL</span><span class="sub-name">WritableStreamDefaultWriter interface: attribute ready</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-bc8da6e4f43d" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<p class="omitted">224 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/idlharness.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>224</b> / 228</span></h3>
+<ol class="subtests">
+<li class="sub s-fail" id="s-a7d8b492f917"><details><summary><span class="mark">FAIL</span><span class="sub-name">ReadableStreamDefaultReader interface: attribute closed</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-a7d8b492f917" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-943fb6c2c135"><details><summary><span class="mark">FAIL</span><span class="sub-name">ReadableStreamBYOBReader interface: attribute closed</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-943fb6c2c135" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-606ff802bbf8"><details><summary><span class="mark">FAIL</span><span class="sub-name">WritableStreamDefaultWriter interface: attribute closed</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-606ff802bbf8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-aff94d4221d8"><details><summary><span class="mark">FAIL</span><span class="sub-name">WritableStreamDefaultWriter interface: attribute ready</span></summary><pre class="msg">Illegal invocation</pre></details><a class="self" href="#s-aff94d4221d8" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<p class="omitted">224 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+</div>
+</div>
+</details>
+<details class="tf" id="queuing-strategies-size-function-per-global.window.js" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>queuing-<wbr>strategies-<wbr>size-<wbr>function-<wbr>per-<wbr>global.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/queuing-strategies-size-function-per-global.window.js"><code>streams/<wbr>queuing-<wbr>strategies-<wbr>size-<wbr>function-<wbr>per-<wbr>global.<wbr>window.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>CountQueuingStrategy size should be different for objects in different realms</li><li>ByteLengthQueuingStrategy size should be different for objects in different realms</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="queuing-strategies.any.js" data-gate="clean" data-pass="80" data-of="80" data-failed="0" data-ref-pass="80" data-ref-of="80"><summary><span class="tf-name"><code>queuing-<wbr>strategies.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>80</b> / 80<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>80</b> / 80</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>80</b> / 80 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/streams/queuing-strategies.any.js"><code>streams/<wbr>queuing-<wbr>strategies.<wbr>any.<wbr>js</code></a></dd></div>
+</dl>
+<div class="run">
+<h3 class="run-head"><code>/streams/queuing-strategies.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>20</b> / 20</span></h3>
+<details class="passing"><summary>20 passing subtests</summary><ol class="pass-list"><li>CountQueuingStrategy: Can construct a with a valid high water mark</li><li>CountQueuingStrategy: Constructor behaves as expected with strange arguments</li><li>CountQueuingStrategy: highWaterMark constructor values are converted per the unrestricted double rules</li><li>CountQueuingStrategy: size is the same function across all instances</li><li>CountQueuingStrategy: size should have the right name</li><li>CountQueuingStrategy: subclassing should work correctly</li><li>CountQueuingStrategy: size should not have a prototype property</li><li>ByteLengthQueuingStrategy: Can construct a with a valid high water mark</li><li>ByteLengthQueuingStrategy: Constructor behaves as expected with strange arguments</li><li>ByteLengthQueuingStrategy: highWaterMark constructor values are converted per the unrestricted double rules</li><li>ByteLengthQueuingStrategy: size is the same function across all instances</li><li>ByteLengthQueuingStrategy: size should have the right name</li><li>ByteLengthQueuingStrategy: subclassing should work correctly</li><li>ByteLengthQueuingStrategy: size should not have a prototype property</li><li>CountQueuingStrategy: size should not be a constructor</li><li>ByteLengthQueuingStrategy: size should not be a constructor</li><li>CountQueuingStrategy: size should have the right length</li><li>ByteLengthQueuingStrategy: size should have the right length</li><li>CountQueuingStrategy: size behaves as expected with strange arguments</li><li>ByteLengthQueuingStrategy: size behaves as expected with strange arguments</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/queuing-strategies.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>20</b> / 20</span></h3>
+<details class="passing"><summary>20 passing subtests</summary><ol class="pass-list"><li>CountQueuingStrategy: Can construct a with a valid high water mark</li><li>CountQueuingStrategy: Constructor behaves as expected with strange arguments</li><li>CountQueuingStrategy: highWaterMark constructor values are converted per the unrestricted double rules</li><li>CountQueuingStrategy: size is the same function across all instances</li><li>CountQueuingStrategy: size should have the right name</li><li>CountQueuingStrategy: subclassing should work correctly</li><li>CountQueuingStrategy: size should not have a prototype property</li><li>ByteLengthQueuingStrategy: Can construct a with a valid high water mark</li><li>ByteLengthQueuingStrategy: Constructor behaves as expected with strange arguments</li><li>ByteLengthQueuingStrategy: highWaterMark constructor values are converted per the unrestricted double rules</li><li>ByteLengthQueuingStrategy: size is the same function across all instances</li><li>ByteLengthQueuingStrategy: size should have the right name</li><li>ByteLengthQueuingStrategy: subclassing should work correctly</li><li>ByteLengthQueuingStrategy: size should not have a prototype property</li><li>CountQueuingStrategy: size should not be a constructor</li><li>ByteLengthQueuingStrategy: size should not be a constructor</li><li>CountQueuingStrategy: size should have the right length</li><li>ByteLengthQueuingStrategy: size should have the right length</li><li>CountQueuingStrategy: size behaves as expected with strange arguments</li><li>ByteLengthQueuingStrategy: size behaves as expected with strange arguments</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/queuing-strategies.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>20</b> / 20</span></h3>
+<details class="passing"><summary>20 passing subtests</summary><ol class="pass-list"><li>CountQueuingStrategy: Can construct a with a valid high water mark</li><li>CountQueuingStrategy: Constructor behaves as expected with strange arguments</li><li>CountQueuingStrategy: highWaterMark constructor values are converted per the unrestricted double rules</li><li>CountQueuingStrategy: size is the same function across all instances</li><li>CountQueuingStrategy: size should have the right name</li><li>CountQueuingStrategy: subclassing should work correctly</li><li>CountQueuingStrategy: size should not have a prototype property</li><li>ByteLengthQueuingStrategy: Can construct a with a valid high water mark</li><li>ByteLengthQueuingStrategy: Constructor behaves as expected with strange arguments</li><li>ByteLengthQueuingStrategy: highWaterMark constructor values are converted per the unrestricted double rules</li><li>ByteLengthQueuingStrategy: size is the same function across all instances</li><li>ByteLengthQueuingStrategy: size should have the right name</li><li>ByteLengthQueuingStrategy: subclassing should work correctly</li><li>ByteLengthQueuingStrategy: size should not have a prototype property</li><li>CountQueuingStrategy: size should not be a constructor</li><li>ByteLengthQueuingStrategy: size should not be a constructor</li><li>CountQueuingStrategy: size should have the right length</li><li>ByteLengthQueuingStrategy: size should have the right length</li><li>CountQueuingStrategy: size behaves as expected with strange arguments</li><li>ByteLengthQueuingStrategy: size behaves as expected with strange arguments</li></ol></details>
+</div>
+<div class="run">
+<h3 class="run-head"><code>/streams/queuing-strategies.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>20</b> / 20</span></h3>
+<details class="passing"><summary>20 passing subtests</summary><ol class="pass-list"><li>CountQueuingStrategy: Can construct a with a valid high water mark</li><li>CountQueuingStrategy: Constructor behaves as expected with strange arguments</li><li>CountQueuingStrategy: highWaterMark constructor values are converted per the unrestricted double rules</li><li>CountQueuingStrategy: size is the same function across all instances</li><li>CountQueuingStrategy: size should have the right name</li><li>CountQueuingStrategy: subclassing should work correctly</li><li>CountQueuingStrategy: size should not have a prototype property</li><li>ByteLengthQueuingStrategy: Can construct a with a valid high water mark</li><li>ByteLengthQueuingStrategy: Constructor behaves as expected with strange arguments</li><li>ByteLengthQueuingStrategy: highWaterMark constructor values are converted per the unrestricted double rules</li><li>ByteLengthQueuingStrategy: size is the same function across all instances</li><li>ByteLengthQueuingStrategy: size should have the right name</li><li>ByteLengthQueuingStrategy: subclassing should work correctly</li><li>ByteLengthQueuingStrategy: size should not have a prototype property</li><li>CountQueuingStrategy: size should not be a constructor</li><li>ByteLengthQueuingStrategy: size should not be a constructor</li><li>CountQueuingStrategy: size should have the right length</li><li>ByteLengthQueuingStrategy: size should have the right length</li><li>CountQueuingStrategy: size behaves as expected with strange arguments</li><li>ByteLengthQueuingStrategy: size behaves as expected with strange arguments</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

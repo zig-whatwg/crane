@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>css/css-images/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -45,13 +45,34 @@
 <tr><th scope="row"><a href="../../css/css-images/parsing/"><code>parsing/</code></a></th><td class="n" data-v="2825" data-of="2836"><b>2,825</b> / 2,836</td><td class="n" data-v="2814" data-of="2836"><b>2,814</b> / 2,836</td><td class="n" data-v="25">25</td><td data-v="0"><span class="tally"><span class="quiet">none blocking</span><span class="mini" aria-hidden="true"><span class="m-clean" style="width:92.000%"></span><span class="m-partial" style="width:8.000%"></span></span></span></td></tr>
 </tbody>
 </table>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../css/css-images/cross-fade-computed-value.html/"><code>cross-<wbr>fade-<wbr>computed-<wbr>value.<wbr>html</code></a></th><td class="n" data-v="7" data-of="7"><b>7</b> / 7</td><td class="n" data-v="0" data-of="7"><b>0</b> / 7</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../css/css-images/object-view-box-parsing.html/"><code>object-<wbr>view-<wbr>box-<wbr>parsing.<wbr>html</code></a></th><td class="n" data-v="12" data-of="12"><b>12</b> / 12</td><td class="n" data-v="12" data-of="12"><b>12</b> / 12</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="cross-fade-computed-value.html" data-gate="clean" data-pass="7" data-of="7" data-failed="0" data-ref-pass="0" data-ref-of="7"><summary><span class="tf-name"><code>cross-<wbr>fade-<wbr>computed-<wbr>value.<wbr>html</code></span><span class="tf-n"><b>7</b> / 7<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 7</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 7 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-images/cross-fade-computed-value.html"><code>css/<wbr>css-<wbr>images/<wbr>cross-<wbr>fade-<wbr>computed-<wbr>value.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>7 passing subtests</summary><ol class="pass-list"><li>Property background-image value &#39;cross-fade(30% color-mix(in srgb, currentcolor, blue), white)&#39;</li><li>Property background-image value &#39;cross-fade(50% red, 50% green)&#39;</li><li>Property background-image value &#39;cross-fade(20% red, 20% green)&#39;</li><li>Property background-image value &#39;cross-fade(50% red, 50% green, 50% blue)&#39;</li><li>Property background-image value &#39;cross-fade(calc(101%) red, green)&#39;</li><li>Property background-image value &#39;cross-fade(calc(-200%) red, green)&#39;</li><li>Property background-image value &#39;cross-fade(calc(50% + 1% * sign(1em - 10000px)) red, green)&#39;</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="object-view-box-parsing.html" data-gate="clean" data-pass="12" data-of="12" data-failed="0" data-ref-pass="12" data-ref-of="12"><summary><span class="tf-name"><code>object-<wbr>view-<wbr>box-<wbr>parsing.<wbr>html</code></span><span class="tf-n"><b>12</b> / 12<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>12</b> / 12</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>12</b> / 12 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-images/object-view-box-parsing.html"><code>css/<wbr>css-<wbr>images/<wbr>object-<wbr>view-<wbr>box-<wbr>parsing.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>12 passing subtests</summary><ol class="pass-list"><li>e.style[&#39;object-view-box&#39;] = &quot;inset(10%)&quot; should set the property value</li><li>e.style[&#39;object-view-box&#39;] = &quot;inset(10px 20px 30px 40px)&quot; should set the property value</li><li>e.style[&#39;object-view-box&#39;] = &quot;rect(1px 10% 100px 50%)&quot; should set the property value</li><li>e.style[&#39;object-view-box&#39;] = &quot;rect(auto auto auto auto)&quot; should set the property value</li><li>e.style[&#39;object-view-box&#39;] = &quot;rect(auto 5px auto 10%)&quot; should set the property value</li><li>e.style[&#39;object-view-box&#39;] = &quot;xywh(1px 10% 100px 50%)&quot; should set the property value</li><li>e.style[&#39;object-view-box&#39;] = &quot;circle(10px)&quot; should not set the property value</li><li>e.style[&#39;object-view-box&#39;] = &quot;ellipse(10px 20px)&quot; should not set the property value</li><li>e.style[&#39;object-view-box&#39;] = &quot;polygon(10px 20px 30px)&quot; should not set the property value</li><li>e.style[&#39;object-view-box&#39;] = &quot;path(\&quot;M20,80 L50,20\&quot;)&quot; should not set the property value</li><li>e.style[&#39;object-view-box&#39;] = &quot;blah&quot; should not set the property value</li><li>e.style[&#39;object-view-box&#39;] = &quot;xywh(1px 10%)&quot; should not set the property value</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">

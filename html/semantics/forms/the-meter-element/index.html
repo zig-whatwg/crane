@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>html/semantics/forms/the-meter-element/ - Crane WPT Results</title>
-<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, and every subdirectory and test file in it.">
+<meta name="description" content="Crane&#39;s web-platform-tests results for one directory of the WPT tree: its subtest numbers, every subdirectory, and every test file in it with its subtests and failure messages.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
@@ -36,13 +36,34 @@
 </aside>
 <div class="box tests">
 <div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">2 test files here</span></div>
-<table class="listing listing-files has-ref">
-<thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
-<tbody>
-<tr data-gate="clean"><th scope="row"><a href="../../../../html/semantics/forms/the-meter-element/meter-leading-plus-sign.html/"><code>meter-<wbr>leading-<wbr>plus-<wbr>sign.<wbr>html</code></a></th><td class="n" data-v="12" data-of="12"><b>12</b> / 12</td><td class="n" data-v="12" data-of="12"><b>12</b> / 12</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="clean"><th scope="row"><a href="../../../../html/semantics/forms/the-meter-element/meter.html/"><code>meter.<wbr>html</code></a></th><td class="n" data-v="50" data-of="50"><b>50</b> / 50</td><td class="n" data-v="50" data-of="50"><b>50</b> / 50</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-</tbody>
-</table>
+<div class="tf-list has-ref">
+<p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
+<div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
+<details class="tf" id="meter-leading-plus-sign.html" data-gate="clean" data-pass="12" data-of="12" data-failed="0" data-ref-pass="12" data-ref-of="12"><summary><span class="tf-name"><code>meter-<wbr>leading-<wbr>plus-<wbr>sign.<wbr>html</code></span><span class="tf-n"><b>12</b> / 12<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>12</b> / 12</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>12</b> / 12 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/forms/the-meter-element/meter-leading-plus-sign.html"><code>html/<wbr>semantics/<wbr>forms/<wbr>the-<wbr>meter-<wbr>element/<wbr>meter-<wbr>leading-<wbr>plus-<wbr>sign.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>12 passing subtests</summary><ol class="pass-list"><li>value with leading &#39;+&#39; should parse as 5</li><li>max with leading &#39;+&#39; should parse as 10</li><li>min with leading &#39;+&#39; should parse as 1</li><li>low with leading &#39;+&#39; should parse as 2</li><li>high with leading &#39;+&#39; should parse as 8</li><li>optimum with leading &#39;+&#39; should parse as 6</li><li>value &#39;+3.14&#39; should parse as 3.14</li><li>setAttribute with leading &#39;+&#39; should parse correctly</li><li>bare &#39;+&#39; for max should use default value 1</li><li>bare &#39;-&#39; for max should use default value 1</li><li>bare &#39;.&#39; for max should use default value 1</li><li>&#39;+-5&#39; for max should use default value 1</li></ol></details>
+</div>
+</div>
+</details>
+<details class="tf" id="meter.html" data-gate="clean" data-pass="50" data-of="50" data-failed="0" data-ref-pass="50" data-ref-of="50"><summary><span class="tf-name"><code>meter.<wbr>html</code></span><span class="tf-n"><b>50</b> / 50<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>50</b> / 50</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<div class="tf-body">
+<dl class="file-meta">
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>50</b> / 50 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/forms/the-meter-element/meter.html"><code>html/<wbr>semantics/<wbr>forms/<wbr>the-<wbr>meter-<wbr>element/<wbr>meter.<wbr>html</code></a></dd></div>
+</dl>
+<div class="run">
+<details class="passing"><summary>50 passing subtests</summary><ol class="pass-list"><li>Default values</li><li>Setting values to min, max, low, high and optimum</li><li>max &lt; min</li><li>value &lt; min</li><li>value &gt; max</li><li>low &lt; min</li><li>low &gt; max</li><li>high &lt; low</li><li>high &gt; max</li><li>optimum &lt; min</li><li>optimum &gt; max</li><li>Invalid floating-point number values</li><li>value must be 0 when a string is given</li><li>default value of min is 0</li><li>If min is not specified and value is smaller than the default value of min (i.e. 0), the actual value must be 0</li><li>default value of max is 1.0</li><li>If max is not specified and value is larger than the default value of max (i.e. 1.0), the actual value must be 1.0</li><li>If a value smaller than 1.0 is given to min and max is not specified, max must be the same value as its default value (i.e. 1.0)</li><li>If a value smaller than 1.0 is given to min, max is not specified, and value is larger than the default value of max (i.e. 1.0), the actual value must be 1.0</li><li>If a value larger than or equal to 1.0 is given to min and max is not specified, max must be the same value as min</li><li>If a value larger than or equal to 1.0 is given to min and max is not specified, the actual value must be the same value as min</li><li>If a value smaller than 0 is given to max and min is not specified, min must be be the same value as its default value (i.e. 0)</li><li>If a value smaller than 0 is given to max and min is not specified, max must be be the same value as the default value of min (i.e. 0)</li><li>If a value smaller than 0 is given to max and min is not specified, the actual value must be be the same value as the default value of min (i.e. 0)</li><li>If a value larger than or equal to 0 is given to max and min is not specified, max must be the same value as the default value of min (i.e. 0)</li><li>If a value larger than or equal to 0 is given to max and min is not specified, min must be the same value as its default value (i.e. 0)</li><li>If a value larger than or equal to 0 is given to max and min is not specified, the actual value must be the same value as the default value of min (i.e. 0)</li><li>min must be 0 when a string is given</li><li>If a string is given to min and value is smaller than the default value of min (i.e. 0), the actual value must be 0</li><li>max must be 1.0 when a string is given</li><li>If a string is given to max and value is larger than the default value of min (i.e. 1.0), the actual value must be 1.0</li><li>giving a string to low must not affect the actual value</li><li>high must equal max when a string is given to high</li><li>giving a string to high must not affect the actual value</li><li>value must not be smaller than min</li><li>value must not be larger than max</li><li>default low and high values equal min and max, respectively</li><li>default low and high values equal 0 and 1.0 respectively, if both low and high are not specified</li><li>low must not be smaller than min</li><li>low must not be larger than max</li><li>high must not be smaller than min</li><li>high must not be larger than max</li><li>If min is not specified, low must not be smaller than default value of min (i.e. 0)</li><li>If a value smaller than low is given to high, it must be set to the same value as low</li><li>If max is not specified, high must not be larger than default value of max (i.e. 1.0)</li><li>optimum smaller than min</li><li>optimum (smaller than min) must not affect min and the actual value</li><li>optimum smaller than max</li><li>optimum (larger than max) must not affect max and the actual value</li><li>default optimum value is the midpoint between min and max</li></ol></details>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <footer class="foot">
