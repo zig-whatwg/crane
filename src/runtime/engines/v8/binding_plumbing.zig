@@ -49,6 +49,8 @@ const interface = @import("interface.zig");
 const template_registry = @import("template_registry.zig");
 const protocol_agents = @import("protocol_agents.zig");
 const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
+const value_operations = @import("value_operations.zig");
+const CallFrame = @import("call_frame.zig").CallFrame;
 
 // ============================================================================
 // Constructors (WebIDL 3.7.1 "interface object" [[Call]]/[[Construct]])
@@ -544,8 +546,7 @@ pub const Operation = struct {
         info: *const v8.FunctionCallbackInfo,
         allocator: std.mem.Allocator,
         isolate: *v8.Isolate,
-        v8_context: *v8.Context,
-        return_context: *v8.Context,
+        frame: *CallFrame,
         result_owned: *bool,
     ) anyerror!?*v8.Value,
     /// HTML's access report check for a CrossOriginProperties(Window)
@@ -645,47 +646,29 @@ fn operationBody(info: *const v8.FunctionCallbackInfo, self: *const Operation) v
 
     const isolate = info.getIsolate();
 
-    // Get V8 context - for arguments parsing, we use the current context
-    const current_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-        conv.throwError(isolate, "No current V8 context");
-        return;
-    };
-
-    // This handle is ours to release unless converting one of the
-    // arguments makes the engine keep the context. `conv.fromV8Value`
-    // stores it into a persistent `runtime.CallbackWrapper` for
-    // callback-typed parameters, so `createElement(DOMString)` is
-    // transient while `setTimeout(TimerHandler, ...)` is not.
+    // The call's contexts, made when a step asks for one (perf3 phase 1b):
+    // the CURRENT context, where arguments convert (input comes from the
+    // caller's realm), for a conversion that needs it; the function's
+    // creation context - the METHOD's realm, where an error is thrown and an
+    // object result is made (other.SomeInterface.prototype.method.call(obj)
+    // must answer with `other`'s prototypes: WPT default-toJSON-cross-realm)
+    // - for an error or such a result. An operation whose arguments are
+    // Strings, Numbers, booleans or platform objects and whose result is a
+    // string, a number, a boolean or null makes neither: two Globals per
+    // call before.
     //
-    // `typeRetainsContext` is an ALLOWLIST of provably inert types
-    // and answers "retains" for anything it does not recognise. That
-    // direction matters: written as a blocklist, this exact check
-    // released a context `setTimeout` still needed and produced 10
-    // crashes out of 12 files. See tests/v8/retention_predicate_test.zig.
-    //
-    // Six handles per DOM object created were leaking here.
-    defer if (!self.params_retain_context) v8.v8_Context_Dispose(current_context);
-
-    // CROSS-REALM SUPPORT: For return value conversion, we need the METHOD's realm.
-    // When calling other.SomeInterface.prototype.method.call(obj), the result object
-    // should have its prototype from 'other' (the method's realm), not the caller's realm.
-    // This is critical for WPT test: default-toJSON-cross-realm.html
-    //
-    // We use getFunctionCreationContext() which accesses V8's internal layout to get
-    // the target function being called, then returns its creation context. This gives
-    // us the context where the function was instantiated (e.g., iframe context for
-    // other.DOMRectReadOnly.prototype.toJSON).
-    // Owned: this returns a fresh Global<Context> per call, which nothing was
-    // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
-    // one only; the `orelse` fallback is borrowed and freeing it would be a
-    // double free.
-    const method_context_owned = info.getFunctionCreationContext();
-    defer if (method_context_owned) |c| v8.v8_Context_Dispose(c);
-    const method_context = method_context_owned orelse current_context;
-
-    // Use current_context for argument parsing (input comes from caller's realm)
-    // Use method_context for return value conversion (output goes to method's realm)
-    const v8_context = current_context;
+    // The current context is the conversion's to keep when converting one of
+    // the arguments may make the engine keep it (`conv.fromV8Value` stores it
+    // into a persistent `runtime.CallbackWrapper` for callback-typed
+    // parameters, so `createElement(DOMString)` is transient while
+    // `setTimeout(TimerHandler, ...)` is not). `typeRetainsContext` is an
+    // ALLOWLIST of provably inert types and answers "retains" for anything it
+    // does not recognise. That direction matters: written as a blocklist,
+    // this exact check released a context `setTimeout` still needed and
+    // produced 10 crashes out of 12 files. See
+    // tests/v8/retention_predicate_test.zig.
+    var frame = CallFrame.init(info, self.params_retain_context);
+    defer frame.release();
 
     // Get allocator
     const isolate_alloc = @import("isolate_allocator.zig");
@@ -694,14 +677,10 @@ fn operationBody(info: *const v8.FunctionCallbackInfo, self: *const Operation) v
         return;
     };
 
-    // Get 'this' object and extract the Zig instance
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
-
-    const instance = operationReceiver(self, this_obj, isolate) orelse {
+    const instance = operationReceiver(self, info, isolate) orelse {
         // Throw TypeError from method's realm (function's creation context)
         // Per WebIDL spec: "Throw a TypeError using the function's realm."
-        conv.throwTypeErrorFromContext(isolate, method_context, "Illegal invocation");
+        throwInFunctionRealm(&frame, .type_error, "Illegal invocation");
         return;
     };
 
@@ -719,34 +698,40 @@ fn operationBody(info: *const v8.FunctionCallbackInfo, self: *const Operation) v
     // (`conv.implements`: only a test's hand-made vtable lacks
     // one).
     if (!self.implements(instance)) {
-        conv.throwTypeErrorFromContext(isolate, method_context, "Illegal invocation");
+        throwInFunctionRealm(&frame, .type_error, "Illegal invocation");
         return;
     }
 
     // Step 3: too few arguments is a TypeError, in the
     // operation's realm, before any is converted.
-    if (throwIfTooFewArguments(self, info, isolate, method_context)) return;
+    if (throwIfTooFewArguments(self, info, &frame)) return;
 
     // HTML 7.1.3.3: the access is checked for a report before the steps.
     if (self.window_access) |property| @import("protocol_realms.zig").reportWindowAccess(instance, property);
 
     // Call the method with appropriate arguments
-    // CROSS-REALM SUPPORT: Pass method_context for return value object creation
+    // CROSS-REALM SUPPORT: the frame gives the method's realm for a result
+    // object made there
     var result_owned = false;
-    const result = self.invoke(instance, info, allocator, isolate, v8_context, method_context, &result_owned) catch |err| {
+    const result = self.invoke(instance, info, allocator, isolate, &frame, &result_owned) catch |err| {
         // ExceptionPending means an exception was already rethrown during conversion
         if (err == conv.ConversionError.ExceptionPending) {
             return;
         }
         // Throw proper DOMException for WebIDL errors
-        interface.throwMemberError(isolate, method_context, err);
+        if (frame.functionContext()) |realm| {
+            interface.throwMemberError(isolate, realm, err);
+        } else {
+            conv.throwError(isolate, @errorName(err));
+        }
         return;
     };
 
     // Convert and set return value. setReturnValue copies, so a
     // handle the conversion made or the impl handed over is
     // released here - kept, a promise or an object pinned its
-    // whole page.
+    // whole page. A result set straight into the return slot
+    // (`setDirectResult`) comes back as null.
     if (result) |v8_result| {
         info.setReturnValue(v8_result);
         if (result_owned) v8.v8_Global_Dispose(v8_result);
@@ -754,9 +739,23 @@ fn operationBody(info: *const v8.FunctionCallbackInfo, self: *const Operation) v
     // If result is null, V8 will return undefined (correct for void methods)
 }
 
-/// The instance an operation's `this` (`this_obj`, borrowed) is, or null
-/// when it is none - the caller throws "Illegal invocation".
-fn operationReceiver(self: *const Operation, this_obj: *v8.Object, isolate: *v8.Isolate) ?*runtime.Instance {
+/// The instance an operation's `this` is, or null when it is none - the
+/// caller throws "Illegal invocation".
+fn operationReceiver(self: *const Operation, info: *const v8.FunctionCallbackInfo, isolate: *v8.Isolate) ?*runtime.Instance {
+    // A non-[Global] interface's receiver, read from `info` with no handle
+    // (`thisInstanceOf`, as the attribute getter reads it): a Global<Object>
+    // per call before (perf3 phase 1b). A freed instance's poisoned pointer
+    // is none, as `interface.getInstance` answered. Anything else - a
+    // [Global] interface, a `this` that is no instance of this one (the
+    // implicit global `this` below) - takes the handle.
+    if (!self.global_interface) {
+        if (thisInstanceOf(info, self.interface_name)) |found| {
+            if (!isPoisoned(@intFromPtr(found))) return @ptrCast(@alignCast(found));
+        }
+    }
+    const this_obj = info.getThis();
+    defer v8.v8_Object_Dispose(this_obj);
+
     // For [Global] interfaces (like Window), we need special handling:
     // Per WebIDL §3.8, if this is null/undefined, use the method's global object.
     // See PropertyGetterCallback for detailed explanation.
@@ -882,14 +881,14 @@ fn operationReceiver(self: *const Operation, this_obj: *v8.Object, isolate: *v8.
 /// converted. (A missing required DOMString used to convert as "", so
 /// `localStorage.getItem()` returned null instead of throwing.)
 /// True when it threw.
-fn throwIfTooFewArguments(self: *const Operation, info: *const v8.FunctionCallbackInfo, isolate: *v8.Isolate, context: *v8.Context) bool {
+fn throwIfTooFewArguments(self: *const Operation, info: *const v8.FunctionCallbackInfo, frame: *CallFrame) bool {
     const required = self.required_arguments;
     if (required == 0) return false;
     const given: usize = @intCast(@max(info.length(), 0));
     if (given >= required) return false;
     var buffer: [256]u8 = undefined;
     const message = std.fmt.bufPrint(&buffer, "Failed to execute '{s}' on '{s}': {d} argument{s} required, but only {d} present.", .{ self.operation_name, self.interface_name, required, if (required == 1) "" else "s", given }) catch "Not enough arguments";
-    conv.throwTypeErrorFromContext(isolate, context, message);
+    throwInFunctionRealm(frame, .type_error, message);
     return true;
 }
 
@@ -1453,6 +1452,21 @@ pub fn finishGetter(
         return;
     }
 
+    // A string, an enumeration value or a null result goes straight into the
+    // return slot as well: made in V8's callback scope, no Global to make and
+    // release per read (perf3 phase 1b: `el.id` made one Global per read,
+    // and its release took two process-wide locks). The values are the ones
+    // the conversions below give (WebIDL 3.2.10/3.2.12 "converted to an
+    // ECMAScript value": the String of the same code units; 3.2.24 an
+    // enumeration value's String; null). A [SameObject] getter keeps the
+    // path below: its edge needs the value.
+    if (comptime !byte_string and directGetterResult(PayloadType)) {
+        if (same_object == null) {
+            setDirectResult(info, PayloadType, result);
+            return;
+        }
+    }
+
     // Convert to V8 using comptime type dispatch
     const v8_value: *v8.Value = comptime_convert: {
         if (comptime byte_string) {
@@ -1643,6 +1657,97 @@ pub fn finishGetter(
     }
 }
 
+/// Whether a getter result of type `T` is set straight into the return slot
+/// by `setDirectResult` (perf3 phase 1b): a string, a nullable string, an
+/// enumeration value. An allowlist; everything else converts as before.
+pub fn directGetterResult(comptime T: type) bool {
+    if (T == runtime.DOMString or T == ?runtime.DOMString) return true;
+    if (T == []const u8 or T == ?[]const u8) return true;
+    return @typeInfo(T) == .@"enum";
+}
+
+/// Whether an operation's result of type `T` (its error union unwrapped) is
+/// set straight into the return slot (perf3 phase 1b): the getter's
+/// allowlist, plus the numbers and booleans `convertReturnValue` makes a
+/// Number or Boolean of - the same values (WebIDL 3.2.x: an integer type
+/// converts to the Number of its value, a float to its double, a boolean to
+/// itself), with no Global.
+pub fn directOperationResult(comptime T: type) bool {
+    if (directGetterResult(T)) return true;
+    const numbers = [_]type{ bool, i16, i32, i64, u16, u32, u64, f32, f64 };
+    inline for (numbers) |N| {
+        if (T == N) return true;
+    }
+    return false;
+}
+
+/// Set `value` (a `directOperationResult` type) as the call's return value,
+/// with no handle: a number or a boolean as setPrimitiveReturn writes it, null
+/// as the root, a string by `setReturnWtf8`, an enumeration value as the
+/// String of its IDL value.
+pub fn setDirectResult(info: *const v8.FunctionCallbackInfo, comptime T: type, value: T) void {
+    if (comptime @typeInfo(T) == .optional) {
+        if (value) |present| {
+            setDirectResult(info, @typeInfo(T).optional.child, present);
+        } else {
+            v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_SetReturnNull(info);
+        }
+    } else if (comptime T == runtime.DOMString) {
+        setReturnWtf8(info, value.asSlice());
+    } else if (comptime T == []const u8) {
+        setReturnWtf8(info, value);
+    } else if (comptime @typeInfo(T) == .@"enum") {
+        setReturnWtf8(info, conv.idlEnumValue(T, value));
+    } else if (comptime interface.primitiveGetterResult(T) or T == i16 or T == u16) {
+        interface.setPrimitiveReturn(info, T, value);
+    } else {
+        @compileError("setDirectResult: not a direct result type: " ++ @typeName(T));
+    }
+}
+
+/// Set the String of the code units the WTF-8 `bytes` encode as the call's
+/// return value (WebIDL 3.2.10: "the String value that represents the same
+/// sequence of code units"). ASCII is made with NewFromOneByte (a copy, no
+/// decode), well-formed UTF-8 with NewFromUtf8, both in V8's callback scope;
+/// bytes with a surrogate code point keep `conv.newStringFromWtf8`'s two-byte
+/// path and its Global, the one the result had before (rare: a lone
+/// surrogate in a DOM string).
+pub fn setReturnWtf8(info: *const v8.FunctionCallbackInfo, bytes: []const u8) void {
+    if (bytes.len > std.math.maxInt(c_int)) {
+        conv.setReturnUndefined(info);
+        return;
+    }
+    if (allAscii(bytes)) {
+        v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_SetReturnString(info, bytes.ptr, @intCast(bytes.len), true);
+        return;
+    }
+    if (value_operations.hasSurrogateCodePoint(bytes)) {
+        const isolate = info.getIsolate();
+        const made = conv.newStringFromWtf8(isolate, bytes) orelse {
+            conv.setReturnUndefined(info);
+            return;
+        };
+        info.setReturnValue(made);
+        v8.v8_Global_Dispose(made);
+        return;
+    }
+    v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_SetReturnString(info, bytes.ptr, @intCast(bytes.len), false);
+}
+
+/// Whether every byte of `bytes` is ASCII (below 0x80): sixteen at a time.
+fn allAscii(bytes: []const u8) bool {
+    const Lanes = @Vector(16, u8);
+    var i: usize = 0;
+    while (i + 16 <= bytes.len) : (i += 16) {
+        const lanes: Lanes = bytes[i..][0..16].*;
+        if (@reduce(.Or, lanes) & 0x80 != 0) return false;
+    }
+    while (i < bytes.len) : (i += 1) {
+        if (bytes[i] & 0x80 != 0) return false;
+    }
+    return true;
+}
+
 /// Tie the wrapper of a [SameObject] child to its owner's wrapper - the
 /// edge Blink traces - with one edge per realm. An element has one
 /// wrapper whatever realm reads it, but its child gets a wrapper in
@@ -1776,14 +1881,15 @@ pub const Setter = struct {
     /// Whether `instance` implements the interface (`conv.implements`).
     implements: *const fn (instance: *const runtime.Instance) bool,
     /// The attribute's own steps for an instance: convert the value, call the
-    /// impl's setter, throw what either failed with. It sets
-    /// `value_handed_over` when the conversion took the value's handle.
+    /// impl's setter, throw what either failed with. The value is read from
+    /// `info` when its type converts without a handle, else taken from
+    /// `value` (its Global, made then); the contexts come from `frame`. It
+    /// sets `value_handed_over` when the conversion took the value's handle.
     write: *const fn (
         info: *const v8.FunctionCallbackInfo,
         instance: *runtime.Instance,
-        new_value_v8: *v8.Value,
-        context: *v8.Context,
-        setter_context: *v8.Context,
+        frame: *CallFrame,
+        value: *SetterValue,
         value_handed_over: *bool,
     ) void,
     /// HTML's access report check for a CrossOriginProperties(Window)
@@ -1792,6 +1898,67 @@ pub const Setter = struct {
     /// (protocol_realms.reportWindowAccess), or null for every other member.
     window_access: ?[]const u8 = null,
 };
+
+/// A setter's value, info[0], as a Global made only when its conversion
+/// needs one (perf3 phase 1b): undefined when the argument is missing (WebIDL:
+/// a missing argument is undefined), the empty string for a null under
+/// [LegacyNullToEmptyString] (`interface.nullToEmptyString`). The setter
+/// releases what was made (setterBody's defer).
+pub const SetterValue = struct {
+    info: *const v8.FunctionCallbackInfo,
+    isolate: *v8.Isolate,
+    null_to_empty: bool,
+    handle: ?*v8.Value = null,
+
+    pub fn get(self: *SetterValue) *v8.Value {
+        if (self.handle) |made| return made;
+        const raw = if (self.info.length() > 0) self.info.get(0) else v8.v8_Undefined(self.isolate) orelse unreachable;
+        const made = if (self.null_to_empty) interface.nullToEmptyString(self.isolate, raw) else raw;
+        self.handle = made;
+        return made;
+    }
+};
+
+/// What `throwInFunctionRealm` throws.
+pub const ThrownError = enum { type_error, webidl };
+
+/// Throw a TypeError (`type_error`) or the WebIDL error named `message`
+/// (`webidl`) in the function's realm - "throw a TypeError using the
+/// function's realm" - from the call's frame; with no context at all, a plain
+/// error, as the binding threw when V8 had none.
+pub fn throwInFunctionRealm(frame: *CallFrame, kind: ThrownError, message: []const u8) void {
+    const realm = frame.functionContext() orelse {
+        conv.throwError(frame.isolate, message);
+        return;
+    };
+    switch (kind) {
+        .type_error => conv.throwTypeErrorFromContext(frame.isolate, realm, message),
+        .webidl => conv.throwWebIDLErrorFromContext(frame.isolate, realm, message),
+    }
+}
+
+/// `this`'s instance when it implements `interface_name` by its
+/// WrapperTypeInfo chain - or carries no type info but an instance, which
+/// `interface.getInstance` accepted - read from `info` with no handle
+/// (v8_FunctionCallbackInfo_ThisInstanceFields: internal fields 0 and 1,
+/// through a legacy platform object's proxy, as the attribute getter reads
+/// them; perf3 phase 1b). Null otherwise. Per WebIDL, a `this` that is not a
+/// platform object implementing the interface is a TypeError; checking the
+/// internal slots, not the prototype chain, holds across realms.
+pub fn thisInstanceOf(info: *const v8.FunctionCallbackInfo, interface_name: []const u8) ?*anyopaque {
+    var this_instance: ?*anyopaque = null;
+    var this_type_info: ?*anyopaque = null;
+    v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ThisInstanceFields(info, &this_instance, &this_type_info);
+    const instance = this_instance orelse return null;
+    const stored = this_type_info orelse return instance;
+    // IMPORTANT: the inheritance chain, not just an exact match: a method on
+    // Node.prototype called on an HTMLDivElement.
+    var current: ?*const interface.WrapperTypeInfo = @ptrCast(@alignCast(stored));
+    while (current) |type_info| : (current = type_info.parent) {
+        if (std.mem.eql(u8, type_info.getName(), interface_name)) return instance;
+    }
+    return null;
+}
 
 /// An attribute setter function's steps (the generic makeSetterCallback's
 /// callback and body), for the attribute `self` describes.
@@ -1817,45 +1984,33 @@ const SetterCall = struct {
 
 fn setterBody(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
     const isolate_inner = info.getIsolate();
-    const context = v8.v8_Isolate_GetCurrentContext(isolate_inner) orelse {
-        conv.throwError(isolate_inner, "No context available");
-        return;
-    };
-    // Released unless converting the value may keep it - the
-    // allowlist every other binding path consults. Before, a
-    // setter never released it, so each `el.onclick = f` pinned
-    // its page.
-    defer if (!self.value_retains_context) v8.v8_Context_Dispose(context);
-
-    // Get function's creation context for cross-realm error throwing
-    // Per WebIDL spec: "Throw a TypeError using the function's realm."
-    // Owned: this returns a fresh Global<Context> per call, which nothing was
-    // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
-    // one only; the `orelse` fallback is borrowed and freeing it would be a
-    // double free.
-    const setter_context_owned = info.getFunctionCreationContext();
-    defer if (setter_context_owned) |c| v8.v8_Context_Dispose(c);
-    const setter_context = setter_context_owned orelse context;
+    // The call's contexts, made when a step asks for one (perf3 phase 1b):
+    // the current context for a conversion that needs it, the setter's own
+    // realm ("Throw a TypeError using the function's realm") for an error.
+    // A setter that converts its value without either - a String into a
+    // DOMString, a Number, a boolean - makes neither: two Globals per
+    // assignment before. Each is released when the setter returns, but the
+    // current context once the value's conversion may keep it
+    // (`value_retains_context`, the allowlist every other binding path
+    // consults; before, a setter never released it, so each
+    // `el.onclick = f` pinned its page).
+    var frame = CallFrame.init(info, self.value_retains_context);
+    defer frame.release();
 
     // WebIDL attribute setter 4.5.2 precedes conversion.
     // CrossOriginProperties exempts href's setter.
     if (self.checks_receiver) {
         if (!@import("cross_origin.zig").receiverIsAccessible(info)) {
-            conv.throwWebIDLErrorFromContext(isolate_inner, setter_context, "SecurityError");
+            throwInFunctionRealm(&frame, .webidl, "SecurityError");
             return;
         }
     }
 
-    // Get the new value from info[0] - handle missing arguments as undefined
-    // Per WebIDL spec, missing arguments should be treated as undefined
-    const raw_value_v8 = if (info.length() > 0) info.get(0) else v8.v8_Undefined(isolate_inner) orelse unreachable;
-    const new_value_v8 = if (self.null_to_empty)
-        interface.nullToEmptyString(isolate_inner, raw_value_v8)
-    else
-        raw_value_v8;
-    // The value's handle is owned (`info.get` allocates a Global,
-    // as does `v8_Undefined`), and released here unless it was
-    // handed to a conversion that may keep it - the rule
+    // The value, info[0] - undefined when missing (WebIDL: a missing
+    // argument is undefined) - as a Global made only when its conversion
+    // needs one (`SetterValue`). That handle is owned (`info.get`
+    // allocates a Global, as does `v8_Undefined`), and released here
+    // unless it was handed to a conversion that may keep it - the rule
     // `convertArgReleasing` applies to an operation's arguments,
     // `argHandleIsCopied`. A setter released nothing, so every
     // assignment leaked one handle, and one that held an object
@@ -1872,14 +2027,13 @@ fn setterBody(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
     // for the setter: a take moved its function out, and the
     // emptied box goes without the general dispose's lookups
     // (v8_Global_DisposeCallbackValue), as an argument's does.
+    var value: SetterValue = .{ .info = info, .isolate = isolate_inner, .null_to_empty = self.null_to_empty };
     var value_handed_over = false;
-    defer if (self.value_is_copied or !value_handed_over) {
-        if (self.value_is_callback) v8.v8_Global_DisposeCallbackValue(new_value_v8) else v8.v8_Value_Dispose(new_value_v8);
+    defer if (value.handle) |made| {
+        if (self.value_is_copied or !value_handed_over) {
+            if (self.value_is_callback) v8.v8_Global_DisposeCallbackValue(made) else v8.v8_Value_Dispose(made);
+        }
     };
-
-    // Extract instance from 'this'
-    const this_obj = info.getThis();
-    defer v8.v8_Object_Dispose(this_obj);
 
     // Check if this is a [LegacyLenientThis] attribute
     const is_lenient_this = self.lenient_this;
@@ -1889,6 +2043,11 @@ fn setterBody(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
     // See PropertyGetterCallback for detailed explanation.
     const resolved_instance: ?*anyopaque = blk: {
         if (self.global_interface) {
+            // A handle for `this`: a [Global] receiver is compared with
+            // the realm's global object (the only setters that still make
+            // one; `thisInstanceOf` serves every other).
+            const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
             if (v8.v8_Isolate_GetCurrentContext(isolate_inner)) |method_ctx| {
                 // Owned, as in the getter: one Global<Context> per [Global] setter
                 // call leaked, pinning the page.
@@ -1952,56 +2111,14 @@ fn setterBody(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
             // Per WebIDL spec, type checking should be done via internal slots:
             // "If the this value is null or undefined, or is not a platform object
             // that implements the interface, then throw a TypeError"
-            const wrapper_type_info_registry_setter = @import("wrapper_type_info_registry.zig");
-            if (wrapper_type_info_registry_setter.getWrapperTypeInfoByName(self.interface_name)) |expected_type| {
-                if (interface.getInstanceTypeSafe(runtime.Instance, this_obj, expected_type)) |inst| {
-                    break :blk @ptrCast(inst);
-                }
-                // Type check failed - not an instance of this interface
-                if (is_lenient_this) {
-                    // [LegacyLenientThis] - silently return per WebIDL §4.3.10
-                    conv.setReturnUndefined(info);
-                    return;
-                }
-                // Regular attribute - fall through to throw TypeError
-            } else {
-                // Type info not found via comptime lookup - check WrapperTypeInfo in slot 1
-                if (interface.getWrapperTypeInfo(this_obj)) |stored_type_info| {
-                    // WrapperTypeInfo is present - use it for type checking
-                    // Per WebIDL spec: "If the this value is null or undefined, or is not a
-                    // platform object that implements the interface, then throw a TypeError"
-                    //
-                    // IMPORTANT: Check inheritance chain, not just exact match!
-                    // E.g., if setter is on Node.prototype and this is HTMLDivElement,
-                    // we need to check if HTMLDivElement inherits from Node.
-                    var current_type: ?*const interface.WrapperTypeInfo = stored_type_info;
-                    const type_matches = while (current_type) |type_info| {
-                        if (std.mem.eql(u8, type_info.getName(), self.interface_name)) {
-                            break true;
-                        }
-                        current_type = type_info.parent;
-                    } else false;
-
-                    if (type_matches) {
-                        // Type matches (including inheritance) - get instance pointer from slot 0
-                        const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-                        if (instance_ptr != null) {
-                            break :blk instance_ptr;
-                        }
-                    }
-                    // Type mismatch - fall through to throw TypeError
-                } else {
-                    // No WrapperTypeInfo in slot 1 - fall back to legacy getInstance check
-                    const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-                    if (instance_ptr != null) {
-                        break :blk instance_ptr;
-                    }
-                }
-                // [LegacyLenientThis] - silently return instead of throwing
-                if (is_lenient_this) {
-                    conv.setReturnUndefined(info);
-                    return;
-                }
+            // `this`'s internal fields, read from `info` with no handle
+            // (`thisInstanceOf`, as the attribute getter reads them): a
+            // Global<Object> per assignment before (perf3 phase 1b).
+            if (thisInstanceOf(info, self.interface_name)) |instance_ptr| break :blk instance_ptr;
+            // [LegacyLenientThis] - silently return instead of throwing
+            if (is_lenient_this) {
+                conv.setReturnUndefined(info);
+                return;
             }
         }
 
@@ -2014,12 +2131,12 @@ fn setterBody(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
 
         // Throw TypeError from setter's realm (function's creation context)
         // Per WebIDL spec: "Throw a TypeError using the function's realm."
-        conv.throwTypeErrorFromContext(isolate_inner, setter_context, "Illegal invocation");
+        throwInFunctionRealm(&frame, .type_error, "Illegal invocation");
         return;
     };
 
     if (resolved_instance == null) {
-        conv.throwTypeErrorFromContext(isolate_inner, setter_context, "Illegal invocation");
+        throwInFunctionRealm(&frame, .type_error, "Illegal invocation");
         return;
     }
 
@@ -2034,7 +2151,7 @@ fn setterBody(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
 
     if (!self.implements(instance)) {
         if (!is_lenient_this) {
-            conv.throwTypeErrorFromContext(isolate_inner, setter_context, "Illegal invocation");
+            throwInFunctionRealm(&frame, .type_error, "Illegal invocation");
         }
         return;
     }
@@ -2042,7 +2159,7 @@ fn setterBody(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
     // HTML 7.1.3.3: the access is checked for a report before the steps.
     if (self.window_access) |property| @import("protocol_realms.zig").reportWindowAccess(instance, property);
 
-    self.write(info, instance, new_value_v8, context, setter_context, &value_handed_over);
+    self.write(info, instance, &frame, &value, &value_handed_over);
 }
 
 // ============================================================================
@@ -2066,11 +2183,12 @@ pub fn OperationPayload(comptime ReturnType: type) type {
 pub fn finishOperation(
     comptime ReturnType: type,
     comptime byte_string: bool,
+    info: *const v8.FunctionCallbackInfo,
     instance: *runtime.Instance,
     zig_result: OperationPayload(ReturnType),
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
-    return_context: *v8.Context,
+    frame: *CallFrame,
     result_owned: *bool,
 ) !?*v8.Value {
     // Determine the payload type (unwrap error union if needed) for cleanup
@@ -2183,9 +2301,22 @@ pub fn finishOperation(
         }
     };
 
+    // A string, a number, a boolean, an enumeration value or null goes
+    // straight into the return slot, made in V8's callback scope with no
+    // Global (perf3 phase 1b; `directOperationResult`): the values
+    // convertReturnValue makes of them, and they need no realm.
+    if (comptime !byte_string and directOperationResult(PayloadType)) {
+        result_owned.* = false;
+        setDirectResult(info, PayloadType, zig_result);
+        return null;
+    }
+
     // Convert return value to V8
-    // CROSS-REALM SUPPORT: Use return_context (method's realm) for object creation
-    return try convertReturnValue(ReturnType, byte_string, zig_result, allocator, isolate, return_context, result_owned);
+    // CROSS-REALM SUPPORT: the method's realm (the frame's function context)
+    // for object creation - asked of the frame only by the results made in
+    // it (a union's or a dictionary's object): a void, a wrapper or a handle
+    // makes no context (perf3 phase 1b: every void operation made one).
+    return try convertReturnValue(ReturnType, byte_string, zig_result, allocator, isolate, frame, result_owned);
 }
 
 /// Convert Zig return value to V8 Value
@@ -2195,7 +2326,7 @@ pub fn convertReturnValue(
     result: anytype,
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
-    v8_context: *v8.Context,
+    frame: *CallFrame,
     owned: *bool,
 ) !?*v8.Value {
     // Suppress unused parameter warning - allocator used only in recursive calls
@@ -2216,7 +2347,7 @@ pub fn convertReturnValue(
     // Handle error union - unwrap it
     if (type_info == .error_union) {
         const PayloadType = type_info.error_union.payload;
-        return convertReturnValue(PayloadType, byte_string, result, std.heap.page_allocator, isolate, v8_context, owned);
+        return convertReturnValue(PayloadType, byte_string, result, std.heap.page_allocator, isolate, frame, owned);
     }
 
     // Handle void return
@@ -2233,7 +2364,7 @@ pub fn convertReturnValue(
     if (type_info == .optional) {
         if (result) |value| {
             const ChildType = type_info.optional.child;
-            return convertReturnValue(ChildType, false, value, std.heap.page_allocator, isolate, v8_context, owned);
+            return convertReturnValue(ChildType, false, value, std.heap.page_allocator, isolate, frame, owned);
         } else {
             owned.* = true;
             return @ptrCast(v8.v8_Null(isolate));
@@ -2348,6 +2479,10 @@ pub fn convertReturnValue(
     // `owned` was left false for every union, so FormData.get kept
     // the String of every string entry it returned.
     if (type_info == .@"union") {
+        const v8_context = frame.functionContext() orelse {
+            owned.* = true;
+            return v8.v8_Undefined(isolate);
+        };
         const converted = conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
             owned.* = true;
             return v8.v8_Undefined(isolate);
@@ -2370,6 +2505,10 @@ pub fn convertReturnValue(
         // (conv.releaseReturnedDictionaryHandles).
         owned.* = comptime conv.dictionaryValueIsOwned(ReturnType);
         defer conv.releaseReturnedDictionaryHandles(ReturnType, result);
+        const v8_context = frame.functionContext() orelse {
+            owned.* = true;
+            return v8.v8_Undefined(isolate);
+        };
         return conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
             owned.* = true;
             return v8.v8_Undefined(isolate);

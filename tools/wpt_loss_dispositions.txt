@@ -745,3 +745,11 @@ why = Not a code change: the COEP reporting stall family (lane coi2's area; repo
 pair.1 = base 0/9; tip 3/9
 pair.2 = base 3/9; tip 3/9
 pair.3 = base 3/9; tip 3/9
+
+[navigation-timing/nav2-test-redirect-server.html]
+generation = 208
+kind = flake
+why = Not a code change: 1 -> 0 in generation 208's sweep ("Expected startTime to be no greater than redirectStart", the redirectStart flake queued in feature-queue FLAKE CANDIDATES 2026-11-07). Five isolated pairs on chat.local 2026-11-07 11:44-11:46 UTC, the file alone in a fresh runner each time, alternating base/tip (integrator; ~/crane-work/integrate-flk/pairs.sh, `wpt_runner --wpt-root=tests/wpt --from-file=<the file>`): BASE ~/crane-frozen/main-0a09b60539 (generation 207's runner) vs TIP ~/crane-frozen/main-0f7c8a5f49 (generation 208's). All five: base 1,1,0,0,0 of 1; tip 0,0,1,1,1 of 1 (pairs 4-5: base 0/1, tip 1/1). Lane anim1 b3's alternating reruns earlier the same day: base 8/10 FAIL, tip 9/10 FAIL. This is the path's first flake disposition; the next flip makes it a bug with an owner (the redirectStart flake item).
+pair.1 = base 1/1; tip 0/1
+pair.2 = base 1/1; tip 0/1
+pair.3 = base 0/1; tip 1/1
