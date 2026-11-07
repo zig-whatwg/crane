@@ -44,6 +44,8 @@ const template_registry = @import("template_registry.zig");
 const window_properties = @import("window_properties.zig");
 const value_operations = @import("value_operations.zig");
 const binding_plumbing = @import("binding_plumbing.zig");
+const CallFrame = @import("call_frame.zig").CallFrame;
+const ArgumentRead = @import("call_frame.zig").ArgumentRead;
 
 /// Re-export WrapperTypeInfo for use by generated bindings
 pub const WrapperTypeInfo = wrapper_type_info.WrapperTypeInfo;
@@ -1009,25 +1011,70 @@ pub fn convertArgChecked(
     arg: *v8.Value,
 ) !T {
     var value = try convertArgReleasingWith(T, mode, allocator, isolate, context, arg);
+    try finishArgChecks(T, mode, allocator, &value);
+    return value;
+}
+
+/// Argument `index` of the call (present: the caller checked the count),
+/// converted by `mode` as `convertArgChecked` converts it - its conversion,
+/// then the checks codegen's tables add. Read with no handle when its type and
+/// its value allow (perf3 phase 1b, `conv.fromArgumentRead`: a String,
+/// Number, Boolean, null, undefined or wrapper for a type whose conversion of
+/// it runs no script); otherwise from its Global, made then (`info.get`;
+/// [LegacyNullToEmptyString]'s "" for a null when `null_to_empty`), in the
+/// frame's current context, exactly as before.
+pub fn convertArgAt(
+    comptime T: type,
+    comptime mode: ArgMode,
+    comptime null_to_empty: bool,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    frame: *CallFrame,
+    info: *const v8.FunctionCallbackInfo,
+    index: c_int,
+) !T {
+    var value: T = converted: {
+        if (comptime argHandleIsCopied(T) and conv.argReadConverts(T, mode.interface)) {
+            var read: ArgumentRead = undefined;
+            var buffer: [conv.argument_buffer_len]u8 = undefined;
+            v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ReadArgument(info, index, &read, &buffer, buffer.len);
+            if (try conv.fromArgumentRead(T, mode.interface, mode.integer, null_to_empty, allocator, info, index, &read, &buffer)) |fast| break :converted fast;
+        }
+        const raw = info.get(index);
+        const arg = if (null_to_empty) nullToEmptyString(isolate, raw) else raw;
+        const context = frame.currentContext() orelse {
+            v8.v8_Value_Dispose(arg);
+            return conv.ConversionError.TypeError;
+        };
+        break :converted try convertArgReleasingWith(T, mode, allocator, isolate, context, arg);
+    };
+    try finishArgChecks(T, mode, allocator, &value);
+    return value;
+}
+
+/// The checks codegen's tables add to an argument's conversion
+/// (`convertArgChecked`): a restricted float's finiteness, a ByteString's
+/// code units, an `object`'s type. What the conversion made is freed when one
+/// fails.
+fn finishArgChecks(comptime T: type, comptime mode: ArgMode, allocator: std.mem.Allocator, value: *T) !void {
     if (comptime mode.restricted) {
-        conv.requireFinite(T, value) catch |err| {
-            freeConvertedArg(T, allocator, value);
+        conv.requireFinite(T, value.*) catch |err| {
+            freeConvertedArg(T, allocator, value.*);
             return err;
         };
     }
     if (comptime mode.byte_string) {
-        conv.encodeByteStringOwned(T, allocator, &value) catch |err| {
-            freeConvertedArg(T, allocator, value);
+        conv.encodeByteStringOwned(T, allocator, value) catch |err| {
+            freeConvertedArg(T, allocator, value.*);
             return err;
         };
     }
     if (comptime mode.object) {
-        conv.requireObject(T, value) catch |err| {
-            freeConvertedArg(T, allocator, value);
+        conv.requireObject(T, value.*) catch |err| {
+            freeConvertedArg(T, allocator, value.*);
             return err;
         };
     }
-    return value;
 }
 
 /// One argument's conversion by its `mode`: to the interface it names, or by
@@ -1583,6 +1630,12 @@ pub fn nullToEmptyString(isolate: *v8.Isolate, value: *v8.Value) *v8.Value {
     const empty = v8.v8_String_NewFromUtf8(isolate, "", 0) orelse return value;
     v8.v8_Value_Dispose(value);
     return @ptrCast(empty);
+}
+
+/// Whether [LegacyNullToEmptyString] applies to argument `index` of an
+/// operation whose arguments `mask` names (ArgView's rule).
+fn nullToEmptyBit(comptime mask: u32, comptime index: usize) bool {
+    return index < 32 and (mask >> @intCast(index)) & 1 != 0;
 }
 
 /// A FunctionCallbackInfo whose `get` applies [LegacyNullToEmptyString] to the
@@ -4185,8 +4238,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     info: *const v8.FunctionCallbackInfo,
                     allocator: std.mem.Allocator,
                     isolate: *v8.Isolate,
-                    v8_context: *v8.Context,
-                    method_context: *v8.Context,
+                    frame: *CallFrame,
                     result_owned: *bool,
                 ) anyerror!?*v8.Value {
                     // Get the method function at comptime
@@ -4215,8 +4267,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         info,
                         allocator,
                         isolate,
-                        v8_context,
-                        method_context, // Use method's realm for return value
+                        frame, // the caller's realm for arguments, the method's for the result
                         result_owned,
                     );
                 }
@@ -4302,9 +4353,10 @@ pub fn V8Interface(comptime Interface: type) type {
 
         /// Call method with arguments parsed using comptime reflection
         ///
-        /// Supports cross-realm object creation via return_context parameter:
-        /// - v8_context: Context for parsing input arguments (caller's realm)
-        /// - return_context: Context for creating return value objects (method's realm)
+        /// Supports cross-realm object creation through the call's frame
+        /// (call_frame.zig): its current context for parsing input arguments
+        /// (the caller's realm), its function context for creating return
+        /// value objects (the method's realm) - each made only when used.
         fn callMethodWithArgs(
             comptime method_fn: anytype,
             comptime params: anytype,
@@ -4316,8 +4368,7 @@ pub fn V8Interface(comptime Interface: type) type {
             raw_info: *const v8.FunctionCallbackInfo,
             allocator: std.mem.Allocator,
             isolate: *v8.Isolate,
-            v8_context: *v8.Context,
-            return_context: *v8.Context,
+            frame: *CallFrame,
             result_owned: *bool,
         ) !?*v8.Value {
             const info = ArgView(null_to_empty){ .raw = raw_info, .isolate = isolate };
@@ -4334,7 +4385,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (comptime isVariadicParam(Param1Type)) {
                         // Collect all JS arguments into a slice
                         const ElemType = @typeInfo(Param1Type).pointer.child;
-                        const arg1 = try collectVariadicArgs(ElemType, comptime argMode(modes, 0), allocator, isolate, v8_context, info.raw, 0);
+                        const arg1 = try collectVariadicArgs(ElemType, comptime argMode(modes, 0), allocator, isolate, frame.currentContext() orelse return conv.ConversionError.TypeError, info.raw, 0);
                         // Free each element in the slice, then free the slice itself
                         defer {
                             for (arg1) |elem| freeArgument(ElemType, allocator, elem);
@@ -4344,8 +4395,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
 
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
-                        const v8_arg1 = info.get(0);
-                        break :arg_blk try convertArg(Param1Type, comptime argMode(modes, 0), allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArgAt(Param1Type, comptime argMode(modes, 0), comptime nullToEmptyBit(null_to_empty, 0), allocator, isolate, frame, info.raw, 0);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -4364,8 +4414,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Handle first parameter - may be optional
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
-                        const v8_arg1 = info.get(0);
-                        break :arg_blk try convertArg(Param1Type, comptime argMode(modes, 0), allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArgAt(Param1Type, comptime argMode(modes, 0), comptime nullToEmptyBit(null_to_empty, 0), allocator, isolate, frame, info.raw, 0);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -4384,7 +4433,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // createHTML("x", "a") and console.assert(c, "m").
                     if (comptime isVariadicParam(Param2Type)) {
                         const ElemType = @typeInfo(Param2Type).pointer.child;
-                        const rest = try collectVariadicArgs(ElemType, comptime argMode(modes, 1), allocator, isolate, v8_context, info.raw, 1);
+                        const rest = try collectVariadicArgs(ElemType, comptime argMode(modes, 1), allocator, isolate, frame.currentContext() orelse return conv.ConversionError.TypeError, info.raw, 1);
                         defer {
                             for (rest) |elem| freeArgument(ElemType, allocator, elem);
                             if (rest.len > 0) allocator.free(rest);
@@ -4393,8 +4442,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
 
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
-                        const v8_arg2 = info.get(1);
-                        break :arg_blk try convertArg(Param2Type, comptime argMode(modes, 1), allocator, isolate, v8_context, v8_arg2);
+                        break :arg_blk try convertArgAt(Param2Type, comptime argMode(modes, 1), comptime nullToEmptyBit(null_to_empty, 1), allocator, isolate, frame, info.raw, 1);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param2Type)) |default_val| {
@@ -4414,8 +4462,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Handle first parameter - may be optional
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
-                        const v8_arg1 = info.get(0);
-                        break :arg_blk try convertArg(Param1Type, comptime argMode(modes, 0), allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArgAt(Param1Type, comptime argMode(modes, 0), comptime nullToEmptyBit(null_to_empty, 0), allocator, isolate, frame, info.raw, 0);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                             break :arg_blk default_val;
@@ -4429,8 +4476,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Handle second parameter - may be optional
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
-                        const v8_arg2 = info.get(1);
-                        break :arg_blk try convertArg(Param2Type, comptime argMode(modes, 1), allocator, isolate, v8_context, v8_arg2);
+                        break :arg_blk try convertArgAt(Param2Type, comptime argMode(modes, 1), comptime nullToEmptyBit(null_to_empty, 1), allocator, isolate, frame, info.raw, 1);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                             break :arg_blk default_val;
@@ -4445,7 +4491,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // A trailing variadic, as in the two-parameter branch.
                     if (comptime isVariadicParam(Param3Type)) {
                         const ElemType = @typeInfo(Param3Type).pointer.child;
-                        const rest = try collectVariadicArgs(ElemType, comptime argMode(modes, 2), allocator, isolate, v8_context, info.raw, 2);
+                        const rest = try collectVariadicArgs(ElemType, comptime argMode(modes, 2), allocator, isolate, frame.currentContext() orelse return conv.ConversionError.TypeError, info.raw, 2);
                         defer {
                             for (rest) |elem| freeArgument(ElemType, allocator, elem);
                             if (rest.len > 0) allocator.free(rest);
@@ -4454,8 +4500,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
 
                     const arg3 = if (js_arg_count >= 3) arg_blk: {
-                        const v8_arg3 = info.get(2);
-                        break :arg_blk try convertArg(Param3Type, comptime argMode(modes, 2), allocator, isolate, v8_context, v8_arg3);
+                        break :arg_blk try convertArgAt(Param3Type, comptime argMode(modes, 2), comptime nullToEmptyBit(null_to_empty, 2), allocator, isolate, frame, info.raw, 2);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param3Type)) |default_val| {
@@ -4476,8 +4521,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Handle first parameter - may be optional
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
-                        const v8_arg1 = info.get(0);
-                        break :arg_blk try convertArg(Param1Type, comptime argMode(modes, 0), allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArgAt(Param1Type, comptime argMode(modes, 0), comptime nullToEmptyBit(null_to_empty, 0), allocator, isolate, frame, info.raw, 0);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                             break :arg_blk default_val;
@@ -4491,8 +4535,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     // Handle second parameter - may be optional
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
-                        const v8_arg2 = info.get(1);
-                        break :arg_blk try convertArg(Param2Type, comptime argMode(modes, 1), allocator, isolate, v8_context, v8_arg2);
+                        break :arg_blk try convertArgAt(Param2Type, comptime argMode(modes, 1), comptime nullToEmptyBit(null_to_empty, 1), allocator, isolate, frame, info.raw, 1);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                             break :arg_blk default_val;
@@ -4505,8 +4548,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     defer freeArgument(Param2Type, allocator, arg2);
 
                     const arg3 = if (js_arg_count >= 3) arg_blk: {
-                        const v8_arg3 = info.get(2);
-                        break :arg_blk try convertArg(Param3Type, comptime argMode(modes, 2), allocator, isolate, v8_context, v8_arg3);
+                        break :arg_blk try convertArgAt(Param3Type, comptime argMode(modes, 2), comptime nullToEmptyBit(null_to_empty, 2), allocator, isolate, frame, info.raw, 2);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param3Type)) |default_val| {
                             break :arg_blk default_val;
@@ -4519,8 +4561,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     defer freeArgument(Param3Type, allocator, arg3);
 
                     const arg4 = if (js_arg_count >= 4) arg_blk: {
-                        const v8_arg4 = info.get(3);
-                        break :arg_blk try convertArg(Param4Type, comptime argMode(modes, 3), allocator, isolate, v8_context, v8_arg4);
+                        break :arg_blk try convertArgAt(Param4Type, comptime argMode(modes, 3), comptime nullToEmptyBit(null_to_empty, 3), allocator, isolate, frame, info.raw, 3);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param4Type)) |default_val| {
                             break :arg_blk default_val;
@@ -4554,8 +4595,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     inline for (params[1..], 1..) |param, i| {
                         const ParamType = param.type.?;
                         call_args[i] = if (js_arg_count >= i) arg_blk: {
-                            const v8_arg = info.get(@intCast(i - 1));
-                            break :arg_blk try convertArg(ParamType, comptime argMode(modes, i - 1), allocator, isolate, v8_context, v8_arg);
+                            break :arg_blk try convertArgAt(ParamType, comptime argMode(modes, i - 1), comptime nullToEmptyBit(null_to_empty, i - 1), allocator, isolate, frame, info.raw, @intCast(i - 1));
                         } else arg_blk: {
                             if (comptime getDefaultArgValue(ParamType)) |default_val| {
                                 break :arg_blk default_val;
@@ -4574,7 +4614,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // The result's cleanup and conversion depend on its type alone:
             // binding_plumbing.finishOperation, shared by every operation
             // that returns a `ReturnType`.
-            return binding_plumbing.finishOperation(ReturnType, comptime returnsByteString(Interface, modes.fn_name), instance, zig_result, allocator, isolate, return_context, result_owned);
+            return binding_plumbing.finishOperation(ReturnType, comptime returnsByteString(Interface, modes.fn_name), raw_info, instance, zig_result, allocator, isolate, frame, result_owned);
         }
 
         /// Register a method on the prototype template using generated callback
@@ -7763,9 +7803,8 @@ pub fn V8Interface(comptime Interface: type) type {
                 fn write(
                     info: *const v8.FunctionCallbackInfo,
                     instance: *runtime.Instance,
-                    new_value_v8: *v8.Value,
-                    context: *v8.Context,
-                    setter_context: *v8.Context,
+                    frame: *CallFrame,
+                    value: *binding_plumbing.SetterValue,
                     value_handed_over: *bool,
                 ) void {
                     const isolate_inner = info.getIsolate();
@@ -7805,12 +7844,29 @@ pub fn V8Interface(comptime Interface: type) type {
                         }
                         break :blk false;
                     };
-                    const converted_value = if (comptime legacy_callback)
-                        conv.fromV8LegacyCallbackAttribute(ValueType, new_value_v8)
-                    else if (comptime setter_integer != .modulo)
-                        conv.fromV8ValueInteger(ValueType, setter_integer, allocator, isolate_inner, context, new_value_v8)
-                    else
-                        convertV8ToZig(ValueType, comptime argumentInterface(Interface, setter_name_param, 0), allocator, isolate_inner, context, new_value_v8);
+                    const value_interface = comptime argumentInterface(Interface, setter_name_param, 0);
+                    const converted_value = converted: {
+                        if (comptime legacy_callback) break :converted conv.fromV8LegacyCallbackAttribute(ValueType, value.get());
+                        // A value whose type copies out of it and converts
+                        // without script for this value - a String, a Number,
+                        // a boolean, a wrapper - is read from `info` with no
+                        // handle (perf3 phase 1b, `conv.fromArgumentRead`);
+                        // any other takes its Global (`value.get`) and the
+                        // current context, and converts as before.
+                        if (comptime value_is_copied and conv.argReadConverts(ValueType, value_interface)) {
+                            var read: ArgumentRead = undefined;
+                            var buffer: [conv.argument_buffer_len]u8 = undefined;
+                            v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ReadArgument(info, 0, &read, &buffer, buffer.len);
+                            if (read.kind != .missing) {
+                                const fast = conv.fromArgumentRead(ValueType, value_interface, setter_integer, comptime legacyNullToEmptyMask(Interface, setter_name_param) != 0, allocator, info, 0, &read, &buffer) catch |err| break :converted @as(conv.ConversionError!ValueType, err);
+                                if (fast) |done| break :converted @as(conv.ConversionError!ValueType, done);
+                            }
+                        }
+                        const context = frame.currentContext() orelse break :converted @as(conv.ConversionError!ValueType, conv.ConversionError.TypeError);
+                        if (comptime setter_integer != .modulo)
+                            break :converted conv.fromV8ValueInteger(ValueType, setter_integer, allocator, isolate_inner, context, value.get());
+                        break :converted convertV8ToZig(ValueType, value_interface, allocator, isolate_inner, context, value.get());
+                    };
                     var zig_value = converted_value catch |err| {
                         // A strict callback rejects before taking its Global.
                         // The setter's defer still owns that failed argument.
@@ -7825,7 +7881,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             conv.setReturnUndefined(info);
                             return;
                         }
-                        conv.throwWebIDLErrorFromContext(isolate_inner, setter_context, @errorName(err));
+                        binding_plumbing.throwInFunctionRealm(frame, .webidl, @errorName(err));
                         return;
                     };
                     defer freeConvertedValue(ValueType, allocator, zig_value);
@@ -7842,7 +7898,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // setter steps run.
                     if (comptime restrictedFloatMask(Interface, setter_name_param) & 1 != 0) {
                         conv.requireFinite(ValueType, zig_value) catch |err| {
-                            conv.throwWebIDLErrorFromContext(isolate_inner, setter_context, @errorName(err));
+                            binding_plumbing.throwInFunctionRealm(frame, .webidl, @errorName(err));
                             return;
                         };
                     }
@@ -7850,7 +7906,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // above 0xFF is a TypeError, before the setter steps run.
                     if (comptime byteStringMask(Interface, setter_name_param) & 1 != 0) {
                         conv.encodeByteStringOwned(ValueType, allocator, &zig_value) catch |err| {
-                            conv.throwWebIDLErrorFromContext(isolate_inner, setter_context, @errorName(err));
+                            binding_plumbing.throwInFunctionRealm(frame, .webidl, @errorName(err));
                             return;
                         };
                     }
@@ -7865,7 +7921,12 @@ pub fn V8Interface(comptime Interface: type) type {
                         // toString) - is rethrown as it is: throwMemberError
                         // throws nothing over it.
                         zig_setter(instance, zig_value) catch |err| {
-                            throwMemberError(isolate_inner, setter_context, err);
+                            if (err == error.ExceptionPending) return;
+                            if (frame.functionContext()) |realm| {
+                                throwMemberError(isolate_inner, realm, err);
+                            } else {
+                                conv.throwError(isolate_inner, @errorName(err));
+                            }
                             return;
                         };
                     } else {
@@ -8205,6 +8266,9 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Call the static method with appropriate arguments
                     // For indexed callbacks, return_context is same as v8_context (no cross-realm)
                     var result_owned = false;
+                    // The contexts this callback holds (and releases): the
+                    // caller's for both, as before.
+                    var frame = CallFrame.borrowing(info, v8_context, v8_context);
                     const result = callMethodWithArgs(
                         method_fn,
                         params,
@@ -8216,8 +8280,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         info,
                         allocator,
                         isolate,
-                        v8_context,
-                        v8_context, // return_context: same as caller context for indexed callbacks
+                        &frame,
                         &result_owned,
                     ) catch |err| {
                         if (err == conv.ConversionError.ExceptionPending) {

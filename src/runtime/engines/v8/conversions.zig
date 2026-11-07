@@ -1438,6 +1438,157 @@ pub fn interfaceNamed(comptime name: []const u8) type {
 /// sets it: every `v8_Object_SetAlignedPointerInInternalField(_, 0, _)` in
 /// the adapter stores an Instance or null (a WindowProperties object holds
 /// its Window's).
+// ============================================================================
+// An argument read with no handle (perf3 phase 1b)
+// ============================================================================
+
+const ArgumentRead = @import("call_frame.zig").ArgumentRead;
+
+/// Bytes a string argument is read into before it is copied: on the binding's
+/// stack. A longer one is read straight into an allocation of its length.
+pub const argument_buffer_len = 128;
+
+/// Whether an argument (or a setter's value) of type `T` - with `Interface`
+/// for an interface type - may convert from what
+/// `v8_FunctionCallbackInfo_ReadArgument` reads, with no handle: a type whose
+/// conversion copies out of its value (`interface.argHandleIsCopied`) and
+/// whose WebIDL conversion runs no script for the values `fromArgumentRead`
+/// takes. An allowlist; every other type converts as before.
+pub fn argReadConverts(comptime T: type, comptime Interface: ?type) bool {
+    return comptime blk: {
+        const info = @typeInfo(T);
+        if (info == .optional) break :blk argReadConverts(info.optional.child, Interface);
+        if (info == .@"struct" and @hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed") and @hasField(T, "value")) {
+            break :blk argReadConverts(@FieldType(T, "value"), Interface);
+        }
+        if (T == bool) break :blk true;
+        if (info == .int and info.int.bits <= 64) break :blk true;
+        if (T == f32 or T == f64) break :blk true;
+        if (T == runtime.DOMString or T == []const u8) break :blk true;
+        if (info == .@"enum") break :blk true;
+        if (T == *runtime.Instance) break :blk Interface != null;
+        break :blk false;
+    };
+}
+
+/// An argument of type `T` (`argReadConverts`) converted from `read` - what
+/// `v8_FunctionCallbackInfo_ReadArgument` read of argument `index`, its
+/// string bytes in `buffer` - when the value is one whose conversion runs no
+/// script, with the result the general conversion gives:
+///
+/// - boolean: ToBoolean of anything (WebIDL 3.2.3; it runs no script);
+/// - an integer or float type: a Number, a Boolean, null or undefined -
+///   ToNumber of each is its number, 1/0, +0, NaN - then ConvertToInt by
+///   `integer`'s branch (3.2.4), a float's value (3.2.5-3.2.9);
+/// - DOMString, USVString, ByteString: a String - ToString(V) is V (3.2.10
+///   step 2) - copied to an `.owned` DOMString or an allocated slice, the
+///   ownership the general conversion gives; a USVString's lone surrogates
+///   become U+FFFD (3.2.12), as there; a null under [LegacyNullToEmptyString]
+///   (`null_to_empty`) is "";
+/// - an enumeration: a String, then the value match (3.2.24);
+/// - an interface type: "V implements I" or a TypeError (3.2.15), from the
+///   wrapper's instance (`implements`), as `convertToInterface` decides;
+/// - a nullable type: undefined and null are null (3.2.20); an optional
+///   argument (`webidl.Opt`): undefined is not passed, as in `convertValueAs`.
+///
+/// Null when the value needs the general conversion (an object to
+/// ToPrimitive, a string to ToNumber, a Symbol, a BigInt): the caller takes
+/// the argument's handle and converts it as before, so the exceptions and the
+/// order of script those raise are unchanged.
+pub fn fromArgumentRead(
+    comptime T: type,
+    comptime Interface: ?type,
+    comptime integer: IntegerConversion,
+    comptime null_to_empty: bool,
+    allocator: std.mem.Allocator,
+    info: *const v8.FunctionCallbackInfo,
+    index: c_int,
+    read: *const ArgumentRead,
+    buffer: []const u8,
+) ConversionError!?T {
+    const type_info = @typeInfo(T);
+    // [LegacyNullToEmptyString]: null is "" before anything else, as the
+    // binding's ArgView makes it (interface.nullToEmptyString).
+    if (null_to_empty and read.kind == .null) {
+        const S = comptime if (type_info == .optional) type_info.optional.child else T;
+        if (comptime S == runtime.DOMString) return @as(T, runtime.DOMString.empty);
+        if (comptime S == []const u8) return @as(T, &[_]u8{});
+        // A non-string type under the attribute: the general conversion
+        // converts the "" nullToEmptyString makes.
+        return null;
+    }
+    if (comptime type_info == .optional) {
+        if (read.kind == .undefined or read.kind == .null) return @as(T, null);
+        const child = (try fromArgumentRead(type_info.optional.child, Interface, integer, false, allocator, info, index, read, buffer)) orelse return null;
+        return @as(T, child);
+    }
+    if (comptime type_info == .@"struct") {
+        // webidl.Opt (argReadConverts admitted nothing else).
+        if (read.kind == .undefined) return T.notPassed();
+        const inner = (try fromArgumentRead(@FieldType(T, "value"), Interface, integer, false, allocator, info, index, read, buffer)) orelse return null;
+        return T.passed(inner);
+    }
+    if (comptime T == bool) return read.boolean;
+    if (comptime type_info == .int or T == f32 or T == f64) {
+        const number: f64 = switch (read.kind) {
+            .number => read.number,
+            .boolean => if (read.boolean) 1 else 0,
+            .null => 0,
+            .undefined => std.math.nan(f64),
+            else => return null,
+        };
+        if (comptime type_info == .int) return try convertToIntAs(T, integer, number);
+        return @as(T, @floatCast(number));
+    }
+    if (comptime T == runtime.DOMString or T == []const u8) {
+        if (read.kind != .string) return null;
+        const bytes = try argumentStringBytes(allocator, info, index, read, buffer);
+        if (comptime T == runtime.DOMString) {
+            if (bytes.len == 0) return runtime.DOMString.empty;
+            return runtime.DOMString.initOwned(bytes);
+        }
+        if (bytes.len == 0) return &[_]u8{};
+        // USVString (and ByteString, which shares the Zig type): lone
+        // surrogates become U+FFFD.
+        replaceLoneSurrogates(bytes);
+        return bytes;
+    }
+    if (comptime type_info == .@"enum") {
+        if (read.kind != .string or !read.fits) return null;
+        return enumFromIdlValue(T, buffer[0..@intCast(read.length)]) orelse ConversionError.TypeError;
+    }
+    if (comptime T == *runtime.Instance) {
+        const I = comptime Interface.?;
+        if (read.kind != .object) return ConversionError.TypeError;
+        const raw = read.instance orelse return ConversionError.TypeError;
+        if (isPoisonedInstance(@intFromPtr(raw))) return ConversionError.TypeError;
+        const instance: *runtime.Instance = @ptrCast(@alignCast(raw));
+        if (!implements(instance, I)) return ConversionError.TypeError;
+        return instance;
+    }
+    @compileError("fromArgumentRead: not an argReadConverts type: " ++ @typeName(T));
+}
+
+/// A String argument's WTF-8, copied into an allocation the caller owns: from
+/// `buffer` when it fit, else read again straight into one of its length.
+fn argumentStringBytes(allocator: std.mem.Allocator, info: *const v8.FunctionCallbackInfo, index: c_int, read: *const ArgumentRead, buffer: []const u8) ConversionError![]u8 {
+    if (read.length <= 0) return @constCast(&[_]u8{});
+    const length: usize = @intCast(read.length);
+    if (read.fits) return try allocator.dupe(u8, buffer[0..length]);
+    const bytes = try allocator.alloc(u8, length);
+    errdefer allocator.free(bytes);
+    const written = v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ReadArgumentString(info, index, bytes.ptr, @intCast(length));
+    if (written != read.length) return ConversionError.StringError;
+    return bytes;
+}
+
+/// An allocator's poison fill read as an instance pointer: a freed instance
+/// (`interface.getInstance`'s check).
+fn isPoisonedInstance(address: usize) bool {
+    return address == 0xaaaaaaaaaaaaaaaa or address == 0xdeaddeaddeaddead or
+        (address & 0xFFFF000000000000) == 0xaaaa000000000000;
+}
+
 pub fn platformObjectOf(value: *v8.Value) ?*runtime.Instance {
     if (!v8.v8_Value_IsObject(value)) return null;
     // A function has no internal fields to read: no platform object here is

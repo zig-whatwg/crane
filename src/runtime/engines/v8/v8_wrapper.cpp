@@ -6232,6 +6232,128 @@ Global<Value>* v8_FunctionCallbackInfo_GetArgument(const FunctionCallbackInfo<Va
     return trackHandle(new Global<Value>(isolate, arg));
 }
 
+// ---- lane perf3, phase 1b: a binding call's own values, with no Global ----
+//
+// A binding callback runs inside the HandleScope V8 opens around every API
+// callback (CallApiFunctionAndReturn "Allocates HandleScope, extracts returned
+// value from handle and propagates exceptions"), as Blink's generated bindings
+// rely on (they open none for an attribute or an operation). These functions
+// make their Locals there - none opens a scope or makes a Global - and hand Zig
+// plain data, never a Local: so no Local outlives the call that made it, and a
+// return value is written into V8's own return slot (a root of the call frame)
+// before any scope a caller opened around the body closes. Called only with the
+// `info` of a live callback (call_frame.zig; tmp/plans/perf3-design.md 5.2).
+
+/// A string result: `length` bytes of ASCII (`one_byte`: NewFromOneByte, a copy
+/// with no decode) or well-formed UTF-8 (NewFromUtf8). WTF-8 with surrogate code
+/// points takes the two-byte path the binding had (conversions.newStringFromWtf8).
+/// Undefined when V8 refuses the length (String::kMaxLength), as before.
+void v8_FunctionCallbackInfo_SetReturnString(const FunctionCallbackInfo<Value>* info, const uint8_t* bytes, int length, bool one_byte) {
+    if (length == 0) {
+        info->GetReturnValue().SetEmptyString();
+        return;
+    }
+    Isolate* isolate = info->GetIsolate();
+    MaybeLocal<String> made = one_byte
+        ? String::NewFromOneByte(isolate, bytes, NewStringType::kNormal, length)
+        : String::NewFromUtf8(isolate, reinterpret_cast<const char*>(bytes), NewStringType::kNormal, length);
+    Local<String> str;
+    if (!made.ToLocal(&str)) {
+        info->GetReturnValue().SetUndefined();
+        return;
+    }
+    info->GetReturnValue().Set(str);
+}
+
+/// A null result: the root, no handle.
+void v8_FunctionCallbackInfo_SetReturnNull(const FunctionCallbackInfo<Value>* info) {
+    info->GetReturnValue().SetNull();
+}
+
+/// What v8_FunctionCallbackInfo_ReadArgument read (call_frame.zig's
+/// ArgumentRead, field for field).
+struct ArgumentRead {
+    int32_t kind;  // 0 missing, 1 undefined, 2 null, 3 boolean, 4 number, 5 string, 6 object, 7 other
+    int32_t length;
+    double number;
+    bool boolean;
+    bool fits;
+    void* instance;
+    void* type_info;
+};
+
+/// Argument `index` of the call, read with no handle: its kind; ToBoolean of it
+/// (which runs no script); a Number's value; a String's WTF-8 into `buffer` (the
+/// bytes v8_String_WriteUtf8 gives: no REPLACE_INVALID_UTF8, so a lone surrogate
+/// is its three-byte form, as fromV8String reads it), whole or not at all
+/// (`fits`; `length` is then the bytes a buffer needs); an object's internal
+/// fields 0 and 1 through a legacy platform object's proxy, as `this` is read
+/// (v8_FunctionCallbackInfo_ThisInstanceFields) - none for a function, which no
+/// platform object is (conversions.platformObjectOf).
+void v8_FunctionCallbackInfo_ReadArgument(const FunctionCallbackInfo<Value>* info, int index, ArgumentRead* out, char* buffer, int capacity) {
+    out->kind = 0;
+    out->length = 0;
+    out->number = 0;
+    out->boolean = false;
+    out->fits = false;
+    out->instance = nullptr;
+    out->type_info = nullptr;
+    if (index < 0 || index >= info->Length()) return;
+    Isolate* isolate = info->GetIsolate();
+    Local<Value> value = (*info)[index];
+    out->boolean = value->BooleanValue(isolate);
+    if (value->IsUndefined()) {
+        out->kind = 1;
+    } else if (value->IsNull()) {
+        out->kind = 2;
+    } else if (value->IsBoolean()) {
+        out->kind = 3;
+    } else if (value->IsNumber()) {
+        out->kind = 4;
+        out->number = value.As<Number>()->Value();
+    } else if (value->IsString()) {
+        out->kind = 5;
+        Local<String> str = value.As<String>();
+        int chars = 0;
+        const int written = str->WriteUtf8(isolate, buffer, capacity, &chars, String::NO_NULL_TERMINATION);
+        if (chars == str->Length()) {
+            out->fits = true;
+            out->length = written;
+        } else {
+            out->length = str->Utf8Length(isolate);
+        }
+    } else if (value->IsObject()) {
+        out->kind = 6;
+        if (value->IsFunction()) return;
+        Local<Object> object = value.As<Object>();
+        if (object->IsProxy()) {
+            Local<Value> target = object.As<Proxy>()->GetTarget();
+            if (!target->IsObject()) return;
+            object = target.As<Object>();
+        }
+        const int count = object->InternalFieldCount();
+        if (count >= 1) out->instance = object->GetAlignedPointerFromInternalField(isolate, 0);
+        if (count >= 2) out->type_info = object->GetAlignedPointerFromInternalField(isolate, 1);
+    } else {
+        out->kind = 7;
+    }
+}
+
+/// A String argument too long for the first buffer: its whole WTF-8 into
+/// `buffer` of `length` bytes (the length ReadArgument gave). Returns the bytes
+/// written, or -1 when the argument is no longer a String of that length.
+int v8_FunctionCallbackInfo_ReadArgumentString(const FunctionCallbackInfo<Value>* info, int index, char* buffer, int length) {
+    if (index < 0 || index >= info->Length()) return -1;
+    Local<Value> value = (*info)[index];
+    if (!value->IsString()) return -1;
+    Isolate* isolate = info->GetIsolate();
+    Local<String> str = value.As<String>();
+    int chars = 0;
+    const int written = str->WriteUtf8(isolate, buffer, length, &chars, String::NO_NULL_TERMINATION);
+    if (chars != str->Length()) return -1;
+    return written;
+}
+
 void v8_FunctionCallbackInfo_SetReturnValue(const FunctionCallbackInfo<Value>* info, Global<Value>* value) {
     if (!value) {
         // Null value passed - set undefined and log warning
@@ -6342,10 +6464,6 @@ void v8_FunctionCallbackInfo_SetReturnValueGlobal(const FunctionCallbackInfo<Val
         return;
     }
 
-    Isolate* isolate = info->GetIsolate();
-    HandleScope handle_scope(isolate);
-
-    // Cast to Global<Value>* and get the Local from it
     Global<Value>* global = reinterpret_cast<Global<Value>*>(global_ptr);
 
     // Check if the Global handle is empty
@@ -6355,8 +6473,10 @@ void v8_FunctionCallbackInfo_SetReturnValueGlobal(const FunctionCallbackInfo<Val
         return;
     }
 
-    Local<Value> local = global->Get(isolate);
-    info->GetReturnValue().Set(local);
+    // ReturnValue::Set(const Global<S>&) reads the node's slot straight into
+    // the return slot: no HandleScope and no Local copy (perf3 phase 1b; a
+    // scope and a copy per wrapper or handle result before).
+    info->GetReturnValue().Set(*global);
 }
 
 void v8_Function_Dispose(Global<Function>* fn) {
