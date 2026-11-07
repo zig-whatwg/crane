@@ -284,8 +284,8 @@ test "Instance.init - a block a larger state dirtied comes back zeroed for the n
         count: u64 = 0,
         flags: [64]bool = @splat(false),
     };
-    const larger_vtable = runtime.VTable{ .name = "<larger>", .methods_ptr = &test_delegates, .state_size = @sizeOf(Larger), .state_align = @alignOf(Larger) };
-    const smaller_vtable = runtime.VTable{ .name = "<smaller>", .methods_ptr = &test_delegates, .state_size = @sizeOf(Smaller), .state_align = @alignOf(Smaller) };
+    const larger_vtable = runtime.VTable{ .name = "<larger>", .deinit = null, .methods_ptr = &test_delegates, .state_size = @sizeOf(Larger), .state_align = @alignOf(Larger) };
+    const smaller_vtable = runtime.VTable{ .name = "<smaller>", .deinit = null, .methods_ptr = &test_delegates, .state_size = @sizeOf(Smaller), .state_align = @alignOf(Smaller) };
     try testing.expectEqual(runtime.ArenaAllocator.heldBytes(@sizeOf(Larger), @alignOf(Larger)), runtime.ArenaAllocator.heldBytes(@sizeOf(Smaller), @alignOf(Smaller)));
 
     const first = try runtime.Instance.init(allocator, Larger, &larger_vtable, ctx);

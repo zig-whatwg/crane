@@ -154,10 +154,18 @@ pub const ArenaAllocator = struct {
     /// path is necessarily untyped; the allocate path has to match it or the two
     /// would disagree about which class a block belongs to.
     ///
-    /// The returned memory is ZEROED. `Instance.init` already memsets state,
-    /// because Zig does not apply struct defaults through an allocator - but a
-    /// recycled block also carries the previous occupant's bytes, and an optional
-    /// pointer field coming back non-null would be dereferenced.
+    /// The request's bytes are ZEROED, here and only here: Zig does not apply
+    /// struct defaults through an allocator, and a recycled block carries its
+    /// previous occupant's bytes - an optional pointer field coming back non-null
+    /// would be dereferenced. Instance.init, OwnState.createIn and
+    /// InstanceRegistry.createIn rely on it and do not zero again (lane perf2,
+    /// batch 3: a div's state block was zeroed twice, the whole 2,048-byte class
+    /// and then the State, and a fresh block was first filled with 0xAA by std's
+    /// `alignedAlloc` in ReleaseSafe - 2.0% of dom.create-element, MEASURED).
+    ///
+    /// Only the request, never the rest of its class: this occupant never reads
+    /// past its own bytes, and a later, larger occupant of the block zeroes its
+    /// own request when it takes it.
     pub fn createRaw(self: *ArenaAllocator, size: usize, alignment: usize) ![*]u8 {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
@@ -187,19 +195,21 @@ pub const ArenaAllocator = struct {
 
         if (sizeClassOf(size, alignment)) |class| {
             if (self.popFree(class)) |recycled| {
-                @memset(recycled[0..classSize(class)], 0);
+                @memset(recycled[0..size], 0);
                 return recycled;
             }
             // Allocate the whole class, not the request: the block goes back on
             // this class's list, and a later request in the same class may be
-            // larger than this one.
-            const bytes = try self.arena.allocator().alignedAlloc(
-                u8,
-                .of(FreeBlock),
+            // larger than this one. `rawAlloc`, not `alignedAlloc`: the latter
+            // writes `undefined` over the whole block first (0xAA in ReleaseSafe),
+            // a pass the zeroing below would only overwrite.
+            const bytes = self.arena.allocator().rawAlloc(
                 classSize(class),
-            );
-            @memset(bytes, 0);
-            return bytes.ptr;
+                .of(FreeBlock),
+                @returnAddress(),
+            ) orelse return error.OutOfMemory;
+            @memset(bytes[0..size], 0);
+            return bytes;
         }
 
         const bytes = self.arena.allocator().rawAlloc(
