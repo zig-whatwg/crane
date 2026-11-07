@@ -3440,6 +3440,14 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
             // Step 16.1: navigate it, then (step 18) return its WindowProxy -
             // or null with noopener.
             if (url_record) |u| navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u, .current_document = this_document, .noopener = noopener });
+            // Step 16.2: "If noopener is false, then set targetNavigable's
+            // active browsing context's opener browsing context to
+            // sourceDocument's browsing context." Chrome, Firefox and Safari
+            // pass windows/embedded-opener.html (wpt.fyi 94f58d592d): the
+            // frame's window.opener is the window that opened it by name.
+            // Only for a frame another browsing context opened: a popup found
+            // by name keeps the opener it has.
+            if (!noopener and frame_window != instance) setOpener(frame_window, instance) catch {};
             return if (noopener) null else frame_window;
         }
         // Deviation from HTML window-open step 13, which starts selection

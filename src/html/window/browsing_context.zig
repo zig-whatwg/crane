@@ -645,6 +645,16 @@ pub const BrowsingContext = struct {
         // not freed here: their owners free them.
         self.removeFromParent();
         self.releaseChildren();
+        // The opener links to this context end too: a context it opened - a
+        // popup, or a frame window.open() navigated by name (window open
+        // steps 16.2) - is freed on its own owner's schedule, and its
+        // window.opener then answers null, as Blink's Frame::Detach clears
+        // every openee's opener (OpenedFrameTracker).
+        if (self.navigables) |navigables| {
+            for (navigables.contexts()) |other| {
+                if (other != self and other.opener == self) other.opener = null;
+            }
+        }
 
         // Only deinit the children list if it was actually allocated (capacity > 0).
         // An unallocated ArrayListUnmanaged (initialized with .{}) has capacity 0
