@@ -102,20 +102,21 @@ test "every OwnState level keeps its InternalState by value in its own State" {
     try std.testing.expectEqual(@as(usize, 0), missing);
 }
 
-test "Node's embedded state is its NodeBase by value and the four fields a node uses: 152 bytes" {
+test "Node's embedded state is its NodeBase by value and the five fields a node uses: 168 bytes" {
     const E = Embedded(interfaces.Node.State);
     if (E == void) {
         return error.NotEmbedded;
     } else {
-        // node_base 8, node_type 2, owner_document 8 + its generation 8,
-        // child_nodes_list 8, the NodeBase 112. Gone: local_name (written,
-        // never read), namespace_uri (its one writer had no caller), prefix
-        // and node_value (no writer), is_connected (NodeBase's is the one the
-        // DOM reads) and the allocator copy (the node's Browser's:
-        // runtime.allocatorOf).
-        try expectSize(E, 152);
+        // allocator 16, node_base 8, node_type 2, owner_document 8 + its
+        // generation 8, child_nodes_list 8, the NodeBase 112. Gone:
+        // local_name (written, never read), namespace_uri (its one writer had
+        // no caller), prefix and node_value (no writer) and is_connected
+        // (NodeBase's is the one the DOM reads). The allocator copy stays
+        // until every realm's creation allocator is its scope's (the V8
+        // tests' realms are not).
+        try expectSize(E, 168);
         try std.testing.expect(@FieldType(E, "base") == NodeBase);
-        inline for (.{ "local_name", "namespace_uri", "prefix", "node_value", "is_connected", "allocator" }) |dead| {
+        inline for (.{ "local_name", "namespace_uri", "prefix", "node_value", "is_connected" }) |dead| {
             if (@hasField(E, dead)) {
                 std.debug.print("Node's state still has `{s}`\n", .{dead});
                 return error.DeadFieldKept;

@@ -1,16 +1,15 @@
 //! A node is freed through the allocator that made it (lane perf2, batch 5).
 //!
-//! A node's state keeps no allocator copy any more: what its impl allocates
-//! and frees goes through its Browser's allocator (runtime.allocatorOf, read
-//! from the scope that issued its slot and block). That is the allocator it
-//! was made with only because the creation allocator IS the scope's - Node's
-//! initOwn asserts it. A test that fails allocations in a construction chain
-//! therefore makes its Browser scope with the failing allocator too
-//! (fx1_policy_document_test's FailingScope), and this test proves the
-//! discipline end to end: under a leak-checking, poisoning DebugAllocator
-//! wrapped in a FailingAllocator, everything a Browser scope, a Document and
-//! its elements allocate is freed through that same wrapper - its allocated
-//! and freed byte counts agree - and the DebugAllocator reports no leak.
+//! Z7 puts a node's NodeBase and InternalStates in its State block, which its
+//! Browser's arena hands out; what the node's state owns is allocated with the
+//! allocator it was made with. In a Browser the two are one allocator, and a
+//! test that fails allocations in a construction chain makes its Browser scope
+//! with the failing allocator too (fx1_policy_document_test's FailingScope).
+//! This test proves the discipline end to end: under a leak-checking,
+//! poisoning DebugAllocator wrapped in a FailingAllocator, everything a
+//! Browser scope, a Document and its elements allocate is freed through that
+//! same wrapper - its allocated and freed byte counts agree - and the
+//! DebugAllocator reports no leak.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");

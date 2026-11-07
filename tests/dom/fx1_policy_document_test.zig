@@ -30,10 +30,11 @@ const Fixture = struct {
 };
 
 /// A Browser scope and a realm made with `allocator`, standing in for the
-/// standalone one while they live: a node's creation allocator is its
-/// Browser's (Node's initOwn asserts it), so a test that fails allocations in
-/// the construction chain makes the scope with the failing allocator too, and
-/// every node is freed through the allocator that made it (lane perf2 b5).
+/// standalone one while they live: as in a Browser, a node's creation
+/// allocator is its Browser's, so a test that fails allocations in the
+/// construction chain makes the scope with the failing allocator too, and
+/// every node - its State block included - is freed through the allocator
+/// that made it (lane perf2 b5).
 const FailingScope = struct {
     scope: *runtime.BrowserScope,
     previous: ?*runtime.BrowserScope,

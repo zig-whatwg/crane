@@ -74,9 +74,13 @@ pub const InternalState = struct {
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
-    // No allocator copy (lane perf2 batch 5): what the node allocates comes
-    // from its Browser's allocator, runtime.allocatorOf(instance) - the one
-    // it was made with (asserted in initOwn).
+    /// The allocator the node was made with: what its state allocates and
+    /// frees. Not its Browser's (runtime.allocatorOf) - the two are one in a
+    /// Browser, but the V8 tests' realms make nodes with the test's
+    /// allocator over the process's standalone scope (lane perf2 batch 5:
+    /// 210 tests), so the copy stays until those realms get scopes of their
+    /// own.
+    allocator: std.mem.Allocator,
 
     /// NodeBase - THE source of truth for tree structure
     /// Contains: parent_node, first_child, last_child, previous_sibling, next_sibling
@@ -205,14 +209,8 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // builds).
     const internal = try Registry.create(instance);
     errdefer Registry.remove(instance);
-    // The allocator a node is made with IS its Browser's (the realm's scope,
-    // which issued its slot and block): every later allocation for it, and
-    // every free, goes through runtime.allocatorOf, which reads that scope -
-    // so a node is freed through the allocator that made it. A test that
-    // fails allocations builds its scope with the failing allocator
-    // (tests/dom/perf2b5_node_allocator_test.zig).
-    std.debug.assert(allocator.ptr == runtime.allocatorOf(instance).ptr and allocator.vtable == runtime.allocatorOf(instance).vtable);
     internal.* = .{
+        .allocator = allocator,
         .node_type = node_type,
         .base = .{
             .allocator = allocator,
@@ -335,7 +333,7 @@ pub fn deinit(instance: *runtime.Instance) void {
                     }
                 } else {
                     // Large tree: allocate dynamic array
-                    const alloc_children = runtime.allocatorOf(instance).alloc(*runtime.Instance, child_count) catch {
+                    const alloc_children = internal.allocator.alloc(*runtime.Instance, child_count) catch {
                         // On allocation failure, fall back to iterating directly
                         // This is less safe but better than doing nothing
                         var child = node_base.first_child;
@@ -356,7 +354,7 @@ pub fn deinit(instance: *runtime.Instance) void {
                         interfaces.EventTarget.deinitChain(instance);
                         return;
                     };
-                    defer runtime.allocatorOf(instance).free(alloc_children);
+                    defer internal.allocator.free(alloc_children);
 
                     var child_base_walk = node_base.children();
                     while (child_base_walk.next()) |child_base| {
@@ -789,7 +787,7 @@ pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Create a live NodeList for this node's children: made through its
     // interface, made live over them by NodeList's step (dom.node_lists).
-    const list = try interfaces.NodeList.init(runtime.allocatorOf(instance), instance.ctx);
+    const list = try interfaces.NodeList.init(internal.allocator, instance.ctx);
     errdefer interfaces.NodeList.deinit(list);
     try dom_module.node_lists.childNodes(list, instance);
 
@@ -1371,8 +1369,8 @@ pub fn cloneANode(
 fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallback_registry: ?*runtime.Instance) !*runtime.Instance {
     const node_internal = getInternal(node) orelse return error.InvalidStateError;
 
-    // The node's Browser's allocator (runtime.allocatorOf)
-    const allocator = runtime.allocatorOf(node);
+    // Get allocator from node's state
+    const allocator = node_internal.allocator;
 
     // DOM 4.4 "clone a node" step 2: copy must implement the same interfaces as
     // node. A CharacterData copy built as a bare Node has no CharacterData
