@@ -272,6 +272,21 @@ pub fn ownCustomValues(animation: *const model.Animation, effect: *const model.E
     return .{ .name = transition.property.custom, .start = transition.start.custom, .end = transition.end.custom };
 }
 
+/// A longhand transition's start and end values, while `effect` is its
+/// effect with the keyframes it was made with: effect_stack uses these
+/// computed values in place of the keyframes' serialized text, which keeps
+/// only six significant digits (CSS Transitions 1 3: the transition runs
+/// from the start value to the end value - Blink's TransitionKeyframes hold
+/// the computed values themselves).
+pub fn ownLonghandValues(animation: *const model.Animation, effect: *const model.Effect) ?struct { longhand: Longhand, start: Value, end: Value } {
+    const transition = transitionOf(animation) orelse return null;
+    if (transition.property != .longhand) return null;
+    const own = transition.own_effect orelse return null;
+    if (own.get() != effect.instance) return null;
+    if (transition.start != .value or transition.end != .value) return null;
+    return .{ .longhand = transition.property.longhand, .start = transition.start.value, .end = transition.end.value };
+}
+
 /// Script replaced `effect`'s keyframes (setKeyframes): a transition that
 /// owned them no longer does.
 pub fn keyframesReplaced(effect: *model.Effect) void {

@@ -579,6 +579,19 @@ fn applyEffect(allocator: Allocator, effect: *model.Effect, base: *const Compute
             };
         }
     }
+    // A CSS transition's keyframes are its start and end values themselves,
+    // not their serialized text (css_transitions.ownLonghandValues).
+    if (effect.animationModel()) |animation| {
+        if (@import("css_transitions.zig").ownLonghandValues(animation, effect)) |own| {
+            for (computed_values.items) |*c| {
+                if (c.longhand != base.physical(own.longhand)) continue;
+                const value = if (c.frame == 0) own.start else own.end;
+                value.retain();
+                c.value.release();
+                c.value = value;
+            }
+        }
+    }
     // Each target property in turn (5.3.4).
     var keyframe_list: std.ArrayListUnmanaged(PK) = .empty;
     defer keyframe_list.deinit(allocator);

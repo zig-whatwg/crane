@@ -121,6 +121,10 @@ const Mix = struct {
     space: Space = .oklab,
     hue: spaces.HueMethod = .shorter,
     items: []MixItem,
+    /// Set only by interpolateColors: an interpolation between legacy
+    /// colors (CSS Color 4 12.1) whose currentcolor resolves later; its
+    /// resolved color is a legacy color. Authored color-mix() never sets it.
+    legacy: bool = false,
     fn release(self: Mix, allocator: Allocator) void {
         for (self.items) |item| {
             item.color.release();
@@ -200,7 +204,7 @@ pub const Expression = struct {
             },
             .mix => |mix| blk: {
                 const other = b.data.mix;
-                if (mix.space != other.space or mix.hue != other.hue or mix.items.len != other.items.len) break :blk false;
+                if (mix.space != other.space or mix.hue != other.hue or mix.legacy != other.legacy or mix.items.len != other.items.len) break :blk false;
                 for (mix.items, other.items) |x, y| {
                     if (!x.color.eql(y.color) or (x.weight == null) != (y.weight == null)) break :blk false;
                     if (x.weight) |weight| if (!weight.eql(y.weight.?)) break :blk false;
@@ -890,10 +894,10 @@ fn computeMix(input: Mix, allocator: Allocator, context: Color.Context) Allocato
         count += 1;
         if (original.weight) |weight| item.weight = try weight.compute(allocator, numeric_context);
     }
-    const output = Mix{ .space = input.space, .hue = input.hue, .items = items };
+    const output = Mix{ .space = input.space, .hue = input.hue, .items = items, .legacy = input.legacy };
     if (mixValue(output)) |components| {
         output.release(allocator);
-        return .{ .resolved = .{ .value = components } };
+        return .{ .resolved = .{ .value = components, .legacy = input.legacy } };
     }
     return .{ .mix = output };
 }
@@ -926,4 +930,51 @@ fn mixValue(mix: Mix) ?Components {
 fn legacyBytes(components: Components) values.RgbaColor {
     const rgb = components.convert(.srgb);
     return .{ .r = byte(rgb.channel(0)), .g = byte(rgb.channel(1)), .b = byte(rgb.channel(2)), .a = @floatCast(std.math.clamp(rgb.channel(3), 0, 1)) };
+}
+
+/// CSS Values 4 section 3 interpolation of two COMPUTED colors at `p` (any
+/// real), for the pairs css.interpolation's legacy sRGB path does not take
+/// (CSS Color 4 section 12 "Color Interpolation"):
+/// - two resolved colors: in Oklab, the default interpolation space ("If the
+///   host syntax does not define what color space interpolation should take
+///   place in, it defaults to Oklab"), premultiplied, extrapolating outside
+///   [0, 1]; sRGB when both are legacy colors (12.1: legacy colors
+///   interpolate in sRGB);
+/// - a pair holding currentcolor (or another unresolved color): the
+///   color-mix() of the two, which stays a computed value naming
+///   currentcolor and resolves against the element's `color` when used
+///   (CSS Color 5 color-mix() computed value; Blink keeps the same pair as a
+///   StyleColor::UnresolvedColorMix), in sRGB when every other color is a
+///   legacy one, else Oklab. Its percentages are p clamped to [0, 1]
+///   (color-mix() weights cannot extrapolate).
+/// OWNED; null when either color is a value this cannot mix.
+pub fn interpolateColors(allocator: Allocator, a: Color, b: Color, p: f64) Allocator.Error!?Color {
+    // The same color on both sides (currentcolor and currentcolor above all)
+    // is that color: no mix that would stop naming currentcolor.
+    if (a.eql(b)) {
+        a.retain();
+        return a;
+    }
+    const legacy = legacyOrCurrent(a) and legacyOrCurrent(b);
+    if (resolvedComponents(a)) |ca| if (resolvedComponents(b)) |cb| {
+        const both_legacy = legacy and a != .current and b != .current;
+        const value = spaces.interpolate(ca, cb, if (both_legacy) .srgb else .oklab, .shorter, p);
+        return try Expression.create(allocator, .{ .resolved = .{ .value = value, .legacy = both_legacy } });
+    };
+    const weight = std.math.clamp(p, 0, 1) * 100;
+    const items = try allocator.alloc(MixItem, 2);
+    a.retain();
+    b.retain();
+    items[0] = .{ .color = a, .weight = .{ .literal = .{ .value = 100 - weight, .unit = .percent } } };
+    items[1] = .{ .color = b, .weight = .{ .literal = .{ .value = weight, .unit = .percent } } };
+    return try Expression.create(allocator, .{ .mix = .{ .space = if (legacy) .srgb else .oklab, .items = items, .legacy = legacy } });
+}
+
+/// A legacy color (CSS Color 4 12.1: rgb(), hsl(), hwb(), named and system
+/// colors, hex) or currentcolor.
+fn legacyOrCurrent(color: Color) bool {
+    return switch (color) {
+        .rgba, .transparent_keyword, .named, .system, .current => true,
+        .expression => |expression| expression.data == .resolved and expression.data.resolved.legacy,
+    };
 }

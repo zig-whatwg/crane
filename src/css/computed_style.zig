@@ -504,6 +504,21 @@ pub const ComputedStyle = struct {
     /// CSSOM section 9: the resolved value of `l`, serialized into `out`.
     pub fn serializeResolved(self: *const ComputedStyle, l: Longhand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         const v = self.get(l);
+        // CSSOM 9 "resolved value": for width, height and the margins and
+        // paddings of a rendered element ("the resolved value of the display
+        // property is not none or contents") it is the used value. A
+        // computed calc() whose percentage coefficient is 0 has the used
+        // value of its length part against any basis (CSS Values 4 10.10), so
+        // it resolves without layout; the computed value is unchanged. (An
+        // interpolation from 10px to 100% computes to calc(0% + 10px) at 0:
+        // WPT css/css-sizing/animation/width-interpolation.html.)
+        if (usedValueProperty(l) and self.box_context != .suppressed) {
+            const box = self.display().box;
+            if (box != .none and box != .contents) if (zeroPercentLength(v)) |px| {
+                try values.appendNumber(px, out, allocator);
+                return out.appendSlice(allocator, "px");
+            };
+        }
         // Sizing 3 §3.2 / Q41: automatic minimums resolve to zero without
         // a generated box; their stored computed value remains auto.
         if ((l == .min_width or l == .min_height) and v.isKeyword(.auto) and
@@ -630,4 +645,40 @@ test "initial values compute" {
     out.clearRetainingCapacity();
     try style.serializeResolved(.font_family, &out, std.testing.allocator);
     try std.testing.expectEqualStrings("serif", out.items);
+}
+
+/// CSSOM 9's properties whose resolved value is the used value for a
+/// rendered element (the insets have their own positioned rules).
+fn usedValueProperty(l: Longhand) bool {
+    return switch (l) {
+        .width, .height, .block_size, .inline_size => true,
+        .margin_top, .margin_right, .margin_bottom, .margin_left => true,
+        .margin_block_start, .margin_block_end, .margin_inline_start, .margin_inline_end => true,
+        .padding_top, .padding_right, .padding_bottom, .padding_left => true,
+        .padding_block_start, .padding_block_end, .padding_inline_start, .padding_inline_end => true,
+        else => false,
+    };
+}
+
+/// The px length of a computed calc() that sums a 0% term and px lengths
+/// (CSS Values 4 10.10: such a percentage contributes 0 against any basis);
+/// null for any other value.
+fn zeroPercentLength(v: Value) ?f64 {
+    if (v != .calculation) return null;
+    const root = v.calculation.root;
+    if (root.tag != .sum) return null;
+    var px: f64 = 0;
+    var zero_percent = false;
+    for (root.children) |child| {
+        if (child.tag != .numeric) return null;
+        switch (child.numeric.unit) {
+            .percent => {
+                if (child.numeric.value != 0) return null;
+                zero_percent = true;
+            },
+            .px => px += child.numeric.value,
+            else => return null,
+        }
+    }
+    return if (zero_percent) px else null;
 }

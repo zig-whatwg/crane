@@ -87,11 +87,7 @@ pub const List = struct {
     pub fn serializeResolved(self: *const List, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         // Transforms 1 §3.2 steps 1–3 / Transforms 2 §2.1: post-multiply
         // in list order. An unresolved reference-box percentage stays typed.
-        var result = identity();
-        for (self.items) |function| {
-            const next = matrixFor(function) orelse return self.serialize(out, allocator);
-            compose(&result, function, next);
-        }
+        const result = matrixOf(self.items) orelse return self.serialize(out, allocator);
         const two_dimensional = result[2] == 0 and result[3] == 0 and result[6] == 0 and result[7] == 0 and
             result[8] == 0 and result[9] == 0 and result[10] == 1 and result[11] == 0 and result[14] == 0 and result[15] == 1;
         try out.appendSlice(allocator, if (two_dimensional) "matrix(" else "matrix3d(");
@@ -334,7 +330,23 @@ pub fn consumeOrigin(options: properties.ParseOptions, stream: *Stream) Allocato
     return .{ .transform_origin = result };
 }
 
-const Matrix = [16]f64;
+/// Column-major: the element in column c, row r is at c * 4 + r.
+pub const Matrix = [16]f64;
+
+/// The current transformation matrix of `items` (Transforms 1 §3.2 steps
+/// 1–3 / Transforms 2 §2.1: post-multiplied in list order, each operation
+/// composed on its affected terms); null when a function needs the reference
+/// box (a translate percentage). The one composition getComputedStyle and
+/// matrix interpolation (transform_interpolation.zig) both use.
+pub fn matrixOf(items: []const functions.Function) ?Matrix {
+    var result = identity();
+    for (items) |function| {
+        const next = matrixFor(function) orelse return null;
+        compose(&result, function, next);
+    }
+    return result;
+}
+
 fn identity() Matrix {
     return .{ 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 }
