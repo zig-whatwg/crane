@@ -15,15 +15,17 @@
 //! - <color>: premultiplied sRGB for two legacy colors (CSS Color 4 12.3:
 //!   legacy colors interpolate in sRGB); addition adds the premultiplied
 //!   channels, clamped.
+//! - transform lists: transform_interpolation (Transforms 1 section 9,
+//!   Transforms 2 sections 13-15); basic shapes, path() and shape():
+//!   shape_interpolation (Shapes 1 3.1.1.2 and 3.4, SVG 2 9.3).
 //! - visibility: "if one of the values is visible, interpolated as a
 //!   discrete step where values of p between 0 and 1 map to visible and other
 //!   values of p map to the closer endpoint" (CSS Visibility, Web Animations
 //!   Appendix A).
 //! - everything else combines as DISCRETE: V_start below p = 0.5, V_end from
 //!   it, and not additive (Values 4 3: addition of a not-additive type is
-//!   V_result = V_b). Value kinds whose smooth rules are not built yet
-//!   (transform lists, non-legacy colors, currentcolor mixes) fall back here
-//!   and are listed in `pendingKinds` so the gap stays visible.
+//!   V_result = V_b). Value kinds whose smooth rules are not built yet fall
+//!   back here and are listed in `pendingKinds` so the gap stays visible.
 //! - composites (pairs, repeatable lists, quads, shadow lists, positions):
 //!   component by component (Web Animations 1 5.2 "by computed value" and
 //!   "repeatable list"), discrete when any component pair does not combine.
@@ -59,6 +61,9 @@ const image_quad = @import("image_quad.zig");
 const text_shadow_values = @import("text_shadow_values.zig");
 const font_size_adjust = @import("font_size_adjust.zig");
 const text_indent = @import("text_indent.zig");
+const motion_values = @import("motion_values.zig");
+const shape_interpolation = @import("shape_interpolation.zig");
+const transform_interpolation = @import("transform_interpolation.zig");
 
 const Longhand = properties.Longhand;
 const Value = values.Value;
@@ -106,8 +111,7 @@ pub fn animationType(l: Longhand) AnimationType {
 /// The value kinds that combine discretely today although their types have
 /// smooth rules (named so a reader sees the gap, not an approximation).
 pub const pendingKinds = [_][]const u8{
-    "transform_list", "font_settings", "paint", "color.expression", "color.current", "sizing_function",
-    "grid_tracks",
+    "font_settings", "paint", "color.expression", "color.current", "sizing_function", "grid_tracks",
 };
 
 // ============================================================================
@@ -203,12 +207,13 @@ fn smooth(allocator: Allocator, l: Longhand, from: Value, to: Value, p: f64) All
         },
         else => {},
     }
+    if (l == .transform) return try transform_interpolation.combine(allocator, from, to, p, .interpolate);
     if (individualTransform(from) != null or individualTransform(to) != null) return try mixTransforms(allocator, from, to, p, .interpolate);
     if (filterList(from) != null and filterList(to) != null) return try mixFilters(allocator, filterList(from).?, filterList(to).?, p, .interpolate);
     if (shadowList(from) != null and shadowList(to) != null) return try mixBoxShadows(allocator, shadowList(from).?, shadowList(to).?, p, .interpolate);
     if (from == .transform_origin and to == .transform_origin) return try mixOrigins(allocator, from.transform_origin, 1 - p, to.transform_origin, p);
     if (from == .image_position and to == .image_position) return try mixPositions(allocator, from.image_position, 1 - p, to.image_position, p);
-    if (try mixComposite(allocator, l, from, to, .{ .ka = 1 - p, .kb = p })) |v| return v;
+    if (try mixComposite(allocator, l, from, to, .{ .ka = 1 - p, .kb = p, .p = p })) |v| return v;
     if (textShadowList(from) != null and textShadowList(to) != null) return try mixTextShadows(allocator, textShadowList(from).?, textShadowList(to).?, p, .interpolate);
     if (lengthPercentage(from) and lengthPercentage(to)) return try mixLengths(allocator, from, 1 - p, to, p);
     return null;
@@ -222,9 +227,12 @@ fn smooth(allocator: Allocator, l: Longhand, from: Value, to: Value, p: f64) All
 /// `value`.
 pub fn add(allocator: Allocator, l: Longhand, underlying: Value, value: Value) Allocator.Error!Value {
     if (animationType(l) != .by_computed_value) return retained(value);
-    // A transform or filter list's `none` is the identity list (Transforms
-    // 2 9, Filter Effects 1 11): adding it, or adding to it, changes nothing.
-    if (l == .transform or l == .filter) {
+    // Transforms 2 section 15: addition appends V_b to V_a (`none` is the
+    // empty list).
+    if (l == .transform) if (try transform_interpolation.add(allocator, underlying, value)) |sum| return sum;
+    // A filter list's `none` is the identity list (Filter Effects 1 11):
+    // adding it, or adding to it, changes nothing.
+    if (l == .filter) {
         if (isNone(value)) return retained(underlying);
         if (isNone(underlying)) return retained(value);
     }
@@ -273,6 +281,14 @@ pub fn accumulate(allocator: Allocator, l: Longhand, underlying: Value, value: V
     if (l == .text_shadow) if (textShadowList(underlying)) |a| if (textShadowList(value)) |b| {
         if (try mixTextShadows(allocator, a, b, 1, .accumulate)) |sum| return sum;
     };
+    // Transforms 2 section 15: accumulation matches the lists as
+    // interpolation does and adds each parameter (one-based ones as a + b -
+    // 1); a pair that cannot be matched or decomposed is V_b, never the
+    // addition's concatenation.
+    if (l == .transform) {
+        if (try transform_interpolation.combine(allocator, underlying, value, 1, .accumulate)) |sum| return sum;
+        return retained(value);
+    }
     // Filter Effects 1 11: filter lists accumulate function by function.
     if (l == .filter) if (filterList(underlying)) |a| if (filterList(value)) |b| {
         if (try mixFilters(allocator, a, b, 1, .accumulate)) |sum| return sum;
@@ -366,78 +382,36 @@ fn concatItems(allocator: Allocator, a: []const syntax_values.Item, b: []const s
         allocator.free(items);
     }
     for ([_][]const syntax_values.Item{ a, b }) |list| for (list) |item| {
-        items[made] = .{ .transform = try copyFunction(allocator, item.transform) };
+        items[made] = .{ .transform = try transform_interpolation.copyFunction(allocator, item.transform) };
         made += 1;
     };
     return .{ .allocator = allocator, .data = .{ .list = .{ .separator = .space, .items = items } } };
 }
 
-/// Transforms 1 9 (interpolation) and Transforms 2 15 (accumulation) of two
-/// transform lists: the shorter list extended with "the identity transform
-/// function matching the function at the corresponding position in the
-/// longer list", then each pair of functions combined. A pair of different
-/// functions combines as matrices (Transforms 1 11: pending here, so null).
+/// A registered <transform-list> (or <transform-function>+) combined "as
+/// per the transform property" (transform_interpolation: Transforms 1
+/// section 9 with Transforms 2 sections 13-15).
 fn combineTransformLists(allocator: Allocator, a: []const syntax_values.Item, b: []const syntax_values.Item, p: f64, op: SyntaxOp) Allocator.Error!?syntax_values.Value {
-    const ka: f64, const kb: f64 = if (op == .interpolate) .{ 1 - p, p } else .{ 1, 1 };
-    const n = @max(a.len, b.len);
-    const items = try allocator.alloc(syntax_values.Item, n);
-    var made: usize = 0;
-    errdefer {
-        for (items[0..made]) |*item| item.deinit(allocator);
-        allocator.free(items);
-    }
-    for (0..n) |i| {
-        var pad: ?transform_functions.Function = null;
-        defer if (pad) |*f| f.deinit();
-        if (i >= a.len) pad = try identityFunction(allocator, b[i].transform) else if (i >= b.len) pad = try identityFunction(allocator, a[i].transform);
-        const x = if (i < a.len) a[i].transform else pad.?;
-        const y = if (i < b.len) b[i].transform else pad.?;
-        const function = (try combineFunction(allocator, x, y, ka, kb, op)) orelse {
-            for (items[0..made]) |*item| item.deinit(allocator);
-            allocator.free(items);
-            return null;
-        };
-        items[made] = .{ .transform = function };
-        made += 1;
-    }
+    const items = (try combineTransformItems(allocator, a, b, p, op)) orelse return null;
     return .{ .allocator = allocator, .data = .{ .list = .{ .separator = .space, .items = items } } };
 }
 
-/// Transforms 2 "identity transform function": the function of `like`'s
-/// kind that changes nothing - zero translations, rotations and skews, unit
-/// scales, rotate3d() about the same axis by 0, the identity matrix, and
-/// perspective(none). OWNED.
-fn identityFunction(allocator: Allocator, like: transform_functions.Function) Allocator.Error!transform_functions.Function {
-    const arguments = try allocator.alloc(Number, like.arguments.len);
-    errdefer allocator.free(arguments);
-    const px: Number = .{ .literal = .{ .value = 0, .unit = .px } };
-    for (arguments, 0..) |*argument, index| {
-        argument.* = switch (like.kind) {
-            .translate, .translateX, .translateY, .translateZ, .translate3d => px,
-            .scale, .scaleX, .scaleY, .scaleZ, .scale3d => Number.scalar(1),
-            .rotate, .rotateX, .rotateY, .rotateZ, .skew, .skewX, .skewY => zeroDegrees(),
-            .rotate3d => if (index < 3) blk: {
-                like.arguments[index].ref();
-                break :blk like.arguments[index];
-            } else zeroDegrees(),
-            // matrix(1, 0, 0, 1, 0, 0) and the 4x4 identity.
-            .matrix => Number.scalar(if (index == 0 or index == 3) 1 else 0),
-            .matrix3d => Number.scalar(if (index % 5 == 0) 1 else 0),
-            // perspective(none) has no argument; one given pads as none too.
-            .perspective => px,
-        };
-    }
-    if (like.kind == .perspective) {
-        allocator.free(arguments);
-        return .{ .allocator = allocator, .kind = .perspective, .arguments = &.{}, .computed = true };
-    }
-    return .{ .allocator = allocator, .kind = like.kind, .arguments = arguments, .computed = true };
-}
-
-fn copyFunction(allocator: Allocator, f: transform_functions.Function) Allocator.Error!transform_functions.Function {
-    const arguments = try allocator.dupe(Number, f.arguments);
-    for (arguments) |argument| argument.ref();
-    return .{ .allocator = allocator, .kind = f.kind, .arguments = arguments, .computed = f.computed };
+/// The transform functions of `a` and `b` combined, as syntax items. OWNED.
+fn combineTransformItems(allocator: Allocator, a: []const syntax_values.Item, b: []const syntax_values.Item, p: f64, op: SyntaxOp) Allocator.Error!?[]syntax_values.Item {
+    const fa = try allocator.alloc(transform_functions.Function, a.len);
+    defer allocator.free(fa);
+    for (fa, a) |*f, item| f.* = item.transform;
+    const fb = try allocator.alloc(transform_functions.Function, b.len);
+    defer allocator.free(fb);
+    for (fb, b) |*f, item| f.* = item.transform;
+    const combined = (try transform_interpolation.combineFunctions(allocator, fa, fb, p, if (op == .interpolate) .interpolate else .accumulate)) orelse return null;
+    defer allocator.free(combined);
+    const items = allocator.alloc(syntax_values.Item, combined.len) catch |err| {
+        for (combined) |*f| f.deinit();
+        return err;
+    };
+    for (items, combined) |*item, f| item.* = .{ .transform = f };
+    return items;
 }
 
 fn combineItem(allocator: Allocator, a: syntax_values.Item, b: syntax_values.Item, p: f64, op: SyntaxOp) Allocator.Error!?syntax_values.Item {
@@ -461,10 +435,17 @@ fn combineItem(allocator: Allocator, a: syntax_values.Item, b: syntax_values.Ite
             const cb = legacyRgba(b.color) orelse return null;
             return .{ .color = .{ .rgba = if (op == .interpolate) mixPremultiplied(ca, cb, p) else addPremultiplied(ca, cb) } };
         },
-        .transform => |x| {
+        .transform => {
             if (b != .transform) return null;
-            const function = (try combineFunction(allocator, x, b.transform, ka, kb, op)) orelse return null;
-            return .{ .transform = function };
+            // A single function: its addition is its accumulation (it
+            // cannot hold a list); two different functions combine as
+            // matrices (Transforms 2 section 14).
+            const one = [_]syntax_values.Item{a};
+            const other = [_]syntax_values.Item{b};
+            const items = (try combineTransformItems(allocator, &one, &other, p, if (op == .add) .accumulate else op)) orelse return null;
+            defer allocator.free(items);
+            std.debug.assert(items.len == 1);
+            return items[0];
         },
         .image, .url, .ident, .string => return null,
     }
@@ -484,71 +465,11 @@ fn numericKind(data_type: syntax_definitions.DataType) ?math.Kind {
     };
 }
 
-/// Transforms 2 14: "two transform functions with the same name and the
-/// same number of arguments are interpolated numerically", except matrix(),
-/// matrix3d() and perspective(), and a rotate3d() about another axis, which
-/// interpolate as matrices (Transforms 2 13: pending here, so null). Two
-/// different functions convert to a common primitive or a matrix: pending,
-/// null. Accumulation (15) adds each argument, a one-based one (a scale
-/// factor) as a + b - 1.
-fn combineFunction(allocator: Allocator, a: transform_functions.Function, b: transform_functions.Function, ka: f64, kb: f64, op: SyntaxOp) Allocator.Error!?transform_functions.Function {
-    if (a.kind != b.kind or a.arguments.len != b.arguments.len) return null;
-    switch (a.kind) {
-        .matrix, .matrix3d, .perspective => return null,
-        .rotate3d => for (a.arguments[0..3], b.arguments[0..3]) |x, y| if (!x.eql(y)) return null,
-        else => {},
-    }
-    const one_based = switch (a.kind) {
-        .scale, .scaleX, .scaleY, .scaleZ, .scale3d => op != .interpolate,
-        else => false,
-    };
-    const arguments = try allocator.alloc(Number, a.arguments.len);
-    var made: usize = 0;
-    errdefer {
-        for (arguments[0..made]) |argument| argument.unref();
-        allocator.free(arguments);
-    }
-    for (a.arguments, b.arguments, 0..) |x, y, index| {
-        if (a.kind == .rotate3d and index < 3) {
-            x.ref();
-            arguments[made] = x;
-            made += 1;
-            continue;
-        }
-        const kind = functionArgumentKind(a.kind, index);
-        var mixed = (try mixNumbers(allocator, x, ka, y, kb, kind)) orelse {
-            for (arguments[0..made]) |argument| argument.unref();
-            allocator.free(arguments);
-            return null;
-        };
-        if (one_based) if (literal(mixed)) |n| {
-            mixed.unref();
-            mixed = .{ .literal = .{ .value = n.value - 1, .unit = n.unit } };
-        };
-        arguments[made] = mixed;
-        made += 1;
-    }
-    return .{ .allocator = allocator, .kind = a.kind, .arguments = arguments, .computed = true };
-}
-
-/// A transform function argument's numeric kind (Transforms 1 7, 2 12).
-fn functionArgumentKind(kind: transform_functions.Kind, index: usize) math.Kind {
-    return switch (kind) {
-        .translate, .translateX, .translateY => .length_percentage,
-        .translateZ, .perspective => .length,
-        .translate3d => if (index == 2) .length else .length_percentage,
-        .scale, .scaleX, .scaleY, .scaleZ, .scale3d => .number_percentage,
-        .rotate, .rotateX, .rotateY, .rotateZ, .skew, .skewX, .skewY => .angle,
-        .rotate3d => if (index == 3) .angle else .number,
-        .matrix, .matrix3d => .number,
-    };
-}
-
 /// `a` * `ka` + `b` * `kb` of two computed numbers of `kind`: a literal when
 /// both are of one unit (a zero length or percentage takes the other's),
 /// else a computed calc() mix (lengths with percentages). Null when the mix
 /// does not parse as `kind`. OWNED.
-fn mixNumbers(allocator: Allocator, a: Number, ka: f64, b: Number, kb: f64, kind: math.Kind) Allocator.Error!?Number {
+pub fn mixNumbers(allocator: Allocator, a: Number, ka: f64, b: Number, kb: f64, kind: math.Kind) Allocator.Error!?Number {
     if (mixNumeric(a, ka, b, kb)) |n| return .{ .literal = n };
     var text: std.ArrayList(u8) = .empty;
     defer text.deinit(allocator);
@@ -678,12 +599,14 @@ fn individualTransform(v: Value) ?transform_values.Kind {
 
 const TransformOp = enum { interpolate, add };
 
-/// translate and scale: component by component (Transforms 2 8:
-/// "interpolate each component"; none is the identity - 0px translations,
-/// scale 1); addition sums translations and multiplies scales. rotate:
-/// angles of one axis interpolate and add; other axes need the quaternion
-/// slerp (pending: discrete). Components of one unit only; a px/% or calc()
-/// pair is pending (discrete).
+/// Transforms 2 section 5 (the translate, rotate and scale properties): "by
+/// computed value" for translate and scale - component by component, a
+/// translate's x and y as length-percentages (a px/% pair mixes into a
+/// calc()), addition summing translations and multiplying scales - and "as
+/// SLERP" for rotate (transform_interpolation.mixAxisAngle). "When ...
+/// the from value or to value (but not both) is none, the value none is
+/// replaced by the equivalent identity value (0px for translate, 0deg for
+/// rotate, 1 for scale)", so the result is never `none`.
 fn mixTransforms(allocator: Allocator, a: Value, b: Value, p: f64, op: TransformOp) Allocator.Error!?Value {
     const kind = individualTransform(a) orelse individualTransform(b).?;
     if (individualTransform(a)) |k| if (k != kind) return null;
@@ -691,40 +614,43 @@ fn mixTransforms(allocator: Allocator, a: Value, b: Value, p: f64, op: Transform
     const identity = identityComponents(kind);
     const ca: [4]Number = if (a == .transform) a.transform.components else identity;
     const cb: [4]Number = if (b == .transform) b.transform.components else identity;
-    var out: [4]math.Numeric = undefined;
+    var out: [4]Number = .{ Number.scalar(0), Number.scalar(0), Number.scalar(0), Number.scalar(0) };
+    var done = false;
+    defer if (!done) for (out) |n| n.unref();
     if (kind == .rotate) {
-        // One axis (the identity takes the other side's).
-        const axis_a = if (a == .transform) ca else cb;
-        const axis_b = if (b == .transform) cb else ca;
+        var axis_a: [3]f64 = undefined;
+        var axis_b: [3]f64 = undefined;
         for (0..3) |i| {
-            const x = literal(axis_a[i]) orelse return null;
-            const y = literal(axis_b[i]) orelse return null;
-            if (x.value != y.value) return null;
-            out[i] = x;
+            axis_a[i] = (literal(ca[i]) orelse return null).value;
+            axis_b[i] = (literal(cb[i]) orelse return null).value;
         }
-        const angle_a = degrees(if (a == .transform) ca[3] else zeroDegrees()) orelse return null;
-        const angle_b = degrees(if (b == .transform) cb[3] else zeroDegrees()) orelse return null;
-        out[3] = .{ .value = switch (op) {
-            .interpolate => lerp(angle_a, angle_b, p),
-            .add => angle_a + angle_b,
-        }, .unit = .deg };
+        // `none` rotates by 0deg about the other side's axis.
+        if (a != .transform) axis_a = axis_b;
+        if (b != .transform) axis_b = axis_a;
+        const x: transform_interpolation.AxisAngle = .{ .axis = axis_a, .angle = degrees(ca[3]) orelse return null };
+        const y: transform_interpolation.AxisAngle = .{ .axis = axis_b, .angle = degrees(cb[3]) orelse return null };
+        const r = switch (op) {
+            .interpolate => transform_interpolation.mixAxisAngle(x, y, p),
+            .add => transform_interpolation.addAxisAngle(x, y),
+        } orelse return null;
+        for (0..3) |i| out[i] = Number.scalar(r.axis[i]);
+        out[3] = .{ .literal = .{ .value = r.angle, .unit = .deg } };
     } else {
+        const ka: f64, const kb: f64 = if (op == .interpolate) .{ 1 - p, p } else .{ 1, 1 };
         for (0..3) |i| {
-            const x = literal(ca[i]) orelse return null;
-            const y = literal(cb[i]) orelse return null;
-            if (x.unit != y.unit and !(isZero(x) or isZero(y))) return null;
-            const unit = if (isZero(x) and x.unit != y.unit) y.unit else x.unit;
-            out[i] = .{ .unit = unit, .value = switch (op) {
-                .interpolate => lerp(x.value, y.value, p),
-                .add => if (kind == .scale) x.value * y.value else x.value + y.value,
-            } };
+            if (kind == .scale and op == .add) {
+                const x = literal(ca[i]) orelse return null;
+                const y = literal(cb[i]) orelse return null;
+                out[i] = Number.scalar(x.value * y.value);
+                continue;
+            }
+            const component_kind: math.Kind = if (kind == .scale) .number else if (i < 2) .length_percentage else .length;
+            out[i] = (try mixNumbers(allocator, ca[i], ka, cb[i], kb, component_kind)) orelse return null;
         }
-        out[3] = .{ .value = 0, .unit = .number };
     }
     const result = try allocator.create(transform_values.Transform);
-    result.* = .{ .allocator = allocator, .kind = kind, .components = .{
-        .{ .literal = out[0] }, .{ .literal = out[1] }, .{ .literal = out[2] }, .{ .literal = out[3] },
-    } };
+    result.* = .{ .allocator = allocator, .kind = kind, .components = out };
+    done = true;
     return .{ .transform = result };
 }
 
@@ -850,8 +776,10 @@ fn startOffset(allocator: Allocator, o: position_values.Offset) Allocator.Error!
 // ============================================================================
 
 /// The weights of a linear combination a * ka + b * kb: interpolation at p
-/// is (1 - p, p); addition and accumulation are (1, 1) (Values 4 3).
-const Weights = struct { ka: f64, kb: f64 };
+/// is (1 - p, p); addition and accumulation are (1, 1) (Values 4 3). `p`
+/// is the interpolation's progress, for components that do not combine
+/// linearly (a path's arc flags); null for addition and accumulation.
+const Weights = struct { ka: f64, kb: f64, p: ?f64 = null };
 
 /// The longhands whose Animation type is "repeatable list" (Web Animations 1
 /// 5.2): Backgrounds 3 background-position-x/-y and background-size,
@@ -879,7 +807,106 @@ fn mixComposite(allocator: Allocator, l: Longhand, a: Value, b: Value, w: Weight
     if (a == .image_quad or b == .image_quad) return try mixQuads(allocator, a, b, w);
     if (a == .font_size_adjust and b == .font_size_adjust) return try mixFontSizeAdjust(allocator, a.font_size_adjust, b.font_size_adjust, w);
     if (a == .indent or b == .indent) return try mixIndents(allocator, a, b, w);
+    if (l == .offset_rotate) return try mixRotations(allocator, a, b, w);
+    if (a == .motion_path and b == .motion_path) return try mixMotionPaths(allocator, a.motion_path, b.motion_path, w);
+    if (a == .shape and b == .shape) {
+        const shape = (try shape_interpolation.mixShapes(allocator, a.shape, b.shape, .{ .ka = w.ka, .kb = w.kb, .p = w.p })) orelse return null;
+        return .{ .shape = shape };
+    }
     return null;
+}
+
+/// `a` * `ka` + `b` * `kb` of two computed <length-percentage>s (Values 4
+/// 5.6.1), for the shape and path combinations. OWNED; null when either is
+/// not a length-percentage.
+pub fn mixLengthPercentage(allocator: Allocator, a: Value, ka: f64, b: Value, kb: f64) Allocator.Error!?Value {
+    if (!lengthPercentage(a) or !lengthPercentage(b)) return null;
+    return try mixLengths(allocator, a, ka, b, kb);
+}
+
+/// Two computed <position>s combined coordinate by coordinate (Values 4
+/// 9.1). OWNED (an `image_position`); null when they do not combine.
+pub fn mixPosition(allocator: Allocator, a: *const position_values.Position, ka: f64, b: *const position_values.Position, kb: f64) Allocator.Error!?Value {
+    return mixPositions(allocator, a, ka, b, kb);
+}
+
+// ============================================================================
+// Motion Path (CSS Motion Path 1 2.1, 2.5)
+// ============================================================================
+
+const RotationParts = struct { auto: bool, degrees: f64 };
+
+/// A computed offset-rotate as its `auto` flag and angle: `auto` alone is
+/// `auto 0deg`, and `reverse` has already computed to `auto` + 180deg.
+fn rotationParts(v: Value) ?RotationParts {
+    return switch (v) {
+        .keyword => |k| if (k == .auto) .{ .auto = true, .degrees = 0 } else null,
+        .motion_rotation => |r| .{ .auto = r.mode != null, .degrees = degrees(r.angle) orelse return null },
+        else => null,
+    };
+}
+
+/// Motion Path 1 2.5 offset-rotate, "by computed value": the angles combine
+/// when both sides are `auto` (or both are not), else discrete (Blink
+/// CSSOffsetRotateInterpolationType's OffsetRotationType check; WPT
+/// offset-rotate-interpolation/-composition, which Chrome, Firefox and Safari
+/// pass).
+fn mixRotations(allocator: Allocator, a: Value, b: Value, w: Weights) Allocator.Error!?Value {
+    const x = rotationParts(a) orelse return null;
+    const y = rotationParts(b) orelse return null;
+    if (x.auto != y.auto) return null;
+    const angle = x.degrees * w.ka + y.degrees * w.kb;
+    // As the property computes: `auto 0deg` is the keyword `auto`.
+    if (x.auto and angle == 0) return Value.kw(.auto);
+    const rotation = try motion_values.Rotation.create(allocator, if (x.auto) .auto else null, .{ .literal = .{ .value = angle, .unit = .deg } });
+    return .{ .motion_rotation = rotation };
+}
+
+/// Motion Path 1 2.1 offset-path, "by computed value": the same <coord-box>
+/// (Shapes 1 3.4 "the same reference box"), then by kind:
+/// - ray() (2.1.1): the same <ray-size>, the same `contain`, and both with or
+///   both without `at <position>`; the angle and the position combine
+///   (Blink CSSRayInterpolationType; WPT offset-path-interpolation-005 and
+///   offset-path-composition);
+/// - a <basic-shape> or path(): shape_interpolation.
+/// Anything else (a box alone, url(), none) is discrete.
+fn mixMotionPaths(allocator: Allocator, a: *const motion_values.Path, b: *const motion_values.Path, w: Weights) Allocator.Error!?Value {
+    if (a.box != b.box) return null;
+    switch (a.data) {
+        .ray => |ra| {
+            const rb = switch (b.data) {
+                .ray => |r| r,
+                else => return null,
+            };
+            if (ra.size != rb.size or ra.contain != rb.contain) return null;
+            if ((ra.position == null) != (rb.position == null)) return null;
+            const da = degrees(ra.angle) orelse return null;
+            const db = degrees(rb.angle) orelse return null;
+            var position: ?*position_values.Position = null;
+            defer if (position) |p| p.unref();
+            if (ra.position) |pa| {
+                const mixed = (try mixPositions(allocator, pa, w.ka, rb.position.?, w.kb)) orelse return null;
+                position = mixed.image_position;
+            }
+            const ray: motion_values.Ray = .{
+                .angle = .{ .literal = .{ .value = da * w.ka + db * w.kb, .unit = .deg } },
+                .size = ra.size,
+                .contain = ra.contain,
+                .position = position,
+            };
+            return .{ .motion_path = try motion_values.Path.create(allocator, .{ .ray = ray }, a.box) };
+        },
+        .shape => |sa| {
+            const sb = switch (b.data) {
+                .shape => |s| s,
+                else => return null,
+            };
+            const shape = (try shape_interpolation.mixShapes(allocator, sa, sb, .{ .ka = w.ka, .kb = w.kb, .p = w.p })) orelse return null;
+            defer shape.unref();
+            return .{ .motion_path = try motion_values.Path.create(allocator, .{ .shape = shape }, a.box) };
+        },
+        .box, .url => return null,
+    }
 }
 
 /// One scalar component: <number>s as numbers (Values 4 5.3.1),
@@ -901,7 +928,7 @@ fn mixScalar(allocator: Allocator, a: Value, ka: f64, b: Value, kb: f64) Allocat
 /// types have no clampFinal of their own (Blink's InterpolableLength
 /// clamps the same components with ValueRange::kNonNegative when it builds
 /// the value). Takes ownership.
-fn nonNegative(v: Value) Value {
+pub fn nonNegative(v: Value) Value {
     return switch (v) {
         .number => |n| if (n < 0) .{ .number = 0 } else v,
         .length => |len| if (len.value < 0) .{ .length = .{ .value = 0, .unit = len.unit } } else v,
