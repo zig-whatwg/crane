@@ -28,6 +28,10 @@ pub const ImplError = error{
 /// The slot's DOM state: its name, assigned nodes and manually assigned
 /// nodes.
 pub const InternalState = struct {
+    /// Kept by value in this interface's own State (runtime.OwnState, the
+    /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
+    pub const embedded_in_state = true;
+
     slot: dom.slot_helpers.SlotState,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
@@ -99,7 +103,7 @@ pub fn init(
 
     // The block is the arena's, and `Registry.remove` returns it to the
     // arena.
-    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
+    const internal = try Registry.create(instance);
     internal.* = InternalState.init(allocator);
     return instance;
 }

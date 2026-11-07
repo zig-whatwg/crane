@@ -49,6 +49,18 @@ pub fn FlattenedState(
         /// Own fields (defined by this interface)
         own: OwnFields,
 
+        /// The impl's InternalState BY VALUE, when it is kept in this State
+        /// (runtime.OwnState) - else void, 0 bytes (`Embedded`). Lane perf2
+        /// batch 5 (Z7; tmp/plans/perf2b5-design.md 3.2): every level of a
+        /// node keeps its state here, at a comptime offset inside its own
+        /// State, which a derived State nests through `base` - so a node's
+        /// whole chain is ONE allocation, as Blink, WebKit and Gecko lay a
+        /// node out by inheritance and Lightpanda's Factory makes "1 large
+        /// allocation for the total size" of the chain (`chainOffsetOf`).
+        /// Made zeroed with the State (Instance.init); `own._internal`
+        /// points here while the impl's state is set.
+        _embedded: Embedded(OwnFields) = undefined,
+
         /// Check if a field exists by name (compile-time only)
         /// This is used for reflection and code generation
         pub fn hasField(comptime name: []const u8) bool {
@@ -79,6 +91,23 @@ pub fn FlattenedState(
             return false;
         }
     };
+}
+
+/// The InternalState a State keeps by value (`_embedded`): the type
+/// `OwnFields._internal` points at, when that type declares
+/// `pub const embedded_in_state = true` - the marker every runtime.OwnState
+/// user's InternalState carries - and void otherwise. Read from the field's
+/// type, so the runtime names no impl.
+pub fn Embedded(comptime OwnFields: type) type {
+    if (@typeInfo(OwnFields) != .@"struct" or !@hasField(OwnFields, "_internal")) return void;
+    const Field = @FieldType(OwnFields, "_internal");
+    const optional = @typeInfo(Field);
+    if (optional != .optional) return void;
+    const pointer = @typeInfo(optional.optional.child);
+    if (pointer != .pointer or pointer.pointer.size != .one) return void;
+    const T = pointer.pointer.child;
+    if (@typeInfo(T) != .@"struct" or !@hasDecl(T, "embedded_in_state")) return void;
+    return if (T.embedded_in_state) T else void;
 }
 
 /// Build a struct containing all mixin fields

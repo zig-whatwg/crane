@@ -145,6 +145,14 @@ pub const Instance = struct {
         const scope = ctx.browserScope() orelse
             @panic("a platform object made in a realm no Browser owns, with no standalone runtime (runtime.initializeRuntime)");
 
+        // The block is sized by `StateType` here and returned by the vtable's
+        // `state_size` (gc.releaseStorage): they must agree, or the arena's
+        // free list is poisoned (docs/lessons/architecture-instance-init-
+        // sizes-the-state-by-the-caller-s.md) - and since lane perf2 batch 5
+        // a State holds its levels' InternalStates by value, so a parent's
+        // State under a child's vtable would cut a node in half.
+        std.debug.assert(vtable.state_size == 0 or vtable.state_size == @sizeOf(StateType));
+
         // Step 1: Allocate the Instance handle from the Browser's slab (24
         // bytes). A reissued slot starts with no lifecycle flags.
         const instance = try scope.slab.alloc(vtable);

@@ -78,6 +78,10 @@ pub const EventListenerRecord = struct {
 /// OPTIMIZATION: Most EventTargets never have listeners attached.
 /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
 pub const InternalState = struct {
+    /// Kept by value in this interface's own State (runtime.OwnState, the
+    /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
+    pub const embedded_in_state = true;
+
     allocator: std.mem.Allocator,
 
     /// DOM §2.7 - Each EventTarget has an associated event listener list
@@ -316,7 +320,7 @@ fn initInternal(instance: *runtime.Instance, allocator: std.mem.Allocator) !*Int
     // must exist, and know its scope, once a state is made here.
     const registry = try registryFor(instance);
     if (registry.scope.load(.monotonic) == null) registry.scope.store(runtime.BrowserScope.ofInstance(instance), .release);
-    const internal = try Own.createIn(instance, runtime.arenaOf(instance));
+    const internal = try Own.create(instance);
     internal.* = InternalState.init(allocator);
     return internal;
 }

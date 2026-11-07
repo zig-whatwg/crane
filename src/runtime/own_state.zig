@@ -20,8 +20,13 @@
 //!   then), as the registry answered null for an address it no longer held.
 //!   Then `Instance.stateAs(State)` (one ancestry entry, the brand check) and
 //!   the field.
-//! - The block is the instance's Browser's arena's (`createIn`), back there
-//!   on `remove`, as the registry's was.
+//! - The state is kept BY VALUE in the same State, in `_embedded`
+//!   (runtime.FlattenedState; lane perf2 batch 5, Z7): `create` points
+//!   `own._internal` at it and allocates nothing, `remove` clears the
+//!   pointer. So a node's every level lives in its ONE State block, made
+//!   zeroed by `Instance.init` and returned whole by `gc.releaseStorage`
+//!   after the destruction chain. An InternalState kept here says so with
+//!   `pub const embedded_in_state = true` - a compile error otherwise.
 //! - An object made after another was freed at its address has a fresh
 //!   State block, zeroed by `Instance.init`: it cannot find a dead object's
 //!   state, which is what the registry's check at each registration
@@ -37,19 +42,19 @@
 const std = @import("std");
 const Instance = @import("instance.zig").Instance;
 const BrowserScope = @import("browser_scope.zig").BrowserScope;
-const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
 const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
 const ExternalMemory = @import("gc_integration.zig").ExternalMemory;
 
 /// The DOM memory a node's arena block counts in: its Browser's
 /// (BrowserScope.dom_memory), when `instance` is a node - its vtable's
 /// `counted` is runtime.lifetime's node - and null for every other object.
-/// Lane perf2 batch 4: V8 is told what a node really holds - its slab slot,
-/// its State block and its NodeBase (dom.instance_bridge.storageBytes, at
-/// its registration), and every level's InternalState block, added here when
-/// the block is made and subtracted when it goes back, at the block's arena
-/// class (ArenaAllocator.heldBytes), so a node's total returns to 0 at its
-/// teardown. Until then a div was reported as 368-632 B while it held ~2,450
+/// Lane perf2 batch 4: V8 is told what a node really holds - its slab slot
+/// and its State block (dom.instance_bridge.storageBytes, at its
+/// registration; since batch 5 the State block holds every OwnState level
+/// and the NodeBase), and every InternalState block an InstanceRegistry
+/// makes for it, added when the block is made and subtracted when it goes
+/// back, at the block's arena class (ArenaAllocator.heldBytes), so a node's
+/// total returns to 0 at its teardown. Until then a div was reported as 368-632 B while it held ~2,450
 /// (tmp/plans/perf2b4-design.md 1.5), and V8 scheduled DOM-driven
 /// collections from that. The figure reaches V8 through the engine
 /// protocol's AgentOptions.external_memory (capability `external_memory`):
@@ -71,13 +76,20 @@ pub fn OwnState(comptime State: type, comptime T: type) type {
         const Own = @FieldType(State, "own");
         if (!@hasField(Own, "_internal")) @compileError(@typeName(State) ++ " has no `own._internal` field");
         if (@FieldType(Own, "_internal") != ?*T) @compileError(@typeName(State) ++ ".own._internal is not ?*" ++ @typeName(T));
+        if (!@hasField(State, "_embedded") or @FieldType(State, "_embedded") != T)
+            @compileError(@typeName(T) ++ " is not kept by value in " ++ @typeName(State) ++
+                ": declare `pub const embedded_in_state = true;` in it (runtime.FlattenedState's `_embedded`)");
     }
     return struct {
         /// `instance`'s field, or null when its slot is freed or its
         /// ancestry has no `State`.
-        inline fn fieldOf(instance: *const Instance) ?*?*T {
+        inline fn stateOf(instance: *const Instance) ?*State {
             if (SlabAllocator.generationOf(instance) == SlabAllocator.dead_generation) return null;
-            const state = instance.stateAs(State) orelse return null;
+            return instance.stateAs(State);
+        }
+
+        inline fn fieldOf(instance: *const Instance) ?*?*T {
+            const state = stateOf(instance) orelse return null;
             return &state.own._internal;
         }
 
@@ -93,30 +105,27 @@ pub fn OwnState(comptime State: type, comptime T: type) type {
             return get(instance) != null;
         }
 
-        /// Allocate the internal state from `arena` - the instance's Browser's
-        /// (runtime.arenaOf) - and set it, once per instance, in its init. The
-        /// block is zeroed, as `ArenaAllocator.create` gives it; `remove`
-        /// returns it.
-        pub fn createIn(instance: *const Instance, arena: *ArenaAllocator) !*T {
-            std.debug.assert(arena == &BrowserScope.ofInstance(instance).arena);
-            const field = fieldOf(instance) orelse return error.InvalidStateError;
-            // Once per instance: a second state would leak the first.
-            std.debug.assert(field.* == null);
-            const internal = try arena.create(T);
-            field.* = internal;
-            if (nodeDomMemory(instance)) |memory| memory.add(ArenaAllocator.heldBytes(@sizeOf(T), @alignOf(T)));
-            return internal;
+        /// Set the internal state, once per instance, in its init: its
+        /// storage is the State's own `_embedded`, made zeroed with the State
+        /// (Instance.init) - nothing is allocated, and what a node holds is
+        /// counted with its State block (dom.instance_bridge.storageBytes).
+        /// The caller writes its initial value; `remove` clears it.
+        pub fn create(instance: *const Instance) error{InvalidStateError}!*T {
+            const state = stateOf(instance) orelse return error.InvalidStateError;
+            // Once per instance: a second init would overwrite a live state.
+            std.debug.assert(state.own._internal == null);
+            state.own._internal = &state._embedded;
+            return &state._embedded;
         }
 
-        /// Return the internal state's block to its Browser's arena and clear
-        /// the field. The caller has released what the state owns (its
-        /// deinit). Does nothing when none is set.
+        /// The internal state's teardown is done: clear the field, so `get`
+        /// answers null from here on. The caller has released what the state
+        /// owns (its deinit). Its bytes stay in the State block until the
+        /// block goes back (gc.releaseStorage, after the destruction chain).
+        /// Does nothing when none is set.
         pub fn remove(instance: *const Instance) void {
             const field = fieldOf(instance) orelse return;
-            const internal = field.* orelse return;
             field.* = null;
-            if (nodeDomMemory(instance)) |memory| memory.sub(ArenaAllocator.heldBytes(@sizeOf(T), @alignOf(T)));
-            BrowserScope.ofInstance(instance).arena.destroy(T, internal);
         }
 
         /// How many of `scope`'s objects have the state set (a slab walk:

@@ -7,6 +7,7 @@
 //! in the document tree. Node extends EventTarget, so all nodes can receive events.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
@@ -70,12 +71,26 @@ pub const DocumentPosition = struct {
 /// Uses NodeBase for tree structure - single source of truth in src/dom/
 /// Tree operations delegate to src/dom/mutation.zig
 pub const InternalState = struct {
+    /// Kept by value in this interface's own State (runtime.OwnState, the
+    /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
+    pub const embedded_in_state = true;
+
     allocator: std.mem.Allocator,
 
     /// NodeBase - THE source of truth for tree structure
     /// Contains: parent_node, first_child, last_child, previous_sibling, next_sibling, child_nodes
     /// All tree operations go through this via src/dom/mutation.zig
+    /// `&base` while the node lives; null once its teardown released it
+    /// (`releaseNodeBase`).
     node_base: ?*NodeBase = null,
+
+    /// The node's NodeBase, by value (lane perf2 batch 5, Z7): with this
+    /// state in the node's State block, the tree node is in that block too -
+    /// one allocation per node, as a Blink or WebKit Node is one object. Its
+    /// address lives as long as the block: released by the node's teardown,
+    /// its bytes go back with the block (gc.releaseStorage, after the
+    /// destruction chain).
+    base: NodeBase,
 
     /// The type of this node (ELEMENT_NODE, TEXT_NODE, etc.)
     /// This determines behavior of many getters (nodeName, nodeValue, textContent)
@@ -104,12 +119,6 @@ pub const InternalState = struct {
 
     // isConnected reads NodeBase.is_connected, kept by the insertion and
     // removing steps; this state kept a copy nothing set.
-
-    pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-        };
-    }
 
     /// Owns nothing: node_base and child_nodes_list are managed separately
     /// (releaseNodeBase, childNodesFreed).
@@ -182,43 +191,42 @@ fn stillOrphan(instance: *runtime.Instance) bool {
 /// ...)`, and its `nodeType()` is not virtual. No creation path sets it
 /// afterwards.
 ///
-/// Its internal state is a block of its Browser's arena, kept in this level's
-/// own State field (`own._internal`, runtime.OwnState).
+/// Its internal state - the NodeBase in it - is kept by value in this level's
+/// own State (`_embedded`, runtime.OwnState): the node is one block.
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = args;
     const node_type = comptime nodeTypeOf(StateType);
 
-    // Initialize Node internal state in its own State (runtime.OwnState)
-    // The block is the arena's, and `Registry.remove` returns it to the arena.
-    // Node is the hottest path here - every element is a Node - and with `set` the
-    // block was dropped from the map and held to process exit.
-    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
-    internal.* = InternalState.init(allocator);
-    internal.node_type = node_type;
+    // Node's internal state, by value in its own State (runtime.OwnState),
+    // and in it the NodeBase - the unified tree structure: one block for the
+    // whole node, made zeroed by Instance.init (lane perf2 batch 5, Z7). One
+    // write of the whole state, no field left `undefined` (a fill in safe
+    // builds).
+    const internal = try Registry.create(instance);
     errdefer Registry.remove(instance);
-
-    // Create NodeBase - the unified tree structure
-    const node_base = try allocator.create(NodeBase);
-    errdefer allocator.destroy(node_base);
-
-    node_base.* = NodeBase{
+    internal.* = .{
         .allocator = allocator,
         .node_type = node_type,
-        .parent_node = null,
-        .first_child = null,
-        .last_child = null,
-        .previous_sibling = null,
-        .next_sibling = null,
-        .child_nodes = infra.List(*NodeBase).init(allocator),
-        .owner_document = null,
-        .is_connected = false,
-        // Born with one reference, its creator's (rc_one), which it offers to
-        // whoever takes it on first (NodeBase.RcFlags.creator; refcount7) -
-        // a Document too, since refcount step 5i (lane refcount8): the
-        // holder it is made for (a Window, a template's owner, a resource
-        // cache) or its first wrapper takes it over.
-        .rc_flags = .{},
+        .base = .{
+            .allocator = allocator,
+            .node_type = node_type,
+            .parent_node = null,
+            .first_child = null,
+            .last_child = null,
+            .previous_sibling = null,
+            .next_sibling = null,
+            .child_nodes = infra.List(*NodeBase).init(allocator),
+            .owner_document = null,
+            .is_connected = false,
+            // Born with one reference, its creator's (rc_one), which it offers to
+            // whoever takes it on first (NodeBase.RcFlags.creator; refcount7) -
+            // a Document too, since refcount step 5i (lane refcount8): the
+            // holder it is made for (a Window, a template's owner, a resource
+            // cache) or its first wrapper takes it over.
+            .rc_flags = .{},
+        },
     };
+    const node_base = &internal.base;
     internal.node_base = node_base;
 
     // Register the Instance <-> NodeBase mapping
@@ -2135,7 +2143,11 @@ fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, node_b
     dom_module.node_holds.nodeReleased(node_base);
     if (counts == .with_document_counts) releaseDocumentCounts(internal, node_base);
     instance_bridge.unregister(instance);
-    internal.allocator.destroy(node_base);
+    // The NodeBase is the State block's (`InternalState.base`): released, not
+    // freed - its bytes go back with the block. In Debug builds they are
+    // poisoned as the tests' allocators poison a freed block, so a read of a
+    // released NodeBase still faults the way a read of the freed one did.
+    if (builtin.mode == .Debug) @memset(std.mem.asBytes(node_base), 0xdd);
     internal.node_base = null;
 }
 

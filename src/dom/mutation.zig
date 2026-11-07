@@ -2936,8 +2936,8 @@ fn adoptHeld(
                 // (caught by UBSan at infra/list.zig:197 via this exact path).
                 // ONLY parser-created elements embed their NodeBase in an
                 // ElementWithBase (element_with_base.zig: `.base = NodeBase{...}`).
-                // WebIDL-created ones allocate a STANDALONE NodeBase
-                // (impls/Node.zig: `allocator.create(NodeBase)`) and keep their
+                // WebIDL-created ones keep a STANDALONE NodeBase in Node's state
+                // (impls/Node.zig: `InternalState.base`) and keep their
                 // attributes elsewhere entirely, so there is no ElementWithBase to
                 // recover - @fieldParentPtr is as wrong as @ptrCast was, it just
                 // computes a different wrong address.

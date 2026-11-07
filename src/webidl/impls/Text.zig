@@ -35,6 +35,10 @@ pub const ImplError = error{
 /// Text primarily uses CharacterData's data storage via inheritance
 /// Additional Text-specific state can be added here
 pub const InternalState = struct {
+    /// Kept by value in this interface's own State (runtime.OwnState, the
+    /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
+    pub const embedded_in_state = true;
+
     allocator: std.mem.Allocator,
 
     /// DOM 4.2.2.2: the node as a slottable - its assigned slot and its
@@ -89,7 +93,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // The block is the arena's, and `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
-    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
+    const internal = try Registry.create(instance);
     internal.* = InternalState.init(allocator);
 }
 
