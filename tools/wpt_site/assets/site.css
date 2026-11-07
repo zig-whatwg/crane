@@ -322,9 +322,6 @@ a.box-sub code { font-size: 0.8rem; }
 .harness-label { margin: 0 0 0.3rem; font: 600 0.8rem/1.3 var(--sans); color: var(--ink-2); }
 .msg { font-family: var(--mono); font-size: 0.78rem; line-height: 1.45; margin: 0.2rem 0 0.05rem; padding: 0.4rem 0.6rem; background: var(--paper-2); border-radius: 2px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); max-height: 18rem; overflow: auto; }
 
-.subtests-section { max-width: 60rem; }
-.subtests-section > h2 { margin-bottom: 0.4rem; }
-.sub-hint { margin: 0 0 0.9rem; font: 400 0.86rem var(--sans); color: var(--ink-2); }
 .no-detail { margin: 0; max-width: 60ch; font-size: 1rem; }
 .no-detail strong { font-family: var(--sans); font-size: 0.9rem; }
 .run + .run { margin-top: 1.4rem; }
@@ -353,6 +350,71 @@ a.box-sub code { font-size: 0.8rem; }
 .s-timeout .mark, .s-notrun .mark, .s-other .mark { color: var(--ink-2); }
 .sub-name { overflow-wrap: anywhere; font-family: var(--serif); font-size: 0.92rem; line-height: 1.4; }
 .omitted { margin: 0.55rem 0 0; font: 400 0.85rem var(--sans); color: var(--ink-2); }
+
+/* -------------------------------------------- a directory's test files
+   Each test file is a section of its directory's page: a native <details>
+   whose summary is the file's row, opening in place to its subtests. */
+.tf-list { border-top: 1px solid var(--rule-strong); }
+.listing + .tf-list { border-top-width: 1px; }
+.box > .box-head + .tf-list { border-top: 0; }
+.tf-hint { margin: 0; padding: 0.55rem 0.75rem; font: 400 0.82rem/1.4 var(--sans); color: var(--ink-2); border-bottom: 1px solid var(--rule); }
+.tf-head, .tf > summary, .tf-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 7.2rem 4.2rem 7.4rem;
+  column-gap: 0.75rem; align-items: baseline; padding: 0.32rem 0.75rem;
+}
+.has-ref > .tf-head, .has-ref > .tf > summary, .has-ref > .tf > .tf-row { grid-template-columns: minmax(0, 1fr) 7.2rem 7.2rem 4.2rem 7.4rem; }
+.tf-head { font: 600 0.74rem/1.3 var(--sans); color: var(--ink-2); background: var(--paper-2); letter-spacing: 0.01em; white-space: nowrap; border-bottom: 1px solid var(--rule); }
+.tf-head > span:nth-child(n+2):not(:last-child) { text-align: right; }
+.tf-head > span { padding: 0; }
+.tf-head .sort { padding: 0; }
+.tf-head > span:nth-child(n+2):not(:last-child) .sort { justify-content: flex-end; }
+.tf { border-bottom: 1px solid var(--rule); }
+.tf:last-child { border-bottom: 0; }
+.tf > summary { list-style: none; cursor: pointer; }
+.tf > summary::-webkit-details-marker { display: none; }
+.tf > summary:hover, .tf-row:hover { background: color-mix(in srgb, var(--paper-2) 80%, transparent); }
+.tf > summary:focus-visible, .tf-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.tf[open] > summary { background: var(--paper-2); }
+.tf:target > summary, .tf.is-target > summary, .tf-away:target > .tf-row { background: var(--here); }
+.tf-row { color: inherit; text-decoration: none; }
+.tf-name { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
+.tf-name code { font-size: 0.83rem; overflow-wrap: break-word; min-width: 0; color: var(--link); }
+.tf > summary .tf-name::before {
+  content: ""; flex: none; width: 0.38rem; height: 0.38rem; margin: 0 0.1rem 0.12rem 0;
+  border-right: 1.4px solid var(--ink-2); border-bottom: 1.4px solid var(--ink-2); transform: rotate(-45deg);
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.tf[open] > summary .tf-name::before { transform: rotate(45deg); }
+.tf-row .tf-name::before { content: "\2192"; flex: none; color: var(--ink-2); font: 400 0.8rem var(--sans); }
+.tf-n, .tf-ref, .tf-fail { text-align: right; white-space: nowrap; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.tf-n b, .tf-ref b { color: var(--ink); font-weight: 600; }
+.tf-gate .gate:not(.g-block) { padding-left: 0; }
+/* Words for readers that do not see the column heads. */
+.tf-lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.tf-body { padding: 0.4rem 0.75rem 1.1rem 1.6rem; border-top: 1px solid var(--rule); }
+.tf-body > .file-meta { margin-top: 0.4rem; }
+.tf-body > .run, .tf-body > .no-detail, .tf-body > .toolbar-subs { margin-top: 0.9rem; }
+.tf-body .no-detail { font-size: 0.95rem; }
+.tf-body .note { margin: 0.9rem 0 0; }
+.tf-body .toolbar-subs { padding: 0; }
+.passing { margin: 0.55rem 0 0; font: 400 0.85rem/1.4 var(--sans); }
+.passing > summary { cursor: pointer; color: var(--link); list-style: none; display: inline-flex; align-items: baseline; gap: 0.4rem; }
+.passing > summary::-webkit-details-marker { display: none; }
+.passing > summary::before {
+  content: ""; width: 0.34rem; height: 0.34rem; margin-bottom: 0.1rem;
+  border-right: 1.4px solid currentColor; border-bottom: 1.4px solid currentColor; transform: rotate(-45deg);
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.passing[open] > summary::before { transform: rotate(45deg); }
+.pass-list { margin: 0.4rem 0 0; padding: 0 0 0 1.6rem; columns: 2 22rem; column-gap: 2rem; font: 400 0.86rem/1.4 var(--serif); }
+.pass-list li { break-inside: avoid; overflow-wrap: anywhere; padding: 0.08rem 0; }
+.pass-list li::marker { color: var(--pass); font: 400 0.72rem var(--sans); }
+.part-no { font: 500 1.05rem/1 var(--sans); color: var(--ink-2); }
+.part-lede { margin: 0 0 1rem; max-width: var(--measure); font: 400 0.95rem/1.5 var(--sans); color: var(--ink-2); }
+.parts ol { list-style: none; display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; margin: 1.2rem 0 0; padding: 0; font: 400 0.9rem var(--sans); }
+.parts [aria-current="page"] { font-weight: 600; }
+.notfound { max-width: var(--measure); }
+.notfound .moved { font: 600 1.05rem/1.4 var(--sans); }
 
 /* ------------------------------------------------------------------ history */
 .chart { margin: 1.4rem 0 0; max-width: 60rem; }
@@ -560,12 +622,22 @@ table.versus .n b { font-weight: 600; }
   .listing-compare tbody td:nth-child(n+5) { display: none; }
   .sub > details > summary, .sub-line { grid-template-columns: 0.9rem 3.4rem minmax(0, 1fr); }
   .sub > details > .msg { margin-left: 0; }
+  /* A test file's row: the name, then Crane's count, the reference's and the standing. */
+  .tf-head { display: none; }
+  .tf > summary, .tf-row, .has-ref > .tf > summary, .has-ref > .tf > .tf-row { grid-template-columns: repeat(3, auto) minmax(0, 1fr); justify-content: start; column-gap: 1rem; padding: 0.4rem 0.6rem; }
+  .tf-name { grid-column: 1 / -1; margin-bottom: 0.15rem; }
+  .tf-n, .tf-ref { text-align: left; }
+  .tf-fail { display: none; }
+  .tf-gate { grid-column: -2 / -1; justify-self: end; }
+  .tf-ref .tf-lbl { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
+  .tf-body { padding: 0.4rem 0.6rem 1rem; }
+  .pass-list { columns: 1; }
   .chart-wide { display: none; }
   .chart-narrow { display: block; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .twisty, .self, .sub > details > summary::before { transition: none; }
+  .twisty, .self, .sub > details > summary::before, .tf > summary .tf-name::before, .passing > summary::before { transition: none; }
 }
 
 @media print {
