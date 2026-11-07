@@ -122,6 +122,81 @@ static void releaseWeakArmRaw(void* handle);
 template <typename T>
 static void forgetCountedHandle(Global<T>* handle);
 
+// A Global's node carries a 16-bit wrapper class id that V8 reads and writes
+// inline (PersistentBase::WrapperClassId / SetWrapperClassId: one load or store
+// at Internals::kNodeClassIdOffset) and clears when it frees the node
+// (NodeBase::ClearFields, src/handles/global-handles.cc), so a node V8 hands out
+// again starts at 0 (tests/v8/perf3_dispose_marks_test.zig). Nothing else in
+// Crane assigns wrapper class ids. The low byte is the ledger's KIND (a counted
+// object or string handle, below); the top two bits say whether either of the
+// process-wide maps a release consults holds an entry for the handle:
+//
+// - kArmedFlag: `armedWeakData` (a weak arm, or the record a `handle_survives`
+//   detach leaves): set by armWeakData in the critical section that inserts the
+//   entry, cleared where an erase leaves the handle alive;
+// - kRealmTaggedFlag: `realmTaggedHandles`: set by v8_Global_TagRealm with the
+//   insert, cleared by every erase.
+//
+// A release of a non-empty handle without the flag skips that map - its lock and
+// its lookup - which was 13-37% of every perf row when every release paid both
+// to find nothing (lane perf3, tmp/plans/perf3-design.md 1.3). The one direction
+// that matters: an entry ALWAYS has its flag. A flag without an entry costs the
+// old path, never a wrong answer; Debug builds check both directions at every
+// release (checkHandleFlag).
+static constexpr uint16_t kHandleKindMask = 0x00FF;
+static constexpr uint16_t kArmedFlag = 0x8000;
+static constexpr uint16_t kRealmTaggedFlag = 0x4000;
+
+
+/// Whether `handle` (any Global<T>*: one slot pointer, as releaseWeakArmRaw
+/// casts it) has `flag`. An empty handle has none.
+static inline bool handleHasFlag(const void* handle, uint16_t flag) {
+    return (static_cast<const Global<Value>*>(handle)->WrapperClassId() & flag) != 0;
+}
+
+static inline void setHandleFlag(const void* handle, uint16_t flag) {
+    Global<Value>* global = const_cast<Global<Value>*>(static_cast<const Global<Value>*>(handle));
+    global->SetWrapperClassId(global->WrapperClassId() | flag);
+}
+
+static inline void clearHandleFlag(const void* handle, uint16_t flag) {
+    Global<Value>* global = const_cast<Global<Value>*>(static_cast<const Global<Value>*>(handle));
+    global->SetWrapperClassId(static_cast<uint16_t>(global->WrapperClassId() & ~flag));
+}
+
+static inline bool handleIsEmpty(const void* handle) {
+    return static_cast<const Global<Value>*>(handle)->IsEmpty();
+}
+
+/// Debug builds (no __OPTIMIZE__: Zig compiles Debug's C++ at -O0): `handle`'s
+/// flag agrees with whether `map`'s entry exists, at a release that is about to
+/// trust the flag. A disagreement is an entry without its flag - a lookup that
+/// would be skipped, a silent leak or a record pointing at a freed box - or a
+/// flag without its entry; either is a bug in this file, so it stops here.
+#if !defined(__OPTIMIZE__)
+#define CRANE_CHECK_HANDLE_FLAGS 1
+#else
+#define CRANE_CHECK_HANDLE_FLAGS 0
+#endif
+template <typename Map>
+static void checkHandleFlag(const void* handle, uint16_t flag, std::mutex& lock, Map& map, const char* what) {
+#if CRANE_CHECK_HANDLE_FLAGS
+    if (handleIsEmpty(handle)) return;
+    bool present;
+    {
+        std::lock_guard<std::mutex> guard(lock);
+        present = map.find(handle) != map.end();
+    }
+    if (present != handleHasFlag(handle, flag)) {
+        fprintf(stderr, "v8_wrapper: %s flag %s for handle %p, whose entry is %s\n", what,
+                handleHasFlag(handle, flag) ? "set" : "clear", handle, present ? "present" : "absent");
+        abort();
+    }
+#else
+    (void)handle; (void)flag; (void)lock; (void)map; (void)what;
+#endif
+}
+
 // ---- lane: realms (realm-tagged handles) ----
 // Handles the engine protocol made for a realm's callbacks (an event
 // listener, an event handler), tagged with the realm whose API stored them,
@@ -149,10 +224,20 @@ static std::atomic<size_t>& realmTagCount() {
     return count;
 }
 static void untagRealmHandle(const void* handle) {
+    // A live handle says whether it is tagged (kRealmTaggedFlag): one without
+    // the flag has no entry, so no lock and no lookup. realmTagCount alone
+    // skipped them only on a thread with nothing tagged anywhere in the process,
+    // and one event listener is enough to tag (lane perf3: untagRealmHandle was
+    // 2-7% of the perf rows). An empty handle keeps the lookup.
+    if (!handleIsEmpty(handle) && !handleHasFlag(handle, kRealmTaggedFlag)) {
+        checkHandleFlag(handle, kRealmTaggedFlag, realmTagLock(), realmTaggedHandles(), "realm-tag");
+        return;
+    }
     if (realmTagCount().load(std::memory_order_acquire) == 0) return;
     std::lock_guard<std::mutex> guard(realmTagLock());
     auto& tagged = realmTaggedHandles();
     if (tagged.erase(handle) > 0) realmTagCount().fetch_sub(1, std::memory_order_release);
+    if (!handleIsEmpty(handle)) clearHandleFlag(handle, kRealmTaggedFlag);
 }
 // ---- end lane: realms ----
 
@@ -216,8 +301,9 @@ extern "C" int64_t v8_Debug_CreatedGlobals() {
 // process-wide: a diagnostic count over every isolate of the process (std::atomic, relaxed), read by gc_bench, the WPT runner's per-file deltas and tests that hold the process to themselves (lesson testing-a-test-that-measures-a-process-wide-counter-assumes-it-is-alone); it carries no state any instance reads.
 static std::atomic<int64_t> g_live_string_globals{0};
 
-// Nothing else in Crane assigns wrapper class ids.
-static constexpr uint16_t kCountedStringClassId = 0x5354;  // "ST"
+// The ledger's kinds live in the low byte of a node's class id (kHandleKindMask, above
+// the realm-tag map: the layout and the map flags are explained there).
+static constexpr uint16_t kCountedStringClassId = 0x0053;  // 'S'
 
 static void rememberStringHandle(Global<String>* handle) {
 #if CRANE_TRACK_GLOBALS
@@ -245,7 +331,7 @@ static void rememberStringHandle(Global<String>* handle) {
 // process-wide: a diagnostic count over every isolate of the process (std::atomic, relaxed), read by gc_bench, the WPT runner's per-file deltas and tests that hold the process to themselves (lesson testing-a-test-that-measures-a-process-wide-counter-assumes-it-is-alone); it carries no state any instance reads.
 static std::atomic<int64_t> g_live_object_globals{0};
 
-static constexpr uint16_t kCountedObjectClassId = 0x4F42;  // "OB"
+static constexpr uint16_t kCountedObjectClassId = 0x004F;  // 'O'
 
 static void rememberObjectHandle(Global<Object>* handle) {
     handle->SetWrapperClassId(kCountedObjectClassId);
@@ -256,7 +342,7 @@ static void rememberObjectHandle(Global<Object>* handle) {
 /// empty handle answers class id 0: it was counted out when it was reset.
 template <typename T>
 static void forgetCountedHandle(Global<T>* handle) {
-    const uint16_t class_id = handle->WrapperClassId();
+    const uint16_t class_id = handle->WrapperClassId() & kHandleKindMask;
     if (class_id == kCountedObjectClassId) {
         g_live_object_globals.fetch_sub(1, std::memory_order_relaxed);
         return;
@@ -271,7 +357,10 @@ static void forgetCountedHandle(Global<T>* handle) {
 template <typename T>
 static Global<T>* trackHandle(Global<T>* handle) {
     if (handle) {
+        // Every node starts with no kind and no flag, whatever V8 left on it
+        // (it clears a freed node's class id; this does not rely on that).
         if constexpr (std::is_same_v<T, Object>) rememberObjectHandle(handle);
+        else handle->SetWrapperClassId(0);
 #if CRANE_TRACK_GLOBALS
         g_live_globals.fetch_add(1, std::memory_order_relaxed);
         if constexpr (std::is_same_v<T, String>) rememberStringHandle(handle);
@@ -536,17 +625,36 @@ static void releaseWeakArm(Global<T>* global, WeakArmEnd end = WeakArmEnd::handl
             detachedWeakData().insert(waiting);
         }
     }
+    // A live handle says whether `armedWeakData` holds it (kArmedFlag): one
+    // without the flag has no entry, so no lock and no lookup - nearly every
+    // release, which used to take weakDataLock and probe a map holding every
+    // live wrapper of the process to find nothing (lane perf3: 9-12% of every
+    // perf row; the find alone 16% of event-ctor). An empty handle - Reset by
+    // its weak callback - keeps the lookup.
+    if (!global->IsEmpty() && !(global->WrapperClassId() & kArmedFlag)) {
+        checkHandleFlag(static_cast<const void*>(global), kArmedFlag, weakDataLock(), armedWeakData(), "weak-arm");
+        return;
+    }
     std::lock_guard<std::mutex> guard(weakDataLock());
     auto& armed = armedWeakData();
-    if (armed.empty()) return;
     auto it = armed.find(static_cast<const void*>(global));
-    if (it == armed.end()) return;
+    if (it == armed.end()) {
+#if CRANE_CHECK_HANDLE_FLAGS
+        // A live handle got here by its flag: its entry must exist.
+        if (!global->IsEmpty()) {
+            fprintf(stderr, "v8_wrapper: weak-arm flag set for handle %p, whose entry is absent\n", static_cast<const void*>(global));
+            abort();
+        }
+#endif
+        return;
+    }
 
     WeakCallbackData* data = it->second;
 
     if (global->IsWeak()) {
         armed.erase(it);
         global->ClearWeak();
+        clearHandleFlag(static_cast<const void*>(global), kArmedFlag);
         freeWeakData(data);
         return;
     }
@@ -561,6 +669,7 @@ static void releaseWeakArm(Global<T>* global, WeakArmEnd end = WeakArmEnd::handl
 
     if (end == WeakArmEnd::handle_dying) {
         armed.erase(it);
+        clearHandleFlag(static_cast<const void*>(global), kArmedFlag);
         data->handle = nullptr;
         return;
     }
@@ -591,6 +700,8 @@ static void armWeakData(void* handle, WeakCallbackData* data) {
     g_live_weak_callback_data.fetch_add(1, std::memory_order_relaxed);
     std::lock_guard<std::mutex> guard(weakDataLock());
     armedWeakData()[handle] = data;
+    // With the entry, under the lock: an entry always has its flag.
+    setHandleFlag(handle, kArmedFlag);
 }
 
 static void WeakCallbackSecondPass(const WeakCallbackInfo<WeakCallbackData>& info);
@@ -639,7 +750,8 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
         armedWeakData().erase(static_cast<const void*>(data->handle));
     }
     // The node is reset here, not by the dispose that may follow: counted out
-    // now (an inline read of the node's class id, no V8 call).
+    // now (an inline read of the node's class id, no V8 call). Reset frees the
+    // node, and V8 clears its class id, flags included.
     forgetCountedHandle(data->handle);
     data->handle->Reset();
 
@@ -1473,6 +1585,11 @@ Global<Value>* v8_Global_TakeOver(Global<Value>* global) {
     // (trackHandle). Snapshot mode resets every box in bulk, so it tracks this
     // one too.
     Global<Value>* own = new Global<Value>(std::move(*global));
+    // The node moved, its class id with it. A weak-arm entry stays keyed by the
+    // emptied box (a weak handle is never moved, above; only a `handle_survives`
+    // record could be), so the flag must not follow the node; the realm tag is
+    // re-keyed below, so its flag does.
+    clearHandleFlag(static_cast<const void*>(own), kArmedFlag);
     if (g_snapshot_mode) g_snapshot_handles.push_back({own, resetGlobalHandle<Value>});
     if (realmTagCount().load(std::memory_order_acquire) != 0) {
         std::lock_guard<std::mutex> guard(realmTagLock());
@@ -1517,6 +1634,28 @@ bool v8_Debug_IsRealmTagged(Global<Value>* global) {
     if (!global) return false;
     std::lock_guard<std::mutex> guard(realmTagLock());
     return realmTaggedHandles().count(static_cast<const void*>(global)) != 0;
+}
+
+/// The wrapper class id on `handle`'s node (0 for a null or empty handle):
+/// the ledger's kind and the map flags. For tests.
+uint16_t v8_Debug_HandleClassId(void* handle) {
+    if (!handle) return 0;
+    return static_cast<Global<Value>*>(handle)->WrapperClassId();
+}
+
+/// Write `class_id` on `handle`'s node. For tests (V8's reset of a freed
+/// node's class id).
+void v8_Debug_SetHandleClassId(void* handle, uint16_t class_id) {
+    if (!handle) return;
+    static_cast<Global<Value>*>(handle)->SetWrapperClassId(class_id);
+}
+
+/// The address of `handle`'s node in V8's global-handle table (the slot its
+/// box points at), or null: tells a test whether V8 handed a freed node out
+/// again. For tests.
+void* v8_Debug_HandleNode(void* handle) {
+    if (!handle) return nullptr;
+    return *static_cast<void**>(handle);
 }
 
 /// A second, independently owned Global for the value `global` holds. Both
@@ -6093,6 +6232,128 @@ Global<Value>* v8_FunctionCallbackInfo_GetArgument(const FunctionCallbackInfo<Va
     return trackHandle(new Global<Value>(isolate, arg));
 }
 
+// ---- lane perf3, phase 1b: a binding call's own values, with no Global ----
+//
+// A binding callback runs inside the HandleScope V8 opens around every API
+// callback (CallApiFunctionAndReturn "Allocates HandleScope, extracts returned
+// value from handle and propagates exceptions"), as Blink's generated bindings
+// rely on (they open none for an attribute or an operation). These functions
+// make their Locals there - none opens a scope or makes a Global - and hand Zig
+// plain data, never a Local: so no Local outlives the call that made it, and a
+// return value is written into V8's own return slot (a root of the call frame)
+// before any scope a caller opened around the body closes. Called only with the
+// `info` of a live callback (call_frame.zig; tmp/plans/perf3-design.md 5.2).
+
+/// A string result: `length` bytes of ASCII (`one_byte`: NewFromOneByte, a copy
+/// with no decode) or well-formed UTF-8 (NewFromUtf8). WTF-8 with surrogate code
+/// points takes the two-byte path the binding had (conversions.newStringFromWtf8).
+/// Undefined when V8 refuses the length (String::kMaxLength), as before.
+void v8_FunctionCallbackInfo_SetReturnString(const FunctionCallbackInfo<Value>* info, const uint8_t* bytes, int length, bool one_byte) {
+    if (length == 0) {
+        info->GetReturnValue().SetEmptyString();
+        return;
+    }
+    Isolate* isolate = info->GetIsolate();
+    MaybeLocal<String> made = one_byte
+        ? String::NewFromOneByte(isolate, bytes, NewStringType::kNormal, length)
+        : String::NewFromUtf8(isolate, reinterpret_cast<const char*>(bytes), NewStringType::kNormal, length);
+    Local<String> str;
+    if (!made.ToLocal(&str)) {
+        info->GetReturnValue().SetUndefined();
+        return;
+    }
+    info->GetReturnValue().Set(str);
+}
+
+/// A null result: the root, no handle.
+void v8_FunctionCallbackInfo_SetReturnNull(const FunctionCallbackInfo<Value>* info) {
+    info->GetReturnValue().SetNull();
+}
+
+/// What v8_FunctionCallbackInfo_ReadArgument read (call_frame.zig's
+/// ArgumentRead, field for field).
+struct ArgumentRead {
+    int32_t kind;  // 0 missing, 1 undefined, 2 null, 3 boolean, 4 number, 5 string, 6 object, 7 other
+    int32_t length;
+    double number;
+    bool boolean;
+    bool fits;
+    void* instance;
+    void* type_info;
+};
+
+/// Argument `index` of the call, read with no handle: its kind; ToBoolean of it
+/// (which runs no script); a Number's value; a String's WTF-8 into `buffer` (the
+/// bytes v8_String_WriteUtf8 gives: no REPLACE_INVALID_UTF8, so a lone surrogate
+/// is its three-byte form, as fromV8String reads it), whole or not at all
+/// (`fits`; `length` is then the bytes a buffer needs); an object's internal
+/// fields 0 and 1 through a legacy platform object's proxy, as `this` is read
+/// (v8_FunctionCallbackInfo_ThisInstanceFields) - none for a function, which no
+/// platform object is (conversions.platformObjectOf).
+void v8_FunctionCallbackInfo_ReadArgument(const FunctionCallbackInfo<Value>* info, int index, ArgumentRead* out, char* buffer, int capacity) {
+    out->kind = 0;
+    out->length = 0;
+    out->number = 0;
+    out->boolean = false;
+    out->fits = false;
+    out->instance = nullptr;
+    out->type_info = nullptr;
+    if (index < 0 || index >= info->Length()) return;
+    Isolate* isolate = info->GetIsolate();
+    Local<Value> value = (*info)[index];
+    out->boolean = value->BooleanValue(isolate);
+    if (value->IsUndefined()) {
+        out->kind = 1;
+    } else if (value->IsNull()) {
+        out->kind = 2;
+    } else if (value->IsBoolean()) {
+        out->kind = 3;
+    } else if (value->IsNumber()) {
+        out->kind = 4;
+        out->number = value.As<Number>()->Value();
+    } else if (value->IsString()) {
+        out->kind = 5;
+        Local<String> str = value.As<String>();
+        int chars = 0;
+        const int written = str->WriteUtf8(isolate, buffer, capacity, &chars, String::NO_NULL_TERMINATION);
+        if (chars == str->Length()) {
+            out->fits = true;
+            out->length = written;
+        } else {
+            out->length = str->Utf8Length(isolate);
+        }
+    } else if (value->IsObject()) {
+        out->kind = 6;
+        if (value->IsFunction()) return;
+        Local<Object> object = value.As<Object>();
+        if (object->IsProxy()) {
+            Local<Value> target = object.As<Proxy>()->GetTarget();
+            if (!target->IsObject()) return;
+            object = target.As<Object>();
+        }
+        const int count = object->InternalFieldCount();
+        if (count >= 1) out->instance = object->GetAlignedPointerFromInternalField(isolate, 0);
+        if (count >= 2) out->type_info = object->GetAlignedPointerFromInternalField(isolate, 1);
+    } else {
+        out->kind = 7;
+    }
+}
+
+/// A String argument too long for the first buffer: its whole WTF-8 into
+/// `buffer` of `length` bytes (the length ReadArgument gave). Returns the bytes
+/// written, or -1 when the argument is no longer a String of that length.
+int v8_FunctionCallbackInfo_ReadArgumentString(const FunctionCallbackInfo<Value>* info, int index, char* buffer, int length) {
+    if (index < 0 || index >= info->Length()) return -1;
+    Local<Value> value = (*info)[index];
+    if (!value->IsString()) return -1;
+    Isolate* isolate = info->GetIsolate();
+    Local<String> str = value.As<String>();
+    int chars = 0;
+    const int written = str->WriteUtf8(isolate, buffer, length, &chars, String::NO_NULL_TERMINATION);
+    if (chars != str->Length()) return -1;
+    return written;
+}
+
 void v8_FunctionCallbackInfo_SetReturnValue(const FunctionCallbackInfo<Value>* info, Global<Value>* value) {
     if (!value) {
         // Null value passed - set undefined and log warning
@@ -6203,10 +6464,6 @@ void v8_FunctionCallbackInfo_SetReturnValueGlobal(const FunctionCallbackInfo<Val
         return;
     }
 
-    Isolate* isolate = info->GetIsolate();
-    HandleScope handle_scope(isolate);
-
-    // Cast to Global<Value>* and get the Local from it
     Global<Value>* global = reinterpret_cast<Global<Value>*>(global_ptr);
 
     // Check if the Global handle is empty
@@ -6216,8 +6473,10 @@ void v8_FunctionCallbackInfo_SetReturnValueGlobal(const FunctionCallbackInfo<Val
         return;
     }
 
-    Local<Value> local = global->Get(isolate);
-    info->GetReturnValue().Set(local);
+    // ReturnValue::Set(const Global<S>&) reads the node's slot straight into
+    // the return slot: no HandleScope and no Local copy (perf3 phase 1b; a
+    // scope and a copy per wrapper or handle result before).
+    info->GetReturnValue().Set(*global);
 }
 
 void v8_Function_Dispose(Global<Function>* fn) {
@@ -6265,47 +6524,61 @@ Global<Value>* v8_FunctionCallbackInfo_Data(const FunctionCallbackInfo<Value>* i
     return trackHandle(new Global<Value>(isolate, data));
 }
 
+/// The callback's target - implicit_args[kTargetIndex] (4), what V8's own
+/// FunctionCallbackInfo::Data() reads: the called function's
+/// FunctionTemplateInfo, or the function - as a Local.
+///
+/// FunctionCallbackInfo stores (v8-function-callback.h):
+///   internal::Address* implicit_args_;   // offset 0
+///   internal::Address* values_;          // offset 8
+///   internal::Address length_;           // offset 16
+struct FCILayout {
+    internal::Address* implicit_args;
+    internal::Address* values;
+    internal::Address length;
+};
+
+static Local<Data> functionCallbackTarget(const FunctionCallbackInfo<Value>* info) {
+    const FCILayout* layout = reinterpret_cast<const FCILayout*>(info);
+    // A Local over the SLOT, as Data() makes one
+    // (Local<Data>::FromSlot(&implicit_args_[kTargetIndex])): in V8 13.1,
+    // without direct handles, a Local is the address of a slot that holds
+    // the tagged pointer. The slot is part of the API callback's frame, so
+    // the Local is good for the whole call, read at its start or after its
+    // impl has run script. This read used to copy the slot's value and
+    // reinterpret THAT as the Local - the tagged pointer taken for a slot -
+    // so every question asked of the target read its first word as an
+    // object: garbage, nearly always "not a function", and once, read late
+    // in a call, a bus error (tests/v8/perf3_function_creation_context_test.zig).
+    internal::Address* target_slot = &layout->implicit_args[4];
+    return *reinterpret_cast<Local<Data>*>(&target_slot);
+}
+
+/// What the callback's target is, read as GetFunctionCreationContext reads it:
+/// 1 a FunctionTemplateInfo, 2 a function, 3 anything else, 0 none. For tests
+/// (tests/v8/perf3_function_creation_context_test.zig).
+extern "C" int v8_Debug_FunctionCallbackTargetKind(const FunctionCallbackInfo<Value>* info) {
+    Local<Data> target = functionCallbackTarget(info);
+    if (target.IsEmpty()) return 0;
+    if (target->IsFunctionTemplate()) return 1;
+    if (target->IsValue() && target.As<Value>()->IsFunction()) return 2;
+    return 3;
+}
+
 /// Get the creation context of the target function being called.
 /// This is critical for cross-realm support: when calling
 /// other.SomeInterface.prototype.method.call(obj), we need the context
 /// where 'method' was instantiated (the iframe's context), not where
 /// 'obj' was created (the main context) or the calling context.
 ///
-/// Uses V8's internal layout to access the target function at kTargetIndex (4),
-/// then gets its creation context.
+/// Reads the target at kTargetIndex (functionCallbackTarget), then gets its
+/// creation context.
 Global<Context>* v8_FunctionCallbackInfo_GetFunctionCreationContext(const FunctionCallbackInfo<Value>* info) {
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
-    
-    // Access the target (function being called) through implicit_args_
-    // Layout from v8-function-callback.h:
-    //   kTargetIndex = 4
-    // The implicit_args_ pointer is stored at offset 0 of FunctionCallbackInfo
-    //
-    // Since FunctionCallbackInfo stores:
-    //   internal::Address* implicit_args_;   // offset 0
-    //   internal::Address* values_;          // offset 8
-    //   internal::Address length_;           // offset 16
-    //
-    // We can cast and access implicit_args_ directly.
-    
-    struct FCILayout {
-        internal::Address* implicit_args;
-        internal::Address* values;
-        internal::Address length;
-    };
-    
-    const FCILayout* layout = reinterpret_cast<const FCILayout*>(info);
-    
-    // Get the target function from implicit_args[kTargetIndex]
-    // kTargetIndex = 4
-    internal::Address target_addr = layout->implicit_args[4];
-    
-    // Convert the internal address to a Local<Value> using reinterpret
-    // V8 Local handles internally store an Address*, so we create a pointer to
-    // our address slot and reinterpret it as a Local
-    Local<Value> target_value = *reinterpret_cast<Local<Value>*>(&target_addr);
-    
+    Local<Data> target = functionCallbackTarget(info);
+    Local<Value> target_value = target.IsEmpty() || !target->IsValue() ? Local<Value>() : target.As<Value>();
+
     if (target_value.IsEmpty() || !target_value->IsFunction()) {
         // Fallback: return current context
         countContextGlobal();
@@ -13589,6 +13862,8 @@ void v8_Global_TagRealm(Global<Value>* global, uintptr_t realm_key) {
     std::lock_guard<std::mutex> guard(realmTagLock());
     auto inserted = realmTaggedHandles().insert_or_assign(static_cast<const void*>(global), realm_key);
     if (inserted.second) realmTagCount().fetch_add(1, std::memory_order_release);
+    // With the entry, under the lock: an entry always has its flag.
+    setHandleFlag(global, kRealmTaggedFlag);
 }
 
 static void taggedHandleCollected(void*, size_t) {}
@@ -13609,7 +13884,10 @@ int v8_Object_WeakenTaggedHandles(Global<Value>* holder, uintptr_t realm_key, co
         for (const auto& kv : tagged) {
             if (kv.second == realm_key) handles.push_back(kv.first);
         }
-        for (const void* h : handles) tagged.erase(h);
+        for (const void* h : handles) {
+            tagged.erase(h);
+            if (!handleIsEmpty(h)) clearHandleFlag(h, kRealmTaggedFlag);
+        }
         realmTagCount().fetch_sub(handles.size(), std::memory_order_release);
     }
     for (const void* h : handles) {
