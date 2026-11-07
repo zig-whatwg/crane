@@ -1860,6 +1860,15 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         queueNavigationTask(integration, id, &runJavascriptNavigation);
         return;
     }
+    // Not a spec step (golden rule 2, all three browsers): a cross-document
+    // navigation that has become the navigable's ongoing navigation cancels
+    // every planned form navigation aimed at this navigable whose task has
+    // not run - as Blink's FrameLoader::WillStartNavigation ->
+    // CancelProvisionalLoaderForNewNavigation -> Frame::CancelFormSubmission
+    // (dom.form_submission.cancelPlannedNavigationsTo states the evidence).
+    // A javascript: URL (above) cancels none, as Blink's javascript: URL path
+    // never reaches WillStartNavigation.
+    if (active) |doc| dom_module.form_submission.cancelPlannedNavigationsTo(doc, browsing_context.id);
     // Step 21: the navigate event - for a navigation from a document same
     // origin(-domain) with the active one, to a fetch scheme, when the
     // active document is not the initial about:blank. (A traversal's
