@@ -200,19 +200,19 @@ pub fn requestFrame(document: *runtime.Instance) void {
 /// asks for a frame and starts the watch.
 pub fn focusedAreaChanged(document: *runtime.Instance, element: ?*runtime.Instance) void {
     if (element == null) {
-        // One watch, two reasons: a document that declares transitions keeps
-        // it (`watchStyle`).
-        refcount.watchRendering(document, style_engine.declaresTransitions(document));
+        // One watch, two reasons: a document that declares transitions or
+        // animations keeps it (`watchStyle`).
+        refcount.watchRendering(document, style_engine.declaresAnimations(document));
         return;
     }
     refcount.watchRendering(document, true);
     requestFrame(document);
 }
 
-/// `document` declares CSS transitions (dom.style's gate): its next
-/// mutation can start one, which only its step-16 style update would start
-/// if nobody reads the style, so every mutation asks for a frame (once per
-/// frame: step 16 watches again). Asks for one now too.
+/// `document` declares CSS transitions or CSS animations (dom.style's gate):
+/// its next mutation can start one, which only its step-16 style update
+/// would start if nobody reads the style, so every mutation asks for a frame
+/// (once per frame: step 16 watches again). Asks for one now too.
 pub fn watchStyle(document: *runtime.Instance) void {
     refcount.watchRendering(document, true);
     requestFrame(document);
@@ -233,20 +233,22 @@ pub fn watchFocusedArea(document: *runtime.Instance) void {
 /// is the style half and what the browsers do in the same lifecycle update,
 /// in this order:
 ///
-/// 1. Recalculate styles: for a document that declares CSS transitions, the
-///    document-wide style change event (dom.style recalculateStyles: every
-///    element resolved, which starts and cancels transitions, CSS
-///    Transitions 1 section 3), then the transitions whose element left the
-///    document are canceled (dom.animations.css_transitions.sweep). Blink
-///    Document::UpdateStyleAndLayoutTree with
-///    CSSAnimations::CalculateTransitionUpdate. A document that declares
-///    none gets no update: nothing in it can start one (dom.style's gate).
+/// 1. Recalculate styles: for a document that declares CSS transitions or
+///    CSS animations, the document-wide style change event (dom.style
+///    recalculateStyles: every element resolved, which makes, updates and
+///    cancels CSS animations and transitions, CSS Animations 1 section 2 and
+///    CSS Transitions 1 section 3), then those whose element left the
+///    document are canceled (dom.animations css_transitions.sweep and
+///    css_animations.sweep). Blink Document::UpdateStyleAndLayoutTree with
+///    CSSAnimations::CalculateAnimationUpdate and CalculateTransitionUpdate.
+///    A document that declares none gets no update: nothing in it can start
+///    one (dom.style's gate).
 /// 2. The used CSS resources: the images and fonts the styles now use are
 ///    selected (dom.style resource_loading), after the animation frame
 ///    callbacks and their microtasks, never by a style getter.
 /// 3. The pending animations: every animation `document` times whose play
 ///    or pause task still waits completes it with this update's timeline
-///    time - the transitions part 1 started among them
+///    time - the transitions and CSS animations part 1 made among them
 ///    (dom.animations.commitPendingAnimations; Blink
 ///    PendingAnimations::Update after the style and layout update).
 ///
@@ -259,7 +261,7 @@ pub fn watchFocusedArea(document: *runtime.Instance) void {
 pub fn styleAndLayout(document: *runtime.Instance, frame: Frame) void {
     _ = frame;
     // 1.
-    if (style_engine.declaresTransitions(document)) {
+    if (style_engine.declaresAnimations(document)) {
         @import("engine").runInRealm(document.ctx, recalculateStyles, document) catch {};
         // Its next mutation asks for the next frame again.
         refcount.watchRendering(document, true);
@@ -274,6 +276,7 @@ fn recalculateStyles(context: ?*anyopaque) void {
     const document: *runtime.Instance = @ptrCast(@alignCast(context orelse return));
     style_engine.recalculateStyles(document);
     @import("animations/css_transitions.zig").sweep(document);
+    @import("animations/css_animations.zig").sweep(document);
 }
 
 const style_engine = @import("style/engine.zig");

@@ -104,7 +104,10 @@ pub fn get_effect(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// Setter for effect: "set the associated effect of an animation" (4.5.3).
 pub fn set_effect(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     const animation = try modelOf(instance);
+    const previous: ?*runtime.Instance = if (animation.effect) |link| link.get() else null;
     animation.setEffect(value);
+    // CSS Animations 2 section 2: another effect than the one style made.
+    if (value != previous) animations.css_animations.effectReplaced(animation);
 }
 
 /// Getter for timeline.
@@ -143,6 +146,8 @@ pub fn get_playbackRate(instance: *runtime.Instance) anyerror!f64 {
 /// Getter for playState (4.5.17).
 pub fn get_playState(instance: *runtime.Instance) anyerror!enums.AnimationPlayState {
     const animation = try modelOf(instance);
+    // CSS Animations 2 / CSS Transitions 2 6.2: pending style changes first.
+    animations.css_animations.flushPendingStyle(animation);
     return @fromBackingInt(@intCast(@backingInt(animation.playState())));
 }
 
@@ -155,18 +160,21 @@ pub fn get_replaceState(instance: *runtime.Instance) anyerror!enums.AnimationRep
 /// Getter for pending: a pending play or pause task.
 pub fn get_pending(instance: *runtime.Instance) anyerror!bool {
     const animation = try modelOf(instance);
+    animations.css_animations.flushPendingStyle(animation);
     return animation.hasPendingTask();
 }
 
 /// Getter for ready: the current ready promise (4.5.7).
 pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const animation = try modelOf(instance);
+    animations.css_animations.flushPendingStyle(animation);
     return (try animation.ready.get(instance)).take();
 }
 
 /// Getter for finished: the current finished promise (4.5.11).
 pub fn get_finished(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const animation = try modelOf(instance);
+    animations.css_animations.flushPendingStyle(animation);
     return (try animation.finished.get(instance)).take();
 }
 
@@ -192,7 +200,12 @@ pub fn get_overallProgress(instance: *runtime.Instance) anyerror!?f64 {
 /// not converted).
 pub fn set_startTime(instance: *runtime.Instance, value: ?typedefs.CSSNumberish) anyerror!void {
     const animation = try modelOf(instance);
-    animation.setStartTime(try timeOf(value));
+    const time = try timeOf(value);
+    const before = animation.playState();
+    animation.setStartTime(time);
+    // CSS Animations 2 section 2: a change to or from paused overrides
+    // animation-play-state.
+    animations.css_animations.playStateMaybeOverridden(animation, before);
 }
 
 /// Setter for currentTime: "set the current time" (4.5.4).
@@ -225,7 +238,10 @@ pub fn set_trigger(instance: *runtime.Instance, value: ?*runtime.Instance) anyer
 /// Operation: reverse (4.5.16).
 pub fn call_reverse(instance: *runtime.Instance) anyerror!void {
     const animation = try modelOf(instance);
+    animations.css_animations.flushPendingStyle(animation);
+    const before = animation.playState();
     try animation.reverse();
+    animations.css_animations.playStateMaybeOverridden(animation, before);
 }
 
 /// Operation: persist: the replace state becomes persisted.
@@ -244,19 +260,29 @@ pub fn call_commitStyles(instance: *runtime.Instance) anyerror!void {
 /// Operation: pause (4.5.9).
 pub fn call_pause(instance: *runtime.Instance) anyerror!void {
     const animation = try modelOf(instance);
+    // CSS Animations 2 6.2, then section 2: after a successful pause(),
+    // animation-play-state no longer plays or pauses a CSSAnimation.
+    animations.css_animations.flushPendingStyle(animation);
     try animation.pause();
+    animations.css_animations.playStateOverridden(animation);
 }
 
 /// Operation: play (4.5.8) with auto-rewind.
 pub fn call_play(instance: *runtime.Instance) anyerror!void {
     const animation = try modelOf(instance);
+    animations.css_animations.flushPendingStyle(animation);
     try animation.play(true);
+    animations.css_animations.playStateOverridden(animation);
 }
 
 /// Operation: cancel (4.5.14).
 pub fn call_cancel(instance: *runtime.Instance) anyerror!void {
     const animation = try modelOf(instance);
     animation.cancel();
+    // A CSSAnimation canceled by script stays so whatever
+    // animation-play-state does (css-animations
+    // CSSAnimation-canceling.tentative).
+    animations.css_animations.playStateOverridden(animation);
 }
 
 /// Operation: finish (4.5.13).
