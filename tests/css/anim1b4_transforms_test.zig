@@ -81,6 +81,8 @@ const cases = .{
     // Addition appends; accumulation adds parameters, scales one-based.
     .{ Op.add, "transform", "translateX(10px)", "rotate(90deg)", 0, "matrix(0, 1, -1, 0, 10, 0)" },
     .{ Op.accumulate, "transform", "translateX(10px) scale(2)", "translateX(5px) scale(3)", 0, "matrix(4, 0, 0, 4, 15, 0)" },
+    // p = 0 is V_A when a list needs the reference box (no padding shows).
+    .{ Op.interpolate, "transform", "translateY(70%)", "translateY(90%) scaleZ(2)", 0, "translateY(70%)" },
     // The individual properties; none is the identity, never the result.
     .{ Op.interpolate, "translate", "480px 400px 320px", "240% 160%", 0, "calc(0% + 480px) calc(0% + 400px) 320px" },
     .{ Op.interpolate, "translate", "480px 400px 320px", "240% 160%", 0.125, "calc(30% + 420px) calc(20% + 350px) 280px" },

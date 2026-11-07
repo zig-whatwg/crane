@@ -65,6 +65,16 @@ pub fn combine(allocator: Allocator, a: Value, b: Value, p: f64, op: Op) Allocat
     const lb = listOf(b) orelse return null;
     // Transforms 1 9: "If both Va and Vb are none: Vresult is none."
     if (la.len == 0 and lb.len == 0) return Value.kw(.none);
+    // Values 4 3: "p = 0 produces V_A". With layout the interpolated list and
+    // V_A resolve to one matrix; a list that needs the reference box (a
+    // translate percentage) keeps its typed form here instead, where the
+    // padding identities would show (`translateY(70%) scaleZ(1)` for
+    // translateY(70%): WPT transform-interpolation-003 at 0, which Chrome,
+    // Firefox and Safari pass).
+    if (op == .interpolate and p == 0 and (box_transform_values.matrixOf(la) == null or box_transform_values.matrixOf(lb) == null)) {
+        a.retain();
+        return a;
+    }
     const items = (try combineFunctions(allocator, la, lb, p, op)) orelse return null;
     return try listValue(allocator, items);
 }
