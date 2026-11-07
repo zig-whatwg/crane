@@ -80,6 +80,8 @@ const cases = .{
     .{ Op.interpolate, "offset-position", "left 480px top 400px", "right -140% bottom -60%", 0.125, "calc(30% + 420px) calc(20% + 350px)" },
     .{ Op.interpolate, "offset-anchor", "left top", "left 8px bottom 20%", -1, "calc(0% - 8px) -80%" },
     .{ Op.interpolate, "offset-anchor", "left top", "left 8px bottom 20%", 0.125, "calc(0% + 1px) 10%" },
+    // At p = 1 the mix keeps its type (0% + 8px), as at p = 0.
+    .{ Op.interpolate, "offset-anchor", "left top", "left 8px bottom 20%", 1, "calc(0% + 8px) 80%" },
     .{ Op.add, "offset-anchor", "top 20% left 40%", "left 60% top 80%", 0, "100% 100%" },
     .{ Op.interpolate, "offset-anchor", "auto", "10px 20px", 0.4, "auto" },
 };

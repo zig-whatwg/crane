@@ -132,7 +132,7 @@ pub fn interpolate(allocator: Allocator, l: Longhand, from: Value, to: Value, p:
     // offset-distance-interpolation, scale-interpolation). At p = 1 the
     // mix's zero length term drops (math_values' Q100 canonical form), so
     // V_B is exact either way.
-    if (p == 1 and !pathData(to)) return retained(to);
+    if (p == 1 and !keepsInterpolatedForm(from, to)) return retained(to);
     switch (animationType(l)) {
         .not_animatable, .discrete => return discrete(from, to, p),
         .visibility => return visibility(from, to, p),
@@ -142,11 +142,24 @@ pub fn interpolate(allocator: Allocator, l: Longhand, from: Value, to: Value, p:
     return discrete(from, to, p);
 }
 
-/// Whether `v` holds path() data, whose interpolated form is the absolute
-/// one even at p = 1 (WPT css/motion/animation/offset-path-interpolation-001
-/// and -004 expect `path('m 20 70')` interpolated to `M ...` at 1; Chrome,
-/// Firefox and Safari pass them): the shortcut to V_B would keep its
-/// relative commands.
+/// Whether the pair's interpolated value at p = 1 differs in form from V_B,
+/// which the WPT interpolation files expect there and Chrome, Firefox and
+/// Safari return: path() data becomes absolute (offset-path-interpolation-
+/// 001/-004 expect path('m 20 70') to read `M ...` at 1), and a <position> or
+/// a basic shape whose other side has a percentage keeps the mixed type
+/// (offset-anchor/-position-interpolation expect `calc(0% + 8px) 80%` from
+/// `left top` to `left 8px bottom 20%` at 1; offset-path-interpolation-006/
+/// -008 the same for inset() and shape()). Plain length-percentages need no
+/// exception: their mix at 1 canonicalizes to V_B (`40%`).
+fn keepsInterpolatedForm(from: Value, to: Value) bool {
+    if (pathData(to)) return true;
+    return switch (to) {
+        .image_position, .shape, .motion_path => std.meta.activeTag(from) == std.meta.activeTag(to),
+        else => false,
+    };
+}
+
+/// Whether `v` holds path() data, whose interpolated form is absolute.
 fn pathData(v: Value) bool {
     const shape = switch (v) {
         .shape => |s| s,
