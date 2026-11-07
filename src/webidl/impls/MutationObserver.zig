@@ -358,48 +358,41 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
     if (target_nodebase) |nodebase| {
         var found_existing = false;
         const observer_handle = handles.anyopaqueToMutationObserver(@ptrCast(instance));
+        const instance_ptr: *anyopaque = @ptrCast(instance);
 
-        for (0..nodebase.registered_observers.len) |i| {
-            if (nodebase.registered_observers.get(i)) |registered| {
-                // Check if this registered observer belongs to this
-                // MutationObserver. A transient one is not "registered" in
-                // this sense: it is a copy that lasts until the next notify,
-                // and Blink and Gecko keep them out of this lookup too, so
-                // re-observing a removed node registers it for good.
-                if (registered.transient_source != null) continue;
-                const registered_handle = handles.mutationObserverToAnyopaque(registered.observer);
-                const instance_ptr: *anyopaque = @ptrCast(instance);
-                if (registered_handle == instance_ptr) {
-                    // Step 7.1: "For each node of this's node list, remove
-                    // all transient registered observers whose source is
-                    // registered from node's registered observer list." They
-                    // sit on the nodes removed from under target.
-                    removeTransientsWhere(instance, internal, nodebase);
-                    // Step 7.2: "Set registered's options to options."
-                    const new_registered = RegisteredObserver{
-                        .observer = observer_handle.?,
-                        .observer_generation = runtime.SlabAllocator.generationOf(instance),
-                        .options = reg_options,
-                    };
-                    const replaced_filter = registered.options.attribute_filter;
-                    _ = nodebase.registered_observers.replace(i, new_registered) catch {};
-                    if (replaced_filter) |filter| internal.releaseFilter(filter);
-                    found_existing = true;
-                    break;
-                }
-            }
+        var entries = nodebase.registeredObservers();
+        while (entries.next()) |registered| {
+            // Check if this registered observer belongs to this
+            // MutationObserver. A transient one is not "registered" in
+            // this sense: it is a copy that lasts until the next notify,
+            // and Blink and Gecko keep them out of this lookup too, so
+            // re-observing a removed node registers it for good.
+            if (registered.transient_source != null) continue;
+            if (handles.mutationObserverToAnyopaque(registered.observer) != instance_ptr) continue;
+            // Step 7.1: "For each node of this's node list, remove all
+            // transient registered observers whose source is registered
+            // from node's registered observer list." They sit on the nodes
+            // removed from under target, never on target's own list.
+            removeTransientsWhere(instance, internal, nodebase);
+            // Step 7.2: "Set registered's options to options" - in place:
+            // the registration keeps its place in the list (WebKit's
+            // MutationObserverRegistration::resetObservation).
+            const replaced_filter = registered.options.attribute_filter;
+            registered.observer_generation = runtime.SlabAllocator.generationOf(instance);
+            registered.options = reg_options;
+            if (replaced_filter) |filter| internal.releaseFilter(filter);
+            found_existing = true;
+            break;
         }
 
         // Step 8: If not found, append a new registered observer
         if (!found_existing) {
             if (observer_handle) |obs_handle| {
-                const new_registered = RegisteredObserver{
+                _ = nodebase.appendRegisteredObserver(.{
                     .observer = obs_handle,
                     .observer_generation = runtime.SlabAllocator.generationOf(instance),
                     .options = reg_options,
-                };
-                nodebase.registered_observers.append(new_registered) catch return error.OutOfMemory;
-                std.log.debug("[MutationObserver] observe: registered new observer on nodebase {*}, total observers: {}", .{ nodebase, nodebase.registered_observers.len });
+                }) catch return error.OutOfMemory;
             }
         }
     } else {
@@ -431,14 +424,11 @@ fn unregisterFromNodes(instance: *runtime.Instance, internal: *InternalState) vo
     const instance_ptr: *anyopaque = @ptrCast(instance);
     for (internal.node_list.items) |weak| {
         const nodebase = liveNode(weak) orelse continue;
-        var i: usize = 0;
-        while (i < nodebase.registered_observers.len) {
-            const registered = nodebase.registered_observers.get(i) orelse break;
+        var entries = nodebase.registeredObservers();
+        while (entries.next()) |registered| {
             if (handles.mutationObserverToAnyopaque(registered.observer) == instance_ptr) {
-                _ = nodebase.registered_observers.remove(i) catch break;
-                continue;
+                nodebase.removeRegisteredObserver(registered);
             }
-            i += 1;
         }
     }
     internal.node_list.clearRetainingCapacity();
@@ -456,17 +446,15 @@ fn removeTransientsWhere(instance: *runtime.Instance, internal: *InternalState, 
     for (internal.transient_nodes.items) |weak| {
         var still_listed = false;
         if (liveNode(weak)) |nodebase| {
-            var i: usize = 0;
-            while (i < nodebase.registered_observers.len) {
-                const registered = nodebase.registered_observers.get(i) orelse break;
+            var entries = nodebase.registeredObservers();
+            while (entries.next()) |registered| {
                 const mine = registered.transient_source != null and
                     handles.mutationObserverToAnyopaque(registered.observer) == instance_ptr;
                 if (mine and (source == null or registered.transient_source == source)) {
-                    _ = nodebase.registered_observers.remove(i) catch break;
+                    nodebase.removeRegisteredObserver(registered);
                     continue;
                 }
                 if (mine) still_listed = true;
-                i += 1;
             }
         }
         if (still_listed) {

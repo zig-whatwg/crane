@@ -19,9 +19,7 @@ fn newNode(allocator: std.mem.Allocator) !*NodeBase {
     node.* = .{
         .allocator = allocator,
         .node_type = NodeBase.ELEMENT_NODE,
-        .node_name = "div",
         .child_nodes = .init(allocator),
-        .registered_observers = .init(allocator),
     };
     return node;
 }
@@ -83,17 +81,20 @@ const Fixture = struct {
     }
 };
 
-test "NodeBase is 456 bytes: 448 before the counts, plus 8 until nodeholds' `holds` is deleted (step 9b), when it returns to 448" {
+test "NodeBase is 208 bytes: the counts' 8 beside nodeholds' `holds` (until step 9b), the rest R6's" {
     // 440 bytes before NodeBase.is_shadow_host, 448 since lane nodeholds' hold
     // chain head (`holds`, a pointer: the padding beside node_type and the
     // bools was 3 bytes), and 456 with `rc` and `subtree_holds` (8 bytes that
     // cannot fit that padding), the integrator's decision of 2026-10-09 (A).
-    // Step 9b of tmp/plans/refcount-design.md deletes `holds` and pins 448.
-    // Zig 0.17's std.ArrayList carries a `pointer_stability` SafetyLock, a
-    // word under runtime safety (Debug, ReleaseSafe) and nothing otherwise;
-    // NodeBase reaches two (child_nodes' and registered_observers' heap
-    // lists), so a safe build adds two words to Crane's own 456.
-    try testing.expectEqual(@as(usize, 456) + 2 * @sizeOf(std.debug.SafetyLock), @sizeOf(NodeBase));
+    // Lane perf2 batch 4 (R6 part 1) took the registered observer list (an
+    // infra.List of 256 bytes, 248 of Crane's own plus its SafetyLock word)
+    // and the node name (16) into rare data behind one pointer (8): 200 of
+    // Crane's own. Step 9b of tmp/plans/refcount-design.md deletes `holds`
+    // and pins 8 fewer. Zig 0.17's std.ArrayList carries a
+    // `pointer_stability` SafetyLock, a word under runtime safety (Debug,
+    // ReleaseSafe) and nothing otherwise; NodeBase reaches one (child_nodes'
+    // heap list), so a safe build adds a word to Crane's own 200.
+    try testing.expectEqual(@as(usize, 200) + 1 * @sizeOf(std.debug.SafetyLock), @sizeOf(NodeBase));
 }
 
 test "a node is born with one reference and one hold" {
@@ -503,9 +504,7 @@ test "a Ref of a concrete node type counts through its NodeBase" {
     concrete.* = .{ .base = .{
         .allocator = testing.allocator,
         .node_type = NodeBase.ELEMENT_NODE,
-        .node_name = "span",
         .child_nodes = .init(testing.allocator),
-        .registered_observers = .init(testing.allocator),
     }, .extra = 7 };
     var born = refcount.Ref(Concrete).adopt(&fixture.ledger, concrete);
     var second = born.clone(&fixture.ledger);

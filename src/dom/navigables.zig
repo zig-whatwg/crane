@@ -573,7 +573,7 @@ pub fn documentTreeChildNavigables(navigable: *BrowsingContext, document: *runti
 fn collectContainers(navigable: *BrowsingContext, node: *NodeBase, out: *std.ArrayListUnmanaged(ChildNavigable), allocator: std.mem.Allocator, depth: usize) void {
     if (depth > 512) return;
     for (node.child_nodes.items()) |child| {
-        if (child.node_type == 1 and isContainerName(child.node_name)) {
+        if (child.node_type == 1 and isContainerName(child.nodeName())) {
             if (instance_bridge.getInstance(child)) |ptr| {
                 for (navigable.children.items) |bc| {
                     if (bc.container == ptr) {

@@ -1482,12 +1482,9 @@ test "a detached parentless element has sibling index and count one" {
     node.* = .{
         .allocator = allocator,
         .node_type = NodeBase.ELEMENT_NODE,
-        .node_name = "DIV",
         .child_nodes = .init(allocator),
-        .registered_observers = .init(allocator),
     };
     defer node.child_nodes.deinit();
-    defer node.registered_observers.deinit();
     const counts = @field(@This(), "treeCounts")(@ptrCast(node));
     try std.testing.expectEqual(@as(usize, 1), counts.index);
     try std.testing.expectEqual(@as(usize, 1), counts.count);

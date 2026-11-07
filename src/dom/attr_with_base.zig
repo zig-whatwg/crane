@@ -57,39 +57,45 @@ pub const AttrWithBase = struct {
         namespace_uri: ?[]const u8,
         prefix: ?[]const u8,
     ) !AttrWithBase {
-        // Build the node name (with prefix if present)
+        var attr: AttrWithBase = .{
+            .base = NodeBase{
+                .allocator = allocator,
+                .node_type = NodeBase.ATTRIBUTE_NODE,
+                .parent_node = null,
+                .child_nodes = @import("infra").List(*NodeBase).init(allocator),
+                .owner_document = null,
+            },
+            .local_name = try allocator.dupe(u8, local_name),
+            .value = "",
+            .namespace_uri = null,
+            .prefix = null,
+            .owner_element = null,
+        };
+        errdefer attr.deinit();
+        attr.value = try allocator.dupe(u8, value);
+        if (namespace_uri) |ns| attr.namespace_uri = try allocator.dupe(u8, ns);
+        if (prefix) |p| attr.prefix = try allocator.dupe(u8, p);
+        // The node name: the qualified name (with its prefix if present),
+        // owned by the node's rare data.
         const node_name = if (prefix) |p|
             try std.fmt.allocPrint(allocator, "{s}:{s}", .{ p, local_name })
         else
             try allocator.dupe(u8, local_name);
-
-        return .{
-            .base = NodeBase{
-                .allocator = allocator,
-                .node_type = NodeBase.ATTRIBUTE_NODE,
-                .node_name = node_name,
-                .parent_node = null,
-                .child_nodes = @import("infra").List(*NodeBase).init(allocator),
-                .owner_document = null,
-                .registered_observers = @import("infra").List(node_base.RegisteredObserverType).init(allocator),
-            },
-            .local_name = try allocator.dupe(u8, local_name),
-            .value = try allocator.dupe(u8, value),
-            .namespace_uri = if (namespace_uri) |ns| try allocator.dupe(u8, ns) else null,
-            .prefix = if (prefix) |p| try allocator.dupe(u8, p) else null,
-            .owner_element = null,
+        attr.base.setOwnedNodeName(node_name) catch |err| {
+            allocator.free(node_name);
+            return err;
         };
+        return attr;
     }
 
     /// Clean up resources
     pub fn deinit(self: *AttrWithBase) void {
-        self.base.allocator.free(self.base.node_name);
         self.base.allocator.free(self.local_name);
         self.base.allocator.free(self.value);
         if (self.namespace_uri) |ns| self.base.allocator.free(ns);
         if (self.prefix) |p| self.base.allocator.free(p);
         self.base.child_nodes.deinit();
-        self.base.registered_observers.deinit();
+        self.base.deinitRareData();
     }
 
     /// Upcast Attr to NodeBase
@@ -104,7 +110,7 @@ pub const AttrWithBase = struct {
 
     /// Get the qualified name (prefix:localName or just localName)
     pub fn getQualifiedName(self: *const AttrWithBase) []const u8 {
-        return self.base.node_name;
+        return self.base.nodeName();
     }
 
     /// Get the attribute's local name

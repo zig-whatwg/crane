@@ -224,7 +224,6 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     node_base.* = NodeBase{
         .allocator = allocator,
         .node_type = node_type,
-        .node_name = "", // Default, will be set by subclass
         .parent_node = null,
         .first_child = null,
         .last_child = null,
@@ -232,7 +231,6 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
         .next_sibling = null,
         .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
-        .registered_observers = infra.List(dom_module.node_base.RegisteredObserverType).init(allocator),
         .is_connected = false,
         // Born with one reference, its creator's (rc_one), which it offers to
         // whoever takes it on first (NodeBase.RcFlags.creator; refcount7) -
@@ -356,17 +354,7 @@ pub fn deinit(instance: *runtime.Instance) void {
                             child = next;
                         }
                         // Continue to cleanup below
-                        node_base.child_nodes.deinit();
-                        dom_module.observer_registrations.releaseList(instance, &node_base.registered_observers);
-                        dom_module.node_holds.nodeReleased(node_base);
-                        releaseDocumentCounts(internal, node_base);
-                        // Free dynamically allocated node_name if it was allocated
-                        if (node_base.node_name_allocated and node_base.node_name.len > 0) {
-                            internal.allocator.free(@constCast(node_base.node_name));
-                        }
-                        instance_bridge.unregister(instance);
-                        internal.allocator.destroy(node_base);
-                        internal.node_base = null;
+                        releaseNodeBase(instance, internal, node_base, .with_document_counts);
                         internal.deinit();
                         Registry.remove(instance);
                         // Cleanup complete; see the note at the end of deinit.
@@ -390,20 +378,7 @@ pub fn deinit(instance: *runtime.Instance) void {
                 }
             }
 
-            // Clean up NodeBase resources
-            node_base.child_nodes.deinit();
-            dom_module.observer_registrations.releaseList(instance, &node_base.registered_observers);
-            dom_module.node_holds.nodeReleased(node_base);
-            releaseDocumentCounts(internal, node_base);
-
-            freeNodeName(internal, node_base);
-
-            // Unregister from bridge before destroying
-            instance_bridge.unregister(instance);
-
-            // Free the NodeBase
-            internal.allocator.destroy(node_base);
-            internal.node_base = null;
+            releaseNodeBase(instance, internal, node_base, .with_document_counts);
         }
 
         // Deinit the internal state's owned resources (strings, etc.)
@@ -1938,7 +1913,7 @@ fn setLocalNameHook(instance: *runtime.Instance, name: runtime.DOMString) dom_mo
 }
 
 /// Set the local name (used by Element, Attr, etc.)
-/// Also updates the NodeBase's node_name for DOM operations.
+/// Also names the NodeBase (NodeBase.nodeName) for DOM operations.
 pub fn setLocalName(instance: *runtime.Instance, name: runtime.DOMString) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.local_name) |*old| {
@@ -1946,21 +1921,16 @@ pub fn setLocalName(instance: *runtime.Instance, name: runtime.DOMString) !void 
     }
     internal.local_name = try name.clone(internal.allocator);
 
-    // Also update NodeBase's node_name for DOM operations (post-connection steps, etc.)
-    // For HTML elements, the node_name is the uppercase of the local_name
+    // Also name the NodeBase for DOM operations (post-connection steps, etc.):
+    // the uppercase of the local name, owned by the node (its rare data).
     if (internal.node_base) |node_base| {
         const name_slice = name.asSlice();
-        // Allocate uppercase version for HTML elements
         const upper_name = try internal.allocator.alloc(u8, name_slice.len);
+        errdefer internal.allocator.free(upper_name);
         for (name_slice, 0..) |c, i| {
             upper_name[i] = std.ascii.toUpper(c);
         }
-        // Free old node_name if it was dynamically allocated
-        if (node_base.node_name_allocated and node_base.node_name.len > 0) {
-            internal.allocator.free(@constCast(node_base.node_name));
-        }
-        node_base.node_name = upper_name;
-        node_base.node_name_allocated = true;
+        try node_base.setOwnedNodeName(upper_name);
     }
 }
 
@@ -2173,16 +2143,33 @@ pub fn appendChild(parent: *runtime.Instance, node: *runtime.Instance) !*runtime
     return call_appendChild(parent, node);
 }
 
-/// Free `node_base`'s node name if setLocalName allocated it. Both of a
-/// node's exits call this - its deinit and the final teardown sweep of nodes
-/// still alive - so they cannot drift apart: the sweep freed the NodeBase and
-/// not its name, one leak per element alive at exit (5 script elements over
-/// html/semantics/scripting-1, leak-traced to setLocalName).
-fn freeNodeName(internal: *InternalState, node_base: *NodeBase) void {
-    if (node_base.node_name_allocated and node_base.node_name.len > 0) {
-        internal.allocator.free(@constCast(node_base.node_name));
-    }
-    node_base.node_name_allocated = false;
+/// How `releaseNodeBase` treats the node document's counts.
+const DocumentCounts = enum { with_document_counts, without_document_counts };
+
+/// The one exit of a node's NodeBase - its deinit, that deinit's
+/// out-of-memory branch, and the final teardown sweep of nodes still alive -
+/// so they cannot drift apart (the sweep once freed the NodeBase and not its
+/// name: one leak per element alive at exit). In the order its links need
+/// (lane perf2 batch 4):
+/// 1. every registered observer is told and its entry freed
+///    (dom.observer_registrations.releaseList), while the bridge still names
+///    the node;
+/// 2. the rare data that held them goes, an owned node name with it;
+/// 3. every hold on the node is emptied (dom.node_holds.nodeReleased: the
+///    slab generation can outlive the NodeBase);
+/// 4. the node document's counts let it go (not in the final sweep, whose
+///    documents go in no order);
+/// 5. the bridge forgets the node - an observer's `liveNode` reads null from
+///    here - and the NodeBase is freed.
+fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, node_base: *NodeBase, counts: DocumentCounts) void {
+    node_base.child_nodes.deinit();
+    dom_module.observer_registrations.releaseList(instance, node_base);
+    node_base.deinitRareData();
+    dom_module.node_holds.nodeReleased(node_base);
+    if (counts == .with_document_counts) releaseDocumentCounts(internal, node_base);
+    instance_bridge.unregister(instance);
+    internal.allocator.destroy(node_base);
+    internal.node_base = null;
 }
 
 /// dom.teardown_sweeps: clean up ALL of `scope`'s remaining Node internal
@@ -2203,18 +2190,7 @@ fn sweepRemaining(scope: *runtime.BrowserScope) void {
 fn sweepOne(_: void, instance: *runtime.Instance, internal: *InternalState) void {
     // Free NodeBase if present
     if (internal.node_base) |node_base| {
-        // Clean up NodeBase resources
-        node_base.child_nodes.deinit();
-        dom_module.observer_registrations.releaseList(instance, &node_base.registered_observers);
-        dom_module.node_holds.nodeReleased(node_base);
-        freeNodeName(internal, node_base);
-
-        // Unregister from instance_bridge
-        instance_bridge.unregister(instance);
-
-        // Free the NodeBase
-        internal.allocator.destroy(node_base);
-        internal.node_base = null;
+        releaseNodeBase(instance, internal, node_base, .without_document_counts);
     }
 
     // Clean up InternalState owned strings

@@ -659,7 +659,7 @@ fn matchesNodeType(node_type: *const ast.NodeTest.NodeType, node: *Node) bool {
             if (node.node_type != Node.PROCESSING_INSTRUCTION_NODE) return false;
             if (target) |t| {
                 // Match specific processing instruction target
-                return std.mem.eql(u8, node.node_name, t);
+                return std.mem.eql(u8, node.nodeName(), t);
             }
             // Match any processing instruction
             return true;

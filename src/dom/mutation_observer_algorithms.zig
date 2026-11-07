@@ -255,8 +255,8 @@ pub fn queueMutationRecord(
 
     // Step 3: For each node in nodes, and then for each registered of node's registered observer list
     for (nodes.items()) |node| {
-        for (0..node.registered_observers.len) |i| {
-            const registered = node.registered_observers.get(i) orelse continue;
+        var entries = node.registeredObservers();
+        while (entries.next()) |registered| {
             const options = registered.options;
 
             // Step 3.2: If none of the following are true, then:
@@ -484,8 +484,8 @@ fn wantsRecord(
 pub fn hasInterestedObservers(target: *NodeBase, mutation_type: MutationType, name: ?[]const u8, namespace: ?[]const u8) bool {
     var current: ?*NodeBase = target;
     while (current) |node| : (current = node.parent_node) {
-        for (0..node.registered_observers.len) |i| {
-            const registered = node.registered_observers.get(i) orelse continue;
+        var entries = node.registeredObservers();
+        while (entries.next()) |registered| {
             if (wantsRecord(registered.options, node == target, mutation_type, name, namespace)) return true;
         }
     }
@@ -573,8 +573,8 @@ fn queueMutationRecordInternal(
     var current: ?*NodeBase = target_nodebase;
     while (current) |node| : (current = node.parent_node) {
         // Step 3: For each node in nodes, for each registered of node's registered observer list
-        for (0..node.registered_observers.len) |i| {
-            const registered = node.registered_observers.get(i) orelse continue;
+        var entries = node.registeredObservers();
+        while (entries.next()) |registered| {
             const options = registered.options;
 
             // Step 3.1: skip an observer that does not want this record.

@@ -1285,7 +1285,7 @@ pub fn checkAround(node: *NodeBase) void {
     var current: ?*NodeBase = node;
     while (current) |at| : (current = up(null, at)) {
         checkNode(at, check_fanout) catch |err| {
-            log.err("refcount: {s} at node {*} ({s}) after a mutation", .{ @errorName(err), at, at.node_name });
+            log.err("refcount: {s} at node {*} ({s}) after a mutation", .{ @errorName(err), at, at.nodeName() });
             return;
         };
     }
