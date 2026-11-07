@@ -159,9 +159,8 @@ const ShapeRadius = @typeInfo(@FieldType(Round, "radii")).array.child;
 
 /// "If both shapes are the same type, that type is ellipse() or circle(),
 /// and the radiuses are specified as <length-percentage> (rather than
-/// keywords), interpolate between each value in the shape functions." A
-/// keyword radius combines only with the same keyword; an omitted position
-/// is the center (Shapes 1 3.1: "If omitted, the position defaults to
+/// keywords), interpolate between each value in the shape functions." An
+/// omitted position is the center (Shapes 1 3.1: "If omitted, the position defaults to
 /// center").
 fn mixRounds(allocator: Allocator, a: Round, b: Round, m: Mix) Allocator.Error!?Round {
     if (a.ellipse != b.ellipse) return null;
@@ -169,9 +168,23 @@ fn mixRounds(allocator: Allocator, a: Round, b: Round, m: Mix) Allocator.Error!?
     var made: usize = 0;
     var done = false;
     defer if (!done) for (radii[0..made]) |r| if (r == .value) r.value.release();
-    for (a.radii, b.radii) |x, y| {
+    // A circle has one radius; its unused second slot is copied.
+    const count: usize = if (a.ellipse) 2 else 1;
+    for (a.radii, b.radii, 0..) |x, y, index| {
+        if (index >= count) {
+            if (x == .value) x.value.retain();
+            radii[made] = x;
+            made += 1;
+            continue;
+        }
         radii[made] = switch (x) {
-            .extent => |e| if (y == .extent and y.extent == e) .{ .extent = e } else return null,
+            // "the radiuses are specified as <length-percentage> (rather
+            // than keywords)": a keyword radius has no interpolation, even
+            // against the same keyword (WPT
+            // css/css-masking/animations/clip-path-interpolation-002.html:
+            // circle(farthest-side ...) pairs are discrete in Chrome,
+            // Firefox and Safari).
+            .extent => return null,
             .value => |v| if (y == .value) .{
                 .value = interpolation.nonNegative((try interpolation.mixLengthPercentage(allocator, v, m.ka, y.value, m.kb)) orelse return null),
             } else return null,

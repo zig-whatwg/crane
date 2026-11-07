@@ -106,6 +106,13 @@ const cases = .{
     .{ Op.interpolate, "baseline-shift", "40px", "40%", 1, "40%" },
     .{ Op.interpolate, "baseline-shift", "40px", "40%", 0.3, "calc(12% + 28px)" },
     .{ Op.interpolate, "offset-distance", "10px", "100%", 0, "calc(0% + 10px)" },
+    // <position> pairs in a layer list and the center keyword (Images 3:
+    // object-position's initial value is 50% 50%).
+    .{ Op.interpolate, "mask-position", "0px 0px, 10px 10px", "20px 20px", 0.5, "10px 10px, 15px 15px" },
+    .{ Op.interpolate, "object-position", "center", "100% 100%", 0.5, "75% 75%" },
+    // Filter Effects 1 6: blur radii and amounts stay in range.
+    .{ Op.interpolate, "filter", "blur(10px) grayscale(0.5)", "blur(20px) grayscale(1)", -2, "blur(0px) grayscale(0)" },
+    .{ Op.interpolate, "filter", "grayscale(0.5)", "grayscale(1)", 2, "grayscale(1)" },
     // One unit on both sides stays a plain length at p = 0.
     .{ Op.interpolate, "baseline-shift", "40px", "10px", 0, "40px" },
 };

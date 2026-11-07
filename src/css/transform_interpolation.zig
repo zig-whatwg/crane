@@ -173,10 +173,17 @@ fn family(kind: Kind) Family {
     };
 }
 
-/// The same name, or derivatives of one primitive (matrix(), matrix3d() and
-/// perspective() share none: only the same name).
+/// The same name, or derivatives of one primitive. Only translate(),
+/// scale() and rotate() have derivatives (Transforms 1 7.2, Transforms 2
+/// 12.3): skewX(), skewY() and skew() share no primitive, nor do matrix(),
+/// matrix3d() and perspective() (WPT transform-interpolation-verify-
+/// reftests: skewX(0deg) rotate(0deg) to skewY(0deg) rotate(360deg) is the
+/// identity at 0.5 in Chrome, Firefox and Safari - a matrix pair).
 fn sharePrimitive(a: Kind, b: Kind) bool {
-    return family(a) == family(b);
+    return switch (family(a)) {
+        .translate, .scale, .rotate => family(a) == family(b),
+        else => a == b,
+    };
 }
 
 /// Whether `kind` is a 3D transform function (Transforms 2 section 12:
@@ -406,6 +413,16 @@ fn combineRotations(allocator: Allocator, x: Function, y: Function, p: f64, op: 
         .interpolate => angle_a * (1 - p) + angle_b * p,
         .accumulate => angle_a + angle_b,
     };
+    // About a principal axis the result is rotateX/Y/Z() - the function of
+    // the side whose angle is used, as Blink's RotateTransformOperation::
+    // Blend keeps its type - so whole turns compose exactly
+    // (box_transform_values' non-arbitrary rotation); otherwise rotate3d().
+    const principal: ?Kind = if (axis[0] == 1 and axis[1] == 0 and axis[2] == 0) .rotateX else if (axis[0] == 0 and axis[1] == 1 and axis[2] == 0) .rotateY else if (axis[0] == 0 and axis[1] == 0 and axis[2] == 1) .rotateZ else null;
+    if (principal) |kind| {
+        const arguments = try allocator.alloc(Number, 1);
+        arguments[0] = .{ .literal = .{ .value = angle, .unit = .deg } };
+        return .{ .allocator = allocator, .kind = kind, .arguments = arguments, .computed = true };
+    }
     const arguments = try allocator.alloc(Number, 4);
     for (arguments[0..3], axis) |*n, v| n.* = Number.scalar(v);
     arguments[3] = .{ .literal = .{ .value = angle, .unit = .deg } };
@@ -624,9 +641,13 @@ fn recompose2d(d: Decomposed2d) Matrix {
     m[1] = d.m12;
     m[4] = d.m21;
     m[5] = d.m22;
-    // Translate matrix.
-    m[12] = d.translate[0] * d.m11 + d.translate[1] * d.m21;
-    m[13] = d.translate[0] * d.m12 + d.translate[1] * d.m22;
+    // Translate matrix. The spec text multiplies the translation by the
+    // 2x2 residual; Chrome and Firefox keep it as decomposed (Gecko servo
+    // MatrixDecomposed2D -> Matrix3D sets m41/m42 directly), and WPT
+    // transform-interpolation-005's matrix(1, 0.36, 0, 1, 200, 200) pairs,
+    // which both pass and Safari fails, need that.
+    m[12] = d.translate[0];
+    m[13] = d.translate[1];
     // Rotate matrix. Whole quarter turns are exact (the 0 -> 360 fix-up of
     // 11.2.2 must not leave sin(2pi)'s rounding in the result), as Crane's
     // transform functions compose them (box_transform_values, after
@@ -808,15 +829,20 @@ fn recompose3d(d: Decomposed3d) Matrix {
     const y = d.quaternion[1];
     const z = d.quaternion[2];
     const w = d.quaternion[3];
+    // The spec lists rotationMatrix[i][j] here as (row i, column j) -
+    // the transpose of its own [column][row] convention elsewhere - which is
+    // how Chromium's ComposeTransform builds it (set_rc) and the only
+    // reading that recomposes 13.1.1's quaternion to the matrix it came from
+    // (WPT transform-interpolation-001: rotate3d(1, 1, 0, 90deg) at 0).
     var rotation = identity();
     rotation[0] = 1 - 2 * (y * y + z * z);
-    rotation[1] = 2 * (x * y - z * w);
-    rotation[2] = 2 * (x * z + y * w);
-    rotation[4] = 2 * (x * y + z * w);
+    rotation[4] = 2 * (x * y - z * w);
+    rotation[8] = 2 * (x * z + y * w);
+    rotation[1] = 2 * (x * y + z * w);
     rotation[5] = 1 - 2 * (x * x + z * z);
-    rotation[6] = 2 * (y * z - x * w);
-    rotation[8] = 2 * (x * z - y * w);
-    rotation[9] = 2 * (y * z + x * w);
+    rotation[9] = 2 * (y * z - x * w);
+    rotation[2] = 2 * (x * z - y * w);
+    rotation[6] = 2 * (y * z + x * w);
     rotation[10] = 1 - 2 * (x * x + y * y);
     m = multiply(m, rotation);
     // apply skew

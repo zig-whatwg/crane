@@ -59,6 +59,8 @@ const cases = .{
     .{ Op.interpolate, "offset-path", "path('M 20 70')", "path('M 100 30')", 0.125, "path(\"M 30 65\")" },
     .{ Op.interpolate, "offset-path", "path('m 20 70')", "path('m 100 30')", -1, "path(\"M -60 110\")" },
     .{ Op.interpolate, "offset-path", "path('m 100 200 l 20 70')", "path('m 100 200 l 100 30')", -1, "path(\"M 100 200 L 40 310\")" },
+    // Interpolated path data is absolute at p = 1 too.
+    .{ Op.interpolate, "offset-path", "path('m 20 70')", "path('m 100 30')", 1, "path(\"M 100 30\")" },
     .{ Op.interpolate, "offset-path", "path('M 50 60 H 70')", "path('M 10 140 H 270')", -1, "path(\"M 90 -20 H -130\")" },
     .{ Op.interpolate, "offset-path", "path('M 100 400 A 10 20 30 1 0 140 450')", "path('M 300 200 A 50 60 70 0 1 380 290')", 0.125, "path(\"M 125 375 A 15 25 35 1 1 170 430\")" },
     .{ Op.interpolate, "offset-path", "path('M 100 400 A 10 20 30 1 0 140 450')", "path('M 300 200 A 50 60 70 0 1 380 290')", 2, "path(\"M 500 0 A 90 100 110 0 1 620 130\")" },

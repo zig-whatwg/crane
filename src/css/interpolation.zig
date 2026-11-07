@@ -132,7 +132,7 @@ pub fn interpolate(allocator: Allocator, l: Longhand, from: Value, to: Value, p:
     // offset-distance-interpolation, scale-interpolation). At p = 1 the
     // mix's zero length term drops (math_values' Q100 canonical form), so
     // V_B is exact either way.
-    if (p == 1) return retained(to);
+    if (p == 1 and !pathData(to)) return retained(to);
     switch (animationType(l)) {
         .not_animatable, .discrete => return discrete(from, to, p),
         .visibility => return visibility(from, to, p),
@@ -140,6 +140,20 @@ pub fn interpolate(allocator: Allocator, l: Longhand, from: Value, to: Value, p:
     }
     if (try smooth(allocator, l, from, to, p)) |v| return v;
     return discrete(from, to, p);
+}
+
+/// Whether `v` holds path() data, whose interpolated form is the absolute
+/// one even at p = 1 (WPT css/motion/animation/offset-path-interpolation-001
+/// and -004 expect `path('m 20 70')` interpolated to `M ...` at 1; Chrome,
+/// Firefox and Safari pass them): the shortcut to V_B would keep its
+/// relative commands.
+fn pathData(v: Value) bool {
+    const shape = switch (v) {
+        .shape => |s| s,
+        .motion_path => |path| if (path.data == .shape) path.data.shape else return false,
+        else => return false,
+    };
+    return shape.data == .path;
 }
 
 /// CSS Transitions 1 section 3 "transitionable": the animation type of the
@@ -218,7 +232,7 @@ fn smooth(allocator: Allocator, l: Longhand, from: Value, to: Value, p: f64) All
     if (filterList(from) != null and filterList(to) != null) return try mixFilters(allocator, filterList(from).?, filterList(to).?, p, .interpolate);
     if (shadowList(from) != null and shadowList(to) != null) return try mixBoxShadows(allocator, shadowList(from).?, shadowList(to).?, p, .interpolate);
     if (from == .transform_origin and to == .transform_origin) return try mixOrigins(allocator, from.transform_origin, 1 - p, to.transform_origin, p);
-    if (from == .image_position and to == .image_position) return try mixPositions(allocator, from.image_position, 1 - p, to.image_position, p);
+    if (from == .image_position or to == .image_position) if (try mixPositionValues(allocator, from, 1 - p, to, p)) |v| return v;
     if (try mixComposite(allocator, l, from, to, .{ .ka = 1 - p, .kb = p, .p = p })) |v| return v;
     if (textShadowList(from) != null and textShadowList(to) != null) return try mixTextShadows(allocator, textShadowList(from).?, textShadowList(to).?, p, .interpolate);
     if (lengthPercentage(from) and lengthPercentage(to)) return try mixLengths(allocator, from, 1 - p, to, p);
@@ -264,8 +278,8 @@ pub fn add(allocator: Allocator, l: Longhand, underlying: Value, value: Value) A
     if (underlying == .transform_origin and value == .transform_origin) {
         if (try mixOrigins(allocator, underlying.transform_origin, 1, value.transform_origin, 1)) |sum| return sum;
     }
-    if (underlying == .image_position and value == .image_position) {
-        if (try mixPositions(allocator, underlying.image_position, 1, value.image_position, 1)) |sum| return sum;
+    if (underlying == .image_position or value == .image_position) {
+        if (try mixPositionValues(allocator, underlying, 1, value, 1)) |sum| return sum;
     }
     if (l == .text_shadow) if (textShadowList(underlying)) |a| if (textShadowList(value)) |b| {
         // A shadow list adds by appending (Backgrounds 3 6.1, which Text
@@ -756,6 +770,31 @@ fn mixPositions(allocator: Allocator, a: *const position_values.Position, ka: f6
     return .{ .image_position = result };
 }
 
+/// Two computed <position> values, either of which may be the keyword
+/// `center` (object-position's initial value, Images 3 5.5: 50% 50%).
+fn mixPositionValues(allocator: Allocator, a: Value, ka: f64, b: Value, kb: f64) Allocator.Error!?Value {
+    var center_a = centerPosition(allocator);
+    var center_b = centerPosition(allocator);
+    const pa: *const position_values.Position = switch (a) {
+        .image_position => |p| p,
+        .keyword => |k| if (k == .center) &center_a else return null,
+        else => return null,
+    };
+    const pb: *const position_values.Position = switch (b) {
+        .image_position => |p| p,
+        .keyword => |k| if (k == .center) &center_b else return null,
+        else => return null,
+    };
+    return mixPositions(allocator, pa, ka, pb, kb);
+}
+
+/// The computed `center` position, 50% 50%, on the stack (percentages own
+/// nothing).
+fn centerPosition(allocator: Allocator) position_values.Position {
+    const half: Value = .{ .length = Length.percent(50) };
+    return .{ .allocator = allocator, .data = .{ .computed = .{ .{ .value = half }, .{ .value = half } } } };
+}
+
 /// Two computed offsets combined as length-percentages from the start edge.
 /// OWNED; null when either is not a length-percentage.
 fn mixOffsets(allocator: Allocator, a: position_values.Offset, ka: f64, b: position_values.Offset, kb: f64) Allocator.Error!?Value {
@@ -988,6 +1027,7 @@ fn mixRepeatable(allocator: Allocator, l: Longhand, a: Value, b: Value, w: Weigh
 /// background-position axis (a length-percentage from the start edge).
 fn mixLayer(allocator: Allocator, a: Value, b: Value, w: Weights) Allocator.Error!?Value {
     if (a == .image_size or b == .image_size) return try mixSizes(allocator, a, b, w);
+    if (a == .image_position or b == .image_position) return try mixPositionValues(allocator, a, w.ka, b, w.kb);
     const xa = (try axisOffset(allocator, a)) orelse return null;
     defer xa.release();
     const xb = (try axisOffset(allocator, b)) orelse return null;
@@ -1205,10 +1245,13 @@ fn mixBoxShadows(allocator: Allocator, a: []const BoxShadowItem, b: []const BoxS
         for (0..4) |k| {
             const lx = shadowLength(x, k) orelse return null;
             const ly = shadowLength(y, k) orelse return null;
-            item.lengths[k] = Value.px(switch (op) {
+            const combined = switch (op) {
                 .interpolate => lerp(lx, ly, p),
                 .accumulate => lx + ly,
-            });
+            };
+            // The blur radius (the third length) is never negative
+            // (Backgrounds 3 6.1; the spread may be).
+            item.lengths[k] = Value.px(if (k == 2) @max(combined, 0) else combined);
         }
         items[i] = item;
     }
@@ -1309,10 +1352,20 @@ fn mixFilterFunction(x: FilterFunction, y: FilterFunction, p: f64, op: FilterOp)
         .scalar => |sx| {
             if (y.argument != .scalar) return null;
             const sy = y.argument.scalar;
-            if (sx == .number and sy == .number) return .{ .kind = x.kind, .argument = .{ .scalar = .{ .number = combine(sx.number, sy.number, p, op, one) } } };
+            // Filter Effects 1 section 6: negative amounts and blur radii are
+            // out of range, and grayscale(), invert(), opacity() and sepia()
+            // stop at 1 - clamped where combined, as the inputs never leave
+            // the range (Blink FilterInterpolationFunctions clamps the same
+            // way when it builds the filter; WPT filter-interpolation-003
+            // expects blur(0px) and grayscale(1) when extrapolating).
+            const upper: f64 = switch (x.kind) {
+                .grayscale, .invert, .opacity, .sepia => 1,
+                else => std.math.inf(f64),
+            };
+            if (sx == .number and sy == .number) return .{ .kind = x.kind, .argument = .{ .scalar = .{ .number = std.math.clamp(combine(sx.number, sy.number, p, op, one), 0, upper) } } };
             const lx = pxOf(sx) orelse return null;
             const ly = pxOf(sy) orelse return null;
-            return .{ .kind = x.kind, .argument = .{ .scalar = Value.px(combine(lx, ly, p, op, 0)) } };
+            return .{ .kind = x.kind, .argument = .{ .scalar = Value.px(@max(combine(lx, ly, p, op, 0), 0)) } };
         },
         .angle => |ax| {
             if (y.argument != .angle or ax != .literal or y.argument.angle != .literal) return null;
@@ -1329,7 +1382,9 @@ fn mixFilterFunction(x: FilterFunction, y: FilterFunction, p: f64, op: FilterOp)
             for (0..3) |k| {
                 const lx = if (k < shx.count) pxOf(shx.lengths[k]) orelse return null else 0;
                 const ly = if (k < shy.count) pxOf(shy.lengths[k]) orelse return null else 0;
-                lengths[k] = Value.px(combine(lx, ly, p, op, 0));
+                const combined = combine(lx, ly, p, op, 0);
+                // drop-shadow()'s blur (the third length) is never negative.
+                lengths[k] = Value.px(if (k == 2) @max(combined, 0) else combined);
             }
             const color: RgbaColor = switch (op) {
                 .interpolate => mixPremultiplied(cx, cy, p),

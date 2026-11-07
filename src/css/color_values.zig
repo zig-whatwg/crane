@@ -949,6 +949,12 @@ fn legacyBytes(components: Components) values.RgbaColor {
 ///   (color-mix() weights cannot extrapolate).
 /// OWNED; null when either color is a value this cannot mix.
 pub fn interpolateColors(allocator: Allocator, a: Color, b: Color, p: f64) Allocator.Error!?Color {
+    // The same color on both sides (currentcolor and currentcolor above all)
+    // is that color: no mix that would stop naming currentcolor.
+    if (a.eql(b)) {
+        a.retain();
+        return a;
+    }
     const legacy = legacyOrCurrent(a) and legacyOrCurrent(b);
     if (resolvedComponents(a)) |ca| if (resolvedComponents(b)) |cb| {
         const both_legacy = legacy and a != .current and b != .current;
