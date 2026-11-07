@@ -327,6 +327,30 @@ test "named properties and no indexed ones: an array index is a name" {
     );
 }
 
+test "a supported property names list longer than the binding's stack buffer answers every name" {
+    // The visibility algorithm's step 1 (WebIDL 3.9.7) for an interface with no
+    // per-name query builds the supported property names list (2.5.6.2) in an
+    // arena over an 8 KB stack buffer that spills to the heap (interface.zig
+    // isSupportedPropertyName). 400 dataset names of 32 characters fill more
+    // than that buffer: the first, a middle and the last name still read, and
+    // a name not in the list still does not.
+    const page = try Page.open();
+    defer page.close();
+    try page.expectOk(
+        \\  const { body } = html();
+        \\  const ds = body.dataset;
+        \\  const name = (i) => 'k' + String(i).padStart(31, '0');
+        \\  for (let i = 0; i < 400; i++) ds[name(i)] = 'v' + i;
+        \\  check('count', Object.keys(ds).length, 400);
+        \\  check('first', ds[name(0)], 'v0');
+        \\  check('middle', ds[name(200)], 'v200');
+        \\  check('last', ds[name(399)], 'v399');
+        \\  check('last in', name(399) in ds, true);
+        \\  check('absent', ds[name(400)], undefined);
+        \\  check('absent in', name(400) in ds, false);
+    );
+}
+
 test "a named property's name may be long, and keeps its lone surrogates" {
     const page = try Page.open();
     defer page.close();

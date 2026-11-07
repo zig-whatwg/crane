@@ -237,13 +237,6 @@ pub const SVGImageElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: *runtime.Instance = undefined,
-            y: *runtime.Instance = undefined,
-            width: *runtime.Instance = undefined,
-            height: *runtime.Instance = undefined,
-            preserveAspectRatio: *runtime.Instance = undefined,
-            crossOrigin: ?runtime.DOMString = null,
-            href: *runtime.Instance = undefined,
             cached_x: ?*runtime.Instance = null,
             cached_y: ?*runtime.Instance = null,
             cached_width: ?*runtime.Instance = null,

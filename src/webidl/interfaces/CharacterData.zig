@@ -128,10 +128,6 @@ pub const CharacterData = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: runtime.DOMString = undefined,
-            length: u32 = undefined,
-            previousElementSibling: ?*runtime.Instance = null,
-            nextElementSibling: ?*runtime.Instance = null,
             _internal: ?*CharacterDataImpl.InternalState = null,
         },
     );

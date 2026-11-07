@@ -225,8 +225,6 @@ pub const HTMLUListElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            compact: bool = undefined,
-            type: runtime.DOMString = undefined,
             _internal: ?*HTMLUListElementImpl.InternalState = null,
         },
     );

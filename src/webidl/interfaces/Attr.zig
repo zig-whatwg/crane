@@ -101,13 +101,6 @@ pub const Attr = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            namespaceURI: ?runtime.DOMString = null,
-            prefix: ?runtime.DOMString = null,
-            localName: runtime.DOMString = undefined,
-            name: runtime.DOMString = undefined,
-            value: runtime.DOMString = undefined,
-            ownerElement: ?*runtime.Instance = null,
-            specified: bool = undefined,
             _internal: ?*AttrImpl.InternalState = null,
         },
     );

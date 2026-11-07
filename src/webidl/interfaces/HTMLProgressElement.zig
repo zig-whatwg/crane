@@ -229,10 +229,6 @@ pub const HTMLProgressElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: f64 = undefined,
-            max: f64 = undefined,
-            position: f64 = undefined,
-            labels: *runtime.Instance = undefined,
             _internal: ?*HTMLProgressElementImpl.InternalState = null,
         },
     );

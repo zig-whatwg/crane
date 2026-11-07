@@ -218,8 +218,6 @@ pub const SVGViewElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            viewBox: *runtime.Instance = undefined,
-            preserveAspectRatio: *runtime.Instance = undefined,
             cached_viewBox: ?*runtime.Instance = null,
             cached_preserveAspectRatio: ?*runtime.Instance = null,
             _internal: ?*SVGViewElementImpl.InternalState = null,

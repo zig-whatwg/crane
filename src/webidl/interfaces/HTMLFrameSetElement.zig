@@ -271,9 +271,6 @@ pub const HTMLFrameSetElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cols: runtime.DOMString = undefined,
-            rows: runtime.DOMString = undefined,
-            onbeforeunload: typedefs.OnBeforeUnloadEventHandler = undefined,
             _internal: ?*HTMLFrameSetElementImpl.InternalState = null,
         },
     );

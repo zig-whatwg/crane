@@ -237,9 +237,6 @@ pub const HTMLDialogElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            open: bool = undefined,
-            returnValue: runtime.DOMString = undefined,
-            closedBy: runtime.DOMString = undefined,
             _internal: ?*HTMLDialogElementImpl.InternalState = null,
         },
     );

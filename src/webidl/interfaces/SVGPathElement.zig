@@ -241,7 +241,6 @@ pub const SVGPathElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            pathLength: *runtime.Instance = undefined,
             _internal: ?*SVGPathElementImpl.InternalState = null,
         },
     );

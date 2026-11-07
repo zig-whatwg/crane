@@ -214,7 +214,6 @@ pub const SVGMPathElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            href: *runtime.Instance = undefined,
             cached_href: ?*runtime.Instance = null,
             _internal: ?*SVGMPathElementImpl.InternalState = null,
         },

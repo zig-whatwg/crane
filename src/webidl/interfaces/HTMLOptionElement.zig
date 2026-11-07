@@ -239,14 +239,6 @@ pub const HTMLOptionElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            disabled: bool = undefined,
-            form: ?*runtime.Instance = null,
-            label: runtime.DOMString = undefined,
-            defaultSelected: bool = undefined,
-            selected: bool = undefined,
-            value: runtime.DOMString = undefined,
-            text: runtime.DOMString = undefined,
-            index: i32 = undefined,
             _internal: ?*HTMLOptionElementImpl.InternalState = null,
         },
     );

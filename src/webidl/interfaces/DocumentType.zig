@@ -114,9 +114,6 @@ pub const DocumentType = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            publicId: runtime.DOMString = undefined,
-            systemId: runtime.DOMString = undefined,
             _internal: ?*DocumentTypeImpl.InternalState = null,
         },
     );

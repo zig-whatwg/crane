@@ -274,15 +274,6 @@ pub const HTMLVideoElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            width: u32 = undefined,
-            height: u32 = undefined,
-            videoWidth: u32 = undefined,
-            videoHeight: u32 = undefined,
-            poster: runtime.USVString = undefined,
-            playsInline: bool = undefined,
-            onenterpictureinpicture: typedefs.EventHandler = undefined,
-            onleavepictureinpicture: typedefs.EventHandler = undefined,
-            disablePictureInPicture: bool = undefined,
             _internal: ?*HTMLVideoElementImpl.InternalState = null,
         },
     );

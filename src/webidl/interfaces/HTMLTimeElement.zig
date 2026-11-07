@@ -223,7 +223,6 @@ pub const HTMLTimeElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dateTime: runtime.DOMString = undefined,
             _internal: ?*HTMLTimeElementImpl.InternalState = null,
         },
     );

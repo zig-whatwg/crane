@@ -232,7 +232,6 @@ pub const SVGGeometryElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            pathLength: *runtime.Instance = undefined,
             cached_pathLength: ?*runtime.Instance = null,
             _internal: ?*SVGGeometryElementImpl.InternalState = null,
         },

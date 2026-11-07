@@ -250,18 +250,6 @@ pub const SVGFECompositeElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            in1: *runtime.Instance = undefined,
-            in2: *runtime.Instance = undefined,
-            operator: *runtime.Instance = undefined,
-            k1: *runtime.Instance = undefined,
-            k2: *runtime.Instance = undefined,
-            k3: *runtime.Instance = undefined,
-            k4: *runtime.Instance = undefined,
-            x: *runtime.Instance = undefined,
-            y: *runtime.Instance = undefined,
-            width: *runtime.Instance = undefined,
-            height: *runtime.Instance = undefined,
-            result: *runtime.Instance = undefined,
             _internal: ?*SVGFECompositeElementImpl.InternalState = null,
         },
     );

@@ -237,12 +237,6 @@ pub const HTMLEmbedElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            src: runtime.USVString = undefined,
-            type: runtime.DOMString = undefined,
-            width: runtime.DOMString = undefined,
-            height: runtime.DOMString = undefined,
-            @"align": runtime.DOMString = undefined,
-            name: runtime.DOMString = undefined,
             _internal: ?*HTMLEmbedElementImpl.InternalState = null,
         },
     );

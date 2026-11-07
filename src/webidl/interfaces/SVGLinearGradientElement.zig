@@ -221,10 +221,6 @@ pub const SVGLinearGradientElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x1: *runtime.Instance = undefined,
-            y1: *runtime.Instance = undefined,
-            x2: *runtime.Instance = undefined,
-            y2: *runtime.Instance = undefined,
             cached_x1: ?*runtime.Instance = null,
             cached_y1: ?*runtime.Instance = null,
             cached_x2: ?*runtime.Instance = null,

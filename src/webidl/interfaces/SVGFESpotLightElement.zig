@@ -226,14 +226,6 @@ pub const SVGFESpotLightElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: *runtime.Instance = undefined,
-            y: *runtime.Instance = undefined,
-            z: *runtime.Instance = undefined,
-            pointsAtX: *runtime.Instance = undefined,
-            pointsAtY: *runtime.Instance = undefined,
-            pointsAtZ: *runtime.Instance = undefined,
-            specularExponent: *runtime.Instance = undefined,
-            limitingConeAngle: *runtime.Instance = undefined,
             _internal: ?*SVGFESpotLightElementImpl.InternalState = null,
         },
     );

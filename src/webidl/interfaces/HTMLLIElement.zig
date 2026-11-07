@@ -225,8 +225,6 @@ pub const HTMLLIElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: i32 = undefined,
-            type: runtime.DOMString = undefined,
             _internal: ?*HTMLLIElementImpl.InternalState = null,
         },
     );

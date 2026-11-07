@@ -231,11 +231,6 @@ pub const HTMLHRElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"align": runtime.DOMString = undefined,
-            color: runtime.DOMString = undefined,
-            noShade: bool = undefined,
-            size: runtime.DOMString = undefined,
-            width: runtime.DOMString = undefined,
             _internal: ?*HTMLHRElementImpl.InternalState = null,
         },
     );

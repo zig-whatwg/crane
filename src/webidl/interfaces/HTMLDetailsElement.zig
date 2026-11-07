@@ -225,8 +225,6 @@ pub const HTMLDetailsElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            open: bool = undefined,
             _internal: ?*HTMLDetailsElementImpl.InternalState = null,
         },
     );

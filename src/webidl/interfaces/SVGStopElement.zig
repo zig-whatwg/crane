@@ -212,7 +212,6 @@ pub const SVGStopElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            offset: *runtime.Instance = undefined,
             cached_offset: ?*runtime.Instance = null,
             _internal: ?*SVGStopElementImpl.InternalState = null,
         },

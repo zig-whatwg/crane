@@ -238,11 +238,6 @@ pub const HTMLTableSectionElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            rows: *runtime.Instance = undefined,
-            @"align": runtime.DOMString = undefined,
-            ch: runtime.DOMString = undefined,
-            chOff: runtime.DOMString = undefined,
-            vAlign: runtime.DOMString = undefined,
             cached_rows: ?*runtime.Instance = null,
             _internal: ?*HTMLTableSectionElementImpl.InternalState = null,
         },

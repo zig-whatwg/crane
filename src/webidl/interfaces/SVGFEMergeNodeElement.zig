@@ -211,7 +211,6 @@ pub const SVGFEMergeNodeElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            in1: *runtime.Instance = undefined,
             _internal: ?*SVGFEMergeNodeElementImpl.InternalState = null,
         },
     );

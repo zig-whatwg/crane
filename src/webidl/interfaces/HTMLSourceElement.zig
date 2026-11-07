@@ -235,13 +235,6 @@ pub const HTMLSourceElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            src: runtime.USVString = undefined,
-            type: runtime.DOMString = undefined,
-            srcset: runtime.USVString = undefined,
-            sizes: runtime.DOMString = undefined,
-            media: runtime.DOMString = undefined,
-            width: u32 = undefined,
-            height: u32 = undefined,
             _internal: ?*HTMLSourceElementImpl.InternalState = null,
         },
     );

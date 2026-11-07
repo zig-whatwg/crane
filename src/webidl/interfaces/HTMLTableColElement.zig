@@ -233,12 +233,6 @@ pub const HTMLTableColElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            span: u32 = undefined,
-            @"align": runtime.DOMString = undefined,
-            ch: runtime.DOMString = undefined,
-            chOff: runtime.DOMString = undefined,
-            vAlign: runtime.DOMString = undefined,
-            width: runtime.DOMString = undefined,
             _internal: ?*HTMLTableColElementImpl.InternalState = null,
         },
     );
