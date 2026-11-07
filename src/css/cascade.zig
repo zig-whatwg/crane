@@ -1615,7 +1615,14 @@ const Builder = struct {
         if (v == .box_numeric) return .{ .box_numeric = try v.box_numeric.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         // Gaps 1 §§4.1-4.3: each value as a plain value of `l` computes.
         if (v == .gap_list) return .{ .gap_list = try v.gap_list.compute(self.ctx.allocator, l, ComponentContext.init(self, source)) };
-        if (v == .animation_list) return .{ .animation_list = try v.animation_list.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
+        if (v == .animation_list) {
+            const list = try v.animation_list.compute(self.ctx.allocator, self.computationContext(l, v, source));
+            // CSS Scoping 1 tree-scoped references: animation-name keeps the
+            // tree scope of its winning declaration (as font-family's named
+            // families do, below), for the @keyframes lookup (lane anim1 C2).
+            if (l == .animation_name) list.tree_scope = source.tree_scope;
+            return .{ .animation_list = list };
+        }
         if (v == .transform) return .{ .transform = try v.transform.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .transform_list) return .{ .transform_list = try v.transform_list.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .transform_origin) return .{ .transform_origin = try v.transform_origin.compute(self.ctx.allocator, self.computationContext(l, v, source)) };

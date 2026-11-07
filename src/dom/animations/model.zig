@@ -821,13 +821,18 @@ pub const Animation = struct {
         const needs_frame = self.hasPendingTask() or self.queued_events > 0 or self.playState() == .running;
         const document = self.documentForTiming();
         if (needs_frame) if (document) |d| registry.requestFrameFor(d);
+        // A CSS animation that lost its owning element takes its place in
+        // the global animation list when it leaves idle (css_animations).
+        if (self.css != null) @import("css_animations.zig").settled(self);
         // A CSS transition is also kept while it is a member of its owning
         // element's running set (css_transitions; Blink's TransitionMap
-        // Member), until it leaves that set.
+        // Member), until it leaves that set; a CSS animation while its owning
+        // element lists it (css_animations; Blink's running_animations_).
         const keep = self.hasPendingTask() or self.queued_events > 0 or self.finish_queued or
             (self.playState() == .running and document != null) or
             (self.isRelevant() and self.targetConnected()) or
-            @import("css_transitions.zig").isRunningMember(self);
+            @import("css_transitions.zig").isRunningMember(self) or
+            @import("css_animations.zig").isListedMember(self);
         if (keep == self.kept) return;
         if (!self.instance.ctx.hasEngine()) return;
         if (keep) engine.keepPlatformObjectAlive(self.instance) else engine.releasePlatformObject(self.instance);

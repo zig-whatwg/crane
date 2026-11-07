@@ -2,10 +2,9 @@
 //! animations and send events" (HTML update the rendering step 11).
 //!
 //! Lane rendering2 (2026-10-29): the timing model and its API, and the CSS
-//! animation and transition events on it. Applying animated values to
-//! style (the effect stack, interpolation, commitStyles) and making CSS
-//! animations and transitions from style are later pieces
-//! (tmp/plans/rendering2-design.md).
+//! animation and transition events on it; lane rendering3 the effect stack;
+//! lane anim1 CSS transitions (css_transitions.zig) and CSS animations
+//! (css_animations.zig) made from style.
 //!
 //! Spec: https://drafts.csswg.org/web-animations-1/
 const std = @import("std");
@@ -27,6 +26,7 @@ pub const hooks = @import("hooks.zig");
 pub const promise = @import("promise.zig");
 pub const css_events = @import("css_events.zig");
 pub const css_transitions = @import("css_transitions.zig");
+pub const css_animations = @import("css_animations.zig");
 
 pub const Registry = registry.Registry;
 pub const updateAnimationsAndSendEvents = registry.updateAnimationsAndSendEvents;
@@ -88,6 +88,7 @@ pub fn setKeyframes(effect: *model.Effect, keyframe_input: ?JSValue) !void {
     effect.keyframes.deinit(effect.allocator);
     effect.keyframes = list;
     css_transitions.keyframesReplaced(effect);
+    css_animations.keyframesReplaced(effect);
     if (effect.animationModel()) |animation| animation.settle();
 }
 
@@ -191,16 +192,27 @@ pub fn rootAnimations(root: *runtime.Instance) !JSValue {
     return result.take();
 }
 
-/// CSS Transitions 2 6.2 "requirements on pending style changes":
-/// getAnimations() answers "consistent with having fully processed any such
-/// pending changes" - the style of `root` (and its subtree) resolved, which
-/// starts and cancels transitions, and the transitions of elements that left
-/// the document canceled.
+/// CSS Transitions 2 6.2 and CSS Animations 2 6.2 "requirements on pending
+/// style changes": getAnimations() answers "consistent with having fully
+/// processed any such pending changes" - the style of `root` (and its
+/// subtree) resolved, which makes, updates and cancels CSS transitions and
+/// animations, and those of elements that left the document canceled.
 fn flushPendingStyle(root: *runtime.Instance, subtree: bool) void {
     const style_engine = @import("../style/root.zig").engine;
     style_engine.flushForAnimations(root, subtree);
     const document = (interfaces.Node.get_ownerDocument(root) catch null) orelse root;
     css_transitions.sweep(document);
+    css_animations.sweep(document);
+}
+
+/// getKeyframes() (6.6): `effect`'s keyframes as objects in `realm` - for a
+/// CSS animation, with its generated keyframes' implicit values filled in
+/// (css_animations.keyframesForScript).
+pub fn keyframeObjects(realm: runtime.Context, effect: *const model.Effect) !engine.Owned {
+    var filled = try css_animations.keyframesForScript(effect);
+    defer if (filled) |*list| list.deinit(effect.allocator);
+    const list = if (filled) |*l| l else &effect.keyframes;
+    return keyframes.toObjects(realm, effect.allocator, list);
 }
 
 /// Whether `node` is a descendant of `ancestor` (DOM, not shadow-including).

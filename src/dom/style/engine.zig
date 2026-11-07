@@ -66,6 +66,7 @@ const element_style = @import("element_style.zig");
 const animations = struct {
     const effect_stack = @import("../animations/effect_stack.zig");
     const css_transitions = @import("../animations/css_transitions.zig");
+    const css_animations = @import("../animations/css_animations.zig");
 };
 const environment_variables = @import("environment_variables.zig");
 pub const resource_loading = @import("resource_loading.zig");
@@ -260,9 +261,10 @@ pub const StyleEngine = struct {
         /// held; every style computed with it holds its own.
         registered: ?*css.registered_properties.Snapshot = null,
         registered_key: RegisteredKey = .{},
-        /// CSS Transitions from style: whether the document declares any,
-        /// and what its last step-16 style update saw (`TransitionGate`).
-        transitions: TransitionGate = .{},
+        /// CSS Transitions and CSS Animations from style: whether the
+        /// document declares any, and what its last step-16 style update saw
+        /// (`AnimationGate`).
+        animations: AnimationGate = .{},
 
         fn deinit(self: *Rare, allocator: Allocator) void {
             if (self.resources) |resources| resources.destroy();
@@ -486,7 +488,7 @@ pub const StyleEngine = struct {
     pub fn addOwner(self: *StyleEngine, element: *runtime.Instance) Error!void {
         if (hooks.sheetOf(element)) |record| {
             resource_loading.sheetChanged(record);
-            transitionsSheetChanged(record);
+            animationsSheetChanged(record);
         }
         for (self.owners.items) |o| if (o.element == element and o.live()) {
             self.sheetsChanged();
@@ -582,25 +584,26 @@ pub const StyleEngine = struct {
         self.active = built;
         self.generation +%= 1;
         // The net for sheets that join without addOwner (adopted and
-        // constructed sheets): an active sheet that declares a transition
-        // opens the gate.
-        if (!self.declaresTransitions()) if (activeDeclaresTransitions(&self.active.?)) self.noteTransitionDeclaration(document);
+        // constructed sheets): an active sheet that declares a transition or
+        // an animation opens the gate.
+        if (!self.declaresAnimations()) if (activeDeclaresAnimations(&self.active.?)) self.noteAnimationDeclaration(document);
         return &self.active.?;
     }
 
-    /// Whether this document declares CSS transitions (`TransitionGate`).
-    fn declaresTransitions(self: *const StyleEngine) bool {
+    /// Whether this document declares CSS transitions or CSS animations
+    /// (`AnimationGate`).
+    fn declaresAnimations(self: *const StyleEngine) bool {
         const rare = self.rare orelse return false;
-        return rare.transitions.declares;
+        return rare.animations.declares;
     }
 
-    /// A transition declaration reached this document: from now on its
+    /// A transition or animation declaration reached this document: from now on its
     /// rendering opportunities update its style, and its mutations ask for
     /// one (dom.update_the_rendering's watch).
-    fn noteTransitionDeclaration(self: *StyleEngine, document: *runtime.Instance) void {
+    fn noteAnimationDeclaration(self: *StyleEngine, document: *runtime.Instance) void {
         const rare = self.ensureRare() catch return;
-        if (rare.transitions.declares) return;
-        rare.transitions.declares = true;
+        if (rare.animations.declares) return;
+        rare.animations.declares = true;
         @import("../update_the_rendering.zig").watchStyle(document);
     }
 
@@ -1310,12 +1313,22 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
     const rendered = change.parent_rendered and base.display().box != .none;
     var transitions_changed = false;
     if (change.event) |event| {
+        // CSS Animations first, then CSS Transitions, as Blink's
+        // CalculateAnimationUpdate precedes CalculateTransitionUpdate: a
+        // property an animation starts driving starts no transition.
+        var lookup: KeyframesLookup = .{ .res = res, .node = node };
+        transitions_changed = animations.css_animations.styleChangeEvent(element, pseudo, .{
+            .after = base,
+            .rendered = rendered,
+            .keyframes = .{ .context = &lookup, .find = KeyframesLookup.find },
+            .generation = res.engine.generation,
+        });
         transitions_changed = animations.css_transitions.styleChangeEvent(element, pseudo, .{
             .before = event.before,
             .after = base,
             .rendered = rendered,
             .generation = change.generation,
-        });
+        }) or transitions_changed;
     }
     // H-R3-ENGINE-RESOLVE.
     if (animations.effect_stack.component(element, pseudo) != 0) {
@@ -1324,6 +1337,72 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         }
     }
     return .{ .style = base, .base = null, .rendered = rendered, .transitions_changed = transitions_changed };
+}
+
+/// The @keyframes lookup a resolution gives its CSS animations
+/// (css_animations.Keyframes).
+const KeyframesLookup = struct {
+    res: *Resolution,
+    node: *NodeBase,
+
+    fn find(context: *anyopaque, declaring_scope: u64, name: []const u8) ?*style_rules.Rule {
+        const self: *KeyframesLookup = @ptrCast(@alignCast(context));
+        return findKeyframes(self.res, self.node, declaring_scope, name);
+    }
+};
+
+/// CSS Animations 1 section 3 and CSS Scoping's tree-scoped references: the
+/// @keyframes rule named `name` that an animation-name declared in the tree
+/// scope `declaring_scope` (css.animation_values.List.tree_scope, the
+/// winning declaration's) refers to for the element `node`. The declaring
+/// tree first, then outward through each host's tree to the document - Blink
+/// StyleResolver::FindKeyframesRule from the ScopedCSSName's TreeScope,
+/// WebKit's nameStyleScopeOrdinal. A :host or ::slotted() rule declares in a
+/// tree inside the element's, so the scope is found by its serial among the
+/// trees that have sheets; a declaration of a tree with none (a style
+/// attribute's) starts at the element's own tree.
+fn findKeyframes(res: *Resolution, node: *NodeBase, declaring_scope: u64, name: []const u8) ?*style_rules.Rule {
+    // The document's own sheets declare in scope 0: nothing is outside them.
+    if (declaring_scope == 0) return keyframesIn(res, res.active.sheets.items, name);
+    var root: *NodeBase = start: {
+        for (res.active.scopes.items) |*scope| {
+            if (scopeSerial(scope.root) == declaring_scope) break :start scope.root;
+        }
+        var r = node;
+        while (r.parent_node) |p| r = p;
+        break :start r;
+    };
+    var hops: usize = 0;
+    while (hops < 64) : (hops += 1) {
+        if (root.node_type == NodeBase.DOCUMENT_NODE) return keyframesIn(res, res.active.sheets.items, name);
+        if (res.active.scopeOf(root)) |scope| if (keyframesIn(res, scope.sheets.items, name)) |rule| return rule;
+        if (!isShadowRoot(root)) return null;
+        const host = interfaces.ShadowRoot.get_host(instanceOf(root) orelse return null) catch return null;
+        var next = instance_bridge.getNodeBase(host) orelse return null;
+        while (next.parent_node) |p| next = p;
+        root = next;
+    }
+    return null;
+}
+
+/// The @keyframes rule named `name` among one tree's active `sheets`: "If
+/// multiple @keyframes rules are defined with the same name, the last one in
+/// document order wins" (CSS Animations 1 section 3), the highest-priority
+/// cascade layer first (Cascade 5 6.4: at-rules "use the layer order when
+/// resolving collisions"). Names are case-sensitive.
+fn keyframesIn(res: *Resolution, sheets: []const ActiveSheet, name: []const u8) ?*style_rules.Rule {
+    var best: ?*style_rules.Rule = null;
+    var best_layer: u16 = 0;
+    for (sheets) |*s| for (s.contents.keyframes_rules.items) |entry| {
+        if (!std.mem.eql(u8, entry.rule.prelude, name)) continue;
+        if (!s.contents.conditionHolds(entry.condition, &res.active.media)) continue;
+        const layer: u16 = if (entry.layer) |l| s.layer_order[l] else s.import_layer orelse css.cascade.unlayered;
+        if (best == null or layer >= best_layer) {
+            best = entry.rule;
+            best_layer = layer;
+        }
+    };
+    return best;
 }
 
 /// Conditional 5 §7: borrowed for one resolution. Ordinary units never
@@ -1816,16 +1895,17 @@ pub fn reparseInline(element: *runtime.Instance, state: *ElementStyle, value: []
     }
     state.inline_state = .parsed;
     // The net for a style attribute set while its element had no document
-    // engine to tell: a parsed inline block that declares a transition
-    // opens the gate.
-    if (state.inline_block) |*block| if (blockDeclaresTransitions(block)) {
+    // engine to tell: a parsed inline block that declares a transition or
+    // an animation opens the gate.
+    if (state.inline_block) |*block| if (blockDeclaresAnimations(block)) {
         const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
-        if (hooks.engineOf(document)) |engine| engine.noteTransitionDeclaration(document);
+        if (hooks.engineOf(document)) |engine| engine.noteAnimationDeclaration(document);
     };
 }
 
 // ============================================================================
-// CSS Transitions: the gate, the step-16 style update and the flush
+// CSS Transitions and CSS Animations: the gate, the step-16 style update and
+// the flush
 // ============================================================================
 //
 // CSS Transitions 1 section 3 does not say when computed values update; it
@@ -1839,10 +1919,14 @@ pub fn reparseInline(element: *runtime.Instance, state: *ElementStyle, value: []
 // declares transitions: a transition can start only from an after-change
 // style whose transition-duration or transition-delay is not the initial 0s,
 // and those properties are neither inherited nor animatable, so only a
-// declaration of them in a sheet or a style attribute can give one. A
-// document with none would gain nothing observable from the update, and the
-// update costs about 2 us per element per rendering opportunity
-// (tmp/plans/anim1b2-design.md section 5, measured on the release console).
+// declaration of them in a sheet or a style attribute can give one. The same
+// holds for CSS animations (lane anim1 C2, tmp/plans/anim1b3-design.md
+// section 7): an animation exists only where animation-name names a
+// @keyframes rule, and animation-name is neither inherited nor animatable.
+// So the gate is one sticky bit for both. A document with neither would gain
+// nothing observable from the update, and the update costs about 2 us per
+// element per rendering opportunity (tmp/plans/anim1b2-design.md section 5,
+// measured on the release console).
 //
 // Stated deviations this gate brings, against a browser that updates the
 // style of every document at every rendering opportunity (the integrator's
@@ -1861,10 +1945,11 @@ pub fn reparseInline(element: *runtime.Instance, state: *ElementStyle, value: []
 //    the ancestor animates.
 // 4. @starting-style gives no before-change style: the cascade skips it.
 
-/// A document's CSS transitions gate (StyleEngine.Rare).
-pub const TransitionGate = struct {
+/// A document's CSS transitions and CSS animations gate (StyleEngine.Rare).
+pub const AnimationGate = struct {
     /// Sticky: a sheet or a style attribute of the document declared a
-    /// transition (transition-duration, transition-delay or `transition`).
+    /// transition (transition-duration, transition-delay or `transition`) or
+    /// an animation (animation-name or `animation`).
     declares: bool = false,
     /// The style inputs the last step-16 update resolved under, and whether
     /// it met a volatile style (resolved again on every read).
@@ -1881,66 +1966,77 @@ pub const TransitionGate = struct {
     };
 };
 
-/// Whether `document` declares CSS transitions: its rendering opportunities
-/// update its style (step 16) and its mutations ask for one.
-pub fn declaresTransitions(document: *runtime.Instance) bool {
+/// Whether `document` declares CSS transitions or CSS animations: its
+/// rendering opportunities update its style (step 16) and its mutations ask
+/// for one.
+pub fn declaresAnimations(document: *runtime.Instance) bool {
     const engine = hooks.engineOf(document) orelse return false;
-    return engine.declaresTransitions();
+    return engine.declaresAnimations();
 }
 
-/// Whether CSS text mentions a transition: one scan, ASCII
+/// Whether CSS text mentions a transition or an animation: one scan, ASCII
 /// case-insensitive. A mention in a URL or a string opens the gate too,
 /// which costs only the update.
-fn textMentionsTransition(text: []const u8) bool {
-    const needle = "transition";
-    if (text.len < needle.len) return false;
+fn textMentionsAnimation(text: []const u8) bool {
+    const transition = "transition";
+    const animation = "animation";
+    if (text.len < animation.len) return false;
     var i: usize = 0;
-    while (i + needle.len <= text.len) : (i += 1) {
-        if ((text[i] | 0x20) == 't' and std.ascii.eqlIgnoreCase(text[i..][0..needle.len], needle)) return true;
+    while (i + animation.len <= text.len) : (i += 1) {
+        switch (text[i] | 0x20) {
+            't' => if (i + transition.len <= text.len and std.ascii.eqlIgnoreCase(text[i..][0..transition.len], transition)) return true,
+            'a' => if (std.ascii.eqlIgnoreCase(text[i..][0..animation.len], animation)) return true,
+            else => {},
+        }
     }
     return false;
 }
 
-fn blockDeclaresTransitions(block: *const css.declarations.DeclarationBlock) bool {
+/// A declaration of transition-* or animation-* (the shorthands included:
+/// a block stores a shorthand as its longhands).
+fn blockDeclaresAnimations(block: *const css.declarations.DeclarationBlock) bool {
     for (block.entries.items) |*entry| {
-        if (std.ascii.startsWithIgnoreCase(entry.name(), "transition")) return true;
+        const name = entry.name();
+        if (std.ascii.startsWithIgnoreCase(name, "transition") or std.ascii.startsWithIgnoreCase(name, "animation")) return true;
     }
     return false;
 }
 
-fn ruleDeclaresTransitions(rule: *style_rules.Rule) bool {
-    if (rule.block()) |block| if (blockDeclaresTransitions(block)) return true;
+fn ruleDeclaresAnimations(rule: *style_rules.Rule) bool {
+    if (rule.block()) |block| if (blockDeclaresAnimations(block)) return true;
     if (rule.data == .import) if (rule.data.import.child) |child| {
-        if (sheetDeclaresTransitions(child)) return true;
+        if (sheetDeclaresAnimations(child)) return true;
     };
     if (rule.children()) |children| for (children.items) |child| {
-        if (ruleDeclaresTransitions(child)) return true;
+        if (ruleDeclaresAnimations(child)) return true;
     };
     return false;
 }
 
-fn sheetDeclaresTransitions(record: *SheetRecord) bool {
-    if (record.text) |text| if (textMentionsTransition(text)) return true;
+fn sheetDeclaresAnimations(record: *SheetRecord) bool {
+    if (record.text) |text| if (textMentionsAnimation(text)) return true;
     if (record.rules) |rules| for (rules.items) |rule| {
-        if (ruleDeclaresTransitions(rule)) return true;
+        if (ruleDeclaresAnimations(rule)) return true;
     };
     return false;
 }
 
-fn activeDeclaresTransitions(active: *const Active) bool {
-    for (active.sheets.items) |sheet| if (sheetDeclaresTransitions(sheet.record)) return true;
+fn activeDeclaresAnimations(active: *const Active) bool {
+    for (active.sheets.items) |sheet| if (sheetDeclaresAnimations(sheet.record)) return true;
     for (active.scopes.items) |scope| for (scope.sheets.items) |sheet| {
-        if (sheetDeclaresTransitions(sheet.record)) return true;
+        if (sheetDeclaresAnimations(sheet.record)) return true;
     };
     return false;
 }
 
 /// A sheet joined a document or changed (StyleEngine.addOwner,
-/// SheetRecord.changed): one that declares a transition opens its
-/// document's gate, and in a document already declaring transitions the
+/// SheetRecord.changed): one that declares a transition or an animation
+/// opens its document's gate, and in a document already declaring them the
 /// change asks for the rendering opportunity whose style update starts them
-/// (a sheet change moves no DOM tree version, so the watch does not see it).
-pub fn transitionsSheetChanged(record: *SheetRecord) void {
+/// (a sheet change moves no DOM tree version, so the watch does not see it;
+/// a @keyframes rule inserted later starts its animations there, CSS
+/// Animations 1 section 2).
+pub fn animationsSheetChanged(record: *SheetRecord) void {
     var root = record;
     while (root.parentSheet()) |parent| root = parent;
     const document = if (root.owner_node) |owner|
@@ -1948,44 +2044,44 @@ pub fn transitionsSheetChanged(record: *SheetRecord) void {
     else
         root.constructorDocument() orelse return;
     const engine = hooks.engineOf(document) orelse return;
-    if (engine.declaresTransitions()) {
+    if (engine.declaresAnimations()) {
         @import("../update_the_rendering.zig").requestFrame(document);
         return;
     }
-    if (sheetDeclaresTransitions(record)) engine.noteTransitionDeclaration(document);
+    if (sheetDeclaresAnimations(record)) engine.noteAnimationDeclaration(document);
 }
 
 /// DOM "handle attribute changes" (the Element interface's owner calls it
 /// for every attribute change): a style attribute whose value mentions a
-/// transition opens its node document's gate. One scan, of style attribute
+/// transition or an animation opens its node document's gate. One scan, of style attribute
 /// values only.
 pub fn styleAttributeChanged(element: *runtime.Instance, local_name: []const u8, value: ?[]const u8, namespace: ?[]const u8) void {
     if (namespace != null or !std.mem.eql(u8, local_name, "style")) return;
     const text = value orelse return;
-    if (!textMentionsTransition(text)) return;
+    if (!textMentionsAnimation(text)) return;
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
     const engine = hooks.engineOf(document) orelse return;
-    engine.noteTransitionDeclaration(document);
+    engine.noteAnimationDeclaration(document);
 }
 
 /// HTML update the rendering step 16.2.1, "recalculate styles", for a
-/// document that declares transitions: every element's style resolved (each
+/// document that declares transitions or animations: every element's style resolved (each
 /// resolution whose inputs moved is its style change event), and the cached
 /// pseudo-element styles with them - when a style input moved since the last
 /// update. Run in the document's realm (dom.update_the_rendering).
 pub fn recalculateStyles(document: *runtime.Instance) void {
     const engine = hooks.engineOf(document) orelse return;
-    if (!engine.declaresTransitions()) return;
+    if (!engine.declaresAnimations()) return;
     const rare = engine.rare orelse return;
-    const inputs: TransitionGate.Inputs = .{
+    const inputs: AnimationGate.Inputs = .{
         .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slot_version, .singletons = singletonKey(document) },
         .sheets_version = engine.sheets_version,
     };
-    if (rare.transitions.updated) |updated| if (updated.eql(inputs) and !rare.transitions.updated_volatile) return;
+    if (rare.animations.updated) |updated| if (updated.eql(inputs) and !rare.animations.updated_volatile) return;
     const root = instance_bridge.getNodeBase(document) orelse return;
-    rare.transitions.updated_volatile = updateSubtree(engine.allocator, root) catch return;
+    rare.animations.updated_volatile = updateSubtree(engine.allocator, root) catch return;
     // The update itself may move nothing it is keyed on; record what it saw.
-    rare.transitions.updated = inputs;
+    rare.animations.updated = inputs;
 }
 
 /// Resolve every connected element of the shadow-including subtree of
@@ -2020,7 +2116,8 @@ fn updateSubtree(allocator: Allocator, root: *NodeBase) !bool {
 /// getAnimations() answers, the pending style changes of `root` - an
 /// element (its subtree too with `subtree`), a document or a shadow root -
 /// are processed. The element itself is always resolved; a subtree only in a
-/// document that declares transitions (no transition can start elsewhere).
+/// document that declares transitions or animations (none can start
+/// elsewhere).
 pub fn flushForAnimations(root: *runtime.Instance, subtree: bool) void {
     const node = instance_bridge.getNodeBase(root) orelse return;
     if (node.node_type == NodeBase.ELEMENT_NODE) {
@@ -2037,7 +2134,7 @@ pub fn flushForAnimations(root: *runtime.Instance, subtree: bool) void {
     }
     const document = if (node.node_type == NodeBase.DOCUMENT_NODE) root else (interfaces.Node.get_ownerDocument(root) catch null) orelse return;
     const engine = hooks.engineOf(document) orelse return;
-    if (!engine.declaresTransitions()) return;
+    if (!engine.declaresAnimations()) return;
     _ = updateSubtree(engine.allocator, node) catch {};
 }
 

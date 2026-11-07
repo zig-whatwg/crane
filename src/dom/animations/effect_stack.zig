@@ -409,10 +409,78 @@ pub fn animatedBlock(allocator: Allocator, element: *runtime.Instance, pseudo: ?
         try composited.put(allocator, l, v.*);
         v.* = .{ .keyword = .none }; // moved
     }
+    // CSS Transitions 1 section 4: a transition's value enters the cascade
+    // "if and only if that property is not currently undergoing a CSS
+    // Animation on the same element" (Blink drops those transition
+    // interpolations, kCSSTransitionBlockedByAnimation).
+    if (level == .transitions) dropUnderCssAnimations(allocator, effects, pseudo, base, &composited, &customs);
     if (registry_mod.of(element.ctx)) |registry| if (registry.commit) |commit| {
         if (commit.target == element and pseudo == null) try commit.capture(&composited, &customs);
     };
     return try blockOf(allocator, &composited, &customs);
+}
+
+/// Whether an owned CSS animation in effect on (the element, `pseudo`) has
+/// the longhand `l` or the custom property `custom` among its target
+/// properties.
+fn cssAnimationDrives(effects: []const model.Link, pseudo: ?[]const u8, base: *const ComputedStyle, l: ?Longhand, custom: ?[]const u8) bool {
+    for (effects) |link| {
+        const effect = liveEffect(link) orelse continue;
+        if (!samePseudo(effect, pseudo)) continue;
+        const animation = effect.animationModel() orelse continue;
+        if (animation.class != .css_animation or !@import("css_events.zig").hasOwningElement(animation)) continue;
+        for (effect.keyframes.frames.items) |frame| for (frame.properties.items) |property| {
+            if (propertyNames(base, property.name, l, custom)) return true;
+        };
+    }
+    return false;
+}
+
+/// Whether the keyframe property `name` sets `l` (a physical longhand, on
+/// the element whose style is `style`) or is the custom property `custom`.
+fn propertyNames(style: *const ComputedStyle, name: []const u8, l: ?Longhand, custom: ?[]const u8) bool {
+    if (custom) |c| return std.mem.eql(u8, name, c);
+    const wanted = l orelse return false;
+    const found = css.properties.lookup(name) orelse return false;
+    switch (found) {
+        .longhand => |x| return style.physical(x) == wanted,
+        .shorthand => |sh| for (sh.longhands()) |x| {
+            if (style.physical(x) == wanted) return true;
+        },
+    }
+    return false;
+}
+
+fn dropUnderCssAnimations(allocator: Allocator, effects: []const model.Link, pseudo: ?[]const u8, base: *const ComputedStyle, composited: *Composited, customs: *Customs) void {
+    var i: usize = 0;
+    while (i < composited.count()) {
+        const l = composited.keys()[i];
+        if (cssAnimationDrives(effects, pseudo, base, l, null)) {
+            composited.values()[i].release();
+            composited.swapRemoveAt(i);
+        } else i += 1;
+    }
+    var j: usize = 0;
+    while (j < customs.items.len) {
+        const c = customs.items[j];
+        if (cssAnimationDrives(effects, pseudo, base, null, c.name.bytes)) {
+            c.name.release();
+            if (c.value) |v| v.release();
+            _ = customs.orderedRemove(j);
+        } else j += 1;
+    }
+    _ = allocator;
+}
+
+/// Whether keyframe `frame` holds an IMPLICIT value (a CSS animation's
+/// generated keyframe, css_animations) for the longhand `l` or the custom
+/// property `custom`: the effect samples the underlying value there.
+fn implicitIn(frame: *const keyframes_mod.Keyframe, base: *const ComputedStyle, l: ?Longhand, custom: ?[]const u8) bool {
+    for (frame.properties.items) |property| {
+        if (property.value.len != 0) continue;
+        if (propertyNames(base, property.name, l, custom)) return true;
+    }
+    return false;
 }
 
 /// The composited values as typed declarations, range-checked (Values 4
@@ -520,22 +588,36 @@ fn applyEffect(allocator: Allocator, effect: *model.Effect, base: *const Compute
         if (done.contains(seed.longhand)) continue;
         try done.put(allocator, seed.longhand, {});
         keyframe_list.clearRetainingCapacity();
-        for (computed_values.items) |c| {
-            if (c.longhand != seed.longhand) continue;
-            const frame = &effect.keyframes.frames.items[c.frame];
-            try keyframe_list.append(allocator, .{
-                .offset = frame.computed_offset,
-                .easing = if (frame.easing.value != null) &frame.easing else null,
-                .composite = switch (frame.composite) {
-                    .auto => null,
-                    .replace => .replace,
-                    .add => .add,
-                    .accumulate => .accumulate,
-                },
-                .value = c.value,
-            });
-        }
         const underlying = composited.get(seed.longhand) orelse base.get(seed.longhand);
+        // The keyframes in order; a CSS animation's generated keyframe
+        // holding an implicit value samples the underlying value with its
+        // own easing (CSS Animations 2 3.2 step 3; Blink's neutral
+        // keyframes).
+        for (effect.keyframes.frames.items, 0..) |*frame, frame_index| {
+            if (implicitIn(frame, base, seed.longhand, null)) {
+                try keyframe_list.append(allocator, .{
+                    .offset = frame.computed_offset,
+                    .easing = if (frame.easing.value != null) &frame.easing else null,
+                    .composite = .replace,
+                    .value = underlying,
+                });
+                continue;
+            }
+            for (computed_values.items) |c| {
+                if (c.longhand != seed.longhand or c.frame != frame_index) continue;
+                try keyframe_list.append(allocator, .{
+                    .offset = frame.computed_offset,
+                    .easing = if (frame.easing.value != null) &frame.easing else null,
+                    .composite = switch (frame.composite) {
+                        .auto => null,
+                        .replace => .replace,
+                        .add => .add,
+                        .accumulate => .accumulate,
+                    },
+                    .value = c.value,
+                });
+            }
+        }
         const ops: ValueOps = .{ .allocator = allocator, .longhand = seed.longhand };
         const result = try effect_values.effectValue(Value, ops, keyframe_list.items, .{
             .progress = timing.progress,
@@ -584,23 +666,33 @@ fn applyEffect(allocator: Allocator, effect: *model.Effect, base: *const Compute
         } else false;
         if (seen) continue;
         custom_keyframes.clearRetainingCapacity();
-        for (computed_customs.items) |c| {
-            if (!std.mem.eql(u8, c.name.bytes, seed.name.bytes)) continue;
-            const frame = &effect.keyframes.frames.items[c.frame];
-            try custom_keyframes.append(allocator, .{
-                .offset = frame.computed_offset,
-                .easing = if (frame.easing.value != null) &frame.easing else null,
-                .composite = switch (frame.composite) {
-                    .auto => null,
-                    .replace => .replace,
-                    .add => .add,
-                    .accumulate => .accumulate,
-                },
-                .value = c.value,
-            });
-        }
         const existing = customIndex(composited_customs, seed.name.bytes);
         const underlying: CustomValue = if (existing) |i| composited_customs.items[i].value else base.customValue(seed.name.bytes);
+        for (effect.keyframes.frames.items, 0..) |*frame, frame_index| {
+            if (implicitIn(frame, base, null, seed.name.bytes)) {
+                try custom_keyframes.append(allocator, .{
+                    .offset = frame.computed_offset,
+                    .easing = if (frame.easing.value != null) &frame.easing else null,
+                    .composite = .replace,
+                    .value = underlying,
+                });
+                continue;
+            }
+            for (computed_customs.items) |c| {
+                if (c.frame != frame_index or !std.mem.eql(u8, c.name.bytes, seed.name.bytes)) continue;
+                try custom_keyframes.append(allocator, .{
+                    .offset = frame.computed_offset,
+                    .easing = if (frame.easing.value != null) &frame.easing else null,
+                    .composite = switch (frame.composite) {
+                        .auto => null,
+                        .replace => .replace,
+                        .add => .add,
+                        .accumulate => .accumulate,
+                    },
+                    .value = c.value,
+                });
+            }
+        }
         const ops: CustomOps = .{ .allocator = allocator, .syntax = registeredSyntax(base, seed.name.bytes) };
         const result = try effect_values.effectValue(CustomValue, ops, custom_keyframes.items, .{
             .progress = timing.progress,

@@ -234,7 +234,7 @@ pub const SheetRecord = struct {
     pub fn changed(self: *SheetRecord) void {
         self.contents_version +%= 1;
         @import("resource_loading.zig").sheetChanged(self);
-        @import("engine.zig").transitionsSheetChanged(self);
+        @import("engine.zig").animationsSheetChanged(self);
     }
 
     /// The media changed (the owner's media attribute, MediaList).
@@ -459,6 +459,14 @@ pub const FontRuleData = struct {
 /// the record; this ordered index borrows it until recompilation.
 pub const PropertyRuleData = struct { rule: *Rule, condition: ?u32 };
 
+/// A @keyframes rule (CSS Animations 1 section 3) with its @media condition
+/// and its layer, an index into `Contents.layers` (null unlayered): the
+/// style engine picks the rule an animation-name refers to by layer order,
+/// then order of appearance (Cascade 5 6.4: at-rules "use the layer order
+/// when resolving collisions"). The rule tree owns the rule; this ordered
+/// index borrows it until recompilation.
+pub const KeyframesRuleData = struct { rule: *Rule, condition: ?u32, layer: ?u16 };
+
 /// An @import rule, as the cascade substitutes its sheet.
 pub const ImportRule = struct {
     media: *const MediaQueryList,
@@ -477,6 +485,8 @@ pub const Contents = struct {
     font_rules: std.ArrayList(FontRuleData) = .empty,
     /// Properties and Values §2.1: registration order ignores layer rank.
     property_rules: std.ArrayList(PropertyRuleData) = .empty,
+    /// CSS Animations 1 §3: the @keyframes rules, in order of appearance.
+    keyframes_rules: std.ArrayList(KeyframesRuleData) = .empty,
     rules: std.ArrayList(RuleData) = .empty,
     conditions: std.ArrayList(Condition) = .empty,
     /// The sheet's layer names, as dotted paths (anonymous layers get a
@@ -547,6 +557,7 @@ pub const Contents = struct {
         self.style_rules.deinit(a);
         self.font_rules.deinit(a);
         self.property_rules.deinit(a);
+        self.keyframes_rules.deinit(a);
         self.rules.deinit(a);
         self.conditions.deinit(a);
         for (self.layers.items) |name| a.free(name);
@@ -659,8 +670,11 @@ const Compiler = struct {
             // Anchor Position 1 §6.5 applies these only while trying a
             // geometry-dependent fallback; they are not author rules.
             .position_try => {},
-            // Keyframes store CSSOM data; animation execution is separate.
-            .keyframes, .keyframe => {},
+            // CSS Animations 1 §3: a @keyframes rule, for the style engine's
+            // animation-name lookup (lane anim1 C2); its keyframe blocks are
+            // read from the rule tree when an animation is made from it.
+            .keyframes => try self.contents.keyframes_rules.append(self.contents.allocator, .{ .rule = rule, .condition = condition, .layer = layer }),
+            .keyframe => {},
         };
     }
 

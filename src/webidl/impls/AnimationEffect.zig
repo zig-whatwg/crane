@@ -87,6 +87,9 @@ pub fn call_updateTiming(instance: *runtime.Instance, timing: webidl.Opt(diction
     defer easing_text.deinit(allocator);
     const input = try animations.options.fromOptionalEffectTiming(instance.ctx, timing.getOrDefault(.{}), &easing_text, allocator);
     try animations.options.updateTiming(effect, input);
+    // CSS Animations 2 section 2: on a CSSAnimation's effect, the members
+    // set here are no longer taken from animation-*.
+    animations.css_animations.timingUpdated(effect, input);
     animations.registry.valuesChanged(instance.ctx);
 }
 

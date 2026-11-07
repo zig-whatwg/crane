@@ -18,6 +18,7 @@ const runtime = @import("runtime");
 const css = @import("css");
 const hooks = @import("hooks.zig");
 const css_transitions = @import("../animations/css_transitions.zig");
+const css_animations = @import("../animations/css_animations.zig");
 
 const ComputedStyle = css.computed_style.ComputedStyle;
 const DeclarationBlock = css.declarations.DeclarationBlock;
@@ -126,6 +127,20 @@ pub const ComputedMapLink = struct {
     object: @import("rules.zig").ObjectLink = .{},
 };
 
+/// An element's CSS transitions (running and completed) and CSS animations,
+/// for it and its pseudo-elements. OWNED by its ElementStyle; no engine
+/// handle, so the element's teardown frees it with no engine call.
+pub const StyleAnimations = struct {
+    transitions: css_transitions.ElementTransitions = .{},
+    css_animations: css_animations.ElementAnimations = .{},
+
+    pub fn destroy(self: *StyleAnimations, allocator: Allocator) void {
+        self.transitions.deinit(allocator);
+        self.css_animations.deinit(allocator);
+        allocator.destroy(self);
+    }
+};
+
 pub const ElementStyle = struct {
     allocator: Allocator,
     /// The style attribute's declarations, once parsed.
@@ -143,11 +158,11 @@ pub const ElementStyle = struct {
     background_hint: ?*BackgroundHint = null,
     /// HTML 15.3.4: an HTML font element's color/face/size hint (font_hints.zig).
     font_hint: ?*@import("font_hints.zig").FontHint = null,
-    /// CSS Transitions 1 section 3: the element's running and completed
-    /// transitions (dom.animations.css_transitions), made at its first
-    /// transition. Holds no engine handle: the running transitions are
-    /// borrowed links, the completed ones values.
-    transitions: ?*css_transitions.ElementTransitions = null,
+    /// CSS Transitions 1 section 3 and CSS Animations 1 section 2: the
+    /// element's transitions and CSS animations (dom.animations), made at the
+    /// first of either. One pointer for both, so ElementStyle does not grow.
+    /// Holds no engine handle: borrowed links and values.
+    animations: ?*StyleAnimations = null,
 
     pub const InlineState = enum {
         /// Parse the attribute's value on the next read.
@@ -172,8 +187,17 @@ pub const ElementStyle = struct {
         self.dropFontHint();
         self.dropCache();
         self.pseudo.deinit(self.allocator);
-        if (self.transitions) |transitions| transitions.destroy(self.allocator);
+        if (self.animations) |animations| animations.destroy(self.allocator);
         self.allocator.destroy(self);
+    }
+
+    /// The element's transitions and CSS animations, made on first use.
+    pub fn ensureAnimations(self: *ElementStyle) Allocator.Error!*StyleAnimations {
+        if (self.animations) |animations| return animations;
+        const made = try self.allocator.create(StyleAnimations);
+        made.* = .{};
+        self.animations = made;
+        return made;
     }
 
     /// Cache a measured pair if possible; callers retain their stack answer
