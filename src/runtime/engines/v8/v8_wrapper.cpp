@@ -3247,6 +3247,19 @@ Global<Value>* v8_Context_GetSecurityToken(Global<Context>* context) {
     return trackHandle(new Global<Value>(isolate, token));
 }
 
+// Give `to` the security token of `from`, both BORROWED: the token goes from
+// one context to the other as a Local in this call's scope, so no handle is
+// made for the caller to release. The ShadowRealm callback read it through
+// v8_Context_GetSecurityToken and never released that Global: one box and
+// one global-handle node per `new ShadowRealm()` (lane anim1's leaks
+// --atExit: 148 leaks rooted there; tests/v8/perf3_security_token_copy_test.zig).
+void v8_Context_InheritSecurityToken(Global<Context>* to, Global<Context>* from) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> from_context = from->Get(isolate);
+    to->Get(isolate)->SetSecurityToken(from_context->GetSecurityToken());
+}
+
 // Use the default security token for a context
 // This makes the context same-origin with itself only
 void v8_Context_UseDefaultSecurityToken(Global<Context>* context) {
