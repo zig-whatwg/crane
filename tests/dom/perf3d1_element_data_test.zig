@@ -112,20 +112,29 @@ test "ElementData is 152 bytes: the list and the Attr nodes out of line, no allo
     }
 }
 
-test "Element's InternalState is 416 bytes, in a 512-byte arena block" {
-    const size = @sizeOf(ElementState);
-    const block = runtime.ArenaAllocator.heldBytes(size, @alignOf(ElementState));
-    if (block > 512) {
-        printLayout(ElementState);
-        std.debug.print("Element.InternalState: {d} bytes in a {d}-byte block\n", .{ size, block });
-        return error.ElementStateTooLarge;
-    }
-    // 848 at 5b07812bf00, in a 1,024-byte block: - 432 (ElementData's diet).
-    // Element keeps its own 16-byte allocator copy, as Node does (lane perf2
-    // b5): in the V8 tests' realms the creation allocator is not the scope's
-    // (docs/lessons/architecture-a-nodes-creation-allocator-is-its-browsers-
-    // only-inside-a-browser.md); ElementData's copy is gone.
+test "Element's InternalState is 416 bytes" {
+    // 848 at 5b07812bf00: - 432 (ElementData's diet). Element keeps its own
+    // 16-byte allocator copy, as Node does (lane perf2 b5): in the V8 tests'
+    // realms the creation allocator is not the scope's (docs/lessons/
+    // architecture-a-nodes-creation-allocator-is-its-browsers-only-inside-a-
+    // browser.md); ElementData's copy is gone.
     try expectSize(ElementState, 416);
+    // Kept by value in its element's one State block (perf2 b5, Z7), or in a
+    // block of its own before that: either way at most 512 bytes of arena.
+    try testing.expect(runtime.ArenaAllocator.heldBytes(@sizeOf(ElementState), @alignOf(ElementState)) <= 512);
+}
+
+test "a div's one block is 840 bytes: perf2 b5's 1,272 less D1's 432" {
+    // perf2 b5 made a node ONE exact-size State block holding every level's
+    // InternalState (1,272 bytes for a div at a67aa1e08e5, Element's 848 of
+    // them); D1 takes ElementData's 432 out of it.
+    const S = interfaces.HTMLDivElement.State;
+    try expectSize(S, 840);
+    const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
+    if (held - @sizeOf(S) >= 16) {
+        std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });
+        return error.NotExactSize;
+    }
 }
 
 // ============================================================================
