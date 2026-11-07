@@ -285,7 +285,8 @@ pub fn hasPostConnectionStepsCallbacks() bool {
 /// Recursively run insertion steps for a node and all its descendants
 fn runInsertionStepsRecursive(node: anytype) void {
     runInsertionSteps(node);
-    for (node.child_nodes.items()) |child| {
+    var children = node.children();
+    while (children.next()) |child| {
         runInsertionStepsRecursive(child);
     }
 }
@@ -338,7 +339,8 @@ fn runRemovingStepsForDescendants(node: anytype, old_parent: anytype, parent_con
     if (tree_helpers.shadowRootForHost(node)) |shadow| {
         runRemovingStepsRecursive(shadow, old_parent, parent_connected);
     }
-    for (node.child_nodes.items()) |child| {
+    var children = node.children();
+    while (children.next()) |child| {
         runRemovingStepsRecursive(child, old_parent, parent_connected);
     }
 }
@@ -384,7 +386,7 @@ fn isConnectedThroughShadow(node: anytype) bool {
 
 /// Recursively set the is_connected flag for a node and all its descendants
 /// Called during insert (connected=true) and remove (connected=false) operations
-/// Uses sibling pointers instead of child_nodes.items() for safety during tree construction
+/// Walks the sibling links (a node keeps no child list: NodeBase.children)
 fn setConnectedRecursive(node: anytype, connected: bool) void {
     node.is_connected = connected;
     // Connectedness follows the shadow-including root, so a host changes its
@@ -546,26 +548,31 @@ fn isCharacterData(node: anytype) bool {
         node_type == PROCESSING_INSTRUCTION_NODE;
 }
 
-/// Get child index in parent
+/// DOM 4.2.1: the index of `child` in its parent - its number of preceding
+/// siblings (a walk: NodeBase.index) - or null when it has no parent.
 fn getChildIndex(child: anytype) ?usize {
-    const parent = child.parent_node orelse return null;
-    // Cast child to *NodeBase for comparison with child_nodes array
-    const child_node: *NodeBase = @ptrCast(child);
-    for (parent.child_nodes.items(), 0..) |node, i| {
-        if (node == child_node) return i;
-    }
-    return null;
+    if (child.parent_node == null) return null;
+    const child_node: *const NodeBase = @ptrCast(child);
+    return child_node.index();
+}
+
+/// Whether `doc` has live ranges: an index is counted for them only
+/// (DOM insert step 5, remove steps 4-7), as Blink does.
+fn hasLiveRanges(doc: anytype) bool {
+    const doc_instance: *runtime.Instance = @ptrCast(@alignCast(doc));
+    const ranges = document_internals.liveRanges(doc_instance) orelse return false;
+    return !ranges.isEmpty();
 }
 
 /// Check if a doctype is following a given child in parent
 fn isDoctypeFollowing(parent: *NodeBase, child: ?*NodeBase) bool {
     const c = child orelse return false;
-
-    const child_idx = getChildIndex(c) orelse return false;
+    if (c.parent_node != parent) return false;
 
     // Check all siblings after child
-    for (parent.child_nodes.items()[child_idx + 1 ..]) |sibling| {
-        if (isDocumentType(sibling)) return true;
+    var sibling = c.next_sibling;
+    while (sibling) |s| : (sibling = s.next_sibling) {
+        if (isDocumentType(s)) return true;
     }
 
     return false;
@@ -575,17 +582,19 @@ fn isDoctypeFollowing(parent: *NodeBase, child: ?*NodeBase) bool {
 fn isElementPreceding(parent: *NodeBase, child: ?*NodeBase) bool {
     if (child == null) {
         // If child is null, check if parent has any element children
-        for (parent.child_nodes.items()) |node| {
+        var children = parent.children();
+        while (children.next()) |node| {
             if (isElement(node)) return true;
         }
         return false;
     }
 
-    const child_idx = getChildIndex(child.?) orelse return false;
+    if (child.?.parent_node != parent) return false;
 
     // Check all siblings before child
-    for (parent.child_nodes.items()[0..child_idx]) |sibling| {
-        if (isElement(sibling)) return true;
+    var sibling = child.?.previous_sibling;
+    while (sibling) |s| : (sibling = s.previous_sibling) {
+        if (isElement(s)) return true;
     }
 
     return false;
@@ -594,7 +603,8 @@ fn isElementPreceding(parent: *NodeBase, child: ?*NodeBase) bool {
 /// Count element children of a node
 fn countElementChildren(node: anytype) usize {
     var count: usize = 0;
-    for (node.child_nodes.items()) |child| {
+    var children = node.children();
+    while (children.next()) |child| {
         if (isElement(child)) count += 1;
     }
     return count;
@@ -602,7 +612,8 @@ fn countElementChildren(node: anytype) usize {
 
 /// Check if node has a Text child
 fn hasTextChild(node: anytype) bool {
-    for (node.child_nodes.items()) |child| {
+    var children = node.children();
+    while (children.next()) |child| {
         if (isText(child)) return true;
     }
     return false;
@@ -610,7 +621,8 @@ fn hasTextChild(node: anytype) bool {
 
 /// Check if parent has a doctype child
 fn hasDoctypeChild(parent: anytype) bool {
-    for (parent.child_nodes.items()) |child| {
+    var children = parent.children();
+    while (children.next()) |child| {
         if (isDocumentType(child)) return true;
     }
     return false;
@@ -618,7 +630,8 @@ fn hasDoctypeChild(parent: anytype) bool {
 
 /// Check if parent has an element child (optionally excluding one node)
 fn hasElementChild(parent: *NodeBase, exclude: ?*NodeBase) bool {
-    for (parent.child_nodes.items()) |child| {
+    var children = parent.children();
+    while (children.next()) |child| {
         if (exclude) |ex| {
             if (child == ex) continue;
         }
@@ -746,16 +759,7 @@ pub fn preInsert(
 
     // Step 2: Let referenceChild be child
     // Step 3: If referenceChild is node, set to node's next sibling
-    const referenceChild = if (child != null and child.? == node) blk: {
-        // Find node's next sibling
-        if (node.parent_node) |node_parent| {
-            const idx = getChildIndex(node) orelse break :blk null;
-            if (idx + 1 < node_parent.child_nodes.size()) {
-                break :blk node_parent.child_nodes.items()[idx + 1];
-            }
-        }
-        break :blk null;
-    } else child;
+    const referenceChild = if (child != null and child.? == node) node.next_sibling else child;
 
     // Step 4: Insert node into parent before referenceChild
     try insert(node, parent, referenceChild, false);
@@ -803,28 +807,19 @@ fn insertWith(
 ) DOMException!void {
     // Step 1: Let nodes be node's children if node is DocumentFragment, otherwise « node »
     //
-    // A COPY. This used to be a slice into the fragment's own child list, and
-    // step 4.1 removes those children from that list - so the slice read
-    // storage the list had just shrunk out of. Four children fit the list's
-    // inline storage and survived; a fifth put it on the heap, and
-    // `el.append("A","B","C","D","E")` read freed memory (0xAA...) further
-    // down. The removal loop iterated the same list while removing from it.
-    // The copy goes to `nodes_buf` (insert's) or, past 256, to the heap.
+    // A COPY, read off the fragment's links before step 4.1 takes its
+    // children out (it was once a slice into a child list step 4.1 shrank:
+    // `el.append("A","B","C","D","E")` read freed memory). The copy goes to
+    // `nodes_buf` (insert's) or, past 256, to the heap.
     var nodes_heap: ?[]*NodeBase = null;
     defer if (nodes_heap) |heap| parent.allocator.free(heap);
     var nodes: []*NodeBase = undefined;
     var nodes_count: usize = 0;
 
     if (isDocumentFragment(node)) {
-        const children = node.child_nodes.items();
-        nodes_count = children.len;
-        if (nodes_count <= nodes_buf.len) {
-            nodes = nodes_buf[0..nodes_count];
-        } else {
-            nodes_heap = parent.allocator.alloc(*NodeBase, nodes_count) catch return error.OutOfMemory;
-            nodes = nodes_heap.?;
-        }
-        @memcpy(nodes, children);
+        nodes = copyChildren(parent.allocator, node, nodes_buf) catch return error.OutOfMemory;
+        nodes_count = nodes.len;
+        if (nodes_count > nodes_buf.len) nodes_heap = nodes;
     } else {
         nodes_buf[0] = node;
         nodes = nodes_buf[0..1];
@@ -864,29 +859,17 @@ fn insertWith(
         );
     }
 
-    // Step 5: If child is non-null, update live ranges
+    // Step 5: If child is non-null, update live ranges: for each live range
+    // whose start/end node is parent and offset > child's index, increase
+    // the offset by count. The index is counted only when there are any.
     if (child) |c| {
-        const child_idx = getChildIndex(c) orelse 0;
-
-        // Update live ranges: For each live range whose start/end node is parent
-        // and offset > child's index, increase offset by count
         if (nodeDocument(parent)) |doc| {
-            updateRangesForInsertionWithCount(doc, parent, child_idx, count);
+            if (hasLiveRanges(doc)) updateRangesForInsertionWithCount(doc, parent, getChildIndex(c) orelse 0, count);
         }
     }
 
     // Step 6: Let previousSibling be child's previous sibling or parent's last child if child is null
-    var previousSibling: ?*NodeBase = null;
-    if (child) |c| {
-        const idx = getChildIndex(c) orelse 0;
-        if (idx > 0) {
-            previousSibling = parent.child_nodes.items()[idx - 1];
-        }
-    } else {
-        if (parent.child_nodes.size() > 0) {
-            previousSibling = parent.child_nodes.items()[parent.child_nodes.size() - 1];
-        }
-    }
+    const previousSibling: ?*NodeBase = if (child) |c| c.previous_sibling else parent.last_child;
 
     // Step 7: For each node in nodes, in tree order:
     for (nodes[0..count]) |n| {
@@ -910,15 +893,11 @@ fn insertWith(
             try removeHeld(n, false);
         }
 
-        // Step 7.2-3: Insert node into parent's children
-        // Phase 2: Maintain BOTH child_nodes list AND sibling pointers
+        // Step 7.2-3: Insert node into parent's children: the links are the
+        // children (NodeBase.children), so this cannot fail.
 
         if (child) |c| {
             // Insert before child
-            const idx = getChildIndex(c) orelse parent.child_nodes.size();
-            try parent.child_nodes.insert(idx, n);
-
-            // Update sibling pointers (Phase 2)
             n.next_sibling = c;
             n.previous_sibling = c.previous_sibling;
 
@@ -930,9 +909,6 @@ fn insertWith(
             c.previous_sibling = n;
         } else {
             // Append at end
-            try parent.child_nodes.append(n);
-
-            // Update sibling pointers (Phase 2)
             n.previous_sibling = parent.last_child;
             n.next_sibling = null;
 
@@ -991,7 +967,8 @@ fn insertWith(
             ) catch {
                 // If we can't allocate, fall back to non-shadow traversal
                 runInsertionSteps(n);
-                for (n.child_nodes.items()) |descendant| {
+                var descendants_left = n.children();
+                while (descendants_left.next()) |descendant| {
                     runInsertionStepsRecursive(descendant);
                 }
                 continue;
@@ -1119,16 +1096,10 @@ pub fn appendChildren(
     }
 
     // Step 3: Get previous sibling for mutation record (last child before insertion)
-    var previousSibling: ?*NodeBase = null;
-    if (parent.child_nodes.size() > 0) {
-        previousSibling = parent.child_nodes.items()[parent.child_nodes.size() - 1];
-    }
+    const previousSibling: ?*NodeBase = parent.last_child;
 
-    // Step 4: Batch insert all children using appendSlice for O(1) amortized insertion
-    try parent.child_nodes.appendSlice(children);
-
-    // Step 5: Update parent pointers AND sibling pointers for all inserted children
-    // Phase 2: Maintain sibling pointers during batch append
+    // Steps 4-5: link every child after it - parent and sibling pointers
+    // (the links are the children: NodeBase.children)
     var prev_child: ?*NodeBase = previousSibling; // Last child before insertion (or null)
     for (children) |child| {
         refcount.linkChild(child, @ptrCast(parent));
@@ -1155,10 +1126,10 @@ pub fn appendChildren(
     // domindex1: the tree scope's maps, once the batch is linked.
     for (children) |child| tree_ordered_map.inserted(child, @ptrCast(parent));
 
-    // Step 6: Update live ranges if document is available
+    // Step 6: Update live ranges if document is available (the first
+    // appended child's index: counted only when there are live ranges)
     if (nodeDocument(parent)) |doc| {
-        const start_idx = parent.child_nodes.size() - children.len;
-        updateRangesForInsertionWithCount(doc, parent, start_idx, children.len);
+        if (hasLiveRanges(doc) and children.len > 0) updateRangesForInsertionWithCount(doc, parent, children[0].index(), children.len);
     }
 
     // Step 7: Run insertion steps for all inserted nodes and their descendants
@@ -1172,7 +1143,8 @@ pub fn appendChildren(
             ) catch {
                 // If we can't allocate, fall back to non-shadow traversal
                 runInsertionSteps(child);
-                for (child.child_nodes.items()) |descendant| {
+                var descendants_left = child.children();
+                while (descendants_left.next()) |descendant| {
                     runInsertionStepsRecursive(descendant);
                 }
                 continue;
@@ -1246,9 +1218,6 @@ pub fn insertChildrenBefore(
         return error.HierarchyRequestError;
     }
 
-    // Get insertion index
-    const insert_idx = getChildIndex(ref_child) orelse return error.NotFoundError;
-
     // As appendChildren: a moved child is held from its removal to its link.
     errdefer for (children) |child| refcount.endRemovalHold(child);
 
@@ -1274,24 +1243,18 @@ pub fn insertChildrenBefore(
     }
 
     // Get previous sibling for mutation record
-    var previousSibling: ?*NodeBase = null;
-    if (insert_idx > 0) {
-        previousSibling = parent.child_nodes.items()[insert_idx - 1];
-    }
+    const previousSibling: ?*NodeBase = ref_child.previous_sibling;
 
-    // Insert children one by one at the correct position
-    // Note: We insert in reverse order so the final order is correct
+    // The parent link of each child (the holds it moves), in reverse order as
+    // before; the sibling links below are the children (NodeBase.children).
     var i: usize = children.len;
     while (i > 0) {
         i -= 1;
-        try parent.child_nodes.insert(insert_idx, children[i]);
         refcount.linkChild(children[i], @ptrCast(parent));
         joinedTree(children[i], @ptrCast(parent));
     }
 
-    // Phase 2: Update sibling pointers for inserted children
-    // After insertion, children are at indices [insert_idx, insert_idx + children.len)
-    // They need to be linked together and connected to surrounding nodes
+    // Link the inserted children together and to the nodes around them
     if (children.len > 0) {
         const first_inserted = children[0];
         const last_inserted = children[children.len - 1];
@@ -1322,9 +1285,10 @@ pub fn insertChildrenBefore(
     // domindex1: the tree scope's maps, once the batch is linked.
     for (children) |child| tree_ordered_map.inserted(child, @ptrCast(parent));
 
-    // Update live ranges
+    // Update live ranges (the first inserted child's index: counted only
+    // when there are live ranges)
     if (nodeDocument(parent)) |doc| {
-        updateRangesForInsertionWithCount(doc, parent, insert_idx, children.len);
+        if (hasLiveRanges(doc) and children.len > 0) updateRangesForInsertionWithCount(doc, parent, children[0].index(), children.len);
     }
 
     // Run insertion steps for all inserted nodes
@@ -1336,7 +1300,8 @@ pub fn insertChildrenBefore(
                 child,
             ) catch {
                 runInsertionSteps(child);
-                for (child.child_nodes.items()) |descendant| {
+                var descendants_left = child.children();
+                while (descendants_left.next()) |descendant| {
                     runInsertionStepsRecursive(descendant);
                 }
                 continue;
@@ -1443,35 +1408,15 @@ pub fn replace(
     }
 
     // Step 7: Let referenceChild be child's next sibling
-    var referenceChild: ?*NodeBase = null;
-    const child_idx = getChildIndex(child);
-    if (child_idx) |idx| {
-        if (idx + 1 < parent.child_nodes.size()) {
-            referenceChild = parent.child_nodes.items()[idx + 1];
-        }
-    }
+    var referenceChild: ?*NodeBase = child.next_sibling;
 
     // Step 8: If referenceChild is node, set referenceChild to node's next sibling
     if (referenceChild != null and referenceChild.? == node) {
-        const node_idx = getChildIndex(node);
-        if (node_idx) |idx| {
-            if (node.parent_node) |node_parent| {
-                if (idx + 1 < node_parent.child_nodes.size()) {
-                    referenceChild = node_parent.child_nodes.items()[idx + 1];
-                } else {
-                    referenceChild = null;
-                }
-            }
-        }
+        referenceChild = node.next_sibling;
     }
 
     // Step 9: Let previousSibling be child's previous sibling
-    var previousSibling: ?*NodeBase = null;
-    if (child_idx) |idx| {
-        if (idx > 0) {
-            previousSibling = parent.child_nodes.items()[idx - 1];
-        }
-    }
+    const previousSibling: ?*NodeBase = child.previous_sibling;
 
     // Deviation, stated: the spec text now leaves node's adoption to step
     // 13's insert, which would remove node from its old parent only after
@@ -1506,8 +1451,10 @@ pub fn replace(
     // « node ». Copied: step 13 moves a fragment's children out of its list.
     var added_nodes_buf: [64]*NodeBase = undefined;
     const single = [1]*NodeBase{@ptrCast(node)};
-    const added_source: []const *NodeBase = if (isDocumentFragment(node)) node.child_nodes.items() else &single;
-    const added_nodes = copyNodes(parent.allocator, added_source, &added_nodes_buf) catch return error.OutOfMemory;
+    const added_nodes = (if (isDocumentFragment(node))
+        copyChildren(parent.allocator, node, &added_nodes_buf)
+    else
+        copyNodes(parent.allocator, &single, &added_nodes_buf)) catch return error.OutOfMemory;
     defer if (added_nodes.len > added_nodes_buf.len) parent.allocator.free(added_nodes);
     const added_count = added_nodes.len;
 
@@ -1542,7 +1489,7 @@ pub fn replaceAll(
     // Step 1: "Let removedNodes be parent's children." Copied: step 5 empties
     // the list this would otherwise be a view of.
     var removed_buf: [64]*NodeBase = undefined;
-    const removed_nodes = copyNodes(allocator, parent.child_nodes.items(), &removed_buf) catch return error.OutOfMemory;
+    const removed_nodes = copyChildren(allocator, parent, &removed_buf) catch return error.OutOfMemory;
     defer if (removed_nodes.len > removed_buf.len) allocator.free(removed_nodes);
 
     // Steps 2-4: "Let addedNodes be the empty set. If node is a
@@ -1551,12 +1498,11 @@ pub fn replaceAll(
     // too: step 6 moves a fragment's children out of it.
     var added_buf: [64]*NodeBase = undefined;
     var single: [1]*NodeBase = undefined;
-    const added_source: []const *NodeBase = if (node) |n| blk: {
-        if (isDocumentFragment(n)) break :blk n.child_nodes.items();
+    const added_nodes = (if (node) |n| blk: {
+        if (isDocumentFragment(n)) break :blk copyChildren(allocator, n, &added_buf);
         single[0] = @ptrCast(n);
-        break :blk &single;
-    } else &.{};
-    const added_nodes = copyNodes(allocator, added_source, &added_buf) catch return error.OutOfMemory;
+        break :blk copyNodes(allocator, &single, &added_buf);
+    } else copyNodes(allocator, &.{}, &added_buf)) catch return error.OutOfMemory;
     defer if (added_nodes.len > added_buf.len) allocator.free(added_nodes);
 
     // Step 5: "Remove all parent's children, in tree order, with the
@@ -1564,8 +1510,7 @@ pub fn replaceAll(
     // it (prerequisite (b2)): the record takes its removed nodes on a tree
     // that never counted zero. The holds end at the end, error or not.
     defer for (removed_nodes) |removed| refcount.endRemovalHold(removed);
-    while (parent.child_nodes.size() > 0) {
-        const child_to_remove = parent.child_nodes.items()[0];
+    while (parent.first_child) |child_to_remove| {
         try removeHeld(child_to_remove, true);
     }
 
@@ -1587,6 +1532,19 @@ pub fn replaceAll(
 fn copyNodes(allocator: std.mem.Allocator, nodes: []const *NodeBase, buffer: []*NodeBase) ![]*NodeBase {
     const copy = if (nodes.len <= buffer.len) buffer[0..nodes.len] else try allocator.alloc(*NodeBase, nodes.len);
     @memcpy(copy, nodes);
+    return copy;
+}
+
+/// `parent`'s children in tree order, copied off its links into `buffer`, or
+/// into a new allocation past its length (the caller frees a result longer
+/// than `buffer`): a snapshot a step can keep while it moves them.
+fn copyChildren(allocator: std.mem.Allocator, parent: anytype, buffer: []*NodeBase) ![]*NodeBase {
+    const from: *const NodeBase = @ptrCast(parent);
+    const count = from.childCount();
+    const copy = if (count <= buffer.len) buffer[0..count] else try allocator.alloc(*NodeBase, count);
+    var children = from.children();
+    var i: usize = 0;
+    while (children.next()) |child| : (i += 1) copy[i] = child;
     return copy;
 }
 
@@ -1660,24 +1618,13 @@ fn removeHeld(
     runNodeIteratorPreRemoveSteps(node);
 
     // Step 5: Let oldPreviousSibling be node's previous sibling
-    var oldPreviousSibling: ?*NodeBase = null;
-    const node_idx = getChildIndex(node);
-    if (node_idx) |idx| {
-        if (idx > 0) {
-            oldPreviousSibling = parent.child_nodes.items()[idx - 1];
-        }
-    }
+    const oldPreviousSibling: ?*NodeBase = node.previous_sibling;
 
     // Step 6: Let oldNextSibling be node's next sibling
-    var oldNextSibling: ?*NodeBase = null;
-    if (node_idx) |idx| {
-        if (idx + 1 < parent.child_nodes.size()) {
-            oldNextSibling = parent.child_nodes.items()[idx + 1];
-        }
-    }
+    const oldNextSibling: ?*NodeBase = node.next_sibling;
 
-    // Step 7: Remove node from its parent's children
-    // Phase 2: Update sibling pointers BEFORE removing from list
+    // Step 7: Remove node from its parent's children: unlink it (the links
+    // are the children, NodeBase.children)
     if (node.previous_sibling) |prev| {
         prev.next_sibling = node.next_sibling;
     } else {
@@ -1696,10 +1643,6 @@ fn removeHeld(
     node.previous_sibling = null;
     node.next_sibling = null;
 
-    // Remove from child_nodes list
-    if (node_idx) |idx| {
-        _ = parent.child_nodes.remove(idx) catch unreachable; // idx is guaranteed valid by getChildIndex
-    }
     // The parent write, and the holds it moves (refcount, step 3), with the
     // remover's hold (removeHeld); a wrapped root leaves its old tree's
     // opaque root (step 4).
@@ -1986,10 +1929,6 @@ pub fn move(node: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) DOMExcept
     // shadow-including root, which step 2 keeps from being newParent's.
     const old_parent = node.parent_node orelse return error.HierarchyRequestError;
     const allocator = new_parent.allocator;
-    // Room for node in newParent's child list, taken before anything
-    // changes: steps 13-27 cannot fail in the standard, and the link in
-    // steps 20-21 must not fail with node already out of oldParent.
-    try new_parent.child_nodes.ensureCapacity(new_parent.child_nodes.size() + 1);
 
     // 9. "Run the live range pre-remove steps, given node."
     runLiveRangePreRemoveSteps(node);
@@ -2041,7 +1980,9 @@ pub fn move(node: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) DOMExcept
     // newParent and start offset is greater than child's index: increase its
     // start offset by 1", and the same for end nodes and end offsets.
     if (child) |c| {
-        if (nodeDocument(new_parent)) |doc| updateRangesForInsertion(doc, new_parent, getChildIndex(c) orelse 0);
+        // The index is counted only when there are live ranges (insert's
+        // step 5 does the same).
+        if (nodeDocument(new_parent)) |doc| if (hasLiveRanges(doc)) updateRangesForInsertion(doc, new_parent, getChildIndex(c) orelse 0);
     }
 
     // 19. "Let newPreviousSibling be child's previous sibling if child is
@@ -2217,13 +2158,14 @@ fn runLiveRangePreRemoveSteps(node: anytype) void {
     // Get the node's document to access the list of live ranges
     const doc_instance = nodeDocument(node) orelse return;
 
-    // Get the parent and index for updating boundary points
-    const parent = node.parent_node orelse return;
-    const index = getChildIndex(node) orelse return;
-
     // The document's live ranges
     const ranges = document_internals.liveRanges(doc_instance) orelse return;
     if (ranges.isEmpty()) return;
+
+    // Get the parent and index for updating boundary points (a walk: only
+    // when there are live ranges)
+    const parent = node.parent_node orelse return;
+    const index = getChildIndex(node) orelse return;
     const live = range_boundaries.liveRange() orelse return;
     const node_ptr: *const NodeBase = @ptrCast(node);
 
@@ -2572,12 +2514,11 @@ fn updateRangesForInsertionWithCount(doc: anytype, parent: anytype, child_index:
     }
 }
 
-/// Move step 13: `node` leaves `old_parent`'s children - the sibling links,
-/// both ends and the child list, as removeHeld's step 7. Its parent link
-/// stays until linkForMove (refcount.moveChild writes it there with the
-/// counts): see `move`.
+/// Move step 13: `node` leaves `old_parent`'s children - the sibling links
+/// and both ends (the links are the children: NodeBase.children), as
+/// removeHeld's step 7. Its parent link stays until linkForMove
+/// (refcount.moveChild writes it there with the counts): see `move`.
 fn unlinkForMove(node: *NodeBase, old_parent: *NodeBase) void {
-    const index = getChildIndex(node);
     if (node.previous_sibling) |prev| {
         prev.next_sibling = node.next_sibling;
     } else {
@@ -2590,21 +2531,17 @@ fn unlinkForMove(node: *NodeBase, old_parent: *NodeBase) void {
     }
     node.previous_sibling = null;
     node.next_sibling = null;
-    if (index) |i| _ = old_parent.child_nodes.remove(i) catch unreachable; // getChildIndex found it there
 }
 
 /// Move steps 20-21: `node` joins `new_parent`'s children before `child`
-/// (null: at the end) - the child list, the sibling links and both ends, as
-/// insertWith's step 7.2-7.3 - with the parent write and the counts moved
+/// (null: at the end) - the sibling links and both ends, as insertWith's
+/// step 7.2-7.3 - with the parent write and the counts moved
 /// from `old_parent`'s tree to `new_parent`'s in one step (refcount.moveChild:
 /// the new chain gains first, so no total passes through zero), and a wrapped
 /// node's opaque root and tree edges following it: it leaves its old
 /// parent's and joins its new one's (refcount design section 7 step 4).
-/// `move` reserved the list's room before it changed anything.
 fn linkForMove(node: *NodeBase, old_parent: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) void {
     if (child) |c| {
-        const index = getChildIndex(c) orelse new_parent.child_nodes.size();
-        new_parent.child_nodes.insert(index, node) catch unreachable; // capacity reserved by move
         node.next_sibling = c;
         node.previous_sibling = c.previous_sibling;
         if (c.previous_sibling) |prev| {
@@ -2614,7 +2551,6 @@ fn linkForMove(node: *NodeBase, old_parent: *NodeBase, new_parent: *NodeBase, ch
         }
         c.previous_sibling = node;
     } else {
-        new_parent.child_nodes.append(node) catch unreachable; // capacity reserved by move
         node.previous_sibling = new_parent.last_child;
         node.next_sibling = null;
         if (new_parent.last_child) |last| {
@@ -2893,8 +2829,8 @@ fn adoptHeld(
                 // (caught by UBSan at infra/list.zig:197 via this exact path).
                 // ONLY parser-created elements embed their NodeBase in an
                 // ElementWithBase (element_with_base.zig: `.base = NodeBase{...}`).
-                // WebIDL-created ones allocate a STANDALONE NodeBase
-                // (impls/Node.zig: `allocator.create(NodeBase)`) and keep their
+                // WebIDL-created ones keep a STANDALONE NodeBase in Node's state
+                // (impls/Node.zig: `InternalState.base`) and keep their
                 // attributes elsewhere entirely, so there is no ElementWithBase to
                 // recover - @fieldParentPtr is as wrong as @ptrCast was, it just
                 // computes a different wrong address.
@@ -2992,9 +2928,7 @@ test "a callback registered twice runs once" {
     var parent: NodeBase = .{
         .allocator = std.testing.allocator,
         .node_type = NodeBase.DOCUMENT_FRAGMENT_NODE,
-        .child_nodes = infra.List(*NodeBase).init(std.testing.allocator),
     };
-    defer parent.child_nodes.deinit();
     runChildrenChangedSteps(&parent, .inserted);
     try std.testing.expectEqual(@as(usize, 1), Counter.calls);
 }

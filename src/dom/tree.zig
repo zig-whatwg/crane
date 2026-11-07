@@ -173,17 +173,9 @@ pub fn nextSibling(node: *const Node) ?*Node {
 ///
 /// Returns: Number of preceding siblings
 pub fn index(node: *const Node) usize {
-    const parent = node.parent_node orelse return 0;
-
-    // Find node's index in parent's child_nodes
-    for (0..parent.child_nodes.len) |i| {
-        const child = parent.child_nodes.get(i) orelse continue;
-        if (child == node) {
-            return i;
-        }
-    }
-
-    return 0; // Node not found in parent (should not happen)
+    // A walk of the previous links (a node keeps no child list:
+    // NodeBase.children).
+    return node.index();
 }
 
 /// Check if A is preceding B (in tree order)
@@ -256,26 +248,14 @@ fn compareTreeOrder(node_a: *const Node, node_b: *const Node) enum { before, equ
                     parent_of_b = child_of_common_b.parent_node;
                 }
 
-                // Compare indices of these children
-                const common = node_b_ancestor;
-                var index_a: ?usize = null;
-                var index_b: ?usize = null;
-
-                for (0..common.child_nodes.len) |idx| {
-                    const child = common.child_nodes.get(idx) orelse continue;
-                    if (child == child_of_common_a) index_a = idx;
-                    if (child == child_of_common_b) index_b = idx;
+                // Compare the positions of these children: A is before B when
+                // B follows A along the sibling links
+                if (child_of_common_a == child_of_common_b) return .equal; // fallback
+                var sibling = child_of_common_a.next_sibling;
+                while (sibling) |s| : (sibling = s.next_sibling) {
+                    if (s == child_of_common_b) return .before;
                 }
-
-                if (index_a != null and index_b != null) {
-                    if (index_a.? < index_b.?) {
-                        return .before;
-                    } else {
-                        return .after;
-                    }
-                }
-
-                return .equal; // fallback
+                return .after;
             }
         }
         current_b = node_b_ancestor.parent_node;

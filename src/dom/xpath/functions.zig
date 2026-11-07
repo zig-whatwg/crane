@@ -96,7 +96,8 @@ fn findElementById(allocator: std.mem.Allocator, node: *Node, id: []const u8, re
     }
 
     // Recursively search children
-    for (node.child_nodes.items()) |child| {
+    var child_walk = node.children();
+    while (child_walk.next()) |child| {
         try findElementById(allocator, child, id, result);
     }
 }

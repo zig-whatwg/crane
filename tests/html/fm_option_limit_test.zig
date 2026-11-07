@@ -54,20 +54,31 @@ fn mutationAllocationFailure() !void {
     const select = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned("http://www.w3.org/1999/xhtml"), runtime.DOMString.initInterned("select"), .notPassed());
     defer dom.node_creation.destroyUninserted(select);
     const option = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned("http://www.w3.org/1999/xhtml"), runtime.DOMString.initInterned("option"), .notPassed());
-    defer dom.node_creation.destroyUninserted(option);
-    // Four children fill infra.List's inline storage. The next insertion
-    // must allocate and route its failure through options.mutationError.
+    // Freed uninserted only if it stayed out of the tree; linked, it is the
+    // select's tree's to free.
+    defer if ((interfaces.Node.get_parentNode(option) catch null) == null) dom.node_creation.destroyUninserted(option);
     for (0..4) |_| {
         const child = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned("http://www.w3.org/1999/xhtml"), runtime.DOMString.initInterned("div"), .notPassed());
         _ = try interfaces.Node.call_appendChild(select, child);
     }
+    // DOM "insert" has no step that can fail, and since lane perf2 batch 5 a
+    // node's children are its sibling links: appending a fifth child no
+    // longer grows a child list (this test once relied on infra.List's four
+    // inline slots overflowing to force an OutOfMemory). With the allocator
+    // exhausted, the option is linked, and the insertion steps' allocations
+    // fall back where they can (the descendants walk): the insertion
+    // succeeds. A failure from preInsert would still route through
+    // options.mutationError.
     failing.fail_index = failing.alloc_index;
-    defer failing.fail_index = std.math.maxInt(usize);
-    try testing.expectError(error.OutOfMemory, options.add(select, option, .notPassed()));
-    try testing.expect(failing.has_induced_failure);
+    const added = options.add(select, option, .notPassed());
+    failing.fail_index = std.math.maxInt(usize);
+    try added;
+    // Read with the allocator back: the option is linked and is the select's.
+    try testing.expectEqual(select, (try interfaces.Node.get_parentNode(option)).?);
+    try testing.expectEqual(@as(u32, 1), try interfaces.HTMLSelectElement.get_length(select));
 }
 
-test "option mutation propagates allocation failure" {
+test "an option insertion with an exhausted allocator succeeds: linking a child cannot fail" {
     const Run = struct {
         fn run(result: *?anyerror) void {
             mutationAllocationFailure() catch |err| {

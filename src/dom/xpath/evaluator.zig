@@ -384,10 +384,9 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *NodeBase) !NodeSet
         // Forward axes
         .child => {
             // Direct children
-            for (0..node.child_nodes.size()) |i| {
-                if (node.child_nodes.get(i)) |child| {
-                    try result.add(child);
-                }
+            var child_walk = node.children();
+            while (child_walk.next()) |child| {
+                try result.add(child);
             }
         },
         .descendant => {
@@ -403,13 +402,12 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *NodeBase) !NodeSet
             // All siblings after this node
             if (node.parent_node) |parent| {
                 var found_self = false;
-                for (0..parent.child_nodes.size()) |i| {
-                    if (parent.child_nodes.get(i)) |sibling| {
-                        if (found_self) {
-                            try result.add(sibling);
-                        } else if (sibling == node) {
-                            found_self = true;
-                        }
+                var sibling_walk = parent.children();
+                while (sibling_walk.next()) |sibling| {
+                    if (found_self) {
+                        try result.add(sibling);
+                    } else if (sibling == node) {
+                        found_self = true;
                     }
                 }
             }
@@ -419,28 +417,26 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *NodeBase) !NodeSet
             // This is complex - for now, simplified implementation
             if (node.parent_node) |parent| {
                 var found_self = false;
-                for (0..parent.child_nodes.size()) |i| {
-                    if (parent.child_nodes.get(i)) |sibling| {
-                        if (found_self) {
-                            try result.add(sibling);
-                            try addDescendants(allocator, sibling, &result);
-                        } else if (sibling == node) {
-                            found_self = true;
-                        }
+                var sibling_walk = parent.children();
+                while (sibling_walk.next()) |sibling| {
+                    if (found_self) {
+                        try result.add(sibling);
+                        try addDescendants(allocator, sibling, &result);
+                    } else if (sibling == node) {
+                        found_self = true;
                     }
                 }
                 // Recursively apply to ancestors
                 var current = parent;
                 while (current.parent_node) |ancestor| {
                     var found_current = false;
-                    for (0..ancestor.child_nodes.size()) |j| {
-                        if (ancestor.child_nodes.get(j)) |uncle| {
-                            if (found_current) {
-                                try result.add(uncle);
-                                try addDescendants(allocator, uncle, &result);
-                            } else if (uncle == current) {
-                                found_current = true;
-                            }
+                    var uncle_walk = ancestor.children();
+                    while (uncle_walk.next()) |uncle| {
+                        if (found_current) {
+                            try result.add(uncle);
+                            try addDescendants(allocator, uncle, &result);
+                        } else if (uncle == current) {
+                            found_current = true;
                         }
                     }
                     current = ancestor;
@@ -531,11 +527,10 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *NodeBase) !NodeSet
         .preceding_sibling => {
             // All siblings before this node (in reverse document order)
             if (node.parent_node) |parent| {
-                for (0..parent.child_nodes.size()) |i| {
-                    if (parent.child_nodes.get(i)) |sibling| {
-                        if (sibling == node) break;
-                        try result.add(sibling);
-                    }
+                var sibling_walk = parent.children();
+                while (sibling_walk.next()) |sibling| {
+                    if (sibling == node) break;
+                    try result.add(sibling);
                 }
             }
         },
@@ -543,22 +538,20 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *NodeBase) !NodeSet
             // All nodes before this node in document order (not ancestors)
             // This is complex - for now, simplified implementation
             if (node.parent_node) |parent| {
-                for (0..parent.child_nodes.size()) |i| {
-                    if (parent.child_nodes.get(i)) |sibling| {
-                        if (sibling == node) break;
-                        try result.add(sibling);
-                        try addDescendants(allocator, sibling, &result);
-                    }
+                var sibling_walk = parent.children();
+                while (sibling_walk.next()) |sibling| {
+                    if (sibling == node) break;
+                    try result.add(sibling);
+                    try addDescendants(allocator, sibling, &result);
                 }
                 // Recursively apply to ancestors
                 var current = parent;
                 while (current.parent_node) |ancestor| {
-                    for (0..ancestor.child_nodes.size()) |j| {
-                        if (ancestor.child_nodes.get(j)) |uncle| {
-                            if (uncle == current) break;
-                            try result.add(uncle);
-                            try addDescendants(allocator, uncle, &result);
-                        }
+                    var uncle_walk = ancestor.children();
+                    while (uncle_walk.next()) |uncle| {
+                        if (uncle == current) break;
+                        try result.add(uncle);
+                        try addDescendants(allocator, uncle, &result);
                     }
                     current = ancestor;
                 }
@@ -571,11 +564,10 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *NodeBase) !NodeSet
 
 /// Helper to add all descendants of a node to a NodeSet
 fn addDescendants(allocator: std.mem.Allocator, node: *NodeBase, result: *NodeSet) !void {
-    for (0..node.child_nodes.size()) |i| {
-        if (node.child_nodes.get(i)) |child| {
-            try result.add(child);
-            try addDescendants(allocator, child, result);
-        }
+    var child_walk = node.children();
+    while (child_walk.next()) |child| {
+        try result.add(child);
+        try addDescendants(allocator, child, result);
     }
 }
 

@@ -62,7 +62,6 @@ pub const AttrWithBase = struct {
                 .allocator = allocator,
                 .node_type = NodeBase.ATTRIBUTE_NODE,
                 .parent_node = null,
-                .child_nodes = @import("infra").List(*NodeBase).init(allocator),
                 .owner_document = null,
             },
             .local_name = try allocator.dupe(u8, local_name),
@@ -94,7 +93,6 @@ pub const AttrWithBase = struct {
         self.base.allocator.free(self.value);
         if (self.namespace_uri) |ns| self.base.allocator.free(ns);
         if (self.prefix) |p| self.base.allocator.free(p);
-        self.base.child_nodes.deinit();
         self.base.deinitRareData();
     }
 

@@ -68,7 +68,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // The block is the arena's, and `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
-    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
+    const internal = try Registry.create(instance);
     internal.* = try InternalState.init(allocator);
     if (@hasField(@TypeOf(args), "data")) {
         errdefer deinitOwn(instance);

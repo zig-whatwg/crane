@@ -45,7 +45,6 @@ const TestDocument = struct {
                 .allocator = allocator,
                 .node_type = NodeBase.DOCUMENT_NODE,
                 .parent_node = null,
-                .child_nodes = infra.List(*NodeBase).init(allocator),
                 .owner_document = null,
             },
             .children = .empty,
@@ -61,7 +60,6 @@ const TestDocument = struct {
         }
         self.elements.deinit(self.allocator);
         self.children.deinit(self.allocator);
-        self.root.child_nodes.deinit();
     }
 
     /// Create an element and track it for cleanup
@@ -78,17 +76,25 @@ const TestDocument = struct {
     pub fn appendChild(self: *TestDocument, child: *ElementWithBase) !void {
         const node = child.asNode();
         node.parent_node = &self.root;
-        try self.root.child_nodes.append(node);
+        // Link it last (a node's children are its sibling links:
+        // NodeBase.children; lane perf2 batch 5)
+        node.previous_sibling = self.root.last_child;
+        node.next_sibling = null;
+        if (self.root.last_child) |last| last.next_sibling = node else self.root.first_child = node;
+        self.root.last_child = node;
         try self.children.append(self.allocator, node);
     }
 
     /// Remove child from document root
     pub fn removeChild(self: *TestDocument, child: *ElementWithBase) !void {
         const node = child.asNode();
-        const items = self.root.child_nodes.items();
-        for (items, 0..) |item, i| {
+        var root_children = self.root.children();
+        while (root_children.next()) |item| {
             if (item == node) {
-                _ = try self.root.child_nodes.remove(i);
+                if (node.previous_sibling) |prev| prev.next_sibling = node.next_sibling else self.root.first_child = node.next_sibling;
+                if (node.next_sibling) |next| next.previous_sibling = node.previous_sibling else self.root.last_child = node.previous_sibling;
+                node.previous_sibling = null;
+                node.next_sibling = null;
                 node.parent_node = null;
 
                 // Also remove from children tracking list
@@ -132,8 +138,8 @@ const TestDocument = struct {
         errdefer results.deinit(self.allocator);
 
         // Traverse all children of root
-        const children = self.root.child_nodes.items();
-        for (children) |child| {
+        var child_walk = self.root.children();
+        while (child_walk.next()) |child| {
             try self.collectElementsByTagName(child, tag_name, &results);
         }
 
@@ -146,8 +152,8 @@ const TestDocument = struct {
         errdefer results.deinit(self.allocator);
 
         // Traverse all children of root
-        const children = self.root.child_nodes.items();
-        for (children) |child| {
+        var child_walk = self.root.children();
+        while (child_walk.next()) |child| {
             try self.collectElementsByTagNames(child, tag_names, &results);
         }
 
@@ -174,8 +180,8 @@ const TestDocument = struct {
             }
 
             // Recurse into children
-            const children = elem.base.child_nodes.items();
-            for (children) |child| {
+            var child_walk = elem.base.children();
+            while (child_walk.next()) |child| {
                 try self.collectElementsByTagName(child, target_name, results);
             }
         }
@@ -211,8 +217,8 @@ const TestDocument = struct {
             }
 
             // Recurse into children
-            const children = elem.base.child_nodes.items();
-            for (children) |child| {
+            var child_walk = elem.base.children();
+            while (child_walk.next()) |child| {
                 try self.collectElementsByTagNames(child, target_names, results);
             }
         }

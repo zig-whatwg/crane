@@ -35,17 +35,17 @@ pub const ImplError = error{
 /// Text primarily uses CharacterData's data storage via inheritance
 /// Additional Text-specific state can be added here
 pub const InternalState = struct {
-    allocator: std.mem.Allocator,
+    /// Kept by value in this interface's own State (runtime.OwnState, the
+    /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
+    pub const embedded_in_state = true;
+
+    // No allocator copy (lane perf2 batch 5): nothing here owns memory.
 
     /// DOM 4.2.2.2: the node as a slottable - its assigned slot and its
     /// manual slot assignment, weak references the slot algorithms keep
     /// (dom.slot_helpers, dom.shadow_dom_algorithms). A Text node's name is
     /// always the empty string.
     slottable: dom.slot_helpers.SlottableState = .{},
-
-    pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{ .allocator = allocator };
-    }
 
     pub fn deinit(self: *InternalState) void {
         _ = self;
@@ -80,17 +80,15 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 
 /// Text's own construction steps: the generated chain runs CharacterData's first.
 ///
-/// Its internal state is a block of its Browser's arena, kept in this level's
-/// own State field (`own._internal`, runtime.OwnState).
+/// Its internal state is kept by value in this level's own State
+/// (`_embedded`, runtime.OwnState).
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = allocator;
     _ = StateType;
     _ = args;
-    // Initialize Text internal state in its own State (runtime.OwnState)
-    // The block is the arena's, and `Registry.remove` returns it to the
-    // arena. With `set` it was dropped from the map and held to process
-    // exit - 904 bytes per discarded element, measured.
-    const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
-    internal.* = InternalState.init(allocator);
+    // Text's internal state, by value in its own State (runtime.OwnState).
+    const internal = try Registry.create(instance);
+    internal.* = .{};
 }
 
 /// Get Text's internal state

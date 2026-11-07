@@ -19,7 +19,6 @@ fn newNode(allocator: std.mem.Allocator) !*NodeBase {
     node.* = .{
         .allocator = allocator,
         .node_type = NodeBase.ELEMENT_NODE,
-        .child_nodes = .init(allocator),
     };
     return node;
 }
@@ -81,7 +80,7 @@ const Fixture = struct {
     }
 };
 
-test "NodeBase is 208 bytes: the counts' 8 beside nodeholds' `holds` (until step 9b), the rest R6's" {
+test "NodeBase is 112 bytes: the counts' 8 beside nodeholds' `holds` (until step 9b), the rest R6's" {
     // 440 bytes before NodeBase.is_shadow_host, 448 since lane nodeholds' hold
     // chain head (`holds`, a pointer: the padding beside node_type and the
     // bools was 3 bytes), and 456 with `rc` and `subtree_holds` (8 bytes that
@@ -89,12 +88,12 @@ test "NodeBase is 208 bytes: the counts' 8 beside nodeholds' `holds` (until step
     // Lane perf2 batch 4 (R6 part 1) took the registered observer list (an
     // infra.List of 256 bytes, 248 of Crane's own plus its SafetyLock word)
     // and the node name (16) into rare data behind one pointer (8): 200 of
-    // Crane's own. Step 9b of tmp/plans/refcount-design.md deletes `holds`
-    // and pins 8 fewer. Zig 0.17's std.ArrayList carries a
-    // `pointer_stability` SafetyLock, a word under runtime safety (Debug,
-    // ReleaseSafe) and nothing otherwise; NodeBase reaches one (child_nodes'
-    // heap list), so a safe build adds a word to Crane's own 200.
-    try testing.expectEqual(@as(usize, 200) + 1 * @sizeOf(std.debug.SafetyLock), @sizeOf(NodeBase));
+    // Crane's own. Lane perf2 batch 5 (R6 part 2) took the child list (an
+    // infra.List of 96: 88 of Crane's own plus the SafetyLock word its heap
+    // list carried in safe builds): the sibling links are the children, 112 in
+    // every build. Step 9b of tmp/plans/refcount-design.md deletes `holds` and
+    // pins 8 fewer.
+    try testing.expectEqual(@as(usize, 112), @sizeOf(NodeBase));
 }
 
 test "a node is born with one reference and one hold" {
@@ -504,7 +503,6 @@ test "a Ref of a concrete node type counts through its NodeBase" {
     concrete.* = .{ .base = .{
         .allocator = testing.allocator,
         .node_type = NodeBase.ELEMENT_NODE,
-        .child_nodes = .init(testing.allocator),
     }, .extra = 7 };
     var born = refcount.Ref(Concrete).adopt(&fixture.ledger, concrete);
     var second = born.clone(&fixture.ledger);

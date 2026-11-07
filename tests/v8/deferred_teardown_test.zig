@@ -165,7 +165,7 @@ const Tree = struct {
     }
 
     fn childCount(self: Tree) usize {
-        return dom.instance_bridge.getNodeBase(@ptrCast(self.root.instance)).?.child_nodes.size();
+        return dom.instance_bridge.getNodeBase(@ptrCast(self.root.instance)).?.childCount();
     }
 };
 
