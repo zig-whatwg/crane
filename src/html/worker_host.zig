@@ -2803,7 +2803,11 @@ fn dedicatedWorkerEmbedderPolicyAllows(start: *const WorkerStart) bool {
 fn queueWorkerInheritanceViolation(start: *const WorkerStart, endpoint: []const u8, report_only: bool) void {
     const global = @import("dom").global_settings.liveGlobalOf(start.owner_realm) orelse return;
     const allocator = global.ctx.allocator;
-    const blocked_url = @import("csp").violation_events.stripUrlForReports(allocator, start.script_url) catch return;
+    // Step 1: Fetch's "serializing a response URL for reporting" - not CSP
+    // §5.4's strip rule, which is CSP's own - so no credentials, no fragment,
+    // and a data: or blob: URL whole. The script URL is the worker's
+    // request's URL list[0].
+    const blocked_url = @import("dom").coep_reporting.serializeResponseUrlForReporting(allocator, &.{start.script_url}) catch return;
     defer allocator.free(blocked_url);
     const body = std.json.Stringify.valueAlloc(allocator, .{
         .type = "worker initialization",
