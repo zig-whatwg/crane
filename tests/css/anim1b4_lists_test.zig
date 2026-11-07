@@ -81,7 +81,9 @@ const cases = .{
     .{ Op.interpolate, "background-size", "auto 20px", "auto 40px", 0.5, "auto 30px" },
     // `auto` combines only with `auto`: discrete.
     .{ Op.interpolate, "background-size", "auto", "10px", 0.4, "auto" },
-    .{ Op.interpolate, "background-size", "auto", "10px", 0.6, "10px" },
+    // A single length computes to `<length> auto` (WPT
+    // css/css-backgrounds/parsing/background-size-computed.html).
+    .{ Op.interpolate, "background-size", "auto", "10px", 0.6, "10px auto" },
     // Backgrounds 3 border-image-width: side by side, numbers with numbers.
     .{ Op.interpolate, "border-image-width", "300px 30px", "100px 10px", 0.5, "200px 20px" },
     .{ Op.interpolate, "border-image-width", "1", "3", 0.5, "2" },
@@ -98,13 +100,14 @@ const cases = .{
     // Text 3 text-indent: by computed value when the keywords match.
     .{ Op.interpolate, "text-indent", "100px hanging each-line", "200px hanging each-line", 0.5, "150px hanging each-line" },
     .{ Op.interpolate, "text-indent", "100px", "200px hanging", 0.4, "100px" },
-    // Values 4 5.6.1: a mix keeps the percentage at p = 0; p = 1 is V_B.
-    .{ Op.interpolate, "vertical-align", "40px", "40%", 0, "calc(0% + 40px)" },
-    .{ Op.interpolate, "vertical-align", "40px", "40%", 1, "40%" },
-    .{ Op.interpolate, "vertical-align", "40px", "40%", 0.3, "calc(12% + 28px)" },
+    // Values 4 5.6.1: a mix keeps the percentage at p = 0; p = 1 is V_B
+    // (vertical-align is a shorthand here; baseline-shift its length).
+    .{ Op.interpolate, "baseline-shift", "40px", "40%", 0, "calc(0% + 40px)" },
+    .{ Op.interpolate, "baseline-shift", "40px", "40%", 1, "40%" },
+    .{ Op.interpolate, "baseline-shift", "40px", "40%", 0.3, "calc(12% + 28px)" },
     .{ Op.interpolate, "offset-distance", "10px", "100%", 0, "calc(0% + 10px)" },
     // One unit on both sides stays a plain length at p = 0.
-    .{ Op.interpolate, "vertical-align", "40px", "10px", 0, "40px" },
+    .{ Op.interpolate, "baseline-shift", "40px", "10px", 0, "40px" },
 };
 
 fn allCases(allocator: Allocator) !void {
