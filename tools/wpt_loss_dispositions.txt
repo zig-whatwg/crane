@@ -737,3 +737,11 @@ pass_rate = 13/30
 condition = a connection to web-platform.test:8443 reused from an earlier https file in the same runner process
 measured_at = afe7cdffce9
 paths = src/webidl/impls/HTMLIFrameElement.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/dom/performance_timeline.zig
+
+[html/cross-origin-embedder-policy/reporting-to-frame-owner.https.html]
+generation = 207
+kind = flake
+why = Not a code change: the COEP reporting stall family (lane coi2's area; reporting-to-worker-owner stalled in 2 of 10 runs of flaky6's --repeat=10 --verify). The file hit its 10 s harness timeout before reporting any subtest in generation 207's sweep. Isolated pairs on chat.local 2026-11-07 02:05 UTC, the file alone in a fresh runner each time (integrator; ~/crane-work/integrate-flk): base = frozen main-ba98b89087 (generations 205/206's runner), tip = frozen main-0a09b60539 (generation 207's). The BASE runner also reported 0 subtests once; the tip reported 3 of 9 every time. Lane anim1's FULL A/B saw the same flip (TIMEOUT 3 -> 0) and 5/5 TIMEOUT-with-3 on both sides after. Under the one-flake rule its next flip is a bug for coi2.
+pair.1 = base 0/9; tip 3/9
+pair.2 = base 3/9; tip 3/9
+pair.3 = base 3/9; tip 3/9
