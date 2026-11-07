@@ -114,6 +114,11 @@ pub const Implementation = struct {
     fire_traverse: *const fn (window: *runtime.Instance, entry_id: u64, user_involvement: UserInvolvement) bool,
     fire_download_request: *const fn (window: *runtime.Instance, destination_url: []const u8, user_involvement: UserInvolvement, source_element: ?*runtime.Instance, filename: []const u8) bool,
     inform_about_aborting_navigation: *const fn (window: *runtime.Instance) void,
+    /// `window`'s document is its navigable's active document again, shown
+    /// from the back/forward cache: HTML "update document for history step
+    /// application" step 7 (its activation) and "reactivate" step 3 ("update
+    /// the navigation API entries for reactivation").
+    reactivate: *const fn (window: *runtime.Instance) void,
     inform_about_child_navigable_destruction: *const fn (window: *runtime.Instance) void,
     intercept: *const fn (event: *runtime.Instance, options: InterceptOptions) anyerror!void,
     scroll: *const fn (event: *runtime.Instance) anyerror!void,
@@ -180,6 +185,13 @@ pub fn fireDownloadRequest(window: *runtime.Instance, destination_url: []const u
 pub fn entriesRemoved(top: *anyopaque) void {
     const impl = implementation.get() orelse return;
     impl.entries_removed(top);
+}
+
+/// See Implementation.reactivate. Nothing without the implementation, or
+/// for a Window whose navigation object script never asked for.
+pub fn reactivate(window: *runtime.Instance) void {
+    const impl = implementation.get() orelse return;
+    impl.reactivate(window);
 }
 
 /// HTML "inform the navigation API about aborting navigation" in `window`'s

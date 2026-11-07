@@ -844,6 +844,7 @@ const submission_algorithms: @import("dom").form_submission.Implementation = .{
     .construct_entry_list = &constructEntryListInto,
     .past_names_owner_change = &ownerChanged,
     .cancel_planned_navigations = &cancelPlannedNavigationsOf,
+    .cancel_planned_navigations_to = &cancelPlannedNavigationsTo,
 };
 
 /// dom.form_submission: HTML "stop loading" the navigable whose active
@@ -861,6 +862,29 @@ fn cancelPlannedNavigationsOf(document: *runtime.Instance) void {
         if (owner != document) continue;
         entry.internal.pending_navigations.clearRetainingCapacity();
         entry.internal.planned_navigation = 0;
+    }
+}
+
+/// dom.form_submission: a navigation started in the navigable `navigable`
+/// cancels every planned navigation aimed at it whose task has not run, of
+/// any form of `scope`'s Browser (Implementation.cancel_planned_navigations_to
+/// states the browsers this follows). The queued tasks find their tokens gone
+/// and do nothing (runPlannedNavigation).
+fn cancelPlannedNavigationsTo(scope: *runtime.Instance, navigable: u64) void {
+    if (navigable == 0) return;
+    var registered = Registry.iterator(runtime.BrowserScope.ofInstance(scope)) orelse return;
+    while (registered.next()) |entry| {
+        const internal = entry.internal;
+        var i: usize = 0;
+        while (i < internal.pending_navigations.items.len) {
+            const pending = internal.pending_navigations.items[i];
+            if (pending.navigable != navigable) {
+                i += 1;
+                continue;
+            }
+            _ = internal.pending_navigations.orderedRemove(i);
+            if (internal.planned_navigation == pending.token) internal.planned_navigation = 0;
+        }
     }
 }
 
@@ -1786,19 +1810,13 @@ fn planNavigationWith(form: *runtime.Instance, submitter: *runtime.Instance, url
     // PrepareForSubmission (cancelLastPlannedNavigation, above). WebKit
     // matches: FrameLoader::submitForm schedules on the target frame's
     // NavigationScheduler, and only submitIfPossible cancels the form's
-    // planned submission. So: an earlier plan of this form aimed at the same
-    // navigable is replaced; the others stay queued. Not modelled, stated:
-    // a plan of ANOTHER form aimed at the same navigable is not replaced here
-    // - its navigation replaces the earlier one's ongoing navigation instead.
+    // planned submission. So: an earlier plan aimed at the same navigable -
+    // of this form or of any other, as the target frame keeps one pending
+    // submission in Blink and in WebKit - is replaced; plans aimed at other
+    // navigables stay queued. (A navigation that starts in the navigable
+    // cancels them too: cancelPlannedNavigationsTo.)
     const navigable = targetNavigableId(document, target);
-    if (navigable != 0) {
-        var i: usize = 0;
-        while (i < internal.pending_navigations.items.len) {
-            if (internal.pending_navigations.items[i].navigable == navigable) {
-                _ = internal.pending_navigations.orderedRemove(i);
-            } else i += 1;
-        }
-    }
+    cancelPlannedNavigationsTo(form, navigable);
     if (internal.pending_allocator == null) internal.pending_allocator = allocator;
     internal.pending_navigations.append(internal.pending_allocator.?, .{ .token = task.token, .navigable = navigable }) catch return task.destroy();
     internal.planned_navigation = task.token;

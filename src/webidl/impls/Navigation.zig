@@ -286,6 +286,7 @@ pub fn installHooks() void {
         .fire_traverse = &fireTraverseHook,
         .fire_download_request = &fireDownloadRequestHook,
         .inform_about_aborting_navigation = &informAboutAbortingNavigationHook,
+        .reactivate = &reactivateHook,
         .inform_about_child_navigable_destruction = &informAboutChildNavigableDestructionHook,
         .intercept = &interceptHook,
         .scroll = &scrollHook,
@@ -1153,6 +1154,14 @@ fn activationObject(instance: *runtime.Instance, internal: *InternalState) ?*run
 /// replaces it (navigation-activation/activation-initial-about-blank.html
 /// passes in both), and so does Crane.
 fn activationFromRecord(internal: *InternalState, s: navigation_entries.Scope, current: *const joint_history.Entry, record: *const joint_history.Activation) ?*runtime.Instance {
+    return applyActivationRecord(internal, s, current, record, null);
+}
+
+/// `activationFromRecord`'s steps, for `existing` - navigation's activation,
+/// when it is not null (a document shown again from the back/forward cache:
+/// step 7.1 makes a new one only "if navigation's activation is null") - or
+/// a new one.
+fn applyActivationRecord(internal: *InternalState, s: navigation_entries.Scope, current: *const joint_history.Entry, record: *const joint_history.Activation, existing: ?*runtime.Instance) ?*runtime.Instance {
     var entries: std.ArrayListUnmanaged(*joint_history.Entry) = .empty;
     defer entries.deinit(internal.allocator);
     const listed = entryList(s, internal.allocator, &entries) != null;
@@ -1175,7 +1184,13 @@ fn activationFromRecord(internal: *InternalState, s: navigation_entries.Scope, c
     const generation: u64 = if (from) |f| runtime.SlabAllocator.generationOf(f) else 0;
     defer if (from_detached) from.?.releaseIfUnwrapped(generation);
     const entry = activatedEntry(internal, s, &record.entry) orelse return null;
-    return makeActivation(s.window, .{ .from = from, .entry = entry.instance, .navigation_type = kindOf(record.navigation_type) }, entry);
+    const init_state: dom.navigation_objects.ActivationInit = .{ .from = from, .entry = entry.instance, .navigation_type = kindOf(record.navigation_type) };
+    if (existing) |activation| {
+        defer if (entry.detached) entry.instance.releaseIfUnwrapped(entry.generation);
+        dom.navigation_objects.updateActivation(activation, init_state);
+        return activation;
+    }
+    return makeActivation(s.window, init_state, entry);
 }
 
 /// The activation of a document no navigation of Crane's committed - the
@@ -2316,6 +2331,92 @@ fn informAboutAbortingNavigationHook(window: *runtime.Instance) void {
     const target = targetOf(window) orelse return;
     informAboutAbortingNavigation(target.instance, target.internal);
 }
+
+/// dom.navigation_api: `window`'s document is shown again from the
+/// back/forward cache. Chromium's NavigationApi::SetEntriesForRestore does
+/// the three parts:
+/// 1. A navigate event left ongoing by the cross-document navigation that
+///    took the page away - never intercepted, its promises never reacted -
+///    is dropped with its API method tracker, firing nothing and settling
+///    nothing ("Avoid a dangling navigate event when restoring"). Stated
+///    deviation from HTML, whose inner navigate event firing algorithm
+///    leaves a cross-document navigation's event ongoing (its step 32
+///    returns true without clearing it), so the restored page's next
+///    navigation would abort it and fire navigateerror:
+///    navigate-event/dangling-navigate-event-after-bfcache-restore.html passes
+///    in Chrome 157 and Firefox 159, fails in Safari 27.2 (wpt.fyi
+///    94f58d592d) - golden rule 2, the majority.
+/// 2. HTML "update document for history step application" step 7: the
+///    existing activation's old entry, new entry and type "traverse"
+///    (Chromium's NavigationActivation::Update) - from the record the
+///    restore made (joint_history.Activation).
+/// 3. HTML "reactivate" step 3, "update the navigation API entries for
+///    reactivation": the entry list is the restored entry's (the view), the
+///    current entry index its index, and each entry handed out whose session
+///    history entry went while the page was cached fires dispose - from a
+///    task, after pageshow (step 7's note).
+fn reactivateHook(window: *runtime.Instance) void {
+    const target = targetOf(window) orelse return;
+    const instance = target.instance;
+    const internal = target.internal;
+    // 1.
+    if (internal.ongoing_event) |record| {
+        if (record.interception_state == .none and record.waits == 0 and !record.dispatching and !record.invoking) {
+            internal.ongoing_event = null;
+            if (internal.ongoing_tracker) |tracker| {
+                if (record.tracker == tracker) record.tracker = null;
+                cleanUp(internal, tracker);
+            }
+            collect(internal);
+        }
+    }
+    // Reactivation step 3.1: "If navigation has entries and events disabled,
+    // then return."
+    const scope = scopeOf(instance, internal);
+    if (navigation_entries.disabled(scope)) return;
+    const s = scope.?;
+    const current = s.history.currentEntry(s.navigable.id) orelse return;
+    // 2.
+    if (internal.activation) |activation| {
+        if (s.history.activationOf(current.document_state)) |record| {
+            _ = applyActivationRecord(internal, s, current, record, activation);
+        }
+    }
+    // 3. Steps 2-6: the entry list is read from the navigable's view; step 6,
+    // the current entry index - the entry it is on.
+    internal.current_entry_id = current.id;
+    // Step 7: "Queue a global task on the navigation and traversal task
+    // source given navigation's relevant global object" to fire dispose at
+    // each disposed entry.
+    const task = internal.allocator.create(ReactivationDispose) catch return;
+    task.* = .{ .navigation = instance, .generation = runtime.SlabAllocator.generationOf(instance), .allocator = internal.allocator };
+    const loop = window.ctx.getOptionalEventLoop() orelse return ReactivationDispose.run(task);
+    loop.queueTask(.{ .callback = &ReactivationDispose.run, .context = task, .drop = &ReactivationDispose.drop });
+}
+
+/// "Update the navigation API entries for reactivation" step 7's task: the
+/// entries handed out whose session history entries are gone - disposed while
+/// the document was in the back/forward cache - leave the entry list and fire
+/// dispose (`disposeEntriesForSessionHistoryRemoval`). The Navigation gone,
+/// nothing.
+const ReactivationDispose = struct {
+    navigation: *runtime.Instance,
+    generation: u64,
+    allocator: Allocator,
+
+    fn run(context: ?*anyopaque) void {
+        const self: *ReactivationDispose = @ptrCast(@alignCast(context orelse return));
+        const navigation = self.navigation;
+        const live = runtime.SlabAllocator.generationOf(navigation) == self.generation;
+        self.allocator.destroy(self);
+        if (live) disposeEntriesForSessionHistoryRemoval(navigation);
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *ReactivationDispose = @ptrCast(@alignCast(context orelse return));
+        self.allocator.destroy(self);
+    }
+};
 
 /// HTML "inform the navigation API about child navigable destruction".
 fn informAboutChildNavigableDestructionHook(window: *runtime.Instance) void {

@@ -241,6 +241,7 @@ pub fn installHooks() void {
     // No event can be fired before a target exists.
     @import("dom").fire_event.install(.{
         .dispatch_trusted = dispatchTrusted,
+        .dispatch_trusted_legacy_target_override = dispatchTrustedLegacyTargetOverride,
         .dispatch_trusted_with_throws = dispatchTrustedWithThrows,
         .current_event = currentEvent,
     });
@@ -1229,7 +1230,7 @@ pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DO
 /// Operation: dispatchEvent
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
 pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!bool {
-    return dispatchEventWithTrust(instance, event, false, null);
+    return dispatchEventWithTrust(instance, event, false, null, null);
 }
 
 /// DOM 2.10 "fire an event", for an event the user agent has already created
@@ -1237,16 +1238,33 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
 /// is the only thing that makes an event untrusted. Everything reaches it
 /// through `dom.fire_event`, which this installs.
 fn dispatchTrusted(target: *runtime.Instance, event: *runtime.Instance) anyerror!bool {
-    return dispatchEventWithTrust(target, event, true, null);
+    return dispatchEventWithTrust(target, event, true, null, null);
+}
+
+/// "Fire an event" at the Window `window` "with legacy target override flag
+/// set" (HTML's Window load, pageshow, pagehide and unload): DOM dispatch
+/// step 5's targetOverride is the Window's associated Document. A Window
+/// with no Document (gone) dispatches as plain.
+fn dispatchTrustedLegacyTargetOverride(window: *runtime.Instance, event: *runtime.Instance) anyerror!bool {
+    const document = interfaces.Window.get_document(window) catch null;
+    // The path holds its invocation targets, and every other target it
+    // records is one of them - but the Document is not on a Window's path:
+    // held here for the dispatch, as dispatch holds activationTarget
+    // (refcount step 5g; Blink's LocalDOMWindow::DispatchEvent keeps the
+    // Document it passes as the target).
+    var document_hold: dom_module.node_holds.RefHold = .{};
+    defer document_hold.release();
+    document_hold.set(document);
+    return dispatchEventWithTrust(window, event, true, null, document);
 }
 
 fn dispatchTrustedWithThrows(target: *runtime.Instance, event: *runtime.Instance, did_throw: *bool) anyerror!bool {
-    return dispatchEventWithTrust(target, event, true, did_throw);
+    return dispatchEventWithTrust(target, event, true, did_throw, null);
 }
 
 /// dispatchEvent()'s steps with isTrusted given: false for script (DOM 2.8
 /// step 2), true when the user agent fires the event.
-fn dispatchEventWithTrust(instance: *runtime.Instance, event: *runtime.Instance, trusted: bool, did_throw: ?*bool) anyerror!bool {
+fn dispatchEventWithTrust(instance: *runtime.Instance, event: *runtime.Instance, trusted: bool, did_throw: ?*bool, target_override: ?*runtime.Instance) anyerror!bool {
     // The event's dispatch state, taken once: every step below works on it.
     // An event with none never ran Event's constructing steps, so its
     // initialized flag is unset.
@@ -1266,7 +1284,7 @@ fn dispatchEventWithTrust(instance: *runtime.Instance, event: *runtime.Instance,
     state.is_trusted = trusted;
 
     // Step 3: Return the result of dispatching event to this
-    return dispatchWithThrowFlag(instance, event, state, did_throw);
+    return dispatchWithThrowFlag(instance, event, state, did_throw, target_override);
 }
 
 // ============================================================================
@@ -1308,7 +1326,7 @@ const Invocation = struct {
 /// Steps 4-6.11 - the path across shadow trees, activationTarget and
 /// clearTargets - are dom.event_path's; the passes over the path and steps
 /// 1 and 7-13 are here, beside the listener lists they read.
-fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, state: *EventState, did_throw: ?*bool) !bool {
+fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, state: *EventState, did_throw: ?*bool, target_override: ?*runtime.Instance) !bool {
     // Step 1: Set event's dispatch flag.
     state.dispatch_flag = true;
 
@@ -1322,9 +1340,10 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
     const event_type = event_type_string.asSlice();
     const bubbles = interfaces.Event.get_bubbles(event) catch false;
 
-    // Steps 2-6.11. Step 2: targetOverride is target - the legacy target
-    // override flag is HTML's, for a Window, and Crane's HTML does not pass
-    // it. Step 6.4: isActivationEvent - "event is a MouseEvent object and
+    // Steps 2-6.11. Step 5: targetOverride is target, or - legacy target
+    // override flag set - `target_override`, the Window's associated
+    // Document (dispatchTrustedLegacyTargetOverride). Step 6.4:
+    // isActivationEvent - "event is a MouseEvent object and
     // event's type attribute is click"; the behaviours are the element
     // types' own (dom.activation).
     const is_activation_event = std.mem.eql(u8, event_type, "click") and event.stateAs(interfaces.MouseEvent.State) != null;
@@ -1333,6 +1352,7 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
         .composed = interfaces.Event.get_composed(event) catch false,
         .bubbles = bubbles,
         .activation_of = if (is_activation_event) &dom_module.activation.of else null,
+        .target_override = target_override,
     });
     const activation_target = built.activation_target;
     // Dispatch holds activationTarget across steps 6.12-12: step 9 empties
