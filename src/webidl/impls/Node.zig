@@ -7,7 +7,6 @@
 //! in the document tree. Node extends EventTarget, so all nodes can receive events.
 
 const std = @import("std");
-const builtin = @import("builtin");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
@@ -2144,10 +2143,13 @@ fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, node_b
     if (counts == .with_document_counts) releaseDocumentCounts(internal, node_base);
     instance_bridge.unregister(instance);
     // The NodeBase is the State block's (`InternalState.base`): released, not
-    // freed - its bytes go back with the block. In Debug builds they are
-    // poisoned as the tests' allocators poison a freed block, so a read of a
-    // released NodeBase still faults the way a read of the freed one did.
-    if (builtin.mode == .Debug) @memset(std.mem.asBytes(node_base), 0xdd);
+    // freed - its bytes go back with the block. Poisoned as the tests' and the
+    // WPT correctness runner's allocators poison a freed block (Debug builds,
+    // and a Browser that asked: runtime.BrowserScope.poisonsReleasedNodes), so
+    // a read of a released NodeBase still faults the way a read of the freed
+    // one did.
+    if (runtime.BrowserScope.ofInstance(instance).poisonsReleasedNodes())
+        @memset(std.mem.asBytes(node_base), runtime.ArenaAllocator.poison_byte);
     internal.node_base = null;
 }
 

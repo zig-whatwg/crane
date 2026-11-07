@@ -85,3 +85,34 @@ test "every scheme's classes hold their requests, rise with them, and bound thei
     // The arena's own scheme is the exact one (the fallback: `class_scheme`).
     try testing.expectEqual(classes.ClassScheme.quantum16, classes.scheme);
 }
+
+test "a freed block is poisoned when its Browser asked for it, and left as it was by default" {
+    for ([_]bool{ false, true }) |poison| {
+        var arena_value = ArenaAllocator.init(testing.allocator);
+        defer arena_value.deinit();
+        const arena = &arena_value;
+        arena.poison_freed = poison;
+        const block = try arena.createRaw(96, 8);
+        @memset(block[0..96], 0x11);
+        arena.destroyRaw(block, 96, 8);
+        // The first word is the free list's link; the rest is the state's.
+        const expected: u8 = if (poison) ArenaAllocator.poison_byte else 0x11;
+        for (block[8..96]) |byte| try testing.expectEqual(expected, byte);
+        // A reuse zeroes the request, poisoned or not.
+        const again = try arena.createRaw(96, 8);
+        try testing.expectEqual(block, again);
+        for (again[0..96]) |byte| try testing.expectEqual(@as(u8, 0), byte);
+        arena.destroyRaw(again, 96, 8);
+    }
+}
+
+test "a released NodeBase is poisoned in Debug builds and where the Browser asked, never by default in a release build" {
+    const rule = runtime.BrowserScope.releasedNodePoison;
+    try testing.expect(rule(.Debug, false));
+    try testing.expect(rule(.Debug, true));
+    inline for (.{ std.builtin.OptimizeMode.ReleaseSafe, .ReleaseFast, .ReleaseSmall }) |mode| {
+        try testing.expect(!rule(mode, false));
+        try testing.expect(rule(mode, true));
+    }
+    try testing.expectEqual(@as(u8, 0xdd), ArenaAllocator.poison_byte);
+}

@@ -135,6 +135,17 @@ pub const ArenaAllocator = struct {
     /// at zero while a discard loop runs, states are not being returned at all.
     total_recycled: usize = 0,
 
+    /// Whether `destroyRaw` overwrites a freed block with `poison_byte`, so a
+    /// read of a freed state faults instead of finding its old bytes - the
+    /// poison-on-free the WPT correctness runner's allocator gives every
+    /// block it frees (the user, 2026-11-05: on by default there, never in
+    /// Crane's builds or the release runner). Set once, by the Browser,
+    /// before any state is made (BrowserConfig.poison_freed_state); off by
+    /// default, so a product build never pays it. Since lane perf2 batch 5 a
+    /// node's NodeBase and InternalStates are its State block's (Z7): their
+    /// release frees nothing the runner's allocator would have poisoned.
+    poison_freed: bool = false,
+
     /// Protects `arena`, `free_lists` and the statistics: every thread that
     /// makes or frees a platform object's state takes it, for one bump or one
     /// free-list push or pop - never across a call out of this file.
@@ -149,6 +160,10 @@ pub const ArenaAllocator = struct {
     const FreeBlock = struct {
         next: ?*FreeBlock,
     };
+
+    /// The byte a freed block is overwritten with when `poison_freed` is set:
+    /// the tests' and the WPT runner's poison (tests/test_runner/poisoning.zig).
+    pub const poison_byte: u8 = 0xdd;
 
     /// The size classes (`class_scheme`, `SizeClasses`).
     const Classes = SizeClasses(class_scheme);
@@ -313,6 +328,8 @@ pub const ArenaAllocator = struct {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.bytes_in_use -|= size;
+        // Before the free list writes its link into the block's first word.
+        if (self.poison_freed) @memset(ptr[0..size], poison_byte);
         if (sizeClassOf(size, alignment)) |class| {
             self.pushFree(class, ptr);
         }

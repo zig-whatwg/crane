@@ -789,7 +789,7 @@ pub fn executeTests(
     // - Single V8 isolate per browser instance
     // - New V8 context per test (navigation)
     // Context isolation is handled by the browser, not the test runner
-    var browser = try browser_adapter.BrowserAdapter.init(allocator, options.wpt_root);
+    var browser = try browser_adapter.BrowserAdapter.init(allocator, options.wpt_root, poisoning != null);
     defer browser.deinit();
 
     var progress = ProgressTracker.init(allocator, total, options.verbose);
@@ -1089,7 +1089,7 @@ pub fn executeTests(
         // behind, whatever its status (journal.Status.restartsBrowser).
         if (tally.status.restartsBrowser(browser.leftovers())) {
             browser.deinit();
-            browser = try browser_adapter.BrowserAdapter.init(allocator, options.wpt_root);
+            browser = try browser_adapter.BrowserAdapter.init(allocator, options.wpt_root, poisoning != null);
         }
     }
     if (source.end) |end| switch (end) {
