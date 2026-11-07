@@ -21,6 +21,8 @@ const Before = struct {
     // Integrator Q173: the independent lazy Typed OM pointer is on both sides.
     computed_map: @FieldType(state.ElementStyle, "computed_map"),
     pseudo: @FieldType(state.ElementStyle, "pseudo"),
+    // Integrator ruling (2026-11-06, lane anim1): the lazy per-element CSS Transitions 1 section 3 running/completed sets (Blink ElementAnimations, WebKit Styleable) are on both sides.
+    transitions: @FieldType(state.ElementStyle, "transitions"),
 };
 
 test "a sibling cache costs at most one inline pointer and allocates lazily" {

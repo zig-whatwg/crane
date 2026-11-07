@@ -821,9 +821,13 @@ pub const Animation = struct {
         const needs_frame = self.hasPendingTask() or self.queued_events > 0 or self.playState() == .running;
         const document = self.documentForTiming();
         if (needs_frame) if (document) |d| registry.requestFrameFor(d);
+        // A CSS transition is also kept while it is a member of its owning
+        // element's running set (css_transitions; Blink's TransitionMap
+        // Member), until it leaves that set.
         const keep = self.hasPendingTask() or self.queued_events > 0 or self.finish_queued or
             (self.playState() == .running and document != null) or
-            (self.isRelevant() and self.targetConnected());
+            (self.isRelevant() and self.targetConnected()) or
+            @import("css_transitions.zig").isRunningMember(self);
         if (keep == self.kept) return;
         if (!self.instance.ctx.hasEngine()) return;
         if (keep) engine.keepPlatformObjectAlive(self.instance) else engine.releasePlatformObject(self.instance);
