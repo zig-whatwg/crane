@@ -64,17 +64,19 @@ fn mutationAllocationFailure() !void {
     // DOM "insert" has no step that can fail, and since lane perf2 batch 5 a
     // node's children are its sibling links: appending a fifth child no
     // longer grows a child list (this test once relied on infra.List's four
-    // inline slots overflowing). With the allocator exhausted, the option
-    // insertion allocates nothing and succeeds; a failure from preInsert
-    // would still route through options.mutationError.
+    // inline slots overflowing to force an OutOfMemory). With the allocator
+    // exhausted, the option is linked, and the insertion steps' allocations
+    // fall back where they can (the descendants walk): the insertion
+    // succeeds. A failure from preInsert would still route through
+    // options.mutationError.
     failing.fail_index = failing.alloc_index;
     defer failing.fail_index = std.math.maxInt(usize);
     try options.add(select, option, .notPassed());
-    try testing.expect(!failing.has_induced_failure);
     try testing.expectEqual(select, (try interfaces.Node.get_parentNode(option)).?);
+    try testing.expectEqual(@as(u32, 1), try interfaces.HTMLSelectElement.get_length(select));
 }
 
-test "an option insertion with an exhausted allocator succeeds: linking a child allocates nothing" {
+test "an option insertion with an exhausted allocator succeeds: linking a child cannot fail" {
     const Run = struct {
         fn run(result: *?anyerror) void {
             mutationAllocationFailure() catch |err| {
