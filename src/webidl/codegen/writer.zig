@@ -1697,71 +1697,67 @@ pub fn writeStateStruct(
     try writer.writeAll("    };\n\n");
 }
 
-/// Write consolidated State declaration
-///
-/// Generates State as a FlattenedState with the own-fields struct inlined.
-/// This eliminates the need for separate State/FullState declarations.
-///
-/// Example output:
-/// ```zig
-/// pub const State = runtime.FlattenedState(
-///     Meta.BaseType,
-///     Meta.MixinTypes,
-///     struct {
-///         id: runtime.DOMString = undefined,
-///         className: runtime.DOMString = undefined,
-///     },
-/// );
-/// ```
+/// Where a State's IDL attributes live.
+pub const AttributeStorage = enum {
+    /// A slot per attribute in the generated State (the default).
+    state,
+    /// The impl keeps every attribute's storage itself: the State holds only
+    /// `_internal` and the `cached_*` [SameObject] caches.
+    impl,
+};
+
+pub const StateOptions = struct {
+    attribute_storage: AttributeStorage = .state,
+};
+
+/// The roots of the families whose impls keep every attribute's storage
+/// themselves (lane perf2, batch 3: Z1). An IDL attribute is an accessor
+/// (WebIDL 3.7.6), and every Node-family impl reads its attributes from its
+/// InternalState, ElementData or NodeBase - as Blink's Element::id() reads
+/// its ElementData and WebKit's the same; none reads a State field of the
+/// attribute's name (grep `.own.` over src/ and tests/, 2026-11-06: the 52
+/// files that use State slots as storage are Events, geometry, Request,
+/// WebSocket and the like, none a Node). A slot per attribute was memory every
+/// node paid and nothing read: a div's State was 1,376 B in a 2,048-byte
+/// block, 104 B without them. Add a root only after checking every impl of
+/// its family; a remaining reader is a compile error.
+const attribute_storage_family_roots = [_][]const u8{"Node"};
+
+/// Whether `interface_name` is a family root above or inherits from one,
+/// along the IR's inheritance chain (the one Meta.ParentInterface encodes):
+/// its generated State keeps no attribute slots (`AttributeStorage.impl`).
+pub fn implKeepsAttributeStorage(model: *const ir.IR, interface_name: []const u8) bool {
+    var name = interface_name;
+    // A chain is a handful deep; the bound only stops a malformed cycle.
+    for (0..64) |_| {
+        for (attribute_storage_family_roots) |root| {
+            if (std.mem.eql(u8, name, root)) return true;
+        }
+        const iface = model.interfaces.get(name) orelse return false;
+        name = iface.inheritance orelse return false;
+    }
+    return false;
+}
+
 /// Does this interface's impl own its event handlers, rather than storing them in
 /// the generated State?
 ///
-/// HTMLElement keeps handlers in `event_handlers: StringHashMap(*anyopaque)` on its
-/// InternalState - deliberately, because V8 GlobalHandle pointers carry tag bits in
-/// the low 2 bits that a function-pointer type would strip (impls/HTMLElement.zig:83).
-/// So its 105 generated EventHandler slots are written by nobody and read by nobody:
-/// verified all 105 have zero accesses from the impl AND from the generated interface,
-/// whose accessors delegate straight to the impl.
-///
-/// At 8 bytes each that is 840 dead bytes in EVERY HTML element's state.
+/// Window keeps its handlers out of State the way HTMLElement does (in
+/// `event_handlers` on its InternalState, because V8 GlobalHandle pointers carry tag
+/// bits in the low 2 bits that a function-pointer type would strip), and so does
+/// ServiceWorkerGlobalScope. The Node family's entries (HTMLElement, Document,
+/// SVGElement, MathMLElement, HTMLBodyElement, SVGSVGElement, HTMLFrameSetElement)
+/// went with `implKeepsAttributeStorage`, which drops every attribute slot of theirs.
 ///
 /// This is an allow-list on purpose. 71 `own.on*` accesses elsewhere are REAL -
 /// SharedWorker, WorkerGlobalScope, DedicatedWorkerGlobalScope, WebSocket and
 /// XMLHttpRequestUpload genuinely store handlers in State - so a blanket rule would
 /// silently break them. Add an interface here only after checking its impl.
-/// Does this interface's impl own its DOMString attribute storage too?
-///
-/// Element is the case that matters: 52 of its 90 own-fields are DOMString IDL
-/// attributes (~1,248 bytes), and NOTHING reads them. impls/Element.zig contains no
-/// `own.<attr>` access at all, and the generated accessors delegate straight to the
-/// impl (get_tagName -> ElementImpl.get_tagName), which keeps the real values in its
-/// InternalState. Every HTML element inherits all of it.
-///
-/// The generated `cached_*` fields are NOT affected: they are codegen-added caches
-/// rather than IDL attributes, so they never enter the attribute loop this filters.
-/// interfaces/Element.zig does use those four.
-///
-/// Verified per field before listing an interface here, same as the handler list.
-fn implOwnsStringAttributes(impl_name: []const u8) bool {
-    const owners = [_][]const u8{"ElementImpl"};
-    for (owners) |o| {
-        if (std.mem.eql(u8, impl_name, o)) return true;
-    }
-    return false;
-}
-
 fn implOwnsEventHandlers(impl_name: []const u8) bool {
     // Each verified the same way as HTMLElement: zero `own.on*` accesses in the
     // impl AND in the generated interface (whose accessors delegate to the impl).
     const owners = [_][]const u8{
-        "HTMLElementImpl", // 105 slots
         "WindowImpl", // 130
-        "DocumentImpl", // 113
-        "SVGElementImpl", // 104
-        "MathMLElementImpl", // 104
-        "HTMLBodyElementImpl", // 21
-        "SVGSVGElementImpl", // 20
-        "HTMLFrameSetElementImpl", // 20
         "ServiceWorkerGlobalScopeImpl", // 19
     };
     for (owners) |o| {
@@ -1780,11 +1776,30 @@ pub fn cachesSameObject(attributes: []const types.Attribute) bool {
     return false;
 }
 
+/// Write consolidated State declaration
+///
+/// Generates State as a FlattenedState with the own-fields struct inlined.
+/// This eliminates the need for separate State/FullState declarations.
+///
+/// Example output:
+/// ```zig
+/// pub const State = runtime.FlattenedState(
+///     Meta.BaseType,
+///     Meta.MixinTypes,
+///     struct {
+///         id: runtime.DOMString = undefined,
+///         className: runtime.DOMString = undefined,
+///     },
+/// );
+/// ```
+/// With `.attribute_storage = .impl` (implKeepsAttributeStorage) the struct
+/// holds only the `cached_*` caches and `_internal`.
 pub fn writeGeneratedState(
     writer: anytype,
     attributes: []const types.Attribute,
     impl_name: []const u8,
     type_registry: ?*const @import("ir.zig").TypeRegistry,
+    options: StateOptions,
 ) !void {
     // Check if we have any non-static attributes
     var has_fields = false;
@@ -1813,16 +1828,12 @@ pub fn writeGeneratedState(
             // Skip static attributes - they're not stored in instance state
             if (attr.static) continue;
 
+            // The impl keeps every attribute's storage; see implKeepsAttributeStorage.
+            if (options.attribute_storage == .impl) continue;
+
             // Skip event-handler slots the impl owns; see implOwnsEventHandlers.
             if (implOwnsEventHandlers(impl_name) and
                 std.mem.eql(u8, attr.idlType.type, "EventHandler")) continue;
-
-            // Skip DOMString attribute storage the impl owns; see
-            // implOwnsStringAttributes. Union-typed attributes are left alone - they
-            // are a different shape and were not part of the audit.
-            if (implOwnsStringAttributes(impl_name) and
-                attr.idlType.unionTypes == null and
-                std.mem.eql(u8, attr.idlType.type, "DOMString")) continue;
 
             // Check if type name ends with '?' (parser includes it in type string)
             var type_name = attr.idlType.type;

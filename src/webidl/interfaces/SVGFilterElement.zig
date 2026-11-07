@@ -223,12 +223,6 @@ pub const SVGFilterElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            filterUnits: *runtime.Instance = undefined,
-            primitiveUnits: *runtime.Instance = undefined,
-            x: *runtime.Instance = undefined,
-            y: *runtime.Instance = undefined,
-            width: *runtime.Instance = undefined,
-            height: *runtime.Instance = undefined,
             _internal: ?*SVGFilterElementImpl.InternalState = null,
         },
     );

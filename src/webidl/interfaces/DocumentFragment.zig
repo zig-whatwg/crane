@@ -124,10 +124,6 @@ pub const DocumentFragment = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            children: *runtime.Instance = undefined,
-            firstElementChild: ?*runtime.Instance = null,
-            lastElementChild: ?*runtime.Instance = null,
-            childElementCount: u32 = undefined,
             cached_children: ?*runtime.Instance = null,
             _internal: ?*DocumentFragmentImpl.InternalState = null,
         },

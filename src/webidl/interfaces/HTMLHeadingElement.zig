@@ -223,7 +223,6 @@ pub const HTMLHeadingElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"align": runtime.DOMString = undefined,
             _internal: ?*HTMLHeadingElementImpl.InternalState = null,
         },
     );

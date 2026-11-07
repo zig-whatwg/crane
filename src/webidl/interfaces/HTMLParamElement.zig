@@ -229,10 +229,6 @@ pub const HTMLParamElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            value: runtime.DOMString = undefined,
-            type: runtime.DOMString = undefined,
-            valueType: runtime.DOMString = undefined,
             _internal: ?*HTMLParamElementImpl.InternalState = null,
         },
     );

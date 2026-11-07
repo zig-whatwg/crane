@@ -248,17 +248,6 @@ pub const SVGFETurbulenceElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            baseFrequencyX: *runtime.Instance = undefined,
-            baseFrequencyY: *runtime.Instance = undefined,
-            numOctaves: *runtime.Instance = undefined,
-            seed: *runtime.Instance = undefined,
-            stitchTiles: *runtime.Instance = undefined,
-            type: *runtime.Instance = undefined,
-            x: *runtime.Instance = undefined,
-            y: *runtime.Instance = undefined,
-            width: *runtime.Instance = undefined,
-            height: *runtime.Instance = undefined,
-            result: *runtime.Instance = undefined,
             _internal: ?*SVGFETurbulenceElementImpl.InternalState = null,
         },
     );

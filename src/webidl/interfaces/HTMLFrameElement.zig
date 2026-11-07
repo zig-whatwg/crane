@@ -242,16 +242,6 @@ pub const HTMLFrameElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            scrolling: runtime.DOMString = undefined,
-            src: runtime.USVString = undefined,
-            frameBorder: runtime.DOMString = undefined,
-            longDesc: runtime.USVString = undefined,
-            noResize: bool = undefined,
-            contentDocument: ?*runtime.Instance = null,
-            contentWindow: ?typedefs.WindowProxy = null,
-            marginHeight: runtime.DOMString = undefined,
-            marginWidth: runtime.DOMString = undefined,
             _internal: ?*HTMLFrameElementImpl.InternalState = null,
         },
     );

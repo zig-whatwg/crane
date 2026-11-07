@@ -215,8 +215,6 @@ pub const SVGClipPathElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            clipPathUnits: *runtime.Instance = undefined,
-            transform: *runtime.Instance = undefined,
             _internal: ?*SVGClipPathElementImpl.InternalState = null,
         },
     );

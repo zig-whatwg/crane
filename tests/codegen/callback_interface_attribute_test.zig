@@ -40,7 +40,7 @@ test "a callback interface attribute's state field holds a value" {
     defer reg.deinit();
     var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
     defer buffer.deinit();
-    try writer.writeGeneratedState(&buffer.writer, &attrs, "NodeIteratorImpl", &reg);
+    try writer.writeGeneratedState(&buffer.writer, &attrs, "NodeIteratorImpl", &reg, .{});
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "filter: ?runtime.JSValue") != null);
     try testing.expect(std.mem.indexOf(u8, output, "CallbackWrapper") == null);

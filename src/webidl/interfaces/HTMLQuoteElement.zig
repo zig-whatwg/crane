@@ -223,7 +223,6 @@ pub const HTMLQuoteElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cite: runtime.USVString = undefined,
             _internal: ?*HTMLQuoteElementImpl.InternalState = null,
         },
     );

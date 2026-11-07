@@ -251,10 +251,6 @@ pub const SVGTextPathElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            startOffset: *runtime.Instance = undefined,
-            method: *runtime.Instance = undefined,
-            spacing: *runtime.Instance = undefined,
-            href: *runtime.Instance = undefined,
             cached_startOffset: ?*runtime.Instance = null,
             cached_method: ?*runtime.Instance = null,
             cached_spacing: ?*runtime.Instance = null,

@@ -251,14 +251,6 @@ pub const SVGFEBlendElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            in1: *runtime.Instance = undefined,
-            in2: *runtime.Instance = undefined,
-            mode: *runtime.Instance = undefined,
-            x: *runtime.Instance = undefined,
-            y: *runtime.Instance = undefined,
-            width: *runtime.Instance = undefined,
-            height: *runtime.Instance = undefined,
-            result: *runtime.Instance = undefined,
             _internal: ?*SVGFEBlendElementImpl.InternalState = null,
         },
     );

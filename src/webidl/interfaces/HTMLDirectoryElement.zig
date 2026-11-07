@@ -223,7 +223,6 @@ pub const HTMLDirectoryElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            compact: bool = undefined,
             _internal: ?*HTMLDirectoryElementImpl.InternalState = null,
         },
     );

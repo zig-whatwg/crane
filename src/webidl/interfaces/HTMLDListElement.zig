@@ -223,7 +223,6 @@ pub const HTMLDListElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            compact: bool = undefined,
             _internal: ?*HTMLDListElementImpl.InternalState = null,
         },
     );

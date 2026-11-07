@@ -225,8 +225,6 @@ pub const HTMLMapElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            areas: *runtime.Instance = undefined,
             cached_areas: ?*runtime.Instance = null,
             _internal: ?*HTMLMapElementImpl.InternalState = null,
         },
