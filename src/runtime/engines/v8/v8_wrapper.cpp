@@ -6404,47 +6404,56 @@ Global<Value>* v8_FunctionCallbackInfo_Data(const FunctionCallbackInfo<Value>* i
     return trackHandle(new Global<Value>(isolate, data));
 }
 
+/// The callback's target - implicit_args[kTargetIndex] (4), what V8's own
+/// FunctionCallbackInfo::Data() reads: the called function's
+/// FunctionTemplateInfo, or the function - as a Local.
+///
+/// FunctionCallbackInfo stores (v8-function-callback.h):
+///   internal::Address* implicit_args_;   // offset 0
+///   internal::Address* values_;          // offset 8
+///   internal::Address length_;           // offset 16
+struct FCILayout {
+    internal::Address* implicit_args;
+    internal::Address* values;
+    internal::Address length;
+};
+
+static Local<Data> functionCallbackTarget(const FunctionCallbackInfo<Value>* info) {
+    const FCILayout* layout = reinterpret_cast<const FCILayout*>(info);
+    // Get the target function from implicit_args[kTargetIndex]
+    // kTargetIndex = 4
+    internal::Address target_addr = layout->implicit_args[4];
+    // Convert the internal address to a Local<Value> using reinterpret
+    // V8 Local handles internally store an Address*, so we create a pointer to
+    // our address slot and reinterpret it as a Local
+    return *reinterpret_cast<Local<Data>*>(&target_addr);
+}
+
+/// What the callback's target is, read as GetFunctionCreationContext reads it:
+/// 1 a FunctionTemplateInfo, 2 a function, 3 anything else, 0 none. For tests
+/// (tests/v8/perf3_function_creation_context_test.zig).
+extern "C" int v8_Debug_FunctionCallbackTargetKind(const FunctionCallbackInfo<Value>* info) {
+    Local<Data> target = functionCallbackTarget(info);
+    if (target.IsEmpty()) return 0;
+    if (target->IsFunctionTemplate()) return 1;
+    if (target->IsValue() && target.As<Value>()->IsFunction()) return 2;
+    return 3;
+}
+
 /// Get the creation context of the target function being called.
 /// This is critical for cross-realm support: when calling
 /// other.SomeInterface.prototype.method.call(obj), we need the context
 /// where 'method' was instantiated (the iframe's context), not where
 /// 'obj' was created (the main context) or the calling context.
 ///
-/// Uses V8's internal layout to access the target function at kTargetIndex (4),
-/// then gets its creation context.
+/// Reads the target at kTargetIndex (functionCallbackTarget), then gets its
+/// creation context.
 Global<Context>* v8_FunctionCallbackInfo_GetFunctionCreationContext(const FunctionCallbackInfo<Value>* info) {
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
-    
-    // Access the target (function being called) through implicit_args_
-    // Layout from v8-function-callback.h:
-    //   kTargetIndex = 4
-    // The implicit_args_ pointer is stored at offset 0 of FunctionCallbackInfo
-    //
-    // Since FunctionCallbackInfo stores:
-    //   internal::Address* implicit_args_;   // offset 0
-    //   internal::Address* values_;          // offset 8
-    //   internal::Address length_;           // offset 16
-    //
-    // We can cast and access implicit_args_ directly.
-    
-    struct FCILayout {
-        internal::Address* implicit_args;
-        internal::Address* values;
-        internal::Address length;
-    };
-    
-    const FCILayout* layout = reinterpret_cast<const FCILayout*>(info);
-    
-    // Get the target function from implicit_args[kTargetIndex]
-    // kTargetIndex = 4
-    internal::Address target_addr = layout->implicit_args[4];
-    
-    // Convert the internal address to a Local<Value> using reinterpret
-    // V8 Local handles internally store an Address*, so we create a pointer to
-    // our address slot and reinterpret it as a Local
-    Local<Value> target_value = *reinterpret_cast<Local<Value>*>(&target_addr);
-    
+    Local<Data> target = functionCallbackTarget(info);
+    Local<Value> target_value = target.IsEmpty() || !target->IsValue() ? Local<Value>() : target.As<Value>();
+
     if (target_value.IsEmpty() || !target_value->IsFunction()) {
         // Fallback: return current context
         countContextGlobal();

@@ -193,6 +193,11 @@ pub const FunctionCallbackInfo = opaque {
         return v8_FunctionCallbackInfo_GetFunctionCreationContext(self);
     }
 
+    /// What the callback's target is, read as
+    /// v8_FunctionCallbackInfo_GetFunctionCreationContext reads it: 1 a
+    /// FunctionTemplateInfo, 2 a function, 3 anything else, 0 none. For tests.
+    pub extern fn v8_Debug_FunctionCallbackTargetKind(self: *const FunctionCallbackInfo) c_int;
+
     /// Get the NewTarget for constructor calls.
     /// Returns the function that was called with 'new', which may be different from
     /// the constructor when subclassing (Reflect.construct) or using bound functions.
