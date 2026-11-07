@@ -44,9 +44,14 @@ pub const State = struct {
     /// The active time, with a fill of both, when the animation was canceled
     /// - the animationcancel / transitioncancel elapsed time.
     canceled_active_time: ?f64 = null,
+    /// A CSS transition's own values (css_transitions.Transition): its
+    /// property, start, end and reversing values, transition generation and
+    /// running-set membership. OWNED; null for a CSS animation.
+    transition: ?*@import("css_transitions.zig").Transition = null,
 };
 
 pub fn destroy(allocator: Allocator, state: *State) void {
+    if (state.transition) |transition| transition.destroy(allocator);
     if (state.name.len != 0) allocator.free(state.name);
     if (state.pseudo.len != 0) allocator.free(state.pseudo);
     allocator.destroy(state);
@@ -67,7 +72,12 @@ pub fn attach(animation: *model.Animation, kind: Kind, element: ?*runtime.Instan
         .pseudo = owned_pseudo,
         .name = owned_name,
     };
-    if (animation.css) |old| destroy(allocator, old);
+    if (animation.css) |old| {
+        // A second attach keeps the transition's own values.
+        state.transition = old.transition;
+        old.transition = null;
+        destroy(allocator, old);
+    }
     animation.css = state;
     animation.class = if (kind == .animation) .css_animation else .css_transition;
 }
@@ -167,7 +177,7 @@ pub fn update(animation: *model.Animation) void {
                 queue(animation, state, target, "animationstart", times.end);
                 queue(animation, state, target, "animationend", times.start);
             } else if (previous != .idle and previous != .after and now == .idle) {
-                queue(animation, state, target, "animationcancel", state.canceled_active_time orelse 0);
+                queueCancel(animation, state, target, "animationcancel");
             }
         },
         .transition => {
@@ -195,7 +205,7 @@ pub fn update(animation: *model.Animation) void {
                 queue(animation, state, target, "transitionstart", times.end);
                 queue(animation, state, target, "transitionend", times.start);
             } else if (previous != .idle and previous != .after and now == .idle) {
-                queue(animation, state, target, "transitioncancel", state.canceled_active_time orelse 0);
+                queueCancel(animation, state, target, "transitioncancel");
             }
         },
     }
@@ -217,32 +227,49 @@ fn intervals(animation: *const model.Animation) Intervals {
     };
 }
 
+/// Queue a cancel event. A canceled animation has no start time to place the
+/// moment on: its scheduled event time is the timeline's time now (as the
+/// "cancel" playback event's, Web Animations 1 4.5.14 step 1.10), so it sorts
+/// after the playback event it follows and before later frames' events
+/// (web-animations/timing-model/timelines/update-and-send-events.html "Sorts
+/// events for the same transition"; Chrome, Firefox and Safari pass it).
+fn queueCancel(animation: *model.Animation, state: *const State, target: *runtime.Instance, event_type: []const u8) void {
+    const timeline_time = animation.timelineTime();
+    const scheduled = if (animation.timelineModel()) |timeline| timeline.toOriginRelative(timeline_time) else null;
+    queueAt(animation, state, target, event_type, state.canceled_active_time orelse 0, scheduled);
+}
+
 /// Queue the event named `event_type`, its elapsed time `elapsed_ms`, at
 /// `target`.
 fn queue(animation: *model.Animation, state: *const State, target: *runtime.Instance, event_type: []const u8, elapsed_ms: f64) void {
+    // The scheduled event time: when the event's moment - its elapsed time
+    // into the active interval - falls on the timeline, origin-relative.
+    const delay = if (animation.effectModel()) |effect| effect.timing.delay else 0;
+    queueAt(animation, state, target, event_type, elapsed_ms, animation.animationTimeToOriginRelative(delay + elapsed_ms));
+}
+
+fn queueAt(animation: *model.Animation, state: *const State, target: *runtime.Instance, event_type: []const u8, elapsed_ms: f64, scheduled: ?f64) void {
     const realm = animation.instance.ctx;
     if (!realm.hasEngine()) return;
     const type_string = runtime.DOMString.initInterned(event_type);
     const elapsed = elapsed_ms / 1000;
+    // CSS Animations 1 4.2 and CSS Transitions 1 6.2: every animation and
+    // transition event "Bubbles: Yes", "Cancelable: No".
     const event = switch (state.kind) {
         .animation => interfaces.AnimationEvent.call_constructor(realm, type_string, webidl.Opt(dictionaries.AnimationEventInit).passed(.{
-            .base = .{},
+            .base = .{ .bubbles = true },
             .animationName = runtime.DOMString.initInterned(state.name),
             .elapsedTime = elapsed,
             .pseudoElement = runtime.DOMString.initInterned(state.pseudo),
             .animation = animation.instance,
         })),
         .transition => interfaces.TransitionEvent.call_constructor(realm, type_string, webidl.Opt(dictionaries.TransitionEventInit).passed(.{
-            .base = .{},
+            .base = .{ .bubbles = true },
             .propertyName = runtime.DOMString.initInterned(state.name),
             .elapsedTime = elapsed,
             .pseudoElement = runtime.DOMString.initInterned(state.pseudo),
             .animation = animation.instance,
         })),
     } catch return;
-    // The scheduled event time: when the event's moment - its elapsed time
-    // into the active interval - falls on the timeline, origin-relative.
-    const delay = if (animation.effectModel()) |effect| effect.timing.delay else 0;
-    const scheduled = animation.animationTimeToOriginRelative(delay + elapsed_ms);
     registry.queueEvent(animation, event, target, scheduled);
 }

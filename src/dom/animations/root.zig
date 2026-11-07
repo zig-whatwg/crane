@@ -26,9 +26,11 @@ pub const options = @import("options.zig");
 pub const hooks = @import("hooks.zig");
 pub const promise = @import("promise.zig");
 pub const css_events = @import("css_events.zig");
+pub const css_transitions = @import("css_transitions.zig");
 
 pub const Registry = registry.Registry;
 pub const updateAnimationsAndSendEvents = registry.updateAnimationsAndSendEvents;
+pub const commitPendingAnimations = registry.commitPendingAnimations;
 pub const defaultTimeline = registry.defaultTimeline;
 
 const Allocator = std.mem.Allocator;
@@ -85,6 +87,7 @@ pub fn setKeyframes(effect: *model.Effect, keyframe_input: ?JSValue) !void {
     errdefer list.deinit(effect.allocator);
     effect.keyframes.deinit(effect.allocator);
     effect.keyframes = list;
+    css_transitions.keyframesReplaced(effect);
     if (effect.animationModel()) |animation| animation.settle();
 }
 
@@ -146,6 +149,7 @@ pub fn animate(target: *runtime.Instance, keyframe_input: ?JSValue, options_valu
 /// Element.getAnimations(options) (6.8).
 pub fn elementAnimations(element: *runtime.Instance, subtree: bool, pseudo_element: ?[]const u8) !JSValue {
     const allocator = element.ctx.allocator;
+    flushPendingStyle(element, subtree);
     // 2. Pseudo-element parsing.
     const pseudo = try options.parsePseudoElement(allocator, pseudo_element);
     defer if (pseudo) |p| allocator.free(p);
@@ -175,6 +179,7 @@ pub fn elementAnimations(element: *runtime.Instance, subtree: bool, pseudo_eleme
 /// relevant animations for the subtree of `root` - targets that are its
 /// descendants (or their pseudo-elements).
 pub fn rootAnimations(root: *runtime.Instance) !JSValue {
+    flushPendingStyle(root, true);
     const Match = struct {
         root: *runtime.Instance,
         fn matches(self: @This(), effect: *const model.Effect) bool {
@@ -184,6 +189,18 @@ pub fn rootAnimations(root: *runtime.Instance) !JSValue {
     };
     const result = try registry.relevantAnimations(root.ctx, Match{ .root = root }, Match.matches);
     return result.take();
+}
+
+/// CSS Transitions 2 6.2 "requirements on pending style changes":
+/// getAnimations() answers "consistent with having fully processed any such
+/// pending changes" - the style of `root` (and its subtree) resolved, which
+/// starts and cancels transitions, and the transitions of elements that left
+/// the document canceled.
+fn flushPendingStyle(root: *runtime.Instance, subtree: bool) void {
+    const style_engine = @import("../style/root.zig").engine;
+    style_engine.flushForAnimations(root, subtree);
+    const document = (interfaces.Node.get_ownerDocument(root) catch null) orelse root;
+    css_transitions.sweep(document);
 }
 
 /// Whether `node` is a descendant of `ancestor` (DOM, not shadow-including).

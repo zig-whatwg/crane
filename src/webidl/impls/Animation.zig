@@ -40,6 +40,10 @@ fn modelOf(instance: *runtime.Instance) !*InternalState {
 
 pub fn installHooks() void {
     animations.hooks.installAnimation(&animationOf);
+    // CSS Transitions 1 section 3: an element that leaves the document has
+    // its transitions canceled (css_transitions marks it; the next sweep
+    // cancels).
+    @import("dom").mutation.registerRemovingStepsCallback(&animations.css_transitions.removingSteps) catch @panic("css transition removing steps allocation");
 }
 
 /// Animation's own construction steps: its model (CSSAnimation and
