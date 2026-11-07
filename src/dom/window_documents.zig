@@ -15,11 +15,20 @@ const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
+/// What becomes of the Window of a document that is destroyed: it is
+/// discarded with it, or the next document of its navigable keeps it (HTML
+/// "create and initialize a Document object" step 6: an initial about:blank
+/// replaced by a same origin-domain document - "both ... will share the same
+/// Window object").
+pub const WindowFate = enum { discarded, kept_for_next_document };
+
 /// What the browser layer supplies.
 pub const Implementation = struct {
     /// `realm`'s window's document was destroyed: its timers and animation
-    /// frame callbacks end.
-    destroyed: *const fn (realm: runtime.Context) void,
+    /// frame callbacks end, and the unloading document cleanup steps run -
+    /// the global teardown ones only when `fate` is `.discarded`
+    /// (dom.unloading_cleanup).
+    destroyed: *const fn (realm: runtime.Context, fate: WindowFate) void,
     /// The keys of `realm`'s window's map of active timers - the ids
     /// setTimeout and setInterval returned that are neither cleared nor
     /// done - in `allocator`'s memory, OWNED by the caller.
@@ -45,11 +54,20 @@ pub fn install(impl: Implementation) void {
     implementation.install(impl);
 }
 
-/// `realm`'s window's document was destroyed. Nothing to end without an
-/// installed implementation (no window operations were installed either).
+/// `realm`'s window's document was destroyed, and the window with it.
+/// Nothing to end without an installed implementation (no window operations
+/// were installed either).
 pub fn destroyed(realm: runtime.Context) void {
     const impl = implementation.get() orelse return;
-    impl.destroyed(realm);
+    impl.destroyed(realm, .discarded);
+}
+
+/// `realm`'s window's document was destroyed, and the next document of its
+/// navigable keeps the window (`WindowFate.kept_for_next_document`): the
+/// document's state ends, the global's does not.
+pub fn documentReplaced(realm: runtime.Context) void {
+    const impl = implementation.get() orelse return;
+    impl.destroyed(realm, .kept_for_next_document);
 }
 
 /// Request a rendering opportunity for Document-owned native work: the

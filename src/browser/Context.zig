@@ -527,8 +527,14 @@ const window_operations = runtime.WindowOperations{
     .clearTimer = clearTimer,
     .requestAnimationFrame = rendering.requestAnimationFrame,
     .cancelAnimationFrame = rendering.cancelAnimationFrame,
-    .windowDestroyed = clearWindowState,
+    .windowDestroyed = clearDiscardedWindowState,
 };
+
+/// The engine's end of a window realm: the window goes with its last
+/// document (`clearWindowState`).
+fn clearDiscardedWindowState(realm: runtime.Context) void {
+    clearWindowState(realm, .discarded);
+}
 
 /// The hooks the browser layer owns (src/dom), installed once, at process
 /// start, by crane.Process (docs/instances.md): a removed frame's document
@@ -554,10 +560,21 @@ pub fn installHooks() void {
 /// of active timers) and its map of animation frame callbacks. Without this a
 /// removed frame's timers kept firing, and a destroyed one's fired into a
 /// window whose state was freed.
-fn clearWindowState(realm: runtime.Context) void {
+///
+/// `fate` says whether the window goes with the document. A window the next
+/// document keeps (HTML "create and initialize a Document object" step 6:
+/// the initial about:blank and the same-origin document that replaces it
+/// "share the same Window object") runs the document steps alone; the
+/// global teardown steps - a ReportingObserver's registration, a
+/// BroadcastChannel's keep - wait for the global's end, as Blink's reused
+/// LocalDOMWindow gets no ContextDestroyed (dom.unloading_cleanup).
+fn clearWindowState(realm: runtime.Context, fate: dom_mod.window_documents.WindowFate) void {
     // The unloading document cleanup steps other specifications define (the
     // File API's: the window's blob URL entries leave the store).
-    dom_mod.unloading_cleanup.run(realm);
+    switch (fate) {
+        .discarded => dom_mod.unloading_cleanup.run(realm),
+        .kept_for_next_document => dom_mod.unloading_cleanup.runDocumentSteps(realm),
+    }
 
     // Its map of active timers - its own, so every entry is this window's.
     const map = TimerMap.of(realm);
