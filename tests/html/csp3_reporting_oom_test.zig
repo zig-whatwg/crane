@@ -15,7 +15,7 @@ fn exercise() !void {
     const setup = try browser.evaluateScript(
         \\globalThis.reportsSeen = [];
         \\globalThis.observer = new ReportingObserver(reports => {
-        \\  reportsSeen.push(...reports.map(report => report.body.sequence));
+        \\  reportsSeen.push(...reports.map(report => report.body.effectiveDirective));
         \\}, {types: ['csp-violation']});
         \\observer.observe();
         \\0;
@@ -32,14 +32,17 @@ fn exercise() !void {
     var failing = std.testing.FailingAllocator.init(observer_allocator, .{ .fail_index = 0 });
     observer.allocator = failing.allocator();
     defer observer.allocator = observer_allocator;
-    try dom.reporting.generate(global, "csp-violation", "absent-endpoint", "https://example.test/", "{\"sequence\":1}");
+    try dom.reporting.generate(global, "csp-violation", "absent-endpoint", "https://example.test/", "{\"effectiveDirective\":\"sequence-1\"}");
     const queued_after_failure = observer.queue.items.len;
     const references_after_failure = state.buffer.items[0].references;
     try std.testing.expect(failing.has_induced_failure);
     observer.allocator = observer_allocator;
-    try dom.reporting.generate(global, "csp-violation", "absent-endpoint", "https://example.test/", "{\"sequence\":2}");
+    try dom.reporting.generate(global, "csp-violation", "absent-endpoint", "https://example.test/", "{\"effectiveDirective\":\"sequence-2\"}");
     _ = try browser.runEventLoopBlocking(20);
-    const observed = try browser.evaluateScript("reportsSeen.length === 1 && reportsSeen[0] === 2");
+    // A csp-violation report's body is a CSPViolationReportBody (the
+    // browsers' interfaces): only its attributes are readable, so the
+    // sequence rides in one of them.
+    const observed = try browser.evaluateScript("reportsSeen.length === 1 && reportsSeen[0] === 'sequence-2'");
     defer observed.release();
     // Check recovery first: the unfixed queue suppresses the second report's
     // notification too, although the allocator is already working again.

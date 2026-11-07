@@ -50,3 +50,32 @@ test "a ToJSON struct types a nullable attribute as optional and is marked defau
     try testing.expect(contains(out, "        code: ?u16,\n"));
     try testing.expect(contains(out, "        pub const default_to_json = true;\n"));
 }
+
+test "an interface with no attribute and a [Default] toJSON gets an empty ToJSON struct" {
+    // ReportBody (specs/supplementary/reporting-interfaces.idl): WebIDL's
+    // default toJSON steps collect no attribute and return an object with no
+    // member. The interface's toJSON delegate returns `ReportBodyToJSON`, so
+    // the struct must exist even with nothing in it.
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const file = try codegen.idl_parser.Parser.parse(a,
+        \\interface ReportBody { [Default] object toJSON(); };
+    );
+    var model = try codegen.ir.IR.init(a);
+    for (file.interfaces) |iface| try model.addInterface(iface, "test.idl");
+
+    const attrs = try codegen.ir.collectToJSONAttributes(a, "ReportBody", &model);
+    try testing.expectEqual(@as(usize, 0), attrs.len);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try codegen.writer.writeToJSONStruct(&buffer.writer, "ReportBody", attrs, &model);
+    const out = buffer.written();
+
+    try testing.expect(contains(out, "    pub const ReportBodyToJSON = struct {\n"));
+    try testing.expect(contains(out, "        pub const default_to_json = true;\n"));
+    // No member line between the struct's opening and its marker.
+    const open = std.mem.indexOf(u8, out, "struct {\n").?;
+    const marker = std.mem.indexOf(u8, out, "pub const default_to_json").?;
+    try testing.expectEqualStrings("struct {\n\n        ", out[open..marker]);
+}

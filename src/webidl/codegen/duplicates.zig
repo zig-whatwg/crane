@@ -63,6 +63,21 @@ pub const definers = std.StaticStringMap([]const u8).initComptime(.{
     .{ "LockManager", "web-locks.idl" },
     // Portals (discontinued) widens HTML's union with its own types.
     .{ "MessageEventSource", "html.idl" },
+    // The Reporting API's Report and ReportBody and the report bodies of
+    // the specs that report, as the interfaces Chrome, Firefox and Safari
+    // ship (Crane's specs/supplementary/reporting-interfaces.idl) over the
+    // dictionaries w3c/reporting#284 made them: the user's ruling of
+    // 2026-11-05 (lane coi2), not webref's idlnames.
+    .{ "Report", "reporting-interfaces.idl" },
+    .{ "ReportBody", "reporting-interfaces.idl" },
+    .{ "CSPViolationReportBody", "reporting-interfaces.idl" },
+    .{ "IntegrityViolationReportBody", "reporting-interfaces.idl" },
+    .{ "PermissionsPolicyViolationReportBody", "reporting-interfaces.idl" },
+    .{ "DeprecationReportBody", "reporting-interfaces.idl" },
+    .{ "InterventionReportBody", "reporting-interfaces.idl" },
+    .{ "CrashReportBody", "reporting-interfaces.idl" },
+    .{ "ScriptingPolicyReportBody", "reporting-interfaces.idl" },
+    .{ "ConnectionAllowlistViolationReport", "reporting-interfaces.idl" },
     // Device Attributes restates the interface Managed Configuration defines.
     .{ "NavigatorManagedData", "managed-configuration.idl" },
     // SVG 2 (SVG.idl) vs SVG Paths, which defines it.
