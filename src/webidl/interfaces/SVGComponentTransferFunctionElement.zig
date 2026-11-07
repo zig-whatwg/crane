@@ -236,13 +236,6 @@ pub const SVGComponentTransferFunctionElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: *runtime.Instance = undefined,
-            tableValues: *runtime.Instance = undefined,
-            slope: *runtime.Instance = undefined,
-            intercept: *runtime.Instance = undefined,
-            amplitude: *runtime.Instance = undefined,
-            exponent: *runtime.Instance = undefined,
-            offset: *runtime.Instance = undefined,
             _internal: ?*SVGComponentTransferFunctionElementImpl.InternalState = null,
         },
     );

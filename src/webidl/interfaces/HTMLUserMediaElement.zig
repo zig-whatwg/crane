@@ -238,11 +238,6 @@ pub const HTMLUserMediaElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            stream: ?*runtime.Instance = null,
-            @"error": ?*runtime.Instance = null,
-            onstream: typedefs.EventHandler = undefined,
-            onerror: typedefs.EventHandler = undefined,
-            oncancel: typedefs.EventHandler = undefined,
             _internal: ?*HTMLUserMediaElementImpl.InternalState = null,
         },
     );

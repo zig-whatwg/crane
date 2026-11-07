@@ -237,12 +237,6 @@ pub const HTMLInstallElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            manifest: ?runtime.USVString = null,
-            manifestId: ?runtime.USVString = null,
-            oninstallresult: typedefs.EventHandler = undefined,
-            isValid: bool = undefined,
-            invalidReason: enums.ActivationBlockersMixinBlockerReason = undefined,
-            onvalidationstatuschange: typedefs.EventHandler = undefined,
             _internal: ?*HTMLInstallElementImpl.InternalState = null,
         },
     );

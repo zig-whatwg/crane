@@ -237,10 +237,6 @@ pub const HTMLPortalElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            src: runtime.USVString = undefined,
-            referrerPolicy: runtime.DOMString = undefined,
-            onmessage: typedefs.EventHandler = undefined,
-            onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*HTMLPortalElementImpl.InternalState = null,
         },
     );

@@ -223,11 +223,6 @@ pub const SVGStyleElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: runtime.DOMString = undefined,
-            media: runtime.DOMString = undefined,
-            title: runtime.DOMString = undefined,
-            disabled: bool = undefined,
-            sheet: ?*runtime.Instance = null,
             _internal: ?*SVGStyleElementImpl.InternalState = null,
         },
     );

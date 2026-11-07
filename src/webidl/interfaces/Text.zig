@@ -127,8 +127,6 @@ pub const Text = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            wholeText: runtime.DOMString = undefined,
-            assignedSlot: ?*runtime.Instance = null,
             _internal: ?*TextImpl.InternalState = null,
         },
     );

@@ -225,8 +225,6 @@ pub const HTMLBaseElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            href: runtime.USVString = undefined,
-            target: runtime.DOMString = undefined,
             _internal: ?*HTMLBaseElementImpl.InternalState = null,
         },
     );

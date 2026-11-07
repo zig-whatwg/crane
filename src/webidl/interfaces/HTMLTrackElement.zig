@@ -244,13 +244,6 @@ pub const HTMLTrackElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            kind: runtime.DOMString = undefined,
-            src: runtime.USVString = undefined,
-            srclang: runtime.DOMString = undefined,
-            label: runtime.DOMString = undefined,
-            default: bool = undefined,
-            readyState: u16 = undefined,
-            track: *runtime.Instance = undefined,
             _internal: ?*HTMLTrackElementImpl.InternalState = null,
         },
     );

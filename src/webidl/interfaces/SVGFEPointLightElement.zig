@@ -216,9 +216,6 @@ pub const SVGFEPointLightElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: *runtime.Instance = undefined,
-            y: *runtime.Instance = undefined,
-            z: *runtime.Instance = undefined,
             _internal: ?*SVGFEPointLightElementImpl.InternalState = null,
         },
     );

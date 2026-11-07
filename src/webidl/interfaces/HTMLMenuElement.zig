@@ -223,7 +223,6 @@ pub const HTMLMenuElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            compact: bool = undefined,
             _internal: ?*HTMLMenuElementImpl.InternalState = null,
         },
     );

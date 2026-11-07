@@ -227,10 +227,6 @@ pub const SVGForeignObjectElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: *runtime.Instance = undefined,
-            y: *runtime.Instance = undefined,
-            width: *runtime.Instance = undefined,
-            height: *runtime.Instance = undefined,
             cached_x: ?*runtime.Instance = null,
             cached_y: ?*runtime.Instance = null,
             cached_width: ?*runtime.Instance = null,

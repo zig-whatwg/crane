@@ -230,10 +230,6 @@ pub const SVGGradientElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            gradientUnits: *runtime.Instance = undefined,
-            gradientTransform: *runtime.Instance = undefined,
-            spreadMethod: *runtime.Instance = undefined,
-            href: *runtime.Instance = undefined,
             cached_gradientUnits: ?*runtime.Instance = null,
             cached_gradientTransform: ?*runtime.Instance = null,
             cached_spreadMethod: ?*runtime.Instance = null,
