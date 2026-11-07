@@ -290,7 +290,10 @@ like any other (V8: `wrapper_cache.finalizeEntry`; lane pageretention1).
   Chromium's DOMWindow::ReportCoopAccess runs it) is told each use of a
   CrossOriginProperties(Window) member, the indexed or named getter or the
   opener setter from another realm, with the incumbent realm as the
-  accessor; the host only queues reports [window_access_reporting]. It is entered only for
+  accessor, once the realm's Browser has started its access monitoring
+  (`BrowserScope.window_access_monitored`; before that a use costs one load,
+  as Chromium's empty CoopAccessMonitor list does); the host only queues
+  reports [window_access_reporting]. It is entered only for
   the calls that run in it (it is made while the parent's script runs), and
   ends before its parent does if it has not already. A parentless realm is
   the agent's entered realm for its life. A realm whose WindowProxy went on

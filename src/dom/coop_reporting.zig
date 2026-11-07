@@ -6,7 +6,8 @@
 //! reports use too. Its access reports (`checkAccess`) are the engine's
 //! report_window_access, as Chromium makes them. This module owns no state,
 //! tasks or network operations: the accessed window's reporting state keeps
-//! which accesses were reported (reporting.State.useAccessMonitor).
+//! which accesses were reported (reporting.State.useAccessMonitor), and the
+//! Browser whether any can be (`startMonitoring`).
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/browsers.html#reporting
 
@@ -146,6 +147,45 @@ fn queue(sender: *runtime.Instance, side: Side, report: opener_policy.Navigation
 pub fn checkAccess(host: ?*anyopaque, accessor: runtime.Context, window: *runtime.Instance, property: []const u8) void {
     _ = host;
     checkAccessFallible(accessor, window, property) catch {};
+}
+
+/// The access reports of `bc`'s Browser start: from now on the engine asks
+/// `checkAccess` about every use of a CrossOriginProperties(Window) member
+/// (runtime.BrowserScope.window_access_monitored). Called when a navigation
+/// gives the top-level context `bc` a new virtual browsing context group ID
+/// ("obtain a browsing context to use for a navigation response" step 9.1).
+///
+/// Chromium installs its monitors at the same moment and finer:
+/// CrossOriginOpenerPolicyAccessReportManager::InstallAccessMonitorsIfNeeded,
+/// at a main frame's commit, puts a CoopAccessMonitor on each main-frame
+/// window of the group in another virtual group, and only for a pair where
+/// one side has an opener policy reporter; DOMWindow::ReportCoopAccess
+/// returns at once for a window with none (dom_window.cc:882). Crane's
+/// monitoring is coarser - the whole Browser, and for the rest of its life -
+/// and misses nothing: `checkAccess` reports only between top-level contexts
+/// of one group with different virtual group IDs, and those IDs part only
+/// here (a new top-level context, child or popup takes its creator's, and a
+/// group switch makes a new group). A Browser where no such navigation
+/// happened pays for no question.
+pub fn startMonitoring(bc: *BrowsingContext) void {
+    const scope = browserScopeOf(bc) orelse return;
+    scope.window_access_monitored.store(true, .monotonic);
+}
+
+/// `bc`'s Browser, through its active Window or, without one, through any
+/// browsing context of the Browser that has one.
+fn browserScopeOf(bc: *BrowsingContext) ?*runtime.BrowserScope {
+    if (activeWindowScope(bc)) |scope| return scope;
+    const navigables = bc.navigables orelse return null;
+    for (navigables.contexts()) |other| {
+        if (activeWindowScope(other)) |scope| return scope;
+    }
+    return null;
+}
+
+fn activeWindowScope(bc: *BrowsingContext) ?*runtime.BrowserScope {
+    const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse return null));
+    return window.ctx.browser_scope;
 }
 
 /// One side of an access: a top-level browsing context's window, its

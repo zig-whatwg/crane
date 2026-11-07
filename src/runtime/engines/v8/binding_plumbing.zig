@@ -1690,8 +1690,15 @@ pub fn answerWindowGetter(info: *const v8.FunctionCallbackInfo, window_access: ?
     defer v8.v8_Object_Dispose(this_obj);
     if (!v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) return false;
     // HTML 7.1.3.3's access report check, for the method's realm's Window.
+    // The global's Window field (null once the realm has ended) answers the
+    // check's first question - has the Browser started its access
+    // monitoring? - before realmWindow looks the Window up.
     if (window_access) |property| {
-        if (realmWindow(method_ctx, method_global)) |window| @import("protocol_realms.zig").reportWindowAccess(@ptrCast(@alignCast(window)), property);
+        const held = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+        const monitored = if (held) |window| @import("protocol_realms.zig").windowAccessMonitored(@ptrCast(@alignCast(window))) else true;
+        if (monitored) {
+            if (realmWindow(method_ctx, method_global)) |window| @import("protocol_realms.zig").reportWindowAccess(@ptrCast(@alignCast(window)), property);
+        }
     }
     // Copied into the return value; ours is released above.
     info.setReturnValue(@ptrCast(method_global));

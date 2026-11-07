@@ -859,8 +859,11 @@ pub const WindowRealmOptions = struct {
     /// or "indexed", "named" or "opener". Asked on each such use from
     /// another realm, same origin or not, before the member's steps run. The
     /// host only queues reports: it must not run script or throw. `window`
-    /// is BORROWED for the call and `property` is static. Null: no access is
-    /// reported.
+    /// is BORROWED for the call and `property` is static. Not asked while
+    /// the realm's Browser (`browser_scope`) has not started its access
+    /// monitoring (runtime.BrowserScope.window_access_monitored: Chromium's
+    /// early return on a window with no CoopAccessMonitor); a realm of no
+    /// Browser is always asked. Null: no access is reported.
     report_window_access: ?*const fn (host: ?*anyopaque, accessor: Context, window: *Instance, property: []const u8) void = null,
     host: ?*anyopaque = null,
     /// Whether the realm's environment settings object is a secure context

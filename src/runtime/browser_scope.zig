@@ -55,6 +55,15 @@ pub const BrowserScope = struct {
     /// engine.AgentOptions.external_memory): dom.instance_bridge counts each
     /// node as it registers and unregisters. Its window agent's thread only.
     dom_memory: @import("gc_integration.zig").ExternalMemory = .{},
+    /// Whether a use of one of this Browser's Windows may be reported (HTML
+    /// 7.1.3.3, "check if an access between two browsing contexts should be
+    /// reported"): the engine's `report_window_access` path reads it first
+    /// and asks nothing more while it is false - Chromium's "fast early
+    /// return" in DOMWindow::ReportCoopAccess (dom_window.cc:882) on a
+    /// window with no CoopAccessMonitor. Set by dom.coop_reporting
+    /// (startMonitoring) when a navigation gives a top-level context a new
+    /// virtual browsing context group ID, and never cleared.
+    window_access_monitored: std.atomic.Value(bool) = .init(false),
     /// Protects `supplements` and the making of tables. Never held across a
     /// supplement's own steps beyond its `init`.
     mutex: std.Io.Mutex = .init,

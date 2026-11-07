@@ -9,7 +9,10 @@
 //!
 //! The host here is the test's: it records each call. The realms are made as
 //! a page's and its frame's are (createWindowRealm with the frame's parent),
-//! with the page's `w` bound to the frame's WindowProxy.
+//! with the page's `w` bound to the frame's WindowProxy. A realm of a Browser
+//! (a BrowserScope) is asked only while its Browser's
+//! `window_access_monitored` is set - Chromium's early return on a window
+//! with no CoopAccessMonitor; a realm of no Browser always is.
 //!
 //! The file shares tests/v8's process: it starts the engine as any file may
 //! and makes its own agent per test.
@@ -79,6 +82,11 @@ const Pair = struct {
     frame: runtime.Context,
 
     fn open(host: *Host) !Pair {
+        return openIn(host, null);
+    }
+
+    /// The pair, made as `scope`'s realms (null: of no Browser).
+    fn openIn(host: *Host, scope: ?*runtime.BrowserScope) !Pair {
         test_process.start();
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &.{}, .host = null });
         errdefer protocol.destroyAgent(agent);
@@ -88,6 +96,7 @@ const Pair = struct {
             .from_snapshot = false,
             .timer = null,
             .origin = "https://example.test",
+            .browser_scope = scope,
             .create_global_object = Host.createGlobalObject,
             .is_platform_object_same_origin = Host.isPlatformObjectSameOrigin,
             .report_window_access = Host.reportWindowAccess,
@@ -101,6 +110,7 @@ const Pair = struct {
             .timer = null,
             .origin = "https://other.test",
             .parent = page,
+            .browser_scope = scope,
             .create_global_object = Host.createGlobalObject,
             .is_platform_object_same_origin = Host.isPlatformObjectSameOrigin,
             .report_window_access = Host.reportWindowAccess,
@@ -183,4 +193,33 @@ test "a realm's use of its own Window is never reported" {
     try Pair.run(pair.frame, attempt ++ "[() => self, () => window, () => frames, () => closed, () => length, () => top, () => parent, () => opener, () => blur(), () => focus()].forEach(attempt)");
     try Pair.run(pair.page, attempt ++ "[() => self, () => window, () => closed, () => length].forEach(attempt)");
     try testing.expectEqual(@as(usize, 0), host.calls.items.len);
+}
+
+test "a Browser's realms ask the host only once its access monitoring has started" {
+    var scope = runtime.BrowserScope.init(std.heap.page_allocator);
+    defer scope.deinit();
+    var host: Host = .{};
+    defer host.deinit();
+    const pair = try Pair.openIn(&host, &scope);
+    defer pair.close();
+    host.calls.clearRetainingCapacity();
+    // Same origin: the attributes, the operation and the opener setter.
+    // Cross origin: the cross-origin [[Get]] of self and frames.
+    const same_origin = attempt ++ "[() => w.window, () => w.closed, () => w.blur(), () => { w.opener = null; }].forEach(attempt)";
+    const cross_origin = attempt ++ "[() => w.self, () => w.frames].forEach(attempt)";
+    // No virtual browsing context group has split in the Browser: no access
+    // can be reported, and none is asked about.
+    try Pair.run(pair.page, same_origin);
+    host.same_origin = false;
+    try Pair.run(pair.page, cross_origin);
+    host.same_origin = true;
+    try testing.expectEqual(@as(usize, 0), host.calls.items.len);
+    // dom.coop_reporting.startMonitoring's store: every use is asked again.
+    scope.window_access_monitored.store(true, .monotonic);
+    try Pair.run(pair.page, same_origin);
+    try expectReported(&host, pair, "window,closed,blur,opener");
+    host.same_origin = false;
+    try Pair.run(pair.page, cross_origin);
+    host.same_origin = true;
+    try expectReported(&host, pair, "self,frames");
 }

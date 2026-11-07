@@ -605,11 +605,26 @@ pub const SameOriginCheck = struct {
 /// Chromium's IncumbentDOMWindow; a use from `window`'s own realm reports
 /// nothing and asks no host. Runs no script.
 pub fn reportWindowAccess(window: *engine.Instance, property: []const u8) void {
+    // Chromium's DOMWindow::ReportCoopAccess returns at once for a window
+    // with no CoopAccessMonitor ("Fast early return. Very likely true.",
+    // dom_window.cc:882): a use of a Window of a Browser where no access can
+    // be reported looks nothing up - no realm state, no incumbent realm
+    // (runtime.BrowserScope.window_access_monitored, which
+    // dom.coop_reporting.startMonitoring sets). A realm of no Browser (a unit
+    // test's) is always asked.
+    if (!windowAccessMonitored(window)) return;
     const state = stateOf(window.ctx) orelse return;
     const report = state.report_window_access orelse return;
     const accessor = incumbentRealm() orelse return;
     if (accessor == window.ctx) return;
     report(state.host, accessor, window, property);
+}
+
+/// Whether a use of `window` may be reported: false only while its realm's
+/// Browser has not started its access monitoring. Two loads, no lookup.
+pub fn windowAccessMonitored(window: *engine.Instance) bool {
+    const scope = window.ctx.browser_scope orelse return true;
+    return scope.window_access_monitored.load(.monotonic);
 }
 
 pub fn sameOriginCheckOf(realm: Context) ?SameOriginCheck {

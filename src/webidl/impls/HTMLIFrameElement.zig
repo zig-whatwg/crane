@@ -3084,6 +3084,7 @@ fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, wai
         // browsingContext's virtual browsing context group ID to a new unique
         // identifier."
         if (integration.browsing_context) |bc| bc.startVirtualGroup();
+        if (integration.browsing_context) |bc| dom_module.coop_reporting.startMonitoring(bc);
     }
     defer integration.next_new_window_proxy = false;
     // "Create and initialize a Document object" step 7: the keying of the
