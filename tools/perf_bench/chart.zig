@@ -121,7 +121,7 @@ pub fn trendChart(w: W, points: []const Point, t: Trend) !void {
         try w.writeAll("</text>");
         if (!full) continue;
         if (p.date.len > 0) {
-            try w.print("<text x=\"{d:.1}\" y=\"{d:.1}\" text-anchor=\"middle\">", .{ x, base + 32 });
+            try w.print("<text class=\"x-date\" x=\"{d:.1}\" y=\"{d:.1}\" text-anchor=\"middle\">", .{ x, base + 32 });
             try html.text(w, p.date);
             try w.writeAll("</text>");
         }
@@ -158,8 +158,10 @@ pub fn trendChart(w: W, points: []const Point, t: Trend) !void {
     try w.writeAll("</svg>");
 }
 
-/// One row's figure over the rounds: its own scale (min to max) and a dot on the latest
-/// round. Nothing when fewer than two rounds have a figure.
+/// One row's figure over the rounds: its own scale (min to max, widened to span at least 20% of
+/// the largest figure - the 10% noise band either side, report.zig `noiseBand` - so a move within
+/// noise draws nearly flat instead of the sparkline's full height) and a dot on the latest round.
+/// Nothing when fewer than two rounds have a figure.
 const sw: f64 = 96;
 const sh: f64 = 26;
 const sp: f64 = 3;
@@ -176,9 +178,11 @@ pub fn sparkline(w: W, aria: []const u8, values: []const ?f64) !void {
         last = i;
     };
     if (n < 2) return;
-    if (hi - lo < hi * 1e-9) {
-        lo -= 1;
-        hi += 1;
+    const span = @max(@abs(hi) * 0.2, 1e-9);
+    if (hi - lo < span) {
+        const mid = (hi + lo) / 2;
+        lo = mid - span / 2;
+        hi = mid + span / 2;
     }
     const step = (sw - 2 * sp) / @as(f64, @floatFromInt(@max(values.len, 2) - 1));
     try w.print("<svg class=\"chart-svg spark\" viewBox=\"0 0 {d} {d}\" width=\"{d}\" height=\"{d}\" role=\"img\" aria-label=\"", .{ sw, sh, sw, sh });
@@ -313,4 +317,28 @@ test "a sparkline: two rounds or more, the latest dotted, no dashed step" {
     defer flat.deinit();
     try sparkline(&flat.writer, "x", &.{ 10, 10 });
     try testing.expect(std.mem.indexOf(u8, flat.written(), "<line class=\"spark-line") != null);
+}
+
+test "a sparkline's scale spans at least the noise band: a 1% move draws nearly flat, a halving the full height" {
+    const rise = struct {
+        /// The line's drop from its first point to its second, in units of the sparkline.
+        fn f(values: []const ?f64) !f64 {
+            var out: Io.Writer.Allocating = .init(testing.allocator);
+            defer out.deinit();
+            try sparkline(&out.writer, "x", values);
+            const svg = out.written();
+            const y1 = try attr(svg, "y1=\"");
+            const y2 = try attr(svg, "y2=\"");
+            return y2 - y1;
+        }
+        fn attr(svg: []const u8, name: []const u8) !f64 {
+            const i = std.mem.indexOf(u8, svg, name).? + name.len;
+            const j = std.mem.indexOfScalarPos(u8, svg, i, '"').?;
+            return std.fmt.parseFloat(f64, svg[i..j]);
+        }
+    }.f;
+    // 100 -> 101: under a tenth of the height (20 units of drawing).
+    try testing.expect(@abs(try rise(&.{ 100, 101 })) < 2.0);
+    // 40 -> 20: top to bottom.
+    try testing.expectApproxEqAbs(@as(f64, sh - 2 * sp), try rise(&.{ 40, 20 }), 0.05);
 }

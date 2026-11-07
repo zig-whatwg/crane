@@ -854,7 +854,7 @@ const style =
     \\.perf { --trend: #2a78d6; }
     \\@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .perf { --trend: #3987e5; } }
     \\:root[data-theme="dark"] .perf { --trend: #3987e5; }
-    \\.perf .trend-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 0 2.5rem; max-width: 60rem; }
+    \\.perf .trend-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 0 2.5rem; max-width: 52rem; }
     \\.perf .trend { margin: 1rem 0 0; }
     \\.perf .trend-title { margin: 0 0 0.35rem; font: 400 0.9rem/1.35 var(--sans); color: var(--ink-2); }
     \\.perf .trend-title strong { color: var(--ink); font-weight: 600; }
@@ -862,18 +862,24 @@ const style =
     \\.trend-svg .trend-dot { fill: var(--trend); stroke: var(--paper); stroke-width: 2; }
     \\.trend-svg .ref { stroke: var(--ink-2); stroke-width: 1; }
     \\.trend-svg .trend-value { font-size: 12px; font-weight: 600; fill: var(--ink); }
-    \\.trend-svg .x-round { fill: var(--ink); font-weight: 500; }
-    \\.trend-svg .x-commit { font-family: var(--mono); font-size: 10px; }
+    \\.trend-svg .x-round { fill: var(--ink); font-weight: 600; }
+    \\.trend-svg .x-date { font-size: 10px; }
+    \\.trend-svg .x-commit { font-family: var(--mono); font-size: 9.5px; }
     \\.perf .chart-note, .perf .gap-legend { max-width: var(--measure); font: 400 0.88rem/1.45 var(--sans); color: var(--ink-2); }
     \\.perf .gap td.n { color: var(--ink); }
     \\.perf .gap td.ratio-good { color: var(--pass, #2e7d32); } .perf .gap td.ratio-bad { color: var(--fail, #b3261e); }
     \\.perf .gap .was { color: var(--ink-2); font-size: 0.86em; }
     \\.perf .gap thead th[scope="colgroup"] { text-align: center; }
+    \\.perf .gap-wrap { display: inline-block; max-width: 100%; max-height: none; vertical-align: top; }
+    \\.perf .listing.gap { width: auto; }
+    \\.perf .listing.gap tbody th { padding-right: 2rem; }
     \\@media (max-width: 52rem) {
+    \\  .perf .gap-wrap { display: block; }
+    \\  .perf .listing.gap { width: 100%; }
     \\  .perf .listing.gap tbody tr { display: block; padding: 0.5rem 0.6rem; }
-    \\  .perf .listing.gap tbody th { display: block; margin-bottom: 0.3rem; }
-    \\  .perf .listing.gap tbody td { display: flex; justify-content: space-between; gap: 1rem; padding: 0.12rem 0; }
-    \\  .perf .listing.gap tbody td::before { content: attr(data-label); color: var(--ink-2); }
+    \\  .perf .listing.gap tbody th { display: block; margin-bottom: 0.3rem; padding: 0; }
+    \\  .perf .listing.gap tbody td { display: flex; align-items: baseline; gap: 0.45rem; padding: 0.12rem 0; }
+    \\  .perf .listing.gap tbody td::before { content: attr(data-label); margin-right: auto; color: var(--ink-2); }
     \\}
     \\.spark { width: 96px; height: 26px; }
     \\.spark .spark-line { stroke: var(--ink-2); stroke-width: 1.5; }
@@ -1063,7 +1069,7 @@ fn writeGap(w: W, arena: Allocator, pts: []const ProgressPoint) !void {
     try w.writeAll("<h3>The gap to the browsers</h3>\n<p>Crane&rsquo;s time and memory as a multiple of each browser&rsquo;s, round by round: the headline&rsquo;s geometric means, each round against the browsers&rsquo; rows as they stood then (each browser&rsquo;s last-measured rows).</p>\n");
     try w.print("<p class=\"gap-legend\">1.00&times; = the browser&rsquo;s own time (or memory); lower is better. Green: lower than the round before; red: higher; a change within {d:.0}%, the drift control&rsquo;s noise limit, is not coloured.</p>\n", .{drift_limit * 100});
     const n = pts.len;
-    try w.print("<div class=\"table-wrap\"><table class=\"listing gap\"><thead><tr><th scope=\"col\" rowspan=\"2\">Browser</th><th scope=\"colgroup\" colspan=\"{d}\" class=\"n\">Time</th><th scope=\"colgroup\" colspan=\"{d}\" class=\"n\">Memory</th></tr>\n<tr>", .{ n, n });
+    try w.print("<div class=\"table-wrap gap-wrap\"><table class=\"listing gap\"><thead><tr><th scope=\"col\" rowspan=\"2\">Browser</th><th scope=\"colgroup\" colspan=\"{d}\" class=\"n\">Time</th><th scope=\"colgroup\" colspan=\"{d}\" class=\"n\">Memory</th></tr>\n<tr>", .{ n, n });
     for (0..2) |_| for (pts) |p| try w.print("<th scope=\"col\" class=\"n\">Round {d}</th>", .{p.round});
     try w.writeAll("</tr></thead><tbody>\n");
     for (browsers, 0..) |b, bi| {
