@@ -263,3 +263,38 @@ test "Instance.init - no memory leaks" {
         runtime.Instance.deinit(instance);
     }
 }
+
+test "Instance.init - a block a larger state dirtied comes back zeroed for the next one" {
+    // The arena recycles a freed state's block for the next state of its size
+    // class, and the next state may be smaller than the last. Its bytes must
+    // still all read zero: the state is zeroed once, by ArenaAllocator.createRaw
+    // for the request (lane perf2, batch 3), not again by Instance.init.
+    const allocator = testing.allocator;
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
+    var ctx_data = try runtime.ContextData.init(allocator, .{});
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    // Both in the 128-byte class.
+    const Larger = struct { bytes: [120]u8 };
+    const Smaller = struct {
+        ptr: ?*u32 = null,
+        instance: ?*runtime.Instance = null,
+        count: u64 = 0,
+        flags: [64]bool = @splat(false),
+    };
+    const larger_vtable = runtime.VTable{ .name = "<larger>", .methods_ptr = &test_delegates, .state_size = @sizeOf(Larger), .state_align = @alignOf(Larger) };
+    const smaller_vtable = runtime.VTable{ .name = "<smaller>", .methods_ptr = &test_delegates, .state_size = @sizeOf(Smaller), .state_align = @alignOf(Smaller) };
+    try testing.expectEqual(runtime.ArenaAllocator.heldBytes(@sizeOf(Larger), @alignOf(Larger)), runtime.ArenaAllocator.heldBytes(@sizeOf(Smaller), @alignOf(Smaller)));
+
+    const first = try runtime.Instance.init(allocator, Larger, &larger_vtable, ctx);
+    @memset(&first.getState(Larger).bytes, 0xFF);
+    const block = first.state;
+    runtime.Instance.deinit(first);
+
+    const second = try runtime.Instance.init(allocator, Smaller, &smaller_vtable, ctx);
+    defer runtime.Instance.deinit(second);
+    try testing.expectEqual(block, second.state);
+    for (std.mem.asBytes(second.getState(Smaller))) |byte| try testing.expectEqual(@as(u8, 0), byte);
+}
