@@ -594,7 +594,7 @@ fn scriptRemovingStepsCallback(node: *NodeBase, _: ?*NodeBase) void {
 fn scriptPostConnectionStepsCallback(node: *NodeBase) void {
     // ELEMENT_NODE only.
     if (node.node_type != 1) return;
-    if (!std.ascii.eqlIgnoreCase(node.node_name, "script")) return;
+    if (!std.ascii.eqlIgnoreCase(node.nodeName(), "script")) return;
 
     // HTML element post-connection steps run only while the element is still
     // connected. An earlier script in the atomically inserted batch may have
@@ -639,7 +639,7 @@ fn scriptChildrenChangedCallback(parent: *NodeBase, change: dom_module.mutation.
     // current text; insertion and CharacterData replacement still prepare.
     if (change == .removed) return;
     if (parent.node_type != 1) return;
-    if (!std.ascii.eqlIgnoreCase(parent.node_name, "script")) return;
+    if (!std.ascii.eqlIgnoreCase(parent.nodeName(), "script")) return;
     // Step 1.
     if (!parent.is_connected) return;
 
