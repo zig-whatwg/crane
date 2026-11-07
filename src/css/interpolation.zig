@@ -13,7 +13,9 @@
 //! - <length>, <percentage>: a weighted sum of the computed (px, %) values;
 //!   a length and a percentage combine into a calc() mix (Values 4 5.5).
 //! - <color>: premultiplied sRGB for two legacy colors (CSS Color 4 12.3:
-//!   legacy colors interpolate in sRGB); addition adds the premultiplied
+//!   legacy colors interpolate in sRGB), Oklab for any other resolved pair,
+//!   and a color-mix() naming currentcolor when either side is currentcolor
+//!   (color_values.interpolateColors); addition adds the premultiplied
 //!   channels, clamped.
 //! - transform lists: transform_interpolation (Transforms 1 section 9,
 //!   Transforms 2 sections 13-15); basic shapes, path() and shape():
@@ -64,6 +66,7 @@ const text_indent = @import("text_indent.zig");
 const motion_values = @import("motion_values.zig");
 const shape_interpolation = @import("shape_interpolation.zig");
 const transform_interpolation = @import("transform_interpolation.zig");
+const color_values = @import("color_values.zig");
 
 const Longhand = properties.Longhand;
 const Value = values.Value;
@@ -111,7 +114,7 @@ pub fn animationType(l: Longhand) AnimationType {
 /// The value kinds that combine discretely today although their types have
 /// smooth rules (named so a reader sees the gap, not an approximation).
 pub const pendingKinds = [_][]const u8{
-    "font_settings", "paint", "color.expression", "color.current", "sizing_function", "grid_tracks",
+    "font_settings", "paint", "sizing_function", "grid_tracks",
 };
 
 // ============================================================================
@@ -201,8 +204,11 @@ fn smooth(allocator: Allocator, l: Longhand, from: Value, to: Value, p: f64) All
         .number => |a| if (to == .number) return .{ .number = lerp(a, to.number, p) },
         .integer => |a| if (to == .integer) return .{ .integer = roundInteger(lerp(@floatFromInt(a), @floatFromInt(to.integer), p)) },
         .color => |a| if (to == .color) {
-            const ca = legacyRgba(a) orelse return null;
-            const cb = legacyRgba(to.color) orelse return null;
+            // Two legacy colors: premultiplied sRGB here; any other pair
+            // (a non-legacy color, currentcolor): color_values (Oklab, or a
+            // color-mix() naming currentcolor).
+            const ca = legacyRgba(a) orelse return try mixColors(allocator, a, to.color, p);
+            const cb = legacyRgba(to.color) orelse return try mixColors(allocator, a, to.color, p);
             return .{ .color = .{ .rgba = mixPremultiplied(ca, cb, p) } };
         },
         else => {},
@@ -1346,9 +1352,16 @@ fn pxOf(v: Value) ?f64 {
 // Colors
 // ============================================================================
 
+/// Two computed colors at least one of which is not a legacy sRGB color
+/// (CSS Color 4 section 12; color_values.interpolateColors). OWNED.
+fn mixColors(allocator: Allocator, a: values.Color, b: values.Color, p: f64) Allocator.Error!?Value {
+    const color = (try color_values.interpolateColors(allocator, a, b, p)) orelse return null;
+    return .{ .color = color };
+}
+
 /// The sRGB color of a computed legacy color; null for one that does not
 /// combine in sRGB here (a non-legacy color() / lab() expression, or
-/// currentcolor, whose mix is a color-mix() - pending).
+/// currentcolor: mixColors).
 fn legacyRgba(c: values.Color) ?RgbaColor {
     return switch (c) {
         .rgba => |rgba| rgba,
