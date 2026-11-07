@@ -754,7 +754,8 @@ fn isPictureNode(node: *dom.NodeBase) bool {
 }
 
 fn updatePictureImages(picture: *dom.NodeBase) void {
-    for (picture.child_nodes.items()) |node| {
+    var node_walk = picture.children();
+    while (node_walk.next()) |node| {
         const target = pictureTarget(node) orelse continue;
         if (target.kind == .img) updateTheImageData(target.element);
     }

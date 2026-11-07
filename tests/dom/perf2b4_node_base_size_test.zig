@@ -47,18 +47,17 @@ fn expectSize(comptime T: type, expected: usize) !void {
 }
 
 test "the std parts NodeBase's pins count are the sizes they were pinned with" {
-    // child_nodes (removed by R6 part 2) and the observer list's head and link.
-    try std.testing.expectEqual(@as(usize, 96), @sizeOf(infra.List(*NodeBase)));
+    // The observer list's head and link (child_nodes went in R6 part 2).
     try std.testing.expectEqual(@as(usize, 16), @sizeOf(std.DoublyLinkedList));
     try std.testing.expectEqual(@as(usize, 16), @sizeOf(std.DoublyLinkedList.Node));
     try std.testing.expectEqual(@as(usize, 16), @sizeOf(std.mem.Allocator));
     try std.testing.expectEqual(@as(usize, 48), @sizeOf(RegisteredObserver));
 }
 
-test "NodeBase is 208 bytes: the registered observer list and the node name live in rare data" {
+test "NodeBase keeps the registered observer list and the node name in rare data" {
     // 472 at 6b853131403: - 256 (the inline observer list) - 16 (node_name)
-    // + 8 (the rare data pointer), and the tail word keeps its 2 free bytes.
-    try expectSize(NodeBase, 208);
+    // + 8 (the rare data pointer) = 208; NodeBase's whole size is pinned by
+    // perf2b5_node_layout_test.zig since R6 part 2.
     try std.testing.expect(!@hasField(NodeBase, "registered_observers"));
     try std.testing.expect(!@hasField(NodeBase, "node_name"));
     try std.testing.expectEqual(@as(usize, 8), @sizeOf(@FieldType(NodeBase, "rare")));

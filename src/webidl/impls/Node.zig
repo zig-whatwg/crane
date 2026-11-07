@@ -77,7 +77,7 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
     /// NodeBase - THE source of truth for tree structure
-    /// Contains: parent_node, first_child, last_child, previous_sibling, next_sibling, child_nodes
+    /// Contains: parent_node, first_child, last_child, previous_sibling, next_sibling
     /// All tree operations go through this via src/dom/mutation.zig
     /// `&base` while the node lives; null once its teardown released it
     /// (`releaseNodeBase`).
@@ -214,7 +214,6 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
             .last_child = null,
             .previous_sibling = null,
             .next_sibling = null,
-            .child_nodes = infra.List(*NodeBase).init(allocator),
             .owner_document = null,
             .is_connected = false,
             // Born with one reference, its creator's (rc_one), which it offers to
@@ -304,10 +303,9 @@ pub fn deinit(instance: *runtime.Instance) void {
             // tree walk happens. By collecting instances first, we avoid following
             // potentially dangling next_sibling pointers.
             //
-            // We use child_nodes list (stored in parent's NodeBase) rather than
-            // sibling pointers because the list is guaranteed valid as long as
-            // the parent's NodeBase is valid.
-            const child_count = node_base.child_nodes.size();
+            // The children are read off the parent's links (a node keeps no
+            // child list: NodeBase.children), all before the first is torn down.
+            const child_count = node_base.childCount();
             if (child_count > 0) {
                 // Collect all child instances first
                 var child_instances: [256]*runtime.Instance = undefined;
@@ -315,7 +313,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 
                 // Use bounded array for small trees, fall back to allocator for large trees
                 if (child_count <= 256) {
-                    for (node_base.child_nodes.items()) |child_base| {
+                    var child_base_walk = node_base.children();
+                    while (child_base_walk.next()) |child_base| {
                         if (instance_bridge.getInstance(child_base)) |child_opaque| {
                             child_instances[collected] = @ptrCast(@alignCast(child_opaque));
                             collected += 1;
@@ -351,7 +350,8 @@ pub fn deinit(instance: *runtime.Instance) void {
                     };
                     defer internal.allocator.free(alloc_children);
 
-                    for (node_base.child_nodes.items()) |child_base| {
+                    var child_base_walk = node_base.children();
+                    while (child_base_walk.next()) |child_base| {
                         if (instance_bridge.getInstance(child_base)) |child_opaque| {
                             alloc_children[collected] = @ptrCast(@alignCast(child_opaque));
                             collected += 1;
@@ -2136,7 +2136,6 @@ const DocumentCounts = enum { with_document_counts, without_document_counts };
 /// 5. the bridge forgets the node - an observer's `liveNode` reads null from
 ///    here - and the NodeBase is freed.
 fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, node_base: *NodeBase, counts: DocumentCounts) void {
-    node_base.child_nodes.deinit();
     dom_module.observer_registrations.releaseList(instance, node_base);
     node_base.deinitRareData();
     dom_module.node_holds.nodeReleased(node_base);

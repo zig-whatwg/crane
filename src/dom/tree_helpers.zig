@@ -3,9 +3,9 @@
 //!
 //! Adapted from dom2's tree_helpers.zig with unified DOM tree model.
 //!
-//! Phase 1 Update: Now uses O(1) sibling pointers (first_child, last_child,
-//! previous_sibling, next_sibling) alongside the child_nodes List.
-//! Both data structures are maintained in sync by mutation.zig.
+//! A node's children are its sibling links (first_child, last_child,
+//! previous_sibling, next_sibling; lane perf2 batch 5: NodeBase keeps no
+//! child list), maintained by mutation.zig.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -60,30 +60,22 @@ pub fn getPreviousSibling(node: anytype) ?*Node {
     return node.previous_sibling;
 }
 
-/// Get the number of children of the given node
-/// O(1) - Direct access to list length
+/// Get the number of children of the given node: a walk of its links
 pub fn getChildCount(node: anytype) usize {
-    return node.child_nodes.size();
+    return node.childCount();
 }
 
-/// Get child at specific index
-/// O(1) - Direct array access
+/// Get child at specific index: a walk of its links
 /// Returns null if index out of bounds
 pub fn getChildAt(node: anytype, index: usize) ?*Node {
-    return node.child_nodes.get(index);
+    return node.childAt(index);
 }
 
-/// Find the index of a child node
-/// O(n) - Linear search through children
-/// Returns null if child not found
+/// Find the index of a child node (DOM 4.2.1: its number of preceding
+/// siblings, a walk), or null when it is not `parent`'s child
 pub fn getChildIndex(parent: anytype, child: anytype) ?usize {
-    var i: usize = 0;
-    while (i < parent.child_nodes.len) : (i += 1) {
-        if (parent.child_nodes.get(i) == child) {
-            return i;
-        }
-    }
-    return null;
+    if (child.parent_node != @as(?*const Node, parent)) return null;
+    return child.index();
 }
 
 // ============================================================================
@@ -154,9 +146,9 @@ pub fn areSiblings(a: anytype, b: anytype) bool {
 }
 
 /// Check if node has any children
-/// O(1) - Check list length
+/// O(1) - Check its first child link
 pub fn hasChildren(node: anytype) bool {
-    return node.child_nodes.len > 0;
+    return node.first_child != null;
 }
 
 /// Check if node is the root (has no parent)
@@ -166,7 +158,7 @@ pub fn isRoot(node: anytype) bool {
 
 /// Check if node is a leaf (has no children)
 pub fn isLeaf(node: anytype) bool {
-    return node.child_nodes.len == 0;
+    return node.first_child == null;
 }
 
 /// Check if node A is following node B (comes after B in tree order)
@@ -239,27 +231,14 @@ pub fn compareTreeOrder(nodeA: anytype, nodeB: anytype) enum { before, equal, af
                     parentOfB = childOfCommonB.parent_node;
                 }
 
-                // Compare indices of these children
-                const common = nodeB_ancestor;
-                var indexA: ?usize = null;
-                var indexB: ?usize = null;
-
-                var idx: usize = 0;
-                while (idx < common.child_nodes.len) : (idx += 1) {
-                    const child = common.child_nodes.get(idx);
-                    if (child == childOfCommonA) indexA = idx;
-                    if (child == childOfCommonB) indexB = idx;
+                // Compare the positions of these children: A is before B when
+                // B follows A along the sibling links
+                if (childOfCommonA == childOfCommonB) return .equal; // fallback
+                var sibling = childOfCommonA.next_sibling;
+                while (sibling) |s| : (sibling = s.next_sibling) {
+                    if (s == childOfCommonB) return .before;
                 }
-
-                if (indexA != null and indexB != null) {
-                    if (indexA.? < indexB.?) {
-                        return .before;
-                    } else {
-                        return .after;
-                    }
-                }
-
-                return .equal; // fallback
+                return .after;
             }
         }
         currentB = nodeB_ancestor.parent_node;
@@ -339,9 +318,8 @@ fn collectTextContent(node: *const Node, list: *infra.List(u8)) !void {
     }
 
     // Recursively process children
-    var i: usize = 0;
-    while (i < node.child_nodes.len) : (i += 1) {
-        const child = node.child_nodes.get(i).?;
+    var children = node.children();
+    while (children.next()) |child| {
         try collectTextContent(child, list);
     }
 }
@@ -367,9 +345,8 @@ pub fn getDepth(node: anytype) usize {
 pub fn getHeight(node: anytype) usize {
     var max_height: usize = 0;
 
-    var i: usize = 0;
-    while (i < node.child_nodes.len) : (i += 1) {
-        const child = node.child_nodes.get(i).?;
+    var children = node.children();
+    while (children.next()) |child| {
         const child_height = getHeight(child) + 1;
         if (child_height > max_height) {
             max_height = child_height;
@@ -383,9 +360,8 @@ pub fn getHeight(node: anytype) usize {
 pub fn countDescendants(node: anytype) usize {
     var count: usize = 0;
 
-    var i: usize = 0;
-    while (i < node.child_nodes.len) : (i += 1) {
-        const child = node.child_nodes.get(i).?;
+    var children = node.children();
+    while (children.next()) |child| {
         count += 1; // Count the child
         count += countDescendants(child); // Count child's descendants
     }
@@ -437,18 +413,16 @@ pub fn findCommonAncestor(a: anytype, b: anytype) ?*Node {
 // | getParentNode          | O(1)       | Direct pointer (parent_node) |
 // | getNextSibling         | O(1)       | Direct pointer (next_sibling)|
 // | getPreviousSibling     | O(1)       | Direct pointer (prev_sibling)|
-// | getChildCount          | O(1)       | List length                  |
-// | getChildAt             | O(1)       | Array indexing               |
-// | getChildIndex          | O(n)       | Linear search                |
+// | getChildCount          | O(n)       | Walk of the links            |
+// | getChildAt             | O(n)       | Walk of the links            |
+// | getChildIndex          | O(n)       | Walk of previous siblings    |
 //
-// Data Structure:
-// - NodeBase maintains BOTH sibling pointers AND child_nodes list
-// - Sibling pointers provide O(1) navigation
-// - child_nodes list provides O(1) index access and iteration
-// - Both are maintained in sync by mutation.zig
-//
-// Memory overhead: ~32 bytes extra per node (4 pointers)
-// This is an acceptable trade-off for O(1) sibling navigation.
+// Data Structure (lane perf2 batch 5):
+// - NodeBase keeps the sibling links and no child list: the links ARE the
+//   children, as in Blink, WebKit, Gecko and Lightpanda
+// - Script's indexed reads go through live_collections.IndexCache (Blink's
+//   CollectionIndexCache), O(1) for sequential access
+// - Maintained by mutation.zig
 //
 // Spec references:
 // - Tree: https://dom.spec.whatwg.org/#trees
@@ -581,10 +555,8 @@ pub fn getInclusiveDescendantsInTreeOrder(allocator: Allocator, root: anytype) !
 /// Helper function to recursively collect descendants
 fn collectDescendantsInTreeOrder(result: *infra.List(*Node), node: *const Node) !void {
     // Visit all children in order
-    // node.child_nodes is a List, so iterate properly
-    var i: usize = 0;
-    while (i < node.child_nodes.len) : (i += 1) {
-        const child = node.child_nodes.get(i).?;
+    var children = node.children();
+    while (children.next()) |child| {
         try result.append(child);
         // Recursively visit child's descendants
         try collectDescendantsInTreeOrder(result, child);
@@ -739,8 +711,9 @@ fn collectShadowIncludingDescendants(result: *infra.List(*NodeBase), node: *cons
         try result.append(shadow);
         try collectShadowIncludingDescendants(result, shadow);
     }
-    // Visit each child in order using NodeBase's child_nodes
-    for (node.child_nodes.items()) |child| {
+    // Visit each child in order along its links
+    var children = node.children();
+    while (children.next()) |child| {
         try result.append(child);
         try collectShadowIncludingDescendants(result, child);
     }
