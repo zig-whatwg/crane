@@ -738,7 +738,7 @@ fn queueNotifyMicrotask(state: *MutationObserverAgent, realm: runtime.Context) !
 
 /// "Notify mutation observers" step 2's order: `a` before `b` when its
 /// creation index is lower. Creation indexes in one agent are unique.
-fn createdBefore(_: void, a: *runtime.Instance, b: *runtime.Instance) bool {
+fn createdBefore(a: *runtime.Instance, b: *runtime.Instance) bool {
     return observer_registrations.creationIndexOf(a) < observer_registrations.creationIndexOf(b);
 }
 
@@ -766,7 +766,7 @@ pub fn notifyMutationObservers(agent: *MutationObserverAgent) !void {
     var notify_set = infra.List(*runtime.Instance).init(allocator);
     defer notify_set.deinit();
     try notify_set.appendSlice(agent.pending_observers.items());
-    std.mem.sortUnstable(*runtime.Instance, notify_set.items(), {}, createdBefore);
+    notify_set.sort(createdBefore);
 
     // Each observer's slab generation now: a callback earlier in the loop can
     // run script, and script can let a later observer go - its teardown takes
