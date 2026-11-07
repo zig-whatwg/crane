@@ -1162,6 +1162,14 @@ pub fn flushPendingStyle(animation: *model.Animation) void {
     @import("css_transitions.zig").sweep(document);
 }
 
+/// flushPendingStyle for the animation `effect` belongs to (getTiming,
+/// getComputedTiming, getKeyframes on a CSS animation's or transition's
+/// effect).
+pub fn flushEffect(effect: *model.Effect) void {
+    const animation = effect.animationModel() orelse return;
+    flushPendingStyle(animation);
+}
+
 // ============================================================================
 // Removal, and the sweep
 // ============================================================================

@@ -680,6 +680,13 @@ pub const Animation = struct {
 
     pub fn cancel(self: *Animation) void {
         self.cancelSteps();
+        // A CSS animation queues its animationcancel when it is canceled,
+        // not at the next frame: a play() in the same task must not hide
+        // the cancel (css-animations event-dispatch.tentative "Restart
+        // animation after canceling animation immediately"; Gecko queues
+        // a CSSAnimation's events from Cancel, Blink's event delegate sees
+        // the phase change there).
+        if (self.css) |state| if (state.kind == .animation) @import("css_events.zig").update(self);
         self.settle();
     }
 

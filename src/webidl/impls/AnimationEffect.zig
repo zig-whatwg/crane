@@ -122,6 +122,8 @@ pub fn call_remove(instance: *runtime.Instance) anyerror!void {
 /// Operation: getTiming (6.5): the specified timing properties.
 pub fn call_getTiming(instance: *runtime.Instance) anyerror!dictionaries.EffectTiming {
     const effect = try modelOf(instance);
+    // CSS Animations 2 / CSS Transitions 2 6.2: pending style changes first.
+    animations.css_animations.flushEffect(effect);
     const t = &effect.timing;
     return .{
         .delay = t.delay,
@@ -139,6 +141,7 @@ pub fn call_getTiming(instance: *runtime.Instance) anyerror!dictionaries.EffectT
 /// Operation: getComputedTiming (6.5, 6.5.5): the timing model's values now.
 pub fn call_getComputedTiming(instance: *runtime.Instance) anyerror!dictionaries.ComputedEffectTiming {
     const effect = try modelOf(instance);
+    animations.css_animations.flushEffect(effect);
     const t = &effect.timing;
     const computed = effect.computed();
     const has_animation = effect.animationModel() != null;

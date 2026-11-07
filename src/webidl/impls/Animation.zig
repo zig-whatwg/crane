@@ -167,12 +167,14 @@ pub fn get_pending(instance: *runtime.Instance) anyerror!bool {
 /// Getter for ready: the current ready promise (4.5.7).
 pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const animation = try modelOf(instance);
+    animations.css_animations.flushPendingStyle(animation);
     return (try animation.ready.get(instance)).take();
 }
 
 /// Getter for finished: the current finished promise (4.5.11).
 pub fn get_finished(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const animation = try modelOf(instance);
+    animations.css_animations.flushPendingStyle(animation);
     return (try animation.finished.get(instance)).take();
 }
 

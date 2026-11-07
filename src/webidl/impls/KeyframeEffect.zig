@@ -121,8 +121,11 @@ pub fn call_setKeyframes(instance: *runtime.Instance, keyframes: ?runtime.JSValu
 pub fn call_getKeyframes(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const effect = try modelOf(instance);
     const realm = engine.currentRealm() orelse instance.ctx;
-    // A CSS animation's generated keyframes report the computed value
-    // where they hold the underlying one (dom.animations.keyframeObjects).
+    // CSS Animations 2 6.2: pending style changes first (a @keyframes edit,
+    // animation-timing-function). A CSS animation's generated keyframes
+    // report the computed value where they hold the underlying one
+    // (dom.animations.keyframeObjects).
+    animations.css_animations.flushEffect(effect);
     const result = try animations.keyframeObjects(realm, effect);
     return result.take();
 }
