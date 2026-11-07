@@ -48,6 +48,12 @@ pub const MutationObserverAgent = struct {
     /// Stores *runtime.Instance pointers to MutationObserver instances
     pending_observers: infra.List(*runtime.Instance),
 
+    /// DOM 4.3: the agent's "mutation observer counter (a number), which is
+    /// initially 0" - the next MutationObserver's creation index
+    /// (`takeCreationIndex`), by which "notify mutation observers" step 2
+    /// orders the pending observers.
+    observer_counter: u64 = 0,
+
     /// DOM 4.2.2.5: the agent's signal slots, an ordered set of slots. Each
     /// slot in it has pending activity (engine.keepPlatformObjectAlive) until
     /// its slotchange event has been fired - Blink keeps the list as traced
@@ -116,6 +122,18 @@ pub fn agentOf(realm: runtime.Context) ?*MutationObserverAgent {
     const agent = realm.agent orelse return null;
     const host: *AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
     return &host.mutation_observers;
+}
+
+/// `new MutationObserver(callback)` steps 2-3: "Set this's creation index to
+/// this's relevant agent's mutation observer counter. Increase this's
+/// relevant agent's mutation observer counter by 1." `realm` is the new
+/// observer's relevant realm. An agent with no host keeps no state and no
+/// notify runs there, so its observers' index is 0.
+pub fn takeCreationIndex(realm: runtime.Context) u64 {
+    const agent = agentOf(realm) orelse return 0;
+    const index = agent.observer_counter;
+    agent.observer_counter += 1;
+    return index;
 }
 
 /// A MutationObserver is going away: take it off the surrounding agent's
@@ -200,8 +218,12 @@ fn fireSlotChange(slot: *runtime.Instance) void {
 pub fn resetAgent(realm: runtime.Context) void {
     const agent = agentOf(realm) orelse return;
     const allocator = agent.allocator;
+    // The counter is the agent's, not the page's: an observer that outlives
+    // the page still sorts before every observer made after it.
+    const counter = agent.observer_counter;
     agent.deinit();
     agent.* = MutationObserverAgent.init(allocator);
+    agent.observer_counter = counter;
 }
 
 /// DOM §7.3 - Queue a mutation record
@@ -714,6 +736,12 @@ fn queueNotifyMicrotask(state: *MutationObserverAgent, realm: runtime.Context) !
     };
 }
 
+/// "Notify mutation observers" step 2's order: `a` before `b` when its
+/// creation index is lower. Creation indexes in one agent are unique.
+fn createdBefore(_: void, a: *runtime.Instance, b: *runtime.Instance) bool {
+    return observer_registrations.creationIndexOf(a) < observer_registrations.creationIndexOf(b);
+}
+
 /// DOM §7.1 - Notify mutation observers
 ///
 /// Invoke callbacks for all pending mutation observers.
@@ -726,10 +754,19 @@ pub fn notifyMutationObservers(agent: *MutationObserverAgent) !void {
     // Step 1: Set the surrounding agent's mutation observer microtask queued to false
     agent.microtask_queued = false;
 
-    // Step 2: Let notifySet be a clone of the surrounding agent's pending mutation observers
+    // Step 2: "Let notifyList be the result of sorting the surrounding
+    // agent's pending mutation observers in ascending order, with a being
+    // less than b if a's creation index is less than b's creation index."
+    // (whatwg/dom#1507, 2026-10-09: the order the observers were created in,
+    // as Blink's DeliverMutations - std::sort by ObserverLessThan, priority_
+    // - and WebKit's notifyMutationObservers - std::ranges::sort by
+    // m_priority - already did; not the order they became pending.) Every
+    // observer listed is alive: its teardown takes it off the list
+    // (`forgetObserver`).
     var notify_set = infra.List(*runtime.Instance).init(allocator);
     defer notify_set.deinit();
     try notify_set.appendSlice(agent.pending_observers.items());
+    std.mem.sortUnstable(*runtime.Instance, notify_set.items(), {}, createdBefore);
 
     // Each observer's slab generation now: a callback earlier in the loop can
     // run script, and script can let a later observer go - its teardown takes

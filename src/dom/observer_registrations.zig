@@ -42,6 +42,9 @@ pub const Implementation = struct {
     remove_transients: *const fn (observer: *runtime.Instance) void,
     /// `observer`'s record queue, in its state.
     record_queue: *const fn (observer: *runtime.Instance) *RecordQueue,
+    /// `observer`'s creation index (DOM 4.3), which "notify mutation
+    /// observers" step 2 sorts by.
+    creation_index: *const fn (observer: *runtime.Instance) u64,
     /// "Notify mutation observers" step 6.4: invoke `observer`'s callback
     /// with « `records`, `observer` », and "report" what it throws. The
     /// records are taken: wrapped, they are the wrapper cache's.
@@ -287,6 +290,13 @@ pub fn removeTransients(observer: *runtime.Instance) void {
 pub fn recordQueueOf(observer: *runtime.Instance) ?*RecordQueue {
     const impl = implementation.get() orelse return null;
     return impl.record_queue(observer);
+}
+
+/// `observer`'s creation index; 0 before MutationObserver has installed its
+/// steps, when no observer can exist.
+pub fn creationIndexOf(observer: *runtime.Instance) u64 {
+    const impl = implementation.get() orelse return 0;
+    return impl.creation_index(observer);
 }
 
 /// "Notify mutation observers" step 6.4 for `observer`: see

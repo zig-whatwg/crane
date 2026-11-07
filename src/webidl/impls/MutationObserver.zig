@@ -98,6 +98,10 @@ pub const InternalState = struct {
     /// `recordQueueOf`; the state is this observer's.
     record_queue: RecordQueue,
 
+    /// DOM 4.3: "a creation index (a number) set on creation" - its
+    /// relevant agent's mutation observer counter when it was constructed.
+    creation_index: u64 = 0,
+
     /// Every attributeFilter this observer has registered and not yet
     /// replaced or disconnected. The registrations on the observed nodes
     /// borrow these lists; the observer owns them.
@@ -191,6 +195,7 @@ pub fn installHooks() void {
         .transient_added = &transientAddedHook,
         .remove_transients = &removeTransientsHook,
         .record_queue = &recordQueueOf,
+        .creation_index = &creationIndexOf,
         .invoke_callback = &invokeCallback,
     });
 }
@@ -255,6 +260,11 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.MutationCallba
     // context.
     const internal = getInternal(instance);
     internal.callback = engine.takeCallbackFunction(@ptrCast(callback));
+
+    // Steps 2-3: "Set this's creation index to this's relevant agent's
+    // mutation observer counter. Increase this's relevant agent's mutation
+    // observer counter by 1."
+    internal.creation_index = dom_module.mutation_observer_algorithms.takeCreationIndex(instance.ctx);
 
     std.log.debug("[MutationObserver] call_constructor returning instance={*}", .{instance});
     return instance;
@@ -605,6 +615,12 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
 // ============================================================================
 // Internal methods (for mutation algorithms)
 // ============================================================================
+
+/// dom.observer_registrations: this observer's creation index, which "notify
+/// mutation observers" step 2 orders the pending observers by.
+fn creationIndexOf(instance: *runtime.Instance) u64 {
+    return getInternal(instance).creation_index;
+}
 
 /// dom.observer_registrations: this observer's record queue, which "queue a
 /// mutation record" enqueues to and "notify mutation observers" empties.
