@@ -241,11 +241,6 @@ pub const HTMLStyleElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            disabled: bool = undefined,
-            media: runtime.DOMString = undefined,
-            blocking: *runtime.Instance = undefined,
-            type: runtime.DOMString = undefined,
-            sheet: ?*runtime.Instance = null,
             cached_blocking: ?*runtime.Instance = null,
             _internal: ?*HTMLStyleElementImpl.InternalState = null,
         },

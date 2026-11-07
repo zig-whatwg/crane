@@ -254,18 +254,6 @@ pub const HTMLGeolocationElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            position: ?*runtime.Instance = null,
-            @"error": ?*runtime.Instance = null,
-            autolocate: bool = undefined,
-            watch: bool = undefined,
-            onlocation: typedefs.EventHandler = undefined,
-            isValid: bool = undefined,
-            invalidReason: enums.ActivationBlockersMixinBlockerReason = undefined,
-            onvalidationstatuschange: typedefs.EventHandler = undefined,
-            initialPermissionStatus: enums.PermissionState = undefined,
-            permissionStatus: enums.PermissionState = undefined,
-            onpromptaction: typedefs.EventHandler = undefined,
-            onpromptdismiss: typedefs.EventHandler = undefined,
             _internal: ?*HTMLGeolocationElementImpl.InternalState = null,
         },
     );

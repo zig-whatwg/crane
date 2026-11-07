@@ -242,11 +242,6 @@ pub const SVGTextPositioningElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: *runtime.Instance = undefined,
-            y: *runtime.Instance = undefined,
-            dx: *runtime.Instance = undefined,
-            dy: *runtime.Instance = undefined,
-            rotate: *runtime.Instance = undefined,
             cached_x: ?*runtime.Instance = null,
             cached_y: ?*runtime.Instance = null,
             cached_dx: ?*runtime.Instance = null,

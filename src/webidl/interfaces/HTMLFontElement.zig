@@ -227,9 +227,6 @@ pub const HTMLFontElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            color: runtime.DOMString = undefined,
-            face: runtime.DOMString = undefined,
-            size: runtime.DOMString = undefined,
             _internal: ?*HTMLFontElementImpl.InternalState = null,
         },
     );

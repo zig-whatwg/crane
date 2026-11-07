@@ -241,12 +241,6 @@ pub const SVGAnimationElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            targetElement: ?*runtime.Instance = null,
-            onbegin: typedefs.EventHandler = undefined,
-            onend: typedefs.EventHandler = undefined,
-            onrepeat: typedefs.EventHandler = undefined,
-            requiredExtensions: *runtime.Instance = undefined,
-            systemLanguage: *runtime.Instance = undefined,
             cached_requiredExtensions: ?*runtime.Instance = null,
             cached_systemLanguage: ?*runtime.Instance = null,
             _internal: ?*SVGAnimationElementImpl.InternalState = null,

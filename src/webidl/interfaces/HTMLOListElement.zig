@@ -229,10 +229,6 @@ pub const HTMLOListElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            reversed: bool = undefined,
-            start: i32 = undefined,
-            type: runtime.DOMString = undefined,
-            compact: bool = undefined,
             _internal: ?*HTMLOListElementImpl.InternalState = null,
         },
     );

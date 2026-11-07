@@ -232,7 +232,6 @@ pub const HTMLSlotElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
             _internal: ?*HTMLSlotElementImpl.InternalState = null,
         },
     );

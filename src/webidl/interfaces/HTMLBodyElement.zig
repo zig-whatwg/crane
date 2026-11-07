@@ -281,13 +281,6 @@ pub const HTMLBodyElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            text: runtime.DOMString = undefined,
-            link: runtime.DOMString = undefined,
-            vLink: runtime.DOMString = undefined,
-            aLink: runtime.DOMString = undefined,
-            bgColor: runtime.DOMString = undefined,
-            background: runtime.DOMString = undefined,
-            onbeforeunload: typedefs.OnBeforeUnloadEventHandler = undefined,
             _internal: ?*HTMLBodyElementImpl.InternalState = null,
         },
     );

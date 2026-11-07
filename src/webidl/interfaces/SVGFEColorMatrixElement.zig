@@ -240,14 +240,6 @@ pub const SVGFEColorMatrixElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            in1: *runtime.Instance = undefined,
-            type: *runtime.Instance = undefined,
-            values: *runtime.Instance = undefined,
-            x: *runtime.Instance = undefined,
-            y: *runtime.Instance = undefined,
-            width: *runtime.Instance = undefined,
-            height: *runtime.Instance = undefined,
-            result: *runtime.Instance = undefined,
             _internal: ?*SVGFEColorMatrixElementImpl.InternalState = null,
         },
     );

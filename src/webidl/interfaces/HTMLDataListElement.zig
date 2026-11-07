@@ -223,7 +223,6 @@ pub const HTMLDataListElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            options: *runtime.Instance = undefined,
             cached_options: ?*runtime.Instance = null,
             _internal: ?*HTMLDataListElementImpl.InternalState = null,
         },

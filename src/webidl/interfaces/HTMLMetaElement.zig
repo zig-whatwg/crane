@@ -231,11 +231,6 @@ pub const HTMLMetaElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            httpEquiv: runtime.DOMString = undefined,
-            content: runtime.DOMString = undefined,
-            media: runtime.DOMString = undefined,
-            scheme: runtime.DOMString = undefined,
             _internal: ?*HTMLMetaElementImpl.InternalState = null,
         },
     );

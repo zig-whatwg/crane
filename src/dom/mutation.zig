@@ -773,7 +773,28 @@ pub fn preInsert(
 /// - Shadow DOM slot assignment
 /// - Insertion steps callbacks
 /// - Mutation observer notifications
+///
+/// This function declares step 1's stack buffer and nothing else. ReleaseSafe
+/// writes 0xAA over an `undefined` buffer where it is declared: 2 KB on every
+/// insert, 1.7% of dom.insert-remove and 2.0% of dom.inner-html-set (lane perf2,
+/// batch 3, MEASURED). Runtime safety is off for this declaration only - the
+/// user's approval, 2026-11-06 18:04 UTC ("ok to turn off ReleaseSafe's safety
+/// around the buffer"): insertWith, which runs the algorithm on the buffer,
+/// keeps every check (@setRuntimeSafety is lexically scoped, so a callee keeps
+/// its own, inlined or not).
 pub fn insert(
+    node: anytype,
+    parent: anytype,
+    child: anytype,
+    suppress_observers: bool,
+) DOMException!void {
+    @setRuntimeSafety(false);
+    var nodes_buf: [256]*NodeBase = undefined;
+    return insertWith(&nodes_buf, node, parent, child, suppress_observers);
+}
+
+fn insertWith(
+    nodes_buf: *[256]*NodeBase,
     node: anytype,
     parent: anytype,
     child: anytype,
@@ -787,7 +808,7 @@ pub fn insert(
     // inline storage and survived; a fifth put it on the heap, and
     // `el.append("A","B","C","D","E")` read freed memory (0xAA...) further
     // down. The removal loop iterated the same list while removing from it.
-    var nodes_buf: [256]*NodeBase = undefined;
+    // The copy goes to `nodes_buf` (insert's) or, past 256, to the heap.
     var nodes_heap: ?[]*NodeBase = null;
     defer if (nodes_heap) |heap| parent.allocator.free(heap);
     var nodes: []*NodeBase = undefined;

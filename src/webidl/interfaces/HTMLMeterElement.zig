@@ -235,13 +235,6 @@ pub const HTMLMeterElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: f64 = undefined,
-            min: f64 = undefined,
-            max: f64 = undefined,
-            low: f64 = undefined,
-            high: f64 = undefined,
-            optimum: f64 = undefined,
-            labels: *runtime.Instance = undefined,
             _internal: ?*HTMLMeterElementImpl.InternalState = null,
         },
     );

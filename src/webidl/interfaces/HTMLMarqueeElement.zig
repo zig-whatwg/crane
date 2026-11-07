@@ -249,17 +249,6 @@ pub const HTMLMarqueeElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            behavior: runtime.DOMString = undefined,
-            bgColor: runtime.DOMString = undefined,
-            direction: runtime.DOMString = undefined,
-            height: runtime.DOMString = undefined,
-            hspace: u32 = undefined,
-            loop: i32 = undefined,
-            scrollAmount: u32 = undefined,
-            scrollDelay: u32 = undefined,
-            trueSpeed: bool = undefined,
-            vspace: u32 = undefined,
-            width: runtime.DOMString = undefined,
             _internal: ?*HTMLMarqueeElementImpl.InternalState = null,
         },
     );

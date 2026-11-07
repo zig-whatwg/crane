@@ -226,8 +226,6 @@ pub const HTMLLegendElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            form: ?*runtime.Instance = null,
-            @"align": runtime.DOMString = undefined,
             _internal: ?*HTMLLegendElementImpl.InternalState = null,
         },
     );

@@ -238,14 +238,6 @@ pub const HTMLTemplateElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            content: *runtime.Instance = undefined,
-            htmlFor: runtime.DOMString = undefined,
-            shadowRootMode: runtime.DOMString = undefined,
-            shadowRootDelegatesFocus: bool = undefined,
-            shadowRootSerializable: bool = undefined,
-            shadowRootSlotAssignment: runtime.DOMString = undefined,
-            shadowRootClonable: bool = undefined,
-            shadowRootCustomElementRegistry: runtime.DOMString = undefined,
             _internal: ?*HTMLTemplateElementImpl.InternalState = null,
         },
     );

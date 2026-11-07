@@ -223,7 +223,6 @@ pub const HTMLBRElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            clear: runtime.DOMString = undefined,
             _internal: ?*HTMLBRElementImpl.InternalState = null,
         },
     );

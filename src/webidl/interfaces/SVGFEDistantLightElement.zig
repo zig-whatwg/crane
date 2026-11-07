@@ -214,8 +214,6 @@ pub const SVGFEDistantLightElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            azimuth: *runtime.Instance = undefined,
-            elevation: *runtime.Instance = undefined,
             _internal: ?*SVGFEDistantLightElementImpl.InternalState = null,
         },
     );

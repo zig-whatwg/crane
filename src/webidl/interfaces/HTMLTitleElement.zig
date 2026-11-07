@@ -223,7 +223,6 @@ pub const HTMLTitleElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            text: runtime.DOMString = undefined,
             _internal: ?*HTMLTitleElementImpl.InternalState = null,
         },
     );

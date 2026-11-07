@@ -223,7 +223,6 @@ pub const HTMLTableCaptionElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"align": runtime.DOMString = undefined,
             _internal: ?*HTMLTableCaptionElementImpl.InternalState = null,
         },
     );

@@ -231,9 +231,6 @@ pub const SVGCircleElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cx: *runtime.Instance = undefined,
-            cy: *runtime.Instance = undefined,
-            r: *runtime.Instance = undefined,
             cached_cx: ?*runtime.Instance = null,
             cached_cy: ?*runtime.Instance = null,
             cached_r: ?*runtime.Instance = null,
