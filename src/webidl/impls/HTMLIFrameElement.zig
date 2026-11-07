@@ -471,7 +471,6 @@ fn parseHtmlForIframe(
             .byte_stream = if (byte_stream) |stream| .{
                 .content_type = stream.content_type,
                 .parent_encoding = parent_encoding,
-                .fetched = stream.fetched,
             } else null,
             // The rest of the body, read as it arrives: the parser's now.
             .body_stream = if (byte_stream) |stream| (if (stream.body) |handoff| handoff.take() else null) else null,
