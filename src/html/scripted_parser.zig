@@ -921,36 +921,14 @@ pub const DocumentParser = struct {
             return;
         }
         // Taking may let a paused transfer go on and deliver more.
-        var took_bytes = false;
         while (pipe.hasBytes()) {
             const bytes = try pipe.take();
             defer pipe.allocator.free(bytes);
             input.received += bytes.len;
-            took_bytes = true;
-            try self.receiveBytes(bytes, false, false);
+            try self.receiveBytes(bytes, false);
         }
-        // The body's end, read in the same task as its last bytes, is
-        // processed by a networking task of its own:
-        // 1. The bytes that arrived are parsed now (below), as one networking
-        //    task's worth of "load an HTML document" (HTML 7.5.1). The
-        //    encoding sniffing algorithm's wait (13.2.3.2 step 3) ends here:
-        //    no more bytes will come.
-        // 2. "When no more bytes are available" - the implied EOF, and with it
-        //    "the end" (HTML 13.2.7, run once the parser has processed EOF) -
-        //    comes from the next networking task, queued after the bytes'
-        //    scripts have run.
-        // So a task queued while those scripts ran (a planned form navigation,
-        // a message) runs while the parser is still active, and a navigation
-        // it starts aborts the parser ("abort a document" step 4, "abort a
-        // parser": no DOMContentLoaded, no load) - as in Blink, where the
-        // body's data and its end reach the document as separate tasks
-        // (DocumentLoader::BodyDataReceived, then BodyLoadingFinished ->
-        // FinishedLoading, which finishes the parser), and in WebKit
-        // (DocumentLoader::dataReceived, then finishedLoading).
-        const body_ended = pipe.state != .open;
-        const end_later = body_ended and took_bytes;
-        if (end_later) try self.receiveBytes("", false, true);
-        if (body_ended and !end_later) {
+        const ended = pipe.state != .open;
+        if (ended) {
             // HTML 7.5.1: "When no more bytes are available", the implied
             // EOF. A body that failed part-way ends the same way, with what
             // arrived: Blink's DocumentLoader::BodyLoadingFinished finishes
@@ -959,38 +937,32 @@ pub const DocumentParser = struct {
             // FrameLoader::receivedMainResourceError commits what was
             // received; both then fire load.
             self.releaseNetworkInput();
-            try self.receiveBytes("", true, true);
+            try self.receiveBytes("", true);
             self.input_stream.complete = true;
             // The navigation timing entry was made with the body arriving;
             // its sizes are the body's now (fetch decoded any content coding,
             // so both are what arrived, as for a body read whole).
             dom.performance_timeline.navigationBodyEnded(self.ctx, input.received, input.received);
         }
-        // Step 2's task, queued once the bytes below have been parsed (or
-        // wait for a parsing-blocking script, which the end then waits for
-        // too).
-        defer if (end_later) NetworkInput.notify(self);
         // A parsing-blocking script holds the parser: the bytes wait in the
         // input stream until the script's ready task resumes it.
         if (self.pump_depth != 0) return;
         const internal = document_internals.getInternal(self.document) orelse return;
         if (internal.scripts.pending_parsing_blocking_script != null) return;
-        if (body_ended and !end_later) try self.finishIfPossible() else try self.pump();
+        if (ended) try self.finishIfPossible() else try self.pump();
     }
 
     /// The byte stream's next `bytes` (`last`: its end), decoded into the
     /// input stream - after the encoding sniffing algorithm has decided the
     /// encoding from enough of the stream's first bytes.
-    /// `all_arrived`: the body has ended, so the sniffing algorithm has every
-    /// byte it will get, even before EOF is processed.
-    fn receiveBytes(self: *DocumentParser, bytes: []const u8, last: bool, all_arrived: bool) !void {
+    fn receiveBytes(self: *DocumentParser, bytes: []const u8, last: bool) !void {
         const input = &self.network.?;
         const decoding = &self.byte_stream_decoding.?;
         var chars: std.ArrayListUnmanaged(u8) = .empty;
         defer chars.deinit(self.allocator);
         if (!input.sniffed) {
             try self.raw_bytes.appendSlice(self.allocator, bytes);
-            if (!last and !all_arrived and !input.enoughToSniff(self.raw_bytes.items)) return;
+            if (!last and !input.enoughToSniff(self.raw_bytes.items)) return;
             input.sniffed = true;
             // HTML 13.2.3.2, over the bytes the wait collected.
             const result = encoding_sniffing.sniff(self.raw_bytes.items, .{ .transport = input.transport, .parent = input.parent });
