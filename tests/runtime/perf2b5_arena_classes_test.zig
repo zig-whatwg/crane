@@ -108,9 +108,9 @@ test "a freed block is poisoned when its Browser asked for it, and left as it wa
 
 test "a released NodeBase is poisoned in Debug builds and where the Browser asked, never by default in a release build" {
     const rule = runtime.BrowserScope.releasedNodePoison;
-    try testing.expect(rule(.Debug, false));
-    try testing.expect(rule(.Debug, true));
-    inline for (.{ std.builtin.OptimizeMode.ReleaseSafe, .ReleaseFast, .ReleaseSmall }) |mode| {
+    try testing.expect(rule(.debug, false));
+    try testing.expect(rule(.debug, true));
+    inline for (.{ std.builtin.OptimizeMode.safe, .fast, .small }) |mode| {
         try testing.expect(!rule(mode, false));
         try testing.expect(rule(mode, true));
     }

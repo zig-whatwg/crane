@@ -16,7 +16,7 @@ test "a Browser poisons freed state only when its config asks" {
         try testing.expectEqual(poison, browser.scope.arena.poison_freed);
         // A Debug build poisons released NodeBases either way (the unit
         // tests' poison-on-free); a release build only when asked.
-        try testing.expectEqual(@import("builtin").mode == .Debug or poison, browser.scope.poisonsReleasedNodes());
+        try testing.expectEqual(@import("builtin").mode == .debug or poison, browser.scope.poisonsReleasedNodes());
     }
     // The default is off.
     const default_config: browser_mod.BrowserConfig = .{};

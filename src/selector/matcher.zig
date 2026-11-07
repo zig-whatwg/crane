@@ -721,6 +721,96 @@ fn getPreviousSibling(element: *const Element) ?*NodeBase {
     return element.base.previous_sibling;
 }
 
+/// Check if class attribute contains specific class name
+fn hasClass(class_attr: []const u8, class_name: []const u8) bool {
+    // Class attribute is space-separated list
+    var it = std.mem.tokenizeScalar(u8, class_attr, ' ');
+    while (it.next()) |class| {
+        if (std.mem.eql(u8, class, class_name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Attribute matcher: exact match
+fn matchAttributeExact(value: []const u8, target: []const u8, case_sensitive: bool) bool {
+    if (case_sensitive) {
+        return std.mem.eql(u8, value, target);
+    } else {
+        return std.ascii.eqlIgnoreCase(value, target);
+    }
+}
+
+/// Attribute matcher: prefix match
+fn matchAttributePrefix(value: []const u8, target: []const u8, case_sensitive: bool) bool {
+    if (value.len < target.len) return false;
+    if (case_sensitive) {
+        return std.mem.startsWith(u8, value, target);
+    } else {
+        return std.ascii.startsWithIgnoreCase(value, target);
+    }
+}
+
+/// Attribute matcher: suffix match
+fn matchAttributeSuffix(value: []const u8, target: []const u8, case_sensitive: bool) bool {
+    if (value.len < target.len) return false;
+    if (case_sensitive) {
+        return std.mem.endsWith(u8, value, target);
+    } else {
+        return std.ascii.endsWithIgnoreCase(value, target);
+    }
+}
+
+/// Attribute matcher: substring match
+fn matchAttributeSubstring(value: []const u8, target: []const u8, case_sensitive: bool) bool {
+    if (target.len == 0) return false;
+    if (case_sensitive) {
+        return std.mem.indexOf(u8, value, target) != null;
+    } else {
+        // Case-insensitive substring search
+        // Simple implementation - could be optimized
+        if (value.len < target.len) return false;
+        var i: usize = 0;
+        while (i <= value.len - target.len) : (i += 1) {
+            if (std.ascii.eqlIgnoreCase(value[i .. i + target.len], target)) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+/// Attribute matcher: includes match (whitespace-separated word)
+fn matchAttributeIncludes(value: []const u8, target: []const u8, case_sensitive: bool) bool {
+    var it = std.mem.tokenizeScalar(u8, value, ' ');
+    while (it.next()) |word| {
+        if (case_sensitive) {
+            if (std.mem.eql(u8, word, target)) return true;
+        } else {
+            if (std.ascii.eqlIgnoreCase(word, target)) return true;
+        }
+    }
+    return false;
+}
+
+/// Attribute matcher: dash match (language code matching)
+fn matchAttributeDashMatch(value: []const u8, target: []const u8, case_sensitive: bool) bool {
+    // Matches if value is exactly target or starts with target followed by "-"
+    if (case_sensitive) {
+        if (std.mem.eql(u8, value, target)) return true;
+        if (value.len > target.len and value[target.len] == '-') {
+            return std.mem.eql(u8, value[0..target.len], target);
+        }
+    } else {
+        if (std.ascii.eqlIgnoreCase(value, target)) return true;
+        if (value.len > target.len and value[target.len] == '-') {
+            return std.ascii.eqlIgnoreCase(value[0..target.len], target);
+        }
+    }
+    return false;
+}
+
 // ============================================================================
 // Structural Pseudo-Class Helpers
 // ============================================================================

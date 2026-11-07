@@ -216,7 +216,7 @@ pub const BrowserScope = struct {
     /// flag: pinned for every mode by a test (off in every release mode by
     /// default).
     pub fn releasedNodePoison(mode: std.builtin.OptimizeMode, poison_freed: bool) bool {
-        return mode == .Debug or poison_freed;
+        return mode == .debug or poison_freed;
     }
 
     /// The standalone scope (runtime.initializeRuntime), if the runtime was
