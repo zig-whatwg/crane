@@ -15,6 +15,7 @@ const Stream = properties.Stream;
 const Longhand = properties.Longhand;
 const Value = values.Value;
 const Error = Allocator.Error || error{Invalid};
+const TreeScopeRef = @FieldType(@import("cascade.zig").Source, "tree_scope");
 
 const Range = struct { name: ?names.Range = null, offset: Number };
 const Timeline = struct {
@@ -185,6 +186,13 @@ pub const List = struct {
     refs: std.atomic.Value(usize) = std.atomic.Value(usize).init(1),
     property: Longhand,
     items: std.ArrayList(Item) = .empty,
+    /// CSS Scoping 1 tree-scoped references: a computed animation-name keeps
+    /// the tree scope of the declaration that won the cascade (the cascade's
+    /// computeValue sets it), so its @keyframes are looked up from the tree
+    /// of the sheet that declared it - Blink's ScopedCSSName, WebKit's
+    /// nameStyleScopeOrdinal, font-family's named families here. 0 is the
+    /// document scope. Serialization ignores it; equality keeps it.
+    tree_scope: TreeScopeRef = .{},
 
     fn create(allocator: Allocator, property: Longhand) Allocator.Error!*List {
         const self = try allocator.create(List);
@@ -234,6 +242,7 @@ pub const List = struct {
     pub fn eql(a: *const List, b: *const List) bool {
         if (a == b) return true;
         if (a.property != b.property or a.items.items.len != b.items.items.len) return false;
+        if (a.tree_scope.serial != b.tree_scope.serial) return false;
         for (a.items.items, b.items.items) |x, y| if (!x.eql(y)) return false;
         return true;
     }

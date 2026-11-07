@@ -40,8 +40,13 @@ pub const QueuedEvent = struct {
     animation: Link,
     /// 4.5.18 the scheduled event time (origin-relative), or unresolved.
     scheduled: ?f64,
-    /// 5.4.2 the animation's composite order at queuing.
-    class: model.Class,
+    /// 5.4.2 the animation's composite order at queuing (CSS Animations 2
+    /// 2.2: for a cancel, the owning element and position "in use at the
+    /// moment when the CSS Animation was cancelled"): its composite class,
+    /// its owning element, pseudo-element and position among that element's
+    /// animations (`css_events.OrderKey`), and its global list position.
+    class: u2,
+    key: @import("css_events.zig").OrderKey,
     sequence: u64,
     /// Queue order, for a stable sort.
     order: u64,
@@ -206,6 +211,15 @@ pub fn valuesChanged(realm: runtime.Context) void {
     if (registry.values_revision == 0) registry.values_revision = 1;
 }
 
+/// `animation` takes the next position in the global animation list: a CSS
+/// animation that lost its owning element, the first time it leaves idle
+/// (CSS Animations 2 2.2; css_animations.settled).
+pub fn takeSequence(animation: *model.Animation) void {
+    const registry = of(animation.instance.ctx) orelse return;
+    animation.sequence = registry.next_sequence;
+    registry.next_sequence += 1;
+}
+
 /// A new animation joins the global animation list (4.5).
 pub fn register(animation: *model.Animation) void {
     const registry = of(animation.instance.ctx) orelse return;
@@ -325,7 +339,8 @@ pub fn queueEvent(animation: *model.Animation, event: *runtime.Instance, target:
         .target = Link.to(target),
         .animation = Link.to(animation.instance),
         .scheduled = if (scheduled) |time| atTimePrecision(time) else null,
-        .class = animation.class,
+        .class = compositeClass(animation),
+        .key = @import("css_events.zig").orderKey(animation),
         .sequence = animation.sequence,
         .order = 0,
     };
@@ -445,6 +460,8 @@ pub fn updateAnimationsAndSendEvents(document: *runtime.Instance, frame: update_
     // the document are canceled - here, before the events, so that their
     // transitioncancel is dispatched in this frame (css_transitions.sweep).
     @import("css_transitions.zig").sweep(document);
+    // The same for CSS animations (css_animations.sweep).
+    @import("css_animations.zig").sweep(document);
     var snapshot = animationsTimedBy(registry, document) catch return;
     defer snapshot.deinit(registry.allocator);
     for (snapshot.items) |link| {
@@ -548,7 +565,10 @@ fn eventLessThan(_: void, a: QueuedEvent, b: QueuedEvent) bool {
     if (a.scheduled == null and b.scheduled != null) return true;
     if (a.scheduled != null and b.scheduled == null) return false;
     if (a.scheduled != null and b.scheduled != null and a.scheduled.? != b.scheduled.?) return a.scheduled.? < b.scheduled.?;
-    if (a.class != b.class) return @backingInt(a.class) < @backingInt(b.class);
+    if (a.class != b.class) return a.class < b.class;
+    // Owned CSS transitions and animations: the composite order captured at
+    // queuing (CSS Transitions 2 4.1, CSS Animations 2 2.2).
+    if (a.class != 2) if (@import("css_events.zig").OrderKey.lessThan(a.key, b.key)) |less| return less;
     if (a.sequence != b.sequence) return a.sequence < b.sequence;
     return a.order < b.order;
 }
@@ -616,11 +636,38 @@ fn isReplaceable(animation: *model.Animation) bool {
     return effect.targetElement() != null;
 }
 
+/// 5.4.2 the composite order's class of `animation`: 0 for a CSS transition
+/// with an owning element, 1 for a CSS animation with one, 2 for every other
+/// animation - script animations, and CSS animations and transitions that
+/// lost their owning element, which sort by their global list position.
+/// CSS Transitions 2 4.1 steps 1-2 keep an unowned transition among the
+/// transitions; Blink (AnimationClassPriority), Gecko
+/// (Animation::HasLowerCompositeOrderThan, IsTiedToMarkup) and WebKit
+/// (compareAnimationsByCompositeOrder, owningElement) all rank by owning
+/// element as here, and CSS Animations 2 2.2's own note asks for it: no
+/// newer spec, the browsers decide (AGENTS.md golden rule 2).
+pub fn compositeClass(animation: *const model.Animation) u2 {
+    const css_events = @import("css_events.zig");
+    return switch (animation.class) {
+        .css_transition => if (css_events.hasOwningElement(animation)) 0 else 2,
+        .css_animation => if (css_events.hasOwningElement(animation)) 1 else 2,
+        .script => 2,
+    };
+}
+
 pub fn compositeOrderLessThan(_: void, a: *model.Animation, b: *model.Animation) bool {
-    if (a.class != b.class) return @backingInt(a.class) < @backingInt(b.class);
-    // CSS Transitions 2 4.1: two CSS transitions by owning element, tree
-    // order, transition generation and property name.
-    if (a.class == .css_transition) if (@import("css_transitions.zig").compositeLessThan(a, b)) |less| return less;
+    const ca = compositeClass(a);
+    const cb = compositeClass(b);
+    if (ca != cb) return ca < cb;
+    switch (ca) {
+        // CSS Transitions 2 4.1: two owned CSS transitions by owning element,
+        // tree order, transition generation and property name.
+        0 => if (@import("css_transitions.zig").compositeLessThan(a, b)) |less| return less,
+        // CSS Animations 2 2.2: two owned CSS animations by owning element,
+        // tree order and animation-name position.
+        1 => if (@import("css_animations.zig").compositeLessThan(a, b)) |less| return less,
+        else => {},
+    }
     return a.sequence < b.sequence;
 }
 
