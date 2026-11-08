@@ -1129,8 +1129,52 @@ pub fn call_isSameNode(instance: *runtime.Instance, otherNode: ?*runtime.Instanc
 /// https://dom.spec.whatwg.org/#dom-node-isequalnode
 /// Returns true if nodes are equal (same type, attributes, children)
 pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instance) anyerror!bool {
-    const self_internal = getInternal(instance) orelse return false;
     const other_node = otherNode orelse return false;
+    // DOM 4.4 "A node A equals a node B": A's and B's own data are equal
+    // (`equalsShallow`), they have the same number of children, and each
+    // child of A equals the child of B at the same index. That definition
+    // recurses once per tree level, and so did this (lane crash1 b2: a
+    // 30,000-deep tree overflowed the stack); both trees are walked here in
+    // one lockstep pre-order over their links instead - no recursion, no
+    // allocation - comparing each pair as it is reached, so the answer and the
+    // order of the comparisons are the recursion's.
+    if (!try equalsShallow(instance, other_node)) return false;
+    const self_root = (getInternal(instance) orelse return false).node_base orelse return true;
+    const other_root = (getInternal(other_node) orelse return false).node_base orelse return true;
+    var a: *NodeBase = self_root;
+    var b: *NodeBase = other_root;
+    while (true) {
+        if (a.first_child) |a_child| {
+            // Both have children: compare the first ones next.
+            a = a_child;
+            b = b.first_child orelse return false;
+        } else {
+            if (b.first_child != null) return false;
+            // A leaf pair: on to the next sibling pair, climbing while both
+            // lists end at once - the same shape so far, so `b` climbs back
+            // to its root as `a` does.
+            while (true) {
+                if (a == self_root) return true;
+                if (a.next_sibling) |a_next| {
+                    a = a_next;
+                    b = b.next_sibling orelse return false;
+                    break;
+                }
+                if (b.next_sibling != null) return false;
+                a = a.parent_node orelse return false;
+                b = b.parent_node orelse return false;
+            }
+        }
+        const a_instance: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(a) orelse return false));
+        const b_instance: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(b) orelse return false));
+        if (!try equalsShallow(a_instance, b_instance)) return false;
+    }
+}
+
+/// DOM 4.4 "equals" for `instance` and `other_node` themselves - their
+/// type and the type's own fields - without their children.
+fn equalsShallow(instance: *runtime.Instance, other_node: *runtime.Instance) !bool {
+    const self_internal = getInternal(instance) orelse return false;
     const other_internal = getInternal(other_node) orelse return false;
 
     // Must be same node type
@@ -1186,28 +1230,7 @@ pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instan
         else => {},
     }
 
-    // Compare children recursively using NodeBase
-    const self_base = self_internal.node_base orelse return true;
-    const other_base = other_internal.node_base orelse return true;
-
-    var self_child = self_base.first_child;
-    var other_child = other_base.first_child;
-
-    while (self_child != null and other_child != null) {
-        // Get runtime.Instance for children via bridge
-        const self_child_opaque = instance_bridge.getInstance(self_child.?) orelse break;
-        const other_child_opaque = instance_bridge.getInstance(other_child.?) orelse break;
-        const self_child_instance: *runtime.Instance = @ptrCast(@alignCast(self_child_opaque));
-        const other_child_instance: *runtime.Instance = @ptrCast(@alignCast(other_child_opaque));
-
-        if (!try call_isEqualNode(self_child_instance, other_child_instance)) return false;
-
-        self_child = self_child.?.next_sibling;
-        other_child = other_child.?.next_sibling;
-    }
-
-    // Both should be null (same number of children)
-    return self_child == null and other_child == null;
+    return true;
 }
 
 /// IDL getters transfer their strings to the caller, including native callers.
