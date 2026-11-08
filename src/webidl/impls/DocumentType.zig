@@ -34,30 +34,35 @@ pub const InternalState = struct {
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
-    allocator: std.mem.Allocator,
+    // No allocator copy (lane perf2 batch 7): the strings below are its
+    // Browser's (runtime.allocatorOf), the allocator the doctype was made
+    // with (asserted in Node's initOwn) - 16 bytes on every doctype.
 
-    /// The name of the doctype (e.g., "html" for <!DOCTYPE html>)
-    name: []const u8,
+    /// The name of the doctype (e.g., "html" for <!DOCTYPE html>). Owned
+    /// when not empty, as are the two identifiers.
+    name: []const u8 = "",
 
     /// The public identifier (empty string if not specified)
-    public_id: []const u8,
+    public_id: []const u8 = "",
 
     /// The system identifier (empty string if not specified)
-    system_id: []const u8,
+    system_id: []const u8 = "",
 
-    pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-            .name = "",
-            .public_id = "",
-            .system_id = "",
-        };
+    /// Frees the strings with `allocator`, the doctype's Browser's
+    /// (runtime.allocatorOf; a teardown sweep passes the same one).
+    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
+        if (self.name.len > 0) allocator.free(self.name);
+        if (self.public_id.len > 0) allocator.free(self.public_id);
+        if (self.system_id.len > 0) allocator.free(self.system_id);
+        self.* = .{};
     }
 
-    pub fn deinit(self: *InternalState) void {
-        if (self.name.len > 0) self.allocator.free(self.name);
-        if (self.public_id.len > 0) self.allocator.free(self.public_id);
-        if (self.system_id.len > 0) self.allocator.free(self.system_id);
+    /// Replace `field`'s owned string with a copy of `value`; out of memory,
+    /// it becomes "".
+    fn setOwned(field: *[]const u8, allocator: std.mem.Allocator, value: []const u8) void {
+        const copy = allocator.dupe(u8, value) catch "";
+        if (field.len > 0) allocator.free(field.*);
+        field.* = copy;
     }
 };
 
@@ -97,8 +102,8 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.create(instance);
     errdefer Registry.remove(instance);
-    internal.* = InternalState.init(allocator);
-    errdefer internal.deinit();
+    internal.* = .{};
+    errdefer internal.deinit(allocator);
     const Args = @TypeOf(args);
     if (@hasField(Args, "name")) internal.name = try allocator.dupe(u8, args.name);
     if (@hasField(Args, "public_id")) internal.public_id = try allocator.dupe(u8, args.public_id);
@@ -109,16 +114,17 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 /// public identifier and system identifier; a missing one stays "".
 fn setIdsHook(doctype: *runtime.Instance, name: ?[]const u8, public_id: ?[]const u8, system_id: ?[]const u8) void {
     const internal = getInternal(doctype) orelse return;
-    if (name) |n| internal.name = internal.allocator.dupe(u8, n) catch "";
-    if (public_id) |p| internal.public_id = internal.allocator.dupe(u8, p) catch "";
-    if (system_id) |s| internal.system_id = internal.allocator.dupe(u8, s) catch "";
+    const allocator = runtime.allocatorOf(doctype);
+    if (name) |n| InternalState.setOwned(&internal.name, allocator, n);
+    if (public_id) |p| InternalState.setOwned(&internal.public_id, allocator, p);
+    if (system_id) |s| InternalState.setOwned(&internal.system_id, allocator, s);
 }
 
 /// DocumentType's own teardown: the generated chain runs Node's after it.
 pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up its internal state
     if (Registry.get(instance)) |internal| {
-        internal.deinit();
+        internal.deinit(runtime.allocatorOf(instance));
     }
     Registry.remove(instance);
 }
