@@ -11,24 +11,28 @@
 //! removeDetachedChildrenInContainer unlinks each child before its last
 //! reference goes.
 //!
-//! Each test builds a 100,000-deep tree by script - of nodes the HTML parser
+//! Each test builds a 10,000-deep tree by script - of nodes the HTML parser
 //! made (innerHTML) or of nodes appendChild nested - and lets it go one way:
 //! with its document at the realm's end, with its collected root (the
 //! agent's deferred teardown, a slice at a time), as an unwrapped orphan at
 //! the realm's end (runtime.orphan_roots), through its template, and through
-//! the Browser's final sweep. Each runs on a thread with an 8 MiB stack - a
-//! main thread's - under a leak-counting DebugAllocator (0 leaks). The
-//! recursive teardown overflowed that stack in a Debug build at 10,000 levels
-//! (3 to 4 KiB a level; red before the fix in the three realm-end cases).
+//! the Browser's final sweep. Each runs on a thread with a pinned 8 MiB stack
+//! - a main thread's - under a leak-counting DebugAllocator (0 leaks). The
+//! recursive teardown took 3 to 4 KiB a level in a Debug build and
+//! overflowed that stack: before the fix the realm-end, parser and template
+//! cases crashed (3 of 7); the walk that replaced it uses constant stack.
 //!
-//! The trees are built in chunks - 500 levels a chunk, each chunk's root
-//! appended to the previous chunk's deepest node - because inserting a node
-//! costs O(its depth) today (the queued deep-construction perf item: the
-//! insert steps walk the ancestors - mutation.isConnectedThroughShadow,
-//! isHostIncludingInclusiveAncestor, rootOf, hasInterestedObservers), so
-//! 100,000 single-node appends would take minutes; 200 appends of a chunk
-//! take a fraction of a second. A parser chunk stays under the HTML parser's
-//! depth cap (512).
+//! Why 10,000 and not 100,000: building the tree costs O(nodes x depth)
+//! today, whatever the build order - each inserted node's insertion steps
+//! walk to the root (mutation.isConnectedThroughShadow, rootOf,
+//! isHostIncludingInclusiveAncestor, hasInterestedObservers; the queued
+//! deep-construction perf item) - and a 100,000-deep build ran past 4.5
+//! minutes per test in this Debug suite (crash1 b2, chat2). 10,000 levels is
+//! the depth that crashed the runner and more than twice the depth that
+//! overflows the pinned stack; the release runner's probe pages build
+//! 100,000 levels (tmp/crash1/b2, crane/crash1-probe2/sweep-*.html).
+//! The trees are built in 500-level chunks so a parser-made tree stays under
+//! the HTML parser's depth cap (512).
 const std = @import("std");
 const testing = std.testing;
 const runtime = @import("runtime");
@@ -36,7 +40,7 @@ const interfaces = @import("interfaces");
 const dom = @import("dom");
 const Browser = @import("browser").Browser;
 
-const depth = 100_000;
+const depth = 10_000;
 const depth_text = std.fmt.comptimePrint("{d}", .{depth});
 
 /// `deepChain(parent, n, viaParser)`: nest `n` new levels under `parent`, in
@@ -171,7 +175,7 @@ fn withPage(comptime body: fn (Page) anyerror!void) !void {
     if (failure) |err| return err;
 }
 
-test "a 100,000-deep appendChild chain in the document goes with its realm" {
+test "a 10,000-deep appendChild chain in the document goes with its realm" {
     try withPage(struct {
         fn body(page: Page) !void {
             try page.run("deepChain(document.body, " ++ depth_text ++ ", false).id = 'leaf';");
@@ -182,7 +186,7 @@ test "a 100,000-deep appendChild chain in the document goes with its realm" {
     }.body);
 }
 
-test "a 100,000-deep tree of parser-made nodes in the document goes with its realm" {
+test "a 10,000-deep tree of parser-made nodes in the document goes with its realm" {
     try withPage(struct {
         fn body(page: Page) !void {
             try page.run("deepChain(document.body, " ++ depth_text ++ ", true);");
@@ -191,7 +195,7 @@ test "a 100,000-deep tree of parser-made nodes in the document goes with its rea
     }.body);
 }
 
-test "a 100,000-deep detached tree goes with its collected root, a slice at a time" {
+test "a 10,000-deep detached tree goes with its collected root, a slice at a time" {
     try withPage(struct {
         fn body(page: Page) !void {
             // Built in the document so the native walk finds it, then
@@ -210,7 +214,7 @@ test "a 100,000-deep detached tree goes with its collected root, a slice at a ti
     }.body);
 }
 
-test "a 100,000-deep appendChild chain, detached and dropped, goes with its collected root" {
+test "a 10,000-deep appendChild chain, detached and dropped, goes with its collected root" {
     try withPage(struct {
         fn body(page: Page) !void {
             // Every node wrapped: the collection takes the whole tree's
@@ -227,7 +231,7 @@ test "a 100,000-deep appendChild chain, detached and dropped, goes with its coll
     }.body);
 }
 
-test "a 100,000-deep tree whose root script never reached goes as an orphan at its realm's end" {
+test "a 10,000-deep tree whose root script never reached goes as an orphan at its realm's end" {
     try withPage(struct {
         fn body(page: Page) !void {
             // The root, the parser's <section>, is never wrapped: removed by
@@ -241,7 +245,7 @@ test "a 100,000-deep tree whose root script never reached goes as an orphan at i
     }.body);
 }
 
-test "a 100,000-deep tree in a template's contents goes with its template" {
+test "a 10,000-deep tree in a template's contents goes with its template" {
     try withPage(struct {
         fn body(page: Page) !void {
             try page.run("{ const t = document.createElement('template'); t.id = 't'; document.body.appendChild(t); deepChain(t.content, " ++ depth_text ++ ", true); }");
@@ -250,7 +254,7 @@ test "a 100,000-deep tree in a template's contents goes with its template" {
     }.body);
 }
 
-test "a 100,000-deep tree no script ever reached goes in the Browser's final sweep" {
+test "a 10,000-deep tree no script ever reached goes in the Browser's final sweep" {
     try withPage(struct {
         fn body(page: Page) !void {
             // Made natively, never inserted into the document or wrapped: an
