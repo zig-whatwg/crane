@@ -49,6 +49,12 @@ wpt.fyi results and the standards position, WontFix bug or objection per
 browser) in `tools/wpt_gate_exemptions.txt`, which `tools/wpt_progress.py`
 reads and the page shows as its own group. A file every browser merely fails,
 or that only some browsers decline, is NOT exempt.
+A second exception (the user, 2026-11-08): a file that fails IDENTICALLY in Chrome,
+Firefox and Safari because of a test bug filed upstream (a web-platform-tests
+issue or PR) is omitted from the blocking count until that bug is resolved; it is
+listed with the upstream issue and each browser's wpt.fyi result, and revisited
+when the issue closes (the exemption ends then). Filing the upstream issue still
+needs the user's OK.
 
 `wpt-results/progress.html` is how the 0.1 gate is watched. It is regenerated
 from journals, and only from `wpt-results/*.jsonl` and
