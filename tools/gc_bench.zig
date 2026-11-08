@@ -23,6 +23,12 @@
 //!                                       # the counters then read per call. The
 //!                                       # page is about:blank: no body, no
 //!                                       # documentElement.
+//!   zig build gc-bench -- --bench=qsa-deep
+//!                                       # a named measurement - its statement,
+//!                                       # counts and collections - and its
+//!                                       # report (wide, qsa-deep,
+//!                                       # wrapper-churn-nogc, pause, div,
+//!                                       # text: gc_bench_options.zig `benches`)
 //!   zig build gc-bench -- 10000 5000 --loop "--body=..."
 //!                                       # the page's event loop turns after
 //!                                       # each batch until it is idle, so the
@@ -316,14 +322,19 @@ pub fn main(init: std.process.Init) !void {
     engine.initializeBeforeThreadCreation();
     const args = try init.minimal.args.toSlice(init.arena.allocator());
 
-    const cycles: usize = if (args.len > 1)
-        std.fmt.parseInt(usize, args[1], 10) catch 10_000
-    else
-        10_000;
-    const every: usize = if (args.len > 2)
-        std.fmt.parseInt(usize, args[2], 10) catch 1_000
-    else
-        1_000;
+    // `--bench=<name>`: a named measurement (gc_bench_options.zig `Bench`),
+    // whose statement, counts and collections are its own unless given.
+    const bench = options.benchOf(args) catch |err| {
+        std.debug.print("gc_bench: {s}; the measurements are:", .{switch (err) {
+            error.UnknownBench => "no such --bench= measurement",
+            error.BenchAndBody => "--bench= and --body= name two statements",
+        }});
+        for (options.benches) |b| std.debug.print(" {s}", .{b.name});
+        std.debug.print("\n", .{});
+        return err;
+    };
+    const cycles = options.countArg(args, 1, if (bench) |b| b.cycles else 10_000);
+    const every = options.countArg(args, 2, if (bench) |b| b.every else 1_000);
 
     // `--gc` forces a full engine collection before each reading. This is the
     // decomposition experiment, not a mode of the benchmark: if RSS still climbs
@@ -352,6 +363,10 @@ pub fn main(init: std.process.Init) !void {
         if (std.mem.eql(u8, a, "--gc")) force_gc = true;
         if (std.mem.eql(u8, a, "--profile")) profile = true;
     }
+    if (bench) |b| force_gc = b.collects(force_gc) catch |err| {
+        std.debug.print("gc_bench: --bench={s} reads what the engine's own schedule leaves: no --gc\n", .{b.name});
+        return err;
+    };
 
     // `--c-alloc` swaps Zig's DebugAllocator for malloc.
     //
@@ -463,6 +478,7 @@ pub fn main(init: std.process.Init) !void {
 
     report(samples.items, force_gc, control, body, drive_loop);
     reportCounters(samples.items);
+    if (bench) |b| reportBench(b, samples.items);
 
     if (profile) {
         const sites = try counting.topSites(allocator, 12);
@@ -615,6 +631,30 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool, body:
                 "state is retained - see M1: ArenaAllocator.reset() never runs in production.\n",
             .{},
         );
+    }
+}
+
+/// What a named measurement (`--bench=`) reports beside the table, from the
+/// engine's counters: the full collections the run made and their pauses,
+/// and the wrappers made per cycle where the bench asks for it. A counter
+/// the engine does not report reads "not measured".
+fn reportBench(bench: *const options.Bench, samples: []const Sample) void {
+    const first = &samples[0];
+    const last = &samples[samples.len - 1];
+    std.debug.print("\n=== bench {s}: {s} ===\n", .{ bench.name, bench.what });
+    if (last.counter("full_gc_count")) |count| {
+        std.debug.print("  full collections: {d} during the run ({d} since the agent began)\n", .{ count - (first.counter("full_gc_count") orelse 0), count });
+    } else std.debug.print("  full collections: not measured (the engine reports no full_gc_count)\n", .{});
+    if (last.counter("full_gc_pause_max_us")) |max| {
+        std.debug.print("  full-collection pause, over the agent's life: max {d} us, p95 {d} us (of its last 1,024)\n", .{ max, last.counter("full_gc_pause_p95_us") orelse 0 });
+    } else std.debug.print("  full-collection pause: not measured (the engine reports no full_gc_pause_max_us)\n", .{});
+    if (last.resident) |resident| std.debug.print("  footprint at the end: {d:.1} MB resident\n", .{@as(f64, @floatFromInt(resident)) / (1024.0 * 1024.0)});
+    if (bench.wrappers_per_cycle) {
+        const name = "object_globals_from.ObjectTemplate_NewInstance";
+        if (last.counter(name)) |made| {
+            const cycles_run: f64 = @floatFromInt(@max(last.cycle - first.cycle, 1));
+            std.debug.print("  wrappers made per cycle: {d:.2} (the engine's wrapper creations, {s})\n", .{ @as(f64, @floatFromInt(made - (first.counter(name) orelse 0))) / cycles_run, name });
+        } else std.debug.print("  wrappers made per cycle: not measured (the engine reports no {s})\n", .{name});
     }
 }
 
