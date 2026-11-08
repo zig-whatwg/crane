@@ -125,6 +125,12 @@ const Mix = struct {
     /// colors (CSS Color 4 12.1) whose currentcolor resolves later; its
     /// resolved color is a legacy color. Authored color-mix() never sets it.
     legacy: bool = false,
+    /// Set only by interpolateColors: the weights are an interpolation's
+    /// (1 - p, p) as percentages, p any real (CSS Values 4 3: "The range of
+    /// p is (−∞, ∞)"), so they are not clamped to [0%, 100%] as authored
+    /// color-mix() percentages are; mixing them extrapolates. Authored
+    /// color-mix() never sets it.
+    interpolation: bool = false,
     fn release(self: Mix, allocator: Allocator) void {
         for (self.items) |item| {
             item.color.release();
@@ -204,7 +210,7 @@ pub const Expression = struct {
             },
             .mix => |mix| blk: {
                 const other = b.data.mix;
-                if (mix.space != other.space or mix.hue != other.hue or mix.legacy != other.legacy or mix.items.len != other.items.len) break :blk false;
+                if (mix.space != other.space or mix.hue != other.hue or mix.legacy != other.legacy or mix.interpolation != other.interpolation or mix.items.len != other.items.len) break :blk false;
                 for (mix.items, other.items) |x, y| {
                     if (!x.color.eql(y.color) or (x.weight == null) != (y.weight == null)) break :blk false;
                     if (x.weight) |weight| if (!weight.eql(y.weight.?)) break :blk false;
@@ -894,7 +900,7 @@ fn computeMix(input: Mix, allocator: Allocator, context: Color.Context) Allocato
         count += 1;
         if (original.weight) |weight| item.weight = try weight.compute(allocator, numeric_context);
     }
-    const output = Mix{ .space = input.space, .hue = input.hue, .items = items, .legacy = input.legacy };
+    const output = Mix{ .space = input.space, .hue = input.hue, .items = items, .legacy = input.legacy, .interpolation = input.interpolation };
     if (mixValue(output)) |components| {
         output.release(allocator);
         return .{ .resolved = .{ .value = components, .legacy = input.legacy } };
@@ -902,13 +908,16 @@ fn computeMix(input: Mix, allocator: Allocator, context: Color.Context) Allocato
     return .{ .mix = output };
 }
 fn mixValue(mix: Mix) ?Components {
+    // An interpolation's weights (interpolateColors) extrapolate: no clamp.
+    const lowest: f64 = if (mix.interpolation) -std.math.inf(f64) else 0;
+    const highest: f64 = if (mix.interpolation) std.math.inf(f64) else 100;
     var provided_sum: f64 = 0;
     var omitted: usize = 0;
     for (mix.items) |item| {
         if (resolvedComponents(item.color) == null) return null;
         if (item.weight) |weight| {
             const number = weight.known() orelse return null;
-            provided_sum += if (std.math.isNan(number.value)) 0 else std.math.clamp(number.value, 0, 100);
+            provided_sum += if (std.math.isNan(number.value)) 0 else std.math.clamp(number.value, lowest, highest);
         } else omitted += 1;
     }
     const omitted_weight = if (omitted > 0) @max(0, 100 - provided_sum) / @as(f64, @floatFromInt(omitted)) else 0;
@@ -919,7 +928,7 @@ fn mixValue(mix: Mix) ?Components {
     // Color5 §3.3: left-to-right stack reduction, with .5 progress when
     // both weights are zero. Forced normalization keeps a zero sum zero.
     for (mix.items, 0..) |item, index| {
-        const weight = if (item.weight) |number| (if (std.math.isNan(number.known().?.value)) @as(f64, 0) else std.math.clamp(number.known().?.value, 0, 100)) else omitted_weight;
+        const weight = if (item.weight) |number| (if (std.math.isNan(number.known().?.value)) @as(f64, 0) else std.math.clamp(number.known().?.value, lowest, highest)) else omitted_weight;
         if (index > 0) accumulator = spaces.interpolate(accumulator, resolvedComponents(item.color).?, mix.space, mix.hue, if (combined + weight > 0) weight / (combined + weight) else 0.5);
         combined += weight;
     }
@@ -945,8 +954,11 @@ fn legacyBytes(components: Components) values.RgbaColor {
 ///   currentcolor and resolves against the element's `color` when used
 ///   (CSS Color 5 color-mix() computed value; Blink keeps the same pair as a
 ///   StyleColor::UnresolvedColorMix), in sRGB when every other color is a
-///   legacy one, else Oklab. Its percentages are p clamped to [0, 1]
-///   (color-mix() weights cannot extrapolate).
+///   legacy one, else Oklab. Its weights are (1 - p, p) as percentages,
+///   p unclamped, so the mix extrapolates as the resolved pair does (Mix
+///   interpolation; WPT background-color-, box-shadow- and
+///   text-shadow-interpolation's currentcolor cases at -0.5 and 1.5, which
+///   Chrome 157, Firefox 159 and Safari 27.2 pass).
 /// OWNED; null when either color is a value this cannot mix.
 pub fn interpolateColors(allocator: Allocator, a: Color, b: Color, p: f64) Allocator.Error!?Color {
     // The same color on both sides (currentcolor and currentcolor above all)
@@ -961,13 +973,13 @@ pub fn interpolateColors(allocator: Allocator, a: Color, b: Color, p: f64) Alloc
         const value = spaces.interpolate(ca, cb, if (both_legacy) .srgb else .oklab, .shorter, p);
         return try Expression.create(allocator, .{ .resolved = .{ .value = value, .legacy = both_legacy } });
     };
-    const weight = std.math.clamp(p, 0, 1) * 100;
+    const weight = p * 100;
     const items = try allocator.alloc(MixItem, 2);
     a.retain();
     b.retain();
     items[0] = .{ .color = a, .weight = .{ .literal = .{ .value = 100 - weight, .unit = .percent } } };
     items[1] = .{ .color = b, .weight = .{ .literal = .{ .value = weight, .unit = .percent } } };
-    return try Expression.create(allocator, .{ .mix = .{ .space = if (legacy) .srgb else .oklab, .items = items, .legacy = legacy } });
+    return try Expression.create(allocator, .{ .mix = .{ .space = if (legacy) .srgb else .oklab, .items = items, .legacy = legacy, .interpolation = true } });
 }
 
 /// A COMPUTED legacy color (CSS Color 4 12.1: rgb(), hsl(), hwb(), named
