@@ -47,6 +47,10 @@
 //! It also checks that impl names are the binding map (see "Names are the
 //! binding map" below): strictly for interfaces, namespaces and helpers, and as
 //! a ratchet over tools/impls_naming_baseline.txt for mixin impls.
+//!
+//! And it ratchets unchecked state reads (see "Unchecked state reads" below):
+//! `X.getState(State).own._internal` read outside an impl's own init/deinit,
+//! per file and function, over tools/impls_unchecked_state_baseline.txt.
 
 const std = @import("std");
 // stdout as a stream: Zig 0.17's positional File.writer overwrites a shared log.
@@ -623,6 +627,130 @@ pub fn unroutedFunctions(gpa: std.mem.Allocator, mixin: []const u8, text: []cons
     return out;
 }
 
+// ---------------------------------------------------------------------------
+// Unchecked state reads
+// ---------------------------------------------------------------------------
+//
+// `instance.getState(State).own._internal` reads an impl's state pointer with
+// no brand check: `getState` looks `State` up in the instance's ancestry and,
+// when the instance is another interface's object, falls back to a bare cast
+// - so the read takes whatever bytes of the other type's State lie at this
+// level's offset as a pointer. A hook that hands an impl other types'
+// objects turns that into memory corruption (lane perf3 D1's 65 crashed
+// stylesheet files; docs/lessons/debugging-a-layout-change-that-crashes-a-
+// type-it-never-touched-look-for-an-unchecked-cast.md). The checked forms
+// are `instance.stateAs(State) orelse ...` and webidl.utils
+// InternalStateAccessor.get, brand-checked itself since lane crash1 batch 3.
+//
+// Counted per file and function, so trading one read for another in a new
+// function fails; a write (`... = x`) is not a read. An impl's own
+// construction and destruction steps run on an object its own generated
+// chain made, and keep their direct reads.
+
+const unchecked_baseline_path = "tools/impls_unchecked_state_baseline.txt";
+
+const unchecked_header =
+    \\# Unchecked state reads - `X.getState(State).own._internal` read outside an
+    \\# impl's own init/deinit: path function count. `getState` falls back to a
+    \\# bare cast for another interface's object; read through `stateAs(State)`
+    \\# (or InternalStateAccessor.get) instead. A ratchet - `zig build lint-impls`,
+    \\# part of `zig build test`, fails if any count rises or a new pair appears.
+    \\# After converting some, lower it with `zig build lint-impls -- --update`.
+    \\# Never raise it by hand.
+    \\
+;
+
+/// The functions that run only on an object of the impl's own type, which
+/// its generated construction chain made: they may read its slot directly.
+const own_lifetime_functions = [_][]const u8{ "init", "initOwn", "deinit", "deinitOwn" };
+
+/// One unchecked read: its line, the function it is in (`(top level)`
+/// outside any), and the line's code.
+pub const StateRead = struct { line: u32, function: []const u8, code: []const u8 };
+
+/// The name a `[pub] [inline|noinline|export] fn name(` line declares; a
+/// test block is `(test)`.
+fn declaredFunction(trimmed: []const u8) ?[]const u8 {
+    if ((std.mem.startsWith(u8, trimmed, "test ") or std.mem.eql(u8, trimmed, "test {")) and std.mem.endsWith(u8, trimmed, "{")) return "(test)";
+    var s = trimmed;
+    for ([_][]const u8{ "pub ", "export ", "inline ", "noinline " }) |prefix| {
+        if (std.mem.startsWith(u8, s, prefix)) s = std.mem.trimStart(u8, s[prefix.len..], " ");
+    }
+    if (!std.mem.startsWith(u8, s, "fn ")) return null;
+    const name = identAt(s, 3);
+    if (name.len == 0 or 3 + name.len >= s.len or s[3 + name.len] != '(') return null;
+    return name;
+}
+
+/// Each `.getState(T).own._internal` read in `text`, outside the own
+/// lifetime functions. Functions are found by their `fn` line and closed by
+/// the `}` at that line's indentation (zig fmt's layout); a function inside
+/// another is its own.
+pub fn uncheckedStateReads(gpa: std.mem.Allocator, text: []const u8) !std.ArrayList(StateRead) {
+    var out: std.ArrayList(StateRead) = .empty;
+    errdefer out.deinit(gpa);
+    const Open = struct { indent: usize, name: []const u8 };
+    var open: std.ArrayList(Open) = .empty;
+    defer open.deinit(gpa);
+
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    var number: u32 = 0;
+    while (lines.next()) |raw| {
+        number += 1;
+        const code = codeOf(raw);
+        const trimmed = std.mem.trim(u8, code, " \t\r");
+        const indent = code.len - std.mem.trimStart(u8, code, " ").len;
+        if (open.items.len > 0 and std.mem.startsWith(u8, trimmed, "}") and indent == open.items[open.items.len - 1].indent) {
+            _ = open.pop();
+            continue;
+        }
+        var one_line = false;
+        if (declaredFunction(trimmed)) |name| {
+            // A declaration without a body (`fn f() void;`) opens nothing; a
+            // body on the same line closes on it.
+            if (!std.mem.endsWith(u8, trimmed, ";")) {
+                try open.append(gpa, .{ .indent = indent, .name = name });
+                one_line = std.mem.endsWith(u8, trimmed, "}");
+            }
+        }
+        defer if (one_line) {
+            _ = open.pop();
+        };
+
+        const function = if (open.items.len > 0) open.items[open.items.len - 1].name else "(top level)";
+        if (contains(&own_lifetime_functions, function)) continue;
+        var from: usize = 0;
+        while (std.mem.indexOfPos(u8, code, from, ".getState(")) |at| {
+            from = at + 1;
+            if (inString(code, at)) continue;
+            // The call's closing parenthesis.
+            var depth: usize = 0;
+            var close: ?usize = null;
+            var i = at + ".getState".len;
+            while (i < code.len) : (i += 1) {
+                if (code[i] == '(') depth += 1;
+                if (code[i] == ')') {
+                    depth -= 1;
+                    if (depth == 0) {
+                        close = i;
+                        break;
+                    }
+                }
+            }
+            const after = (close orelse continue) + 1;
+            const field = ".own._internal";
+            if (!std.mem.startsWith(u8, code[after..], field)) continue;
+            const end = after + field.len;
+            if (end < code.len and isIdentChar(code[end])) continue;
+            // A write is not a read: `... = x`, not `... == x`.
+            const rest = std.mem.trimStart(u8, code[end..], " ");
+            if (rest.len > 0 and rest[0] == '=' and (rest.len == 1 or rest[1] != '=')) continue;
+            try out.append(gpa, .{ .line = number, .function = function, .code = trimmed });
+        }
+    }
+    return out;
+}
+
 // ============================================================================
 // The command
 // ============================================================================
@@ -730,6 +858,9 @@ pub fn main(init: std.process.Init) !void {
     // `Impl.member` of every reference the scan sees: what some code calls.
     var routed: std.StringHashMapUnmanaged(void) = .empty;
     var sites = std.StringHashMapUnmanaged(std.ArrayList(Reference)).empty;
+    // Unchecked state reads, per `path function`.
+    var unchecked: Counts = .empty;
+    var unchecked_sites = std.StringHashMapUnmanaged(std.ArrayList(Reference)).empty;
     for ([_][]const u8{ "src", "tests", "tools" }) |root| {
         var src = try std.Io.Dir.cwd().openDir(io, root, .{ .iterate = true });
         defer src.close(io);
@@ -740,6 +871,16 @@ pub fn main(init: std.process.Init) !void {
             const path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ root, entry.path });
             if (!scanned(path)) continue;
             const text = try std.Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(64 << 20));
+            const reads = try uncheckedStateReads(arena, text);
+            for (reads.items) |read| {
+                const key = try std.fmt.allocPrint(arena, "{s} {s}", .{ path, read.function });
+                const gop = try unchecked.getOrPut(arena, key);
+                if (!gop.found_existing) gop.value_ptr.* = 0;
+                gop.value_ptr.* += 1;
+                const site = try unchecked_sites.getOrPut(arena, key);
+                if (!site.found_existing) site.value_ptr.* = .empty;
+                try site.value_ptr.append(arena, .{ .line = read.line, .impl = "getState", .member = read.function, .code = read.code });
+            }
             const refs = (try scanFile(arena, path, text)).?;
             for (refs.items) |ref| {
                 try routed.put(arena, try std.fmt.allocPrint(arena, "{s}.{s}", .{ ref.impl, ref.member }), {});
@@ -862,8 +1003,22 @@ pub fn main(init: std.process.Init) !void {
         \\
         ,
     }, &unrouted, null);
+    const unchecked_ok = try ratchet(arena, io, out, update, false, .{
+        .label = "unchecked state reads",
+        .path = unchecked_baseline_path,
+        .header = unchecked_header,
+        .noun = "unchecked reads",
+        .advice =
+        \\`getState(State).own._internal` reads another interface's object's bytes
+        \\as this type's state pointer: `getState` falls back to a bare cast when
+        \\the brand check fails. Read through `instance.stateAs(State) orelse ...`
+        \\(or webidl.utils.InternalStateAccessor.get), which answers null for an
+        \\object of another type.
+        \\
+        ,
+    }, &unchecked, &unchecked_sites);
     try out.flush();
-    if (!boundary_ok or !naming_ok) std.process.exit(1);
+    if (!boundary_ok or !naming_ok or !unchecked_ok) std.process.exit(1);
 }
 
 /// Whether a run may write the baseline. `--update` only when nothing is above
@@ -1459,6 +1614,84 @@ test "only --rebase-for-rule-change may record an increase" {
     try testing.expect(mayRecord(true, false, 0));
     try testing.expect(!mayRecord(false, false, 0));
     try testing.expect(mayRecord(false, true, 3));
+}
+
+// ---------------------------------------------------------------------------
+// Unchecked state reads
+// ---------------------------------------------------------------------------
+
+fn expectReads(reads: []const StateRead, expected: []const []const u8) !void {
+    var got: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (got.items) |item| testing.allocator.free(item);
+        got.deinit(testing.allocator);
+    }
+    for (reads) |read| try got.append(testing.allocator, try std.fmt.allocPrint(testing.allocator, "{d}:{s}", .{ read.line, read.function }));
+    try testing.expectEqual(expected.len, got.items.len);
+    for (expected, got.items) |want, have| try testing.expectEqualStrings(want, have);
+}
+
+test "unchecked state reads: a read outside init and deinit counts, by function" {
+    const text =
+        \\pub fn initOwn(instance: *runtime.Instance) !void {
+        \\    instance.getState(State).own._internal = try make();
+        \\    _ = instance.getState(State).own._internal.?;
+        \\}
+        \\fn getInternal(instance: *runtime.Instance) ?*InternalState {
+        \\    return instance.getState(State).own._internal;
+        \\}
+        \\pub fn get_value(instance: *runtime.Instance) !u32 {
+        \\    if (instance.getState(State).own._internal == null) return 0;
+        \\    instance.getState(State).own._internal.?.count = 1;
+        \\    return 0;
+        \\}
+        \\pub fn deinit(instance: *runtime.Instance) void {
+        \\    if (instance.getState(State).own._internal) |internal| internal.free();
+        \\}
+    ;
+    var reads = try uncheckedStateReads(testing.allocator, text);
+    defer reads.deinit(testing.allocator);
+    // initOwn's write and read and deinit's read are the impl's own; `==` is
+    // a read, a write through the pointer reads it first.
+    try expectReads(reads.items, &.{ "6:getInternal", "9:get_value", "10:get_value" });
+}
+
+test "unchecked state reads: the checked forms, writes, comments and strings do not count" {
+    const text =
+        \\fn getInternal(instance: *runtime.Instance) ?*InternalState {
+        \\    const state = instance.stateAs(State) orelse return null;
+        \\    instance.getState(State).own._internal = null;
+        \\    // instance.getState(State).own._internal is unchecked
+        \\    log("x.getState(State).own._internal");
+        \\    _ = instance.getState(State).own._internal_count;
+        \\    return state.own._internal;
+        \\}
+    ;
+    var reads = try uncheckedStateReads(testing.allocator, text);
+    defer reads.deinit(testing.allocator);
+    try expectReads(reads.items, &.{});
+}
+
+test "unchecked state reads: a function ends at its brace, a nested one is its own, one-line bodies count" {
+    const text =
+        \\pub fn init(instance: *runtime.Instance) !void {
+        \\    const Steps = struct {
+        \\        fn later(i: *runtime.Instance) void {
+        \\            _ = i.getState(interfaces.Node.State).own._internal;
+        \\        }
+        \\    };
+        \\    _ = instance.getState(State).own._internal;
+        \\}
+        \\fn quick(i: *I) ?*S { return i.getState(State).own._internal; }
+        \\extern fn declared(i: *I) void;
+        \\const top = x.getState(State).own._internal;
+        \\test "a test" {
+        \\    _ = x.getState(State).own._internal;
+        \\}
+    ;
+    var reads = try uncheckedStateReads(testing.allocator, text);
+    defer reads.deinit(testing.allocator);
+    try expectReads(reads.items, &.{ "4:later", "9:quick", "11:(top level)", "13:(test)" });
 }
 
 test {
