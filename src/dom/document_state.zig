@@ -354,9 +354,9 @@ pub const InternalState = struct {
     active_element_generation: u64 = 0,
 
     // === StyleSheetList (DocumentOrShadowRoot mixin) ===
-    style_sheets: ?*runtime.Instance,
-    /// `style_sheets` and its wrapper, for as long as this document lives:
-    /// see `KeptChild`.
+    /// The StyleSheetList (made on first use, [SameObject]) and its wrapper,
+    /// for as long as this document lives: see `KeptChild`, the one pointer
+    /// to it (`get()`).
     style_sheets_kept: KeptChild = .{},
 
     // === Script execution state (HTML Standard §4.12.1.1) ===
@@ -469,11 +469,10 @@ pub const InternalState = struct {
 
     // === Selection API (Selection API spec) ===
 
-    /// The document's selection object (lazily created, [SameObject])
+    /// The document's selection object (lazily created, [SameObject]) and
+    /// its wrapper, for as long as this document lives: see `KeptChild`, the
+    /// one pointer to it (`get()`).
     /// Spec: https://w3c.github.io/selection-api/#dom-document-getselection
-    selection: ?*runtime.Instance,
-    /// `selection` and its wrapper, for as long as this document lives: see
-    /// `KeptChild`.
     selection_kept: KeptChild = .{},
 
     // === Adopted Style Sheets (CSSOM) ===
@@ -484,19 +483,15 @@ pub const InternalState = struct {
     /// value of its wrapper.
     adopted_style_sheets: @import("style/root.zig").adopted.AdoptedSheets,
 
-    /// Cached FontFaceSet instance ([SameObject])
+    /// The FontFaceSet ([SameObject]) and its wrapper, for as long as this
+    /// document lives: see `KeptChild`, the one pointer to it (`get()`).
     /// Spec: https://drafts.csswg.org/css-font-loading/#dom-fontfacesource-fonts
-    fonts: ?*runtime.Instance,
-    /// `fonts` and its wrapper, for as long as this document lives: see
-    /// `KeptChild`.
     fonts_kept: KeptChild = .{},
 
-    /// Cached HTMLAllCollection instance ([SameObject])
+    /// The HTMLAllCollection ([SameObject]; its [[IsHTMLDDA]] slot makes it
+    /// undetectable) and its wrapper, for as long as this document lives:
+    /// see `KeptChild`, the one pointer to it (`get()`).
     /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-all
-    /// This collection has [[IsHTMLDDA]] internal slot (undetectable)
-    all_collection: ?*runtime.Instance,
-    /// `all_collection` and its wrapper, for as long as this document lives:
-    /// see `KeptChild`.
     all_collection_kept: KeptChild = .{},
 
     /// The default view (window) associated with this document.
@@ -561,8 +556,6 @@ pub const InternalState = struct {
             .fullscreen_enabled = false,
             // Active element (focus)
             .active_element = null,
-            // StyleSheetList
-            .style_sheets = null,
             // Event handlers
             // Script execution state
             .scripts = dom_document_scripts.Scripts.init(allocator),
@@ -584,14 +577,8 @@ pub const InternalState = struct {
             .policy_container = fetch.internal.PolicyContainer.init(allocator),
             // Stylesheet blocking tracker
             .stylesheet_tracker = StylesheetBlockingTracker.init(allocator),
-            // Selection
-            .selection = null,
             // Adopted style sheets (ObservableArray exotic object)
             .adopted_style_sheets = @import("style/root.zig").adopted.AdoptedSheets.init(allocator),
-            // FontFaceSet (CSS Font Loading)
-            .fonts = null,
-            // HTMLAllCollection (undetectable legacy object)
-            .all_collection = null,
             .tree_index = @import("tree_ordered_map.zig").Maps.init(allocator, .document),
         };
     }
@@ -705,10 +692,10 @@ pub const InternalState = struct {
 
         // The objects this document handed out as the same object for its
         // whole life: each is severed from it here (see `KeptChild`).
-        if (self.all_collection) |all| self.all_collection_kept.releaseOwned(all);
-        if (self.fonts) |fonts_inst| self.fonts_kept.releaseOwned(fonts_inst);
-        if (self.selection) |sel| self.selection_kept.releaseOwned(sel);
-        if (self.style_sheets) |ss| self.style_sheets_kept.releaseOwned(ss);
+        if (self.all_collection_kept.get()) |all| self.all_collection_kept.releaseOwned(all);
+        if (self.fonts_kept.get()) |fonts_inst| self.fonts_kept.releaseOwned(fonts_inst);
+        if (self.selection_kept.get()) |sel| self.selection_kept.releaseOwned(sel);
+        if (self.style_sheets_kept.get()) |ss| self.style_sheets_kept.releaseOwned(ss);
     }
 
     /// Remove `url`'s entry from the module map. The key and the module are

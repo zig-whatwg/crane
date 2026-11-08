@@ -236,6 +236,9 @@ pub const cookie_change_event = @import("cookie_change_event.zig");
 pub const document_state = @import("document_state.zig");
 /// What few Documents set, made on first use (lane perf2 batch 7).
 pub const document_rare_data = @import("document_rare_data.zig");
+/// DocumentOrShadowRoot's fullscreen, pointer lock and Picture-in-Picture
+/// elements: the document's, retargeted against each scope (lane perf2 batch 8).
+pub const designated_elements = @import("designated_elements.zig");
 pub const document_internals = @import("document_internals.zig");
 pub const document_last_modified = @import("document_last_modified.zig");
 /// The CSSOM's model: what CSSStyleSheet, CSSRuleList and the CSSRule
