@@ -230,6 +230,8 @@ pub const slot_helpers = @import("slot_helpers.zig");
 pub const cookie_change_event = @import("cookie_change_event.zig");
 /// Document's state type: the impl owns the state, src/dom reads it here.
 pub const document_state = @import("document_state.zig");
+/// What few Documents set, made on first use (lane perf2 batch 7).
+pub const document_rare_data = @import("document_rare_data.zig");
 pub const document_internals = @import("document_internals.zig");
 pub const document_last_modified = @import("document_last_modified.zig");
 /// The CSSOM's model: what CSSStyleSheet, CSSRuleList and the CSSRule

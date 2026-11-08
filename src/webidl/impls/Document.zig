@@ -323,19 +323,28 @@ pub fn installHooks() void {
     });
 }
 
+/// The template contents owner document `internal`'s document made, while
+/// it is still that object (its slab generation), or null.
+fn madeTemplateOwner(internal: *InternalState) ?*runtime.Instance {
+    const rare = internal.rareData() orelse return null;
+    const owner = rare.template_owner_document orelse return null;
+    return if (runtime.SlabAllocator.generationOf(owner) == rare.template_owner_generation) owner else null;
+}
+
 fn existingTemplateOwnerDocument(document: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(document) orelse return null;
     // HTML 4.12.3: this is the existing relation, never its creating algorithm.
     if (internal.is_template_owner_document) return document;
-    const owner = internal.template_owner_document orelse return null;
-    return if (runtime.SlabAllocator.generationOf(owner) == internal.template_owner_generation) owner else null;
+    return madeTemplateOwner(internal);
 }
 
 fn templateOwnerDocument(document: *runtime.Instance) !*runtime.Instance {
     const internal = getInternal(document) orelse return error.InvalidStateError;
     // Appropriate template contents owner document, step 1.
     if (internal.is_template_owner_document) return document;
-    if (internal.template_owner_document) |owner| return owner;
+    if (internal.rareData()) |rare| if (rare.template_owner_document) |owner| return owner;
+    // The rare data that keeps it first: nothing to undo if it fails.
+    const rare = try internal.ensureRareData(document);
     // Steps 1.1.1–1.1.3: create in the same realm, with no browsing context.
     // WebKit Document::ensureTemplateDocument keeps this state per document.
     const owner = try call_constructor(document.ctx);
@@ -344,8 +353,8 @@ fn templateOwnerDocument(document: *runtime.Instance) !*runtime.Instance {
     owner_internal.is_template_owner_document = true;
     owner_internal.doc_type = internal.doc_type;
     owner_internal.scripting_enabled = false;
-    internal.template_owner_document = owner;
-    internal.template_owner_generation = runtime.SlabAllocator.generationOf(owner);
+    rare.template_owner_document = owner;
+    rare.template_owner_generation = runtime.SlabAllocator.generationOf(owner);
     // The document holds its template contents owner document counted
     // (refcount step 5i, H-RC8-DOC-TEMPLATE; WebKit's Document keeps
     // m_templateDocument as a RefPtr<Document>), taking its born reference
@@ -541,24 +550,30 @@ pub const construction_args = .{ "origin", "sandboxing_flags", "ready_state", "l
 /// garbage, an element of a garbage tree reads as none too.
 fn targetElement(document: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(document) orelse return null;
-    const link = internal.target_element orelse return null;
+    const rare = internal.rareData() orelse return null;
+    const link = rare.target_element orelse return null;
     return if (@import("dom").refcount.weakLinkLive(link.instance, link.generation)) link.instance else null;
 }
 
 /// dom.target_element: "set document's target element to" `element`.
 fn setTargetElement(document: *runtime.Instance, element: ?*runtime.Instance) void {
     const internal = getInternal(document) orelse return;
-    internal.target_element = if (element) |e| @import("same_object.zig").Link.to(e) else null;
+    // Setting none where none was set needs no rare data. Out of memory
+    // the element is not designated, as for a document with no state.
+    if (element == null and internal.rareData() == null) return;
+    const rare = internal.ensureRareData(document) catch return;
+    rare.target_element = if (element) |e| @import("same_object.zig").Link.to(e) else null;
 }
 
 /// dom.pointer_states: `document`'s element for `state`, or null once the
 /// element it names has been freed.
 fn pointerState(document: *runtime.Instance, state: @import("dom").pointer_states.State) ?*runtime.Instance {
     const internal = getInternal(document) orelse return null;
+    const rare = internal.rareData() orelse return null;
     const link = switch (state) {
-        .hovered => internal.hovered_element,
-        .pointed => internal.pointed_element,
-        .activated => internal.activated_element,
+        .hovered => rare.hovered_element,
+        .pointed => rare.pointed_element,
+        .activated => rare.activated_element,
     } orelse return null;
     return if (link.isLive()) link.instance else null;
 }
@@ -566,7 +581,8 @@ fn pointerState(document: *runtime.Instance, state: @import("dom").pointer_state
 /// dom.pointer_states: the three states, in State order, in one read.
 fn pointerStates(document: *runtime.Instance) [3]?*runtime.Instance {
     const internal = getInternal(document) orelse return .{ null, null, null };
-    const links = [3]?@import("same_object.zig").Link{ internal.hovered_element, internal.pointed_element, internal.activated_element };
+    const rare = internal.rareData() orelse return .{ null, null, null };
+    const links = [3]?@import("same_object.zig").Link{ rare.hovered_element, rare.pointed_element, rare.activated_element };
     var out: [3]?*runtime.Instance = .{ null, null, null };
     for (links, 0..) |maybe, i| {
         if (maybe) |link| if (link.isLive()) {
@@ -579,11 +595,16 @@ fn pointerStates(document: *runtime.Instance) [3]?*runtime.Instance {
 /// dom.pointer_states: designate `element` (null: nothing) for `state`.
 fn setPointerState(document: *runtime.Instance, state: @import("dom").pointer_states.State, element: ?*runtime.Instance) void {
     const internal = getInternal(document) orelse return;
+    // Designating nothing where nothing was designated needs no rare data.
+    // Out of memory the element is not designated, as for a document with
+    // no state.
+    if (element == null and internal.rareData() == null) return;
+    const rare = internal.ensureRareData(document) catch return;
     const link: ?@import("same_object.zig").Link = if (element) |e| @import("same_object.zig").Link.to(e) else null;
     switch (state) {
-        .hovered => internal.hovered_element = link,
-        .pointed => internal.pointed_element = link,
-        .activated => internal.activated_element = link,
+        .hovered => rare.hovered_element = link,
+        .pointed => rare.pointed_element = link,
+        .activated => rare.activated_element = link,
     }
 }
 
@@ -696,22 +717,20 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         // wrapper any more ([wrap_tracking]: its last one finalized, so the
         // realm's sweep has no entry left to free it; lane pageretention1).
         // Else its wrapper frees it.
-        if (internal.template_owner_document) |owner| {
-            if (runtime.SlabAllocator.generationOf(owner) == internal.template_owner_generation) {
-                // This document's counted reference on it ends first
-                // (refcount step 5i), unless its teardown began.
-                if (!runtime.instance_lifecycle.isCleanupStarted(owner)) {
-                    if (@import("dom").instance_bridge.getNodeBase(@ptrCast(owner))) |base| @import("dom").refcount.holderDeref(base);
-                }
-                if (!instance.ctx.hasEngine() or
-                    (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(owner)))
-                {
-                    runtime.Instance.deinit(owner);
-                } else if (runtime.cleanup_coordinator.isContextTearingDown() and
-                    runtime.instance_lifecycle.provablyUnwrapped(engine.capabilities.wrap_tracking != .unsupported, owner))
-                {
-                    @import("dom").node_creation.destroyRoot(owner);
-                }
+        if (madeTemplateOwner(internal)) |owner| {
+            // This document's counted reference on it ends first
+            // (refcount step 5i), unless its teardown began.
+            if (!runtime.instance_lifecycle.isCleanupStarted(owner)) {
+                if (@import("dom").instance_bridge.getNodeBase(@ptrCast(owner))) |base| @import("dom").refcount.holderDeref(base);
+            }
+            if (!instance.ctx.hasEngine() or
+                (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(owner)))
+            {
+                runtime.Instance.deinit(owner);
+            } else if (runtime.cleanup_coordinator.isContextTearingDown() and
+                runtime.instance_lifecycle.provablyUnwrapped(engine.capabilities.wrap_tracking != .unsupported, owner))
+            {
+                @import("dom").node_creation.destroyRoot(owner);
             }
         }
         releaseNativeGlobalRegistry(internal);
@@ -749,30 +768,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     // The binding wraps it: its wrapper takes its born reference (refcount7).
     @import("dom").refcount.offerDocument(instance);
     return instance;
-}
-
-// =============================================================================
-// String Interning
-// =============================================================================
-
-/// Intern a string in the document's string pool
-/// Returns a pointer to the interned string which can be compared via pointer equality
-/// If the string is already interned, returns the existing copy
-/// Caller does NOT own the returned slice - it's managed by the Document
-pub fn internString(instance: *runtime.Instance, str: []const u8) ![]const u8 {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if string is already interned
-    if (internal.string_pool.getKey(str)) |existing| {
-        return existing;
-    }
-
-    // Not interned yet - allocate and store
-    const owned = try internal.allocator.dupe(u8, str);
-    errdefer internal.allocator.free(owned);
-
-    try internal.string_pool.put(owned, {});
-    return owned;
 }
 
 /// Getter for implementation
@@ -937,7 +932,8 @@ pub fn get_fullscreenEnabled(instance: *runtime.Instance) anyerror!bool {
 /// Spec: https://fullscreen.spec.whatwg.org/#dom-document-fullscreen
 pub fn get_fullscreen(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.fullscreen_element != null;
+    const rare = internal.rareData() orelse return false;
+    return rare.fullscreen_element != null;
 }
 
 /// Getter for timeline (Web Animations 1 6.9): the default document
@@ -1119,14 +1115,16 @@ fn endsWithDotted(host: []const u8, suffix: []const u8) bool {
 /// dom.document_language: the Document-owned pragma default, or null.
 fn pragmaLanguage(document: *runtime.Instance) ?[]const u8 {
     const internal = getInternal(document) orelse return null;
-    return internal.pragma_language;
+    const rare = internal.rareData() orelse return null;
+    return rare.pragma_language;
 }
 
 fn setPragmaLanguage(document: *runtime.Instance, language: []const u8) @import("dom").document_language.Error!void {
     const internal = getInternal(document) orelse return error.InvalidStateError;
+    const rare = try internal.ensureRareData(document);
     const owned = try internal.allocator.dupe(u8, language);
-    if (internal.pragma_language) |old| internal.allocator.free(old);
-    internal.pragma_language = owned;
+    if (rare.pragma_language) |old| internal.allocator.free(old);
+    rare.pragma_language = owned;
 }
 
 /// dom.document_origin: `document`'s origin's domain, or null.
@@ -1803,14 +1801,16 @@ fn ensureGlobalRegistry(instance: *runtime.Instance) !*runtime.Instance {
 /// Returns the element in this document that is currently in fullscreen mode, or null.
 pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.fullscreen_element;
+    const rare = internal.rareData() orelse return null;
+    return rare.fullscreen_element;
 }
 
 /// Getter for pictureInPictureElement
 /// Returns the element in this document that is currently in picture-in-picture mode, or null.
 pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.picture_in_picture_element;
+    const rare = internal.rareData() orelse return null;
+    return rare.picture_in_picture_element;
 }
 
 /// Getter for pointerLockElement
@@ -1818,7 +1818,8 @@ pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runti
 /// Spec: https://w3c.github.io/pointerlock/#dom-documentorshadowroot-pointerlockelement
 pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.pointer_lock_element;
+    const rare = internal.rareData() orelse return null;
+    return rare.pointer_lock_element;
 }
 
 /// Getter for styleSheets: "a StyleSheetList collection representing the
@@ -2162,7 +2163,7 @@ pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValu
 pub fn call_exitPointerLock(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // Clear pointer lock element if set
-    internal.pointer_lock_element = null;
+    if (internal.rareData()) |rare| rare.pointer_lock_element = null;
 }
 
 /// Operation: queryCommandState
@@ -5219,17 +5220,19 @@ fn addImportMappingStep(instance: *runtime.Instance, specifier: []const u8, reso
 /// replaces an entry, including one whose integrity is the empty string.
 fn addIntegrityMappingStep(instance: *runtime.Instance, url: []const u8, integrity: []const u8) dom_document_modules.Error!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.import_map_integrity.contains(url)) return;
+    const rare = try internal.ensureRareData(instance);
+    if (rare.import_map_integrity.contains(url)) return;
     const owned_url = try internal.allocator.dupe(u8, url);
     errdefer internal.allocator.free(owned_url);
     const owned_integrity = try internal.allocator.dupe(u8, integrity);
     errdefer internal.allocator.free(owned_integrity);
-    try internal.import_map_integrity.put(owned_url, owned_integrity);
+    try rare.import_map_integrity.put(owned_url, owned_integrity);
 }
 
 fn resolveModuleIntegrityStep(instance: *runtime.Instance, url: []const u8) ?[]const u8 {
     const internal = getInternal(instance) orelse return null;
-    return internal.import_map_integrity.get(url);
+    const rare = internal.rareData() orelse return null;
+    return rare.import_map_integrity.get(url);
 }
 
 fn addScopedImportMappingStep(instance: *runtime.Instance, scope_prefix: []const u8, specifier: []const u8, resolved_url: []const u8) dom_document_modules.Error!void {
@@ -5443,6 +5446,7 @@ pub fn setImportMapAcquired(instance: *runtime.Instance) void {
 /// Maps a bare specifier to a resolved URL.
 pub fn addImportMapping(instance: *runtime.Instance, specifier: []const u8, resolved_url: []const u8) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const rare = try internal.ensureRareData(instance);
 
     // Clone strings for storage
     const owned_specifier = try internal.allocator.dupe(u8, specifier);
@@ -5451,16 +5455,19 @@ pub fn addImportMapping(instance: *runtime.Instance, specifier: []const u8, reso
     const owned_url = try internal.allocator.dupe(u8, resolved_url);
     errdefer internal.allocator.free(owned_url);
 
-    // Remove old mapping if exists
-    if (internal.import_map_imports.getKey(specifier)) |old_key| {
-        if (internal.import_map_imports.get(old_key)) |old_value| {
-            internal.allocator.free(old_value);
-        }
-        _ = internal.removeImport(old_key);
-        internal.allocator.free(old_key);
+    // An existing mapping is replaced in its slot - the new key is equal to
+    // the old one, so it hashes the same - rather than removed and put
+    // again: nothing is ever removed from the map, so it leaves no
+    // tombstone (tools/lint_tombstones.zig).
+    if (rare.import_map_imports.getEntry(specifier)) |entry| {
+        internal.allocator.free(entry.value_ptr.*);
+        internal.allocator.free(entry.key_ptr.*);
+        entry.key_ptr.* = owned_specifier;
+        entry.value_ptr.* = owned_url;
+        return;
     }
 
-    try internal.import_map_imports.put(owned_specifier, owned_url);
+    try rare.import_map_imports.put(owned_specifier, owned_url);
 }
 
 /// Resolve an import specifier using the import map
@@ -5469,13 +5476,15 @@ pub fn addImportMapping(instance: *runtime.Instance, specifier: []const u8, reso
 /// Returns the resolved URL if found in the import map, null otherwise.
 pub fn resolveImportSpecifier(instance: *runtime.Instance, specifier: []const u8, referrer_url: []const u8) ?[]const u8 {
     const internal = getInternal(instance) orelse return null;
+    // No mapping was ever added: no import map to resolve with.
+    const rare = internal.rareData() orelse return null;
 
     // Step 1: Check scopes (more specific takes precedence)
     // Find the longest matching scope prefix
     var best_scope: ?[]const u8 = null;
     var best_scope_len: usize = 0;
 
-    var scope_it = internal.import_map_scopes.keyIterator();
+    var scope_it = rare.import_map_scopes.keyIterator();
     while (scope_it.next()) |scope_key| {
         if (std.mem.startsWith(u8, referrer_url, scope_key.*)) {
             if (scope_key.len > best_scope_len) {
@@ -5487,7 +5496,7 @@ pub fn resolveImportSpecifier(instance: *runtime.Instance, specifier: []const u8
 
     // Check the matching scope's mappings
     if (best_scope) |scope| {
-        if (internal.import_map_scopes.get(scope)) |scope_map| {
+        if (rare.import_map_scopes.get(scope)) |scope_map| {
             if (scope_map.get(specifier)) |resolved| {
                 return resolved;
             }
@@ -5495,7 +5504,7 @@ pub fn resolveImportSpecifier(instance: *runtime.Instance, specifier: []const u8
     }
 
     // Step 2: Check top-level imports
-    return internal.import_map_imports.get(specifier);
+    return rare.import_map_imports.get(specifier);
 }
 
 /// Add a scoped import mapping
@@ -5507,15 +5516,16 @@ pub fn addScopedImportMapping(
     resolved_url: []const u8,
 ) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const rare = try internal.ensureRareData(instance);
 
     // Get or create the scope map
-    const scope_map_ptr = internal.import_map_scopes.getPtr(scope_prefix) orelse blk: {
+    const scope_map_ptr = rare.import_map_scopes.getPtr(scope_prefix) orelse blk: {
         const owned_scope = try internal.allocator.dupe(u8, scope_prefix);
         errdefer internal.allocator.free(owned_scope);
 
         const new_map = std.StringHashMap([]const u8).init(internal.allocator);
-        try internal.import_map_scopes.put(owned_scope, new_map);
-        break :blk internal.import_map_scopes.getPtr(scope_prefix).?;
+        try rare.import_map_scopes.put(owned_scope, new_map);
+        break :blk rare.import_map_scopes.getPtr(scope_prefix).?;
     };
 
     // Clone strings for storage
@@ -5555,28 +5565,6 @@ pub fn setCSPList(instance: *runtime.Instance, csp_list: *csp.CSPList) !void {
 pub fn addCSPPolicy(instance: *runtime.Instance, policy: csp.Policy) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     try internal.policy_container.csp_list.append(policy);
-}
-
-/// Get the document's CSP self-origin for 'self' matching
-pub fn getCSPSelfOrigin(instance: *runtime.Instance) ?*const csp.Origin {
-    const internal = getInternal(instance) orelse return null;
-    if (internal.csp_self_origin) |*origin| {
-        return origin;
-    }
-    return null;
-}
-
-/// Set the document's CSP self-origin
-/// Used for 'self' keyword matching in CSP directives.
-pub fn setCSPSelfOrigin(instance: *runtime.Instance, scheme: []const u8, host: []const u8, port: ?u16) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Clean up existing origin if any
-    if (internal.csp_self_origin) |*origin| {
-        origin.deinit();
-    }
-
-    internal.csp_self_origin = try csp.Origin.create(internal.allocator, scheme, host, port);
 }
 
 /// CSP §4.2.3 "Should element's inline type behavior be blocked by Content
@@ -5622,13 +5610,14 @@ pub fn addPrefetchHint(
     eagerness: SpeculationEagerness,
 ) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const rare = try internal.ensureRareData(instance);
 
     // Check if URL already exists - keep the more eager one
-    if (internal.prefetch_hints.get(url)) |existing_eagerness| {
+    if (rare.prefetch_hints.getPtr(url)) |existing_eagerness| {
         // More eager = earlier in enum order (immediate=0, conservative=3)
-        if (@backingInt(eagerness) < @backingInt(existing_eagerness)) {
+        if (@backingInt(eagerness) < @backingInt(existing_eagerness.*)) {
             // New eagerness is more eager, update
-            internal.prefetch_hints.put(url, eagerness) catch return error.OutOfMemory;
+            existing_eagerness.* = eagerness;
         }
         // Otherwise keep existing
         return;
@@ -5638,29 +5627,7 @@ pub fn addPrefetchHint(
     const owned_url = try internal.allocator.dupe(u8, url);
     errdefer internal.allocator.free(owned_url);
 
-    try internal.prefetch_hints.put(owned_url, eagerness);
-}
-
-/// Get all prefetch hints for this document
-/// Returns a slice of URL strings (borrowed from internal storage)
-pub fn getPrefetchHints(instance: *runtime.Instance) []const []const u8 {
-    const internal = getInternal(instance) orelse return &.{};
-
-    // Note: This returns a view into the internal storage
-    // Caller should not modify or free these strings
-    return internal.prefetch_hints.keys();
-}
-
-/// Check if a URL is in the prefetch hints
-pub fn hasPrefetchHint(instance: *runtime.Instance, url: []const u8) bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.prefetch_hints.contains(url);
-}
-
-/// Get the eagerness for a prefetch hint
-pub fn getPrefetchHintEagerness(instance: *runtime.Instance, url: []const u8) ?SpeculationEagerness {
-    const internal = getInternal(instance) orelse return null;
-    return internal.prefetch_hints.get(url);
+    try rare.prefetch_hints.put(owned_url, eagerness);
 }
 
 // =============================================================================
