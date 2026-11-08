@@ -174,6 +174,9 @@ pub const TestResult = struct {
     /// Milliseconds spent fetching the page, parsing it, and running its
     /// scripts to the end of the document.
     load_ms: u64 = 0,
+    /// A WPT crashtest's run (wpt_browser.zig `runCrashtest`): it has no
+    /// subtests, and its OK is wptreport's PASS.
+    crashtest: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, test_path: []const u8) !TestResult {
         return TestResult{
