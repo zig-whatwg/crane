@@ -761,3 +761,11 @@ why = PermissionStatus was not kept while it had a change listener (Permissions 
 commit = ebdec7ae67f
 test = tests/html/ls1_permission_status_keep_test.zig
 repro = before 10/10; after 0/10
+
+[navigation-timing/test-timing-attributes-dependent-on-document-load.html]
+generation = 209
+kind = flake
+why = Not a code change: 1 -> 0 in generation 209's sweep ("Navigation Timing 2 WPT", its one subtest). Five isolated pairs on chat.local 2026-11-08 04:14:53-04:14:57 UTC, the file alone in a fresh runner each time, alternating base/tip (integrator; /tmp/pairs209.sh, `wpt_runner --wpt-root=tests/wpt --from-file=<the file> --output=<dir>`): BASE ~/crane-frozen/main-0f7c8a5f49 (generation 208's runner) vs TIP ~/crane-frozen/main-f7853e77e9 (generation 209's). Base 1,0,0,1,1 of 1; tip 0,0,1,0,1 of 1. Lanes' --repeat=10 runs the same day agree: perf2 b5 5/10 base and tip, forms1 b1 3/10 base vs 4/10 tip. This is the path's first flake disposition; the bug is queued with owner nav2 (feature-queue FLAKES -> BUGS, 2026-11-08), and the next flip is that bug.
+pair.1 = base 1/1; tip 0/1
+pair.2 = base 0/1; tip 0/1
+pair.3 = base 0/1; tip 1/1

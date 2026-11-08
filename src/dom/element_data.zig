@@ -10,18 +10,41 @@
 //! the state: Element's InternalState embeds one `ElementData` by value -
 //! one block, one lifetime - and installs `of` from its installHooks
 //! (lesson architecture-move-the-states-type-out-of-the-impl-not-the-state).
-//! WebKit makes the same split: Source/WebCore/dom/ElementData.h holds the
-//! attribute storage (`findAttributeByName`, `attributeAt`), the ID for
-//! style resolution and the class names, owned by its Element.
 //!
-//! Reads are DOM's own read algorithms, plain functions over the data:
-//! "get an attribute by namespace and local name" and "get an attribute
-//! value". They BORROW: a name or value is valid until the attribute next
-//! changes or the element is freed; copy what you keep. Writes - "change",
-//! "append", "remove" and "replace" an attribute - stay Element's, where
-//! "handle attribute changes" queues the mutation record, enqueues the
-//! custom element reaction and runs the attribute change steps that keep
-//! `id` and `class_name` in step: callers write through
+//! The attribute list is the engines' layout (lane perf3 D1,
+//! tmp/plans/perf3b2-element-data-design.md): OUT OF LINE and exact-size,
+//! null for an element with no attributes - 43% of the 3.04 M elements of
+//! the perf pages had none and 85% had at most one, where Crane kept a
+//! 384-byte array of four inline slots in every element. Blink's
+//! ElementData (core/dom/element_data.h) is NULL until an element has an
+//! attribute; its UniqueElementData keeps an AttributeVector and its
+//! ShareableElementData a trailing `Attribute attribute_array_[0]`, each
+//! Attribute a `QualifiedName name_; AtomicString value_;` (16 B, a
+//! static_assert). WebKit's ElementData / UniqueElementData /
+//! ShareableElementData (Source/WebCore/dom/ElementData.h, Attribute.h) are
+//! the same. Here an `Attribute` is a pointer to its qualified name - a
+//! static record every element shares for a known name, else one record of
+//! its own - and its owned value: 24 B.
+//!
+//! Reads are DOM's own read algorithms, plain functions over the data: "get
+//! an attribute by namespace and local name" and "get an attribute value".
+//! Every read hands out an `AttributeEntry` BY VALUE - a view of the
+//! attribute's names and value - never a pointer into the list: the list
+//! reallocates when an attribute is appended or removed, and a pointer into
+//! it held across that (or across any step that can run script and so
+//! change attributes: the attribute change steps, custom element reactions,
+//! mutation records, an Attr node's value setter) would dangle. Blink hit
+//! exactly that (rare data reallocated during a set; the DOM report's
+//! reference [7]). So the safety rule is structural: the view's slices
+//! point into the name record (static, or freed only with its attribute)
+//! and the value's own buffer (freed only when the attribute's value
+//! changes or the attribute goes), neither of which moves with the list. A
+//! name or value is therefore valid until that attribute next changes or
+//! the element is freed; copy what you keep. Writes - "change", "append",
+//! "remove" and "replace" an attribute - stay Element's, where "handle
+//! attribute changes" queues the mutation record, enqueues the custom
+//! element reaction and runs the attribute change steps that re-derive `id`
+//! and `class_name` from the list: callers write through
 //! `dom.element_attributes` (`set`, `remove`, `append`, `change`), never
 //! through this data, which `of` hands out read-only.
 //!
@@ -30,12 +53,9 @@
 //! lint-impls: hook for Element
 const std = @import("std");
 
+const infra = @import("infra");
 const runtime = @import("runtime");
 const Hook = @import("hook.zig").Hook;
-
-/// Attributes kept in the element's own block before the list spills to the
-/// heap: most elements have 0-3.
-pub const INLINE_ATTR_CAPACITY: usize = 4;
 
 /// The Attr node made for an attribute, once script asked for one, with the
 /// slab generation that tells it from a later object at its address.
@@ -53,29 +73,53 @@ pub const AttrNodeLink = struct {
     }
 };
 
-/// One attribute of the list: its namespace, namespace prefix, local name and
-/// value (DOM 4.9.2), each owned by the list's allocator.
-pub const AttributeEntry = struct {
-    namespace_uri: ?[]const u8,
-    prefix: ?[]const u8,
+/// The namespace string every element and attribute in one of the six named
+/// namespaces (Infra 8) shares, or null for any other: an element's
+/// namespace was a 28-byte copy per element.
+pub fn internNamespace(namespace: []const u8) ?[]const u8 {
+    const named = [_][]const u8{
+        infra.namespaces.HTML_NAMESPACE,  infra.namespaces.SVG_NAMESPACE, infra.namespaces.MATHML_NAMESPACE,
+        infra.namespaces.XLINK_NAMESPACE, infra.namespaces.XML_NAMESPACE, infra.namespaces.XMLNS_NAMESPACE,
+    };
+    inline for (named) |ns| {
+        if (std.mem.eql(u8, namespace, ns)) return ns;
+    }
+    return null;
+}
+
+/// An attribute's qualified name: its namespace, namespace prefix and local
+/// name (DOM 4.9.2), which an attribute keeps for its whole life ("replace"
+/// gives the list a new attribute). A known name is one static record every
+/// element points to (html_core's attribute name table, beside its tag
+/// names: Blink's and WebKit's static QualifiedNames for the HTML, SVG,
+/// MathML, XLink and XML attribute names); any other - data-*, a custom
+/// name, a namespaced or prefixed one - is a record of its own attribute's,
+/// made by `create` and freed with the attribute.
+pub const QualifiedName = struct {
+    namespace_uri: ?[]const u8 = null,
+    prefix: ?[]const u8 = null,
     local_name: []const u8,
-    value: []const u8,
+    /// 0 for a static record; for one of an attribute's own, the bytes of
+    /// its allocation (the record and its strings), which `destroy` frees.
+    owned_bytes: u32 = 0,
 
-    /// The Attr node made for this attribute, once script asked for one.
-    /// Element keeps it (its wrapper traces the node: an edge, not a root),
-    /// so it stays the same node - identity, expandos and all - while the
-    /// attribute is on the element. Blink traces the same edge (Element's
-    /// AttrNodeList).
-    attr_node: ?AttrNodeLink = null,
+    /// Whether this is an attribute's own record (freed with it) rather than
+    /// a static one every element shares.
+    pub fn isOwned(self: *const QualifiedName) bool {
+        return self.owned_bytes != 0;
+    }
 
-    /// Whether this attribute's namespace is `namespace_uri` and its local
-    /// name is `local_name` (null matches only null).
-    pub fn isNamed(self: *const AttributeEntry, namespace_uri: ?[]const u8, local_name: []const u8) bool {
-        const ns_match = if (namespace_uri) |ns|
-            (if (self.namespace_uri) |own| std.mem.eql(u8, ns, own) else false)
-        else
-            self.namespace_uri == null;
-        return ns_match and std.mem.eql(u8, local_name, self.local_name);
+    /// Whether this name's namespace is `namespace_uri` and its local name
+    /// is `local_name` (null matches only null): an attribute's identity in
+    /// its element's list.
+    pub fn isNamed(self: *const QualifiedName, namespace_uri: ?[]const u8, local_name: []const u8) bool {
+        return namespaceIs(self.namespace_uri, namespace_uri) and std.mem.eql(u8, local_name, self.local_name);
+    }
+
+    /// Whether this name is exactly `namespace_uri`, `prefix` and
+    /// `local_name`.
+    pub fn eql(self: *const QualifiedName, namespace_uri: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) bool {
+        return self.isNamed(namespace_uri, local_name) and namespaceIs(self.prefix, prefix);
     }
 
     /// An attribute's qualified name is its local name if its namespace
@@ -83,74 +127,239 @@ pub const AttributeEntry = struct {
     /// Compared in place.
     ///
     /// Spec: https://dom.spec.whatwg.org/#concept-attribute-qualified-name
+    pub fn qualifiedNameIs(self: *const QualifiedName, qualified_name: []const u8) bool {
+        return qualifiedNameMatches(self.prefix, self.local_name, qualified_name);
+    }
+
+    /// A record of an attribute's own for a name no static table holds: ONE
+    /// allocation, the record followed by the bytes of its local name, its
+    /// prefix and - unless it is one of the six named ones, which stay
+    /// static - its namespace.
+    pub fn create(allocator: std.mem.Allocator, namespace_uri: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) !*const QualifiedName {
+        const static_namespace: ?[]const u8 = if (namespace_uri) |ns| internNamespace(ns) else null;
+        const namespace_bytes: usize = if (namespace_uri) |ns| (if (static_namespace == null) ns.len else 0) else 0;
+        const prefix_bytes: usize = if (prefix) |p| p.len else 0;
+        const total = @sizeOf(QualifiedName) + local_name.len + prefix_bytes + namespace_bytes;
+        if (total > std.math.maxInt(u32)) return error.OutOfMemory;
+        const memory = try allocator.alignedAlloc(u8, .of(QualifiedName), total);
+        var tail: []u8 = memory[@sizeOf(QualifiedName)..];
+        const local = copyInto(&tail, local_name);
+        const own_prefix: ?[]const u8 = if (prefix) |p| copyInto(&tail, p) else null;
+        const own_namespace: ?[]const u8 = if (namespace_uri) |ns| (static_namespace orelse copyInto(&tail, ns)) else null;
+        std.debug.assert(tail.len == 0);
+        const record: *QualifiedName = @ptrCast(memory.ptr);
+        record.* = .{
+            .namespace_uri = own_namespace,
+            .prefix = own_prefix,
+            .local_name = local,
+            .owned_bytes = @intCast(total),
+        };
+        return record;
+    }
+
+    /// Free a record `create` made.
+    pub fn destroy(self: *const QualifiedName, allocator: std.mem.Allocator) void {
+        std.debug.assert(self.isOwned());
+        const base: [*]align(@alignOf(QualifiedName)) u8 = @ptrCast(@constCast(self));
+        allocator.free(base[0..self.owned_bytes]);
+    }
+
+    fn copyInto(tail: *[]u8, bytes: []const u8) []const u8 {
+        const out = tail.*[0..bytes.len];
+        @memcpy(out, bytes);
+        tail.* = tail.*[bytes.len..];
+        return out;
+    }
+};
+
+fn namespaceIs(own: ?[]const u8, wanted: ?[]const u8) bool {
+    const w = wanted orelse return own == null;
+    const o = own orelse return false;
+    return std.mem.eql(u8, o, w);
+}
+
+fn qualifiedNameMatches(prefix_or_null: ?[]const u8, local_name: []const u8, qualified_name: []const u8) bool {
+    const prefix = prefix_or_null orelse return std.mem.eql(u8, local_name, qualified_name);
+    return qualified_name.len == prefix.len + 1 + local_name.len and
+        std.mem.startsWith(u8, qualified_name, prefix) and
+        qualified_name[prefix.len] == ':' and
+        std.mem.endsWith(u8, qualified_name, local_name);
+}
+
+/// One attribute as the list stores it: its qualified name and its value,
+/// owned by the list (the value always; the name when `name.isOwned()`).
+pub const Attribute = struct {
+    name: *const QualifiedName,
+    value: []const u8,
+
+    /// The view a reader gets.
+    pub fn entry(self: Attribute) AttributeEntry {
+        return .{
+            .namespace_uri = self.name.namespace_uri,
+            .prefix = self.name.prefix,
+            .local_name = self.name.local_name,
+            .value = self.value,
+        };
+    }
+};
+
+/// One attribute of the list as a reader sees it: its namespace, namespace
+/// prefix, local name and value (DOM 4.9.2), BORROWED - valid until that
+/// attribute next changes or goes, and unaffected by changes to the others.
+/// A value, never a pointer into the list (see the file's comment).
+pub const AttributeEntry = struct {
+    namespace_uri: ?[]const u8,
+    prefix: ?[]const u8,
+    local_name: []const u8,
+    value: []const u8,
+
+    /// Whether this attribute's namespace is `namespace_uri` and its local
+    /// name is `local_name` (null matches only null).
+    pub fn isNamed(self: *const AttributeEntry, namespace_uri: ?[]const u8, local_name: []const u8) bool {
+        return namespaceIs(self.namespace_uri, namespace_uri) and std.mem.eql(u8, local_name, self.local_name);
+    }
+
+    /// Spec: https://dom.spec.whatwg.org/#concept-attribute-qualified-name
     pub fn qualifiedNameIs(self: *const AttributeEntry, qualified_name: []const u8) bool {
-        const prefix = self.prefix orelse return std.mem.eql(u8, self.local_name, qualified_name);
-        return qualified_name.len == prefix.len + 1 + self.local_name.len and
-            std.mem.startsWith(u8, qualified_name, prefix) and
-            qualified_name[prefix.len] == ':' and
-            std.mem.endsWith(u8, qualified_name, self.local_name);
+        return qualifiedNameMatches(self.prefix, self.local_name, qualified_name);
+    }
+};
+
+/// The out-of-line list: this header, then `cap` Attributes, in ONE
+/// allocation. It grows by one slot up to four (85% of elements have at
+/// most one attribute and none on the perf pages more than four) and then
+/// doubles; the element frees it when its last attribute goes.
+pub const AttributeList = struct {
+    len: u32,
+    cap: u32,
+
+    comptime {
+        std.debug.assert(@sizeOf(AttributeList) % @alignOf(Attribute) == 0);
+    }
+
+    const Memory = []align(@alignOf(Attribute)) u8;
+
+    fn bytesFor(cap: u32) usize {
+        return @sizeOf(AttributeList) + @as(usize, cap) * @sizeOf(Attribute);
+    }
+
+    fn memory(self: *AttributeList) Memory {
+        const base: [*]align(@alignOf(Attribute)) u8 = @ptrCast(@alignCast(self));
+        return base[0..bytesFor(self.cap)];
+    }
+
+    fn slots(self: *AttributeList) [*]Attribute {
+        const base: [*]align(@alignOf(Attribute)) u8 = @ptrCast(@alignCast(self));
+        return @ptrCast(@alignCast(base + @sizeOf(AttributeList)));
+    }
+
+    fn items(self: *AttributeList) []Attribute {
+        return self.slots()[0..self.len];
+    }
+
+    fn create(allocator: std.mem.Allocator, cap: u32) !*AttributeList {
+        const bytes = try allocator.alignedAlloc(u8, .of(Attribute), bytesFor(cap));
+        const list: *AttributeList = @ptrCast(bytes.ptr);
+        list.* = .{ .len = 0, .cap = cap };
+        return list;
+    }
+
+    fn destroy(self: *AttributeList, allocator: std.mem.Allocator) void {
+        allocator.free(self.memory());
+    }
+
+    /// The list with room for one more: itself, or a larger copy that
+    /// replaces it (MOVED - nothing may hold a pointer into it across this).
+    fn withRoom(self: *AttributeList, allocator: std.mem.Allocator) !*AttributeList {
+        if (self.len < self.cap) return self;
+        const cap: u32 = if (self.cap < 4) self.cap + 1 else self.cap * 2;
+        const bytes = try allocator.realloc(self.memory(), bytesFor(cap));
+        const list: *AttributeList = @ptrCast(bytes.ptr);
+        list.cap = cap;
+        return list;
+    }
+};
+
+/// The Attr nodes made for an element's attributes, each by its attribute's
+/// name record (an attribute's identity: one per namespace and local name),
+/// made when script asks for the first one. Blink keeps an element's Attr
+/// nodes apart from its attributes too (ElementRareData's AttrNodeList,
+/// looked up by QualifiedName); D2 moves this list into Crane's
+/// ElementRareData.
+pub const AttrNodeList = struct {
+    entries: std.ArrayList(Entry) = .empty,
+
+    pub const Entry = struct {
+        name: *const QualifiedName,
+        node: AttrNodeLink,
+    };
+
+    fn indexOf(self: *const AttrNodeList, name: *const QualifiedName) ?usize {
+        for (self.entries.items, 0..) |item, i| {
+            if (item.name == name) return i;
+        }
+        return null;
     }
 };
 
 /// An element's attribute list, ID, classes and qualified name.
 pub const ElementData = struct {
-    allocator: std.mem.Allocator,
-
-    /// The element's namespace (DOM 4.9); null for none.
+    /// The element's namespace (DOM 4.9); null for none. One of the six
+    /// named namespaces is the static string (`internNamespace`), not a copy.
     namespace_uri: ?runtime.DOMString = null,
     /// The element's namespace prefix; null for none.
     prefix: ?runtime.DOMString = null,
     /// The element's local name, fixed by "create an element".
-    local_name: runtime.DOMString,
+    local_name: runtime.DOMString = .{ .empty = {} },
 
-    /// The element's ID: its id attribute's value, or empty when it has none
-    /// ("set / unset element's ID", DOM 4.9's attribute change steps).
-    id: runtime.DOMString,
+    /// The element's ID ("set / unset element's ID", DOM 4.9's attribute
+    /// change steps): a view of its id attribute's value, or empty when it
+    /// has none. Re-derived from the list by those steps after every change
+    /// to that attribute (`rederiveId`), never freed: the value's buffer is
+    /// freed only after the steps re-derived it.
+    id: runtime.DOMString = .{ .empty = {} },
     /// The class attribute's value, or empty when it has none: what the
-    /// class selector, classList and getElementsByClassName read.
-    class_name: runtime.DOMString,
+    /// class selector, classList and getElementsByClassName read. A view,
+    /// kept like `id` (`rederiveClassName`).
+    class_name: runtime.DOMString = .{ .empty = {} },
 
-    /// The first INLINE_ATTR_CAPACITY attributes, in list order.
-    inline_attrs: [INLINE_ATTR_CAPACITY]?AttributeEntry = @splat(null),
-    /// How many of `inline_attrs` are in use (0-4).
-    inline_attr_count: u8 = 0,
-    /// The attributes after the inline ones, in list order; null until needed.
-    heap_attrs: ?std.ArrayList(AttributeEntry) = null,
+    /// The attributes in list order; null while there are none.
+    attrs: ?*AttributeList = null,
+    /// The Attr nodes script was handed; null until the first.
+    attr_nodes: ?*AttrNodeList = null,
 
-    pub fn init(allocator: std.mem.Allocator) ElementData {
-        return .{
-            .allocator = allocator,
-            .local_name = runtime.DOMString.initEmpty(),
-            .id = runtime.DOMString.initEmpty(),
-            .class_name = runtime.DOMString.initEmpty(),
-        };
+    pub fn init() ElementData {
+        return .{};
     }
 
-    /// Free the names, the caches and every attribute. An attribute's Attr
-    /// node is its owner's to let go first: this frees the strings only.
-    pub fn deinit(self: *ElementData) void {
-        if (self.namespace_uri) |*ns| ns.deinit(self.allocator);
-        if (self.prefix) |*p| p.deinit(self.allocator);
-        self.local_name.deinit(self.allocator);
-        self.id.deinit(self.allocator);
-        self.class_name.deinit(self.allocator);
-        for (self.inline_attrs[0..self.inline_attr_count]) |maybe_entry| {
-            if (maybe_entry) |entry| freeAttributeEntry(self.allocator, entry);
+    /// Free the names and every attribute. An attribute's Attr node is its
+    /// owner's to let go first (`takeAttrNode`): this frees the list only.
+    pub fn deinit(self: *ElementData, allocator: std.mem.Allocator) void {
+        if (self.namespace_uri) |*ns| ns.deinit(allocator);
+        self.namespace_uri = null;
+        if (self.prefix) |*p| p.deinit(allocator);
+        self.prefix = null;
+        self.local_name.deinit(allocator);
+        self.local_name = .{ .empty = {} };
+        // Views of attribute values: nothing of their own to free.
+        self.id = .{ .empty = {} };
+        self.class_name = .{ .empty = {} };
+        if (self.attrs) |list| {
+            for (list.items()) |attribute| freeAttribute(allocator, attribute);
+            list.destroy(allocator);
+            self.attrs = null;
         }
-        if (self.heap_attrs) |*heap| {
-            for (heap.items) |entry| freeAttributeEntry(self.allocator, entry);
-            heap.deinit(self.allocator);
+        if (self.attr_nodes) |nodes| {
+            nodes.entries.deinit(allocator);
+            allocator.destroy(nodes);
+            self.attr_nodes = null;
         }
-        self.inline_attr_count = 0;
-        self.heap_attrs = null;
     }
 
-    /// Free an attribute entry's strings.
-    pub fn freeAttributeEntry(allocator: std.mem.Allocator, entry: AttributeEntry) void {
-        if (entry.namespace_uri) |ns| allocator.free(ns);
-        if (entry.prefix) |p| allocator.free(p);
-        allocator.free(entry.local_name);
-        allocator.free(entry.value);
+    /// Free what an attribute owns: its value, and its name if it is its own.
+    pub fn freeAttribute(allocator: std.mem.Allocator, attribute: Attribute) void {
+        if (attribute.name.isOwned()) attribute.name.destroy(allocator);
+        allocator.free(attribute.value);
     }
 
     /// The element's namespace, borrowed; null for none.
@@ -160,30 +369,28 @@ pub const ElementData = struct {
 
     /// The number of attributes in the list.
     pub fn getAttributeCount(self: *const ElementData) usize {
-        const heap_count: usize = if (self.heap_attrs) |heap| heap.items.len else 0;
-        return self.inline_attr_count + heap_count;
+        return if (self.attrs) |list| list.len else 0;
     }
 
-    /// The attributes in list order: inline first, then the heap's.
+    /// The stored attributes, for this file's loops. Read afresh after
+    /// anything that can change the list.
+    fn stored(self: *const ElementData) []const Attribute {
+        const list = self.attrs orelse return &.{};
+        return list.items();
+    }
+
+    /// The attributes in list order, each a view by value. The iterator
+    /// keeps an index and reads the list afresh at each step.
     pub const AttributeIterator = struct {
         data: *const ElementData,
-        inline_index: usize = 0,
-        heap_index: usize = 0,
+        index: usize = 0,
 
-        pub fn next(self: *AttributeIterator) ?*const AttributeEntry {
-            while (self.inline_index < self.data.inline_attr_count) {
-                const idx = self.inline_index;
-                self.inline_index += 1;
-                if (self.data.inline_attrs[idx]) |*entry| return entry;
-            }
-            if (self.data.heap_attrs) |heap| {
-                if (self.heap_index < heap.items.len) {
-                    const idx = self.heap_index;
-                    self.heap_index += 1;
-                    return &heap.items[idx];
-                }
-            }
-            return null;
+        pub fn next(self: *AttributeIterator) ?AttributeEntry {
+            const items = self.data.stored();
+            if (self.index >= items.len) return null;
+            const item = items[self.index];
+            self.index += 1;
+            return item.entry();
         }
     };
 
@@ -191,80 +398,25 @@ pub const ElementData = struct {
         return .{ .data = self };
     }
 
-    /// Append an attribute to the list (inline while there is room). The
-    /// list takes the entry's strings. Element's "append an attribute" step 1.
-    pub fn addAttribute(self: *ElementData, entry: AttributeEntry) !void {
-        if (self.inline_attr_count < INLINE_ATTR_CAPACITY) {
-            self.inline_attrs[self.inline_attr_count] = entry;
-            self.inline_attr_count += 1;
-            return;
-        }
-        if (self.heap_attrs == null) self.heap_attrs = std.ArrayList(AttributeEntry).empty;
-        try self.heap_attrs.?.append(self.allocator, entry);
-    }
-
     /// The attribute whose namespace is `namespace_uri` and local name is
     /// `local_name`; there is at most one.
-    pub fn findAttribute(self: *const ElementData, namespace_uri: ?[]const u8, local_name: []const u8) ?*const AttributeEntry {
-        for (self.inline_attrs[0..self.inline_attr_count]) |*maybe_entry| {
-            if (maybe_entry.*) |*entry| {
-                if (entry.isNamed(namespace_uri, local_name)) return entry;
-            }
-        }
-        if (self.heap_attrs) |heap| {
-            for (heap.items) |*entry| {
-                if (entry.isNamed(namespace_uri, local_name)) return entry;
-            }
-        }
-        return null;
-    }
-
-    /// `findAttribute`, for Element's writes.
-    pub fn findAttributeMut(self: *ElementData, namespace_uri: ?[]const u8, local_name: []const u8) ?*AttributeEntry {
-        for (self.inline_attrs[0..self.inline_attr_count]) |*maybe_entry| {
-            if (maybe_entry.*) |*entry| {
-                if (entry.isNamed(namespace_uri, local_name)) return entry;
-            }
-        }
-        if (self.heap_attrs) |*heap| {
-            for (heap.items) |*entry| {
-                if (entry.isNamed(namespace_uri, local_name)) return entry;
-            }
-        }
-        return null;
+    pub fn findAttribute(self: *const ElementData, namespace_uri: ?[]const u8, local_name: []const u8) ?AttributeEntry {
+        const index = self.indexOfAttribute(namespace_uri, local_name) orelse return null;
+        return self.stored()[index].entry();
     }
 
     /// The attribute at `index` in list order, or null past the end.
-    pub fn attributeAt(self: *const ElementData, index: usize) ?*const AttributeEntry {
-        if (index < self.inline_attr_count) {
-            if (self.inline_attrs[index]) |*entry| return entry;
-            return null;
-        }
-        const heap = if (self.heap_attrs) |*h| h else return null;
-        const heap_index = index - self.inline_attr_count;
-        if (heap_index >= heap.items.len) return null;
-        return &heap.items[heap_index];
-    }
-
-    /// `attributeAt`, for Element's writes.
-    pub fn attributeAtMut(self: *ElementData, index: usize) ?*AttributeEntry {
-        if (index < self.inline_attr_count) {
-            if (self.inline_attrs[index]) |*entry| return entry;
-            return null;
-        }
-        const heap = if (self.heap_attrs) |*h| h else return null;
-        const heap_index = index - self.inline_attr_count;
-        if (heap_index >= heap.items.len) return null;
-        return &heap.items[heap_index];
+    pub fn attributeAt(self: *const ElementData, index: usize) ?AttributeEntry {
+        const items = self.stored();
+        if (index >= items.len) return null;
+        return items[index].entry();
     }
 
     /// Index of the attribute whose namespace is `namespace_uri` and local
     /// name is `local_name`. There is at most one.
     pub fn indexOfAttribute(self: *const ElementData, namespace_uri: ?[]const u8, local_name: []const u8) ?usize {
-        var it = self.attributeIterator();
-        var index: usize = 0;
-        while (it.next()) |entry| : (index += 1) {
-            if (entry.isNamed(namespace_uri, local_name)) return index;
+        for (self.stored(), 0..) |attribute, index| {
+            if (attribute.name.isNamed(namespace_uri, local_name)) return index;
         }
         return null;
     }
@@ -272,38 +424,131 @@ pub const ElementData = struct {
     /// Index of the FIRST attribute whose qualified name is `qualified_name`.
     /// Two attributes in different namespaces can share one.
     pub fn indexOfQualifiedName(self: *const ElementData, qualified_name: []const u8) ?usize {
-        var it = self.attributeIterator();
-        var index: usize = 0;
-        while (it.next()) |entry| : (index += 1) {
-            if (entry.qualifiedNameIs(qualified_name)) return index;
+        for (self.stored(), 0..) |attribute, index| {
+            if (attribute.name.qualifiedNameIs(qualified_name)) return index;
         }
         return null;
     }
 
-    /// Remove the attribute at `index` and hand its entry, strings and all,
-    /// to the caller. The list keeps its order: attribute order is observable
-    /// through `attributes` and `getAttributeNames()`.
-    pub fn takeAttributeAt(self: *ElementData, index: usize) AttributeEntry {
-        if (index < self.inline_attr_count) {
-            const entry = self.inline_attrs[index].?;
-            var j = index;
-            while (j + 1 < self.inline_attr_count) : (j += 1) {
-                self.inline_attrs[j] = self.inline_attrs[j + 1];
-            }
-            self.inline_attr_count -= 1;
-            self.inline_attrs[self.inline_attr_count] = null;
+    // ------------------------------------------------------------------
+    // Element's writes. Each takes the index (or name) afresh: no caller
+    // holds a pointer into the list across one.
+    // ------------------------------------------------------------------
 
-            // The first heap attribute follows the last inline one, so it is
-            // the one that moves into the freed inline slot.
-            if (self.heap_attrs) |*heap| {
-                if (heap.items.len > 0) {
-                    self.inline_attrs[self.inline_attr_count] = heap.orderedRemove(0);
-                    self.inline_attr_count += 1;
-                }
-            }
-            return entry;
+    /// The attribute at `index` as stored (its name record and value), or
+    /// null past the end - Element's, for its writes.
+    pub fn storedAt(self: *const ElementData, index: usize) ?Attribute {
+        const items = self.stored();
+        if (index >= items.len) return null;
+        return items[index];
+    }
+
+    /// Append an attribute to the list; the list takes its value and, if it
+    /// is its own, its name - on success only. Element's "append an
+    /// attribute" step 1. The list may MOVE.
+    pub fn appendAttribute(self: *ElementData, allocator: std.mem.Allocator, attribute: Attribute) !void {
+        const list = if (self.attrs) |list| try list.withRoom(allocator) else try AttributeList.create(allocator, 1);
+        self.attrs = list;
+        list.slots()[list.len] = attribute;
+        list.len += 1;
+    }
+
+    /// Remove the attribute at `index` and hand it - value and name - to the
+    /// caller (`freeAttribute`). The list keeps its order (attribute order is
+    /// observable through `attributes` and `getAttributeNames()`), and goes
+    /// with its last attribute.
+    pub fn takeAttributeAt(self: *ElementData, allocator: std.mem.Allocator, index: usize) Attribute {
+        const list = self.attrs.?;
+        const items = list.items();
+        const attribute = items[index];
+        std.mem.copyForwards(Attribute, items[index .. items.len - 1], items[index + 1 ..]);
+        list.len -= 1;
+        if (list.len == 0) {
+            list.destroy(allocator);
+            self.attrs = null;
         }
-        return self.heap_attrs.?.orderedRemove(index - self.inline_attr_count);
+        return attribute;
+    }
+
+    /// Set the value of the attribute at `index`, which takes `value`, and
+    /// return its old one for the caller to free once nothing reads it.
+    pub fn setValueAt(self: *ElementData, index: usize, value: []const u8) []const u8 {
+        const slot = &self.attrs.?.items()[index];
+        const old = slot.value;
+        slot.value = value;
+        return old;
+    }
+
+    /// Set the name record of the attribute at `index` (the same namespace
+    /// and local name; "replace" gives it another prefix), and return its old
+    /// one for the caller to free (`QualifiedName.destroy`, if owned). An Attr
+    /// node kept for the attribute follows it to the new record.
+    pub fn setNameAt(self: *ElementData, index: usize, name: *const QualifiedName) *const QualifiedName {
+        const slot = &self.attrs.?.items()[index];
+        const old = slot.name;
+        std.debug.assert(name.isNamed(old.namespace_uri, old.local_name));
+        slot.name = name;
+        if (self.attr_nodes) |nodes| if (nodes.indexOf(old)) |i| {
+            nodes.entries.items[i].name = name;
+        };
+        return old;
+    }
+
+    /// Re-derive the element's ID from the list: its id attribute's value in
+    /// no namespace, or empty ("set / unset element's ID").
+    pub fn rederiveId(self: *ElementData) void {
+        self.id = viewOf(self.findAttribute(null, "id"));
+    }
+
+    /// Re-derive the element's classes from the list: its class attribute's
+    /// value in no namespace, or empty.
+    pub fn rederiveClassName(self: *ElementData) void {
+        self.class_name = viewOf(self.findAttribute(null, "class"));
+    }
+
+    fn viewOf(attribute: ?AttributeEntry) runtime.DOMString {
+        const found = attribute orelse return .{ .empty = {} };
+        if (found.value.len == 0) return .{ .empty = {} };
+        return runtime.DOMString.initInterned(found.value);
+    }
+
+    /// The Attr node kept for the attribute named by `name`, if any.
+    pub fn attrNodeOf(self: *const ElementData, name: *const QualifiedName) ?AttrNodeLink {
+        const nodes = self.attr_nodes orelse return null;
+        const index = nodes.indexOf(name) orelse return null;
+        return nodes.entries.items[index].node;
+    }
+
+    /// Keep `node` as the Attr node of the attribute named by `name`, and
+    /// return the one kept before, if any.
+    pub fn setAttrNode(self: *ElementData, allocator: std.mem.Allocator, name: *const QualifiedName, node: AttrNodeLink) !?AttrNodeLink {
+        const nodes = self.attr_nodes orelse made: {
+            const made = try allocator.create(AttrNodeList);
+            made.* = .{};
+            self.attr_nodes = made;
+            break :made made;
+        };
+        if (nodes.indexOf(name)) |index| {
+            const old = nodes.entries.items[index].node;
+            nodes.entries.items[index].node = node;
+            return old;
+        }
+        try nodes.entries.append(allocator, .{ .name = name, .node = node });
+        return null;
+    }
+
+    /// Stop keeping the Attr node of the attribute named by `name` and hand
+    /// it back; the list goes with its last node.
+    pub fn takeAttrNode(self: *ElementData, allocator: std.mem.Allocator, name: *const QualifiedName) ?AttrNodeLink {
+        const nodes = self.attr_nodes orelse return null;
+        const index = nodes.indexOf(name) orelse return null;
+        const node = nodes.entries.swapRemove(index).node;
+        if (nodes.entries.items.len == 0) {
+            nodes.entries.deinit(allocator);
+            allocator.destroy(nodes);
+            self.attr_nodes = null;
+        }
+        return node;
     }
 };
 
@@ -312,7 +557,7 @@ pub const ElementData = struct {
 /// `local_name`, or null. Borrowed.
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-get-by-namespace
-pub fn getAttributeByNamespaceAndLocalName(data: *const ElementData, namespace: ?[]const u8, local_name: []const u8) ?*const AttributeEntry {
+pub fn getAttributeByNamespaceAndLocalName(data: *const ElementData, namespace: ?[]const u8, local_name: []const u8) ?AttributeEntry {
     // Step 1: "If namespace is the empty string, then set it to null."
     const ns: ?[]const u8 = if (namespace) |n| (if (n.len == 0) null else n) else null;
     // Step 2: "Return the attribute in element's attribute list whose
@@ -340,7 +585,7 @@ pub fn getAttributeValue(data: *const ElementData, local_name: []const u8, names
 /// Whether the element has an attribute in no namespace with this local name
 /// - a boolean content attribute's state (HTML 2.3.2).
 pub fn hasAttribute(data: *const ElementData, local_name: []const u8) bool {
-    return data.findAttribute(null, local_name) != null;
+    return data.indexOfAttribute(null, local_name) != null;
 }
 
 /// What Element supplies.
@@ -368,45 +613,46 @@ pub fn of(element: *runtime.Instance) ?*const ElementData {
 // Tests
 // ============================================================================
 
-fn testEntry(allocator: std.mem.Allocator, namespace: ?[]const u8, prefix: ?[]const u8, local_name: []const u8, value: []const u8) !AttributeEntry {
-    const ns = if (namespace) |n| try allocator.dupe(u8, n) else null;
-    errdefer if (ns) |n| allocator.free(n);
-    const p = if (prefix) |text| try allocator.dupe(u8, text) else null;
-    errdefer if (p) |text| allocator.free(text);
-    const name = try allocator.dupe(u8, local_name);
-    errdefer allocator.free(name);
-    return .{ .namespace_uri = ns, .prefix = p, .local_name = name, .value = try allocator.dupe(u8, value) };
+fn testAttribute(allocator: std.mem.Allocator, namespace: ?[]const u8, prefix: ?[]const u8, local_name: []const u8, value: []const u8) !Attribute {
+    const name = try QualifiedName.create(allocator, namespace, prefix, local_name);
+    errdefer name.destroy(allocator);
+    return .{ .name = name, .value = try allocator.dupe(u8, value) };
 }
 
-test "the list keeps its order across the inline slots and the heap" {
+test "the list keeps its order as it grows past four and shrinks to nothing" {
     const allocator = std.testing.allocator;
-    var data = ElementData.init(allocator);
-    defer data.deinit();
+    var data = ElementData.init();
+    defer data.deinit(allocator);
 
+    try std.testing.expect(data.attrs == null);
     const names = [_][]const u8{ "a", "b", "c", "d", "e", "f" };
-    for (names) |name| try data.addAttribute(try testEntry(allocator, null, null, name, name));
+    for (names) |name| try data.appendAttribute(allocator, try testAttribute(allocator, null, null, name, name));
     try std.testing.expectEqual(@as(usize, 6), data.getAttributeCount());
-    try std.testing.expectEqual(@as(u8, INLINE_ATTR_CAPACITY), data.inline_attr_count);
+    try std.testing.expectEqual(@as(u32, 8), data.attrs.?.cap);
     for (names, 0..) |name, i| try std.testing.expectEqualStrings(name, data.attributeAt(i).?.local_name);
     try std.testing.expect(data.attributeAt(6) == null);
 
-    // Taking an inline attribute moves the first heap one into the inline
-    // slots: the order is unchanged.
-    ElementData.freeAttributeEntry(allocator, data.takeAttributeAt(1));
+    // Taking one keeps the others' order.
+    ElementData.freeAttribute(allocator, data.takeAttributeAt(allocator, 1));
     const rest = [_][]const u8{ "a", "c", "d", "e", "f" };
     var it = data.attributeIterator();
     for (rest) |name| try std.testing.expectEqualStrings(name, it.next().?.local_name);
     try std.testing.expect(it.next() == null);
     try std.testing.expectEqual(@as(usize, 3), data.indexOfAttribute(null, "e").?);
+
+    // The list goes with its last attribute.
+    while (data.getAttributeCount() > 0) ElementData.freeAttribute(allocator, data.takeAttributeAt(allocator, 0));
+    try std.testing.expect(data.attrs == null);
 }
 
 test "attributes are named by namespace and local name, and found by qualified name" {
     const allocator = std.testing.allocator;
-    var data = ElementData.init(allocator);
-    defer data.deinit();
+    var data = ElementData.init();
+    defer data.deinit(allocator);
 
-    try data.addAttribute(try testEntry(allocator, "urn:x", "x", "title", "namespaced"));
-    try data.addAttribute(try testEntry(allocator, null, null, "title", "plain"));
+    try data.appendAttribute(allocator, try testAttribute(allocator, "urn:x", "x", "title", "namespaced"));
+    const plain_name: QualifiedName = .{ .local_name = "title" };
+    try data.appendAttribute(allocator, .{ .name = &plain_name, .value = try allocator.dupe(u8, "plain") });
 
     // By namespace and local name: one each; "" is null for the algorithm.
     try std.testing.expectEqualStrings("plain", getAttributeValue(&data, "title", null));
@@ -422,6 +668,54 @@ test "attributes are named by namespace and local name, and found by qualified n
     try std.testing.expectEqual(@as(usize, 0), data.indexOfQualifiedName("x:title").?);
     try std.testing.expectEqual(@as(usize, 1), data.indexOfQualifiedName("title").?);
     try std.testing.expect(data.indexOfQualifiedName("y:title") == null);
+}
+
+test "an attribute's own name is one allocation; a named namespace stays static" {
+    const allocator = std.testing.allocator;
+    const xlink = try QualifiedName.create(allocator, infra.namespaces.XLINK_NAMESPACE, "xlink", "href");
+    defer xlink.destroy(allocator);
+    try std.testing.expect(xlink.isOwned());
+    try std.testing.expect(xlink.namespace_uri.?.ptr == infra.namespaces.XLINK_NAMESPACE.ptr);
+    try std.testing.expect(xlink.eql(infra.namespaces.XLINK_NAMESPACE, "xlink", "href"));
+    try std.testing.expect(xlink.qualifiedNameIs("xlink:href"));
+    try std.testing.expectEqual(@as(u32, @sizeOf(QualifiedName) + "href".len + "xlink".len), xlink.owned_bytes);
+
+    const other = try QualifiedName.create(allocator, "urn:other", null, "data-x");
+    defer other.destroy(allocator);
+    try std.testing.expectEqualStrings("urn:other", other.namespace_uri.?);
+    try std.testing.expect(other.prefix == null);
+    try std.testing.expectEqual(@as(u32, @sizeOf(QualifiedName) + "data-x".len + "urn:other".len), other.owned_bytes);
+}
+
+test "views survive the list's reallocation; Attr node links follow a renamed attribute" {
+    const allocator = std.testing.allocator;
+    var data = ElementData.init();
+    defer data.deinit(allocator);
+
+    try data.appendAttribute(allocator, try testAttribute(allocator, null, null, "id", "main"));
+    data.rederiveId();
+    const first = data.attributeAt(0).?;
+    var i: usize = 0;
+    while (i < 20) : (i += 1) {
+        var buffer: [16]u8 = undefined;
+        const name = try std.fmt.bufPrint(&buffer, "a{d}", .{i});
+        try data.appendAttribute(allocator, try testAttribute(allocator, null, null, name, name));
+    }
+    // The view taken before and the ID read the value's own buffer.
+    try std.testing.expectEqualStrings("main", first.value);
+    try std.testing.expectEqualStrings("main", data.id.asSlice());
+
+    // An Attr node link is keyed by the name record and follows "replace".
+    const name0 = data.storedAt(0).?.name;
+    var fake: runtime.Instance = undefined;
+    const link: AttrNodeLink = .{ .instance = &fake, .generation = 7 };
+    try std.testing.expect((try data.setAttrNode(allocator, name0, link)) == null);
+    const renamed = try QualifiedName.create(allocator, null, null, "id");
+    const old = data.setNameAt(0, renamed);
+    old.destroy(allocator);
+    try std.testing.expect(data.attrNodeOf(renamed).?.generation == 7);
+    try std.testing.expect(data.takeAttrNode(allocator, renamed) != null);
+    try std.testing.expect(data.attr_nodes == null);
 }
 
 test "without an installed implementation no node has element data" {

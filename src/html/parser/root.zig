@@ -82,6 +82,11 @@ pub const internTagNameExact = tag_name_intern.internExact;
 pub const isKnownHtmlTag = tag_name_intern.isKnownHtmlTag;
 pub const eqlInternedTag = tag_name_intern.eqlInterned;
 
+// Attribute qualified names every element shares (lane perf3 D1): an
+// attribute with a known name points to its static record.
+pub const attribute_name_intern = @import("attribute_name_intern.zig");
+pub const internAttributeName = attribute_name_intern.intern;
+
 // Document write support (document.write/writeln/open/close)
 pub const document_write = @import("document_write.zig");
 pub const DocumentWriteState = document_write.DocumentWriteState;
@@ -104,5 +109,6 @@ test {
     _ = @import("fragment_parser.zig");
     _ = @import("document_write.zig");
     _ = @import("tag_name_intern.zig");
+    _ = @import("attribute_name_intern.zig");
     // NOTE: dom_tree_adapter.zig tests are run from html (full.zig) module
 }
