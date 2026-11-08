@@ -983,6 +983,42 @@ pub extern fn v8_Isolate_GetHeapUsage(
 /// by V8 and updated as each is created or reset. In every build: the measure
 /// for a test asserting that an operation leaves no handle behind.
 pub extern fn v8_Isolate_GetGlobalHandleBytes(isolate: *Isolate) usize;
+/// Whether `isolate` has a C++ heap (cppgc): every isolate v8_wrapper.cpp
+/// makes has one (the wrapper redesign's P3, IsolateData::cpp_heap).
+pub extern fn v8_Isolate_HasCppHeap(isolate: *Isolate) bool;
+/// The bytes of the objects on `isolate`'s C++ heap (its allocated object
+/// size, read from counters - nothing is swept); 0 with no heap. The
+/// diagnostics tier's `cpp_heap_used_bytes`.
+pub extern fn v8_Isolate_CppHeapUsedBytes(isolate: *Isolate) usize;
+/// `sizeof(cppgc::Member<T>)` as v8_wrapper.cpp is compiled: 4 with the
+/// archive's CPPGC_POINTER_COMPRESSION. For tests/v8/cpp_heap_test.zig.
+pub extern fn v8_test_CppgcMemberSize() usize;
+/// tests/v8/cpp_heap_test.zig's probe on an isolate's C++ heap: a holder
+/// rooted by a cppgc::Persistent holding a leaf through a cppgc::Member
+/// (v8_wrapper.cpp says what it answers).
+pub const CppHeapProbe = opaque {};
+/// What the probe saw; mirrors v8_wrapper.cpp's CraneCppHeapProbeState.
+pub const CppHeapProbeState = extern struct {
+    holder_alive: bool,
+    leaf_alive: bool,
+    /// The holder's Member reads back the leaf it was given.
+    member_matches: bool,
+    /// The holder's Trace calls; those on another thread than the probe's;
+    /// those outside a mark-compact's GC prologue..epilogue.
+    traces: u32,
+    traces_off_thread: u32,
+    traces_outside_pause: u32,
+};
+/// The probe, made on the agent's thread with its isolate entered; null when
+/// the isolate has no C++ heap. OWNED: v8_test_CppHeapProbe_Delete, before
+/// the agent ends.
+pub extern fn v8_test_CppHeapProbe_New(isolate: *Isolate) ?*CppHeapProbe;
+/// A full collection of the probe's isolate, with no conservative stack scan.
+pub extern fn v8_test_CppHeapProbe_Collect(probe: *CppHeapProbe) void;
+/// The holder is rooted no more.
+pub extern fn v8_test_CppHeapProbe_DropRoot(probe: *CppHeapProbe) void;
+pub extern fn v8_test_CppHeapProbe_State(probe: *CppHeapProbe, out: *CppHeapProbeState) void;
+pub extern fn v8_test_CppHeapProbe_Delete(probe: *CppHeapProbe) void;
 /// Native contexts alive in the heap, and how many of those V8 counts as
 /// detached. A page whose contexts outlive it shows here exactly.
 pub extern fn v8_Isolate_GetContextCounts(

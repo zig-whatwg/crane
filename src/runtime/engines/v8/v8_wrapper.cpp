@@ -18,6 +18,18 @@
 #include <libplatform/libplatform.h>
 #include <v8-profiler.h>
 #include <v8-inspector.h>  // engine.evaluateReplScript (lane console1)
+// Each agent's C++ heap (cppgc), the wrapper redesign's P3
+// (tmp/redesign/wrapper-redesign-design.md 4.12): build.zig compiles this file
+// with the archive's cppgc defines, so these headers agree with the library.
+#include <v8-cppgc.h>
+#include <cppgc/allocation.h>
+#include <cppgc/garbage-collected.h>
+#include <cppgc/member.h>
+#include <cppgc/persistent.h>
+#include <cppgc/platform.h>
+#include <cppgc/testing.h>
+#include <cppgc/visitor.h>
+#include <thread>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -3057,6 +3069,169 @@ void v8_Isolate_Enter(Isolate* isolate) {
 
 void v8_Isolate_Exit(Isolate* isolate) {
     isolate->Exit();
+}
+
+// ----------------------------------------------------------------------------
+// The agent's C++ heap (the wrapper redesign's P3: used by nothing yet)
+// ----------------------------------------------------------------------------
+
+/// Whether `isolate` has a C++ heap (Isolate::GetCppHeap): every isolate this
+/// file makes has one from Isolate::Initialize on (IsolateData::cpp_heap).
+bool v8_Isolate_HasCppHeap(Isolate* isolate) {
+    return isolate && isolate->GetCppHeap() != nullptr;
+}
+
+/// The bytes of the objects on `isolate`'s C++ heap: CppHeap::CollectStatistics
+/// at the brief level, its allocated object size - counters only, it sweeps
+/// nothing (13.1.203 src/heap/cppgc/heap-base.cc, CollectStatistics). 0 with no
+/// heap. The diagnostics tier's `cpp_heap_used_bytes`.
+size_t v8_Isolate_CppHeapUsedBytes(Isolate* isolate) {
+    CppHeap* heap = isolate ? isolate->GetCppHeap() : nullptr;
+    if (!heap) return 0;
+    return heap->CollectStatistics(cppgc::HeapStatistics::DetailLevel::kBrief).used_size_bytes;
+}
+
+// ---- tests/v8/cpp_heap_test.zig's probe ----
+//
+// A holder rooted by a cppgc::Persistent holds a leaf through a cppgc::Member.
+// It answers what P3's red tests ask (design section 7, P3; risks R6, R7):
+// - whether a Member reads back the object it was given: the cppgc defines
+//   build.zig compiles this file with must be the archive's, or the headers
+//   compress Member pointers with another shift than the library decompresses
+//   them with;
+// - whether a forced collection keeps both while the holder is rooted, and
+//   frees both once it is not (weak persistents observe them without keeping
+//   them);
+// - where the holder's Trace runs: on the agent's thread, inside a major GC's
+//   pause (between the prologue and epilogue V8 calls for mark-compact), never
+//   while script runs - the atomic marking the host's tree walk will rely on
+//   (design 4.4, 4.12).
+
+/// What the probe saw; ffi.zig's CppHeapProbeState mirrors it.
+struct CraneCppHeapProbeState {
+    bool holder_alive;
+    bool leaf_alive;
+    /// The holder's Member reads back the leaf MakeGarbageCollected made.
+    bool member_matches;
+    /// The holder's Trace calls, those on another thread than the probe's,
+    /// and those outside a mark-compact's prologue..epilogue.
+    uint32_t traces;
+    uint32_t traces_off_thread;
+    uint32_t traces_outside_pause;
+};
+
+namespace {
+
+struct CppHeapProbe;
+
+class ProbeLeaf final : public cppgc::GarbageCollected<ProbeLeaf> {
+ public:
+    void Trace(cppgc::Visitor*) const {}
+};
+
+class ProbeHolder final : public cppgc::GarbageCollected<ProbeHolder> {
+ public:
+    ProbeHolder(CppHeapProbe* probe, ProbeLeaf* leaf) : probe_(probe), leaf_(leaf) {}
+    void Trace(cppgc::Visitor* visitor) const;
+    const ProbeLeaf* leaf() const { return leaf_.Get(); }
+
+ private:
+    /// The probe outlives every collection it watches (v8_test_CppHeapProbe_Delete).
+    CppHeapProbe* probe_;
+    cppgc::Member<ProbeLeaf> leaf_;
+};
+
+struct CppHeapProbe {
+    Isolate* isolate = nullptr;
+    CppHeap* heap = nullptr;
+    /// The agent's thread: the one that made the probe.
+    std::thread::id thread;
+    /// Set by the mark-compact GC prologue, cleared by its epilogue.
+    std::atomic<bool> in_major_gc{false};
+    std::atomic<uint32_t> traces{0};
+    std::atomic<uint32_t> traces_off_thread{0};
+    std::atomic<uint32_t> traces_outside_pause{0};
+    const ProbeLeaf* leaf_address = nullptr;
+    cppgc::Persistent<ProbeHolder> root;
+    cppgc::WeakPersistent<ProbeHolder> holder;
+    cppgc::WeakPersistent<ProbeLeaf> leaf;
+
+    // Members, so that they have C++ linkage inside this extern "C" block.
+    static void majorGCPrologue(Isolate*, GCType, GCCallbackFlags, void* data) {
+        static_cast<CppHeapProbe*>(data)->in_major_gc.store(true, std::memory_order_relaxed);
+    }
+    static void majorGCEpilogue(Isolate*, GCType, GCCallbackFlags, void* data) {
+        static_cast<CppHeapProbe*>(data)->in_major_gc.store(false, std::memory_order_relaxed);
+    }
+};
+
+void ProbeHolder::Trace(cppgc::Visitor* visitor) const {
+    probe_->traces.fetch_add(1, std::memory_order_relaxed);
+    if (std::this_thread::get_id() != probe_->thread) probe_->traces_off_thread.fetch_add(1, std::memory_order_relaxed);
+    if (!probe_->in_major_gc.load(std::memory_order_relaxed)) probe_->traces_outside_pause.fetch_add(1, std::memory_order_relaxed);
+    visitor->Trace(leaf_);
+}
+
+}  // namespace
+
+/// `sizeof(cppgc::Member<T>)` as this file is compiled: 4 with the archive's
+/// CPPGC_POINTER_COMPRESSION (the ABI check, design 4.12).
+size_t v8_test_CppgcMemberSize() {
+    return sizeof(cppgc::Member<ProbeLeaf>);
+}
+
+/// The probe on `isolate`'s C++ heap, made on the agent's thread with the
+/// isolate entered; null when the isolate has no heap. OWNED:
+/// v8_test_CppHeapProbe_Delete, before the agent ends.
+CppHeapProbe* v8_test_CppHeapProbe_New(Isolate* isolate) {
+    CppHeap* heap = isolate ? isolate->GetCppHeap() : nullptr;
+    if (!heap) return nullptr;
+    auto* probe = new CppHeapProbe();
+    probe->isolate = isolate;
+    probe->heap = heap;
+    probe->thread = std::this_thread::get_id();
+    ProbeLeaf* leaf = cppgc::MakeGarbageCollected<ProbeLeaf>(heap->GetAllocationHandle());
+    ProbeHolder* holder = cppgc::MakeGarbageCollected<ProbeHolder>(heap->GetAllocationHandle(), probe, leaf);
+    probe->leaf_address = leaf;
+    probe->root = holder;
+    probe->holder = holder;
+    probe->leaf = leaf;
+    isolate->AddGCPrologueCallback(CppHeapProbe::majorGCPrologue, probe, kGCTypeMarkSweepCompact);
+    isolate->AddGCEpilogueCallback(CppHeapProbe::majorGCEpilogue, probe, kGCTypeMarkSweepCompact);
+    return probe;
+}
+
+/// A full collection of the probe's isolate (LowMemoryNotification), with no
+/// conservative scan of the stack: a pointer left in a frame must not keep the
+/// test's objects (cppgc::testing::OverrideEmbedderStackStateScope; the
+/// probe's objects are reached only through its persistents).
+void v8_test_CppHeapProbe_Collect(CppHeapProbe* probe) {
+    cppgc::testing::OverrideEmbedderStackStateScope no_stack_scan(probe->heap->GetHeapHandle(),
+                                                                  cppgc::EmbedderStackState::kNoHeapPointers);
+    probe->isolate->LowMemoryNotification();
+}
+
+/// The holder is rooted no more.
+void v8_test_CppHeapProbe_DropRoot(CppHeapProbe* probe) {
+    probe->root.Clear();
+}
+
+void v8_test_CppHeapProbe_State(CppHeapProbe* probe, CraneCppHeapProbeState* out) {
+    const ProbeHolder* holder = probe->holder.Get();
+    out->holder_alive = holder != nullptr;
+    out->leaf_alive = probe->leaf.Get() != nullptr;
+    out->member_matches = holder && holder->leaf() == probe->leaf_address;
+    out->traces = probe->traces.load(std::memory_order_relaxed);
+    out->traces_off_thread = probe->traces_off_thread.load(std::memory_order_relaxed);
+    out->traces_outside_pause = probe->traces_outside_pause.load(std::memory_order_relaxed);
+}
+
+/// The probe's end: its GC callbacks removed, its persistents released.
+void v8_test_CppHeapProbe_Delete(CppHeapProbe* probe) {
+    if (!probe) return;
+    probe->isolate->RemoveGCPrologueCallback(CppHeapProbe::majorGCPrologue, probe);
+    probe->isolate->RemoveGCEpilogueCallback(CppHeapProbe::majorGCEpilogue, probe);
+    delete probe;
 }
 
 // Live Global<Context> handles: created minus disposed.
