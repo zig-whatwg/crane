@@ -92,7 +92,9 @@ fn makeImmortal(c: *Contents) void {
         };
         var it = block.typed();
         while (it.next()) |d| switch (d.value) {
-            .value => |v| if (v.sharedText()) |t| t.makeImmortal(),
+            // An -internal-auto-base() declaration's parsed arguments too
+            // (css.pending_values.Pending.AutoBase; its last unref frees them).
+            .value => |v| if (v == .pending) v.pending.makeImmortal() else if (v.sharedText()) |t| t.makeImmortal(),
             .css_wide => {},
         };
     }
