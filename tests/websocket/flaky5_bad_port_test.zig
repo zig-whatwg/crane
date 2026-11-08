@@ -8,43 +8,58 @@
 //! 83 "blocked" sockets looked its host up and connected: refused on most
 //! ports, and answered on any port a service listens on (sshd's 22 on the
 //! pool hosts: wss://web-platform.test:22 got as far as a TLS error). The test
-//! below listens on 10080 (Fetch's "amanda", a bad port a test can bind) and
-//! answers nothing: a socket to it must fail with no connection accepted.
+//! below listens on a bad port above 1024 (10080, Fetch's "amanda", or the
+//! next free one of the table's) and answers nothing: a socket to it must fail
+//! with no connection accepted.
 const std = @import("std");
 const io = std.testing.io;
 const Browser = @import("browser").Browser;
 const engine = @import("engine");
+const resetClose = @import("loopback_listener").resetClose;
 
-const bad_port: u16 = 10080;
+/// Fetch's bad ports that a test can bind (above 1024). The listener binds
+/// one exclusively - no SO_REUSEPORT - so a copy of this test in another
+/// process (verify mode runs them side by side) takes another, and no
+/// connection meant for one listener reaches the other.
+const bindable_bad_ports = [_]u16{ 10080, 6566, 6665, 6666, 6667, 6668, 6669, 6679, 6697, 6000, 5060, 5061, 4190, 4045, 3659, 2049, 1723, 1720, 1719 };
 
-/// A listener on the bad port that counts the connections it is offered.
+/// A listener on a bad port that counts the connections it is offered.
 const Listener = struct {
     server: std.Io.net.Server,
+    port: u16,
     thread: ?std.Thread = null,
     stopping: std.atomic.Value(bool) = .init(false),
     accepted: std.atomic.Value(u32) = .init(0),
 
+    fn open() ?Listener {
+        for (bindable_bad_ports) |port| {
+            const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(port) };
+            const server = address.listen(io, .{ .reuse_address = false }) catch continue;
+            return .{ .server = server, .port = port };
+        }
+        return null;
+    }
+
     fn serve(self: *Listener) void {
         while (true) {
             const stream = self.server.accept(io) catch continue;
-            stream.close(io);
+            // A reset, not a FIN: no TIME_WAIT keeps the port from the next copy.
+            resetClose(stream);
             if (self.stopping.load(.acquire)) return;
             _ = self.accepted.fetchAdd(1, .acq_rel);
         }
     }
 
     /// Wake the accept thread with a connection of the test's own, join it,
-    /// then close the listener.
+    /// then close the listener, and the wake-up's end last
+    /// (tests/support/loopback_listener.zig's order).
     fn stop(self: *Listener) void {
         self.stopping.store(true, .release);
-        const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(bad_port) };
-        if (address.connect(io, .{ .mode = .stream })) |wake| {
-            if (self.thread) |thread| thread.join();
-            wake.close(io);
-        } else |_| {
-            if (self.thread) |thread| thread.join();
-        }
+        const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(self.port) };
+        const wake = address.connect(io, .{ .mode = .stream }) catch |err| std.debug.panic("flaky5_bad_port_test: cannot wake the accept thread: {t}", .{err});
+        if (self.thread) |thread| thread.join();
         self.server.deinit(io);
+        wake.close(io);
     }
 };
 
@@ -55,8 +70,7 @@ fn evaluate(browser: *Browser, source: []const u8) !bool {
 }
 
 fn blockedBeforeConnecting() !void {
-    const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(bad_port) };
-    var listener: Listener = .{ .server = address.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest };
+    var listener = Listener.open() orelse return error.SkipZigTest;
     listener.thread = try std.Thread.spawn(.{}, Listener.serve, .{&listener});
     defer listener.stop();
 
@@ -65,13 +79,14 @@ fn blockedBeforeConnecting() !void {
     const url = "http://127.0.0.1/flaky5.html";
     try browser.navigateWithOptions(url, .window, .{ .skip_load = true });
     try browser.current_context.?.loadHTML("<!doctype html><body></body>", .{ .base_url = url });
-    const held = try browser.evaluateScript(
+    var script: [512]u8 = undefined;
+    const held = try browser.evaluateScript(try std.fmt.bufPrint(&script,
         \\globalThis.events = [];
-        \\const socket = new WebSocket('ws://127.0.0.1:10080/echo');
+        \\const socket = new WebSocket('ws://127.0.0.1:{d}/echo');
         \\socket.onopen = () => events.push('open');
         \\socket.onerror = () => events.push('error');
         \\socket.onclose = e => events.push('close ' + e.code + ' ' + e.wasClean);
-    );
+    , .{listener.port}));
     held.release();
     var closed = false;
     for (0..300) |_| {
