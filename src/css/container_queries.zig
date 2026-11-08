@@ -103,8 +103,13 @@ fn components(a: Allocator, text: []const u8) Allocator.Error!?[]Component {
 /// same grammar (Media Queries 4 section 3; Conditional 5 section 5.4 reuses
 /// it). Deeper makes the whole condition invalid. Each level recursed (query
 /// -> inParens) and re-tokenized its contents, so 60,000 levels overflowed
-/// the stack (lane crash1); Firefox 159 drops such a rule at its 75-block
-/// bound, Chrome 156 keeps it at 10,000 and crashes at 60,000.
+/// the stack (lane crash1). The evidence for 128 (integrator, 2026-11-08):
+/// Crane's @media bound for this grammar is 128; WebKit bounds nesting at 128
+/// too (CSSParser maximumRuleListNestingLevel, for rule lists); Firefox 159
+/// drops such a rule past its 75-block bound (cssparser
+/// REASONABLE_NESTED_BLOCK_LIMIT); Chrome 156 keeps it at 10,000 and crashes
+/// at 60,000. The user's 75-block ruling covers selector arguments and
+/// nested rules only.
 const max_nesting = 128;
 
 /// A condition nested past `max_nesting`: no <general-enclosed> fallback
