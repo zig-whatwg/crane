@@ -77,7 +77,6 @@ pub const InternalState = struct {
 
     /// StyleSheetList (from DocumentOrShadowRoot mixin), and its keeping:
     /// see same_object.KeptChild.
-    style_sheets: ?*runtime.Instance,
     style_sheets_kept: @import("same_object.zig").KeptChild = .{},
 
     /// Adopted style sheets (CSSOM 6.2.3): the view of the
@@ -104,7 +103,6 @@ pub const InternalState = struct {
             .declarative_flag = false,
             .keep_custom_element_registry_null = false,
             .host = null,
-            .style_sheets = null,
             .adopted_style_sheets = @import("dom").style.adopted.AdoptedSheets.init(allocator),
             .tree_index = @import("dom").tree_ordered_map.Maps.init(allocator, .shadow_root),
         };
@@ -213,8 +211,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 pub fn deinitOwn(instance: *runtime.Instance) void {
     // Get internal state from registry (where it was stored in init)
     if (Registry.get(instance)) |internal| {
-        if (internal.style_sheets) |ss| internal.style_sheets_kept.releaseOwned(ss);
-        internal.style_sheets = null;
+        if (internal.style_sheets_kept.get()) |ss| internal.style_sheets_kept.releaseOwned(ss);
         internal.registry_edge.release(instance);
         internal.deinit();
     }
@@ -420,9 +417,8 @@ pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.In
 /// kept as long as the shadow root (same_object.KeptChild).
 pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const sheets = internal.style_sheets orelse blk: {
+    const sheets = internal.style_sheets_kept.get() orelse blk: {
         const made = interfaces.StyleSheetList.initWith(runtime.allocatorOf(instance), instance.ctx, .{ .sheets_of = instance }) catch return error.OutOfMemory;
-        internal.style_sheets = made;
         internal.style_sheets_kept.made(made);
         break :blk made;
     };

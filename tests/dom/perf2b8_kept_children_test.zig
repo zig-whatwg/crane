@@ -65,21 +65,22 @@ const Fixture = struct {
     }
 };
 
-test "a Document hands out the same styleSheets, Selection, fonts and all every time" {
+// (getSelection() needs a browsing context - a document without one has no
+// selection - so its [SameObject] case is the page tests', e.g.
+// tests/html/page_retention_test.zig.)
+test "a Document hands out the same styleSheets, fonts and all every time" {
     var f: Fixture = undefined;
     try f.init();
     defer f.deinit();
     const document = f.document.?;
     const sheets = try interfaces.Document.get_styleSheets(document);
     try testing.expectEqual(sheets, try interfaces.Document.get_styleSheets(document));
-    const selection = (try interfaces.Document.call_getSelection(document)) orelse return error.NoSelection;
-    try testing.expectEqual(@as(?*runtime.Instance, selection), try interfaces.Document.call_getSelection(document));
     const fonts = try interfaces.Document.get_fonts(document);
     try testing.expectEqual(fonts, try interfaces.Document.get_fonts(document));
     const all = try interfaces.Document.get_all(document);
     try testing.expectEqual(all, try interfaces.Document.get_all(document));
-    // Four different objects.
-    try testing.expect(sheets != selection and sheets != fonts and sheets != all and selection != fonts and selection != all and fonts != all);
+    // Three different objects.
+    try testing.expect(sheets != fonts and sheets != all and fonts != all);
 }
 
 /// A div appended to `document`: its document element.

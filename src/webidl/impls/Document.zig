@@ -1720,9 +1720,8 @@ pub fn get_all(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // made on first use. The HTMLAllCollection template is marked
     // undetectable by the V8Interface binding code (see interface.zig
     // HTMLAllCollection handling).
-    const all = internal.all_collection orelse blk: {
+    const all = internal.all_collection_kept.get() orelse blk: {
         const made = try interfaces.HTMLAllCollection.init(internal.allocator, instance.ctx);
-        internal.all_collection = made;
         internal.all_collection_kept.made(made);
         break :blk made;
     };
@@ -1751,9 +1750,8 @@ pub fn get_permissionsPolicy(instance: *runtime.Instance) anyerror!*runtime.Inst
 /// Lazily creates a FontFaceSet on first access ([SameObject] semantics).
 pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const fonts = internal.fonts orelse blk: {
+    const fonts = internal.fonts_kept.get() orelse blk: {
         const made = interfaces.FontFaceSet.initWith(internal.allocator, instance.ctx, .{ .font_document = instance }) catch return error.OutOfMemory;
-        internal.fonts = made;
         internal.fonts_kept.made(made);
         break :blk made;
     };
@@ -1827,9 +1825,8 @@ pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.In
 /// reads this document's style engine live; made on first access.
 pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const sheets = internal.style_sheets orelse blk: {
+    const sheets = internal.style_sheets_kept.get() orelse blk: {
         const made = interfaces.StyleSheetList.initWith(internal.allocator, instance.ctx, .{ .sheets_of = instance }) catch return error.OutOfMemory;
-        internal.style_sheets = made;
         internal.style_sheets_kept.made(made);
         break :blk made;
     };
@@ -3466,14 +3463,13 @@ pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instanc
     if (internal.destroyed or internal.default_view == null) return null;
 
     // The document's one selection, made on first use.
-    const selection = internal.selection orelse blk: {
+    const selection = internal.selection_kept.get() orelse blk: {
         const made = interfaces.Selection.init(internal.allocator, instance.ctx) catch |err| {
             if (@import("builtin").mode == .debug) {
                 log.err("Failed to create Selection: {any}", .{err});
             }
             return null;
         };
-        internal.selection = made;
         internal.selection_kept.made(made);
         break :blk made;
     };
@@ -3582,7 +3578,7 @@ fn updateReadiness(instance: *runtime.Instance, readiness: enums.DocumentReadySt
     internal.ready_state = readiness;
     // Font Loading 3 §3.1: schedule an existing set's environment check.
     // Readiness changes never create a font set or run its author reactions.
-    if (internal.fonts) |fonts| if (@import("dom").style.hooks.fontSetOf(fonts)) |set| set.environmentChanged();
+    if (internal.fonts_kept.get()) |fonts| if (@import("dom").style.hooks.fontSetOf(fonts)) |set| set.environmentChanged();
     // Step 3: the load timing info's DOM complete or DOM interactive time,
     // the first time each comes - for the document its window shows (the
     // timeline keeps that document's load timing info; another document of

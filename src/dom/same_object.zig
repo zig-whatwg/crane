@@ -162,9 +162,17 @@ pub const KeptChild = struct {
     /// Whether the owner's edge to it is drawn.
     traced: bool = false,
 
-    /// `child` was just made and stored in the owner's state.
+    /// `child` was just made: the owner keeps it here, and only here.
     pub fn made(self: *KeptChild, child: *runtime.Instance) void {
         self.* = .{ .link = Link.to(child) };
+    }
+
+    /// The child the owner made, or null before it made one (and after
+    /// `release`). The owner's only pointer to it - a second `?*Instance`
+    /// beside the KeptChild held the same pointer again (lane perf2 batch 8).
+    pub fn get(self: *const KeptChild) ?*runtime.Instance {
+        const link = self.link orelse return null;
+        return link.instance;
     }
 
     /// `child` is going to script: `owner` keeps it, in its member `slot`,
