@@ -31,10 +31,12 @@ const Scenario = enum { cached_read, mutations, allocation_failure, parser_assoc
 
 fn exercise(comptime scenario: Scenario) !void {
     interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(testing.allocator);
-    defer runtime.deinitializeRuntime();
     var realm_allocations = testing.FailingAllocator.init(testing.allocator, .{});
     const object_allocator = realm_allocations.allocator();
+    // The runtime is made with the allocator the objects are: a node is made
+    // with the allocator its scope frees with (lane perf2 batch 6).
+    runtime.initializeRuntime(object_allocator);
+    defer runtime.deinitializeRuntime();
     var context = try runtime.ContextData.init(object_allocator, .{});
     defer context.deinit();
     const document = try interfaces.Document.init(object_allocator, &context);

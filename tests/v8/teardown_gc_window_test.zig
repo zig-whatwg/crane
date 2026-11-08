@@ -46,10 +46,10 @@ fn reset() void {
 /// (test_agent), ended with the test (see engine_pending_activity_test.zig);
 /// the node hooks, as a host starts them.
 fn setup() !*runtime.ContextData {
-    const isolate = try test_agent.open(.{});
+    const isolate = try test_agent.open(.{ .realm_allocator = testing.allocator });
     if (test_data == null) {
         const context = test_agent.context.?;
-        const data = try test_agent.contextData(std.heap.page_allocator, .{ .engine_ctx = context });
+        const data = try test_agent.contextData(testing.allocator, .{ .engine_ctx = context });
         data.agent = @ptrCast(isolate);
         const cache = try std.heap.page_allocator.create(WrapperCache);
         cache.* = try WrapperCache.init(std.heap.page_allocator, @ptrCast(context));

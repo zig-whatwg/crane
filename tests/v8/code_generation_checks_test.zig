@@ -274,7 +274,7 @@ test "code generation checks: a frame's realm and a worker's realm of a hooked a
         .url = "https://example.test/worker.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),
-        .allocator = std.heap.page_allocator,
+        .allocator = std.heap.c_allocator,
     });
     defer protocol.destroyWorkerRealm(worker.realm, null, null);
     try std.testing.expect(!try compilesWithoutAsking(worker.realm));

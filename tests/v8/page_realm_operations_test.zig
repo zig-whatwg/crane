@@ -2478,6 +2478,11 @@ test "a window's indexedDB, when making its IDBFactory fails at any allocation, 
     var k: usize = 0;
     while (k < 8) : (k += 1) {
         var failing = std.testing.FailingAllocator.init(debug_allocator.allocator(), .{});
+        // The Window is made with the failing allocator, so its scope is too
+        // (an EventTarget is made with the allocator its scope frees with:
+        // lane perf2 batch 6) - this round's own; the agent's comes back after.
+        const own_scope = test_process.OwnRuntime.begin(failing.allocator());
+        defer own_scope.end();
         const window = try interfaces.Window.init(failing.allocator(), w);
         failing.fail_index = failing.alloc_index + k;
         _ = interfaces.Window.get_indexedDB(window) catch {};

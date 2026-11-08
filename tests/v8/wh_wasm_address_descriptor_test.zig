@@ -307,7 +307,7 @@ test "frame and worker realms: Table and Memory take address i64" {
         .url = "https://example.test/worker.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),
-        .allocator = std.heap.page_allocator,
+        .allocator = std.heap.c_allocator,
     });
     defer protocol.destroyWorkerRealm(worker.realm, null, null);
     try expectEval(worker.realm, address_i64_checks, "ok");

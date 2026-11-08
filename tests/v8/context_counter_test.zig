@@ -72,7 +72,10 @@ fn reset() void {
 /// page's is: its own agent's (test_agent), which takes the realm down when
 /// the test ends.
 fn realm() !void {
-    const i = try test_agent.open(.{});
+    // The realm's objects are made with the counting allocator, so their
+    // scope is made with it too (lane perf2 batch 6): the scope's slab and
+    // arena grow through it.
+    const i = try test_agent.open(.{ .realm_allocator = realm_allocator.allocator() });
     if (test_isolate == null) {
         const context = test_agent.context.?;
         _ = try v8.context_manager.getOrCreate(context, realm_allocator.allocator());
@@ -192,13 +195,15 @@ const Left = struct {
 };
 
 /// What 64 runs of `body` leave behind: V8's global handle bytes of the
-/// test's isolate after a collection, and bytes of the realm's allocator. Two
-/// runs first, so that what the first call makes and later ones reuse is not
-/// counted.
+/// test's isolate after a collection, and bytes of the realm's allocator. 64
+/// runs first, so that what the first calls make and later ones reuse is not
+/// counted - the realm's scope, made with the same allocator, grows its slab
+/// and arena once to hold 64 runs' objects until their collection, and keeps
+/// what it grew (lane perf2 batch 6; two warm-up runs left 64 runs' growth).
 fn leftBy(comptime body: []const u8) !Left {
     const isolate = test_isolate.?;
     const loop = "(() => { for (let i = 0; i < {N}; i++) { " ++ body ++ " } return 0 })()";
-    _ = try scriptInt(comptime replaceN(loop, "2"));
+    _ = try scriptInt(comptime replaceN(loop, "64"));
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     const bytes_before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
     const realm_before = realm_allocator.live;

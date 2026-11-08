@@ -355,6 +355,10 @@ test "an observable array of platform objects: values converted, the owner's ste
 // Rendering and delegated rendering share one ancestor check. Each node
 // remains rooted in script for this synchronous native observation.
 fn renderingAndDelegation() !void {
+    // A page made with the test's allocator: its scope too, ended after the
+    // page (lane perf2 batch 6).
+    const own_scope = test_process.OwnRuntime.begin(testing.allocator);
+    defer own_scope.end();
     const page = try Page.openWith(testing.allocator);
     defer page.close();
     try page.eval(html_page);

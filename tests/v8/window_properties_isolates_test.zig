@@ -52,7 +52,7 @@ const Side = struct {
 
     fn steps(self: *Side) !void {
         // Each agent a Browser of its own: its objects from its own scope.
-        var scope = runtime.BrowserScope.init(std.heap.page_allocator);
+        var scope = runtime.BrowserScope.init(std.heap.c_allocator);
         defer scope.deinit();
         const no_hooks: protocol.HostHooks = .{};
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });

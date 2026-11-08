@@ -1,0 +1,12 @@
+# Testing: Give a test realm its own scope by swapping the standalone one, not by naming a browser_scope
+
+**Date**: 2026-11-08
+**Lesson**: A test realm whose objects must be made with the allocator their scope frees with gets a scope of its own most safely as the process's standalone scope for the test's life (test_process.TestAgent's own scope, OwnRuntime) - not by setting the realm's `browser_scope`, which turns on every Browser-only path that reads it.
+
+**Why**: `ContextData.browserScope()` answers the realm's own `browser_scope`, else the standalone scope - so either gives the realm's objects a scope. But about twenty places read the FIELD, not the method, and take a non-null `browser_scope` to mean "a Browser made this realm": the worker registry, shared workers and worklets, LockManager, BroadcastChannel, permissions, the media backend, the navigables (dom.browser_state), COOP access reporting (protocol_realms.zig, protocol_callbacks.zig). A test realm given one starts using supplements no Browser installed.
+
+**What Happened**: Lane perf2 batch 6 had to make every tests/v8 realm's creation allocator its scope's before asserting it (210 tests made nodes with the test's allocator over the process's page_allocator standalone scope). The first draft set `browser_scope` on every realm TestAgent made; reading the field's readers before the run showed the behaviour change. TestAgent now makes its own scope with `Options.realm_allocator`, installs it as the standalone scope from its first `open` to `close`, and ends it after the agent - the realm's `browser_scope` stays null.
+
+**Fix**: For a realm a test makes with allocator X: `TestAgent.open(.{ .realm_allocator = X })`, or `test_process.OwnRuntime.begin(X)` ended after the agent. Name a `browser_scope` only for a test of a Browser's behaviour.
+
+**Takeaway**: **"Which scope makes this realm's objects" and "is this realm a Browser's" are two questions; a test that only needs the first answers it through the standalone scope.**

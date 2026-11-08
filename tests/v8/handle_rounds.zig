@@ -57,7 +57,7 @@ pub const Page = struct {
     pub fn start(self: *Page, origin: []const u8) !void {
         test_process.start();
         interfaces.process_hooks.startHooksForTest();
-        self.scope = runtime.BrowserScope.init(std.heap.page_allocator);
+        self.scope = runtime.BrowserScope.init(std.heap.c_allocator);
         errdefer self.scope.deinit();
         self.agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
         errdefer protocol.destroyAgent(self.agent);

@@ -177,7 +177,7 @@ fn runRealm(readers: *Readers, agent: *protocol.Agent, run: Run) !void {
         .url = "https://example.test/worker.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),
-        .allocator = std.heap.page_allocator,
+        .allocator = std.heap.c_allocator,
     });
 
     readers.init(made.realm, made.global_scope);

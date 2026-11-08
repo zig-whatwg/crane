@@ -54,9 +54,12 @@ const Trial = struct {
         // A standalone runtime of this test's own, the process's given back
         // after (test_process.OwnRuntime). It outlives the agent, whose end
         // tears the realm's objects down.
-        const own_runtime = test_process.OwnRuntime.begin(testing.allocator);
-        defer own_runtime.end();
+        // Made with the failing allocator, as the realm's objects are: an
+        // object is made with the allocator its scope frees with (lane perf2
+        // batch 6), so the scope's own allocations can fail too.
         var failing = testing.FailingAllocator.init(testing.allocator, .{});
+        const own_runtime = test_process.OwnRuntime.begin(failing.allocator());
+        defer own_runtime.end();
         var counter: Counter = .{};
         {
             // The agent's own state (its isolate's allocator, its realms'

@@ -23,7 +23,7 @@ var test_agent: test_process.TestAgent = .{};
 
 test "Realm.instanceValue names an object for a call and makes no wrapper" {
     defer test_agent.close();
-    _ = try test_agent.open(.{});
+    _ = try test_agent.open(.{ .realm_allocator = std.heap.page_allocator });
     const realm_ctx = try v8.context_manager.getOrCreate(test_agent.context.?, std.heap.page_allocator);
 
     const controller = try interfaces.AbortController.call_constructor(realm_ctx);
@@ -37,7 +37,7 @@ test "Realm.instanceValue names an object for a call and makes no wrapper" {
 
 test "a Hold is given back once, and never to an object freed under it" {
     defer test_agent.close();
-    _ = try test_agent.open(.{});
+    _ = try test_agent.open(.{ .realm_allocator = std.heap.page_allocator });
     const realm_ctx = try v8.context_manager.getOrCreate(test_agent.context.?, std.heap.page_allocator);
 
     // Taken and given while the object lives: one keep, one release (an

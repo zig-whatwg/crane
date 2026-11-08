@@ -52,7 +52,7 @@ fn reset() void {
 /// the test (as teardown_document_slot_reuse_test.zig); each sweep makes its
 /// own realm data and wrapper cache.
 fn engine() !void {
-    const isolate = try test_agent.open(.{});
+    const isolate = try test_agent.open(.{ .realm_allocator = testing.allocator });
     if (test_isolate == null) {
         const context = test_agent.context.?;
         test_isolate = isolate;

@@ -87,7 +87,7 @@ const Side = struct {
 
     fn steps(self: *Side) !void {
         const allocator = self.gpa.allocator();
-        var scope = runtime.BrowserScope.init(std.heap.page_allocator);
+        var scope = runtime.BrowserScope.init(allocator);
         defer scope.deinit();
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
         defer protocol.destroyAgent(agent);

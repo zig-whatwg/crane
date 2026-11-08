@@ -31,7 +31,7 @@ var test_agent: test_process.TestAgent = .{};
 
 test "a wrap in a context no realm was made for makes no wrapper and leaves no handle" {
     defer test_agent.close();
-    const isolate = try test_agent.open(.{});
+    const isolate = try test_agent.open(.{ .realm_allocator = std.heap.page_allocator });
     // A realm's data for the agent's context, never registered with the
     // context manager: no wrapper cache the engine can find for it.
     const data = try test_agent.contextData(std.heap.page_allocator, .{ .engine_ctx = test_agent.context.? });

@@ -101,7 +101,7 @@ const Window = struct {
     fn open(from_snapshot: bool) !Window {
         const scope = try std.heap.page_allocator.create(runtime.BrowserScope);
         errdefer std.heap.page_allocator.destroy(scope);
-        scope.* = runtime.BrowserScope.init(std.heap.page_allocator);
+        scope.* = runtime.BrowserScope.init(std.heap.c_allocator);
         errdefer scope.deinit();
         const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = from_snapshot, .hooks = &no_hooks, .host = null });
         errdefer engine.destroyAgent(agent);

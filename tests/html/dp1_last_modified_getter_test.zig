@@ -62,11 +62,14 @@ test "dp1 unknown lastModified is current local time" {
 test "dp1 lastModified returns strings with the context allocator" {
     const allocator = std.testing.allocator;
     interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(allocator);
+    // The document is made with its own allocator, and its scope with that
+    // same one (a node is made with the allocator its scope frees with: lane
+    // perf2 batch 6); the realm's allocator differs from both.
+    var construction = std.testing.FailingAllocator.init(allocator, .{});
+    runtime.initializeRuntime(construction.allocator());
     defer runtime.deinitializeRuntime();
     var context = try runtime.ContextData.init(allocator, .{});
     defer context.deinit();
-    var construction = std.testing.FailingAllocator.init(allocator, .{});
     const document = try interfaces.Document.initWith(construction.allocator(), &context, .{});
     defer interfaces.Document.deinit(document);
 
