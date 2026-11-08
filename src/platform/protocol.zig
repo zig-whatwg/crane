@@ -1050,6 +1050,11 @@ pub const WebSocketNetworkOptions = extern struct {
     verify_host: bool = true,
     ca_bundle_path: Str = .{},
     has_ca_bundle: bool = false,
+    /// The Browser's TLS trust store (kit/curl trust.zig's Store, which its
+    /// network context owns): the handshake verifies against its chain,
+    /// parsed once for the Browser. BORROWED until releaseWebSocket. Null:
+    /// the CA bundle above, or the system's, as curl's CA file.
+    trust_store: ?*anyopaque = null,
     proxy_has_credentials: bool = false,
     has_no_proxy: bool = false,
     has_proxy: bool = false,

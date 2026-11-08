@@ -233,6 +233,7 @@ pub const WebSocketTransport = struct {
                 .verify_host = self.cert_options.verify_host,
                 .ca_bundle_path = .from(self.cert_options.ca_bundle_path orelse ""),
                 .has_ca_bundle = self.cert_options.ca_bundle_path != null,
+                .trust_store = self.cert_options.trust,
                 .proxy_has_credentials = if (proxy) |p| p.username != null and p.password != null else false,
                 .has_no_proxy = if (proxy) |p| p.no_proxy != null else false,
                 .has_proxy = proxy != null,

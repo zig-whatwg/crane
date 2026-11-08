@@ -110,6 +110,8 @@ const Instance = engine.Instance;
 const Allocator = std.mem.Allocator;
 
 // 4.1 Engine and agents
+/// JSC keeps no per-process state that threads inherit.
+pub fn initializeBeforeThreadCreation() void {}
 /// JSC has no process-wide state to set up.
 pub fn initializeEngine(_: engine.EngineOptions) Error!void {}
 pub fn deinitializeEngine() void {}

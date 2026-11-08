@@ -79,27 +79,40 @@ pub fn Reaction(comptime runtime: type, comptime engine: type) type {
             const owned = try allocator.create(OwnedData);
             owned.* = .{ .allocator = allocator };
             errdefer owned.deinit();
-            owned.callback = .{
-                .function = try engine.retainValue(realm, callback.function.value),
-                .context = callback.context,
-            };
+            // Every owned value is made first and stored whole: stored with a
+            // `try` inside its initializer, an optional is made non-null and a
+            // union takes its tag before the `try` runs (the literal is built
+            // in place), and a failure left the errdefer above releasing a
+            // value never written (lane linux1: a free of a garbage
+            // local_name on x86-64 Linux).
+            const function = try engine.retainValue(realm, callback.function.value);
+            owned.callback = .{ .function = function, .context = callback.context };
             switch (args) {
                 .none => {},
                 .adopted => |adopted| {
-                    owned.old_document = try engine.retainValue(realm, .{ .instance = adopted.old_document });
-                    owned.new_document = try engine.retainValue(realm, .{ .instance = adopted.new_document });
+                    const old_document = try engine.retainValue(realm, .{ .instance = adopted.old_document });
+                    owned.old_document = old_document;
+                    const new_document = try engine.retainValue(realm, .{ .instance = adopted.new_document });
+                    owned.new_document = new_document;
                     owned.args = args;
                 },
-                .attribute_changed => |attribute| owned.args = .{ .attribute_changed = try copyAttributeArgs(allocator, attribute) },
+                .attribute_changed => |attribute| {
+                    const copy = try copyAttributeArgs(allocator, attribute);
+                    owned.args = .{ .attribute_changed = copy };
+                },
                 .form_associated => |form| {
                     // Null has no engine-owned payload. A non-null owner is
                     // captured as a wrapper before native adoption/teardown.
-                    if (form) |object| owned.form_value = try engine.retainValue(realm, .{ .instance = object });
+                    if (form) |object| {
+                        const value = try engine.retainValue(realm, .{ .instance = object });
+                        owned.form_value = value;
+                    }
                     owned.args = args;
                 },
                 .form_disabled => owned.args = args,
                 .form_state_restore => |restore| {
-                    owned.form_value = try engine.retainValue(realm, restore.state);
+                    const value = try engine.retainValue(realm, restore.state);
+                    owned.form_value = value;
                     owned.args = args;
                 },
             }

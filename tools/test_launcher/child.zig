@@ -1035,6 +1035,18 @@ test "real processes: the Crane test runner fails a test that leaves process sta
     }
 }
 
+/// What a load through a pointer made of poison (0x5555555555555555, read
+/// from a destroyed struct) prints. On x86-64 that address is not canonical
+/// (bits 63-48 do not repeat bit 47), so the load raises a general
+/// protection exception, #GP, which carries no fault address and Zig's
+/// handler names as such; on arm64 it is an ordinary translation fault - a
+/// segmentation fault at the address (lane linux1: the first x86-64 Linux
+/// run printed "General protection exception" here).
+const poisoned_pointer_fault = switch (builtin.cpu.arch) {
+    .x86_64 => "General protection exception",
+    else => "Segmentation fault",
+};
+
 test "real processes: a read after a free fails its test by name - it reads the poison or faults - and CRANE_POISON_FREES=0 lets it read the old bytes" {
     // build.zig compiles tests/test_runner_fixture/poison_fixture.zig with
     // the Crane test runner and passes its path (lane poison2). Without
@@ -1054,7 +1066,7 @@ test "real processes: a read after a free fails its test by name - it reads the 
     const cases = [_]struct { name: []const u8, poisoned: sched.Status, says: ?[]const u8 }{
         // SafeAllocator's 0x55 read back: expected 0x1122334455667788.
         .{ .name = "std.testing.allocator: reads a field through a pointer kept past its destroy", .poisoned = .fail, .says = "expected 1234605616436508552, found 6148914691236517205" },
-        .{ .name = "std.testing.allocator: follows a pointer read from a destroyed struct", .poisoned = .crash, .says = "Segmentation fault" },
+        .{ .name = "std.testing.allocator: follows a pointer read from a destroyed struct", .poisoned = .crash, .says = poisoned_pointer_fault },
         // poisoning.byte, 0xdd, read back.
         .{ .name = "a test's own DebugAllocator: reads a field through a pointer kept past its destroy", .poisoned = .fail, .says = "expected 1234605616436508552, found 15987178197214944733" },
         .{ .name = "a test's own DebugAllocator: reads a slice's bytes after its free", .poisoned = .fail, .says = "expected 17, found 221" },
