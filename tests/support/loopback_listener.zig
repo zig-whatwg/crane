@@ -20,6 +20,14 @@
 //! once ran a stress test of 3,000 stops into EADDRNOTAVAIL within seconds
 //! when four copies ran together (lane fixes1).
 //!
+//! A client connecting as the listener closes may get no answer at all on
+//! Linux: when its final ACK meets the close, the kernel drops the ACK
+//! without a reset and leaves the client ESTABLISHED with no peer
+//! (tests/fetch/loopback_listener_test.zig's connectOnce says how; lane
+//! linux1 b2). A client of a fixture bounds its wait for the end of a
+//! connection the fixture's stop may have dropped, as every real client's
+//! timeout does.
+//!
 //!     // start:  self.listener = try LoopbackListener.open(.{});
 //!     //         thread = try std.Thread.spawn(.{}, serve, .{self});
 //!     // serve:  while (self.listener.accept()) |stream| { ... }

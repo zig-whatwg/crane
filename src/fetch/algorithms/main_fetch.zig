@@ -36,10 +36,11 @@ const origins = @import("../internal/origins.zig");
 const clock = @import("clock");
 const integrity = @import("../integrity.zig");
 
-/// Bad ports that should be blocked per Fetch spec.
-/// These are ports commonly associated with protocols that shouldn't
-/// be accessed via HTTP/HTTPS.
+/// Fetch's bad ports (2.10 "Port blocking", the table's first column):
+/// ports commonly associated with protocols that shouldn't be accessed via
+/// HTTP/HTTPS. Port 0 heads the table (no service).
 const bad_ports = [_]u16{
+    0, // (none)
     1, // tcpmux
     7, // echo
     9, // discard
@@ -109,6 +110,7 @@ const bad_ports = [_]u16{
     2049, // nfs
     3659, // apple-sasl
     4045, // npp
+    4190, // sieve
     5060, // sip
     5061, // sips
     6000, // x11
@@ -118,6 +120,7 @@ const bad_ports = [_]u16{
     6667, // irc
     6668, // irc
     6669, // irc
+    6679, // osaut
     6697, // ircs-u
     10080, // amanda
 };
@@ -750,8 +753,11 @@ fn isLocalUrlString(url_str: []const u8) bool {
         std.ascii.eqlIgnoreCase(url_scheme, "data");
 }
 
-/// Should request be blocked due to bad port?
-fn shouldBlockDueToBadPort(request: *InternalRequest) bool {
+/// Fetch 2.10 "should fetching request be blocked due to a bad port": an
+/// HTTP(S) current URL whose port is a bad port. Main fetch step 7 asks it,
+/// and so does a WebSocket's handshake request, which "establish a WebSocket
+/// connection" fetches (webidl/impls/WebSocket.zig prepareHandshakeRequest).
+pub fn shouldBlockDueToBadPort(request: *InternalRequest) bool {
     const url_str = request.currentUrl();
 
     // Only check for HTTP(S) schemes
@@ -857,6 +863,13 @@ test "bad_ports contains common dangerous ports" {
             return false;
         }
     };
+
+    // The table's first row: port 0, no service (lane flaky5: a WebSocket
+    // to port 0 tried to connect).
+    try std.testing.expect(contains.check(0));
+    // Two later rows Crane's list had missed: sieve and osaut.
+    try std.testing.expect(contains.check(4190));
+    try std.testing.expect(contains.check(6679));
 
     // FTP ports
     try std.testing.expect(contains.check(20));

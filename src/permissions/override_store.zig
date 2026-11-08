@@ -66,6 +66,16 @@ pub const OverrideStore = struct {
         return true;
     }
 
+    /// Every override gone: the store as a new Browser's (the automation's
+    /// reset, BrowserStore.resetOverrides).
+    pub fn clear(self: *OverrideStore) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        var entries = self.entries.keyIterator();
+        while (entries.next()) |key| self.allocator.free(key.permission_key);
+        self.entries.clearAndFree(self.allocator);
+    }
+
     fn update(states: *States, descriptor: Descriptor, state: State) bool {
         const before = states.*;
         const index = strength(descriptor);

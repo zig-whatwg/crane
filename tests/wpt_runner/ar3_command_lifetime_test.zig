@@ -98,3 +98,78 @@ test "endTest cancels the timer and releases its pending argument" {
 test "driver teardown releases a pending argument before its timer fires" {
     try onFreshThread(.destroy);
 }
+
+// ----------------------------------------------------------------------------
+// Lane flaky5: no permission override outlives its test
+// ----------------------------------------------------------------------------
+
+/// One Browser serves every file of a runner process, and its automation
+/// overrides lived in it: permissions/event-model.https.html ends with
+/// geolocation "granted", so a later permissions/permissions-cg.https.html in
+/// the same process changed nothing with its own set_permission("granted"),
+/// heard no change event, and timed out (generation 210's sweep, shard 5
+/// spawn 26). wptrunner's Chrome executor resets the overrides before every
+/// test (ChromeDriverTestharnessProtocolPart.reset_browser_state: CDP
+/// Browser.resetPermissions); the runner's per-file step calls
+/// TestDriver.resetPermissions, its counterpart, beside the cookie jar's
+/// clear.
+fn permissionOverrideEndsWithItsTest() !void {
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    // A real origin: its statuses and overrides have a permission key.
+    try page.loadHTML("<!doctype html><body></body>", .{ .base_url = "http://127.0.0.1:65533/permissions/event-model.https.html" });
+    const driver = try driver_mod.TestDriver.create(testing.allocator);
+    defer driver.destroy();
+    driver.defineNatives(browser.getRealm() orelse return error.NoRealm);
+    // What event-model.https.html's last test leaves behind.
+    try page.runScript(
+        \\globalThis.result = 'pending';
+        \\__crane_test_driver_set_permission({ descriptor: { name: 'geolocation' }, state: 'granted' })
+        \\  .then(() => navigator.permissions.query({ name: 'geolocation' }))
+        \\  .then(status => { result = status.state; }, error => { result = 'rejected:' + error; });
+    );
+    try runUntilSettled(browser);
+    try page.runScript("if (result !== 'granted') throw new Error('set_permission did not grant: ' + result);");
+
+    // The next file's start: the runner's per-file step.
+    driver.endTest();
+    driver_mod.TestDriver.resetPermissions(browser.scope);
+
+    try page.runScript(
+        \\result = 'pending';
+        \\navigator.permissions.query({ name: 'geolocation' })
+        \\  .then(status => { result = status.state; }, error => { result = 'rejected:' + error; });
+    );
+    try runUntilSettled(browser);
+    try page.runScript("if (result !== 'prompt') throw new Error('the previous test\\'s override survived: ' + result);");
+}
+
+/// The event loop, until the page's `result` is no longer "pending".
+fn runUntilSettled(browser: *browser_mod.Browser) !void {
+    const page = browser.current_context orelse return error.NoPage;
+    var turns: usize = 0;
+    while (turns < 50) : (turns += 1) {
+        _ = try browser.runEventLoopBlocking(20);
+        const value = try page.evaluateScriptToString("String(globalThis.result)", testing.allocator);
+        defer testing.allocator.free(value);
+        if (!std.mem.eql(u8, value, "pending")) return;
+    }
+    return error.NeverSettled;
+}
+
+test "no permission override outlives its test: the per-file reset drops them" {
+    const Run = struct {
+        failure: ?anyerror = null,
+        fn run(self: *@This()) void {
+            permissionOverrideEndsWithItsTest() catch |err| {
+                self.failure = err;
+            };
+        }
+    };
+    var run: Run = .{};
+    const thread = try std.Thread.spawn(.{}, Run.run, .{&run});
+    thread.join();
+    if (run.failure) |err| return err;
+}

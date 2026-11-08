@@ -424,7 +424,37 @@ fn reloadNavigableWithNavigationApiState(window: *runtime.Instance, bc: *Browsin
 /// browser's own reload.
 fn reloadWindow(window: *runtime.Instance, user_involvement: UserInvolvement) void {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
+    if (initialDocumentAwaitsNavigation(window, bc)) return;
     reloadNavigableWithNavigationApiState(window, bc, null, user_involvement, .reload);
+}
+
+/// Whether `window`'s document is its navigable's initial about:blank while
+/// a navigation of that navigable is in flight - which a reload of it does
+/// not end.
+///
+/// HTML "attempt to populate the history entry's document" step 5.1: a
+/// reload's population (its navigation ID null) is abandoned when "navigable's
+/// ongoing navigation no longer equals navigationId" - a navigation ID. For the
+/// initial about:blank, Chrome 156, Firefox 159 and Safari 27 agree (lane
+/// flaky5's probe, 2026-11-08: an iframe whose eager src took 1.5 s, its
+/// contentWindow.location.reload() called at once - all three committed the
+/// src): Chromium's LocalFrame::Reload returns while the DocumentLoader has no
+/// history item, the initial empty document a frame keeps until its first
+/// navigation commits; WebKit's NavigationScheduler::scheduleRefresh returns
+/// for that document's empty URL. For a loaded document all three end the
+/// navigation in flight instead (the same probe; WebKit's
+/// NavigationScheduler::schedule stops the provisional load), which the
+/// reload's population does (HTMLIFrameElement.navigate). Decided where the
+/// browsers decide it, at the call. navigation.reload() is not this path:
+/// Chrome and Safari end the src navigation there too (Firefox does not).
+/// crane/flaky5-initial-about-blank-reload-keeps-navigation.html pins both
+/// cases.
+fn initialDocumentAwaitsNavigation(window: *runtime.Instance, bc: *BrowsingContext) bool {
+    const dom = @import("dom");
+    const document = interfaces.Window.get_document(window) catch return false;
+    if (!dom.document_lifecycle.isInitialAboutBlank(document)) return false;
+    const integration = dom.navigables.integrationOf(@ptrCast(bc)) orelse return false;
+    return integration.ongoing_navigation == .id;
 }
 
 /// dom.history_traversal: the reload of `window`'s navigable that its

@@ -147,6 +147,27 @@ pub const TestDriver = struct {
         self.keyboard = .{};
     }
 
+    /// The automation's permission reset before a test: every override a
+    /// set_permission made is dropped, and every status it changed told so.
+    /// wptrunner's Chrome executor sends CDP Browser.resetPermissions before
+    /// every test (ChromeDriverTestharnessProtocolPart.reset_browser_state,
+    /// tools/wptrunner/wptrunner/executors/executorchrome.py), which Chromium
+    /// implements as PermissionControllerImpl::ResetPermissionOverrides. One
+    /// Browser serves every file of a runner process, so without it an
+    /// override outlived the file that set it (permissions/event-model.
+    /// https.html leaves geolocation "granted": a later permissions-cg.https.
+    /// html in the process heard no change and timed out). As the CDP command
+    /// answers once the overrides are gone, this does not wait for the
+    /// notifications, which go to the documents of the test that ended.
+    pub fn resetPermissions(scope: *runtime.BrowserScope) void {
+        const store = scope.existing(permissions.BrowserStore) orelse return;
+        const batch = store.resetOverrides() catch |err| {
+            log.warn("the permission overrides were not reset: {}", .{err});
+            return;
+        };
+        batch.release();
+    }
+
     fn keySource(self: *TestDriver, id: []const u8) ?*KeySource {
         for (self.key_sources.items) |*source| if (std.mem.eql(u8, source.id, id)) return source;
         const copy = self.allocator.dupe(u8, id) catch return null;
