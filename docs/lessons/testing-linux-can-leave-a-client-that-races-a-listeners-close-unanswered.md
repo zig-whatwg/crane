@@ -1,0 +1,12 @@
+# Testing: Linux can leave a client that races a listener's close unanswered forever - bound the client's wait
+
+**Date**: 2026-11-08
+**Lesson**: On Linux, a client whose final handshake ACK reaches a listener while the listener is being closed can be left ESTABLISHED with no peer and no reset - ever. A client that waits for "the server's reset" must bound that wait.
+
+**Why**: Linux's `tcp_close` of a listener calls `tcp_set_state(TCP_CLOSE)`, which releases a port-0 listener's bind bucket (`inet_put_port`; no `SOCK_BINDPORT_LOCK`) before it stores the new state. An ACK processed in that window still sees `TCP_LISTEN` in `tcp_v4_rcv`, so `tcp_check_req` runs; `tcp_v4_syn_recv_sock`'s `__inet_inherit_port` finds no bucket (-ENOENT), the child is dropped (`put_and_exit`, `tcp_listendrop`: TcpExtListenDrops +1), and with `tcp_abort_on_overflow` 0 `listen_overflow` drops the ACK silently and keeps the request. `inet_csk_listen_stop` resets only the accept queue's children, so nothing answers the client. macOS answers every such client.
+
+**What Happened**: tests/fetch/loopback_listener_test.zig's "an accept loop stops 3,000 times" passed in every macOS gate but timed out (300 s) on server1 (x86-64 Ubuntu, kernel 7.0) at main and at lane linux1 batch 1's tip. The hung process: the main thread joining the racing client, the client blocked in read. `ss -tni` showed its socket ESTABLISHED with segs_in 1 (the SYN-ACK), segs_out 2, and no socket at all on the peer port. A 40-line Python copy of the test reproduced it without Zig: 4 of 3,000 racing clients unanswered, each connect() returning 7-9 us after the listener's close() returned, TcpExtListenDrops +1 each.
+
+**Fix**: The test's client polls before each read with a 2 s bound (`std.posix.poll`); every other answer (a refusal, the accept loop's reset, the listener's reset of its queue) has been sent by the time the close returns. On giving up it resets its own end (SO_LINGER 0), so it leaves no TIME_WAIT. A red test first: a client of a listener that never accepts (the same silent ESTABLISHED state) must return.
+
+**Takeaway**: **A connection's peer can vanish without a reset when its handshake races the listener's close (Linux): a client that waits for the server's answer must bound the wait - and when a hang shows a socket ESTABLISHED with one segment in and no peer, check TcpExtListenDrops before suspecting your own code.**
