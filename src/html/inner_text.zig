@@ -132,8 +132,8 @@ const TextTree = struct {
     }
     pub fn index(node: Node) u32 {
         var count: u32 = 0;
-        var previous = node.previous_sibling;
-        while (previous) |sibling| : (previous = sibling.previous_sibling) count += 1;
+        var previous = node.previousSibling();
+        while (previous) |sibling| : (previous = sibling.previousSibling()) count += 1;
         return count;
     }
 };
@@ -1142,7 +1142,7 @@ pub fn setOuterText(element: *runtime.Instance, value: runtime.DOMString) !void 
     defer dom.refcount.holderDeref(parent);
     // Steps 2-3: capture the immediate siblings before replacement.
     const next = node.next_sibling;
-    const previous = node.previous_sibling;
+    const previous = node.previousSibling();
     const document = (try interfaces.Node.get_ownerDocument(element)) orelse return error.InvalidStateError;
     // Step 4: make the rendered text fragment.
     const fragment = try renderedTextFragment(document, value.asSlice());
@@ -1157,7 +1157,7 @@ pub fn setOuterText(element: *runtime.Instance, value: runtime.DOMString) !void 
     _ = try dom.mutation.replace(node, contents, parent);
     // Step 7: merge the new last Text with the original next sibling.
     if (next) |following| {
-        if (following.previous_sibling) |last| {
+        if (following.previousSibling()) |last| {
             if (last.node_type == NodeBase.TEXT_NODE) try mergeWithNextTextNode(last);
         }
     }

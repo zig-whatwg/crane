@@ -139,15 +139,18 @@ pub fn wrapperForgotten() void {
 }
 
 /// The comptime predicate `buildVTable` fills `VTable.counted` with: `&node`
-/// when some level of `State`'s `base` chain keeps an `_internal` pointer
-/// whose target has a `node_base` field (Node's InternalState - the one node
-/// state; nodes are what count, decision D3), else null - the DEFAULT, pinned
-/// by tests/runtime/vtable_counted_test.zig.
+/// when some level of `State`'s `base` chain keeps a state with a `node_base`
+/// field (Node's InternalState - the one node state; nodes are what count,
+/// decision D3) - by value (`_embedded`, as Node's is since lane perf2 batch
+/// 5, with no `_internal` pointer since batch 6) or behind its `_internal`
+/// pointer - else null - the DEFAULT, pinned by
+/// tests/runtime/vtable_counted_test.zig and perf2b6_live_flags_test.zig.
 pub fn countedOf(comptime State: type) ?*const Counted {
     comptime {
         var Level: type = State;
         while (true) {
             if (@typeInfo(Level) != .@"struct") return null;
+            if (@hasField(Level, "_embedded") and keepsNodeBase(*@FieldType(Level, "_embedded"))) return &node;
             if (@hasField(Level, "own")) {
                 const Own = @FieldType(Level, "own");
                 if (@typeInfo(Own) == .@"struct" and @hasField(Own, "_internal") and keepsNodeBase(@FieldType(Own, "_internal"))) return &node;
@@ -160,8 +163,8 @@ pub fn countedOf(comptime State: type) ?*const Counted {
     }
 }
 
-/// Whether `Internal` - an `_internal` field's type - points at a struct with
-/// a `node_base` field.
+/// Whether `Internal` - an `_internal` field's type, or a pointer to an
+/// `_embedded` one - points at a struct with a `node_base` field.
 fn keepsNodeBase(comptime Internal: type) bool {
     comptime {
         var T: type = Internal;

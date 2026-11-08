@@ -4131,6 +4131,19 @@ pub const worker_origin_oom_test_cases = if (@import("builtin").is_test) struct 
     pub fn scopeCopies() !void {
         const Harness = struct {
             fn allocationScenario(allocator: Allocator, realm: runtime.Context) !void {
+                // The global scope is made with the allocator under test, and an
+                // EventTarget is made with the allocator its Browser scope frees
+                // with (lane perf2 batch 6): a standalone scope of that
+                // allocator for this attempt, ended after the global scope.
+                const browser_scope = try allocator.create(runtime.BrowserScope);
+                browser_scope.* = runtime.BrowserScope.init(allocator);
+                const previous = runtime.BrowserScope.standalone();
+                runtime.BrowserScope.setStandalone(browser_scope);
+                defer {
+                    runtime.BrowserScope.setStandalone(previous);
+                    browser_scope.deinit();
+                    allocator.destroy(browser_scope);
+                }
                 const scope = try interfaces.WorkerGlobalScope.init(allocator, realm);
                 defer interfaces.WorkerGlobalScope.deinit(scope);
                 const settings = @import("dom").global_settings;

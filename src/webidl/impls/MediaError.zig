@@ -20,7 +20,6 @@ pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *con
     const state = instance.getState(State);
     state.own.code = 1;
     state.own.message = .initEmpty();
-    state.own._internal = null;
     return instance;
 }
 pub fn deinit(_: *runtime.Instance) void {}

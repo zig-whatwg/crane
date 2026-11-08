@@ -54,7 +54,7 @@ pub fn freeDescendants(root: *NodeBase, position: *Position, budget: usize) usiz
     var at = resumePoint(root, position.*);
     var freed: usize = 0;
     while (freed < budget) {
-        while (at.last_child) |child| at = child;
+        while (at.lastChild()) |child| at = child;
         if (at == root) break;
         const parent = at.parent_node orelse break;
         unlinkLastChild(parent, at);
@@ -91,11 +91,7 @@ pub fn countUpTo(root: *NodeBase, cap: usize) usize {
 /// Take `child`, `parent`'s last child, out of its sibling links (a node's
 /// children: NodeBase.children).
 fn unlinkLastChild(parent: *NodeBase, child: *NodeBase) void {
-    const prev = child.previous_sibling;
-    if (prev) |p| p.next_sibling = null else parent.first_child = null;
-    parent.last_child = prev;
-    child.previous_sibling = null;
-    child.next_sibling = null;
+    parent.unlinkChild(child);
     // The pointer and the parent bit only: a dying tree's holds stay on its
     // root, which its own free takes out of its document (refcount.nodeFreed).
     refcount.unlinkForTeardown(child);

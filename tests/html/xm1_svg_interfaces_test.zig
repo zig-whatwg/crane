@@ -28,6 +28,18 @@ test "SVG generated construction reaches Element and Node for every family" {
 }
 
 fn constructionFailure(allocator: std.mem.Allocator, context: runtime.Context) !void {
+    // An element is made with the allocator its scope frees with (lane perf2
+    // batch 6): this attempt's own scope, of the allocator under test, ended
+    // after the elements - so its slab and arena allocations fail in turn too.
+    const scope = try allocator.create(runtime.BrowserScope);
+    scope.* = runtime.BrowserScope.init(allocator);
+    const previous = runtime.BrowserScope.standalone();
+    runtime.BrowserScope.setStandalone(scope);
+    defer {
+        runtime.BrowserScope.setStandalone(previous);
+        scope.deinit();
+        allocator.destroy(scope);
+    }
     inline for (.{ interfaces.SVGCircleElement, interfaces.SVGSVGElement, interfaces.SVGTextElement, interfaces.SVGLinearGradientElement, interfaces.SVGAnimateElement, interfaces.SVGFEBlendElement }) |T| {
         const element = try T.init(allocator, context);
         defer runtime.Instance.deinit(element);
@@ -41,8 +53,8 @@ fn allocationFailures() !void {
     defer runtime.deinitializeRuntime();
     var context = try runtime.ContextData.init(std.testing.allocator, .{});
     defer context.deinit();
-    // The slab and context keep their normal leak-checking allocator; fail
-    // each allocation made by the generated construction chain itself.
+    // The context keeps its normal leak-checking allocator; fail each
+    // allocation the construction makes - its scope's included.
     try std.testing.checkAllAllocationFailures(std.testing.allocator, constructionFailure, .{&context});
 }
 

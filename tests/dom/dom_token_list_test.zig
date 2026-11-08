@@ -12,7 +12,7 @@ const DOMTokenList = @import("dom").DOMTokenListImpl;
 test "DOMTokenList - initialization with empty attribute" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");
@@ -25,7 +25,7 @@ test "DOMTokenList - initialization with empty attribute" {
 test "DOMTokenList - initialization with existing attribute" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     // Set class attribute before creating token list
@@ -44,7 +44,7 @@ test "DOMTokenList - initialization with existing attribute" {
 test "DOMTokenList - add single token" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");
@@ -67,7 +67,7 @@ test "DOMTokenList - add single token" {
 test "DOMTokenList - add multiple tokens" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");
@@ -87,7 +87,7 @@ test "DOMTokenList - add multiple tokens" {
 test "DOMTokenList - add duplicate token (should not duplicate)" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");
@@ -106,7 +106,7 @@ test "DOMTokenList - add duplicate token (should not duplicate)" {
 test "DOMTokenList - add empty string throws SyntaxError" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");
@@ -120,7 +120,7 @@ test "DOMTokenList - add empty string throws SyntaxError" {
 test "DOMTokenList - add token with whitespace throws InvalidCharacterError" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");
@@ -134,7 +134,7 @@ test "DOMTokenList - add token with whitespace throws InvalidCharacterError" {
 test "DOMTokenList - remove token" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");
@@ -157,7 +157,7 @@ test "DOMTokenList - remove token" {
 test "DOMTokenList - toggle token (add when not present)" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");
@@ -174,7 +174,7 @@ test "DOMTokenList - toggle token (add when not present)" {
 test "DOMTokenList - toggle token (remove when present)" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");
@@ -195,7 +195,7 @@ test "DOMTokenList - toggle token (remove when present)" {
 test "DOMTokenList - toggle with force=true always adds" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");
@@ -214,7 +214,7 @@ test "DOMTokenList - toggle with force=true always adds" {
 test "DOMTokenList - toggle with force=false always removes" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");
@@ -233,7 +233,7 @@ test "DOMTokenList - toggle with force=false always removes" {
 test "DOMTokenList - replace token" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");
@@ -258,7 +258,7 @@ test "DOMTokenList - replace token" {
 test "DOMTokenList - replace non-existent token returns false" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");
@@ -274,7 +274,7 @@ test "DOMTokenList - replace non-existent token returns false" {
 test "DOMTokenList - item returns token at index" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");
@@ -297,7 +297,7 @@ test "DOMTokenList - item returns token at index" {
 test "DOMTokenList - contains returns correct boolean" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");
@@ -314,7 +314,7 @@ test "DOMTokenList - contains returns correct boolean" {
 test "DOMTokenList - value getter returns serialized string" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     var token_list = try DOMTokenList.init(allocator, &element, "class");

@@ -172,15 +172,15 @@ const engine = @import("engine");
 /// The first or last element child of `node`, found natively - reading it
 /// from script would wrap it.
 fn elementChild(node: *dom.NodeBase, comptime first: bool) ?*dom.NodeBase {
-    var child = if (first) node.first_child else node.last_child;
-    while (child) |c| : (child = if (first) c.next_sibling else c.previous_sibling) {
+    var child = if (first) node.first_child else node.lastChild();
+    while (child) |c| : (child = if (first) c.next_sibling else c.previousSibling()) {
         if (c.node_type == dom.NodeBase.ELEMENT_NODE) return c;
     }
     return null;
 }
 
 fn instanceOf(node: *dom.NodeBase) *runtime.Instance {
-    return @ptrCast(@alignCast(node.owner_instance.?));
+    return @ptrCast(@alignCast(node.ownerInstance().?));
 }
 
 fn customElementsMarked() !void {
@@ -216,7 +216,7 @@ fn customElementsMarked() !void {
         \\document.body.append(new (customElements.get('x-new'))(), document.createElement('x-new'));
     );
     const created = elementChild(body, false) orelse return error.NotConstructed;
-    const constructed = created.previous_sibling orelse return error.NotConstructed;
+    const constructed = created.previousSibling() orelse return error.NotConstructed;
     try testing.expect(runtime.instance_lifecycle.wasWrapped(instanceOf(created)));
     try testing.expect(runtime.instance_lifecycle.wasWrapped(instanceOf(constructed)));
 }

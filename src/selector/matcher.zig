@@ -23,7 +23,7 @@
 //! Test if an element matches a parsed selector:
 //! ```zig
 //! const allocator = std.heap.page_allocator;
-//! var elem = Element.init(allocator, "div");
+//! var elem = Element.init(&allocator, "div");
 //! defer elem.deinit();
 //!
 //! // Parse selector
@@ -721,7 +721,7 @@ fn getNextSibling(element: *const Element) ?*NodeBase {
 
 /// Get previous sibling of an element
 fn getPreviousSibling(element: *const Element) ?*NodeBase {
-    return element.base.previous_sibling;
+    return element.base.previousSibling();
 }
 
 /// Check if class attribute contains specific class name
@@ -1051,7 +1051,7 @@ const Parser = @import("parser.zig").Parser;
 const AttrWithBase = dom.AttrWithBase;
 
 /// Helper to create element for testing
-fn createTestElement(allocator: Allocator, tag_name: []const u8) !*Element {
+fn createTestElement(allocator: *const Allocator, tag_name: []const u8) !*Element {
     const elem = try allocator.create(Element);
     elem.* = Element.init(allocator, tag_name);
     return elem;
@@ -1059,7 +1059,7 @@ fn createTestElement(allocator: Allocator, tag_name: []const u8) !*Element {
 
 /// Helper to create element with attributes
 fn createTestElementWithAttrs(
-    allocator: Allocator,
+    allocator: *const Allocator,
     tag_name: []const u8,
     attributes: []const struct { name: []const u8, value: []const u8 },
 ) !*Element {
@@ -1087,20 +1087,13 @@ fn destroyTestElement(allocator: Allocator, elem: *Element) void {
 /// Test fixtures: link `child` as `parent`'s last child (a node's children are
 /// its sibling links: NodeBase.children).
 fn linkTestChild(parent: *NodeBase, child: *NodeBase) void {
-    child.previous_sibling = parent.last_child;
-    child.next_sibling = null;
-    if (parent.last_child) |last| {
-        last.next_sibling = child;
-    } else {
-        parent.first_child = child;
-    }
-    parent.last_child = child;
+    parent.linkChildBefore(child, null);
 }
 
 test "Matcher: universal selector (*)" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElement(allocator, "div");
+    const elem = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, elem);
 
     var tokenizer = Tokenizer.init(allocator, "*");
@@ -1116,10 +1109,10 @@ test "Matcher: universal selector (*)" {
 test "Matcher: type selector" {
     const allocator = testing.allocator;
 
-    const div = try createTestElement(allocator, "div");
+    const div = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, div);
 
-    const span = try createTestElement(allocator, "span");
+    const span = try createTestElement(&allocator, "span");
     defer destroyTestElement(allocator, span);
 
     var tokenizer = Tokenizer.init(allocator, "div");
@@ -1136,7 +1129,7 @@ test "Matcher: type selector" {
 test "Matcher: class selector" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "div", &.{
         .{ .name = "class", .value = "container active" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1154,7 +1147,7 @@ test "Matcher: class selector" {
 test "Matcher: class selector - multiple classes" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "div", &.{
         .{ .name = "class", .value = "foo bar baz" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1172,7 +1165,7 @@ test "Matcher: class selector - multiple classes" {
 test "Matcher: class selector - no match" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "div", &.{
         .{ .name = "class", .value = "container" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1190,7 +1183,7 @@ test "Matcher: class selector - no match" {
 test "Matcher: ID selector" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "div", &.{
         .{ .name = "id", .value = "main" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1208,7 +1201,7 @@ test "Matcher: ID selector" {
 test "Matcher: ID selector - no match" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "div", &.{
         .{ .name = "id", .value = "main" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1230,7 +1223,7 @@ test "Matcher: ID selector - no match" {
 test "Matcher: compound selector (tag + class)" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "div", &.{
         .{ .name = "class", .value = "container" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1248,7 +1241,7 @@ test "Matcher: compound selector (tag + class)" {
 test "Matcher: compound selector (tag + id)" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "div", &.{
         .{ .name = "id", .value = "main" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1266,7 +1259,7 @@ test "Matcher: compound selector (tag + id)" {
 test "Matcher: compound selector (tag + multiple classes)" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "div", &.{
         .{ .name = "class", .value = "container active highlight" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1284,7 +1277,7 @@ test "Matcher: compound selector (tag + multiple classes)" {
 test "Matcher: compound selector - wrong tag" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "span", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "span", &.{
         .{ .name = "class", .value = "container" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1306,7 +1299,7 @@ test "Matcher: compound selector - wrong tag" {
 test "Matcher: attribute presence [attr]" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "input", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "input", &.{
         .{ .name = "disabled", .value = "" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1324,7 +1317,7 @@ test "Matcher: attribute presence [attr]" {
 test "Matcher: attribute exact [attr=value]" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "input", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "input", &.{
         .{ .name = "type", .value = "text" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1342,7 +1335,7 @@ test "Matcher: attribute exact [attr=value]" {
 test "Matcher: attribute prefix [attr^=value]" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "a", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "a", &.{
         .{ .name = "href", .value = "https://example.com" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1360,7 +1353,7 @@ test "Matcher: attribute prefix [attr^=value]" {
 test "Matcher: attribute suffix [attr$=value]" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "a", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "a", &.{
         .{ .name = "href", .value = "document.pdf" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1378,7 +1371,7 @@ test "Matcher: attribute suffix [attr$=value]" {
 test "Matcher: attribute substring [attr*=value]" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "div", &.{
         .{ .name = "data-id", .value = "user-123-profile" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1396,7 +1389,7 @@ test "Matcher: attribute substring [attr*=value]" {
 test "Matcher: attribute includes [attr~=value]" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "div", &.{
         .{ .name = "data-tags", .value = "important featured new" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1414,7 +1407,7 @@ test "Matcher: attribute includes [attr~=value]" {
 test "Matcher: attribute dash [attr|=value]" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "div", &.{
         .{ .name = "lang", .value = "en-US" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1432,7 +1425,7 @@ test "Matcher: attribute dash [attr|=value]" {
 test "Matcher: attribute case-insensitive [attr=value i]" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "input", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "input", &.{
         .{ .name = "type", .value = "TEXT" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1454,10 +1447,10 @@ test "Matcher: attribute case-insensitive [attr=value i]" {
 test "Matcher: child combinator (>)" {
     const allocator = testing.allocator;
 
-    const parent = try createTestElement(allocator, "article");
+    const parent = try createTestElement(&allocator, "article");
     defer destroyTestElement(allocator, parent);
 
-    const child = try createTestElement(allocator, "p");
+    const child = try createTestElement(&allocator, "p");
     defer destroyTestElement(allocator, child);
 
     // Build tree: article > p
@@ -1477,13 +1470,13 @@ test "Matcher: child combinator (>)" {
 test "Matcher: descendant combinator (space)" {
     const allocator = testing.allocator;
 
-    const grandparent = try createTestElement(allocator, "div");
+    const grandparent = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, grandparent);
 
-    const parent = try createTestElement(allocator, "section");
+    const parent = try createTestElement(&allocator, "section");
     defer destroyTestElement(allocator, parent);
 
-    const child = try createTestElement(allocator, "p");
+    const child = try createTestElement(&allocator, "p");
     defer destroyTestElement(allocator, child);
 
     // Build tree: div > section > p
@@ -1505,13 +1498,13 @@ test "Matcher: descendant combinator (space)" {
 test "Matcher: next-sibling combinator (+)" {
     const allocator = testing.allocator;
 
-    const parent = try createTestElement(allocator, "div");
+    const parent = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, parent);
 
-    const sibling1 = try createTestElement(allocator, "h1");
+    const sibling1 = try createTestElement(&allocator, "h1");
     defer destroyTestElement(allocator, sibling1);
 
-    const sibling2 = try createTestElement(allocator, "p");
+    const sibling2 = try createTestElement(&allocator, "p");
     defer destroyTestElement(allocator, sibling2);
 
     // Build tree: div > h1 + p
@@ -1533,16 +1526,16 @@ test "Matcher: next-sibling combinator (+)" {
 test "Matcher: subsequent-sibling combinator (~)" {
     const allocator = testing.allocator;
 
-    const parent = try createTestElement(allocator, "div");
+    const parent = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, parent);
 
-    const sibling1 = try createTestElement(allocator, "h1");
+    const sibling1 = try createTestElement(&allocator, "h1");
     defer destroyTestElement(allocator, sibling1);
 
-    const sibling2 = try createTestElement(allocator, "span");
+    const sibling2 = try createTestElement(&allocator, "span");
     defer destroyTestElement(allocator, sibling2);
 
-    const sibling3 = try createTestElement(allocator, "p");
+    const sibling3 = try createTestElement(&allocator, "p");
     defer destroyTestElement(allocator, sibling3);
 
     // Build tree: div > h1 ~ span ~ p
@@ -1570,13 +1563,13 @@ test "Matcher: subsequent-sibling combinator (~)" {
 test "Matcher: :first-child" {
     const allocator = testing.allocator;
 
-    const parent = try createTestElement(allocator, "div");
+    const parent = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, parent);
 
-    const child1 = try createTestElement(allocator, "p");
+    const child1 = try createTestElement(&allocator, "p");
     defer destroyTestElement(allocator, child1);
 
-    const child2 = try createTestElement(allocator, "p");
+    const child2 = try createTestElement(&allocator, "p");
     defer destroyTestElement(allocator, child2);
 
     linkTestChild(&parent.base, &child1.base);
@@ -1598,13 +1591,13 @@ test "Matcher: :first-child" {
 test "Matcher: :last-child" {
     const allocator = testing.allocator;
 
-    const parent = try createTestElement(allocator, "div");
+    const parent = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, parent);
 
-    const child1 = try createTestElement(allocator, "p");
+    const child1 = try createTestElement(&allocator, "p");
     defer destroyTestElement(allocator, child1);
 
-    const child2 = try createTestElement(allocator, "p");
+    const child2 = try createTestElement(&allocator, "p");
     defer destroyTestElement(allocator, child2);
 
     linkTestChild(&parent.base, &child1.base);
@@ -1626,10 +1619,10 @@ test "Matcher: :last-child" {
 test "Matcher: :only-child" {
     const allocator = testing.allocator;
 
-    const parent = try createTestElement(allocator, "div");
+    const parent = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, parent);
 
-    const child = try createTestElement(allocator, "p");
+    const child = try createTestElement(&allocator, "p");
     defer destroyTestElement(allocator, child);
 
     linkTestChild(&parent.base, &child.base);
@@ -1648,13 +1641,13 @@ test "Matcher: :only-child" {
 test "Matcher: :empty" {
     const allocator = testing.allocator;
 
-    const empty_elem = try createTestElement(allocator, "div");
+    const empty_elem = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, empty_elem);
 
-    const non_empty = try createTestElement(allocator, "div");
+    const non_empty = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, non_empty);
 
-    const child = try createTestElement(allocator, "span");
+    const child = try createTestElement(&allocator, "span");
     defer destroyTestElement(allocator, child);
 
     linkTestChild(&non_empty.base, &child.base);
@@ -1674,16 +1667,16 @@ test "Matcher: :empty" {
 test "Matcher: :nth-child(2)" {
     const allocator = testing.allocator;
 
-    const parent = try createTestElement(allocator, "ul");
+    const parent = try createTestElement(&allocator, "ul");
     defer destroyTestElement(allocator, parent);
 
-    const child1 = try createTestElement(allocator, "li");
+    const child1 = try createTestElement(&allocator, "li");
     defer destroyTestElement(allocator, child1);
 
-    const child2 = try createTestElement(allocator, "li");
+    const child2 = try createTestElement(&allocator, "li");
     defer destroyTestElement(allocator, child2);
 
-    const child3 = try createTestElement(allocator, "li");
+    const child3 = try createTestElement(&allocator, "li");
     defer destroyTestElement(allocator, child3);
 
     linkTestChild(&parent.base, &child1.base);
@@ -1708,16 +1701,16 @@ test "Matcher: :nth-child(2)" {
 test "Matcher: :nth-child(odd)" {
     const allocator = testing.allocator;
 
-    const parent = try createTestElement(allocator, "ul");
+    const parent = try createTestElement(&allocator, "ul");
     defer destroyTestElement(allocator, parent);
 
-    const child1 = try createTestElement(allocator, "li");
+    const child1 = try createTestElement(&allocator, "li");
     defer destroyTestElement(allocator, child1);
 
-    const child2 = try createTestElement(allocator, "li");
+    const child2 = try createTestElement(&allocator, "li");
     defer destroyTestElement(allocator, child2);
 
-    const child3 = try createTestElement(allocator, "li");
+    const child3 = try createTestElement(&allocator, "li");
     defer destroyTestElement(allocator, child3);
 
     linkTestChild(&parent.base, &child1.base);
@@ -1746,10 +1739,10 @@ test "Matcher: :nth-child(odd)" {
 test "Matcher: :not(selector)" {
     const allocator = testing.allocator;
 
-    const div = try createTestElement(allocator, "div");
+    const div = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, div);
 
-    const span = try createTestElement(allocator, "span");
+    const span = try createTestElement(&allocator, "span");
     defer destroyTestElement(allocator, span);
 
     var tokenizer = Tokenizer.init(allocator, ":not(span)");
@@ -1766,13 +1759,13 @@ test "Matcher: :not(selector)" {
 test "Matcher: :is(selector, selector)" {
     const allocator = testing.allocator;
 
-    const div = try createTestElement(allocator, "div");
+    const div = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, div);
 
-    const span = try createTestElement(allocator, "span");
+    const span = try createTestElement(&allocator, "span");
     defer destroyTestElement(allocator, span);
 
-    const p_elem = try createTestElement(allocator, "p");
+    const p_elem = try createTestElement(&allocator, "p");
     defer destroyTestElement(allocator, p_elem);
 
     var tokenizer = Tokenizer.init(allocator, ":is(div, span)");
@@ -1794,13 +1787,13 @@ test "Matcher: :is(selector, selector)" {
 test "Matcher: selector list (comma-separated)" {
     const allocator = testing.allocator;
 
-    const div = try createTestElement(allocator, "div");
+    const div = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, div);
 
-    const span = try createTestElement(allocator, "span");
+    const span = try createTestElement(&allocator, "span");
     defer destroyTestElement(allocator, span);
 
-    const p_elem = try createTestElement(allocator, "p");
+    const p_elem = try createTestElement(&allocator, "p");
     defer destroyTestElement(allocator, p_elem);
 
     var tokenizer = Tokenizer.init(allocator, "div, span");
@@ -1819,22 +1812,22 @@ test "Matcher: deeply nested selectors" {
     const allocator = testing.allocator;
 
     // Build deep tree: html > body > div > article > section > p
-    const html = try createTestElement(allocator, "html");
+    const html = try createTestElement(&allocator, "html");
     defer destroyTestElement(allocator, html);
 
-    const body = try createTestElement(allocator, "body");
+    const body = try createTestElement(&allocator, "body");
     defer destroyTestElement(allocator, body);
 
-    const div = try createTestElement(allocator, "div");
+    const div = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, div);
 
-    const article = try createTestElement(allocator, "article");
+    const article = try createTestElement(&allocator, "article");
     defer destroyTestElement(allocator, article);
 
-    const section = try createTestElement(allocator, "section");
+    const section = try createTestElement(&allocator, "section");
     defer destroyTestElement(allocator, section);
 
-    const p_elem = try createTestElement(allocator, "p");
+    const p_elem = try createTestElement(&allocator, "p");
     defer destroyTestElement(allocator, p_elem);
 
     linkTestChild(&html.base, &body.base);
@@ -1861,7 +1854,7 @@ test "Matcher: deeply nested selectors" {
 test "Matcher: element without parent" {
     const allocator = testing.allocator;
 
-    const orphan = try createTestElement(allocator, "div");
+    const orphan = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, orphan);
 
     // :first-child on orphan should return false
@@ -1878,7 +1871,7 @@ test "Matcher: element without parent" {
 test "Matcher: element without class attribute" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElement(allocator, "div");
+    const elem = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, elem);
 
     var tokenizer = Tokenizer.init(allocator, ".someclass");
@@ -1894,7 +1887,7 @@ test "Matcher: element without class attribute" {
 test "Matcher: empty class attribute" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "div", &.{
         .{ .name = "class", .value = "" },
     });
     defer destroyTestElement(allocator, elem);
@@ -1912,7 +1905,7 @@ test "Matcher: empty class attribute" {
 test "Matcher: class with extra whitespace" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "div", &.{
         .{ .name = "class", .value = "  foo   bar  " },
     });
     defer destroyTestElement(allocator, elem);
@@ -1930,7 +1923,7 @@ test "Matcher: class with extra whitespace" {
 test "Matcher: :lang() pseudo-class" {
     const allocator = testing.allocator;
 
-    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+    const elem = try createTestElementWithAttrs(&allocator, "div", &.{
         .{ .name = "lang", .value = "en-US" },
     });
     defer destroyTestElement(allocator, elem);

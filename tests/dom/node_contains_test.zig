@@ -13,20 +13,13 @@ const Element = dom.ElementWithBase;
 /// Link `child` as `parent`'s last child (a node's children are its sibling
 /// links: NodeBase.children; lane perf2 batch 5).
 fn linkTestChild(parent: *NodeBase, child: *NodeBase) void {
-    child.previous_sibling = parent.last_child;
-    child.next_sibling = null;
-    if (parent.last_child) |last| {
-        last.next_sibling = child;
-    } else {
-        parent.first_child = child;
-    }
-    parent.last_child = child;
+    parent.linkChildBefore(child, null);
 }
 
 test "Node.contains - self" {
     const allocator = std.testing.allocator;
 
-    var elem = Element.init(allocator, "div");
+    var elem = Element.init(&allocator, "div");
     defer elem.deinit();
 
     const node = elem.asNode();
@@ -38,7 +31,7 @@ test "Node.contains - self" {
 test "Node.contains - null returns false" {
     const allocator = std.testing.allocator;
 
-    var elem = Element.init(allocator, "div");
+    var elem = Element.init(&allocator, "div");
     defer elem.deinit();
 
     const node = elem.asNode();
@@ -50,10 +43,10 @@ test "Node.contains - null returns false" {
 test "Node.contains - direct child" {
     const allocator = std.testing.allocator;
 
-    var parent_elem = Element.init(allocator, "div");
+    var parent_elem = Element.init(&allocator, "div");
     defer parent_elem.deinit();
 
-    var child_elem = Element.init(allocator, "span");
+    var child_elem = Element.init(&allocator, "span");
     defer child_elem.deinit();
 
     const parent = parent_elem.asNode();
@@ -73,13 +66,13 @@ test "Node.contains - direct child" {
 test "Node.contains - descendant" {
     const allocator = std.testing.allocator;
 
-    var grandparent_elem = Element.init(allocator, "div");
+    var grandparent_elem = Element.init(&allocator, "div");
     defer grandparent_elem.deinit();
 
-    var parent_elem = Element.init(allocator, "section");
+    var parent_elem = Element.init(&allocator, "section");
     defer parent_elem.deinit();
 
-    var child_elem = Element.init(allocator, "span");
+    var child_elem = Element.init(&allocator, "span");
     defer child_elem.deinit();
 
     const grandparent = grandparent_elem.asNode();
@@ -109,10 +102,10 @@ test "Node.contains - descendant" {
 test "Node.contains - unrelated nodes" {
     const allocator = std.testing.allocator;
 
-    var elem1 = Element.init(allocator, "div");
+    var elem1 = Element.init(&allocator, "div");
     defer elem1.deinit();
 
-    var elem2 = Element.init(allocator, "span");
+    var elem2 = Element.init(&allocator, "span");
     defer elem2.deinit();
 
     const node1 = elem1.asNode();

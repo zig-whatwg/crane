@@ -18,9 +18,12 @@ const Trial = struct {
         interfaces.process_hooks.startHooksForTest();
         // A standalone runtime of this test's own, the process's given back
         // after (test_process.OwnRuntime).
-        const own_runtime = test_process.OwnRuntime.begin(testing.allocator);
-        defer own_runtime.end();
+        // Made with the failing allocator, as the realm's objects are: an
+        // object is made with the allocator its scope frees with (lane perf2
+        // batch 6), so the scope's own allocations can fail too.
         var failing = testing.FailingAllocator.init(testing.allocator, .{});
+        const own_runtime = test_process.OwnRuntime.begin(failing.allocator());
+        defer own_runtime.end();
         var context = try runtime.ContextData.init(failing.allocator(), .{});
         defer context.deinit();
         const initial = failing.alloc_index;

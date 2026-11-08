@@ -45,7 +45,7 @@ pub fn getFirstChild(node: anytype) ?*Node {
 /// Get the last child of the given node
 /// O(1) - Direct pointer access via sibling pointers (Phase 1 optimization)
 pub fn getLastChild(node: anytype) ?*Node {
-    return node.last_child;
+    return node.lastChild();
 }
 
 /// Get the next sibling of the given node
@@ -57,7 +57,7 @@ pub fn getNextSibling(node: anytype) ?*Node {
 /// Get the previous sibling of the given node
 /// O(1) - Direct pointer access via sibling pointers (Phase 1 optimization)
 pub fn getPreviousSibling(node: anytype) ?*Node {
-    return node.previous_sibling;
+    return node.previousSibling();
 }
 
 /// Get the number of children of the given node: a walk of its links

@@ -338,7 +338,7 @@ fn traverseAndMatch(
 const testing = std.testing;
 
 /// Helper to create element for testing
-fn createTestElement(allocator: std.mem.Allocator, tag_name: []const u8) !*ElementWithBase {
+fn createTestElement(allocator: *const std.mem.Allocator, tag_name: []const u8) !*ElementWithBase {
     const elem = try allocator.create(ElementWithBase);
     elem.* = ElementWithBase.init(allocator, tag_name);
     return elem;
@@ -353,30 +353,23 @@ fn destroyTestElement(allocator: std.mem.Allocator, elem: *ElementWithBase) void
 /// Test fixtures: link `child` as `parent`'s last child (a node's children are
 /// its sibling links: NodeBase.children).
 fn linkTestChild(parent: *NodeBase, child: *NodeBase) void {
-    child.previous_sibling = parent.last_child;
-    child.next_sibling = null;
-    if (parent.last_child) |last| {
-        last.next_sibling = child;
-    } else {
-        parent.first_child = child;
-    }
-    parent.last_child = child;
+    parent.linkChildBefore(child, null);
 }
 
 test "fast path: simple tag selector" {
     const allocator = testing.allocator;
 
     // Build tree: div > span + span
-    const div = try createTestElement(allocator, "div");
+    const div = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, div);
 
-    const span1 = try createTestElement(allocator, "span");
+    const span1 = try createTestElement(&allocator, "span");
     defer destroyTestElement(allocator, span1);
 
-    const span2 = try createTestElement(allocator, "span");
+    const span2 = try createTestElement(&allocator, "span");
     defer destroyTestElement(allocator, span2);
 
-    const p = try createTestElement(allocator, "p");
+    const p = try createTestElement(&allocator, "p");
     defer destroyTestElement(allocator, p);
 
     linkTestChild(&div.base, &span1.base);
@@ -396,10 +389,10 @@ test "fast path: simple tag selector" {
 test "fast path: simple tag selector case-insensitive" {
     const allocator = testing.allocator;
 
-    const root = try createTestElement(allocator, "div");
+    const root = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, root);
 
-    const span = try createTestElement(allocator, "SPAN");
+    const span = try createTestElement(&allocator, "SPAN");
     defer destroyTestElement(allocator, span);
 
     linkTestChild(&root.base, &span.base);
@@ -415,18 +408,18 @@ test "fast path: simple tag selector case-insensitive" {
 test "fast path: simple class selector" {
     const allocator = testing.allocator;
 
-    const root = try createTestElement(allocator, "div");
+    const root = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, root);
 
-    const elem1 = try createTestElement(allocator, "span");
+    const elem1 = try createTestElement(&allocator, "span");
     defer destroyTestElement(allocator, elem1);
     try elem1.setAttribute("class", "highlight active");
 
-    const elem2 = try createTestElement(allocator, "div");
+    const elem2 = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, elem2);
     try elem2.setAttribute("class", "container");
 
-    const elem3 = try createTestElement(allocator, "p");
+    const elem3 = try createTestElement(&allocator, "p");
     defer destroyTestElement(allocator, elem3);
     try elem3.setAttribute("class", "active note");
 
@@ -447,14 +440,14 @@ test "fast path: simple class selector" {
 test "fast path: simple id selector" {
     const allocator = testing.allocator;
 
-    const root = try createTestElement(allocator, "div");
+    const root = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, root);
 
-    const elem1 = try createTestElement(allocator, "span");
+    const elem1 = try createTestElement(&allocator, "span");
     defer destroyTestElement(allocator, elem1);
     try elem1.setAttribute("id", "main");
 
-    const elem2 = try createTestElement(allocator, "div");
+    const elem2 = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, elem2);
     try elem2.setAttribute("id", "sidebar");
 
@@ -474,13 +467,13 @@ test "fast path: simple id selector" {
 test "generic path: complex selector falls back to full parser" {
     const allocator = testing.allocator;
 
-    const root = try createTestElement(allocator, "div");
+    const root = try createTestElement(&allocator, "div");
     defer destroyTestElement(allocator, root);
 
-    const article = try createTestElement(allocator, "article");
+    const article = try createTestElement(&allocator, "article");
     defer destroyTestElement(allocator, article);
 
-    const p_elem = try createTestElement(allocator, "p");
+    const p_elem = try createTestElement(&allocator, "p");
     defer destroyTestElement(allocator, p_elem);
 
     linkTestChild(&root.base, &article.base);

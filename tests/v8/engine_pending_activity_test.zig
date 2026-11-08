@@ -65,7 +65,7 @@ fn reset() void {
 }
 
 fn setup() !void {
-    const isolate = try test_agent.open(.{});
+    const isolate = try test_agent.open(.{ .realm_allocator = std.heap.page_allocator });
     if (test_data == null) {
         const context = test_agent.context.?;
         const data = try test_agent.contextData(std.heap.page_allocator, .{ .engine_ctx = context });

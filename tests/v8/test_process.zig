@@ -45,10 +45,16 @@ const ffi = @import("v8").ffi;
 /// whichever test asks first, recorded in the process's own start-up state
 /// (dom.process_start); and the standalone runtime (runtime.initializeRuntime),
 /// the scope every realm no Browser owns allocates from, when none is
-/// running. Call it before anything that starts V8 - a bare
+/// running, made with the C allocator - the one this directory's realms and
+/// Windows are made with (`.allocator = std.heap.c_allocator`,
+/// `Window.init(std.heap.c_allocator, ...)`): a node or EventTarget is made
+/// with the allocator its scope frees with, as in a Browser, and Node's and
+/// EventTarget's init assert it (lane perf2 batch 6). It was page_allocator,
+/// which no realm used. Call it before anything that starts V8 - a bare
 /// `ffi.v8_Isolate_New` included - and before swapping a hook. Nothing a test
 /// does may end what this starts; a test that needs a standalone runtime of
-/// its own takes one with `OwnRuntime`.
+/// its own, or makes its realms with another allocator, takes one with
+/// `OwnRuntime` (or `TestAgent.Options.realm_allocator`).
 pub fn start() void {
     if (dom.process_start.begin()) {
         engine.initializeEngine(.{}) catch @panic("tests/v8: the engine did not start");
@@ -58,7 +64,7 @@ pub fn start() void {
         .running => {},
         else => @panic("tests/v8: the process did not start"),
     }
-    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.page_allocator);
+    if (runtime.BrowserScope.standalone() == null) runtime.initializeRuntime(std.heap.c_allocator);
 }
 
 /// The engine restoring agents from `snapshot` (stamped, as the snapshot
@@ -139,6 +145,11 @@ pub const TestAgent = struct {
     /// The file's own reset of what it cached for the agent, called by
     /// `close` once the agent has ended.
     reset: ?*const fn () void = null,
+    /// The agent's own Browser scope (`Options.realm_allocator`), the
+    /// process's standalone one while the agent lives, and the one it
+    /// replaced: `close` ends it AFTER the agent and puts the other back.
+    own_scope: ?*runtime.BrowserScope = null,
+    previous_scope: ?*runtime.BrowserScope = null,
 
     pub const Options = struct {
         /// The agent's host hooks, BORROWED for its life.
@@ -150,6 +161,16 @@ pub const TestAgent = struct {
         allocator: std.mem.Allocator = std.heap.c_allocator,
         /// A context of the agent, made and entered: `context`.
         context: bool = true,
+        /// The allocator the test makes its realms with - their objects'
+        /// creation allocator. The agent's realms with no Browser scope of
+        /// their own make their objects in the agent's own scope, made with
+        /// this allocator (lane perf2 batch 6): a node or EventTarget is made
+        /// with the allocator its scope frees with, as in a Browser, whose
+        /// realms are given the allocator its scope was made with - asserted
+        /// in Node's and EventTarget's init
+        /// (docs/lessons/architecture-a-nodes-creation-allocator-is-its-browsers-only-inside-a-browser.md).
+        /// The C allocator by default, as the process's standalone scope's.
+        realm_allocator: std.mem.Allocator = std.heap.c_allocator,
     };
 
     /// What ends before the agent does.
@@ -182,6 +203,19 @@ pub const TestAgent = struct {
         // entered left the process changed (the third mechanism), and this
         // test's would run under it.
         if (ffi.v8_Isolate_GetCurrent() != null) return error.IsolateLeftEntered;
+        // The agent's own scope first, so that it ends after the agent
+        // (`close`), as a Browser's scope ends after its agent: the
+        // standalone one for the agent's life - the scope of every realm of
+        // the test that names none (ContextData.browserScope), with the
+        // realm's `browser_scope` left null, so nothing that asks for a
+        // Browser finds one.
+        if (self.own_scope == null) {
+            const own = try options.realm_allocator.create(runtime.BrowserScope);
+            own.* = runtime.BrowserScope.init(options.realm_allocator);
+            self.previous_scope = runtime.BrowserScope.standalone();
+            runtime.BrowserScope.setStandalone(own);
+            self.own_scope = own;
+        }
         const made = try engine.createAgent(.{ .can_block = options.can_block, .from_snapshot = false, .hooks = options.hooks, .host = null, .allocator = options.allocator });
         const isolate: *ffi.Isolate = @ptrCast(@alignCast(made));
         self.isolate = isolate;
@@ -255,10 +289,20 @@ pub const TestAgent = struct {
 
     /// End the test's agent: what `endWith` registered, last first; its
     /// context, its handle scope; then the agent itself, through
-    /// engine.destroyAgent, with no isolate current. Then the file's `reset`.
+    /// engine.destroyAgent, with no isolate current; then its own scope,
+    /// putting the standalone scope it replaced back. Then the file's
+    /// `reset`.
     pub fn close(self: *TestAgent) void {
         const reset = self.reset;
         defer {
+            // The agent's scope ends after the agent, with what its realms
+            // left in it, and the standalone scope it replaced is back.
+            if (self.own_scope) |own| {
+                runtime.BrowserScope.setStandalone(self.previous_scope);
+                const allocator = own.allocator;
+                own.deinit();
+                allocator.destroy(own);
+            }
             self.* = .{ .reset = reset };
             if (reset) |r| r();
         }

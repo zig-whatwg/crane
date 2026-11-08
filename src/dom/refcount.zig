@@ -282,7 +282,7 @@ fn up(ledger: ?*const Ledger, node: *NodeBase) ?*NodeBase {
 /// The live host of a `hosted` node, through the hook modules that own the
 /// two links (dom.template_contents answers for shadow roots too).
 fn hostOf(node: *NodeBase) ?*NodeBase {
-    const raw = node.owner_instance orelse return null;
+    const raw = node.ownerInstance() orelse return null;
     const instance: *runtime.Instance = @ptrCast(@alignCast(raw));
     const host = template_contents.host(instance) orelse return null;
     return instance_bridge.getNodeBaseUnaudited(host);
@@ -486,7 +486,7 @@ fn bumpTreeVersion(counts: *DocumentCounts, mutated: Mutated) void {
 noinline fn renderingWatchFired(mutated: Mutated) void {
     const instance: *runtime.Instance = switch (mutated) {
         .instance => |node_instance| node_instance,
-        .node => |node| @ptrCast(@alignCast(node.owner_instance orelse return)),
+        .node => |node| @ptrCast(@alignCast(node.ownerInstance() orelse return)),
     };
     // A Document's ownerDocument is null: the node is its own document.
     const document = (interfaces.Node.get_ownerDocument(instance) catch return) orelse instance;
@@ -904,7 +904,7 @@ pub fn documentCounts(document: *runtime.Instance) ?*DocumentCounts {
 /// The counts of the Document whose own node `document` is. The caller knows
 /// it is alive: it is a root it just walked to, or a node in its tree.
 fn countsOfDocumentNode(document: *NodeBase) ?*DocumentCounts {
-    const raw = document.owner_instance orelse return null;
+    const raw = document.ownerInstance() orelse return null;
     return documentCounts(@ptrCast(@alignCast(raw)));
 }
 
@@ -913,7 +913,7 @@ fn countsOfDocumentNode(document: *NodeBase) ?*DocumentCounts {
 /// generation it keeps; lane ownerdoc) rather than read freed memory.
 fn countsOfNodeDocument(node: *NodeBase) ?*DocumentCounts {
     if (node.node_type == NodeBase.DOCUMENT_NODE) return countsOfDocumentNode(node);
-    const raw = node.owner_instance orelse return null;
+    const raw = node.ownerInstance() orelse return null;
     const accessor = hooks.read().node_document_counts orelse return null;
     return accessor(@ptrCast(@alignCast(raw)));
 }
@@ -1306,7 +1306,7 @@ pub const hostedRoots = hostedRootsOf;
 
 fn hostedRootsOf(node: *NodeBase, out: *[2]?*NodeBase) []?*NodeBase {
     out.* = .{ null, null };
-    const raw = node.owner_instance orelse return out[0..0];
+    const raw = node.ownerInstance() orelse return out[0..0];
     const instance: *runtime.Instance = @ptrCast(@alignCast(raw));
     if (node.is_shadow_host) {
         if (shadow_hosts.rootForHost(instance)) |shadow| out[0] = instance_bridge.getNodeBaseUnaudited(shadow);
@@ -1324,7 +1324,7 @@ fn checkNode(node: *NodeBase, fanout: usize) CheckError!void {
     // A detached root of a document is counted there - for a node made
     // through the WebIDL layer, whose node document is set through
     // Node.setOwnerDocument (a NodeBase built outside it has no counts).
-    if (node.owner_instance != null and node.parent_node == null and !node.rc_flags.hosted and countsAsForeign(node) and !node.rc_flags.foreign) return error.FlagMismatch;
+    if (node.ownerInstance() != null and node.parent_node == null and !node.rc_flags.hosted and countsAsForeign(node) and !node.rc_flags.foreign) return error.FlagMismatch;
     // A node with more children than `fanout` is not checked (a bounded
     // walk of its links: a node keeps no child list).
     {
@@ -1519,7 +1519,7 @@ pub fn WeakRef(comptime T: type) type {
         /// Null for a NodeBase with no owning Instance (built outside the
         /// WebIDL layer): it has no generation to compare.
         pub fn of(ptr: *T) ?Self {
-            const owner = nodeBaseOf(T, ptr).owner_instance orelse return null;
+            const owner = nodeBaseOf(T, ptr).ownerInstance() orelse return null;
             const instance: *const runtime.Instance = @ptrCast(@alignCast(owner));
             return .{ .ptr = ptr, .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
         }

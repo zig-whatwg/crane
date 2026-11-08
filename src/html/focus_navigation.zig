@@ -20,7 +20,7 @@ fn parent(node: *Instance) ?*Instance {
 }
 
 fn instanceOf(node: *dom.NodeBase) ?*Instance {
-    return @ptrCast(@alignCast(node.owner_instance orelse return null));
+    return @ptrCast(@alignCast(node.ownerInstance() orelse return null));
 }
 
 fn slotState(node: *Instance) ?*dom.slot_helpers.SlotState {
