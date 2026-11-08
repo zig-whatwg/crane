@@ -1992,9 +1992,11 @@ fn addEngineLateRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Bui
     run.addArg(b.fmt("--launch-seed={s}", .{launch.seed}));
     run.addArg(b.fmt("--timeout={d}", .{launch.timeout}));
     addGroupArgs(b, run, launch, groups, false, false);
-    // A pattern matches a name with or without its directory prefix, so this
-    // selects the file in both layouts (-Dtest-binaries).
-    run.addArg("--filter=platform_start_once_test*");
+    // The leading `*` takes the joined executable's "v8." prefix too: the
+    // launcher strips a group's prefix only for a group it is told of, and
+    // this run passes no batches (a bare "platform_start_once_test*" ran
+    // nothing in the joined "tests" on server1, lane linux1).
+    run.addArg("--filter=*platform_start_once_test.*");
     // Its results beside the suite's own, never over them; the order is the
     // plain run's (as a filtered run's is).
     run.addArg(b.fmt("--out=tmp/test-launch/{s}.engine-late.jsonl", .{name}));
