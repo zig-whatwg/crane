@@ -400,6 +400,7 @@ pub fn animatedBlock(allocator: Allocator, element: *runtime.Instance, pseudo: ?
         try applyEffect(allocator, effect, base, cascader, null, .early, &early, &customs, &typed);
     }
     if (!any) return null;
+    try settleDependencies(allocator, effects, pseudo, base, cascader, level, &early, &customs, &typed);
     var early_block = try blockOf(allocator, &early, &customs);
     defer if (early_block) |*b| b.deinit();
     var composited: Composited = .empty;
@@ -422,6 +423,84 @@ pub fn animatedBlock(allocator: Allocator, element: *runtime.Instance, pseudo: ?
         if (commit.target == element and pseudo == null) try commit.capture(&composited, &customs);
     };
     return try blockOf(allocator, &composited, &customs);
+}
+
+/// Web Animations 1 5.3.2: "When computing a property value, the computed
+/// values of dependencies held by value must be calculated first." A first
+/// round keyframe that substitutes var() - a custom property's, or font-size's,
+/// line-height's or color's - holds the custom properties it names by value,
+/// and their computed values include their own animations' effect values.
+/// The first round computes every keyframe over the base style, so a
+/// keyframe reading another ANIMATED custom property saw its base value;
+/// each further pass recomputes the round over the custom properties the
+/// previous one composited (as `under`), until they no longer change: a
+/// chain of n custom properties, each substituting the next, settles in n
+/// passes, whatever order their animations run in. Blink resolves the same
+/// dependency lazily (StyleCascade applies an interpolated custom property
+/// when a var() reaches it, CSSInterpolationTypesMap); Chrome 157 passes
+/// css-properties-values-api/animation/registered-var-to-registered-
+/// animating.html, Firefox 159 and Safari 27.2 fail it differently, so the
+/// spec decides (golden rule 2; the integrator's ruling 2026-11-08). The
+/// passes stop at one more than the number of composited custom
+/// properties: a cycle through animations (A's keyframe reads B, B's reads
+/// A) has no fixed point to settle on.
+fn settleDependencies(allocator: Allocator, effects: []const model.Link, pseudo: ?[]const u8, base: *const ComputedStyle, cascader: Cascader, level: Level, early: *Composited, customs: *Customs, typed: *TypedCustoms) Allocator.Error!void {
+    if (customs.items.len == 0 or !substitutesInFirstRound(effects, pseudo, base, level)) return;
+    var pass: usize = 0;
+    while (pass <= customs.items.len) : (pass += 1) {
+        var empty: Composited = .empty;
+        var under = (try blockOf(allocator, &empty, customs)) orelse return;
+        defer under.deinit();
+        var next_early: Composited = .empty;
+        errdefer releaseAll(allocator, &next_early);
+        var next_customs: Customs = .empty;
+        errdefer releaseCustoms(allocator, &next_customs);
+        for (effects) |link| {
+            const effect = liveEffect(link) orelse continue;
+            if (!samePseudo(effect, pseudo) or levelOf(effect) != level) continue;
+            try applyEffect(allocator, effect, base, cascader, &under, .early, &next_early, &next_customs, typed);
+        }
+        const settled = sameCustoms(customs, &next_customs);
+        releaseAll(allocator, early);
+        early.* = next_early;
+        releaseCustoms(allocator, customs);
+        customs.* = next_customs;
+        if (settled) return;
+    }
+}
+
+/// Whether a first-round keyframe value (a custom property's, or an early
+/// longhand's) of an applicable effect substitutes var().
+fn substitutesInFirstRound(effects: []const model.Link, pseudo: ?[]const u8, base: *const ComputedStyle, level: Level) bool {
+    for (effects) |link| {
+        const effect = liveEffect(link) orelse continue;
+        if (!samePseudo(effect, pseudo) or levelOf(effect) != level) continue;
+        for (effect.keyframes.frames.items) |frame| for (frame.properties.items) |property| {
+            if (std.ascii.findIgnoreCase(property.value, "var(") == null) continue;
+            if (std.mem.startsWith(u8, property.name, "--")) return true;
+            const found = css.properties.lookup(property.name) orelse continue;
+            switch (found) {
+                .longhand => |l| if (isEarly(base.physical(l))) return true,
+                .shorthand => |sh| for (sh.longhands()) |l| {
+                    if (isEarly(base.physical(l))) return true;
+                },
+            }
+        };
+    }
+    return false;
+}
+
+/// Whether two composited custom property lists hold the same names with
+/// the same texts.
+fn sameCustoms(a: *const Customs, b: *const Customs) bool {
+    if (a.items.len != b.items.len) return false;
+    for (a.items) |x| {
+        const i = customIndex(b, x.name.bytes) orelse return false;
+        const y = b.items[i].value;
+        if ((x.value == null) != (y == null)) return false;
+        if (x.value) |text| if (!std.mem.eql(u8, text.bytes, y.?.bytes)) return false;
+    }
+    return true;
 }
 
 /// Whether an owned CSS animation in effect on (the element, `pseudo`) has
