@@ -4897,16 +4897,21 @@ pub fn build(b: *std.Build) void {
     // SNAPSHOT GENERATION (auto-generate snapshot for fast browser startup)
     // ========================================================================
 
-    // Create snapshot file at a known location
-    const snapshot_output_path = "zig-out/bin/whatwg_snapshot.bin";
-
-    // Run snapshot generator to create the snapshot file
+    // The generator writes into the cache (an output file argument, so the
+    // run is cached on the generator's hash) and the install step copies the
+    // blob to the install prefix's bin/ - zig-out/bin/whatwg_snapshot.bin,
+    // where the runner, the console and gc_bench look for it - making that
+    // directory. The generator was handed "zig-out/bin/whatwg_snapshot.bin"
+    // to write itself, and a fresh checkout has no zig-out/bin: `zig build
+    // snapshot` failed with FileNotFound there (server1's first native run,
+    // 2026-11-07); crane-remote.sh's `mkdir -p zig-out/bin` hid it on the
+    // pool's hosts.
     const gen_snapshot = b.addRunArtifact(snapshot_gen_exe);
-    gen_snapshot.addArg(snapshot_output_path);
+    const install_snapshot = b.addInstallBinFile(gen_snapshot.addOutputFileArg("whatwg_snapshot.bin"), "whatwg_snapshot.bin");
 
     // Create a build step for manual snapshot generation
     const snapshot_step = b.step("snapshot", "Generate V8 heap snapshot with WebIDL interfaces");
-    snapshot_step.dependOn(&gen_snapshot.step);
+    snapshot_step.dependOn(&install_snapshot.step);
 
     // The tests' snapshot: the same generator, into the cache (an output
     // file argument, so the run is cached on the generator's hash), passed
@@ -5011,7 +5016,7 @@ pub fn build(b: *std.Build) void {
     // waits for the generator, its compile does not, so the console's
     // compile and the generator's build and run go side by side.
     const install_repl = b.addInstallArtifact(repl_exe, .{});
-    install_repl.step.dependOn(&gen_snapshot.step);
+    install_repl.step.dependOn(&install_snapshot.step);
     b.getInstallStep().dependOn(&install_repl.step);
     // A release console names its build beside itself (zig-out/bin/
     // repl.modes, build_mode.zig `writeModesFile`): its modes and the CPU
@@ -5182,7 +5187,7 @@ pub fn build(b: *std.Build) void {
     // C libraries a release root links (see wpt_runner_exe below).
     if (runner_modes.sanitize_c) |sanitizer| gc_bench_exe.root_module.sanitize_c = sanitizer;
     gc_bench_exe.bundle_ubsan_rt = true;
-    gc_bench_exe.step.dependOn(&gen_snapshot.step);
+    gc_bench_exe.step.dependOn(&install_snapshot.step);
 
     b.installArtifact(gc_bench_exe);
 
@@ -5396,7 +5401,7 @@ pub fn build(b: *std.Build) void {
 
     // Make WPT runner depend on snapshot generation
     // This ensures the snapshot is always up-to-date with the current V8 build
-    wpt_runner_exe.step.dependOn(&gen_snapshot.step);
+    wpt_runner_exe.step.dependOn(&install_snapshot.step);
 
     b.installArtifact(wpt_runner_exe);
 
