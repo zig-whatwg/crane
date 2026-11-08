@@ -1259,13 +1259,26 @@ const Builder = struct {
         return @import("supports.zig").evaluateTest(self.ctx.allocator, text, quirks, self.ctx.selector_check, namespaces);
     }
 
-    /// substitution.Host's -internal-auto-base() question.
+    /// substitution.Host's -internal-auto-base() question (a value with the
+    /// function inside another; html.css has none).
     fn baseAppearanceCallback(context: *anyopaque) substitution.Error!bool {
         const self: *Builder = @ptrCast(@alignCast(context));
         // An `appearance` whose own value asks: Blink's DetectCycle, the
         // substitution fails (invalid at computed-value time).
         if (self.appearance_state == .resolving) return error.Invalid;
         try self.ensureAppearance();
+        return self.hasBaseAppearance();
+    }
+
+    /// The same question for a declaration whose whole value is one
+    /// -internal-auto-base() (pending_values.Pending.AutoBase), asked with
+    /// no call back into the compute path: an element that can have base
+    /// appearance computed `appearance` at the head of run(), and every
+    /// other one reads only the inherited bit (hasBaseAppearance).
+    /// error.Invalid for an `appearance` declaration that asks (the cycle).
+    fn autoBaseChoice(self: *const Builder) error{Invalid}!bool {
+        if (self.appearance_state == .resolving) return error.Invalid;
+        std.debug.assert(self.ctx.appearance_support == .none or self.appearance_state == .done);
         return self.hasBaseAppearance();
     }
 
@@ -1371,7 +1384,20 @@ const Builder = struct {
     }
     fn resolvePending(self: *Builder, c: Candidate, l: Longhand) Allocator.Error!struct { assigned: properties.Assigned, unavailable: bool = false } {
         if (c.decl.value != .value or c.decl.value.value != .pending) return .{ .assigned = c.decl.value };
-        const pending = c.decl.value.value.pending;
+        var pending = c.decl.value.value.pending;
+        // HTML 15.5.16: a UA declaration that is one -internal-auto-base()
+        // had both arguments parsed with the sheet; the element's base
+        // appearance picks one, with nothing substituted or parsed (WebKit
+        // Style::SubstitutionResolver::trySimpleSubstitution's
+        // InternalAutoBase case). Blink's ResolveAutoBaseInto chooses the
+        // same argument. An argument with a substitution function of its
+        // own is a pending value, substituted below as any other.
+        if (pending.auto_base) |*auto_base| {
+            const base = self.autoBaseChoice() catch return .{ .assigned = .{ .css_wide = .unset } };
+            const chosen = auto_base.select(base, c.decl.longhand);
+            if (chosen != .value or chosen.value != .pending) return .{ .assigned = chosen };
+            pending = chosen.value.pending;
+        }
         const source = ValueSource{ .tree_scope = c.source.tree_scope, .tree_count_allowed = c.source.tree_count_allowed };
         var found: ?usize = null;
         for (self.pending.items, 0..) |entry, index| if (entry.value == pending and std.meta.eql(entry.source, source)) {
@@ -1546,6 +1572,14 @@ const Builder = struct {
         // the high-priority ones included, may substitute one, which then
         // resolves when it is first reached.
         try self.collectCustomStates();
+        // HTML 15.5.16: an element that can have base appearance (a select,
+        // a drop-down select's picker) computes `appearance` before any
+        // longhand, so its -internal-auto-base() declarations pick with no
+        // call back into the compute path (autoBaseChoice). Blink's
+        // ResolveAutoBaseInto applies `appearance` first too. Elements that
+        // cannot have it never compute it early: their base appearance is
+        // the parent's bit alone.
+        if (self.ctx.appearance_support != .none) try self.ensureAppearance();
         // The high-priority longhands: the mapping of logical ones, then
         // color-scheme (what every system color resolves against - Blink
         // applies it before color too), then font-size (em), then color
