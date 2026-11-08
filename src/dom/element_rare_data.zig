@@ -101,6 +101,14 @@ pub const ElementRareData = struct {
     shadow_root_kept: same_object.KeptChild = .{},
     /// HTML: the element's custom element definition, retained.
     custom_element_definition: ?*custom_elements.Definition = null,
+    /// DOM: the element's custom element registry when it is not its node
+    /// document's (Element's `registry_place` is `.rare`): a scoped
+    /// registry, or a global one another document keeps - traced from the
+    /// element, which is all that keeps a scoped one (lane perf3 E1;
+    /// Blink's kCustomElementRegistry). Let go (`release`) by Element at its
+    /// deinit, while its wrapper's edge can still be forgotten; it owns no
+    /// memory, so `destroy` has nothing to free for it.
+    custom_element_registry: custom_elements.RegistryAssociation = .{},
     /// HTML: the element's is value, for a customized built-in element
     /// (Blink's kIsValue).
     is_value: ?runtime.DOMString = null,
