@@ -110,6 +110,19 @@ const xhtml_public_ids = [_][]const u8{
 /// libxml2's limit on nested entity references.
 const max_entity_depth = 40;
 
+/// How many elements may be open at once: the 5,001st nested start tag is a
+/// fatal error, "Excessive node nesting." No XML or HTML spec sets a limit;
+/// every browser's XML parser has this one. Blink XMLDocumentParser
+/// (xml_document_parser.cc, kMaxXMLTreeDepth = 5000): PushCurrentNode, then
+/// `if (current_node_stack_.size() > kMaxXMLTreeDepth) HandleError(
+/// kErrorTypeFatal, "Excessive node nesting.", ...)` - the element is made and
+/// inserted, then parsing stops. Measured (lane crash1 b2,
+/// tmp/crash1/probe/depth2.html): DOMParser "application/xml" of 5,000
+/// nested elements parses in Chrome 157, Firefox 159 and Safari 27.2, of
+/// 5,001 gives a parsererror in all three. Crane parsed 30,000 (16 s) into a
+/// tree no browser builds.
+const max_element_depth = 5000;
+
 const Entity = struct {
     kind: enum { internal, external, unparsed },
     /// The replacement text of an internal entity.
@@ -1017,6 +1030,9 @@ pub const Parser = struct {
         const name = try self.processNamespaces(qualified);
         const Sink = @typeInfo(@TypeOf(sink)).pointer.child;
         if (@hasDecl(Sink, "startElement")) try sink.startElement(name.element, self.attributes.items);
+        // Past the browsers' nesting bound: made and inserted, then fatal,
+        // as Blink's PushCurrentNode (`max_element_depth`).
+        if (self.elements.items.len >= max_element_depth) return self.fail("Excessive node nesting.", .{});
         if (empty) {
             if (@hasDecl(Sink, "endElement")) try sink.endElement(name.element);
             self.bindings.shrinkRetainingCapacity(name.mark);

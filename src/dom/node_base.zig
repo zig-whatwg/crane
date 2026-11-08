@@ -251,7 +251,9 @@ pub const NodeBase = struct {
 
     /// The node's rare data, made on first use (WebKit `ensureRareData`) and
     /// kept, never moved, until the node's teardown (`deinitRareData`).
-    fn ensureRareData(self: *NodeBase) error{OutOfMemory}!*NodeRareData {
+    /// Public for dom.slot_helpers' writers' path (a Text node's slottable
+    /// state, lane perf3 E1); every other field has its writer here.
+    pub fn ensureRareData(self: *NodeBase) error{OutOfMemory}!*NodeRareData {
         if (self.rare) |rare| return rare;
         const rare = try self.allocator().create(NodeRareData);
         rare.* = .{};
@@ -678,6 +680,14 @@ pub const NodeRareData = struct {
     /// NodeBase.nodeName's, and whether the node owns it.
     node_name: []const u8 = "",
     node_name_allocated: bool = false,
+    /// DOM 4.2.2.2: a Text node as a slottable - its assigned slot and its
+    /// manual slot assignment (an Element's are in its ElementRareData).
+    /// Written only through dom.slot_helpers.ensureSlottable, for a node a
+    /// slot assigns; readers of a node with no rare data read
+    /// dom.slot_helpers.unassigned (lane perf3 E1; Blink's FlatTreeNodeData,
+    /// kFlatTreeNodeData in NodeRareData; WebKit's m_manuallyAssignedSlot in
+    /// NodeRareData). Owns nothing.
+    slottable: @import("slot_helpers.zig").SlottableState = .{},
 };
 
 /// One entry of a node's registered observer list: its link and the

@@ -14,7 +14,6 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const infra = @import("infra");
-const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const HTMLCollection = interfaces.HTMLCollection;
 const dom = @import("dom");
 const live_collections = dom.live_collections;
@@ -630,11 +629,17 @@ fn refreshNamed(instance: *runtime.Instance, internal: *InternalState) void {
     }
 }
 
-/// Get internal state from instance using shared accessor
-const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
-
+/// This HTMLCollection's state, or null when `instance` is not an
+/// HTMLCollection (an HTMLOptionsCollection, an HTMLFormControlsCollection
+/// are): the brand check, as ProcessingInstruction's and HTMLLinkElement's
+/// (lane crash1 b2, the SAFETY item of perf3 D1). dom.live_collections.rootOf
+/// is "the owner-checked live root" of whatever collection it is given. The
+/// unchecked cast this replaces (InternalStateAccessor:
+/// `instance.getState(State)`) read another type's State at this one's
+/// `own._internal` offset as a pointer.
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return Accessor.get(instance);
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,

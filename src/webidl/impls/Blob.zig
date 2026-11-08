@@ -23,7 +23,6 @@ const webidl = @import("webidl");
 // The byte stream "get stream" returns.
 const js = @import("streams_js.zig");
 const srd = @import("streams_readable.zig");
-const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 pub const State = Blob.State;
 
@@ -271,12 +270,17 @@ pub fn createFromBlobData(allocator: std.mem.Allocator, ctx: runtime.Context, bl
     return instance;
 }
 
-/// Get internal state from instance
-/// Get internal state from instance using shared accessor
-const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
-
+/// This Blob's state, or null when `instance` is not a Blob (a File is one):
+/// the brand check, as ProcessingInstruction's and HTMLLinkElement's (lane
+/// crash1 b2, the SAFETY item of perf3 D1). dom.blob_bytes promises null when
+/// "`blob` is no Blob": its callers - blob parts, WebSocket.send, fetch bodies,
+/// FileReader(Sync), URL.createObjectURL - hand it whatever object a union
+/// conversion gave them. The unchecked cast this replaces
+/// (InternalStateAccessor: `instance.getState(State)`) read another type's
+/// State at this one's `own._internal` offset as a pointer.
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return Accessor.get(instance);
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
 /// Getter for size

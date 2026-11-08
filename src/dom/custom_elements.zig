@@ -117,7 +117,9 @@ pub const RegistryAssociation = struct {
     kept: ?KeptInstance = null,
     traced: bool = false,
 
-    /// An element's or shadow root's association (CE2-S2). DOM gives a node
+    /// A shadow root's association (CE2-S2); an element keeps a
+    /// `RegistryPlace` instead, and this association, in its rare data, only
+    /// for a registry the place cannot name. DOM gives a node
     /// a global registry only as its node document's own (flatten element
     /// creation options 3.2.3, importNode 3, clone a single node 2.3, adopt
     /// 3.3.2.4, attachShadow), and the document's association keeps that
@@ -128,12 +130,14 @@ pub const RegistryAssociation = struct {
     /// `document_registry` - is traced from the node.
     ///
     /// The global case keeps the pointer with its generation rather than
-    /// re-reading the node document's registry on `get`: a node can outlive
-    /// a document that lost its browsing context (its wrapper is then weak
-    /// and a detached node keeps no edge to it), and the node document is a
-    /// bare pointer. Deviation, stated: when that document and its registry
-    /// are collected while the node lives, the node's association reads null
-    /// where DOM would still answer the old registry.
+    /// re-reading the node document's registry on `get`. (Written when a
+    /// detached node kept no edge to its document, 2026-10-08; since
+    /// 79fa02b520e a node's wrapper keeps its parent or, as a root, its
+    /// document - node_document.zig - which is what lets an element read its
+    /// node document's registry instead: RegistryPlace.) Deviation, stated:
+    /// when the document's registry is collected while the node lives, the
+    /// node's association reads null where DOM would still answer the old
+    /// registry.
     pub fn setForNode(self: *RegistryAssociation, owner: *runtime.Instance, value: ?*runtime.Instance, document_registry: ?*runtime.Instance) void {
         if (value) |registry| {
             if (registry == document_registry and !isScoped(registry)) {
@@ -166,6 +170,59 @@ pub const RegistryAssociation = struct {
         self.traced = false;
     }
 };
+/// Where an element's custom element registry (DOM 4.9, an element's
+/// associated "custom element registry") is kept (lane perf3 E1): one byte
+/// in the element instead of a 40-byte RegistryAssociation on every one.
+///
+/// DOM keeps a GLOBAL association equal to the node document's effective
+/// global registry: "create an element" takes the document's registry
+/// (flatten element creation options 3.2.3, create-for-token step 6 through
+/// the intended parent), importNode and "clone a single node" 2.3 take the
+/// document's effective global for a global one, and adopt 3.3.2.4 resets a
+/// global one to the new document's - and a document's registry, once set,
+/// is never replaced (HTML initialize step 2 sets only a null one;
+/// Document.ensureGlobalRegistry only a missing one). So that association
+/// is read from the node document, which a live node keeps (node_document
+/// .zig: the node's edge to its parent or its document). Over the perf
+/// pages' 3,039,618 elements it was 86.6% of them; the rest were null, and
+/// none was scoped.
+///
+/// - `none`: null.
+/// - `node_document`: the node document's registry, as its effective global
+///   registry - so an element whose node document was just changed by adopt
+///   (step 3.3.2.1 runs before 3.3.2.4 reads it) reads null in a document
+///   with a scoped registry, which is what step 3.3.2.4 would set.
+/// - `rare`: any other registry - a scoped one, or a global one that is not
+///   the node document's - in the element's rare data, as a
+///   RegistryAssociation (traced from the element: nothing else keeps it).
+///
+/// Blink infers the registry from the tree scope unless NodeRareData holds
+/// one (kCustomElementRegistry = 36, core/dom/node_rare_data.h);
+/// Element::SetCustomElementRegistry clears that field when the registry is
+/// the tree scope's ("we typically can clear the registry field in rare
+/// data and have the registry implicitly inferred to save memory",
+/// core/dom/element.cc). WebKit keeps two node flags,
+/// UsesNullCustomElementRegistry and UsesScopedCustomElementRegistryMap
+/// (dom/Node.h), and CustomElementRegistry::registryForElement reads null,
+/// a side map, or the tree scope's registry (dom/CustomElementRegistry.h).
+/// Crane infers from the node document rather than the tree scope because
+/// that is the association DOM defines: a shadow root's registry is the
+/// shadow root's own, and an element inside it keeps its own.
+pub const RegistryPlace = enum(u2) {
+    none,
+    node_document,
+    rare,
+
+    /// The place `registry` takes on an element whose node document's
+    /// registry is `document_registry`: DOM's global association - the
+    /// node document's own, unscoped registry - is not stored at all.
+    pub fn of(registry: ?*runtime.Instance, document_registry: ?*runtime.Instance) RegistryPlace {
+        const value = registry orelse return .none;
+        if (value == document_registry and !isScoped(value)) return .node_document;
+        return .rare;
+    }
+};
+
 pub const DocumentSteps = struct {
     set_registry: *const fn (*runtime.Instance, ?*runtime.Instance) anyerror!void,
     ensure_global_registry: *const fn (*runtime.Instance) anyerror!*runtime.Instance,
