@@ -2644,6 +2644,20 @@ struct IsolateData {
     /// resolves (engine.HostHooks.importMetaResolve): the dispatcher is the
     /// process's, so whether the builtin is made is the isolate's.
     bool import_meta_resolve = false;
+    /// The agent's C++ heap (newAgentCppHeap), handed to V8 as
+    /// CreateParams::cpp_heap - attached from Isolate::Initialize on - and
+    /// OWNED here too, because V8 13.1.203 never frees it: "V8 takes
+    /// ownership of the CppHeap passed this way" (v8-isolate.h), but its
+    /// Heap::StartTearDown, inside Isolate::Dispose, releases its owning
+    /// pointer, detaches the heap and terminates it, and nothing deletes it
+    /// (src/heap/heap.cc, StartTearDown: `owning_cpp_heap_.release()`) - one
+    /// leaked heap per agent. V8 13.4.100 frees it there itself (1c079f473b1,
+    /// "[cppheap] Change order of CppHeap teardown calls":
+    /// `owning_cpp_heap_.reset()`), which the static_assert below holds to.
+    /// So the record frees it with itself: after Isolate::Dispose has
+    /// returned (v8_Isolate_Dispose) - detached and terminated by then, so
+    /// its end touches no isolate - or when no isolate was made with it.
+    std::unique_ptr<CppHeap> cpp_heap;
 
 
     /// Take out the entry whose module is `module`, if any.
@@ -2657,6 +2671,12 @@ struct IsolateData {
         return nullptr;
     }
 };
+
+// IsolateData::cpp_heap frees what 13.1.203 leaves: from 13.4 V8 frees it,
+// and the record would free it twice.
+static_assert(V8_MAJOR_VERSION == 13 && V8_MINOR_VERSION < 4,
+              "V8 13.4 frees a CppHeap given in CreateParams in Heap::StartTearDown (1c079f473b1): "
+              "IsolateData::cpp_heap must stop owning it");
 
 /// `isolate`'s record, or null for an isolate this file did not make (the
 /// snapshot creator's).
@@ -2977,8 +2997,10 @@ Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options) {
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     auto record = std::make_unique<IsolateData>();
     applyIsolateOptions(record.get(), options);
-    // The agent's C++ heap, attached from Isolate::Initialize on.
-    create_params.cpp_heap = newAgentCppHeap().release();
+    // The agent's C++ heap, attached from Isolate::Initialize on; the record
+    // frees it (IsolateData::cpp_heap says why).
+    record->cpp_heap = newAgentCppHeap();
+    create_params.cpp_heap = record->cpp_heap.get();
     // V8's built-in snapshot: always allowed (g_read_only_heap says why).
     (void)claimReadOnlyHeap(nullptr, 0);
     record->holds_read_only_heap = true;
@@ -3103,7 +3125,9 @@ void v8_Isolate_Dispose(Isolate* isolate) {
         // The record last: a snapshot isolate's StartupData is in it, and V8
         // held a pointer to that until Dispose returned ("The embedder owns
         // the blob", v8-isolate.h CreateParams::snapshot_blob). The bytes it
-        // points at are the caller's, freed by the caller after this.
+        // points at are the caller's, freed by the caller after this. Its C++
+        // heap goes with it: Dispose detached and terminated it
+        // (IsolateData::cpp_heap).
         delete record;
     }
 }
@@ -10039,7 +10063,8 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
     create_params.snapshot_blob = &isolate_data->startup_data;
     create_params.external_references = external_references;
     // The agent's C++ heap, as v8_Isolate_NewWithOptions gives it.
-    create_params.cpp_heap = newAgentCppHeap().release();
+    isolate_data->cpp_heap = newAgentCppHeap();
+    create_params.cpp_heap = isolate_data->cpp_heap.get();
     
     Isolate* isolate = Isolate::Allocate();
     if (!isolate) {
