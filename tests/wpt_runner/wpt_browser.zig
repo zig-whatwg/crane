@@ -259,6 +259,9 @@ pub const WptBrowser = struct {
         // a file's result must not depend on the cookies the files before it
         // left behind.
         self.browser.cookie_jar.clear();
+        // And with no permission override another file's test_driver set
+        // (wptrunner's Chrome executor: reset_browser_state).
+        test_driver.TestDriver.resetPermissions(self.browser.scope);
 
         // Navigate to create fresh context
         try self.browser.navigate(test_url, ctx_type);
@@ -321,8 +324,10 @@ pub const WptBrowser = struct {
         // optional is now explicit rather than incidental.
         var phase: ?clock.Timer = clock.Timer.start();
 
-        // Each test file starts with an empty cookie jar, as runTest's do.
+        // Each test file starts with an empty cookie jar and no permission
+        // override, as runTest's do.
         self.browser.cookie_jar.clear();
+        test_driver.TestDriver.resetPermissions(self.browser.scope);
 
         // A fresh top-level traversable for the file, on its initial
         // about:blank (HTML "create a new top-level traversable"), loaded
