@@ -222,11 +222,35 @@ fn buildStaticLibcurl(
         .ares = false, // Use threaded resolver
         // Disable non-HTTP protocols
         .@"http-only" = true, // This disables FTP, TFTP, Telnet, etc.
+        // No CA bundle or CA directory of curl's own: every TLS connection
+        // verifies against Crane's trust store (src/platform/kit/curl/
+        // trust.zig - the system roots parsed once per process, with a
+        // Browser's extra anchors), which kit/curl's options attach to each
+        // handle. "auto", the default, made a native build read the build
+        // machine at configure time and compile what it found in: on Linux
+        // CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt AND
+        // CURL_CA_PATH=/etc/ssl/certs, which curl's mbedTLS backend parses
+        // again in every connection's first step (lib/vtls/mbedtls.c
+        // mbed_connect_step1: mbedtls_x509_crt_parse_path) - ~100 ms of CPU
+        // per HTTPS connection on server1 (lane linux1); on macOS
+        // /etc/ssl/cert.pem.
+        .@"ca-bundle" = @as([]const u8, "none"),
+        .@"ca-path" = @as([]const u8, "none"),
     }) orelse return null; // Lazy dependency not available
 
     // Get the libcurl static library artifact from the dependency
     // The curl package exposes both "curl" exe and lib, so we need to find the library specifically
     const libcurl = findLibraryArtifact(curl_dep, "curl") orelse return null;
+    // "none" above is what upstream curl's CMake takes as "no CA file / no CA
+    // directory" (CMakeLists.txt: unset when "none"), but allyourcodebase/curl
+    // (5184bb9ff2) writes it into curl_config.h as the PATH "none"
+    // (`.CURL_CA_BUNDLE = if (eql(ca_bundle, "auto")) null else ca_bundle`):
+    // every connection then failed to read a CA file named "none"
+    // (CURLE_SSL_CACERT_BADFILE). Both are left undefined in the header, as
+    // CMake leaves them; tests/fetch/trust_store_test.zig pins that curl names
+    // neither (CURLINFO_CAINFO, CURLINFO_CAPATH).
+    undefineConfigHeaderValue(libcurl.root_module, "curl_config.h", "CURL_CA_BUNDLE");
+    undefineConfigHeaderValue(libcurl.root_module, "curl_config.h", "CURL_CA_PATH");
 
     // mbedTLS and zlib: the versions build.zig.zon pins, not the curl package's.
     //
@@ -428,6 +452,22 @@ fn replaceLinkedLibrary(library: *std.Build.Step.Compile, name: []const u8, repl
 }
 
 /// Remove every `-D<name>=...` from `module`'s C macros.
+/// Leaves `name` undefined in `module`'s config header `include_path` (a
+/// ConfigHeader step a dependency made): for a value the dependency's build
+/// writes where its upstream leaves it unset. The build fails if the header or
+/// the value is not there, so a dependency bump that renames them is seen.
+fn undefineConfigHeaderValue(module: *std.Build.Module, include_path: []const u8, name: []const u8) void {
+    for (module.include_dirs.items) |dir| switch (dir) {
+        .config_header_step => |header| if (std.mem.eql(u8, header.include_path, include_path)) {
+            const value = header.values.getPtr(name) orelse std.debug.panic("{s} has no {s}", .{ include_path, name });
+            value.* = .undef;
+            return;
+        },
+        else => {},
+    };
+    std.debug.panic("no config header {s} in the module", .{include_path});
+}
+
 fn removeCMacro(module: *std.Build.Module, name: []const u8) void {
     const prefix = module.owner.fmt("-D{s}=", .{name});
     var i: usize = 0;
@@ -1914,7 +1954,57 @@ fn addTestRootWith(
     }
 
     step.dependOn(&addSuiteRunWith(builder, launch, test_exe, name, config_name, groups).step);
+    // A -Dtest-file executable is named after its file and takes its
+    // directory's row (`config_name`).
+    if (link_v8 and holdsTestsV8(config_name orelse name, groups)) {
+        if (addEngineLateRun(builder, launch, test_exe, name, groups)) |late| step.dependOn(&late.step);
+    }
     return test_exe;
+}
+
+/// Whether the executable `name` (with `groups`, a joined one's members)
+/// holds tests/v8's tests.
+fn holdsTestsV8(name: []const u8, groups: []const SuiteGroup) bool {
+    if (std.mem.eql(u8, name, "tests-v8")) return true;
+    for (groups) |g| if (std.mem.eql(u8, g.prefix, "v8.")) return true;
+    return false;
+}
+
+/// tests/v8's platform start tests once more, each in a process whose start
+/// skipped engine.initializeBeforeThreadCreation (CRANE_TEST_ENGINE_EARLY=0,
+/// which the Crane test runner reads): there V8 starts on a later thread
+/// beside threads that already exist, and its platform must give it no
+/// thread-isolated allocator - the fallback of every host that skips the
+/// call, which would otherwise fault on x86-64 Linux (lane linux1; the
+/// integrator's ruling, 2026-11-08). The same executable, so nothing more
+/// is compiled; only the plain run has it (a variant or a -Dtest-filter run
+/// selects its own tests).
+fn addEngineLateRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, groups: []const SuiteGroup) ?*std.Build.Step.Run {
+    if (launch.sanitize_thread or launch.many_browsers or launch.filters.len != 0) return null;
+    const run = b.addRunArtifact(launch.launcher);
+    run.setName(b.fmt("test {s} (engine started late)", .{name}));
+    run.stdio = .zig_test;
+    run.addArtifactArg(test_exe);
+    run.addArg(b.fmt("--name={s}-engine-late", .{name}));
+    // A process per test: each race needs a process where nothing has
+    // started V8 yet.
+    run.addArg("--batch=1");
+    run.addArg(b.fmt("--launch-seed={s}", .{launch.seed}));
+    run.addArg(b.fmt("--timeout={d}", .{launch.timeout}));
+    addGroupArgs(b, run, launch, groups, false, false);
+    // The leading `*` takes the joined executable's "v8." prefix too: the
+    // launcher strips a group's prefix only for a group it is told of, and
+    // this run passes no batches (a bare "platform_start_once_test*" ran
+    // nothing in the joined "tests" on server1, lane linux1).
+    run.addArg("--filter=*platform_start_once_test.*");
+    // Its results beside the suite's own, never over them; the order is the
+    // plain run's (as a filtered run's is).
+    run.addArg(b.fmt("--out=tmp/test-launch/{s}.engine-late.jsonl", .{name}));
+    run.addArg(b.fmt("--timings=tmp/test-launch/{s}.jsonl", .{name}));
+    run.setCwd(b.path("."));
+    run.setEnvironmentVariable("CRANE_TEST_ENGINE_EARLY", "0");
+    if (std.mem.eql(u8, launch.seed, "random")) run.has_side_effects = true;
+    return run;
 }
 
 /// An executable that is compiled and never linked - nothing asks for its
@@ -2439,6 +2529,10 @@ const PlatformBindingOptions = struct {
     static: []const []const u8 = &.{},
     http2: bool,
     libcurl: ?*std.Build.Step.Compile,
+    /// The mbedTLS libcurl links (StaticLibcurl.mbedtls): kit/curl's trust
+    /// store parses certificates with it and hands curl's TLS configuration
+    /// the chain. Null with a system libcurl, whose TLS library is its own.
+    mbedtls: ?*std.Build.Step.Compile = null,
     brotli: ?BrotliLibraries,
     image_codecs: ?*std.Build.Step.Compile,
     /// Register the facade by name (the public graph).
@@ -2540,6 +2634,20 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
         .link_libc = true,
     });
     kit[3].addImport("kit_curl_share", kit_curl_share);
+    // Its trust store (trust.zig) parses with libcurl's own mbedTLS, when
+    // libcurl is the bundled one; a system libcurl keeps its own CA loading.
+    const kit_curl_options = b.addOptions();
+    kit_curl_options.addOption(bool, "mbedtls_trust_store", options.mbedtls != null);
+    kit_curl_share.addOptions("kit_curl_options", kit_curl_options);
+    if (options.mbedtls) |mbedtls| {
+        kit_curl_share.linkLibrary(mbedtls);
+        kit_curl_share.addImport("mbedtls_c", addCImport(b, "mbedtls_trust_c", target, .{
+            .includes = &.{ "mbedtls/x509_crt.h", "mbedtls/ssl.h", "psa/crypto.h" },
+            .libs = &.{mbedtls},
+            .macros = &mbedtls_threading_macros,
+        }));
+        if (target.result.os.tag == .ios) addIosSdkPaths(kit_curl_share, iosSdkPath(b));
+    }
     // kit/curl/websocket.zig's header set (curl.h, websockets.h, header.h) is
     // its own module: fetch's curl_ffi translates curl.h alone, as the two
     // @cImports did.
@@ -3721,6 +3829,8 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "host", .module = testing_graph.host },
             .{ .name = "fetch", .module = testing_graph.fetch },
+            // kit/curl's share, options and trust store, as fetch reaches them.
+            .{ .name = "kit_curl_share", .module = testing_graph.fetch.import_table.get("kit_curl_share").? },
         };
         addTestFilesFromDir(b, test_step, "tests/fetch", target, &fetch_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add fetch test files: {}\n", .{err});
@@ -4096,6 +4206,7 @@ pub fn build(b: *std.Build) void {
                 .without = binding.without,
                 .http2 = enable_http2 and !use_system_curl,
                 .libcurl = if (static_libcurl) |lib| lib.libcurl else null,
+                .mbedtls = if (static_libcurl) |lib| lib.mbedtls else null,
                 .clock = testing_graph.clock,
                 .host = testing_graph.host,
                 .memory = testing_graph.memory,
@@ -4592,6 +4703,8 @@ pub fn build(b: *std.Build) void {
         .{ .name = "webdriver", .module = webdriver_mod },
         // main adopts std.start's Io as the process Io (src/platform/host.zig).
         .{ .name = "host", .module = host_mod },
+        // main's first step: engine.initializeBeforeThreadCreation.
+        .{ .name = "engine", .module = engine_mod },
     };
     for (crane_exe_imports) |import| crane_exe.root_module.addImport(import.name, import.module);
 
@@ -4897,16 +5010,21 @@ pub fn build(b: *std.Build) void {
     // SNAPSHOT GENERATION (auto-generate snapshot for fast browser startup)
     // ========================================================================
 
-    // Create snapshot file at a known location
-    const snapshot_output_path = "zig-out/bin/whatwg_snapshot.bin";
-
-    // Run snapshot generator to create the snapshot file
+    // The generator writes into the cache (an output file argument, so the
+    // run is cached on the generator's hash) and the install step copies the
+    // blob to the install prefix's bin/ - zig-out/bin/whatwg_snapshot.bin,
+    // where the runner, the console and gc_bench look for it - making that
+    // directory. The generator was handed "zig-out/bin/whatwg_snapshot.bin"
+    // to write itself, and a fresh checkout has no zig-out/bin: `zig build
+    // snapshot` failed with FileNotFound there (server1's first native run,
+    // 2026-11-07); crane-remote.sh's `mkdir -p zig-out/bin` hid it on the
+    // pool's hosts.
     const gen_snapshot = b.addRunArtifact(snapshot_gen_exe);
-    gen_snapshot.addArg(snapshot_output_path);
+    const install_snapshot = b.addInstallBinFile(gen_snapshot.addOutputFileArg("whatwg_snapshot.bin"), "whatwg_snapshot.bin");
 
     // Create a build step for manual snapshot generation
     const snapshot_step = b.step("snapshot", "Generate V8 heap snapshot with WebIDL interfaces");
-    snapshot_step.dependOn(&gen_snapshot.step);
+    snapshot_step.dependOn(&install_snapshot.step);
 
     // The tests' snapshot: the same generator, into the cache (an output
     // file argument, so the run is cached on the generator's hash), passed
@@ -5011,7 +5129,7 @@ pub fn build(b: *std.Build) void {
     // waits for the generator, its compile does not, so the console's
     // compile and the generator's build and run go side by side.
     const install_repl = b.addInstallArtifact(repl_exe, .{});
-    install_repl.step.dependOn(&gen_snapshot.step);
+    install_repl.step.dependOn(&install_snapshot.step);
     b.getInstallStep().dependOn(&install_repl.step);
     // A release console names its build beside itself (zig-out/bin/
     // repl.modes, build_mode.zig `writeModesFile`): its modes and the CPU
@@ -5182,7 +5300,7 @@ pub fn build(b: *std.Build) void {
     // C libraries a release root links (see wpt_runner_exe below).
     if (runner_modes.sanitize_c) |sanitizer| gc_bench_exe.root_module.sanitize_c = sanitizer;
     gc_bench_exe.bundle_ubsan_rt = true;
-    gc_bench_exe.step.dependOn(&gen_snapshot.step);
+    gc_bench_exe.step.dependOn(&install_snapshot.step);
 
     b.installArtifact(gc_bench_exe);
 
@@ -5396,7 +5514,7 @@ pub fn build(b: *std.Build) void {
 
     // Make WPT runner depend on snapshot generation
     // This ensures the snapshot is always up-to-date with the current V8 build
-    wpt_runner_exe.step.dependOn(&gen_snapshot.step);
+    wpt_runner_exe.step.dependOn(&install_snapshot.step);
 
     b.installArtifact(wpt_runner_exe);
 
@@ -7836,6 +7954,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .static = config.platform_static,
         .http2 = enable_http2 and !use_system_curl,
         .libcurl = if (config.static_libcurl) |lib| lib.libcurl else null,
+        .mbedtls = if (config.static_libcurl) |lib| lib.mbedtls else null,
         .public = public,
         .clock = clock_mod,
         .host = host_mod,

@@ -225,7 +225,13 @@ const Command = struct {
             result.controls[result.control_count] = .{ .point = try c.point.compute(allocator, context), .origin = c.origin };
         }
         if (self.arc) |a| {
-            result.arc = .{ .clockwise = a.clockwise, .large = a.large, .rotation = try a.rotation.compute(context) };
+            // The rotation first, then the arc: assigned with a `try` inside
+            // its initializer, `result.arc` is made non-null before the
+            // `try` runs (the literal is built in place), and a failure left
+            // the errdefer above releasing a Rotation never written (lane
+            // linux1: tag byte 0xAA, "index 170, len 2", on x86-64 Linux).
+            const rotation = try a.rotation.compute(context);
+            result.arc = .{ .clockwise = a.clockwise, .large = a.large, .rotation = rotation };
             while (result.arc.?.count < a.count) : (result.arc.?.count += 1) {
                 const i = result.arc.?.count;
                 result.arc.?.radii[i] = try context.length(a.radii[i]);

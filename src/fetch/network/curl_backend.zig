@@ -374,6 +374,7 @@ pub const LibcurlBackend = struct {
             .verify_peer = request.cert_options.verify_peer,
             .verify_host = request.cert_options.verify_host,
             .ca_bundle_path = request.cert_options.ca_bundle_path,
+            .trust = request.cert_options.trust,
         });
 
         // Accept gzip/deflate compression

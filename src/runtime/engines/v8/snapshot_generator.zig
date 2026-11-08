@@ -66,6 +66,11 @@ fn log(allocator: std.mem.Allocator, io: std.Io, comptime fmt: []const u8, args:
 /// Zig 0.16 removed std.process.argsAlloc and moved the filesystem onto std.Io;
 /// std.process.Init supplies the argument vector, a gpa and the process Io.
 pub fn main(init: std.process.Init) !void {
+    // First, before any thread exists: V8's platform, and with it the key of
+    // its thread isolation on x86-64 Linux, which only threads created after
+    // it inherit - the engine protocol's initializeBeforeThreadCreation, as
+    // every Crane process's main makes it (protocol.zig).
+    v8.ffi.v8_Platform_InitializeBeforeThreadCreation();
     const allocator = init.gpa;
     const io = init.io;
 

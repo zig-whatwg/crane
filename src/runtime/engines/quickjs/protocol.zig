@@ -77,6 +77,8 @@ const Instance = engine.Instance;
 const Allocator = std.mem.Allocator;
 
 // 4.1 Engine and agents
+/// QuickJS keeps no per-process state that threads inherit.
+pub fn initializeBeforeThreadCreation() void {}
 pub fn initializeEngine(_: engine.EngineOptions) Error!void {
     return error.NotSupported;
 }

@@ -115,7 +115,11 @@ pub fn TypedReadRequest(comptime Context: type) type {
             return ReadRequest{
                 .allocator = self.allocator,
                 .context = self.context,
-                .vtable = &VTable{
+                // The steps themselves, not a pointer to a struct literal:
+                // that literal of runtime values lives in this call's frame,
+                // and is gone when erase() returns (lane linux1: a null
+                // chunk step on x86-64 Linux).
+                .vtable = .{
                     .chunk_steps = @ptrCast(self.chunk_steps),
                     .close_steps = @ptrCast(self.close_steps),
                     .error_steps = @ptrCast(self.error_steps),
@@ -149,8 +153,10 @@ pub const ReadRequest = struct {
     /// KEEP: anyopaque required - Type-erased context pointer for VTable pattern
     context: *anyopaque,
 
-    /// KEEP: anyopaque required - VTable with type-erased callback function pointers
-    vtable: *const VTable,
+    /// KEEP: anyopaque required - VTable with type-erased callback function pointers.
+    /// Held by value: the request is all its steps (a pointer would have to
+    /// outlive every copy of the request).
+    vtable: VTable,
 
     /// KEEP: anyopaque required - VTable struct for callback dispatch
     pub const VTable = struct {
@@ -165,7 +171,7 @@ pub const ReadRequest = struct {
     pub fn init(
         allocator: std.mem.Allocator,
         context: *anyopaque,
-        vtable: *const VTable,
+        vtable: VTable,
     ) ReadRequest {
         return .{
             .allocator = allocator,
@@ -308,7 +314,7 @@ test "ReadRequest - direct construction" {
         }.call,
     };
 
-    const request = ReadRequest.init(allocator, counter_ptr, &vtable);
+    const request = ReadRequest.init(allocator, counter_ptr, vtable);
 
     request.executeChunkSteps(Value.undefined_value());
     try std.testing.expectEqual(@as(i32, 1), counter);

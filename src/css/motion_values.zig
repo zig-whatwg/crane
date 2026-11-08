@@ -321,10 +321,18 @@ pub fn consumePath(options: properties.ParseOptions, stream: *properties.Stream)
     var data: PathData = .box;
     defer data.release();
     const token = stream.peek();
+    // Each value is read into a local first and assigned whole: written as
+    // `data = .{ .ray = try ... orelse return null }`, the union's tag is set
+    // before the `try` and the `orelse` run (the literal is built in place),
+    // so a failure or an invalid ray left `defer data.release()` releasing a
+    // payload never written (lane linux1: a GP fault on a garbage position,
+    // x86-64 Linux).
     if (token.token_type == .function and tokens.nameEql(token.value, "ray")) {
-        data = .{ .ray = try consumeRay(options, stream) orelse return null };
+        const ray = try consumeRay(options, stream) orelse return null;
+        data = .{ .ray = ray };
     } else if (@import("svg_paint.zig").isUrl(token)) {
-        data = .{ .url = try @import("svg_paint.zig").parseReference(options, stream) orelse return null };
+        const url = try @import("svg_paint.zig").parseReference(options, stream) orelse return null;
+        data = .{ .url = url };
     } else {
         var trial = stream.*;
         // Motion 1 §2.1 imports <basic-shape>, whose Shapes 1 path() grammar

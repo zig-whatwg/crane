@@ -539,7 +539,15 @@ const SpawnLock = struct {
 
     fn acquire(wpt_root: []const u8) !SpawnLock {
         const io = host.io();
-        const dir = try host.cwd().openDir(io, wpt_root, .{});
+        // A descriptor flock(2) takes: Zig 0.17 opens a directory it is not
+        // asked to iterate with O_PATH on Linux (std/Io/Threaded.zig: `if
+        // (@hasField(posix.O, "PATH") and !options.iterate) flags.PATH =
+        // true`), and flock on an O_PATH descriptor is EBADF - both runners
+        // of "two runners starting together" panicked there on x86-64 Linux
+        // (lane linux1). Opened for iteration it is O_RDONLY|O_DIRECTORY,
+        // which flock locks on Linux and macOS alike; nothing is added to
+        // the tree.
+        const dir = try host.cwd().openDir(io, wpt_root, .{ .iterate = true });
         errdefer dir.close(io);
         // flock takes any descriptor; File.lock is how std spells it.
         const file: std.Io.File = .{ .handle = dir.handle, .flags = .{ .nonblocking = false } };

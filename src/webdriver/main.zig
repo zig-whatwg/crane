@@ -25,6 +25,7 @@
 //! ```
 
 const std = @import("std");
+const engine = @import("engine");
 const host = @import("host");
 // The server through the `webdriver` module, not by relative path: server.zig
 // is that module's file, and one file cannot belong to two modules of a compile.
@@ -37,6 +38,10 @@ const Config = webdriver.Config;
 /// which reports leaks when main returns, as the GPA's deinit did), the argument
 /// vector and the process Io.
 pub fn main(init: std.process.Init) !void {
+    // First, before any thread exists: the engine's per-process state that
+    // only threads created after it inherit (V8's thread isolation key on
+    // x86-64 Linux; docs/engine-protocol.md 4.1).
+    engine.initializeBeforeThreadCreation();
     // Adopt the Io std.start built rather than letting host.io() build a second
     // one (src/platform/host.zig: one Io.Threaded per process).
     host.adopt(init.io);
