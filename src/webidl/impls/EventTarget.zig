@@ -107,11 +107,10 @@ pub const InternalState = struct {
     /// and one never released kept that page alive for the process.
     event_handler_map: ?*std.StringHashMapUnmanaged(HandlerEntry) = null,
 
-    /// Set on an entry made lazily (`lazyInternal`), for an EventTarget whose
-    /// impl never ran EventTarget's init - and so never runs its deinit,
-    /// which is what removes an entry. Its `realm` is null for every other
-    /// entry (`LazyEntry.made`).
-    lazy: LazyEntry = .{},
+    // No lazy entry's record here (lane perf2 batch 6): only an entry made
+    // lazily has a realm and a generation to keep, and it keeps them in its
+    // own block beside its state (`LazyEntry`) - 24 bytes no chained target
+    // used, on every node.
 
     /// The target's owner asked to hear every change of this event listener
     /// list (dom.event_listener_changes.watch): each list change below calls
@@ -183,9 +182,9 @@ pub const InternalState = struct {
 };
 
 // Every node carries an InternalState: 64 bytes until lane perf2 batch 6
-// took out the allocator copy (16).
+// took out the allocator copy (16) and the lazy entry's record (24).
 comptime {
-    if (@sizeOf(InternalState) > 48) @compileError(std.fmt.comptimePrint("EventTarget's InternalState grew past 48 bytes: {d}", .{@sizeOf(InternalState)}));
+    if (@sizeOf(InternalState) > 32) @compileError(std.fmt.comptimePrint("EventTarget's InternalState grew past 32 bytes: {d}", .{@sizeOf(InternalState)}));
 }
 
 /// What an entry made lazily records about the instance it was made for.
@@ -200,13 +199,17 @@ comptime {
 /// (eventsource/format-bom.any.js, at a sweep shard's exit: "Check failed:
 /// node->IsInUse()").
 ///
-/// Not an optional: a `?LazyEntry` spent 8 bytes on its tag, in a state every
-/// node carries; a null `realm` says "not made lazily" instead.
+/// An entry made lazily is its own block of its instance's Browser's arena:
+/// the state, then this record (lane perf2 batch 6: the record was a field of
+/// every InternalState, 24 bytes on every node, where only these entries use
+/// it). Every entry of the Browser's `Registry` is one of these.
 const LazyEntry = struct {
-    /// The instance's realm, or null for an entry not made lazily. Its end
-    /// releases the entry (`releaseRealmEntries`, an unloading cleanup step),
-    /// while the realm's agent lives: listeners go with their realm.
-    realm: ?runtime.Context = null,
+    /// The state the registry hands out (`getInternalFromRegistry`).
+    state: InternalState = .{},
+    /// The instance's realm. Its end releases the entry
+    /// (`releaseRealmEntries`, an unloading cleanup step), while the realm's
+    /// agent lives: listeners go with their realm.
+    realm: runtime.Context,
     /// INTERIM until every EventTarget impl chains init/deinit (queue): the
     /// instance's slab generation. An entry whose instance was freed stays
     /// here until its realm ends, keyed by an address the slab hands out
@@ -215,9 +218,10 @@ const LazyEntry = struct {
     /// its entry in deinit, and then this goes.
     generation: u64 = 0,
 
-    /// Whether the entry was made lazily (`lazyInternal`).
-    fn made(self: LazyEntry) bool {
-        return self.realm != null;
+    /// The entry `internal` is the state of: only for a state the
+    /// registry's map holds, every one of which was made lazily.
+    fn of(internal: *InternalState) *LazyEntry {
+        return @fieldParentPtr("state", internal);
     }
 };
 
@@ -466,13 +470,11 @@ fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
     // this instance now has. The listeners are the dead instance's: they go
     // now - its realm still lives, or its end would have released the entry -
     // and this instance has none.
-    if (internal.lazy.made()) {
-        if (internal.lazy.generation != runtime.SlabAllocator.generationOf(instance)) {
-            const stale = registry.take(@intFromPtr(instance));
-            registry.unlock();
-            if (stale) |entry| releaseEntry(@intFromPtr(instance), entry);
-            return null;
-        }
+    if (LazyEntry.of(internal).generation != runtime.SlabAllocator.generationOf(instance)) {
+        const stale = registry.take(@intFromPtr(instance));
+        registry.unlock();
+        if (stale) |entry| releaseEntry(@intFromPtr(instance), entry);
+        return null;
     }
     registry.unlock();
     return internal;
@@ -489,7 +491,7 @@ fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) 
     // (see `LazyEntry`): it goes before the new one takes its place, rather
     // than being overwritten with its listeners still held.
     if (map.get(@intFromPtr(instance))) |old| {
-        if (old != internal and old.lazy.made()) stale = registry.take(@intFromPtr(instance));
+        if (old != internal) stale = registry.take(@intFromPtr(instance));
     }
     registry.guard.beforeInsert(map);
     try map.put(@intFromPtr(instance), internal);
@@ -499,12 +501,11 @@ fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) 
 /// `LazyEntry`), made on its first addEventListener.
 fn lazyInternal(instance: *runtime.Instance) !*InternalState {
     if (getInternalFromRegistry(instance)) |internal| return internal;
-    const internal = try runtime.arenaOf(instance).create(InternalState);
-    errdefer runtime.arenaOf(instance).destroy(InternalState, internal);
-    internal.* = .{};
-    internal.lazy = .{ .realm = instance.ctx, .generation = runtime.SlabAllocator.generationOf(instance) };
-    try setInternalInRegistry(instance, internal);
-    return internal;
+    const entry = try runtime.arenaOf(instance).create(LazyEntry);
+    errdefer runtime.arenaOf(instance).destroy(LazyEntry, entry);
+    entry.* = .{ .realm = instance.ctx, .generation = runtime.SlabAllocator.generationOf(instance) };
+    try setInternalInRegistry(instance, &entry.state);
+    return &entry.state;
 }
 
 /// Release an entry taken out of the registry and what it holds - its
@@ -515,7 +516,7 @@ fn lazyInternal(instance: *runtime.Instance) !*InternalState {
 fn releaseEntry(address: usize, internal: *InternalState) void {
     const instance: *runtime.Instance = @ptrFromInt(address);
     internal.deinitEx(runtime.allocatorOf(instance), true);
-    runtime.arenaOf(instance).destroy(InternalState, internal);
+    runtime.arenaOf(instance).destroy(LazyEntry, LazyEntry.of(internal));
 }
 
 /// EventTarget's unloading cleanup step (dom.unloading_cleanup): the entries
@@ -539,8 +540,7 @@ fn releaseRealmEntries(environment: runtime.Context) void {
         defer keys.deinit(std.heap.page_allocator);
         var it = map.iterator();
         while (it.next()) |entry| {
-            const realm = entry.value_ptr.*.lazy.realm orelse continue;
-            if (realm == environment) keys.append(std.heap.page_allocator, entry.key_ptr.*) catch continue;
+            if (LazyEntry.of(entry.value_ptr.*).realm == environment) keys.append(std.heap.page_allocator, entry.key_ptr.*) catch continue;
         }
         // Room first: an entry taken out must reach `releaseEntry`. Out of
         // memory, the entries stay in the map for the Browser's end.
@@ -562,7 +562,7 @@ fn removeFromRegistry(instance: *runtime.Instance) void {
     // registry of lazy entries rather than using InstanceRegistry, so it needs
     // its own release.
     if (taken) |internal| {
-        runtime.arenaOf(instance).destroy(InternalState, internal);
+        runtime.arenaOf(instance).destroy(LazyEntry, LazyEntry.of(internal));
     }
 }
 
