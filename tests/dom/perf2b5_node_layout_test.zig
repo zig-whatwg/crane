@@ -125,7 +125,7 @@ test "Node's embedded state is its NodeBase by value and the fields a node uses:
     }
 }
 
-test "a div is ONE exact-size block: 104 bytes of pointers and every level's InternalState" {
+test "a div is ONE exact-size block: 72 bytes of pointers and every level's InternalState" {
     const S = interfaces.HTMLDivElement.State;
     // EventTarget, Node, Element and HTMLElement embed (HTMLDivElement's own
     // InternalState is empty); the generated part is batch 3's 104 bytes.
@@ -133,7 +133,8 @@ test "a div is ONE exact-size block: 104 bytes of pointers and every level's Int
         std.debug.print("HTMLDivElement.State: {d} bytes, nothing embedded\n", .{@sizeOf(S)});
         return error.NotEmbedded;
     }
-    try std.testing.expectEqual(@as(usize, 104), @sizeOf(S) - embeddedBytes(S));
+    // Batch 6: no `_internal` pointers, the root's live word instead: 72.
+    try std.testing.expectEqual(@as(usize, 72), @sizeOf(S) - embeddedBytes(S));
     try std.testing.expectEqual(@as(usize, 8), @alignOf(S));
     if (slack(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), @sizeOf(S) + slack(S) });
@@ -141,13 +142,13 @@ test "a div is ONE exact-size block: 104 bytes of pointers and every level's Int
     }
 }
 
-test "a text node is ONE exact-size block: 40 bytes of pointers and every level's InternalState" {
+test "a text node is ONE exact-size block: 16 bytes of pointers and every level's InternalState" {
     const S = interfaces.Text.State;
     if (embeddedBytes(S) == 0) {
         std.debug.print("Text.State: {d} bytes, nothing embedded\n", .{@sizeOf(S)});
         return error.NotEmbedded;
     }
-    try std.testing.expectEqual(@as(usize, 40), @sizeOf(S) - embeddedBytes(S));
+    try std.testing.expectEqual(@as(usize, 16), @sizeOf(S) - embeddedBytes(S));
     try std.testing.expectEqual(@as(usize, 8), @alignOf(S));
     try std.testing.expect(slack(S) < 16);
 }

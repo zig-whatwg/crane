@@ -7,7 +7,6 @@ pub const InternalState = struct {};
 pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *const runtime.VTable, ctx: runtime.Context) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     instance.getState(State).own.length = 0;
-    instance.getState(State).own._internal = null;
     return instance;
 }
 pub fn deinit(_: *runtime.Instance) void {}
