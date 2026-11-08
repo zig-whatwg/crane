@@ -103,15 +103,19 @@ pub fn getEncoding(instance: *runtime.Instance) ?[]const u8 {
 /// or document destruction. Null restores the live fallback base URL.
 pub fn setFrozenBaseURL(instance: *runtime.Instance, url: ?[]const u8) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Null where none was set needs no rare data.
+    if (url == null and internal.rareData() == null) return;
+    const rare = try internal.ensureRareData(instance);
     const copy = if (url) |value| try internal.allocator.dupe(u8, value) else null;
-    if (internal.frozen_base_url) |old| internal.allocator.free(old);
-    internal.frozen_base_url = copy;
+    if (rare.frozen_base_url) |old| internal.allocator.free(old);
+    rare.frozen_base_url = copy;
 }
 
 /// Borrowed until a base mutation; an IDL getter copies the serialization.
 pub fn getFrozenBaseURL(instance: *runtime.Instance) ?[]const u8 {
     const internal = getInternal(instance) orelse return null;
-    return internal.frozen_base_url;
+    const rare = internal.rareData() orelse return null;
+    return rare.frozen_base_url;
 }
 
 /// Set the content type (e.g., "text/html", "application/xml")
@@ -195,30 +199,6 @@ pub fn setEditorState(instance: *runtime.Instance, state: *anyopaque) bool {
 pub fn getDoctype(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     return internal.doctype;
-}
-
-// =============================================================================
-// String Interning
-// =============================================================================
-
-/// Intern a string in the document's string pool.
-/// Returns a pointer to the interned string which can be compared via pointer equality.
-/// If the string is already interned, returns the existing copy.
-/// Caller does NOT own the returned slice - it's managed by the Document.
-pub fn internString(instance: *runtime.Instance, str: []const u8) ![]const u8 {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if string is already interned
-    if (internal.string_pool.getKey(str)) |existing| {
-        return existing;
-    }
-
-    // Not interned yet - allocate and store
-    const owned = try internal.allocator.dupe(u8, str);
-    errdefer internal.allocator.free(owned);
-
-    try internal.string_pool.put(owned, {});
-    return owned;
 }
 
 // =============================================================================
@@ -397,16 +377,19 @@ pub const ParserFormAssociation = struct {
     form_generation: u64,
 };
 
-/// `document`'s parser form associations, for reading and removing in place.
+/// `document`'s parser form associations, for reading and removing in place,
+/// or null when it has none (it never recorded one: they are rare data).
 pub fn parserFormAssociations(instance: *runtime.Instance) ?*std.ArrayListUnmanaged(ParserFormAssociation) {
     const internal = getInternal(instance) orelse return null;
-    return &internal.parser_form_associations;
+    const rare = internal.rareData() orelse return null;
+    return &rare.parser_form_associations;
 }
 
 /// Record a parser form association in `document`.
 pub fn addParserFormAssociation(instance: *runtime.Instance, association: ParserFormAssociation) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.parser_form_associations.append(internal.allocator, association);
+    const rare = try internal.ensureRareData(instance);
+    try rare.parser_form_associations.append(internal.allocator, association);
 }
 
 /// Set the document's stored "allow declarative shadow roots".
@@ -439,55 +422,6 @@ pub fn setImportMapAcquired(instance: *runtime.Instance) void {
     }
 }
 
-/// Add an import mapping.
-pub fn addImportMapping(instance: *runtime.Instance, specifier: []const u8, resolved_url: []const u8) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    const owned_specifier = try internal.allocator.dupe(u8, specifier);
-    errdefer internal.allocator.free(owned_specifier);
-
-    const owned_url = try internal.allocator.dupe(u8, resolved_url);
-    errdefer internal.allocator.free(owned_url);
-
-    if (internal.import_map_imports.getKey(specifier)) |old_key| {
-        if (internal.import_map_imports.get(old_key)) |old_value| {
-            internal.allocator.free(old_value);
-        }
-        _ = internal.removeImport(old_key);
-        internal.allocator.free(old_key);
-    }
-
-    try internal.import_map_imports.put(owned_specifier, owned_url);
-}
-
-/// Resolve an import specifier using the import map.
-pub fn resolveImportSpecifier(instance: *runtime.Instance, specifier: []const u8, referrer_url: []const u8) ?[]const u8 {
-    const internal = getInternal(instance) orelse return null;
-
-    var best_scope: ?[]const u8 = null;
-    var best_scope_len: usize = 0;
-
-    var scope_it = internal.import_map_scopes.keyIterator();
-    while (scope_it.next()) |scope_key| {
-        if (std.mem.startsWith(u8, referrer_url, scope_key.*)) {
-            if (scope_key.len > best_scope_len) {
-                best_scope = scope_key.*;
-                best_scope_len = scope_key.len;
-            }
-        }
-    }
-
-    if (best_scope) |scope| {
-        if (internal.import_map_scopes.get(scope)) |scope_map| {
-            if (scope_map.get(specifier)) |resolved| {
-                return resolved;
-            }
-        }
-    }
-
-    return internal.import_map_imports.get(specifier);
-}
-
 // =============================================================================
 // Content Security Policy Management (CSP Level 3)
 // =============================================================================
@@ -512,26 +446,6 @@ pub fn setCSPList(instance: *runtime.Instance, csp_list: *csp.CSPList) !void {
 pub fn addCSPPolicy(instance: *runtime.Instance, policy: csp.Policy) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     try internal.policy_container.csp_list.append(policy);
-}
-
-/// Get the document's CSP self-origin.
-pub fn getCSPSelfOrigin(instance: *runtime.Instance) ?*const csp.Origin {
-    const internal = getInternal(instance) orelse return null;
-    if (internal.csp_self_origin) |*origin| {
-        return origin;
-    }
-    return null;
-}
-
-/// Set the document's CSP self-origin.
-pub fn setCSPSelfOrigin(instance: *runtime.Instance, scheme: []const u8, host: []const u8, port: ?u16) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    if (internal.csp_self_origin) |*origin| {
-        origin.deinit();
-    }
-
-    internal.csp_self_origin = try csp.Origin.create(internal.allocator, scheme, host, port);
 }
 
 /// Check if an inline script is allowed by CSP.
@@ -576,60 +490,6 @@ pub fn isInlineScriptAllowedByCSP(
             if (!has_nonce_or_hash) {
                 continue;
             }
-        }
-
-        return false;
-    }
-
-    return true;
-}
-
-/// Check if an external script URL is allowed by CSP.
-pub fn isExternalScriptAllowedByCSP(
-    instance: *runtime.Instance,
-    url_scheme: []const u8,
-    url_host: []const u8,
-    url_port: ?u16,
-    url_path: []const u8,
-    nonce: ?[]const u8,
-) bool {
-    const internal = getInternal(instance) orelse return true;
-    const csp_list = &internal.policy_container.csp_list;
-    // 'self' is each policy's self-origin (CSP 2.2), set as it was
-    // delivered; the document's own is the fallback for one without.
-    const fallback_origin = if (internal.csp_self_origin) |*o| o else null;
-
-    for (csp_list.policies.items) |*policy| {
-        if (policy.disposition != .enforce) continue;
-
-        const directive = csp.fallback.getEffectiveScriptSrcElem(policy) orelse continue;
-        const has_strict_dynamic = csp.matching.hasStrictDynamic(&directive.value);
-
-        if (has_strict_dynamic) {
-            if (nonce) |n| {
-                if (csp.matching.doesNonceMatch(n, &directive.value)) {
-                    continue;
-                }
-            }
-            return false;
-        }
-
-        if (nonce) |n| {
-            if (csp.matching.doesNonceMatch(n, &directive.value)) {
-                continue;
-            }
-        }
-
-        if (csp.matching.doesUrlMatchSourceList(
-            url_scheme,
-            url_host,
-            url_port,
-            url_path,
-            &directive.value,
-            if (policy.self_origin) |*o| o else fallback_origin,
-            0,
-        )) {
-            continue;
         }
 
         return false;
@@ -698,47 +558,4 @@ pub fn setStylesheetBlockingResolvedCallback(
 ) void {
     const internal = getInternal(instance) orelse return;
     internal.stylesheet_tracker.setBlockingResolvedCallback(callback, context);
-}
-
-// =============================================================================
-// Speculation Rules Support (HTML Standard §7.6)
-// =============================================================================
-
-/// Add a prefetch hint from speculation rules.
-pub fn addPrefetchHint(
-    instance: *runtime.Instance,
-    url: []const u8,
-    eagerness: SpeculationEagerness,
-) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    if (internal.prefetch_hints.get(url)) |existing_eagerness| {
-        if (@backingInt(eagerness) < @backingInt(existing_eagerness)) {
-            internal.prefetch_hints.put(url, eagerness) catch return error.OutOfMemory;
-        }
-        return;
-    }
-
-    const owned_url = try internal.allocator.dupe(u8, url);
-    errdefer internal.allocator.free(owned_url);
-
-    try internal.prefetch_hints.put(owned_url, eagerness);
-}
-
-/// Get all prefetch hints for this document.
-pub fn getPrefetchHints(instance: *runtime.Instance) []const []const u8 {
-    const internal = getInternal(instance) orelse return &.{};
-    return internal.prefetch_hints.keys();
-}
-
-/// Check if a URL is in the prefetch hints.
-pub fn hasPrefetchHint(instance: *runtime.Instance, url: []const u8) bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.prefetch_hints.contains(url);
-}
-
-/// Get the eagerness for a prefetch hint.
-pub fn getPrefetchHintEagerness(instance: *runtime.Instance, url: []const u8) ?SpeculationEagerness {
-    const internal = getInternal(instance) orelse return null;
-    return internal.prefetch_hints.get(url);
 }

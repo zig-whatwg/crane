@@ -119,11 +119,12 @@ pub const InternalState = struct {
     /// eventListenersDidChange for every target).
     listeners_watched: bool = false,
 
-    /// A Window's "current event" (HTML), which `window.event` returns: the
-    /// event whose listener is running in the Window's realm, or null for
-    /// undefined (`swapCurrentEvent`). BORROWED: set only while a dispatch
-    /// that holds the event calls a listener. Null for every other target.
-    current_event: ?*runtime.Instance = null,
+    // No current event here (lane perf2 batch 7): DOM 2.3's "current event"
+    // is a Window's ("Each Window object has an associated current event"), and
+    // only a Window's was ever set - 8 bytes on every target. Window keeps
+    // it (as Blink's LocalDOMWindow::current_event_ and Gecko's
+    // nsGlobalWindowInner::mEvent), and inner invoke swaps it through
+    // dom.window_globals.
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
         self.deinitEx(allocator, true);
@@ -182,9 +183,10 @@ pub const InternalState = struct {
 };
 
 // Every node carries an InternalState: 64 bytes until lane perf2 batch 6
-// took out the allocator copy (16) and the lazy entry's record (24).
+// took out the allocator copy (16) and the lazy entry's record (24), and 24
+// since batch 7 moved the current event to Window (8).
 comptime {
-    if (@sizeOf(InternalState) > 32) @compileError(std.fmt.comptimePrint("EventTarget's InternalState grew past 32 bytes: {d}", .{@sizeOf(InternalState)}));
+    if (@sizeOf(InternalState) > 24) @compileError(std.fmt.comptimePrint("EventTarget's InternalState grew past 24 bytes: {d}", .{@sizeOf(InternalState)}));
 }
 
 /// What an entry made lazily records about the instance it was made for.
@@ -246,7 +248,6 @@ pub fn installHooks() void {
         .dispatch_trusted = dispatchTrusted,
         .dispatch_trusted_legacy_target_override = dispatchTrustedLegacyTargetOverride,
         .dispatch_trusted_with_throws = dispatchTrustedWithThrows,
-        .current_event = currentEvent,
     });
     dom_module.event_handlers.install(.{
         .get = getHandlerAddress,
@@ -760,31 +761,6 @@ fn removeAnEventListener(internal: *InternalState, instance: *runtime.Instance, 
         }
         i += 1;
     }
-}
-
-/// `window`'s current event (HTML), which `window.event` returns, or null for
-/// undefined (dom.fire_event): the event whose listener is running in that
-/// Window's realm. DOM's inner invoke (steps 2.9-2.10, 2.15) sets it around
-/// every listener call and restores the previous value afterwards, so nested
-/// dispatch unwinds correctly.
-///
-/// It is the Window's own state - its EventTarget entry's - reached through
-/// its Browser's registry. It was one process-wide list every thread's
-/// dispatch appended to without a lock, so two Browsers' listeners on two
-/// threads raced on it (docs/instances.md: state has an owner).
-fn currentEvent(window: *runtime.Instance) ?*runtime.Instance {
-    const internal = getInternalFromRegistry(window) orelse return null;
-    return internal.current_event;
-}
-
-/// Set `window`'s current event to `event`, returning the previous one. Each
-/// call looks the entry up again: a listener can end the window it runs in.
-fn swapCurrentEvent(window: *runtime.Instance, event: ?*runtime.Instance) ?*runtime.Instance {
-    const found = if (event != null) lazyInternal(window) catch null else getInternalFromRegistry(window);
-    const internal = found orelse return null;
-    const previous = internal.current_event;
-    internal.current_event = event;
-    return previous;
 }
 
 /// The next event handler's serial. Atomic: event handlers are set on every
@@ -1648,10 +1624,13 @@ fn callListener(callback: engine.CallbackInterface, event: *runtime.Instance, cu
     // navigatesuccess.html). Lane events1 measured it: 17 subtests gained in
     // dom/events/event-listener-not-fully-active-*, 20 lost there.
 
+    // The Window keeps its current event (dom.window_globals; DOM 2.3 "Each
+    // Window object has an associated current event"), looked up on each
+    // swap: a listener can end the window it runs in.
     const current_event_window = if (in_shadow_tree) null else listener_window;
-    const previous_event = if (current_event_window) |w| swapCurrentEvent(w, event) else null;
+    const previous_event = if (current_event_window) |w| dom_module.window_globals.swapCurrentEvent(w, event) else null;
     defer if (current_event_window) |w| {
-        _ = swapCurrentEvent(w, previous_event);
+        _ = dom_module.window_globals.swapCurrentEvent(w, previous_event);
     };
 
     // Step 2.11: call a user object's operation with the listener's callback,
@@ -1727,9 +1706,9 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, 
     // Steps 2.6-2.8 are not run yet (callListener says why).
     const listener_window = windowOfRealm(associatedRealm(callback.function.value) orelse callback.context orelse realm);
     const handler_window = if (in_shadow_tree) null else listener_window;
-    const previous_event = if (handler_window) |w| swapCurrentEvent(w, event) else null;
+    const previous_event = if (handler_window) |w| dom_module.window_globals.swapCurrentEvent(w, event) else null;
     defer if (handler_window) |w| {
-        _ = swapCurrentEvent(w, previous_event);
+        _ = dom_module.window_globals.swapCurrentEvent(w, previous_event);
     };
 
     // "If an exception gets thrown by the callback, it will be rethrown,

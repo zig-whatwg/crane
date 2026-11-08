@@ -130,17 +130,18 @@ test "Element's InternalState is 136 bytes" {
     try testing.expect(runtime.ArenaAllocator.heldBytes(@sizeOf(ElementState), @alignOf(ElementState)) <= 512);
 }
 
-test "a div's one block is 432 bytes: perf2 b5's 1,272 less D1's 432, perf2 b6's 104, D2's 264 and E1's 104" {
+test "a div's one block is 360 bytes: perf2 b5's 1,272 less D1's 432, perf2 b6's 104, D2's 264, perf2 b7's 8 and E1's 104" {
     // perf2 b5 made a node ONE exact-size State block holding every level's
     // InternalState (1,272 bytes for a div at a67aa1e08e5, Element's 848 of
     // them); D1 takes ElementData's 432 out of it; perf2 b6 the allocator
     // copies of NodeBase, Node and EventTarget (48), last_child (8),
     // EventTarget's lazy entry record (24 less 8 of padding) and four
     // `_internal` pointers (32); D2 Element's allocator copy and cold fields
-    // (176) and HTMLElement's whole state (88); E1 the registry association
-    // (40) and the slottable state (64).
+    // (176) and HTMLElement's whole state (88); perf2 b7 EventTarget's
+    // current event (8, a Window's: in Window's state now); E1 the registry
+    // association (40) and the slottable state (64).
     const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 368);
+    try expectSize(S, 360);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
     if (held - @sizeOf(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });

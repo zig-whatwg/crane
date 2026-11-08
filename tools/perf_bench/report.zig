@@ -90,6 +90,13 @@ pub const Cell = struct {
     peak: ?u64 = null,
     /// chain and instances: bytes per step or per instance (median slope).
     growth: ?f64 = null,
+    /// chain: the footprint the chain levels off at - each run's median
+    /// over the second half of its steps, the median over runs (bytes) -
+    /// and the slope over that second half, bytes per page: what is still
+    /// kept for each page once collections keep up (median over runs). Null
+    /// for a record without its series.
+    plateau: ?u64 = null,
+    late_growth: ?f64 = null,
     /// gc_bench rows: their counters (median over runs), by name.
     counters: []const journal.Counter = &.{},
     /// retained rows: each ok run's footprint after its objects less its
@@ -124,11 +131,22 @@ pub const Cell = struct {
         };
     }
 
-    /// The figure compared for memory: growth for the growth rows, the
-    /// footprint otherwise.
+    /// The figure compared for memory: growth per instance for the
+    /// instances row, the level a page chain's footprint reaches for
+    /// memory.page-growth, the footprint otherwise.
+    ///
+    /// memory.page-growth compared the slope over all 30 steps until lane
+    /// perf2 batch 7: a footprint that rises while nothing is collected and
+    /// then levels off reads a LATER knee as more growth, so a tip below its
+    /// base at every step read 1.175 of it (b6's pair). Every round is read
+    /// this way, from its journals' series.
     pub fn memoryFigure(c: Cell) ?f64 {
         if (c.ok == 0) return null;
-        if (c.kind == .instances or std.mem.eql(u8, c.workload, "memory.page-growth")) {
+        if (std.mem.eql(u8, c.workload, "memory.page-growth")) {
+            const level = c.plateau orelse return null;
+            return @floatFromInt(level);
+        }
+        if (c.kind == .instances) {
             const g = c.growth orelse return null;
             return if (g > 0) g else null;
         }
@@ -261,6 +279,8 @@ fn summarise(arena: Allocator, c: *Cell, runs: []const journal.Record) !void {
     var settled: std.ArrayList(u64) = .empty;
     var peak: std.ArrayList(u64) = .empty;
     var growth: std.ArrayList(f64) = .empty;
+    var plateaus: std.ArrayList(u64) = .empty;
+    var late_growth: std.ArrayList(f64) = .empty;
     var counter_names: std.ArrayList([]const u8) = .empty;
     var deltas: std.ArrayList(f64) = .empty;
     var js_deltas: std.ArrayList(f64) = .empty;
@@ -287,6 +307,11 @@ fn summarise(arena: Allocator, c: *Cell, runs: []const journal.Record) !void {
             try peak.append(arena, m.footprint_peak);
         }
         if (stats.slope(r.series)) |s| try growth.append(arena, s);
+        if (r.kind == .chain and r.series.len >= 4) {
+            const second_half = r.series[r.series.len / 2 ..];
+            if (try stats.medianU64(arena, second_half)) |level| try plateaus.append(arena, level);
+            if (stats.slope(second_half)) |s| try late_growth.append(arena, s);
+        }
         for (r.counters) |k| if (!containsStr(counter_names.items, k.name)) try counter_names.append(arena, k.name);
         if (r.kind == .retained) if (r.memory) |m| {
             try deltas.append(arena, @as(f64, @floatFromInt(m.footprint_end)) - @as(f64, @floatFromInt(m.footprint_start)));
@@ -305,6 +330,8 @@ fn summarise(arena: Allocator, c: *Cell, runs: []const journal.Record) !void {
     c.settled = try stats.medianU64(arena, settled.items);
     c.peak = try stats.medianU64(arena, peak.items);
     c.growth = try stats.median(arena, growth.items);
+    c.plateau = try stats.medianU64(arena, plateaus.items);
+    c.late_growth = try stats.median(arena, late_growth.items);
     var counters: std.ArrayList(journal.Counter) = .empty;
     for (counter_names.items) |name| {
         var vals: std.ArrayList(f64) = .empty;
@@ -1768,7 +1795,16 @@ fn writeMemoryCell(w: W, c: ?*const Cell) !void {
     const v = cell.memoryFigure() orelse return w.writeAll("<td class=\"n\">&ndash;</td>");
     try w.writeAll("<td class=\"n\">");
     try writeBytes(w, v);
-    if (cell.kind == .instances) try w.writeAll(" each") else if (std.mem.eql(u8, cell.workload, "memory.page-growth")) try w.writeAll(" a page");
+    if (cell.kind == .instances) try w.writeAll(" each");
+    if (std.mem.eql(u8, cell.workload, "memory.page-growth")) {
+        // The level; beside it, what each further page still keeps.
+        if (cell.late_growth) |late| {
+            try w.writeAll(" <span class=\"quiet\" title=\"the footprint's slope over the chain's second half: what each further page keeps\">");
+            if (late >= 0) try w.writeAll("+");
+            try writeBytes(w, late);
+            try w.writeAll(" a page</span>");
+        }
+    }
     try w.writeAll("</td>");
 }
 
@@ -2108,6 +2144,48 @@ test "memory compares the steady footprint where it was read, and the peak besid
     try testing.expectEqual(@as(?f64, 1500), c.peakFigure());
     const page = try render(a, &m, .{});
     try testing.expect(std.mem.indexOf(u8, page.index_html, "Memory, peak") != null);
+}
+
+test "page growth compares the footprint the chain levels off at, not a slope over its whole length" {
+    // A chain's footprint rises while no collection runs, then levels off
+    // once collections keep up. The slope over all its steps reads a later
+    // knee as more growth: lane perf2 batch 7's tip was lower than its base
+    // at every one of 30 steps, levelled off 1.2 MB lower and two pages
+    // later - and its all-steps slope read 1.175 of the base's.
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var early: [30]u64 = @splat(0);
+    var late: [30]u64 = @splat(0);
+    for (0..30) |i| {
+        // Base: +10 MB a page for 5 pages, then level at 50 MB. Tip: +8 MB a
+        // page for 6 pages, then level at 48 MB - lower everywhere.
+        const step: u64 = i;
+        early[i] = (if (step < 5) step * 10 else 50) * 1_000_000;
+        late[i] = (if (step < 6) step * 8 else 48) * 1_000_000;
+    }
+    var base = try timed(a, 2, .crane_base, "base", "memory.page-growth", 0, 10, 0);
+    base.kind = .chain;
+    base.series = &early;
+    var tip = try timed(a, 2, .crane, "tip", "memory.page-growth", 0, 10, 0);
+    tip.kind = .chain;
+    tip.series = &late;
+    const m = try build(a, &.{ base, tip });
+    const b = m.current(2, .crane_base, "memory.page-growth").?;
+    const t = m.current(2, .crane, "memory.page-growth").?;
+    // The all-steps slope reads the tip as growing faster ...
+    try testing.expect(t.growth.? > b.growth.?);
+    // ... but the compared figure is the level, the median of the second
+    // half of the steps: 48 MB against 50 MB.
+    try testing.expectEqual(@as(?f64, 48_000_000), t.memoryFigure());
+    try testing.expectEqual(@as(?f64, 50_000_000), b.memoryFigure());
+    // What is still kept per page once levelled off: the second half's slope.
+    try testing.expectApproxEqAbs(@as(f64, 0), t.late_growth.?, 1e-6);
+    // A record without its series has no level: not measured.
+    var bare = try timed(a, 2, .crane, "old", "memory.page-growth", 0, 10, 0);
+    bare.kind = .chain;
+    const mb = try build(a, &.{bare});
+    try testing.expectEqual(@as(?f64, null), mb.current(2, .crane, "memory.page-growth").?.memoryFigure());
 }
 
 test "a browser updated within a round: its newest version is the one compared" {
