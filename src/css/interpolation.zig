@@ -334,6 +334,11 @@ pub fn accumulate(allocator: Allocator, l: Longhand, underlying: Value, value: V
     if (l == .filter) if (filterList(underlying)) |a| if (filterList(value)) |b| {
         if (try mixFilters(allocator, a, b, 1, .accumulate)) |sum| return sum;
     };
+    // translate, rotate and scale accumulate component by component; scale's
+    // components as one-based values (mixTransforms).
+    if (individualTransform(underlying) != null or individualTransform(value) != null) {
+        if (try mixTransforms(allocator, underlying, value, 1, .accumulate)) |sum| return sum;
+    }
     return add(allocator, l, underlying, value);
 }
 
@@ -648,7 +653,7 @@ fn individualTransform(v: Value) ?transform_values.Kind {
     return if (v == .transform) v.transform.kind else null;
 }
 
-const TransformOp = enum { interpolate, add };
+const TransformOp = enum { interpolate, add, accumulate };
 
 /// Transforms 2 section 5 (the translate, rotate and scale properties): "by
 /// computed value" for translate and scale - component by component, a
@@ -682,17 +687,24 @@ fn mixTransforms(allocator: Allocator, a: Value, b: Value, p: f64, op: Transform
         const y: transform_interpolation.AxisAngle = .{ .axis = axis_b, .angle = degrees(cb[3]) orelse return null };
         const r = switch (op) {
             .interpolate => transform_interpolation.mixAxisAngle(x, y, p),
-            .add => transform_interpolation.addAxisAngle(x, y),
+            .add, .accumulate => transform_interpolation.addAxisAngle(x, y),
         } orelse return null;
         for (0..3) |i| out[i] = Number.scalar(r.axis[i]);
         out[3] = .{ .literal = .{ .value = r.angle, .unit = .deg } };
     } else {
         const ka: f64, const kb: f64 = if (op == .interpolate) .{ 1 - p, p } else .{ 1, 1 };
         for (0..3) |i| {
-            if (kind == .scale and op == .add) {
+            if (kind == .scale and op != .interpolate) {
                 const x = literal(ca[i]) orelse return null;
                 const y = literal(cb[i]) orelse return null;
-                out[i] = Number.scalar(x.value * y.value);
+                // Addition multiplies scales; accumulation adds them with
+                // one subtracted (a + b - 1), as Transforms 2 15 combines a
+                // transform list's one-based parameters. Golden rule 2: the
+                // scale property's "by computed value" would give a + b, but
+                // Firefox 159 and Safari 27.2 give a + b - 1 and Chrome 157 a
+                // product (accumulation-per-property-002 "scale ..." expect
+                // -2 for 2 and -3): the majority.
+                out[i] = Number.scalar(if (op == .add) x.value * y.value else x.value + y.value - 1);
                 continue;
             }
             const component_kind: math.Kind = if (kind == .scale) .number else if (i < 2) .length_percentage else .length;
