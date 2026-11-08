@@ -6,8 +6,8 @@
 //!   they allocate and free goes through `runtime.allocatorOf(instance)`,
 //!   found from the node's address
 //!   (docs/lessons/architecture-a-nodes-creation-allocator-is-its-browsers-only-inside-a-browser.md).
-//! - EventTarget's `current_event` (8 bytes on every target): HTML's "current
-//!   event" is a Window's ("Each Window object has an associated current
+//! - EventTarget's `current_event` (8 bytes on every target): DOM 2.3's
+//!   "current event" is a Window's ("Each Window object has an associated current
 //!   event"), and only a Window's was ever set. It is in Window's state, as
 //!   Blink keeps it on LocalDOMWindow (current_event_) and Gecko on the inner
 //!   window (nsGlobalWindowInner::mEvent).
