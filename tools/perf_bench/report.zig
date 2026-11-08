@@ -2124,8 +2124,9 @@ test "page growth compares the footprint the chain levels off at, not a slope ov
     for (0..30) |i| {
         // Base: +10 MB a page for 5 pages, then level at 50 MB. Tip: +8 MB a
         // page for 6 pages, then level at 48 MB - lower everywhere.
-        early[i] = @min(@as(u64, i) * 10, 50) * 1_000_000;
-        late[i] = @min(@as(u64, i) * 8, 48) * 1_000_000;
+        const step: u64 = i;
+        early[i] = (if (step < 5) step * 10 else 50) * 1_000_000;
+        late[i] = (if (step < 6) step * 8 else 48) * 1_000_000;
     }
     var base = try timed(a, 2, .crane_base, "base", "memory.page-growth", 0, 10, 0);
     base.kind = .chain;
