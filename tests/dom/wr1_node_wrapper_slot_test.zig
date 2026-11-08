@@ -21,7 +21,7 @@ test "NodeBase's wrapper is the engine's slot, and nothing else names the old al
 }
 
 test "a new node's slot is empty" {
-    const node: NodeBase = .{};
+    const node: NodeBase = .{ .node_type = NodeBase.ELEMENT_NODE };
     try std.testing.expect(node.wrapper.isEmpty());
 }
 
@@ -29,7 +29,7 @@ test "runtime.lifetime.slotOf answers a node's own slot (dom.refcount installs i
     // The process start installs it (refcount.install, from Document's and
     // Node's installHooks): the sanctioned test start runs it.
     interfaces.process_hooks.startHooksForTest();
-    var node: NodeBase = .{};
+    var node: NodeBase = .{ .node_type = NodeBase.ELEMENT_NODE };
     try std.testing.expect(runtime.lifetime.slotOf(&node) == &node.wrapper);
     try std.testing.expect(runtime.lifetime.slotOf(&node).isEmpty());
 }
