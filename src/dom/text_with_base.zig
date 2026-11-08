@@ -31,10 +31,10 @@ pub const TextWithBase = struct {
     data: []u8,
 
     /// Initialize a new Text node
-    pub fn init(allocator: Allocator, data: []const u8) !TextWithBase {
+    pub fn init(allocator: *const Allocator, data: []const u8) !TextWithBase {
         var node: TextWithBase = .{
             .base = NodeBase{
-                .allocator = allocator,
+                .owner = NodeBase.ownerless(allocator),
                 .node_type = NodeBase.TEXT_NODE,
                 .parent_node = null,
                 .owner_document = null,
@@ -48,7 +48,7 @@ pub const TextWithBase = struct {
 
     /// Clean up resources
     pub fn deinit(self: *TextWithBase) void {
-        self.base.allocator.free(self.data);
+        self.base.allocator().free(self.data);
         self.base.deinitRareData();
     }
 
@@ -69,8 +69,8 @@ pub const TextWithBase = struct {
 
     /// Set text data (CharacterData interface)
     pub fn setData(self: *TextWithBase, new_data: []const u8) !void {
-        self.base.allocator.free(self.data);
-        self.data = try self.base.allocator.dupe(u8, new_data);
+        self.base.allocator().free(self.data);
+        self.data = try self.base.allocator().dupe(u8, new_data);
     }
 
     /// Get length (number of code units)
@@ -81,12 +81,12 @@ pub const TextWithBase = struct {
     /// Append data
     pub fn appendData(self: *TextWithBase, append_data: []const u8) !void {
         const new_len = self.data.len + append_data.len;
-        const new_data = try self.base.allocator.alloc(u8, new_len);
+        const new_data = try self.base.allocator().alloc(u8, new_len);
 
         @memcpy(new_data[0..self.data.len], self.data);
         @memcpy(new_data[self.data.len..], append_data);
 
-        self.base.allocator.free(self.data);
+        self.base.allocator().free(self.data);
         self.data = new_data;
     }
 };
@@ -104,10 +104,10 @@ pub const CommentWithBase = struct {
     data: []u8,
 
     /// Initialize a new Comment node
-    pub fn init(allocator: Allocator, data: []const u8) !CommentWithBase {
+    pub fn init(allocator: *const Allocator, data: []const u8) !CommentWithBase {
         var node: CommentWithBase = .{
             .base = NodeBase{
-                .allocator = allocator,
+                .owner = NodeBase.ownerless(allocator),
                 .node_type = NodeBase.COMMENT_NODE,
                 .parent_node = null,
                 .owner_document = null,
@@ -121,7 +121,7 @@ pub const CommentWithBase = struct {
 
     /// Clean up resources
     pub fn deinit(self: *CommentWithBase) void {
-        self.base.allocator.free(self.data);
+        self.base.allocator().free(self.data);
         self.base.deinitRareData();
     }
 
@@ -142,7 +142,7 @@ pub const CommentWithBase = struct {
 
     /// Set comment data (CharacterData interface)
     pub fn setData(self: *CommentWithBase, new_data: []const u8) !void {
-        self.base.allocator.free(self.data);
-        self.data = try self.base.allocator.dupe(u8, new_data);
+        self.base.allocator().free(self.data);
+        self.data = try self.base.allocator().dupe(u8, new_data);
     }
 };

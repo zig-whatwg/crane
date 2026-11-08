@@ -26,7 +26,7 @@ pub fn nodeOf(instance: *runtime.Instance) ?*NodeBase {
 
 /// `node`'s instance. Every node a script or the engine can reach has one.
 pub fn instanceOf(node: *NodeBase) ?*runtime.Instance {
-    const opaque_instance = node.owner_instance orelse return null;
+    const opaque_instance = node.ownerInstance() orelse return null;
     return @ptrCast(@alignCast(opaque_instance));
 }
 

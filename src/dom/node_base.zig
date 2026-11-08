@@ -27,22 +27,23 @@ pub const NodeBase = struct {
     // Core Node Fields (from webidl/src/dom/Node.zig)
     // ========================================================================
 
-    allocator: Allocator,
-
-    /// The runtime.Instance that owns this NodeBase, or null for a NodeBase built
-    /// outside the WebIDL layer.
+    /// Who owns this NodeBase, in one word (lane perf2 batch 6): the
+    /// runtime.Instance whose node it is (`ownerInstance`), or - for a
+    /// NodeBase built outside the WebIDL layer, the tests' fixtures and the
+    /// test-only WithBase types - the allocator it allocates from, tagged in
+    /// bit 0 (`ownerless`), or 0 for neither (a node before its registration
+    /// and after its release).
     ///
-    /// Stored here rather than in a side table. This replaced the global
-    /// `nodebase_to_instance: AutoHashMap(*NodeBase, *anyopaque)` in
-    /// src/dom/instance_bridge.zig: a process-wide mutable map on page_allocator,
-    /// explicitly documented as "NOT thread-safe", consulted 37 times across the DOM
-    /// hot path. The owning instance is a property OF the node, so it belongs on the
-    /// node - which also makes it die with the node instead of needing an unregister
-    /// call to avoid leaking an entry.
-    ///
-    /// Typed `?*anyopaque` to keep src/dom free of a hard dependency on the concrete
-    /// runtime.Instance type, matching the bridge API it replaces.
-    owner_instance: ?*anyopaque = null,
+    /// The owner is a property OF the node, so it belongs on the node: it
+    /// replaced the global `nodebase_to_instance` map in
+    /// src/dom/instance_bridge.zig (process-wide, on page_allocator, "NOT
+    /// thread-safe", consulted 37 times on the DOM hot path), and it dies
+    /// with the node. It also names the node's allocator, so the node keeps
+    /// no copy of one (`allocator`): an owned node's is its Browser's, found
+    /// from the Instance's address (runtime.allocatorOf), which is the
+    /// allocator it was made with - asserted where every node is made
+    /// (Node's initOwn). 16 bytes a node.
+    owner: usize = 0,
 
     node_type: u16,
 
@@ -50,10 +51,17 @@ pub const NodeBase = struct {
     // Parent pointer
     parent_node: ?*NodeBase = null,
 
-    // Sibling pointers - O(1) sibling navigation (Phase 1 addition)
+    // The tree links. `first_child` and `next_sibling` are what they say;
+    // there is no `last_child` (lane perf2 batch 6): a node's previous link
+    // holds its previous sibling, or - for a first child - its parent's LAST
+    // child, as Gecko's nsIContent::mPreviousOrLastSibling does
+    // (nsINode::GetLastChild reads mFirstChild->mPreviousOrLastSibling;
+    // GetPreviousSibling returns null when the link's target has no next
+    // sibling, which only the last child lacks). 8 bytes a node. Read
+    // through `previousSibling()` and `lastChild()`, written only by
+    // `linkChildBefore` and `unlinkChild`.
     first_child: ?*NodeBase = null,
-    last_child: ?*NodeBase = null,
-    previous_sibling: ?*NodeBase = null,
+    previous_or_last: ?*NodeBase = null,
     next_sibling: ?*NodeBase = null,
 
     // No child list (lane perf2 batch 5, R6 part 2): the links above ARE the
@@ -176,6 +184,63 @@ pub const NodeBase = struct {
     };
 
     // ========================================================================
+    // The owner word (lane perf2 batch 6)
+    // ========================================================================
+
+    /// The runtime.Instance this node is, or null: a node not yet
+    /// registered, one its teardown released, or one no Instance owns.
+    /// Typed `?*anyopaque` to keep src/dom free of a hard dependency on the
+    /// concrete runtime.Instance type, matching the bridge API it replaces.
+    pub inline fn ownerInstance(self: *const NodeBase) ?*anyopaque {
+        if (self.owner & ownerless_tag != 0) return null;
+        return @ptrFromInt(self.owner);
+    }
+
+    /// dom.instance_bridge's register and unregister: the Instance this
+    /// node is from now on, or none.
+    pub fn setOwnerInstance(self: *NodeBase, instance: ?*anyopaque) void {
+        const address = @intFromPtr(instance);
+        std.debug.assert(address & ownerless_tag == 0);
+        self.owner = address;
+    }
+
+    /// The owner word of a NodeBase no Instance owns, which allocates from
+    /// `allocator_of_node` - borrowed: it must outlive the node (the tests
+    /// pass `&std.testing.allocator`, a WithBase type its own field).
+    pub fn ownerless(allocator_of_node: *const Allocator) usize {
+        const address = @intFromPtr(allocator_of_node);
+        std.debug.assert(address & ownerless_tag == 0);
+        return address | ownerless_tag;
+    }
+
+    /// The allocator an owner-less NodeBase's owner word names
+    /// (`ownerless`), for a WithBase type that makes a part of its own with
+    /// it (an attribute node).
+    pub fn ownerlessAllocator(self: *const NodeBase) *const Allocator {
+        std.debug.assert(self.owner & ownerless_tag != 0);
+        return @ptrFromInt(self.owner & ~ownerless_tag);
+    }
+
+    /// What this node allocates and frees from - its rare data, its observer
+    /// records, a mutation's scratch lists: its Browser's allocator for an
+    /// owned node (runtime.allocatorOf, the allocator it was made with), the
+    /// one its owner word names for an owner-less one. Never called on a
+    /// node with no owner (before its registration, after its release).
+    pub fn allocator(self: *const NodeBase) Allocator {
+        if (self.owner & ownerless_tag != 0) {
+            const named: *const Allocator = @ptrFromInt(self.owner & ~ownerless_tag);
+            return named.*;
+        }
+        if (self.owner == 0) @panic("a NodeBase with no owner allocates: not registered yet, or released");
+        const instance: *const runtime.Instance = @ptrFromInt(self.owner);
+        return runtime.allocatorOf(instance);
+    }
+
+    /// The owner word's tag: set for an allocator, clear for an Instance.
+    /// Both are 8-byte aligned, so bit 0 is free.
+    const ownerless_tag: usize = 1;
+
+    // ========================================================================
     // Rare data (lane perf2 batch 4, R6 part 1)
     // ========================================================================
 
@@ -188,7 +253,7 @@ pub const NodeBase = struct {
     /// kept, never moved, until the node's teardown (`deinitRareData`).
     fn ensureRareData(self: *NodeBase) error{OutOfMemory}!*NodeRareData {
         if (self.rare) |rare| return rare;
-        const rare = try self.allocator.create(NodeRareData);
+        const rare = try self.allocator().create(NodeRareData);
         rare.* = .{};
         self.rare = rare;
         if (self.domMemory()) |memory| memory.add(@sizeOf(NodeRareData));
@@ -202,7 +267,7 @@ pub const NodeBase = struct {
     /// a NodeBase no Instance owns (the test-only WithBase types), and after
     /// the node's teardown unregistered it - nothing is counted for it then.
     fn domMemory(self: *const NodeBase) ?*runtime.gc.ExternalMemory {
-        const owner = self.owner_instance orelse return null;
+        const owner = self.ownerInstance() orelse return null;
         const instance: *const runtime.Instance = @ptrCast(@alignCast(owner));
         return &runtime.BrowserScope.ofInstance(instance).dom_memory;
     }
@@ -213,8 +278,8 @@ pub const NodeBase = struct {
     pub fn deinitRareData(self: *NodeBase) void {
         const rare = self.rare orelse return;
         std.debug.assert(rare.registered_observers.first == null);
-        if (rare.node_name_allocated) self.allocator.free(rare.node_name);
-        self.allocator.destroy(rare);
+        if (rare.node_name_allocated) self.allocator().free(rare.node_name);
+        self.allocator().destroy(rare);
         self.rare = null;
         if (self.domMemory()) |memory| memory.sub(@sizeOf(NodeRareData));
     }
@@ -238,7 +303,7 @@ pub const NodeBase = struct {
     /// Name the node with `name`, which outlives it (a literal).
     pub fn setStaticNodeName(self: *NodeBase, name: []const u8) error{OutOfMemory}!void {
         const rare = try self.ensureRareData();
-        if (rare.node_name_allocated) self.allocator.free(rare.node_name);
+        if (rare.node_name_allocated) self.allocator().free(rare.node_name);
         rare.node_name = name;
         rare.node_name_allocated = false;
     }
@@ -248,7 +313,7 @@ pub const NodeBase = struct {
     /// the caller still owns it.
     pub fn setOwnedNodeName(self: *NodeBase, name: []const u8) error{OutOfMemory}!void {
         const rare = try self.ensureRareData();
-        if (rare.node_name_allocated) self.allocator.free(rare.node_name);
+        if (rare.node_name_allocated) self.allocator().free(rare.node_name);
         rare.node_name = name;
         rare.node_name_allocated = true;
     }
@@ -271,7 +336,7 @@ pub const NodeBase = struct {
     /// allocator, that stays where it is until it is removed.
     pub fn appendRegisteredObserver(self: *NodeBase, registered: RegisteredObserverType) error{OutOfMemory}!*RegisteredObserverType {
         const rare = try self.ensureRareData();
-        const record = try self.allocator.create(ObserverRegistration);
+        const record = try self.allocator().create(ObserverRegistration);
         record.* = .{ .registered = registered };
         rare.registered_observers.append(&record.link);
         if (self.domMemory()) |memory| memory.add(@sizeOf(ObserverRegistration));
@@ -284,7 +349,7 @@ pub const NodeBase = struct {
         const rare = self.rare.?;
         const record: *ObserverRegistration = @fieldParentPtr("registered", registered);
         rare.registered_observers.remove(&record.link);
-        self.allocator.destroy(record);
+        self.allocator().destroy(record);
         if (self.domMemory()) |memory| memory.sub(@sizeOf(ObserverRegistration));
     }
 
@@ -301,6 +366,79 @@ pub const NodeBase = struct {
     // Children: the sibling links (lane perf2 batch 5, R6 part 2)
     // ========================================================================
 
+    /// DOM: the node's previous sibling, or null for a first child (or a
+    /// node with no parent): the previous link of a first child is its
+    /// parent's last child, the one child with no next sibling (Gecko's
+    /// nsINode::GetPreviousSibling, "do not expose circular linked list").
+    pub inline fn previousSibling(self: *const NodeBase) ?*NodeBase {
+        const link = self.previous_or_last orelse return null;
+        if (link.next_sibling == null) return null;
+        return link;
+    }
+
+    /// DOM: the node's last child, or null: its first child's previous link
+    /// (Gecko's nsINode::GetLastChild).
+    pub inline fn lastChild(self: *const NodeBase) ?*NodeBase {
+        const first = self.first_child orelse return null;
+        return first.previous_or_last;
+    }
+
+    /// Link `child` - in no tree's links - into this node's children before
+    /// `before` (one of them), or after the last with null. The links only:
+    /// the parent pointer and its holds are the caller's (`setParent`,
+    /// refcount.linkChild). Constant time.
+    pub fn linkChildBefore(self: *NodeBase, child: *NodeBase, before: ?*NodeBase) void {
+        std.debug.assert(child.previous_or_last == null and child.next_sibling == null);
+        if (before) |next| {
+            std.debug.assert(next.parent_node == self);
+            child.next_sibling = next;
+            if (next.previousSibling()) |previous| {
+                previous.next_sibling = child;
+                child.previous_or_last = previous;
+            } else {
+                // `child` becomes the first child: its previous link holds
+                // the last child, which `next`'s held until now.
+                child.previous_or_last = next.previous_or_last;
+                self.first_child = child;
+            }
+            next.previous_or_last = child;
+            return;
+        }
+        if (self.first_child) |first| {
+            const last = first.previous_or_last.?;
+            last.next_sibling = child;
+            child.previous_or_last = last;
+            first.previous_or_last = child;
+        } else {
+            // The only child is its own last child.
+            self.first_child = child;
+            child.previous_or_last = child;
+        }
+    }
+
+    /// Unlink `child` - one of this node's children - from its siblings. The
+    /// links only: the parent pointer is the caller's. Constant time.
+    pub fn unlinkChild(self: *NodeBase, child: *NodeBase) void {
+        const first = self.first_child.?;
+        const next = child.next_sibling;
+        if (child == first) {
+            self.first_child = next;
+            // The new first child holds the last child (null if none left).
+            if (next) |n| n.previous_or_last = child.previous_or_last;
+        } else {
+            const previous = child.previous_or_last.?;
+            previous.next_sibling = next;
+            if (next) |n| {
+                n.previous_or_last = previous;
+            } else {
+                // `child` was the last: the first child holds the new last.
+                first.previous_or_last = previous;
+            }
+        }
+        child.previous_or_last = null;
+        child.next_sibling = null;
+    }
+
     /// The node's children in tree order, read off its links. The next child
     /// is read before the current one is yielded, so a walk may remove or
     /// move the child it is at - not a later one.
@@ -311,7 +449,7 @@ pub const NodeBase = struct {
     /// The node's children in reverse tree order; the previous child is read
     /// before the current one is yielded.
     pub fn childrenReversed(self: *const NodeBase) ReverseChildIterator {
-        return .{ .previous_child = self.last_child };
+        return .{ .previous_child = self.lastChild() };
     }
 
     /// DOM 4.2.1: how many children the node has - a walk of its links.
@@ -339,8 +477,8 @@ pub const NodeBase = struct {
     /// only where the spec asks for an index (live ranges, positions).
     pub fn index(self: *const NodeBase) usize {
         var count: usize = 0;
-        var sibling = self.previous_sibling;
-        while (sibling) |s| : (sibling = s.previous_sibling) count += 1;
+        var sibling = self.previousSibling();
+        while (sibling) |s| : (sibling = s.previousSibling()) count += 1;
         return count;
     }
 
@@ -359,7 +497,7 @@ pub const NodeBase = struct {
 
         pub fn next(self: *ReverseChildIterator) ?*NodeBase {
             const child = self.previous_child orelse return null;
-            self.previous_child = child.previous_sibling;
+            self.previous_child = child.previousSibling();
             return child;
         }
     };

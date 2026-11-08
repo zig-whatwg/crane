@@ -401,8 +401,8 @@ pub fn domAdapterTextBefore(location: TreeBuilder.InsertionLocation, context: ?*
         // Script moved the reference child elsewhere: the insertion itself
         // will not take place there (parser_mutation.insert drops it).
         if (reference.parent_node != parent) return .unknown;
-        break :blk reference.previous_sibling;
-    } else parent.last_child;
+        break :blk reference.previousSibling();
+    } else parent.lastChild();
     const previous = previous_sibling orelse return .none;
     // Step 5: "If previousSibling is a Text node" - a CDATASection is one too.
     if (previous.node_type != interfaces.Node.get_TEXT_NODE() and previous.node_type != interfaces.Node.get_CDATA_SECTION_NODE()) return .none;

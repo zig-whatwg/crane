@@ -10,7 +10,7 @@ test "Element - bloom filter class optimization" {
     const allocator = std.testing.allocator;
     const ElementWithBase = dom.ElementWithBase;
 
-    var elem = ElementWithBase.init(allocator, "div");
+    var elem = ElementWithBase.init(&allocator, "div");
     defer elem.deinit();
 
     // Set class attribute
@@ -41,7 +41,7 @@ test "Element - bloom filter updated on class change" {
     const allocator = std.testing.allocator;
     const ElementWithBase = dom.ElementWithBase;
 
-    var elem = ElementWithBase.init(allocator, "div");
+    var elem = ElementWithBase.init(&allocator, "div");
     defer elem.deinit();
 
     // Initially no classes

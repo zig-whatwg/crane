@@ -21,6 +21,28 @@ fn emptyDocumentHasNoAutofocusAllocation() !void {
     try std.testing.expect(try dom.top_layer.ofDocument(document, false) == null);
 }
 
+/// A standalone scope made with `allocator` while it lives: a node is made
+/// with the allocator its scope frees with (lane perf2 batch 6), and these
+/// documents are made with failing allocators of their own.
+const OwnScope = struct {
+    scope: *runtime.BrowserScope,
+    previous: ?*runtime.BrowserScope,
+
+    fn begin(allocator: std.mem.Allocator) !OwnScope {
+        const scope = try std.testing.allocator.create(runtime.BrowserScope);
+        scope.* = runtime.BrowserScope.init(allocator);
+        const previous = runtime.BrowserScope.standalone();
+        runtime.BrowserScope.setStandalone(scope);
+        return .{ .scope = scope, .previous = previous };
+    }
+
+    fn end(self: OwnScope) void {
+        runtime.BrowserScope.setStandalone(self.previous);
+        self.scope.deinit();
+        std.testing.allocator.destroy(self.scope);
+    }
+};
+
 fn lazyInteractionAllocationFailures() !void {
     interfaces.process_hooks.startHooksForTest();
     runtime.initializeRuntime(std.testing.allocator);
@@ -32,6 +54,8 @@ fn lazyInteractionAllocationFailures() !void {
     // independently lazy feature's first allocation here.
     for (0..2) |failure_case| {
         var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+        const own_scope = try OwnScope.begin(failing.allocator());
+        defer own_scope.end();
         const document = try interfaces.Document.init(failing.allocator(), &context);
         defer dom.node_creation.destroyUninserted(document);
         const before = failing.allocated_bytes - failing.freed_bytes;
@@ -60,6 +84,8 @@ fn lazyInteractionAllocationFailures() !void {
     // The reverse sibling order: failed autofocus creation keeps an existing
     // top layer intact, including its storage and the shared container.
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const own_scope = try OwnScope.begin(failing.allocator());
+    defer own_scope.end();
     const document = try interfaces.Document.init(failing.allocator(), &context);
     defer dom.node_creation.destroyUninserted(document);
     const layer = (try dom.top_layer.ofDocument(document, true)).?;

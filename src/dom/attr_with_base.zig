@@ -51,7 +51,7 @@ pub const AttrWithBase = struct {
 
     /// Initialize a new Attr node
     pub fn init(
-        allocator: Allocator,
+        allocator: *const Allocator,
         local_name: []const u8,
         value: []const u8,
         namespace_uri: ?[]const u8,
@@ -59,7 +59,7 @@ pub const AttrWithBase = struct {
     ) !AttrWithBase {
         var attr: AttrWithBase = .{
             .base = NodeBase{
-                .allocator = allocator,
+                .owner = NodeBase.ownerless(allocator),
                 .node_type = NodeBase.ATTRIBUTE_NODE,
                 .parent_node = null,
                 .owner_document = null,
@@ -77,7 +77,7 @@ pub const AttrWithBase = struct {
         // The node name: the qualified name (with its prefix if present),
         // owned by the node's rare data.
         const node_name = if (prefix) |p|
-            try std.fmt.allocPrint(allocator, "{s}:{s}", .{ p, local_name })
+            try std.fmt.allocPrint(allocator.*, "{s}:{s}", .{ p, local_name })
         else
             try allocator.dupe(u8, local_name);
         attr.base.setOwnedNodeName(node_name) catch |err| {
@@ -89,10 +89,10 @@ pub const AttrWithBase = struct {
 
     /// Clean up resources
     pub fn deinit(self: *AttrWithBase) void {
-        self.base.allocator.free(self.local_name);
-        self.base.allocator.free(self.value);
-        if (self.namespace_uri) |ns| self.base.allocator.free(ns);
-        if (self.prefix) |p| self.base.allocator.free(p);
+        self.base.allocator().free(self.local_name);
+        self.base.allocator().free(self.value);
+        if (self.namespace_uri) |ns| self.base.allocator().free(ns);
+        if (self.prefix) |p| self.base.allocator().free(p);
         self.base.deinitRareData();
     }
 
@@ -123,8 +123,8 @@ pub const AttrWithBase = struct {
 
     /// Set the attribute's value
     pub fn setValue(self: *AttrWithBase, new_value: []const u8) !void {
-        self.base.allocator.free(self.value);
-        self.value = try self.base.allocator.dupe(u8, new_value);
+        self.base.allocator().free(self.value);
+        self.value = try self.base.allocator().dupe(u8, new_value);
     }
 
     /// Get the attribute's namespace URI

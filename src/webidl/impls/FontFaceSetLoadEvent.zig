@@ -29,7 +29,8 @@ const faces_slot: engine.TracedSlot = .{ .name = "fontfaces" };
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = allocator;
     _ = args;
-    instance.getState(StateType).own._internal = null;
+    _ = instance;
+    _ = StateType;
 }
 
 pub fn deinitOwn(instance: *runtime.Instance) void {

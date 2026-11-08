@@ -202,7 +202,7 @@ fn bridgeAnswersNodesOnly() !void {
 
     // The document's NodeBase is its own, and names it back.
     const document_base = dom.instance_bridge.getNodeBase(@ptrCast(document)) orelse return error.NoNodeBase;
-    try testing.expectEqual(@as(?*anyopaque, @ptrCast(document)), document_base.owner_instance);
+    try testing.expectEqual(@as(?*anyopaque, @ptrCast(document)), document_base.ownerInstance());
 
     // A non-node platform object has none.
     const window = context.window_instance orelse return error.NoWindow;

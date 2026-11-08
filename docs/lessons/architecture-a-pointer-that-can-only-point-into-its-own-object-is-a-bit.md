@@ -1,0 +1,12 @@
+# Architecture: A pointer that can only point into its own object is a bit
+
+**Date**: 2026-11-08
+**Lesson**: Once a level's internal state lives by value in its State (`_embedded`), the generated `own._internal` pointer can hold only two values - the address of that field, or null - so it carries one bit at the cost of 8 bytes. Keep the bit (one live word per object, a bit per level) and keep the brand check in front of it; the same goes for a level whose state is empty, whose pointer carried nothing at all.
+
+**Why**: Lane perf2 batch 5 moved every node level's InternalState into the State block but kept `own._internal` as the "made and not torn down" flag every reader tests (`getInternal(...) orelse`). A div paid five of them (40 bytes): EventTarget, Node, Element, HTMLElement and HTMLDivElement, whose `InternalState = struct {}` - one of 1,001 such impls - had nothing to point at.
+
+**What Happened**: Batch 6 made runtime.FlattenedState classify each level from the type its generated `_internal` points at (embedded, empty, pointer, none - read from the field's type, so the runtime names no impl and codegen did not change), drop the field for embedded and empty levels, and give the chain's root a `_live: u32`. OwnState sets and clears bit `levels below` in `create` and `remove`. What stayed: `get` still reaches the State through `Instance.stateAs` first, so a foreign instance answers null whatever its bytes hold where the word would be, and a freed slot answers null before its Instance is read. Two consumers read the field by name and had to learn the embedded form: `lifetime.countedOf` (the counted-node predicate, which would have silently made nodes uncounted) and `own_state.countSet`; three impls wrote a dead `own._internal = null` on an empty state. A div's State: 104 -> 72 bytes of pointers (the root's word costs its 4 bytes plus padding), a text node's 40 -> 16.
+
+**Fix**: When a pointer field's every possible target is a field of the same object, replace it with a bit; grep for every reader of the field by name (including comptime reflection: `@hasField`, `@FieldType`) before deleting it, because a reflective reader that finds no field returns its default rather than failing to compile.
+
+**Takeaway**: **A field that can only point at another field of the same object, or be null, is one bit: keep the bit, keep the brand check in front of it, and find the reflective readers before the field goes.**

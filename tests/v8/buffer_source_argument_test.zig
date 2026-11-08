@@ -44,7 +44,7 @@ fn reset() void {
 /// the test - registered with the context manager as a page's is, every
 /// interface installed.
 fn realm() !runtime.Context {
-    const i = try test_agent.open(.{});
+    const i = try test_agent.open(.{ .realm_allocator = std.heap.page_allocator });
     if (test_realm == null) {
         const context = test_agent.context.?;
         const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);

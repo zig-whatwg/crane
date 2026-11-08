@@ -620,7 +620,7 @@ fn following(node: *NodeBase, root: *NodeBase) ?*NodeBase {
 }
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
-    return @ptrCast(@alignCast(node.owner_instance orelse return null));
+    return @ptrCast(@alignCast(node.ownerInstance() orelse return null));
 }
 
 fn dataOf(node: *NodeBase) ?*const ElementData {
@@ -641,8 +641,8 @@ fn hostOf(shadow: *NodeBase) ?*NodeBase {
 }
 
 fn previousElementSibling(node: *NodeBase) ?*NodeBase {
-    var sibling = node.previous_sibling;
-    while (sibling) |s| : (sibling = s.previous_sibling) {
+    var sibling = node.previousSibling();
+    while (sibling) |s| : (sibling = s.previousSibling()) {
         if (s.node_type == ELEMENT_NODE) return s;
     }
     return null;

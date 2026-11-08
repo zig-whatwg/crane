@@ -25,7 +25,7 @@ const Watched = struct {
 
 fn watch(page: h.Page, source: []const u8) !Watched {
     const base = try page.node(source);
-    const instance: *runtime.Instance = @ptrCast(@alignCast(base.owner_instance.?));
+    const instance: *runtime.Instance = @ptrCast(@alignCast(base.ownerInstance().?));
     return .{ .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
 }
 

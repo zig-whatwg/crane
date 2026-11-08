@@ -101,7 +101,11 @@ test "a sheet arriving for a link that loads none is taken by no owner hook" {
 const PIState = interfaces.ProcessingInstruction.State;
 const pi_offset = @offsetOf(PIState, "own") + @offsetOf(@FieldType(PIState, "own"), "_internal");
 
-fn ownInternalOffset(comptime S: type) usize {
+/// Where `S`'s own level keeps its state pointer, or null when it keeps none
+/// (lane perf2 batch 6: a level whose state is kept by value or is empty has
+/// no `own._internal`).
+fn ownInternalOffset(comptime S: type) ?usize {
+    if (!@hasField(@FieldType(S, "own"), "_internal")) return null;
     return @offsetOf(S, "own") + @offsetOf(@FieldType(S, "own"), "_internal");
 }
 
@@ -112,8 +116,9 @@ fn ownInternalOffset(comptime S: type) usize {
 fn withPoisonAtPiOffset(comptime S: type, el: *runtime.Instance, context: anytype, comptime body: fn (@TypeOf(context), *runtime.Instance) anyerror!void) !void {
     comptime {
         if (pi_offset + 8 > @sizeOf(S)) @compileError("the PI state offset lies past " ++ @typeName(S));
-        const own = ownInternalOffset(S);
-        if (pi_offset < own + 8 and own < pi_offset + 8) @compileError("the PI state offset overlaps " ++ @typeName(S) ++ "'s own state pointer");
+        if (ownInternalOffset(S)) |own| {
+            if (pi_offset < own + 8 and own < pi_offset + 8) @compileError("the PI state offset overlaps " ++ @typeName(S) ++ "'s own state pointer");
+        }
     }
     const state = el.stateAs(S) orelse return error.WrongState;
     const bytes: [*]u8 = @ptrCast(state);

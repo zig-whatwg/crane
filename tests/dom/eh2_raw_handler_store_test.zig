@@ -5,6 +5,19 @@ const interfaces = @import("interfaces");
 const dom = @import("dom");
 
 fn store(allocator: std.mem.Allocator, ctx: runtime.Context) !void {
+    // The target is made with the allocator under test, and an EventTarget is
+    // made with the allocator its scope frees with (EventTarget's init asserts
+    // it; lane perf2 batch 6): a standalone scope of that allocator for this
+    // attempt, ended after the target.
+    const scope = try allocator.create(runtime.BrowserScope);
+    scope.* = runtime.BrowserScope.init(allocator);
+    const previous = runtime.BrowserScope.standalone();
+    runtime.BrowserScope.setStandalone(scope);
+    defer {
+        runtime.BrowserScope.setStandalone(previous);
+        scope.deinit();
+        allocator.destroy(scope);
+    }
     const target = try interfaces.EventTarget.init(allocator, ctx);
     defer interfaces.EventTarget.deinit(target);
     try dom.event_handlers.setRaw(target, "click", .{ .body = "return 1", .url = "https://handler.test/first" });

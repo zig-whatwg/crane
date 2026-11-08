@@ -32,7 +32,7 @@ fn reset() void {
 }
 
 fn setup() !void {
-    const i = try test_agent.open(.{ .context = false });
+    const i = try test_agent.open(.{ .context = false, .realm_allocator = std.heap.page_allocator });
     if (!ready) {
         ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
         for (&contexts, &realms) |*context, *data| {

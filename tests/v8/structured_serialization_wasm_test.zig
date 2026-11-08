@@ -319,7 +319,7 @@ const Receiver = struct {
             .url = "https://example.test/worker.js",
             .timer = null,
             .event_loop = inline_task_loop.eventLoop(),
-            .allocator = std.heap.page_allocator,
+            .allocator = std.heap.c_allocator,
         });
         defer protocol.destroyWorkerRealm(worker.realm, null, null);
         self.mailbox.to = worker.realm;

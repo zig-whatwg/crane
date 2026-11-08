@@ -146,7 +146,7 @@ const Tree = struct {
         const root = try page.instance(source);
         const node = dom.instance_bridge.getNodeBase(@ptrCast(root)).?;
         const first = node.first_child.?;
-        const last = node.last_child.?;
+        const last = node.lastChild().?;
         // Since refcount step 7 the counts queue every tree they find
         // garbage - making this one leaves innerHTML's parse fragment - so
         // that goes first: the tree's root is then the one item a collection
@@ -154,9 +154,9 @@ const Tree = struct {
         page.queue.drainAll();
         return .{
             .root = Watched.of(root),
-            .first_span = Watched.of(@ptrCast(@alignCast(first.owner_instance.?))),
-            .first_text = Watched.of(@ptrCast(@alignCast(first.first_child.?.owner_instance.?))),
-            .last_span = Watched.of(@ptrCast(@alignCast(last.owner_instance.?))),
+            .first_span = Watched.of(@ptrCast(@alignCast(first.ownerInstance().?))),
+            .first_text = Watched.of(@ptrCast(@alignCast(first.first_child.?.ownerInstance().?))),
+            .last_span = Watched.of(@ptrCast(@alignCast(last.ownerInstance().?))),
         };
     }
 
@@ -328,7 +328,7 @@ test "a Document root goes in one slice, whatever the budget" {
         \\d
     );
     const watched = Watched.of(document);
-    const html = Watched.of(@ptrCast(@alignCast(dom.instance_bridge.getNodeBase(@ptrCast(document)).?.first_child.?.owner_instance.?)));
+    const html = Watched.of(@ptrCast(@alignCast(dom.instance_bridge.getNodeBase(@ptrCast(document)).?.first_child.?.ownerInstance().?)));
     // What making it left (innerHTML's parse fragment) goes first.
     queue.drainAll();
     try page.run("globalThis.d = null;");

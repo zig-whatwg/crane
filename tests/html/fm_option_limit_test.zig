@@ -8,9 +8,11 @@ const testing = std.testing;
 
 fn exercise() !void {
     interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(testing.allocator);
-    defer runtime.deinitializeRuntime();
     var failing = std.testing.FailingAllocator.init(testing.allocator, .{});
+    // The runtime is made with the failing allocator the objects are: a node is
+    // made with the allocator its scope frees with (lane perf2 batch 6).
+    runtime.initializeRuntime(failing.allocator());
+    defer runtime.deinitializeRuntime();
     var context = try runtime.ContextData.init(failing.allocator(), .{});
     defer context.deinit();
     const document = try interfaces.Document.init(failing.allocator(), &context);
@@ -44,9 +46,11 @@ test "oversized indexed option writes are no-ops even with an exhausted allocato
 
 fn mutationAllocationFailure() !void {
     interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(testing.allocator);
-    defer runtime.deinitializeRuntime();
     var failing = std.testing.FailingAllocator.init(testing.allocator, .{});
+    // The runtime is made with the failing allocator the objects are: a node is
+    // made with the allocator its scope frees with (lane perf2 batch 6).
+    runtime.initializeRuntime(failing.allocator());
+    defer runtime.deinitializeRuntime();
     var context = try runtime.ContextData.init(failing.allocator(), .{});
     defer context.deinit();
     const document = try interfaces.Document.init(failing.allocator(), &context);

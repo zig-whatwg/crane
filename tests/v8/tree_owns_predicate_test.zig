@@ -37,7 +37,7 @@ fn reset() void {
 }
 
 fn realm() !runtime.Context {
-    _ = try test_agent.open(.{});
+    _ = try test_agent.open(.{ .realm_allocator = testing.allocator });
     if (test_realm == null) {
         const context = test_agent.context.?;
         const r = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);

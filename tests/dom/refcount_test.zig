@@ -14,10 +14,13 @@ const runtime = @import("runtime");
 const refcount = dom.refcount;
 const NodeBase = dom.NodeBase;
 
+/// An owner-less node made with `allocator` - the test's allocator, which its
+/// owner word names (NodeBase.ownerless).
 fn newNode(allocator: std.mem.Allocator) !*NodeBase {
+    std.debug.assert(allocator.ptr == std.testing.allocator.ptr);
     const node = try allocator.create(NodeBase);
     node.* = .{
-        .allocator = allocator,
+        .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.ELEMENT_NODE,
     };
     return node;
@@ -80,7 +83,7 @@ const Fixture = struct {
     }
 };
 
-test "NodeBase is 112 bytes: the counts' 8 beside nodeholds' `holds` (until step 9b), the rest R6's" {
+test "NodeBase is 88 bytes: the counts' 8 beside nodeholds' `holds` (until step 9b), the rest R6's" {
     // 440 bytes before NodeBase.is_shadow_host, 448 since lane nodeholds' hold
     // chain head (`holds`, a pointer: the padding beside node_type and the
     // bools was 3 bytes), and 456 with `rc` and `subtree_holds` (8 bytes that
@@ -91,9 +94,10 @@ test "NodeBase is 112 bytes: the counts' 8 beside nodeholds' `holds` (until step
     // Crane's own. Lane perf2 batch 5 (R6 part 2) took the child list (an
     // infra.List of 96: 88 of Crane's own plus the SafetyLock word its heap
     // list carried in safe builds): the sibling links are the children, 112 in
-    // every build. Step 9b of tmp/plans/refcount-design.md deletes `holds` and
-    // pins 8 fewer.
-    try testing.expectEqual(@as(usize, 112), @sizeOf(NodeBase));
+    // every build. Lane perf2 batch 6 took the allocator copy (16: an owner
+    // word names it) and last_child (8: the first child's previous link): 88.
+    // Step 9b of tmp/plans/refcount-design.md deletes `holds` and pins 8 fewer.
+    try testing.expectEqual(@as(usize, 88), @sizeOf(NodeBase));
 }
 
 test "a node is born with one reference and one hold" {
@@ -468,7 +472,7 @@ test "WeakRef: null once the node's slab slot is freed or reissued, and for a ga
     try testing.expect(refcount.WeakRef(NodeBase).of(node) == null);
 
     const instance = try slab.alloc(&dummy_vtable);
-    node.owner_instance = instance;
+    node.setOwnerInstance(instance);
     const weak = refcount.WeakRef(NodeBase).of(node).?;
     try testing.expectEqual(node, weak.get(&fixture.ledger).?);
 
@@ -488,7 +492,7 @@ test "WeakRef: null once the node's slab slot is freed or reissued, and for a ga
     const reissued = try slab.alloc(&dummy_vtable);
     try testing.expect(weak.get(&fixture.ledger) == null);
     slab.free(reissued);
-    node.owner_instance = null;
+    node.setOwnerInstance(null);
 }
 
 /// What every concrete node type is: NodeBase first, state after it.
@@ -501,7 +505,7 @@ test "a Ref of a concrete node type counts through its NodeBase" {
     const concrete = try testing.allocator.create(Concrete);
     defer testing.allocator.destroy(concrete);
     concrete.* = .{ .base = .{
-        .allocator = testing.allocator,
+        .owner = NodeBase.ownerless(&testing.allocator),
         .node_type = NodeBase.ELEMENT_NODE,
     }, .extra = 7 };
     var born = refcount.Ref(Concrete).adopt(&fixture.ledger, concrete);

@@ -74,16 +74,12 @@ pub const InternalState = struct {
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
-    /// The allocator the node was made with: what its state allocates and
-    /// frees. Not its Browser's (runtime.allocatorOf) - the two are one in a
-    /// Browser, but the V8 tests' realms make nodes with the test's
-    /// allocator over the process's standalone scope (lane perf2 batch 5:
-    /// 210 tests), so the copy stays until those realms get scopes of their
-    /// own.
-    allocator: std.mem.Allocator,
+    // No allocator copy (lane perf2 batch 6): what the node allocates comes
+    // from its Browser's allocator, runtime.allocatorOf(instance) - the one it
+    // was made with, asserted in initOwn.
 
     /// NodeBase - THE source of truth for tree structure
-    /// Contains: parent_node, first_child, last_child, previous_sibling, next_sibling
+    /// Contains: parent_node, first_child, previous_or_last, next_sibling
     /// All tree operations go through this via src/dom/mutation.zig
     /// `&base` while the node lives; null once its teardown released it
     /// (`releaseNodeBase`).
@@ -209,16 +205,23 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // builds).
     const internal = try Registry.create(instance);
     errdefer Registry.remove(instance);
+    // Everything the node allocates later, and every free, goes through its
+    // Browser's allocator, runtime.allocatorOf (its NodeBase's `allocator()`),
+    // found from its address: so the allocator it is made with must BE that
+    // one - true in a Browser, whose realms are given its scope's allocator;
+    // a test realm is given its scope's too (lane perf2 batch 6;
+    // docs/lessons/architecture-a-nodes-creation-allocator-is-its-browsers-
+    // only-inside-a-browser.md). Asserted in every safe build: the unit tests
+    // and the WPT runner.
+    if (std.debug.runtime_safety and !runtime.isScopeAllocator(instance, allocator))
+        std.debug.panic("a node ({s}) made with an allocator that is not its Browser's (runtime.allocatorOf would free through another)", .{instance.vtable.name});
     internal.* = .{
-        .allocator = allocator,
         .node_type = node_type,
         .base = .{
-            .allocator = allocator,
             .node_type = node_type,
             .parent_node = null,
             .first_child = null,
-            .last_child = null,
-            .previous_sibling = null,
+            .previous_or_last = null,
             .next_sibling = null,
             .owner_document = null,
             .is_connected = false,
@@ -333,7 +336,7 @@ pub fn deinit(instance: *runtime.Instance) void {
                     }
                 } else {
                     // Large tree: allocate dynamic array
-                    const alloc_children = internal.allocator.alloc(*runtime.Instance, child_count) catch {
+                    const alloc_children = runtime.allocatorOf(instance).alloc(*runtime.Instance, child_count) catch {
                         // On allocation failure, fall back to iterating directly
                         // This is less safe but better than doing nothing
                         var child = node_base.first_child;
@@ -354,7 +357,7 @@ pub fn deinit(instance: *runtime.Instance) void {
                         interfaces.EventTarget.deinitChain(instance);
                         return;
                     };
-                    defer internal.allocator.free(alloc_children);
+                    defer runtime.allocatorOf(instance).free(alloc_children);
 
                     var child_base_walk = node_base.children();
                     while (child_base_walk.next()) |child_base| {
@@ -488,7 +491,7 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
 
     // Dispatch based on node type to call the appropriate interface's deinit.
     // Each interface's deinit will chain back to Node.deinit for proper recursive cleanup.
-    // DO NOT clear first_child/last_child here - the recursive Node.deinit needs them
+    // DO NOT clear the child links here - the recursive Node.deinit needs them
     // to properly clean up the entire subtree.
     switch (internal.node_type) {
         NodeType.TEXT_NODE => {
@@ -787,7 +790,7 @@ pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
     // Create a live NodeList for this node's children: made through its
     // interface, made live over them by NodeList's step (dom.node_lists).
-    const list = try interfaces.NodeList.init(internal.allocator, instance.ctx);
+    const list = try interfaces.NodeList.init(runtime.allocatorOf(instance), instance.ctx);
     errdefer interfaces.NodeList.deinit(list);
     try dom_module.node_lists.childNodes(list, instance);
 
@@ -812,7 +815,7 @@ pub fn get_firstChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 pub fn get_lastChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const node_base = internal.node_base orelse return null;
-    const last = node_base.last_child orelse return null;
+    const last = node_base.lastChild() orelse return null;
     const last_opaque = instance_bridge.getInstance(last) orelse return null;
     return @ptrCast(@alignCast(last_opaque));
 }
@@ -822,7 +825,7 @@ pub fn get_lastChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 pub fn get_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const node_base = internal.node_base orelse return null;
-    const prev = node_base.previous_sibling orelse return null;
+    const prev = node_base.previousSibling() orelse return null;
     const prev_opaque = instance_bridge.getInstance(prev) orelse return null;
     return @ptrCast(@alignCast(prev_opaque));
 }
@@ -1369,8 +1372,9 @@ pub fn cloneANode(
 fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallback_registry: ?*runtime.Instance) !*runtime.Instance {
     const node_internal = getInternal(node) orelse return error.InvalidStateError;
 
-    // Get allocator from node's state
-    const allocator = node_internal.allocator;
+    // The node's Browser's allocator (runtime.allocatorOf): the one it was
+    // made with.
+    const allocator = runtime.allocatorOf(node);
 
     // DOM 4.4 "clone a node" step 2: copy must implement the same interfaces as
     // node. A CharacterData copy built as a bare Node has no CharacterData
@@ -1915,8 +1919,8 @@ pub fn setLocalName(instance: *runtime.Instance, name: runtime.DOMString) !void 
     if (internal.node_base) |node_base| {
         const name_slice = name.asSlice();
         // The NodeBase owns it, and frees it with its own allocator.
-        const upper_name = try node_base.allocator.alloc(u8, name_slice.len);
-        errdefer node_base.allocator.free(upper_name);
+        const upper_name = try node_base.allocator().alloc(u8, name_slice.len);
+        errdefer node_base.allocator().free(upper_name);
         for (name_slice, 0..) |c, i| {
             upper_name[i] = std.ascii.toUpper(c);
         }
@@ -2063,7 +2067,7 @@ pub fn getNextSibling(instance: *runtime.Instance) ?*runtime.Instance {
 pub fn getPreviousSibling(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     const node_base = internal.node_base orelse return null;
-    const prev_base = node_base.previous_sibling orelse return null;
+    const prev_base = node_base.previousSibling() orelse return null;
     const prev_opaque = instance_bridge.getInstance(prev_base) orelse return null;
     return @ptrCast(@alignCast(prev_opaque));
 }
@@ -2073,7 +2077,7 @@ pub fn getPreviousSibling(instance: *runtime.Instance) ?*runtime.Instance {
 pub fn getLastChild(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     const node_base = internal.node_base orelse return null;
-    const last_base = node_base.last_child orelse return null;
+    const last_base = node_base.lastChild() orelse return null;
     const last_opaque = instance_bridge.getInstance(last_base) orelse return null;
     return @ptrCast(@alignCast(last_opaque));
 }

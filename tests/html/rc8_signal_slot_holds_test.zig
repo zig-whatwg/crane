@@ -24,7 +24,7 @@ fn signaledSlotIsCounted() !void {
     const slot = try page.node("slot");
     try expectCount(1, slot, "a slot nothing signaled");
     // Natively: no script, so no microtask checkpoint runs the slotchange yet.
-    dom.mutation_observer_algorithms.signalSlotChange(@ptrCast(@alignCast(slot.owner_instance.?)));
+    dom.mutation_observer_algorithms.signalSlotChange(@ptrCast(@alignCast(slot.ownerInstance().?)));
     try expectCount(2, slot, "in the agent's signal slots: the set's counted reference");
     // A script's end runs the checkpoint: notify fires the slotchange. Its
     // event, which the listener saw, holds its target until the event is

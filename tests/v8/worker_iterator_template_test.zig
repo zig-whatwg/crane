@@ -60,21 +60,21 @@ fn workerRealm(agent: *runtime.Agent, kind: Kind) !runtime.WorkerRealm {
             .url = "http://web-platform.test:8000/fetch/w.js",
             .timer = null,
             .event_loop = inline_task_loop.eventLoop(),
-            .allocator = std.heap.page_allocator,
+            .allocator = std.heap.c_allocator,
         },
         .shared => .{
             .url = "http://web-platform.test:8000/fetch/shared.js",
             .timer = null,
             .event_loop = inline_task_loop.eventLoop(),
             .global = .shared,
-            .allocator = std.heap.page_allocator,
+            .allocator = std.heap.c_allocator,
         },
         .service => .{
             .url = "https://web-platform.test:8443/fetch/sw.js",
             .timer = null,
             .event_loop = inline_task_loop.eventLoop(),
             .global = .service,
-            .allocator = std.heap.page_allocator,
+            .allocator = std.heap.c_allocator,
         },
     });
 }
