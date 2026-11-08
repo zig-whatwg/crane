@@ -39,6 +39,9 @@ pub fn FlattenedState(
     comptime MixinTypes: []const type,
     comptime OwnFields: type,
 ) type {
+    const kind = comptime internalKind(OwnFields);
+    const Own = if (kind == .embedded or kind == .empty) WithoutInternal(OwnFields) else OwnFields;
+    const Live = if (BaseType == null and kind == .embedded) LiveWord else void;
     return struct {
         /// Base type state (if inherits from another interface)
         base: if (BaseType) |B| B else void,
@@ -46,8 +49,10 @@ pub fn FlattenedState(
         /// Mixin fields (flattened from all mixins)
         mixins: MixinFieldsStruct(MixinTypes),
 
-        /// Own fields (defined by this interface)
-        own: OwnFields,
+        /// Own fields (defined by this interface) - less `_internal` when
+        /// the impl's state is kept by value here or is empty
+        /// (`internal_kind`).
+        own: Own,
 
         /// The impl's InternalState BY VALUE, when it is kept in this State
         /// (runtime.OwnState) - else void, 0 bytes (`Embedded`). Lane perf2
@@ -57,15 +62,27 @@ pub fn FlattenedState(
         /// whole chain is ONE allocation, as Blink, WebKit and Gecko lay a
         /// node out by inheritance and Lightpanda's Factory makes "1 large
         /// allocation for the total size" of the chain (`chainOffsetOf`).
-        /// Made zeroed with the State (Instance.init); `own._internal`
-        /// points here while the impl's state is set.
+        /// Made zeroed with the State (Instance.init).
         _embedded: Embedded(OwnFields) = undefined,
+
+        /// The chain's live word, at its root only (else void, 0 bytes): bit
+        /// `d` set while the level `d` steps above the root has its embedded
+        /// state made and not yet torn down (runtime.OwnState's `create` and
+        /// `remove`). Lane perf2 batch 6: it replaces a pointer per level -
+        /// `own._internal`, which pointed at `_embedded` or was null, 8
+        /// bytes a level, five on a div - with 4 bytes per object, as Blink
+        /// keeps such facts as bits of the node (Node::node_flags_), not as
+        /// pointers to itself. Zeroed with the State: nothing is live.
+        _live: Live = std.mem.zeroes(Live),
+
+        /// How this level keeps its impl's InternalState (`InternalKind`).
+        pub const internal_kind: InternalKind = kind;
 
         /// Check if a field exists by name (compile-time only)
         /// This is used for reflection and code generation
         pub fn hasField(comptime name: []const u8) bool {
             // Check own fields
-            const own_info = @typeInfo(OwnFields);
+            const own_info = @typeInfo(Own);
             if (own_info == .@"struct") {
                 inline for (own_info.@"struct".field_names) |field_name| {
                     if (std.mem.eql(u8, field_name, name)) return true;
@@ -93,21 +110,75 @@ pub fn FlattenedState(
     };
 }
 
+/// The live word's type (`FlattenedState._live`): a bit per level of a chain,
+/// so a chain may be up to 32 levels deep (runtime.OwnState checks it).
+pub const LiveWord = u32;
+
+/// How a level of a generated State keeps its impl's InternalState, read from
+/// the type its generated `own._internal: ?*T` points at - so the runtime
+/// names no impl (lane perf2 batch 6).
+pub const InternalKind = enum {
+    /// No `_internal` field: a hand-written State.
+    none,
+    /// `T` lives in a block of its own, reached through `own._internal`
+    /// (runtime.InstanceRegistry, or set by its impl).
+    pointer,
+    /// `T` is kept by value in the State (`_embedded`; it declares
+    /// `pub const embedded_in_state = true`, runtime.OwnState): no pointer,
+    /// a bit of the root's live word says whether it is made.
+    embedded,
+    /// `T` has no fields (`InternalState = struct {}`, the impls that keep no
+    /// state): there is nothing to point at, and no pointer is kept.
+    empty,
+};
+
+/// The type `own._internal` points at, or null for none.
+fn InternalTarget(comptime OwnFields: type) ?type {
+    if (@typeInfo(OwnFields) != .@"struct" or !@hasField(OwnFields, "_internal")) return null;
+    const Field = @FieldType(OwnFields, "_internal");
+    const optional = @typeInfo(Field);
+    if (optional != .optional) return null;
+    const pointer = @typeInfo(optional.optional.child);
+    if (pointer != .pointer or pointer.pointer.size != .one) return null;
+    return pointer.pointer.child;
+}
+
+/// `OwnFields`' InternalKind.
+pub fn internalKind(comptime OwnFields: type) InternalKind {
+    const T = InternalTarget(OwnFields) orelse return .none;
+    if (@typeInfo(T) != .@"struct") return .pointer;
+    if (@hasDecl(T, "embedded_in_state") and T.embedded_in_state) return .embedded;
+    if (@typeInfo(T).@"struct".field_names.len == 0) return .empty;
+    return .pointer;
+}
+
+/// `OwnFields` less its `_internal` field: the same fields, in the same
+/// order, with their defaults.
+fn WithoutInternal(comptime OwnFields: type) type {
+    const info = @typeInfo(OwnFields).@"struct";
+    const count = info.field_names.len - 1;
+    var names: [count][:0]const u8 = undefined;
+    var types: [count]type = undefined;
+    var attrs: [count]std.builtin.Type.Struct.FieldAttributes = undefined;
+    var at: usize = 0;
+    for (info.field_names, info.field_types, info.field_attrs) |name, field_type, field_attrs| {
+        if (std.mem.eql(u8, name, "_internal")) continue;
+        names[at] = name;
+        types[at] = field_type;
+        attrs[at] = field_attrs;
+        at += 1;
+    }
+    return @Struct(.auto, null, &names, &types, &attrs);
+}
+
 /// The InternalState a State keeps by value (`_embedded`): the type
 /// `OwnFields._internal` points at, when that type declares
 /// `pub const embedded_in_state = true` - the marker every runtime.OwnState
 /// user's InternalState carries - and void otherwise. Read from the field's
 /// type, so the runtime names no impl.
 pub fn Embedded(comptime OwnFields: type) type {
-    if (@typeInfo(OwnFields) != .@"struct" or !@hasField(OwnFields, "_internal")) return void;
-    const Field = @FieldType(OwnFields, "_internal");
-    const optional = @typeInfo(Field);
-    if (optional != .optional) return void;
-    const pointer = @typeInfo(optional.optional.child);
-    if (pointer != .pointer or pointer.pointer.size != .one) return void;
-    const T = pointer.pointer.child;
-    if (@typeInfo(T) != .@"struct" or !@hasDecl(T, "embedded_in_state")) return void;
-    return if (T.embedded_in_state) T else void;
+    if (internalKind(OwnFields) != .embedded) return void;
+    return InternalTarget(OwnFields).?;
 }
 
 /// Build a struct containing all mixin fields

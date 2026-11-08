@@ -19,10 +19,12 @@ fn attribute(element: *runtime.Instance, value: []const u8) !void {
 
 fn exercise(comptime svg: bool, comptime oom: bool) !void {
     interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(testing.allocator);
-    defer runtime.deinitializeRuntime();
     var failing = testing.FailingAllocator.init(testing.allocator, .{});
     const allocator = failing.allocator();
+    // The runtime is made with the failing allocator the objects are: a node is
+    // made with the allocator its scope frees with (lane perf2 batch 6).
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
     var ctx = try runtime.ContextData.init(allocator, .{});
     defer ctx.deinit();
     const document = try interfaces.Document.init(allocator, &ctx);

@@ -196,7 +196,7 @@ test "a realm's use of its own Window is never reported" {
 }
 
 test "a Browser's realms ask the host only once its access monitoring has started" {
-    var scope = runtime.BrowserScope.init(std.heap.page_allocator);
+    var scope = runtime.BrowserScope.init(std.heap.c_allocator);
     defer scope.deinit();
     var host: Host = .{};
     defer host.deinit();

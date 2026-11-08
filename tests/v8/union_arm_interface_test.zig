@@ -146,7 +146,7 @@ fn reset() void {
 }
 
 fn isolate() !*ffi.Isolate {
-    const i = try test_agent.open(.{});
+    const i = try test_agent.open(.{ .realm_allocator = std.testing.allocator });
     if (test_isolate == null) {
         const context = test_agent.context.?;
         test_isolate = i;

@@ -11,9 +11,9 @@ const NodeBase = dom.NodeBase;
 const Element = dom.ElementWithBase;
 
 /// Helper to create a mock document node for testing isConnected
-fn createMockDocumentNode(allocator: std.mem.Allocator) NodeBase {
+fn createMockDocumentNode() NodeBase {
     return NodeBase{
-        .allocator = allocator,
+        .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
         .owner_document = null,
@@ -28,20 +28,11 @@ fn deinitMockDocument(doc: *NodeBase) void {
 /// Link `child` as `parent`'s last child (a node's children are its sibling
 /// links: NodeBase.children; lane perf2 batch 5).
 fn linkTestChild(parent: *NodeBase, child: *NodeBase) void {
-    child.previous_sibling = parent.last_child;
-    child.next_sibling = null;
-    if (parent.last_child) |last| {
-        last.next_sibling = child;
-    } else {
-        parent.first_child = child;
-    }
-    parent.last_child = child;
+    parent.linkChildBefore(child, null);
 }
 
 test "Node.isConnected - document node is connected" {
-    const allocator = std.testing.allocator;
-
-    var doc = createMockDocumentNode(allocator);
+    var doc = createMockDocumentNode();
     defer deinitMockDocument(&doc);
 
     // Document is its own root, and root is a document, so it's connected
@@ -51,7 +42,7 @@ test "Node.isConnected - document node is connected" {
 test "Node.isConnected - detached element is not connected" {
     const allocator = std.testing.allocator;
 
-    var elem = Element.init(allocator, "div");
+    var elem = Element.init(&allocator, "div");
     defer elem.deinit();
 
     const node = elem.asNode();
@@ -63,10 +54,10 @@ test "Node.isConnected - detached element is not connected" {
 test "Node.isConnected - element in document tree is connected" {
     const allocator = std.testing.allocator;
 
-    var doc = createMockDocumentNode(allocator);
+    var doc = createMockDocumentNode();
     defer deinitMockDocument(&doc);
 
-    var elem = Element.init(allocator, "div");
+    var elem = Element.init(&allocator, "div");
     defer elem.deinit();
 
     const node = elem.asNode();
@@ -85,13 +76,13 @@ test "Node.isConnected - element in document tree is connected" {
 test "Node.isConnected - nested elements in document are connected" {
     const allocator = std.testing.allocator;
 
-    var doc = createMockDocumentNode(allocator);
+    var doc = createMockDocumentNode();
     defer deinitMockDocument(&doc);
 
-    var parent_elem = Element.init(allocator, "div");
+    var parent_elem = Element.init(&allocator, "div");
     defer parent_elem.deinit();
 
-    var child_elem = Element.init(allocator, "span");
+    var child_elem = Element.init(&allocator, "span");
     defer child_elem.deinit();
 
     const parent = parent_elem.asNode();
@@ -112,10 +103,10 @@ test "Node.isConnected - nested elements in document are connected" {
 test "Node.isConnected - orphaned subtree is not connected" {
     const allocator = std.testing.allocator;
 
-    var parent_elem = Element.init(allocator, "div");
+    var parent_elem = Element.init(&allocator, "div");
     defer parent_elem.deinit();
 
-    var child_elem = Element.init(allocator, "span");
+    var child_elem = Element.init(&allocator, "span");
     defer child_elem.deinit();
 
     const parent = parent_elem.asNode();
@@ -133,20 +124,20 @@ test "Node.isConnected - orphaned subtree is not connected" {
 test "Node.isConnected - deeply nested element in document" {
     const allocator = std.testing.allocator;
 
-    var doc = createMockDocumentNode(allocator);
+    var doc = createMockDocumentNode();
     defer deinitMockDocument(&doc);
 
     // Create a chain of 4 elements
-    var elem0 = Element.init(allocator, "html");
+    var elem0 = Element.init(&allocator, "html");
     defer elem0.deinit();
 
-    var elem1 = Element.init(allocator, "body");
+    var elem1 = Element.init(&allocator, "body");
     defer elem1.deinit();
 
-    var elem2 = Element.init(allocator, "div");
+    var elem2 = Element.init(&allocator, "div");
     defer elem2.deinit();
 
-    var elem3 = Element.init(allocator, "span");
+    var elem3 = Element.init(&allocator, "span");
     defer elem3.deinit();
 
     const n0 = elem0.asNode();
@@ -179,12 +170,12 @@ test "Node.isConnected - document fragment root is not connected" {
 
     // Create a document fragment node
     var frag = NodeBase{
-        .allocator = allocator,
+        .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_FRAGMENT_NODE,
         .parent_node = null,
         .owner_document = null,
     };
-    var elem = Element.init(allocator, "div");
+    var elem = Element.init(&allocator, "div");
     defer elem.deinit();
 
     const node = elem.asNode();

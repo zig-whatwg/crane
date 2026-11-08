@@ -23,7 +23,7 @@ fn reset() void {
 }
 
 fn realm() !runtime.Context {
-    const i = try test_agent.open(.{});
+    const i = try test_agent.open(.{ .realm_allocator = std.heap.page_allocator });
     if (test_data == null) {
         ffi.v8_Isolate_SetMicrotasksPolicy(i, @backingInt(ffi.MicrotasksPolicy.Explicit));
         const context = test_agent.context.?;

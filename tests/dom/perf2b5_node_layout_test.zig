@@ -71,7 +71,7 @@ fn slack(comptime State: type) usize {
     return runtime.ArenaAllocator.heldBytes(@sizeOf(State), @alignOf(State)) - @sizeOf(State);
 }
 
-test "NodeBase is 112 bytes: the sibling links are the children" {
+test "NodeBase keeps no child list: the sibling links are the children" {
     // 208 at d1ee79a9386: - 96 (child_nodes, an infra.List with four inline
     // slots; the sibling links are the children). bound_v8_wrapper stays
     // inline: every wrapper the cache takes sets it (wrapper_cache.zig,
@@ -79,7 +79,8 @@ test "NodeBase is 112 bytes: the sibling links are the children" {
     // (ScriptWrappable::wrapper_). The per-node allocator (16) is the next
     // step: an owner-less NodeBase (the test-only WithBase types) still needs
     // it, so it waits for those to carry their own (design 3.4, deferred).
-    try expectSize(NodeBase, 112);
+    // Done in batch 6 (with last_child): 88 bytes, perf2b6_node_layout_test.zig.
+    try expectSize(NodeBase, 88);
     try std.testing.expect(!@hasField(NodeBase, "child_nodes"));
     try std.testing.expect(@hasField(NodeBase, "bound_v8_wrapper"));
 }
@@ -102,7 +103,7 @@ test "every OwnState level keeps its InternalState by value in its own State" {
     try std.testing.expectEqual(@as(usize, 0), missing);
 }
 
-test "Node's embedded state is its NodeBase by value and the five fields a node uses: 168 bytes" {
+test "Node's embedded state is its NodeBase by value and the fields a node uses: 128 bytes" {
     const E = Embedded(interfaces.Node.State);
     if (E == void) {
         return error.NotEmbedded;
@@ -113,8 +114,8 @@ test "Node's embedded state is its NodeBase by value and the five fields a node 
         // no caller), prefix and node_value (no writer) and is_connected
         // (NodeBase's is the one the DOM reads). The allocator copy stays
         // until every realm's creation allocator is its scope's (the V8
-        // tests' realms are not).
-        try expectSize(E, 168);
+        // tests' realms are not). Batch 6: no allocator copy, NodeBase 88.
+        try expectSize(E, 128);
         try std.testing.expect(@FieldType(E, "base") == NodeBase);
         inline for (.{ "local_name", "namespace_uri", "prefix", "node_value", "is_connected" }) |dead| {
             if (@hasField(E, dead)) {
@@ -125,7 +126,7 @@ test "Node's embedded state is its NodeBase by value and the five fields a node 
     }
 }
 
-test "a div is ONE exact-size block: 104 bytes of pointers and every level's InternalState" {
+test "a div is ONE exact-size block: 72 bytes of pointers and every level's InternalState" {
     const S = interfaces.HTMLDivElement.State;
     // EventTarget, Node, Element and HTMLElement embed (HTMLDivElement's own
     // InternalState is empty); the generated part is batch 3's 104 bytes.
@@ -133,7 +134,8 @@ test "a div is ONE exact-size block: 104 bytes of pointers and every level's Int
         std.debug.print("HTMLDivElement.State: {d} bytes, nothing embedded\n", .{@sizeOf(S)});
         return error.NotEmbedded;
     }
-    try std.testing.expectEqual(@as(usize, 104), @sizeOf(S) - embeddedBytes(S));
+    // Batch 6: no `_internal` pointers, the root's live word instead: 72.
+    try std.testing.expectEqual(@as(usize, 72), @sizeOf(S) - embeddedBytes(S));
     try std.testing.expectEqual(@as(usize, 8), @alignOf(S));
     if (slack(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), @sizeOf(S) + slack(S) });
@@ -141,13 +143,13 @@ test "a div is ONE exact-size block: 104 bytes of pointers and every level's Int
     }
 }
 
-test "a text node is ONE exact-size block: 40 bytes of pointers and every level's InternalState" {
+test "a text node is ONE exact-size block: 16 bytes of pointers and every level's InternalState" {
     const S = interfaces.Text.State;
     if (embeddedBytes(S) == 0) {
         std.debug.print("Text.State: {d} bytes, nothing embedded\n", .{@sizeOf(S)});
         return error.NotEmbedded;
     }
-    try std.testing.expectEqual(@as(usize, 40), @sizeOf(S) - embeddedBytes(S));
+    try std.testing.expectEqual(@as(usize, 16), @sizeOf(S) - embeddedBytes(S));
     try std.testing.expectEqual(@as(usize, 8), @alignOf(S));
     try std.testing.expect(slack(S) < 16);
 }

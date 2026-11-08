@@ -72,7 +72,7 @@ const Page = struct {
                 .url = "https://example.test/worker.js",
                 .timer = null,
                 .event_loop = inline_task_loop.eventLoop(),
-                .allocator = std.heap.page_allocator,
+                .allocator = std.heap.c_allocator,
             })).realm,
         };
         return .{ .kind = kind, .agent = agent, .realm = realm };

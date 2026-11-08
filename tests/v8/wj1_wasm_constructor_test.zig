@@ -85,7 +85,11 @@ const WindowHost = struct {
 };
 
 fn inPlatformRealm(source: []const u8, kind: PlatformKind, from_snapshot: bool) !void {
-    test_process.start();
+    // The realms and their Window are made with the test's allocator: their
+    // scope is made with it too, and ends after the agent (lane perf2 batch 6:
+    // a node or EventTarget is made with the allocator its scope frees with).
+    const own_scope = test_process.OwnRuntime.begin(std.testing.allocator);
+    defer own_scope.end();
     interfaces.process_hooks.startHooksForTest();
     const no_hooks: engine.HostHooks = .{};
     const agent = try engine.createAgent(.{
@@ -1127,7 +1131,10 @@ const FirstWasmDelivery = struct {
     };
 
     fn body(kind: Kind) !void {
-        test_process.start();
+        // Both agents' realms and their globals are made with the test's
+        // allocator: their scope too, ended after them (lane perf2 batch 6).
+        const own_scope = test_process.OwnRuntime.begin(std.testing.allocator);
+        defer own_scope.end();
         interfaces.process_hooks.startHooksForTest();
         var message = try makeMessage(kind);
         defer message.deinit(std.testing.allocator);

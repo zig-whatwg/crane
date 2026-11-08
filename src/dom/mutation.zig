@@ -592,8 +592,8 @@ fn isElementPreceding(parent: *NodeBase, child: ?*NodeBase) bool {
     if (child.?.parent_node != parent) return false;
 
     // Check all siblings before child
-    var sibling = child.?.previous_sibling;
-    while (sibling) |s| : (sibling = s.previous_sibling) {
+    var sibling = child.?.previousSibling();
+    while (sibling) |s| : (sibling = s.previousSibling()) {
         if (isElement(s)) return true;
     }
 
@@ -812,12 +812,12 @@ fn insertWith(
     // `el.append("A","B","C","D","E")` read freed memory). The copy goes to
     // `nodes_buf` (insert's) or, past 256, to the heap.
     var nodes_heap: ?[]*NodeBase = null;
-    defer if (nodes_heap) |heap| parent.allocator.free(heap);
+    defer if (nodes_heap) |heap| parent.allocator().free(heap);
     var nodes: []*NodeBase = undefined;
     var nodes_count: usize = 0;
 
     if (isDocumentFragment(node)) {
-        nodes = copyChildren(parent.allocator, node, nodes_buf) catch return error.OutOfMemory;
+        nodes = copyChildren(parent.allocator(), node, nodes_buf) catch return error.OutOfMemory;
         nodes_count = nodes.len;
         if (nodes_count > nodes_buf.len) nodes_heap = nodes;
     } else {
@@ -850,7 +850,7 @@ fn insertWith(
         // Step 4.2: Queue a tree mutation record for node
         // addedNodes is empty, removedNodes is the children that were removed
         queueTreeMutationRecord(
-            parent.allocator,
+            parent.allocator(),
             node,
             &[_]*NodeBase{},
             nodes[0..nodes_count],
@@ -869,7 +869,7 @@ fn insertWith(
     }
 
     // Step 6: Let previousSibling be child's previous sibling or parent's last child if child is null
-    const previousSibling: ?*NodeBase = if (child) |c| c.previous_sibling else parent.last_child;
+    const previousSibling: ?*NodeBase = if (child) |c| c.previousSibling() else parent.lastChild();
 
     // Step 7: For each node in nodes, in tree order:
     for (nodes[0..count]) |n| {
@@ -896,29 +896,8 @@ fn insertWith(
         // Step 7.2-3: Insert node into parent's children: the links are the
         // children (NodeBase.children), so this cannot fail.
 
-        if (child) |c| {
-            // Insert before child
-            n.next_sibling = c;
-            n.previous_sibling = c.previous_sibling;
-
-            if (c.previous_sibling) |prev| {
-                prev.next_sibling = n;
-            } else {
-                parent.first_child = n;
-            }
-            c.previous_sibling = n;
-        } else {
-            // Append at end
-            n.previous_sibling = parent.last_child;
-            n.next_sibling = null;
-
-            if (parent.last_child) |last| {
-                last.next_sibling = n;
-            } else {
-                parent.first_child = n;
-            }
-            parent.last_child = n;
-        }
+        // Before child, or after the last child.
+        parent.linkChildBefore(n, child);
 
         // The parent write, and the holds it moves (refcount, step 3) - its
         // remover's hold ends here; a wrapped root joins its new tree's
@@ -949,7 +928,7 @@ fn insertWith(
         // signal a slot change for an empty slot parent in a shadow tree,
         // and assign slottables for node's tree when it is a shadow tree
         // that node brings a slot into.
-        insertionSlotSteps(parent.allocator, n, @ptrCast(parent));
+        insertionSlotSteps(parent.allocator(), n, @ptrCast(parent));
 
         // Step 7.7: For each shadow-including inclusive descendant of node,
         // in shadow-including tree order, run the insertion steps
@@ -962,7 +941,7 @@ fn insertWith(
         if (hasInsertionStepsCallbacks() or (parent_is_connected and hasCustomElementDefinitions(parent))) {
             // Get all shadow-including inclusive descendants in tree order
             var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(
-                parent.allocator,
+                parent.allocator(),
                 n,
             ) catch {
                 // If we can't allocate, fall back to non-shadow traversal
@@ -992,7 +971,7 @@ fn insertWith(
     // Step 8: If suppress observers flag is unset, queue a tree mutation record
     if (!suppress_observers) {
         queueTreeMutationRecord(
-            parent.allocator,
+            parent.allocator(),
             parent,
             nodes[0..nodes_count],
             &[_]*NodeBase{},
@@ -1015,7 +994,7 @@ fn insertWith(
     //
     // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
     if (hasPostConnectionStepsCallbacks()) {
-        try runPostConnectionStepsForTrees(parent.allocator, nodes);
+        try runPostConnectionStepsForTrees(parent.allocator(), nodes);
     }
 
     if (refcount.treeChecksOn()) {
@@ -1096,32 +1075,14 @@ pub fn appendChildren(
     }
 
     // Step 3: Get previous sibling for mutation record (last child before insertion)
-    const previousSibling: ?*NodeBase = parent.last_child;
+    const previousSibling: ?*NodeBase = parent.lastChild();
 
     // Steps 4-5: link every child after it - parent and sibling pointers
     // (the links are the children: NodeBase.children)
-    var prev_child: ?*NodeBase = previousSibling; // Last child before insertion (or null)
     for (children) |child| {
         refcount.linkChild(child, @ptrCast(parent));
         joinedTree(child, @ptrCast(parent));
-
-        // Update sibling pointers
-        child.previous_sibling = prev_child;
-        child.next_sibling = null; // Will be updated by next iteration if there is one
-
-        if (prev_child) |prev| {
-            prev.next_sibling = child;
-        } else {
-            // This is the first child being inserted AND parent had no children
-            parent.first_child = child;
-        }
-
-        prev_child = child;
-    }
-
-    // The last inserted child becomes parent's last_child
-    if (children.len > 0) {
-        parent.last_child = children[children.len - 1];
+        parent.linkChildBefore(child, null);
     }
     // domindex1: the tree scope's maps, once the batch is linked.
     for (children) |child| tree_ordered_map.inserted(child, @ptrCast(parent));
@@ -1138,7 +1099,7 @@ pub fn appendChildren(
         for (children) |child| {
             // Get all shadow-including inclusive descendants in tree order
             var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(
-                parent.allocator,
+                parent.allocator(),
                 child,
             ) catch {
                 // If we can't allocate, fall back to non-shadow traversal
@@ -1162,7 +1123,7 @@ pub fn appendChildren(
     // Step 8: Queue a single tree mutation record for all insertions
     // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
     queueTreeMutationRecord(
-        parent.allocator,
+        parent.allocator(),
         parent,
         children,
         &[_]*NodeBase{},
@@ -1180,7 +1141,7 @@ pub fn appendChildren(
     // Step 10: Run post-connection steps for all inserted nodes
     // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
     if (hasPostConnectionStepsCallbacks()) {
-        try runPostConnectionStepsForTrees(parent.allocator, children);
+        try runPostConnectionStepsForTrees(parent.allocator(), children);
     }
 
     if (refcount.treeChecksOn()) refcount.checkAround(@ptrCast(parent));
@@ -1243,7 +1204,7 @@ pub fn insertChildrenBefore(
     }
 
     // Get previous sibling for mutation record
-    const previousSibling: ?*NodeBase = ref_child.previous_sibling;
+    const previousSibling: ?*NodeBase = ref_child.previousSibling();
 
     // The parent link of each child (the holds it moves), in reverse order as
     // before; the sibling links below are the children (NodeBase.children).
@@ -1254,34 +1215,8 @@ pub fn insertChildrenBefore(
         joinedTree(children[i], @ptrCast(parent));
     }
 
-    // Link the inserted children together and to the nodes around them
-    if (children.len > 0) {
-        const first_inserted = children[0];
-        const last_inserted = children[children.len - 1];
-
-        // Connect first inserted to previous sibling
-        first_inserted.previous_sibling = previousSibling;
-        if (previousSibling) |prev| {
-            prev.next_sibling = first_inserted;
-        } else {
-            // First inserted becomes first child
-            parent.first_child = first_inserted;
-        }
-
-        // Connect last inserted to reference child (next sibling)
-        last_inserted.next_sibling = ref_child;
-        ref_child.previous_sibling = last_inserted;
-
-        // Link inserted children together (forward pass)
-        var prev_child: ?*NodeBase = null;
-        for (children) |child| {
-            if (prev_child) |prev| {
-                prev.next_sibling = child;
-                child.previous_sibling = prev;
-            }
-            prev_child = child;
-        }
-    }
+    // Link the inserted children, in order, before the reference child.
+    for (children) |child| parent.linkChildBefore(child, ref_child);
     // domindex1: the tree scope's maps, once the batch is linked.
     for (children) |child| tree_ordered_map.inserted(child, @ptrCast(parent));
 
@@ -1296,7 +1231,7 @@ pub fn insertChildrenBefore(
     if (hasInsertionStepsCallbacks() or (parent.is_connected and hasCustomElementDefinitions(parent))) {
         for (children) |child| {
             var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(
-                parent.allocator,
+                parent.allocator(),
                 child,
             ) catch {
                 runInsertionSteps(child);
@@ -1318,7 +1253,7 @@ pub fn insertChildrenBefore(
     // Queue single mutation record
     // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
     queueTreeMutationRecord(
-        parent.allocator,
+        parent.allocator(),
         parent,
         children,
         &[_]*NodeBase{},
@@ -1336,7 +1271,7 @@ pub fn insertChildrenBefore(
     // Run post-connection steps
     // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
     if (hasPostConnectionStepsCallbacks()) {
-        try runPostConnectionStepsForTrees(parent.allocator, children);
+        try runPostConnectionStepsForTrees(parent.allocator(), children);
     }
 
     if (refcount.treeChecksOn()) refcount.checkAround(@ptrCast(parent));
@@ -1416,7 +1351,7 @@ pub fn replace(
     }
 
     // Step 9: Let previousSibling be child's previous sibling
-    const previousSibling: ?*NodeBase = child.previous_sibling;
+    const previousSibling: ?*NodeBase = child.previousSibling();
 
     // Deviation, stated: the spec text now leaves node's adoption to step
     // 13's insert, which would remove node from its old parent only after
@@ -1452,10 +1387,10 @@ pub fn replace(
     var added_nodes_buf: [64]*NodeBase = undefined;
     const single = [1]*NodeBase{@ptrCast(node)};
     const added_nodes = (if (isDocumentFragment(node))
-        copyChildren(parent.allocator, node, &added_nodes_buf)
+        copyChildren(parent.allocator(), node, &added_nodes_buf)
     else
-        copyNodes(parent.allocator, &single, &added_nodes_buf)) catch return error.OutOfMemory;
-    defer if (added_nodes.len > added_nodes_buf.len) parent.allocator.free(added_nodes);
+        copyNodes(parent.allocator(), &single, &added_nodes_buf)) catch return error.OutOfMemory;
+    defer if (added_nodes.len > added_nodes_buf.len) parent.allocator().free(added_nodes);
     const added_count = added_nodes.len;
 
     // Step 13: Insert node into parent before referenceChild with suppress observers
@@ -1464,7 +1399,7 @@ pub fn replace(
     // Step 14: Queue a tree mutation record
     // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
     queueTreeMutationRecord(
-        parent.allocator,
+        parent.allocator(),
         parent,
         added_nodes[0..added_count],
         removedNodes[0..removed_count],
@@ -1484,7 +1419,7 @@ pub fn replaceAll(
     node: anytype,
     parent: anytype,
 ) DOMException!void {
-    const allocator = parent.allocator;
+    const allocator = parent.allocator();
 
     // Step 1: "Let removedNodes be parent's children." Copied: step 5 empties
     // the list this would otherwise be a view of.
@@ -1618,30 +1553,14 @@ fn removeHeld(
     runNodeIteratorPreRemoveSteps(node);
 
     // Step 5: Let oldPreviousSibling be node's previous sibling
-    const oldPreviousSibling: ?*NodeBase = node.previous_sibling;
+    const oldPreviousSibling: ?*NodeBase = node.previousSibling();
 
     // Step 6: Let oldNextSibling be node's next sibling
     const oldNextSibling: ?*NodeBase = node.next_sibling;
 
     // Step 7: Remove node from its parent's children: unlink it (the links
     // are the children, NodeBase.children)
-    if (node.previous_sibling) |prev| {
-        prev.next_sibling = node.next_sibling;
-    } else {
-        // node was first child
-        parent.first_child = node.next_sibling;
-    }
-
-    if (node.next_sibling) |next| {
-        next.previous_sibling = node.previous_sibling;
-    } else {
-        // node was last child
-        parent.last_child = node.previous_sibling;
-    }
-
-    // Clear node's sibling pointers
-    node.previous_sibling = null;
-    node.next_sibling = null;
+    parent.unlinkChild(node);
 
     // The parent write, and the holds it moves (refcount, step 3), with the
     // remover's hold (removeHeld); a wrapped root leaves its old tree's
@@ -1666,7 +1585,7 @@ fn removeHeld(
     // Steps 8-10: re-assign node's assigned slot, signal a slot change for
     // an empty slot parent in a shadow tree, and re-assign both trees when
     // node takes a slot out of a shadow tree.
-    removingSlotSteps(parent.allocator, @ptrCast(node), @ptrCast(parent));
+    removingSlotSteps(parent.allocator(), @ptrCast(node), @ptrCast(parent));
 
     // Step 11: Run the removing steps with node and parent
     // Spec: DOM §4.2.5 - Specifications may define removing steps
@@ -1680,7 +1599,7 @@ fn removeHeld(
     // Step 14: For each shadow-including descendant of node,
     // in shadow-including tree order, run removing steps
     // Spec: DOM §4.2.5 step 14
-    if (tree_helpers.getShadowIncludingDescendants(parent.allocator, node)) |descendants| {
+    if (tree_helpers.getShadowIncludingDescendants(parent.allocator(), node)) |descendants| {
         var mut_descendants = descendants;
         defer mut_descendants.deinit();
 
@@ -1707,7 +1626,7 @@ fn removeHeld(
         removed_nodes_buf[0] = node;
         // TODO: Phase 6 (whatwg-9wkz8) - MutationObserver integration
         queueTreeMutationRecord(
-            parent.allocator,
+            parent.allocator(),
             parent,
             &[_]*NodeBase{},
             removed_nodes_buf[0..1],
@@ -1740,7 +1659,7 @@ fn removeHeld(
 fn orphanRemoved(node: *NodeBase) void {
     if (engine.capabilities.wrap_tracking == .unsupported) return;
     if (node.parent_node != null or node.bound_v8_wrapper != null) return;
-    const instance: *runtime.Instance = @ptrCast(@alignCast(node.owner_instance orelse return));
+    const instance: *runtime.Instance = @ptrCast(@alignCast(node.ownerInstance() orelse return));
     if (!runtime.instance_lifecycle.provablyUnwrapped(true, instance)) return;
     runtime.orphan_roots.record(instance.ctx, instance);
 }
@@ -1928,7 +1847,7 @@ pub fn move(node: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) DOMExcept
     // non-null." Step 1 holds it: a parentless node is its own
     // shadow-including root, which step 2 keeps from being newParent's.
     const old_parent = node.parent_node orelse return error.HierarchyRequestError;
-    const allocator = new_parent.allocator;
+    const allocator = new_parent.allocator();
 
     // 9. "Run the live range pre-remove steps, given node."
     runLiveRangePreRemoveSteps(node);
@@ -1937,7 +1856,7 @@ pub fn move(node: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) DOMExcept
     // node and iterator."
     runNodeIteratorPreRemoveSteps(node);
     // 11. "Let oldPreviousSibling be node's previous sibling."
-    const old_previous_sibling = node.previous_sibling;
+    const old_previous_sibling = node.previousSibling();
     // 12. "Let oldNextSibling be node's next sibling."
     const old_next_sibling = node.next_sibling;
 
@@ -1987,7 +1906,7 @@ pub fn move(node: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) DOMExcept
 
     // 19. "Let newPreviousSibling be child's previous sibling if child is
     // non-null, and newParent's last child otherwise."
-    const new_previous_sibling = if (child) |c| c.previous_sibling else new_parent.last_child;
+    const new_previous_sibling = if (child) |c| c.previousSibling() else new_parent.lastChild();
 
     // 20. "If child is null, then append node to newParent's children."
     // 21. "Otherwise, insert node into newParent's children before child's
@@ -2519,18 +2438,7 @@ fn updateRangesForInsertionWithCount(doc: anytype, parent: anytype, child_index:
 /// removeHeld's step 7. Its parent link stays until linkForMove
 /// (refcount.moveChild writes it there with the counts): see `move`.
 fn unlinkForMove(node: *NodeBase, old_parent: *NodeBase) void {
-    if (node.previous_sibling) |prev| {
-        prev.next_sibling = node.next_sibling;
-    } else {
-        old_parent.first_child = node.next_sibling;
-    }
-    if (node.next_sibling) |next| {
-        next.previous_sibling = node.previous_sibling;
-    } else {
-        old_parent.last_child = node.previous_sibling;
-    }
-    node.previous_sibling = null;
-    node.next_sibling = null;
+    old_parent.unlinkChild(node);
 }
 
 /// Move steps 20-21: `node` joins `new_parent`'s children before `child`
@@ -2541,25 +2449,7 @@ fn unlinkForMove(node: *NodeBase, old_parent: *NodeBase) void {
 /// node's opaque root and tree edges following it: it leaves its old
 /// parent's and joins its new one's (refcount design section 7 step 4).
 fn linkForMove(node: *NodeBase, old_parent: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) void {
-    if (child) |c| {
-        node.next_sibling = c;
-        node.previous_sibling = c.previous_sibling;
-        if (c.previous_sibling) |prev| {
-            prev.next_sibling = node;
-        } else {
-            new_parent.first_child = node;
-        }
-        c.previous_sibling = node;
-    } else {
-        node.previous_sibling = new_parent.last_child;
-        node.next_sibling = null;
-        if (new_parent.last_child) |last| {
-            last.next_sibling = node;
-        } else {
-            new_parent.first_child = node;
-        }
-        new_parent.last_child = node;
-    }
+    new_parent.linkChildBefore(node, child);
     refcount.moveChild(node, new_parent);
     if (old_parent != new_parent) {
         leftTree(node, old_parent);
@@ -2621,7 +2511,7 @@ fn moveLiveRangesAfterAdoption(old_document: *runtime.Instance) void {
 /// (the HTML moving steps of option, selectedcontent, img and source read
 /// oldAncestor only when isSubtreeRoot is true).
 fn runMovingStepsForTree(node: *NodeBase, old_parent: *NodeBase, new_parent_connected: bool) void {
-    var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(node.allocator, node) catch {
+    var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(node.allocator(), node) catch {
         // No room for the list: the same steps over the light tree, without
         // its shadow trees, rather than none.
         runMovingStepsOn(node, old_parent, new_parent_connected);
@@ -2769,7 +2659,7 @@ fn adoptHeld(
     if (document != oldDocument) {
         // Step 3.1: Collect the shadow-including inclusive descendants in
         // tree order, including closed shadow roots and their descendants.
-        var descendants = try tree_helpers.getShadowIncludingInclusiveDescendants(node.allocator, node);
+        var descendants = try tree_helpers.getShadowIncludingInclusiveDescendants(node.allocator(), node);
         defer descendants.deinit();
 
         // The node document is also held by each node's Node state, which
@@ -2835,12 +2725,12 @@ fn adoptHeld(
                 // recover - @fieldParentPtr is as wrong as @ptrCast was, it just
                 // computes a different wrong address.
                 //
-                // node_type == ELEMENT_NODE does NOT distinguish them. owner_instance
+                // node_type == ELEMENT_NODE does NOT distinguish them. ownerInstance()
                 // does: instance_bridge.register is called only on the WebIDL path,
                 // so a non-null owner means "standalone, not embedded". Reading
                 // `attributes` off a standalone NodeBase yielded a garbage length,
                 // which drove infra.List.get out of bounds (UBSan: list.zig:197).
-                if (desc.owner_instance == null) {
+                if (desc.ownerInstance() == null) {
                     const element: *element_with_base.ElementWithBase = @fieldParentPtr("base", desc);
                     for (0..element.attributes.size()) |attr_idx| {
                         if (element.attributes.get(attr_idx)) |attr| {
@@ -2854,7 +2744,7 @@ fn adoptHeld(
                     // it, so the old document is let go), and an attribute
                     // with none gets none - adopting a tree allocates nothing
                     // for attributes script never touched.
-                    const element: *runtime.Instance = @ptrCast(@alignCast(desc.owner_instance.?));
+                    const element: *runtime.Instance = @ptrCast(@alignCast(desc.ownerInstance().?));
                     for (0..element_attributes.count(element)) |attr_idx| {
                         const attr = element_attributes.existingNodeAt(element, attr_idx) orelse continue;
                         node_document.set(attr, doc_instance) catch {};
@@ -2926,7 +2816,7 @@ test "a callback registered twice runs once" {
     try registerChildrenChangedCallback(&Counter.childrenChanged);
     try registerChildrenChangedCallback(&Counter.childrenChanged);
     var parent: NodeBase = .{
-        .allocator = std.testing.allocator,
+        .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_FRAGMENT_NODE,
     };
     runChildrenChangedSteps(&parent, .inserted);

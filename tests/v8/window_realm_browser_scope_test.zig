@@ -36,7 +36,7 @@ fn setup() !void {
 
 test "a window realm's Browser is recorded before its Window is made, and a frame's is given its parent's" {
     try setup();
-    var scope = runtime.BrowserScope.init(testing.allocator);
+    var scope = runtime.BrowserScope.init(std.heap.c_allocator);
     defer scope.deinit();
 
     const no_hooks: protocol.HostHooks = .{};

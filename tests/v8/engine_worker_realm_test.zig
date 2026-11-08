@@ -25,7 +25,7 @@ fn workerRealm(agent: *runtime.Agent) !runtime.WorkerRealm {
         .url = "http://web-platform.test:8000/workers/w.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),
-        .allocator = std.heap.page_allocator,
+        .allocator = std.heap.c_allocator,
     });
 }
 
@@ -35,7 +35,7 @@ fn sharedWorkerRealm(agent: *runtime.Agent) !runtime.WorkerRealm {
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),
         .global = .shared,
-        .allocator = std.heap.page_allocator,
+        .allocator = std.heap.c_allocator,
     });
 }
 
@@ -45,7 +45,7 @@ fn serviceWorkerRealm(agent: *runtime.Agent) !runtime.WorkerRealm {
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),
         .global = .service,
-        .allocator = std.heap.page_allocator,
+        .allocator = std.heap.c_allocator,
     });
 }
 

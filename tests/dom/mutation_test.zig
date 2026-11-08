@@ -25,16 +25,12 @@ const mutation = dom.mutation;
 // ============================================================================
 
 test "NodeBase.getNodeDocument - Document node returns itself" {
-    const allocator = std.testing.allocator;
-
     // Create a mock Document node
     var doc_node = NodeBase{
-        .allocator = allocator,
+        .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
         .first_child = null,
-        .last_child = null,
-        .previous_sibling = null,
         .next_sibling = null,
         .owner_document = null, // Document nodes have null owner_document
         .is_connected = true,
@@ -54,12 +50,10 @@ test "NodeBase.getNodeDocument - Element node returns owner_document" {
 
     // Create a mock Document node first
     var doc_node = NodeBase{
-        .allocator = allocator,
+        .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
         .first_child = null,
-        .last_child = null,
-        .previous_sibling = null,
         .next_sibling = null,
         .owner_document = null,
         .is_connected = true,
@@ -69,7 +63,7 @@ test "NodeBase.getNodeDocument - Element node returns owner_document" {
     const doc_ptr: *dom.Document = @ptrCast(&doc_node);
 
     // Create an Element node
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     // Set the owner_document
@@ -85,7 +79,7 @@ test "NodeBase.getNodeDocument - unattached node returns null" {
     const allocator = std.testing.allocator;
 
     // Create an Element node without owner_document
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
 
     // Before being attached to a document, owner_document is null
@@ -105,24 +99,20 @@ test "adopt - changes node_document for entire subtree" {
 
     // Create two mock document nodes
     var doc1_node = NodeBase{
-        .allocator = allocator,
+        .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
         .first_child = null,
-        .last_child = null,
-        .previous_sibling = null,
         .next_sibling = null,
         .owner_document = null,
         .is_connected = true,
     };
 
     var doc2_node = NodeBase{
-        .allocator = allocator,
+        .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
         .first_child = null,
-        .last_child = null,
-        .previous_sibling = null,
         .next_sibling = null,
         .owner_document = null,
         .is_connected = true,
@@ -132,11 +122,11 @@ test "adopt - changes node_document for entire subtree" {
     const doc2_ptr: *dom.Document = @ptrCast(&doc2_node);
 
     // Create a parent element with a child
-    var parent = ElementWithBase.init(allocator, "div");
+    var parent = ElementWithBase.init(&allocator, "div");
     defer parent.deinit();
     parent.base.owner_document = doc1_ptr;
 
-    var child = ElementWithBase.init(allocator, "span");
+    var child = ElementWithBase.init(&allocator, "span");
     defer child.deinit();
     child.base.owner_document = doc1_ptr;
 
@@ -162,24 +152,20 @@ test "adopt - updates attribute node documents for elements" {
 
     // Create two mock document nodes
     var doc1_node = NodeBase{
-        .allocator = allocator,
+        .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
         .first_child = null,
-        .last_child = null,
-        .previous_sibling = null,
         .next_sibling = null,
         .owner_document = null,
         .is_connected = true,
     };
 
     var doc2_node = NodeBase{
-        .allocator = allocator,
+        .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
         .first_child = null,
-        .last_child = null,
-        .previous_sibling = null,
         .next_sibling = null,
         .owner_document = null,
         .is_connected = true,
@@ -189,13 +175,13 @@ test "adopt - updates attribute node documents for elements" {
     const doc2_ptr: *dom.Document = @ptrCast(&doc2_node);
 
     // Create an element with an attribute
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit(); // This will also deinit attributes
     element.base.owner_document = doc1_ptr;
 
     // Add an attribute - element.deinit() will clean it up
     const attr = try allocator.create(AttrWithBase);
-    attr.* = try AttrWithBase.init(allocator, "id", "test", null, null);
+    attr.* = try AttrWithBase.init(&allocator, "id", "test", null, null);
     // Note: Don't defer cleanup of attr - element.deinit() handles it
     attr.base.owner_document = doc1_ptr;
     try element.attributes.append(attr);
@@ -217,12 +203,10 @@ test "adopt - same document is a no-op" {
 
     // Create a mock document node
     var doc_node = NodeBase{
-        .allocator = allocator,
+        .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
         .first_child = null,
-        .last_child = null,
-        .previous_sibling = null,
         .next_sibling = null,
         .owner_document = null,
         .is_connected = true,
@@ -231,7 +215,7 @@ test "adopt - same document is a no-op" {
     const doc_ptr: *dom.Document = @ptrCast(&doc_node);
 
     // Create an element already in the document
-    var element = ElementWithBase.init(allocator, "div");
+    var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
     element.base.owner_document = doc_ptr;
 
@@ -253,12 +237,10 @@ test "mutation - insert calls adopt before inserting" {
 
     // Create a mock document node
     var doc_node = NodeBase{
-        .allocator = allocator,
+        .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
         .first_child = null,
-        .last_child = null,
-        .previous_sibling = null,
         .next_sibling = null,
         .owner_document = null,
         .is_connected = true,
@@ -267,12 +249,12 @@ test "mutation - insert calls adopt before inserting" {
     const doc_ptr: *dom.Document = @ptrCast(&doc_node);
 
     // Create a parent element in the document
-    var parent = ElementWithBase.init(allocator, "div");
+    var parent = ElementWithBase.init(&allocator, "div");
     defer parent.deinit();
     parent.base.owner_document = doc_ptr;
 
     // Create a child element NOT in any document
-    var child = ElementWithBase.init(allocator, "span");
+    var child = ElementWithBase.init(&allocator, "span");
     defer child.deinit();
     // child.base.owner_document is null initially
 

@@ -2292,10 +2292,39 @@ class ForegroundTaskRunner final : public TaskRunner {
 
 class CranePlatform final : public Platform {
  public:
-    CranePlatform() : backend_(platform::NewDefaultPlatform()) {}
+    /// `made_before_threads`: made by v8_Platform_InitializeBeforeThreadCreation,
+    /// on the process's main thread before it made any other thread.
+    explicit CranePlatform(bool made_before_threads)
+        : backend_(platform::NewDefaultPlatform()), made_before_threads_(made_before_threads) {}
     Platform* backend() { return backend_.get(); }
     PageAllocator* GetPageAllocator() override { return backend_->GetPageAllocator(); }
-    ThreadIsolatedAllocator* GetThreadIsolatedAllocator() override { return backend_->GetThreadIsolatedAllocator(); }
+    /// V8's thread isolation (13.1.203 src/common/code-memory-access.cc
+    /// ThreadIsolation::Initialize): with an allocator whose memory
+    /// protection key is valid - x86-64 Linux on a CPU with PKU - V8 tags
+    /// its trusted memory with that key (the JSDispatchTable,
+    /// src/common/segmented-table-inl.h WriteProtectMemory) and reads it
+    /// only with access to the key. libplatform's DefaultThreadIsolatedAllocator
+    /// allocates the key inside NewDefaultPlatform, with pkey_alloc(0,
+    /// PKEY_DISABLE_WRITE): the calling thread gets read access, threads it
+    /// creates later inherit it, and every thread that already existed keeps
+    /// Linux's initial PKRU, which denies all access to keys 1-15 - its first
+    /// read of the table faults (SEGV in
+    /// JSDispatchTable::PreAllocatedEntryNeedsInitialization: every
+    /// "two Browsers on two threads" test on x86-64 Linux, lane linux1).
+    ///
+    /// So V8 gets the allocator only from a platform made before any thread,
+    /// as Chromium does it: content main calls
+    /// gin::GetThreadIsolationData().InitializeBeforeThreadCreation() before
+    /// it starts a thread, and gin's V8Platform::GetThreadIsolatedAllocator
+    /// returns nullptr until that ran (gin/v8_platform.cc,
+    /// gin/thread_isolation.cc). A platform made by V8's start on whichever
+    /// thread came first gives none - V8 then runs without thread isolation
+    /// (ThreadIsolation::Enabled() is false, WriteProtectMemory does
+    /// nothing) and no thread faults - as Node's NodePlatform, which never
+    /// overrides GetThreadIsolatedAllocator, runs V8 always (src/node_platform.h).
+    ThreadIsolatedAllocator* GetThreadIsolatedAllocator() override {
+        return made_before_threads_ ? backend_->GetThreadIsolatedAllocator() : nullptr;
+    }
     void OnCriticalMemoryPressure() override { backend_->OnCriticalMemoryPressure(); }
     int NumberOfWorkerThreads() override { return backend_->NumberOfWorkerThreads(); }
     std::shared_ptr<TaskRunner> GetForegroundTaskRunner(Isolate*, TaskPriority) override;
@@ -2334,6 +2363,7 @@ class CranePlatform final : public Platform {
     }
  private:
     std::unique_ptr<Platform> backend_;
+    bool made_before_threads_;
 };
 
 static Platform* defaultPlatform() {
@@ -2388,7 +2418,11 @@ int v8_Platform_Start(const char* flags) {
             V8::SetEntropySource(craneEntropySource);
             V8::InitializeICUDefaultLocation("");
             V8::InitializeExternalStartupData("");
-            g_platform.platform = std::make_unique<CranePlatform>();
+            // The process start's platform when it made one
+            // (v8_Platform_InitializeBeforeThreadCreation), else one made
+            // here, on this thread, which hands V8 no thread-isolated
+            // allocator (CranePlatform::GetThreadIsolatedAllocator).
+            if (!g_platform.platform) g_platform.platform = std::make_unique<CranePlatform>(false);
             V8::InitializePlatform(g_platform.platform.get());
             V8::Initialize();
             g_platform.flags = flags ? flags : "";
@@ -2399,6 +2433,31 @@ int v8_Platform_Start(const char* flags) {
     if (!flags) return kPlatformAlreadyStarted;
     // Written by the start before it published `started`, never after.
     return g_platform.flags == flags ? kPlatformAlreadyStarted : kPlatformStartedWithOtherFlags;
+}
+
+/// The engine protocol's initializeBeforeThreadCreation: make V8's platform
+/// now - and with it the memory protection key of V8's thread isolation,
+/// which libplatform allocates in NewDefaultPlatform - so that every thread
+/// the process creates after this inherits access to it, and V8 gets the
+/// thread-isolated allocator when it starts (CranePlatform). Called first in
+/// a process's main, on its main thread, before it creates any thread. V8
+/// does not start here (v8_Platform_Start does, on any thread, later): only
+/// the platform object is made. Does nothing once a platform exists or V8
+/// was disposed, so a late call cannot replace the one V8 runs on.
+void v8_Platform_InitializeBeforeThreadCreation() {
+    std::lock_guard<std::mutex> guard(g_platform.mutex);
+    if (g_platform.disposed || g_platform.platform) return;
+    g_platform.platform = std::make_unique<CranePlatform>(true);
+}
+
+/// Whether V8 runs - or will run, once it starts - with thread isolation:
+/// its platform hands V8 a thread-isolated allocator. Only a platform made
+/// before any thread does (v8_Platform_InitializeBeforeThreadCreation), and
+/// only where libplatform could allocate a memory protection key (x86-64
+/// Linux on a CPU with PKU); false before any platform exists. For tests.
+bool v8_Platform_HasThreadIsolation() {
+    std::lock_guard<std::mutex> guard(g_platform.mutex);
+    return g_platform.platform && g_platform.platform->GetThreadIsolatedAllocator() != nullptr;
 }
 
 /// The flags V8's start applied ("" for none), or null before it started.

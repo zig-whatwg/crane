@@ -26,7 +26,7 @@ fn firstChild(node: *dom.NodeBase) !*dom.NodeBase {
 }
 
 fn lastChild(node: *dom.NodeBase) !*dom.NodeBase {
-    return node.last_child orelse error.NoChild;
+    return node.lastChild() orelse error.NoChild;
 }
 
 /// The first element child of a document (its doctype skipped).

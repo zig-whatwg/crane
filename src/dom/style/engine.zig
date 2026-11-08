@@ -869,7 +869,7 @@ fn ancestorChain(node: *NodeBase, out: *[256]*NodeBase) usize {
 // ============================================================================
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
-    return @ptrCast(@alignCast(node.owner_instance orelse return null));
+    return @ptrCast(@alignCast(node.ownerInstance() orelse return null));
 }
 
 fn isShadowRoot(node: *NodeBase) bool {
@@ -1609,7 +1609,7 @@ test "a detached parentless element has sibling index and count one" {
     const node = try allocator.create(NodeBase);
     defer allocator.destroy(node);
     node.* = .{
-        .allocator = allocator,
+        .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.ELEMENT_NODE,
     };
     const counts = @field(@This(), "treeCounts")(@ptrCast(node));

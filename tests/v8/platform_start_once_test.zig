@@ -26,6 +26,7 @@
 //!   zig build test-launch -Dspec=v8 -Dtest-file=tests/v8/platform_start_once_test.zig -Dlaunch-batch=1
 
 const std = @import("std");
+const builtin = @import("builtin");
 const engine = @import("engine");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -137,4 +138,51 @@ test "a start that asks for other flags than V8 started with is told so, and V8 
     // fatal CHECK, so this would have aborted had the start tried).
     try std.testing.expectEqual(ffi.PlatformStart.started_with_other_flags, ffi.v8_Platform_Start("--crane-flags-no-start-applies"));
     try std.testing.expectEqualStrings(started_with, try startFlags());
+}
+
+/// Whether libplatform can allocate a memory protection key here: V8 has
+/// PKU write protection only on x86-64 Linux (13.1.203
+/// src/base/build_config.h, V8_HAS_PKU_JIT_WRITE_PROTECT), and its
+/// DefaultThreadIsolatedAllocator gets a key only where the CPU has PKU and
+/// the kernel enabled it (/proc/cpuinfo's "ospke").
+fn memoryProtectionKeysAvailable() bool {
+    if (builtin.os.tag != .linux or builtin.cpu.arch != .x86_64) return false;
+    const io = std.testing.io;
+    // Read as a stream: /proc/cpuinfo's size is 0, and a positional read of
+    // it (readFileAlloc) found nothing on server1 (lane linux1).
+    const file = std.Io.Dir.cwd().openFile(io, "/proc/cpuinfo", .{}) catch return false;
+    defer file.close(io);
+    var buffer: [4096]u8 = undefined;
+    var reader = file.readerStreaming(io, &buffer);
+    const cpuinfo = reader.interface.allocRemaining(std.testing.allocator, .limited(4 << 20)) catch return false;
+    defer std.testing.allocator.free(cpuinfo);
+    var flags = std.mem.tokenizeAny(u8, cpuinfo, " \t\n");
+    while (flags.next()) |flag| if (std.mem.eql(u8, flag, "ospke")) return true;
+    return false;
+}
+
+/// Whether this process's start made V8's platform before any thread: the
+/// Crane test runner calls engine.initializeBeforeThreadCreation() first in
+/// main, as every host's main does, unless CRANE_TEST_ENGINE_EARLY=0 (build.zig
+/// runs this file both ways: `addEngineLateRun`).
+fn engineMadeEarly() bool {
+    const value = std.testing.environ.getPosix("CRANE_TEST_ENGINE_EARLY") orelse return true;
+    return !std.mem.eql(u8, value, "0");
+}
+
+test "V8 gets thread isolation exactly when the process start made its platform before any thread, on a CPU with memory protection keys" {
+    // Made first in main: every thread a test makes inherits the key, and the
+    // races above run with V8's thread isolation on. Skipped - the late runs:
+    // the races above start V8 on a later thread beside others, and V8 must
+    // then have no thread isolation, or the threads that existed before its
+    // key fault on their first read of its JSDispatchTable (x86-64 Linux).
+    if (!engineMadeEarly()) {
+        // The fallback: V8 started by an isolate made now, or earlier by a
+        // race above, gets no allocator.
+        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Dispose(isolate);
+        try std.testing.expect(!ffi.v8_Platform_HasThreadIsolation());
+        return;
+    }
+    try std.testing.expectEqual(memoryProtectionKeysAvailable(), ffi.v8_Platform_HasThreadIsolation());
 }

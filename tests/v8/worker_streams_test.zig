@@ -61,7 +61,7 @@ test "a TextDecoderStream made in a worker realm has live readable and writable 
         .url = "http://web-platform.test:8000/encoding/streams/w.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),
-        .allocator = std.heap.page_allocator,
+        .allocator = std.heap.c_allocator,
     });
     defer v8.worker_realm.destroyWorkerRealm(made.realm, null, null);
 
@@ -113,7 +113,7 @@ test "a TextDecoderStream keeps its TransformStream through a collection" {
         .url = "http://web-platform.test:8000/encoding/streams/w.js",
         .timer = null,
         .event_loop = inline_task_loop.eventLoop(),
-        .allocator = std.heap.page_allocator,
+        .allocator = std.heap.c_allocator,
     });
     defer v8.worker_realm.destroyWorkerRealm(made.realm, null, null);
 

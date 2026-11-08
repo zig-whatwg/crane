@@ -6,6 +6,10 @@ const interfaces = @import("interfaces");
 const NodeBase = dom.NodeBase;
 
 const Fixture = struct {
+    /// The test's allocator, failing nothing until a test arms it: the
+    /// fixture's scope and realm are made with it, so a node's allocations
+    /// (its Browser's, runtime.allocatorOf) go through it.
+    failing: std.testing.FailingAllocator,
     ctx: runtime.ContextData,
     document: *runtime.Instance,
     html: *runtime.Instance,
@@ -18,9 +22,11 @@ const Fixture = struct {
 
     fn init(self: *Fixture) !void {
         interfaces.process_hooks.startHooksForTest();
-        runtime.initializeRuntime(std.testing.allocator);
-        self.ctx = try runtime.ContextData.init(std.testing.allocator, .{});
-        self.document = try interfaces.Document.init(std.testing.allocator, &self.ctx);
+        self.failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = std.math.maxInt(usize) });
+        const allocator = self.failing.allocator();
+        runtime.initializeRuntime(allocator);
+        self.ctx = try runtime.ContextData.init(allocator, .{});
+        self.document = try interfaces.Document.init(allocator, &self.ctx);
         try dom.document_internals.setContentType(self.document, "text/html");
         try dom.document_internals.setDocumentType(self.document, .html);
         self.html = try self.element("html");
@@ -112,13 +118,13 @@ test "allocation failure after detaching a host still removes nested shadow bloc
         try dom.document_rendering.block(script);
         try std.testing.expect(dom.document_rendering.contains(fixture.document, script));
     }
-    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
-    const parent = base(fixture.html);
-    const saved_allocator = parent.allocator;
-    parent.allocator = failing.allocator();
-    defer parent.allocator = saved_allocator;
+    // The removal's next allocation fails: a node allocates through its
+    // Browser's allocator (lane perf2 batch 6: no per-node copy to swap), the
+    // fixture's failing one.
+    fixture.failing.fail_index = fixture.failing.alloc_index;
     try dom.mutation.remove(base(fixture.host), true);
-    try std.testing.expect(failing.has_induced_failure);
+    fixture.failing.fail_index = std.math.maxInt(usize);
+    try std.testing.expect(fixture.failing.has_induced_failure);
     for (fixture.expected()) |node| try std.testing.expect(!node.is_connected);
     for (fixture.scripts) |script| try std.testing.expect(!dom.document_rendering.contains(fixture.document, script));
 }

@@ -84,7 +84,7 @@ const Agent = struct {
                 .url = "http://web-platform.test:8000/workers/w.js",
                 .timer = null,
                 .event_loop = inline_task_loop.eventLoop(),
-                .allocator = std.heap.page_allocator,
+                .allocator = std.heap.c_allocator,
             });
             // Crane's Intl is installed only on window realms today; a
             // worker realm gets it the same way here, so the registries

@@ -1,6 +1,7 @@
 //! runtime.OwnState: an impl's internal state kept in its instance's generated
 //! State (`own._internal`) instead of a hash table keyed by the instance's
-//! address (lane perf2, batch 2: tmp/plans/perf2b2-design.md). And
+//! address (lane perf2, batch 2: tmp/plans/perf2b2-design.md; since batch 6
+//! a bit of the chain's live word says it is made). And
 //! Instance.stateAs, which finds an ancestor's state in O(1): the answer of
 //! the scan it replaces, for every ancestor and every non-member.
 //!
@@ -142,9 +143,9 @@ test "OwnState: a level's state is its instance's own, beside the other levels' 
     try testing.expectEqual(&leaf_state.base._embedded, leaf_mid);
     try testing.expectEqual(&leaf_state._embedded, leaf_own);
     try testing.expectEqual(&leaf_state.base.base._embedded, leaf_root);
-    try testing.expectEqual(leaf_mid, leaf_state.base.own._internal.?);
-    try testing.expectEqual(leaf_own, leaf_state.own._internal.?);
-    try testing.expectEqual(leaf_root, leaf_state.base.base.own._internal.?);
+    // Made: each level's bit of the root's live word (lane perf2 batch 6: a
+    // pointer per level before, `own._internal`).
+    try testing.expectEqual(@as(u32, 0b111), leaf_state.base.base._live);
     try testing.expectEqual(leaf_mid, MidOwn.get(leaf).?);
     try testing.expectEqual(mid_mid, MidOwn.get(mid).?);
     try testing.expectEqual(@as(u32, 3), RootOwn.get(leaf).?.listeners);
@@ -155,7 +156,7 @@ test "OwnState: a level's state is its instance's own, beside the other levels' 
     MidOwn.get(leaf).?.deinit();
     MidOwn.remove(leaf);
     try testing.expect(MidOwn.get(leaf) == null);
-    try testing.expect(leaf_state.base.own._internal == null);
+    try testing.expectEqual(@as(u32, 0b101), leaf_state.base.base._live);
     try testing.expectEqual(leaf_own, LeafOwn.get(leaf).?);
     // Removing again does nothing.
     MidOwn.remove(leaf);

@@ -43,7 +43,7 @@ fn reset() void {
 /// the test (as teardown_gc_window_test.zig); each test makes its own realm
 /// data and wrapper cache, which it sweeps.
 fn engine() !void {
-    const isolate = try test_agent.open(.{});
+    const isolate = try test_agent.open(.{ .realm_allocator = testing.allocator });
     if (test_isolate == null) {
         const context = test_agent.context.?;
         test_isolate = isolate;

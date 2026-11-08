@@ -1509,6 +1509,11 @@ fn flushOutput() void {
 /// main would do it too, but it would print a stack trace, and a run that
 /// correctly detected a regression is not a crash.
 pub fn main(init: std.process.Init) !void {
+    // First, before any thread exists - the server's, the supervisor's, a
+    // Browser's: the engine's per-process state that only threads created
+    // after it inherit (V8's thread isolation key on x86-64 Linux;
+    // docs/engine-protocol.md 4.1).
+    engine.initializeBeforeThreadCreation();
     // Adopt the Io std.start already built rather than letting host.io() build a
     // second one. A self-built Io.Threaded starts with an EMPTY environment, so
     // every std.process.spawn through it - notably `wpt serve` - would run with no

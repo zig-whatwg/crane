@@ -42,7 +42,7 @@ const TestDocument = struct {
         return .{
             .allocator = allocator,
             .root = NodeBase{
-                .allocator = allocator,
+                .owner = NodeBase.ownerless(&std.testing.allocator),
                 .node_type = NodeBase.DOCUMENT_NODE,
                 .parent_node = null,
                 .owner_document = null,
@@ -67,7 +67,7 @@ const TestDocument = struct {
         const elem = try self.allocator.create(ElementWithBase);
         errdefer self.allocator.destroy(elem);
 
-        elem.* = ElementWithBase.init(self.allocator, tag_name);
+        elem.* = ElementWithBase.init(&self.allocator, tag_name);
         try self.elements.append(self.allocator, elem);
         return elem;
     }
@@ -78,10 +78,7 @@ const TestDocument = struct {
         node.parent_node = &self.root;
         // Link it last (a node's children are its sibling links:
         // NodeBase.children; lane perf2 batch 5)
-        node.previous_sibling = self.root.last_child;
-        node.next_sibling = null;
-        if (self.root.last_child) |last| last.next_sibling = node else self.root.first_child = node;
-        self.root.last_child = node;
+        self.root.linkChildBefore(node, null);
         try self.children.append(self.allocator, node);
     }
 
@@ -91,10 +88,7 @@ const TestDocument = struct {
         var root_children = self.root.children();
         while (root_children.next()) |item| {
             if (item == node) {
-                if (node.previous_sibling) |prev| prev.next_sibling = node.next_sibling else self.root.first_child = node.next_sibling;
-                if (node.next_sibling) |next| next.previous_sibling = node.previous_sibling else self.root.last_child = node.previous_sibling;
-                node.previous_sibling = null;
-                node.next_sibling = null;
+                self.root.unlinkChild(node);
                 node.parent_node = null;
 
                 // Also remove from children tracking list

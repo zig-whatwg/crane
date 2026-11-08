@@ -48,17 +48,17 @@ pub const ElementWithBase = struct {
     unique_id: ?[]const u8,
 
     /// Initialize a new Element
-    pub fn init(allocator: Allocator, tag_name: []const u8) ElementWithBase {
+    pub fn init(allocator: *const Allocator, tag_name: []const u8) ElementWithBase {
         return .{
             .base = NodeBase{
-                .allocator = allocator,
+                .owner = NodeBase.ownerless(allocator),
                 .node_type = NodeBase.ELEMENT_NODE,
                 .parent_node = null,
                 .owner_document = null,
             },
             .tag_name = tag_name,
             .namespace_uri = null,
-            .attributes = infra.List(*AttrWithBase).init(allocator),
+            .attributes = infra.List(*AttrWithBase).init(allocator.*),
             .class_bloom_filter = infra.BloomFilter.init(),
             .unique_id = null,
         };
@@ -72,14 +72,14 @@ pub const ElementWithBase = struct {
         for (0..self.attributes.size()) |i| {
             if (self.attributes.get(i)) |attr| {
                 attr.deinit();
-                self.base.allocator.destroy(attr);
+                self.base.allocator().destroy(attr);
             }
         }
         self.attributes.deinit();
 
         // Clean up unique ID if set
         if (self.unique_id) |id| {
-            self.base.allocator.free(id);
+            self.base.allocator().free(id);
         }
     }
 
@@ -118,11 +118,11 @@ pub const ElementWithBase = struct {
         }
 
         // Add new id attribute
-        const attr = try self.base.allocator.create(AttrWithBase);
-        errdefer self.base.allocator.destroy(attr);
+        const attr = try self.base.allocator().create(AttrWithBase);
+        errdefer self.base.allocator().destroy(attr);
 
         attr.* = try AttrWithBase.init(
-            self.base.allocator,
+            self.base.ownerlessAllocator(),
             "id", // local_name
             value, // value
             null, // namespace_uri
@@ -173,11 +173,11 @@ pub const ElementWithBase = struct {
         }
 
         // Add new attribute
-        const attr = try self.base.allocator.create(AttrWithBase);
-        errdefer self.base.allocator.destroy(attr);
+        const attr = try self.base.allocator().create(AttrWithBase);
+        errdefer self.base.allocator().destroy(attr);
 
         attr.* = try AttrWithBase.init(
-            self.base.allocator,
+            self.base.ownerlessAllocator(),
             name, // local_name
             value, // value
             null, // namespace_uri
@@ -215,19 +215,15 @@ pub const ElementWithBase = struct {
         // Set parent relationship (and the holds it moves: refcount). This
         // simplified helper never took a child out of an old parent's list;
         // its counts leave the old chain all the same.
-        if (child.parent_node != null) refcount.unlinkChild(child);
+        if (child.parent_node) |old_parent| {
+            old_parent.unlinkChild(child);
+            refcount.unlinkChild(child);
+        }
         refcount.linkChild(child, &self.base);
 
         // Link it last (a node's children are its sibling links:
         // NodeBase.children)
-        child.previous_sibling = self.base.last_child;
-        child.next_sibling = null;
-        if (self.base.last_child) |last| {
-            last.next_sibling = child;
-        } else {
-            self.base.first_child = child;
-        }
-        self.base.last_child = child;
+        self.base.linkChildBefore(child, null);
 
         return child;
     }
@@ -237,10 +233,7 @@ pub const ElementWithBase = struct {
     pub fn removeChild(self: *ElementWithBase, child: *NodeBase) !*NodeBase {
         if (child.parent_node != &self.base) return error.NotFoundError;
         // Unlink it (a node's children are its sibling links)
-        if (child.previous_sibling) |prev| prev.next_sibling = child.next_sibling else self.base.first_child = child.next_sibling;
-        if (child.next_sibling) |next| next.previous_sibling = child.previous_sibling else self.base.last_child = child.previous_sibling;
-        child.previous_sibling = null;
-        child.next_sibling = null;
+        self.base.unlinkChild(child);
         refcount.unlinkChild(child);
         return child;
     }
@@ -252,7 +245,7 @@ pub const ElementWithBase = struct {
 
     /// Get last child
     pub fn getLastChild(self: *const ElementWithBase) ?*NodeBase {
-        return self.base.last_child;
+        return self.base.lastChild();
     }
 
     /// Check if element has children

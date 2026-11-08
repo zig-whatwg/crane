@@ -37,7 +37,7 @@ const WindowHost = struct {
     fn createGlobalObject(r: runtime.Context, global_this: runtime.JSValue, host: ?*anyopaque) ?*runtime.Instance {
         _ = global_this;
         _ = host;
-        return interfaces.Window.init(std.heap.c_allocator, r) catch null;
+        return interfaces.Window.init(r.allocator, r) catch null;
     }
 };
 
@@ -66,7 +66,7 @@ const Made = struct {
 fn openRealm(agent: *engine.Agent) !runtime.Context {
     return engine.createWindowRealm(&.{
         .agent = agent,
-        .allocator = std.heap.c_allocator,
+        .allocator = testing.allocator,
         .from_snapshot = false,
         .timer = null,
         .origin = "https://example.test",
@@ -81,20 +81,25 @@ fn cacheOf(realm: runtime.Context) !*v8.WrapperCache {
 
 /// An agent, a Window realm of it entered, and its wrapper cache.
 const Page = struct {
+    /// The page's scope, made with the test's allocator as its realm and
+    /// every object the test makes are (lane perf2 batch 6: an object is made
+    /// with the allocator its scope frees with), ended after the agent.
+    own: test_process.OwnRuntime,
     agent: *engine.Agent,
     realm: runtime.Context,
     isolate: *ffi.Isolate,
     cache: *v8.WrapperCache,
 
     fn open() !Page {
-        try setup();
+        const own = test_process.OwnRuntime.begin(testing.allocator);
+        errdefer own.end();
         const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
         errdefer engine.destroyAgent(agent);
         const realm = try openRealm(agent);
         const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
         ffi.v8_Isolate_Enter(isolate);
         ffi.v8_Context_Enter(@ptrCast(realm.engine_ctx.?));
-        return .{ .agent = agent, .realm = realm, .isolate = isolate, .cache = try cacheOf(realm) };
+        return .{ .own = own, .agent = agent, .realm = realm, .isolate = isolate, .cache = try cacheOf(realm) };
     }
 
     fn close(self: *Page) void {
@@ -102,6 +107,7 @@ const Page = struct {
         ffi.v8_Isolate_Exit(self.isolate);
         engine.destroyWindowRealm(self.realm, .global_detached);
         engine.destroyAgent(self.agent);
+        self.own.end();
     }
 
     /// Give `instance` a wrapper `cache` owns, as the binding leaves an

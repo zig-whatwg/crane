@@ -158,7 +158,7 @@ const Side = struct {
     }
 
     fn steps(self: *Side) !void {
-        var scope = runtime.BrowserScope.init(std.heap.page_allocator);
+        var scope = runtime.BrowserScope.init(std.heap.c_allocator);
         defer scope.deinit();
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = self.from_snapshot, .hooks = &no_hooks, .host = null });
         defer protocol.destroyAgent(agent);

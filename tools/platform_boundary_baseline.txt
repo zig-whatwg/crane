@@ -63,7 +63,6 @@ src/fetch/network/connection_pool.zig curl.CURLMOPT_MAX_TOTAL_CONNECTIONS 1
 src/fetch/network/connection_pool.zig curl.CURLMSG_DONE 1
 src/fetch/network/connection_pool.zig curl.CURLM_OK 2
 src/fetch/network/connection_pool.zig curl.CURLOPT_ACCEPT_ENCODING 1
-src/fetch/network/connection_pool.zig curl.CURLOPT_CAINFO 1
 src/fetch/network/connection_pool.zig curl.CURLOPT_CONNECTTIMEOUT_MS 1
 src/fetch/network/connection_pool.zig curl.CURLOPT_CUSTOMREQUEST 1
 src/fetch/network/connection_pool.zig curl.CURLOPT_FOLLOWLOCATION 1
@@ -79,8 +78,6 @@ src/fetch/network/connection_pool.zig curl.CURLOPT_POSTFIELDS 1
 src/fetch/network/connection_pool.zig curl.CURLOPT_POSTFIELDSIZE 1
 src/fetch/network/connection_pool.zig curl.CURLOPT_PROXY 1
 src/fetch/network/connection_pool.zig curl.CURLOPT_PROXYUSERPWD 1
-src/fetch/network/connection_pool.zig curl.CURLOPT_SSL_VERIFYHOST 1
-src/fetch/network/connection_pool.zig curl.CURLOPT_SSL_VERIFYPEER 1
 src/fetch/network/connection_pool.zig curl.CURLOPT_TIMEOUT_MS 1
 src/fetch/network/connection_pool.zig curl.CURLOPT_URL 1
 src/fetch/network/connection_pool.zig curl.CURLOPT_VERBOSE 1

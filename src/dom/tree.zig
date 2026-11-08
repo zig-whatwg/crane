@@ -136,8 +136,8 @@ pub fn firstChild(node: *const Node) ?*Node {
 /// Returns: Last child or null
 /// Complexity: O(1) - Direct pointer access via sibling pointers
 pub fn lastChild(node: *const Node) ?*Node {
-    // Use direct pointer for O(1) access (Phase 1 optimization)
-    return node.last_child;
+    // The first child's previous link (NodeBase.lastChild): O(1).
+    return node.lastChild();
 }
 
 /// Get the previous sibling of a node
@@ -149,8 +149,8 @@ pub fn lastChild(node: *const Node) ?*Node {
 /// Returns: Previous sibling or null
 /// Complexity: O(1) - Direct pointer access via sibling pointers
 pub fn previousSibling(node: *const Node) ?*Node {
-    // Use direct pointer for O(1) access (Phase 1 optimization)
-    return node.previous_sibling;
+    // NodeBase.previousSibling: O(1).
+    return node.previousSibling();
 }
 
 /// Get the next sibling of a node

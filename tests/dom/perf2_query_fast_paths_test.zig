@@ -149,7 +149,7 @@ fn generalAll(scope: *runtime.Instance, selector: []const u8, out: *std.ArrayLis
     var bases: std.ArrayList(*dom.NodeBase) = .empty;
     defer bases.deinit(testing.allocator);
     try sm.querySelectorAllGeneral(testing.allocator, scope, selector, &bases);
-    for (bases.items) |base| try out.append(testing.allocator, @ptrCast(@alignCast(base.owner_instance.?)));
+    for (bases.items) |base| try out.append(testing.allocator, @ptrCast(@alignCast(base.ownerInstance().?)));
 }
 
 /// Every scope and selector: the query's answers are the general walk's.

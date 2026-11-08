@@ -143,6 +143,18 @@ pub fn allocatorOf(instance: *const Instance) std.mem.Allocator {
     return BrowserScope.ofInstance(instance).allocator;
 }
 
+/// Whether `allocator` IS `instance`'s Browser's (`allocatorOf`): the same
+/// allocator object, not merely an equivalent one. A state that frees through
+/// `allocatorOf` what it was made with needs this to hold for every object
+/// made - true in a Browser, whose realms are given the allocator its scope
+/// was made with; a test realm must be given its scope's allocator too
+/// (lane perf2 batch 6;
+/// docs/lessons/architecture-a-nodes-creation-allocator-is-its-browsers-only-inside-a-browser.md).
+pub fn isScopeAllocator(instance: *const Instance, allocator: std.mem.Allocator) bool {
+    const scope_allocator = allocatorOf(instance);
+    return allocator.ptr == scope_allocator.ptr and allocator.vtable == scope_allocator.vtable;
+}
+
 // Compile-time utilities
 pub const buildVTable = @import("vtable_builder.zig").buildVTable;
 pub const buildVTableWithDeinit = @import("vtable_builder.zig").buildVTableWithDeinit;

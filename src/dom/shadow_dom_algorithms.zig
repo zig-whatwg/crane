@@ -54,7 +54,7 @@ pub const Error = error{OutOfMemory};
 // ============================================================================
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
-    const opaque_instance = node.owner_instance orelse return null;
+    const opaque_instance = node.ownerInstance() orelse return null;
     return @ptrCast(@alignCast(opaque_instance));
 }
 

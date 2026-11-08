@@ -19,7 +19,7 @@ const onFreshThread = h.onFreshThread;
 const expectCount = h.expectCount;
 
 fn instanceOf(base: *dom.NodeBase) *runtime.Instance {
-    return @ptrCast(@alignCast(base.owner_instance.?));
+    return @ptrCast(@alignCast(base.ownerInstance().?));
 }
 
 fn evaluate(page: h.Page, source: []const u8) ![]u8 {

@@ -69,6 +69,11 @@ pub const CertVerifyOptions = struct {
     verify_host: bool = true,
     /// Path to CA certificate bundle (null = system default)
     ca_bundle_path: ?[]const u8 = null,
+    /// The Browser's trust store - the system roots and `ca_bundle_path`,
+    /// parsed once for the Browser (kit/curl trust.zig) - which its network
+    /// context owns. BORROWED. Null: a request made outside a Browser, whose
+    /// connection trusts one CA file (kit/curl options.zig).
+    trust: ?*@import("kit_curl_share").trust.Store = null,
     /// Path to client certificate (for mutual TLS)
     client_cert_path: ?[]const u8 = null,
     /// Path to client private key (for mutual TLS)
