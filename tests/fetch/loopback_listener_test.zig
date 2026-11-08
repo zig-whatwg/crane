@@ -25,16 +25,45 @@ const Loop = struct {
 };
 
 /// A client connecting while the listener stops: refused once it closed,
-/// taken (and reset) before, or reset with the listener. It waits for that
-/// end before closing its own, so it leaves no TIME_WAIT either.
+/// taken (and reset) before, reset with the listener - or, on Linux, never
+/// answered at all. It waits for the answer before closing its own end, so
+/// it leaves no TIME_WAIT either; one that has not come in `give_up_ms` never
+/// will, and the client resets its own end instead.
+///
+/// The unanswered case (server1, Linux 7.0, lane linux1 b2): the client's
+/// final ACK reaches the listener while close() is under way. tcp_close sets
+/// TCP_CLOSE, whose tcp_set_state releases a port-0 listener's bind bucket
+/// (inet_put_port) before the state itself is stored; tcp_v4_rcv still sees
+/// TCP_LISTEN and calls tcp_check_req, where tcp_v4_syn_recv_sock's
+/// __inet_inherit_port finds no bucket (-ENOENT) and fails (TcpExtListenDrops
+/// counts it); with tcp_abort_on_overflow 0 the ACK is dropped and the
+/// request kept, and inet_csk_listen_stop resets only the accept queue, so
+/// nothing ever answers. The client stays ESTABLISHED with one segment in
+/// (the SYN-ACK) and no peer: 4 of 3,000 racing clients in a Python copy of
+/// this test, connect() returning 7-9 us after close(). macOS answers every
+/// such client (the 3,000 stops pass in every gate there).
 fn connectOnce(port: u16) void {
     const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(port) };
     const stream = address.connect(std.testing.io, .{ .mode = .stream }) catch return;
-    defer stream.close(std.testing.io);
     var buffer: [64]u8 = undefined;
     var reader = stream.reader(std.testing.io, &buffer);
-    while (true) reader.interface.fillMore() catch return;
+    while (true) {
+        var ready: [1]std.posix.pollfd = .{.{ .fd = stream.socket.handle, .events = std.posix.POLL.IN, .revents = 0 }};
+        const n = std.posix.poll(&ready, give_up_ms) catch 0;
+        if (n == 0) {
+            loopback_listener.resetClose(stream);
+            return;
+        }
+        reader.interface.fillMore() catch {
+            stream.close(std.testing.io);
+            return;
+        };
+    }
 }
+
+/// Every other answer is sent by the time the listener's close returns: the
+/// bound only ends the wait for the one that never comes.
+const give_up_ms = 2 * std.time.ms_per_s;
 
 test "an accept loop stops 3,000 times - at once after it starts, and with a client racing the stop" {
     for (0..3000) |round| {
@@ -48,6 +77,18 @@ test "an accept loop stops 3,000 times - at once after it starts, and with a cli
         loop.listener.close();
         if (racer) |r| r.join();
     }
+}
+
+test "a racing client gives up on a connection nobody will ever answer" {
+    // A listener that never accepts keeps the connection in its backlog,
+    // ESTABLISHED and silent - what Linux leaves a client whose final ACK
+    // raced the listener's close (server1, lane linux1 b2: no reset ever
+    // comes). The client must give up rather than wait forever.
+    var listener = try LoopbackListener.open(.{});
+    defer listener.close();
+    const started = clock.monotonicMillis();
+    connectOnce(listener.port());
+    try std.testing.expect(clock.monotonicMillis() - started < 30 * std.time.ms_per_s);
 }
 
 test "accept hands over every connection until the listener stops" {
