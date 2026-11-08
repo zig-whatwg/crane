@@ -64,6 +64,18 @@ test "Text's InternalState keeps no slottable state: it is empty" {
     try expectSize(TextState, 0);
 }
 
+test "a text node's one block is 216 bytes: 280 less the slottable state" {
+    // 280 after perf2 b7: 16 of pointers and the live word, EventTarget's 24,
+    // Node's 128, CharacterData's 48 and Text's 64 - its slottable state.
+    const S = interfaces.Text.State;
+    try expectSize(S, 216);
+    const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
+    if (held - @sizeOf(S) >= 16) {
+        std.debug.print("Text.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });
+        return error.NotExactSize;
+    }
+}
+
 test "NodeRareData keeps a Text node's slottable state: 104 bytes" {
     if (comptime !has_rare_slottable) return error.NoRareSlottable;
     // 40 (perf2 b4: the registered observer list 16, the node name 16 and
