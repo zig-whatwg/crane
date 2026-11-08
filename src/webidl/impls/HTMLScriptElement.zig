@@ -637,7 +637,14 @@ fn scriptChildrenChangedCallback(parent: *NodeBase, change: dom_module.mutation.
     // Golden rule 2: all three browsers skip pure child removal. DOM
     // issues 808/1261 and HTML 10188/4354 track this difference from the
     // current text; insertion and CharacterData replacement still prepare.
-    if (change == .removed) return;
+    // A child moved in or out by DOM "move" prepares nothing either: the
+    // move runs no children changed steps in the standard, and the two
+    // shipping browsers that notify on a move skip the script for it -
+    // Blink's HTMLScriptElement::ChildrenChanged does not call the loader
+    // while Document::StatePreservingAtomicMoveInProgress, Gecko's
+    // ScriptElement::ContentInserted returns when aInfo.mOldParent is set
+    // (dom/nodes/moveBefore/script-move-before.html).
+    if (change == .removed or change == .moved) return;
     if (parent.node_type != 1) return;
     if (!std.ascii.eqlIgnoreCase(parent.nodeName(), "script")) return;
     // Step 1.

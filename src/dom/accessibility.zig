@@ -137,6 +137,14 @@ fn implicitRole(allocator: Allocator, node: *Instance, options: Options) anyerro
         while (ancestor) |p| : (ancestor = parent(p)) {
             if (oneOf(localName(p), .{ "article", "aside", "nav", "section", "main" })) {
                 if (eq(tag, "aside") and (eq(localName(p), "main") or try authorNamed(allocator, node))) return "complementary";
+                // A header or footer scoped to sectioning content or main:
+                // ARIA 1.3's sectionheader and sectionfooter (w3c/aria#1931;
+                // HTML-AAM el-header / el-footer). Golden rule 2: Chrome 157
+                // and Safari 27.2 pass html-aam/roles-contextual.tentative.html
+                // 4/4, Firefox 159 0/4 - the majority
+                // (dom/nodes/moveBefore/role-updates-after-move.html).
+                if (eq(tag, "header")) return "sectionheader";
+                if (eq(tag, "footer")) return "sectionfooter";
                 return "generic";
             }
         }
