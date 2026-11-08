@@ -188,6 +188,13 @@ fn notImplemented(comptime operation: []const u8, comptime section: []const u8) 
 // 4.1 Engine and agents
 // ============================================================================
 
+/// V8's platform, made now on the calling thread - the process's main
+/// thread, before it creates any other - so V8 runs with thread isolation
+/// where the CPU has memory protection keys (v8_wrapper.cpp CranePlatform).
+pub fn initializeBeforeThreadCreation() void {
+    ffi.v8_Platform_InitializeBeforeThreadCreation();
+}
+
 pub fn initializeEngine(options: engine.EngineOptions) Error!void {
     return protocol_agents.initializeEngine(options);
 }

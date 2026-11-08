@@ -1831,6 +1831,10 @@ const CompletionRequest = struct {
 };
 
 pub fn main(init: std.process.Init) !u8 {
+    // First, before any thread exists: the engine's per-process state that
+    // only threads created after it inherit (V8's thread isolation key on
+    // x86-64 Linux; docs/engine-protocol.md 4.1).
+    engine.initializeBeforeThreadCreation();
     const io = init.io;
     var stderr_buffer: [1024]u8 = undefined;
     var stderr = std.Io.File.stderr().writerStreaming(io, &stderr_buffer);

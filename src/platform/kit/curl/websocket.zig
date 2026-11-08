@@ -42,6 +42,7 @@ pub fn open(allocator: std.mem.Allocator, request: *const platform.WebSocketRequ
         .verify_peer = network.verify_peer,
         .verify_host = network.verify_host,
         .ca_bundle_path = if (network.has_ca_bundle) network.ca_bundle_path.slice() else null,
+        .trust = if (network.trust_store) |store| @ptrCast(@alignCast(store)) else null,
         .proxy = if (network.has_proxy) .{
             .url = network.proxy_url.slice(),
             .username = if (network.proxy_has_credentials) network.proxy_username.slice() else null,

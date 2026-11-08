@@ -135,6 +135,12 @@ impl fills so code that may not name the impl can reach a step. Since B0:
 - A host starts the process itself (`var process = try crane.Process.init(.{}); defer
   process.deinit();`, as the WPT runner does); `Browser.init` still calls
   `Process.ensureStarted` for hosts that do not (removed in B6).
+- Before that, first in its `main` and before it creates any thread, a host calls
+  `engine.initializeBeforeThreadCreation()` (docs/engine-protocol.md, section 5): V8's thread
+  isolation key on x86-64 Linux, which only threads created after it can read. A host that skips it
+  runs V8 without thread isolation (never a fault); one that calls it late, after it made a thread
+  that later runs V8, makes that thread fault. `crane.Process.init` cannot make it: `ensureStarted`
+  runs it on whichever thread makes the first Browser.
 
 ## Decisions (the user, 2026-10-01)
 

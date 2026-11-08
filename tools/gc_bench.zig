@@ -310,6 +310,10 @@ fn takeSample(cycle: usize) Sample {
 /// they arrive on `std.process.Init`, which also carries the gpa and a
 /// process-lifetime arena.
 pub fn main(init: std.process.Init) !void {
+    // First, before any thread exists: the engine's per-process state that
+    // only threads created after it inherit (V8's thread isolation key on
+    // x86-64 Linux; docs/engine-protocol.md 4.1).
+    engine.initializeBeforeThreadCreation();
     const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     const cycles: usize = if (args.len > 1)
