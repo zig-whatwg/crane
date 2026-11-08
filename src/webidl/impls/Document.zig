@@ -3896,6 +3896,11 @@ fn lifecycleFinishLoading(document: *runtime.Instance) void {
     // Document::FinishedParsing) do - :target then holds in load listeners.
     @import("dom").fragment_scroll.scrollToTheFragment(document);
     queueLifecycleTask(document, .dom_content_loaded);
+    // HTML 7.4.6.5 "restore persisted state" step 2 for a document a
+    // back/forward traversal made: its controls are restored in a task now
+    // that its parser has finished (Blink Document::SetParsingState ->
+    // FormController::ScheduleRestore, after DOMContentLoaded's dispatch).
+    @import("html").forms.form_state.scheduleRestore(document);
     // Step 7 - the scripts that execute as soon as possible, or in order as
     // soon as possible - run as their results arrive (script_execution); a
     // script-inserted script still fetching keeps them non-empty, which
@@ -4825,6 +4830,10 @@ fn completeLoading(document: *runtime.Instance) void {
     fireAtWindow(document, window, "load");
     // Step 9.8: the load event end time.
     @import("dom").performance_timeline.recordLoadTiming(document.ctx, .load_event_end);
+    // "Restore persisted state" step 2 at the latest: right after the
+    // window's load event, before pageshow (Blink
+    // LocalDOMWindow::DispatchLoadAndPageshowEvents -> RestoreImmediately).
+    @import("html").forms.form_state.restoreAll(document);
     const internal = getInternal(document) orelse return;
     // The window's load listeners ran script: a document they took out of
     // its navigable (they removed its frame) finishes nothing more.

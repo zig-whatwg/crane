@@ -56,11 +56,14 @@ pub fn isElement(node: *Instance) bool {
 
 /// Whether `node` is an element with local name `name` (ASCII
 /// case-insensitive: HTML elements' names are lower case).
+/// Read in place, never copied: selector matching asks it of every
+/// ancestor (:enabled and :disabled walk them for a fieldset), and a copy
+/// per ancestor made the base-appearance select's UA rules cost x4.6 in
+/// crane/forms1-computed-style-cost.html (lane forms1 batch 2's profile).
 pub fn isElementNamed(node: *Instance, comptime name: []const u8) bool {
     if (!isElement(node)) return false;
-    var local = interfaces.Element.get_localName(node) catch return false;
-    defer local.deinit(node.ctx.allocator);
-    return std.ascii.eqlIgnoreCase(local.asSlice(), name);
+    const data = @import("dom").element_data.of(node) orelse return false;
+    return std.ascii.eqlIgnoreCase(data.local_name.asSlice(), name);
 }
 
 pub fn isForm(node: *Instance) bool {

@@ -10,6 +10,7 @@ pub const picker = @import("picker.zig");
 pub const color_values = @import("color_values.zig");
 pub const textarea_value = @import("textarea_value.zig");
 pub const radio_focus = @import("radio_focus.zig");
+pub const form_state = @import("form_state.zig");
 
 pub const TargetPolicy = struct { noopener: bool, noreferrer: bool };
 
