@@ -40,12 +40,10 @@ pub const InternalState = struct {
     pub const embedded_in_state = true;
 
     // No allocator copy (lane perf2 batch 5): nothing here owns memory.
-
-    /// DOM 4.2.2.2: the node as a slottable - its assigned slot and its
-    /// manual slot assignment, weak references the slot algorithms keep
-    /// (dom.slot_helpers, dom.shadow_dom_algorithms). A Text node's name is
-    /// always the empty string.
-    slottable: dom.slot_helpers.SlottableState = .{},
+    // No slottable state (lane perf3 E1): a Text node's assigned slot and
+    // manual slot assignment are its NodeBase's rare data
+    // (dom.node_base.NodeRareData.slottable), made only when a slot assigns
+    // it, and read through dom.slot_helpers - 64 bytes off every Text node.
 
     pub fn deinit(self: *InternalState) void {
         _ = self;
@@ -57,15 +55,6 @@ pub const InternalState = struct {
 pub fn installHooks() void {
     // Its states left at its Browser's end (Browser.deinit).
     @import("dom").teardown_sweeps.install(.node_types, &sweepRemaining);
-    // The slot algorithms read a Text node's slottable state through
-    // `dom.slot_helpers`.
-    dom.slot_helpers.install(.{ .text_slottable = &slottableOf });
-}
-
-/// `dom.slot_helpers`: the node's slottable state.
-fn slottableOf(instance: *runtime.Instance) ?*dom.slot_helpers.SlottableState {
-    const internal = getInternal(instance) orelse return null;
-    return &internal.slottable;
 }
 
 // Its internal state, in its own generated State (`own._internal`): runtime.OwnState.

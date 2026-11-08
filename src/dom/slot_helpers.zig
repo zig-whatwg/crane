@@ -4,10 +4,12 @@
 //! A slottable (an Element or a Text node) has an assigned slot and a manual
 //! slot assignment; a slot (an HTML `slot` element) has a name, its assigned
 //! nodes and its manually assigned nodes. That state lives with its owners -
-//! an Element's `SlottableState` in its rare data (lane perf3 E1), a Text
-//! node's in its InternalState, HTMLSlotElement's `SlotState` in its - and
-//! each owner installs functions here, once, at process start, that hand the
-//! algorithms a pointer to it. The algorithms never name an impl.
+//! an Element's `SlottableState` in its ElementRareData, a Text node's in its
+//! NodeBase's NodeRareData (lane perf3 E1), HTMLSlotElement's `SlotState` in
+//! its InternalState. Element and HTMLSlotElement install functions here,
+//! once, at process start, that hand the algorithms a pointer to theirs; a
+//! Text node's is read from its NodeBase, which this module is given. The
+//! algorithms never name an impl.
 //!
 //! Two paths (lane perf3 E1). Readers - an event's path, innerText, the style
 //! engine, "find a slot", assignedSlot - visit every slottable they walk and
@@ -41,7 +43,7 @@
 //! the manually assigned nodes and the manual slot assignment "can be
 //! implemented using weak references".
 //!
-//! lint-impls: hook for Element, Text, HTMLSlotElement
+//! lint-impls: hook for Element, HTMLSlotElement
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
@@ -170,8 +172,6 @@ pub const Implementation = struct {
     /// Element: its slottable state, made now if it has none (its rare
     /// data); null for an instance that is not an Element.
     element_ensure_slottable: ?*const fn (element: *runtime.Instance) error{OutOfMemory}!?*SlottableState = null,
-    /// Text: its slottable state, null for an instance that is not a Text node.
-    text_slottable: ?*const fn (text: *runtime.Instance) ?*SlottableState = null,
     /// HTMLSlotElement: its slot state, null for any other instance.
     slot_state: ?*const fn (slot: *runtime.Instance) ?*SlotState = null,
 };
@@ -186,7 +186,6 @@ pub fn install(impl: Implementation) void {
     var combined = implementation.get() orelse Implementation{};
     if (impl.element_slottable) |f| combined.element_slottable = f;
     if (impl.element_ensure_slottable) |f| combined.element_ensure_slottable = f;
-    if (impl.text_slottable) |f| combined.text_slottable = f;
     if (impl.slot_state) |f| combined.slot_state = f;
     implementation.install(combined);
 }
@@ -229,10 +228,9 @@ pub fn slottable(node: *NodeBase) ?Slottable {
             const f = impl.element_slottable orelse return null;
             return f(instance);
         },
+        // A Text node's state is its NodeBase's rare data (lane perf3 E1).
         TEXT_NODE => {
-            const impl = implementation.get() orelse return null;
-            const f = impl.text_slottable orelse return null;
-            const state = f(instance) orelse return null;
+            const state: *const SlottableState = if (node.rareData()) |rare| &rare.slottable else &unassigned;
             return .{ .state = state, .name = "" };
         },
         else => return null,
@@ -242,18 +240,18 @@ pub fn slottable(node: *NodeBase) ?Slottable {
 /// `node`'s slottable state, writable, made now if it has none (an element's
 /// rare data, which never moves), or null when it is not a slottable: the
 /// writers' path, taken only for a node being assigned a slot (or one whose
-/// state already names one). A Text node keeps its state inline.
+/// state already names one). A Text node's is its NodeBase's rare data.
 pub fn ensureSlottable(node: *NodeBase) error{OutOfMemory}!?*SlottableState {
     const instance = instanceOf(node) orelse return null;
-    const impl = implementation.get() orelse return null;
     switch (node.node_type) {
         ELEMENT_NODE => {
+            const impl = implementation.get() orelse return null;
             const f = impl.element_ensure_slottable orelse return null;
             return f(instance);
         },
         TEXT_NODE => {
-            const f = impl.text_slottable orelse return null;
-            return f(instance);
+            const rare = try node.ensureRareData();
+            return &rare.slottable;
         },
         else => return null,
     }
