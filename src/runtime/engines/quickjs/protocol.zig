@@ -68,6 +68,20 @@ pub const links_engine = false;
 /// Nothing runs script, so nothing is ever prepared to.
 pub const ScriptScope = struct {};
 
+/// engine.NodeWrapperSlot: 8 opaque bytes, never written - this adapter wraps
+/// no platform object yet (the wrapper redesign's P1,
+/// tmp/redesign/wrapper-redesign-design.md section 3.3), so every node's
+/// slot stays `.empty`.
+pub const NodeWrapperSlot = extern struct {
+    bytes: u64 = 0,
+
+    pub const empty: NodeWrapperSlot = .{};
+
+    pub fn isEmpty(self: *const NodeWrapperSlot) bool {
+        return self.bytes == 0;
+    }
+};
+
 const Context = engine.Context;
 const JSValue = engine.JSValue;
 const Owned = engine.Owned;

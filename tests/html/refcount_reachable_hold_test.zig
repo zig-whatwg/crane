@@ -77,7 +77,7 @@ fn keepWaitsForTheWrapper() !void {
     try page.run("globalThis.host = document.createElement('div'); host.innerHTML = '<b></b>'; 0;");
     const host = try page.node("host");
     const b = host.first_child.?;
-    try testing.expect(b.bound_v8_wrapper == null);
+    try testing.expect(b.wrapper.isEmpty());
     var hold: dom.node_holds.ReachableHold = .{};
     defer hold.release();
     // Taken while the node has no wrapper: the keep waits for one.

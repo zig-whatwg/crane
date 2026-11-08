@@ -139,9 +139,9 @@ test "a wrap whose cache insert runs out of memory fails, and takes nothing" {
     try testing.expectEqual(@as(?anyerror, error.OutOfMemory), attempt.result);
     try testing.expect(!attempt.wrapped);
     // Nothing owns the instance through a wrapper: not the cache, not the
-    // node's alias, and the wrapper's counted reference was never taken.
+    // node's wrapper slot, and the wrapper's counted reference was never taken.
     try testing.expect(!protocol.hasWrapper(div));
-    try testing.expect(node.bound_v8_wrapper == null);
+    try testing.expect(node.wrapper.isEmpty());
     // Its creator still offers its born reference: no wrapper adopted it.
     try testing.expect(node.rc_flags.creator);
     try testing.expectEqual(@as(u32, 1), dom.refcount.count(node));

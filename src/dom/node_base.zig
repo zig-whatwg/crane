@@ -13,6 +13,7 @@
 const std = @import("std");
 const infra = @import("infra");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const Allocator = std.mem.Allocator;
 const interfaces = @import("interfaces");
 
@@ -117,11 +118,17 @@ pub const NodeBase = struct {
     /// The reference counting state that is not a number (see RcFlags).
     rc_flags: RcFlags = .{},
 
-    /// V8 wrapper for cross-context identity
-    /// When set, this wrapper is returned for ALL contexts to ensure `===` identity works.
-    /// Solves the problem where MutationObserver addedNodes[0] !== original element
-    /// because different contexts were creating different wrappers for the same instance.
-    bound_v8_wrapper: ?*anyopaque = null,
+    /// The node's one wrapper per agent, whatever realm asks for it (DOM
+    /// identity: `===` across realms, a MutationObserver's addedNodes[0] the
+    /// element script made) - the engine's own inline slot
+    /// (engine.NodeWrapperSlot; the wrapper redesign's P1,
+    /// tmp/redesign/wrapper-redesign-design.md section 3.3). The node owns
+    /// the bytes and asks only `wrapper.isEmpty()` ("is it wrapped"); the
+    /// engine adapter owns what is in them and reaches them only through
+    /// runtime.lifetime.slotOf (dom.refcount's hook). Blink keeps the main
+    /// world's wrapper on the object (ScriptWrappable::wrapper_), WebKit
+    /// likewise (ScriptWrappable::m_wrapper).
+    wrapper: engine.NodeWrapperSlot = .empty,
 
     // ========================================================================
     // Reference counting (tmp/plans/refcount-design.md section 1)

@@ -320,7 +320,7 @@ fn describeLiveNode(_: void, node: *NodeBase) void {
         node.rc_flags.creator,
         node.rc_flags.removal_held,
         node.rc_flags.hosted,
-        node.bound_v8_wrapper != null,
+        !node.wrapper.isEmpty(),
     });
 }
 

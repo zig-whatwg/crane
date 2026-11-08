@@ -265,8 +265,10 @@ const EntryInstance = enum {
 /// Dispose an entry's V8 handle, first dropping any alias to it - only while
 /// its instance is still the entry's (`instance`, `unbindNode`).
 ///
-/// `NodeBase.bound_v8_wrapper` (set by template_registry.wrapInstanceAsV8Object)
-/// stores the SAME `Global<Object>*` handle that the cache entry owns, so that
+/// The node's wrapper slot (NodeBase.wrapper, engine.NodeWrapperSlot, reached
+/// through runtime.lifetime.slotOf; set by WrapperCache.set and
+/// template_registry.wrapInstanceAsV8Object) stores the SAME
+/// `Global<Object>*` handle that the cache entry owns, so that
 /// DOM nodes keep JavaScript `===` identity across contexts. Disposing the
 /// handle without clearing that alias leaves a dangling pointer which the next
 /// wrapInstanceAsV8Object call would happily return.
@@ -300,7 +302,8 @@ fn unbindNode(entry: *CacheEntry) void {
     if (entry.instance.vtable.counted == null) return;
     const instance_bridge = @import("dom").instance_bridge;
     if (instance_bridge.getNodeBase(@ptrCast(entry.instance))) |nodebase| {
-        if (nodebase.bound_v8_wrapper == entry.wrapper) nodebase.bound_v8_wrapper = null;
+        const slot = runtime.lifetime.slotOf(nodebase);
+        if (slot.handle == @as(?*anyopaque, @ptrCast(entry.wrapper))) slot.* = .empty;
     }
 }
 
@@ -490,12 +493,12 @@ pub fn keepOpaqueRoot(owner: *runtime.Instance, member: *runtime.Instance, slot:
     const tracing = @import("protocol_tracing.zig");
     const dom = @import("dom");
     const node = dom.instance_bridge.getNodeBase(@ptrCast(member)) orelse return tracing.traceChild(owner, member, slot);
-    if (node.bound_v8_wrapper != null) return tracing.traceChild(owner, member, slot);
+    if (!runtime.lifetime.slotOf(node).isEmpty()) return tracing.traceChild(owner, member, slot);
     var root = node;
     while (root.parent_node) |parent| root = parent;
     const root_instance = instanceOfNode(root) orelse return tracing.forgetTracedChild(owner, slot);
     if (root.node_type == dom.NodeBase.DOCUMENT_NODE and engineHoldsWrapper(root_instance)) return tracing.forgetTracedChild(owner, slot);
-    if (root.bound_v8_wrapper == null) return tracing.forgetTracedChild(owner, slot);
+    if (runtime.lifetime.slotOf(root).isEmpty()) return tracing.forgetTracedChild(owner, slot);
     tracing.traceChild(owner, root_instance, slot);
 }
 
@@ -510,11 +513,12 @@ pub fn keepOpaqueRoot(owner: *runtime.Instance, member: *runtime.Instance, slot:
 const tree_parent_key = document_edge_key;
 const tree_children_key = "crane:tree:children";
 
-/// The wrapper of `node` - a node has one, whatever realm reads it
-/// (`NodeBase.bound_v8_wrapper`) - BORROWED; null for a node script has not
-/// seen, or whose wrapper was collected (the first pass clears the alias).
+/// The wrapper of `node` - a node has one, whatever realm reads it (its
+/// wrapper slot, through runtime.lifetime.slotOf) - BORROWED; null for a node
+/// script has not seen, or whose wrapper was collected (the first pass
+/// empties the slot).
 fn nodeWrapper(node: *@import("dom").NodeBase) ?*v8.Value {
-    return @ptrCast(@alignCast(node.bound_v8_wrapper orelse return null));
+    return @ptrCast(@alignCast(runtime.lifetime.slotOf(node).handle orelse return null));
 }
 
 /// Draw the edges between `child` - wrapped: `child_wrapper` - and its
@@ -536,7 +540,7 @@ fn drawTreeEdges(child: *@import("dom").NodeBase, child_wrapper: *v8.Value) void
     defer unwrapped.deinit(std.heap.c_allocator);
     var ancestor: ?*@import("dom").NodeBase = parent;
     while (ancestor) |a| : (ancestor = a.parent_node) {
-        if (a.bound_v8_wrapper != null) break;
+        if (!runtime.lifetime.slotOf(a).isEmpty()) break;
         unwrapped.append(std.heap.c_allocator, a) catch return;
     }
     // Wrapped from the top down; each wrap draws its own edges to the
@@ -1977,7 +1981,7 @@ pub const WrapperCache = struct {
     /// the object V8 made for NewTarget (which `set` refuses).
     pub fn existingWrapper(self: *Self, instance: *runtime.Instance) ?*v8.Object {
         if (@import("dom").instance_bridge.getNodeBase(@ptrCast(instance))) |node| {
-            if (node.bound_v8_wrapper) |bound| return @ptrCast(@alignCast(bound));
+            if (runtime.lifetime.slotOf(node).handle) |bound| return @ptrCast(@alignCast(bound));
         }
         const entry = self.cache.get(instance) orelse return null;
         if (entry.instance_already_cleaned or slotReissued(entry)) return null;
@@ -2101,7 +2105,8 @@ pub const WrapperCache = struct {
         // drawn while this wrapper is still held strongly - its parent's
         // wrapper made first if script has not seen it (node tracing).
         if (@import("dom").instance_bridge.getNodeBase(@ptrCast(instance))) |node| {
-            if (node.bound_v8_wrapper == null) node.bound_v8_wrapper = @ptrCast(wrapper);
+            const slot = runtime.lifetime.slotOf(node);
+            if (slot.isEmpty()) slot.handle = @ptrCast(wrapper);
             if (node.parent_node != null and !self.is_tearing_down) drawTreeEdges(node, @ptrCast(wrapper));
             if (node.parent_node == null and !self.is_tearing_down) _ = drawDocumentEdge(node, @ptrCast(wrapper));
         }

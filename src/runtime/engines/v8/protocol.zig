@@ -129,6 +129,7 @@ pub const links_engine = true;
 
 /// HTML "prepare to run script" entered `realm`: undone by "clean up".
 pub const ScriptScope = protocol_scripts.ScriptScope;
+pub const NodeWrapperSlot = @import("node_wrappers.zig").NodeWrapperSlot;
 
 // ============================================================================
 // Helpers

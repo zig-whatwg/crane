@@ -334,6 +334,24 @@ pub const EventHandlerSource = struct {
 /// after running script". The adapter's own type; hosts only pass it back.
 pub const ScriptScope = impl.ScriptScope;
 
+/// The engine's inline per-node storage for the node's one wrapper per agent
+/// (tmp/redesign/wrapper-redesign-design.md section 3.3): NodeBase's
+/// `wrapper` field. The host owns the bytes; the adapter owns what is in
+/// them, and reaches them only through runtime.lifetime's `slotOf` hook -
+/// never by naming the field. Its layout is the adapter's comptime choice,
+/// 8 bytes on every adapter (NodeBase is laid out once for all of them).
+///
+/// - The value starts `.empty` (a NodeBase field's default).
+/// - `slot.isEmpty()` is the host's one question, "is this node wrapped";
+///   nothing else of it is the host's to read or write.
+/// - A slot is never copied or moved while non-empty: an engine handle may
+///   be its own address (V8's TracedReference, `kCanCopyWithMemcpy = false`,
+///   third_party/blink/renderer/platform/bindings/trace_wrapper_v8_reference.h).
+///
+/// Blink's inline `ScriptWrappable::wrapper_`, WebKit's `ScriptWrappable::
+/// m_wrapper` (a `JSC::Weak`): the main world's wrapper on the object itself.
+pub const NodeWrapperSlot = impl.NodeWrapperSlot;
+
 /// WebIDL "a new promise": the promise and what resolves or rejects it. OWNED
 /// (`releasePromiseCapability`); `promise` is a BORROWED view, valid until
 /// then - retain it to keep it past that.
@@ -2756,6 +2774,17 @@ comptime {
         // compiles").
         if (@import("builtin").is_test and !impl.links_engine) _ = &@field(impl, decl_name);
     }
+}
+
+// NodeWrapperSlot's contract, checked as the operations are: the adapter's
+// type has `.empty` of its own type and the host's `isEmpty`.
+comptime {
+    const adapter = name ++ " engine adapter (engine_impl.protocol)";
+    const Slot = impl.NodeWrapperSlot;
+    if (!@hasDecl(Slot, "empty") or @TypeOf(Slot.empty) != Slot)
+        @compileError(adapter ++ ": NodeWrapperSlot lacks `pub const empty: NodeWrapperSlot`");
+    if (!@hasDecl(Slot, "isEmpty") or @TypeOf(Slot.isEmpty) != fn (*const Slot) bool)
+        @compileError(adapter ++ ": NodeWrapperSlot lacks `pub fn isEmpty(*const NodeWrapperSlot) bool`");
 }
 
 /// The adapter declares `operation` with exactly the protocol's parameter and

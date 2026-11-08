@@ -179,7 +179,7 @@ fn nodeBaseOf(instance: *runtime.Instance) ?*NodeBase {
 fn stillOrphan(instance: *runtime.Instance) bool {
     const internal = Registry.get(instance) orelse return false;
     const node_base = internal.node_base orelse return false;
-    if (node_base.parent_node != null or node_base.bound_v8_wrapper != null) return false;
+    if (node_base.parent_node != null or !node_base.wrapper.isEmpty()) return false;
     return runtime.instance_lifecycle.provablyUnwrapped(engine.capabilities.wrap_tracking != .unsupported, instance);
 }
 
@@ -432,7 +432,7 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
         return;
     };
     provably_unwrapped = runtime.instance_lifecycle.provablyUnwrapped(engine.capabilities.wrap_tracking != .unsupported, instance) and
-        if (internal.node_base) |node_base| node_base.bound_v8_wrapper == null else false;
+        if (internal.node_base) |node_base| node_base.wrapper.isEmpty() else false;
 
     // Dispatch based on node type to call the appropriate interface's deinit.
     // Each interface's deinit chains back to Node.deinit, which frees the
@@ -1986,7 +1986,7 @@ fn keepNodeDocument(instance: *runtime.Instance, node_type: u16, base: *NodeBase
     // A node in a tree reaches its document through its parent: the slot
     // holds the parent there (node tracing), and a root's holds its document.
     if (node_type == NodeType.DOCUMENT_NODE or base.parent_node != null) return;
-    if (base.bound_v8_wrapper == null or !engine.hasWrapper(instance)) return;
+    if (base.wrapper.isEmpty() or !engine.hasWrapper(instance)) return;
     if (doc) |document| {
         engine.traceChild(instance, document, dom_module.node_document.traced_slot);
     } else {
