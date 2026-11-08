@@ -7,6 +7,8 @@
 //! The states here are built the way codegen builds them (runtime.FlattenedState,
 //! an `_internal` pointer in each level's own fields, the ancestry from
 //! runtime.ancestorsOf), so the same lookups serve the generated interfaces.
+//! Since lane perf2 batch 5 (Z7) each level's state is kept by value in its own
+//! State (`_embedded`), so `create` allocates nothing.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -18,6 +20,9 @@ const BrowserScope = runtime.BrowserScope;
 const Owning = struct {
     bytes: ?[]u8 = null,
 
+    /// Kept by value in its State (runtime.FlattenedState's `_embedded`).
+    pub const embedded_in_state = true;
+
     pub fn deinit(self: *Owning) void {
         if (self.bytes) |bytes| testing.allocator.free(bytes);
         self.bytes = null;
@@ -25,7 +30,10 @@ const Owning = struct {
 };
 
 /// Another level's state: what its impl keeps.
-const RootInternal = struct { listeners: u32 = 0 };
+const RootInternal = struct {
+    listeners: u32 = 0,
+    pub const embedded_in_state = true;
+};
 
 // A chain of three levels, as EventTarget <- Node <- Element; each level's
 // own fields end with `_internal`, as codegen writes them. The odd field
@@ -121,15 +129,19 @@ test "OwnState: a level's state is its instance's own, beside the other levels' 
     const mid = try make(&scope, MidState, &mid_vtable);
 
     try testing.expect(MidOwn.get(leaf) == null);
-    const leaf_mid = try MidOwn.createIn(leaf, &scope.arena);
+    const leaf_mid = try MidOwn.create(leaf);
     leaf_mid.bytes = try testing.allocator.dupe(u8, "leaf's mid");
-    const leaf_own = try LeafOwn.createIn(leaf, &scope.arena);
-    const leaf_root = try RootOwn.createIn(leaf, &scope.arena);
+    const leaf_own = try LeafOwn.create(leaf);
+    const leaf_root = try RootOwn.create(leaf);
     leaf_root.listeners = 3;
-    const mid_mid = try MidOwn.createIn(mid, &scope.arena);
+    const mid_mid = try MidOwn.create(mid);
 
-    // The reference is the generated field of that level.
+    // The reference is the generated field of that level, and the state is
+    // that level's own `_embedded`: inside the instance's one State block.
     const leaf_state: *LeafState = @ptrCast(@alignCast(leaf.state));
+    try testing.expectEqual(&leaf_state.base._embedded, leaf_mid);
+    try testing.expectEqual(&leaf_state._embedded, leaf_own);
+    try testing.expectEqual(&leaf_state.base.base._embedded, leaf_root);
     try testing.expectEqual(leaf_mid, leaf_state.base.own._internal.?);
     try testing.expectEqual(leaf_own, leaf_state.own._internal.?);
     try testing.expectEqual(leaf_root, leaf_state.base.base.own._internal.?);
@@ -156,7 +168,7 @@ test "OwnState: a freed slot answers null, and its reissue starts with no state"
     var scope = BrowserScope.init(testing.allocator);
     defer scope.deinit();
     const leaf = try make(&scope, LeafState, &leaf_vtable);
-    _ = try MidOwn.createIn(leaf, &scope.arena);
+    _ = try MidOwn.create(leaf);
     MidOwn.remove(leaf);
     scope.slab.free(leaf);
     // The free list's pointer now sits where the vtable was: get must not read it.
@@ -181,14 +193,14 @@ test "OwnState's sweep frees what no deinit reached, in its own Browser only, an
     var orphans: [2]*runtime.Instance = undefined;
     for (&orphans, 0..) |*slot, i| {
         slot.* = try make(&a, LeafState, &leaf_vtable);
-        const state = try MidOwn.createIn(slot.*, &a.arena);
+        const state = try MidOwn.create(slot.*);
         state.bytes = try std.fmt.allocPrint(testing.allocator, "orphan {d}", .{i});
     }
     const done = try make(&a, LeafState, &leaf_vtable);
-    _ = try MidOwn.createIn(done, &a.arena);
+    _ = try MidOwn.create(done);
     MidOwn.remove(done);
     const mid = try make(&a, MidState, &mid_vtable);
-    (try MidOwn.createIn(mid, &a.arena)).bytes = try testing.allocator.dupe(u8, "mid orphan");
+    (try MidOwn.create(mid)).bytes = try testing.allocator.dupe(u8, "mid orphan");
     const other = try make(&a, OtherState, &other_vtable);
     _ = other;
     const bare = try make(&a, LeafState, &bare_vtable);
@@ -198,7 +210,7 @@ test "OwnState's sweep frees what no deinit reached, in its own Browser only, an
     a.slab.free(freed);
     // In B: one of the same type, which A's sweep must leave.
     const in_b = try make(&b, LeafState, &leaf_vtable);
-    (try MidOwn.createIn(in_b, &b.arena)).bytes = try testing.allocator.dupe(u8, "b");
+    (try MidOwn.create(in_b)).bytes = try testing.allocator.dupe(u8, "b");
 
     try testing.expectEqual(@as(usize, 3), MidOwn.count(&a));
     try testing.expectEqual(@as(usize, 1), MidOwn.count(&b));

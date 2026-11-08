@@ -27,7 +27,7 @@
 //! const adapter = @import("browser_adapter.zig");
 //!
 //! // Create adapter at runner startup
-//! var browser = try adapter.BrowserAdapter.init(allocator, wpt_root);
+//! var browser = try adapter.BrowserAdapter.init(allocator, wpt_root, false);
 //! defer browser.deinit();
 //!
 //! // For each test (creates fresh context)
@@ -59,12 +59,12 @@ pub const BrowserAdapter = struct {
     wpt_browser: *WptBrowser,
 
     /// Initialize the browser adapter
-    pub fn init(allocator: std.mem.Allocator, wpt_root: []const u8) !*BrowserAdapter {
+    pub fn init(allocator: std.mem.Allocator, wpt_root: []const u8, poison_freed_state: bool) !*BrowserAdapter {
         const adapter = try allocator.create(BrowserAdapter);
         errdefer allocator.destroy(adapter);
 
         // Create WptBrowser (wraps core Browser with WPT functionality)
-        const wpt_browser = try WptBrowser.init(allocator, wpt_root);
+        const wpt_browser = try WptBrowser.init(allocator, wpt_root, poison_freed_state);
         errdefer wpt_browser.deinit();
 
         adapter.* = BrowserAdapter{

@@ -88,8 +88,8 @@ pub fn countUpTo(root: *NodeBase, cap: usize) usize {
     return count;
 }
 
-/// Take `child`, `parent`'s last child, out of its child list and sibling
-/// links.
+/// Take `child`, `parent`'s last child, out of its sibling links (a node's
+/// children: NodeBase.children).
 fn unlinkLastChild(parent: *NodeBase, child: *NodeBase) void {
     const prev = child.previous_sibling;
     if (prev) |p| p.next_sibling = null else parent.first_child = null;
@@ -99,17 +99,6 @@ fn unlinkLastChild(parent: *NodeBase, child: *NodeBase) void {
     // The pointer and the parent bit only: a dying tree's holds stay on its
     // root, which its own free takes out of its document (refcount.nodeFreed).
     refcount.unlinkForTeardown(child);
-    const size = parent.child_nodes.size();
-    if (size > 0 and parent.child_nodes.items()[size - 1] == child) {
-        _ = parent.child_nodes.remove(size - 1) catch {};
-        return;
-    }
-    // The list and the links disagree (never expected): find it.
-    for (parent.child_nodes.items(), 0..) |item, i| {
-        if (item != child) continue;
-        _ = parent.child_nodes.remove(i) catch {};
-        return;
-    }
 }
 
 fn positionOf(node: *NodeBase) Position {

@@ -37,7 +37,6 @@ pub const TextWithBase = struct {
                 .allocator = allocator,
                 .node_type = NodeBase.TEXT_NODE,
                 .parent_node = null,
-                .child_nodes = @import("infra").List(*NodeBase).init(allocator),
                 .owner_document = null,
             },
             .data = try allocator.dupe(u8, data),
@@ -50,7 +49,6 @@ pub const TextWithBase = struct {
     /// Clean up resources
     pub fn deinit(self: *TextWithBase) void {
         self.base.allocator.free(self.data);
-        self.base.child_nodes.deinit();
         self.base.deinitRareData();
     }
 
@@ -112,7 +110,6 @@ pub const CommentWithBase = struct {
                 .allocator = allocator,
                 .node_type = NodeBase.COMMENT_NODE,
                 .parent_node = null,
-                .child_nodes = @import("infra").List(*NodeBase).init(allocator),
                 .owner_document = null,
             },
             .data = try allocator.dupe(u8, data),
@@ -125,7 +122,6 @@ pub const CommentWithBase = struct {
     /// Clean up resources
     pub fn deinit(self: *CommentWithBase) void {
         self.base.allocator.free(self.data);
-        self.base.child_nodes.deinit();
         self.base.deinitRareData();
     }
 

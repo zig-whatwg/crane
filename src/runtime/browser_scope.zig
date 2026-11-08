@@ -201,6 +201,24 @@ pub const BrowserScope = struct {
         return @fieldParentPtr("slab", SlabAllocator.ownerOf(instance));
     }
 
+    /// Whether a node released by its teardown has its NodeBase overwritten
+    /// with the poison byte (dom: Node's releaseNodeBase): always in Debug
+    /// builds - the unit tests' poison-on-free, which the NodeBase had while
+    /// it was its own allocation - and in any build whose Browser asked for
+    /// poisoned frees (BrowserConfig.poison_freed_state: the WPT correctness
+    /// runner). Lane perf2 batch 5 (Z7): the NodeBase is the State block's
+    /// now, released at teardown and freed with the block.
+    pub fn poisonsReleasedNodes(self: *const BrowserScope) bool {
+        return releasedNodePoison(@import("builtin").mode, self.arena.poison_freed);
+    }
+
+    /// `poisonsReleasedNodes`'s rule, for a build `mode` and the Browser's
+    /// flag: pinned for every mode by a test (off in every release mode by
+    /// default).
+    pub fn releasedNodePoison(mode: std.builtin.OptimizeMode, poison_freed: bool) bool {
+        return mode == .debug or poison_freed;
+    }
+
     /// The standalone scope (runtime.initializeRuntime), if the runtime was
     /// started without a Browser.
     pub fn standalone() ?*BrowserScope {

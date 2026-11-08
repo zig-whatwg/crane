@@ -86,6 +86,10 @@ pub const INLINE_TEXT_CAPACITY: usize = 31;
 ///
 /// Small text (up to INLINE_TEXT_CAPACITY bytes) is stored inline.
 pub const Data = struct {
+    /// Kept by value in CharacterData's own State (runtime.OwnState, the
+    /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
+    pub const embedded_in_state = true;
+
     allocator: std.mem.Allocator,
 
     /// The data's bytes on the heap, or null while they are inline.

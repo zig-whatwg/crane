@@ -276,13 +276,14 @@ test "Instance.init - a block a larger state dirtied comes back zeroed for the n
     defer ctx_data.deinit();
     const ctx: runtime.Context = &ctx_data;
 
-    // Both in the 128-byte class.
-    const Larger = struct { bytes: [120]u8 };
+    // Both in the 128-byte class (128 and 120 bytes: the classes are 16
+    // bytes apart since lane perf2 batch 5).
+    const Larger = struct { bytes: [128]u8 };
     const Smaller = struct {
         ptr: ?*u32 = null,
         instance: ?*runtime.Instance = null,
         count: u64 = 0,
-        flags: [64]bool = @splat(false),
+        flags: [96]bool = @splat(false),
     };
     const larger_vtable = runtime.VTable{ .name = "<larger>", .deinit = null, .methods_ptr = &test_delegates, .state_size = @sizeOf(Larger), .state_align = @alignOf(Larger) };
     const smaller_vtable = runtime.VTable{ .name = "<smaller>", .deinit = null, .methods_ptr = &test_delegates, .state_size = @sizeOf(Smaller), .state_align = @alignOf(Smaller) };

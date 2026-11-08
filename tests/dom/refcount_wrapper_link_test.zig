@@ -17,13 +17,11 @@ fn newNode(allocator: std.mem.Allocator) !*NodeBase {
     node.* = .{
         .allocator = allocator,
         .node_type = NodeBase.ELEMENT_NODE,
-        .child_nodes = .init(allocator),
     };
     return node;
 }
 
 fn freeNode(node: *NodeBase) void {
-    node.child_nodes.deinit();
     testing.allocator.destroy(node);
 }
 

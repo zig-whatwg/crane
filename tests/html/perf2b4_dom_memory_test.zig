@@ -51,17 +51,18 @@ fn divReportedWhole() !void {
     const before = reported(page);
     try page.run("globalThis.d = document.createElement('div'); 0;");
     const delta = reported(page) - before;
-    // What instance_bridge.storageBytes alone counts for it.
-    const registered = runtime.SlabAllocator.slot_bytes +
-        runtime.ArenaAllocator.heldBytes(@sizeOf(interfaces.HTMLDivElement.State), @alignOf(interfaces.HTMLDivElement.State)) +
-        @sizeOf(dom.NodeBase);
-    if (delta <= registered) {
-        std.debug.print("a div is reported as {d} B, its slot + State block + NodeBase alone are {d} B\n", .{ delta, registered });
+    // Its slot and its State block - which since lane perf2 batch 5 (Z7)
+    // holds every level's InternalState and the NodeBase by value: all of it,
+    // and nothing for a div beyond it.
+    const State = interfaces.HTMLDivElement.State;
+    const whole = runtime.SlabAllocator.slot_bytes + runtime.ArenaAllocator.heldBytes(@sizeOf(State), @alignOf(State));
+    if (@sizeOf(State) < 104 + @sizeOf(dom.NodeBase) or delta != whole) {
+        std.debug.print("a div is reported as {d} B; its slot + whole State block ({d} B) are {d} B\n", .{ delta, @sizeOf(State), whole });
         return error.InternalStatesNotCounted;
     }
 }
 
-test "a div is reported to the engine as more than its slot, State block and NodeBase: its InternalState blocks count" {
+test "a div is reported to the engine as its slot and its whole State block: its InternalStates and NodeBase inside it" {
     try onFreshThread(divReportedWhole);
 }
 

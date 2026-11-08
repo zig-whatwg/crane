@@ -56,8 +56,12 @@ pub const NodeBase = struct {
     previous_sibling: ?*NodeBase = null,
     next_sibling: ?*NodeBase = null,
 
-    // Child list - O(1) index access and iteration
-    child_nodes: infra.List(*NodeBase),
+    // No child list (lane perf2 batch 5, R6 part 2): the links above ARE the
+    // children, as in Blink, WebKit, Gecko and Lightpanda - `children()`,
+    // `childCount()`, `childAt()`, `index()`. Script's indexed reads
+    // (childNodes, children, every collection) go through
+    // live_collections.IndexCache over the links (Blink's
+    // CollectionIndexCache): sequential reads are O(1) each.
 
     // Document ownership
     owner_document: ?*DocumentType = null,
@@ -292,6 +296,73 @@ pub const NodeBase = struct {
         self.parent_node = parent;
         self.rc = (self.rc & ~rc_parent_bit) | @intFromBool(parent != null);
     }
+
+    // ========================================================================
+    // Children: the sibling links (lane perf2 batch 5, R6 part 2)
+    // ========================================================================
+
+    /// The node's children in tree order, read off its links. The next child
+    /// is read before the current one is yielded, so a walk may remove or
+    /// move the child it is at - not a later one.
+    pub fn children(self: *const NodeBase) ChildIterator {
+        return .{ .next_child = self.first_child };
+    }
+
+    /// The node's children in reverse tree order; the previous child is read
+    /// before the current one is yielded.
+    pub fn childrenReversed(self: *const NodeBase) ReverseChildIterator {
+        return .{ .previous_child = self.last_child };
+    }
+
+    /// DOM 4.2.1: how many children the node has - a walk of its links.
+    pub fn childCount(self: *const NodeBase) usize {
+        var count: usize = 0;
+        var child = self.first_child;
+        while (child) |c| : (child = c.next_sibling) count += 1;
+        return count;
+    }
+
+    /// The node's child at `index` in tree order, or null past the last one:
+    /// a walk of its links.
+    pub fn childAt(self: *const NodeBase, index_wanted: usize) ?*NodeBase {
+        var at: usize = 0;
+        var child = self.first_child;
+        while (child) |c| : (child = c.next_sibling) {
+            if (at == index_wanted) return c;
+            at += 1;
+        }
+        return null;
+    }
+
+    /// DOM 4.2.1: "the index of an object is its number of preceding
+    /// siblings, or 0 if it has none" - a walk of its previous links, counted
+    /// only where the spec asks for an index (live ranges, positions).
+    pub fn index(self: *const NodeBase) usize {
+        var count: usize = 0;
+        var sibling = self.previous_sibling;
+        while (sibling) |s| : (sibling = s.previous_sibling) count += 1;
+        return count;
+    }
+
+    pub const ChildIterator = struct {
+        next_child: ?*NodeBase,
+
+        pub fn next(self: *ChildIterator) ?*NodeBase {
+            const child = self.next_child orelse return null;
+            self.next_child = child.next_sibling;
+            return child;
+        }
+    };
+
+    pub const ReverseChildIterator = struct {
+        previous_child: ?*NodeBase,
+
+        pub fn next(self: *ReverseChildIterator) ?*NodeBase {
+            const child = self.previous_child orelse return null;
+            self.previous_child = child.previous_sibling;
+            return child;
+        }
+    };
 
     // ========================================================================
     // Node Type Constants (DOM Spec §5.1)

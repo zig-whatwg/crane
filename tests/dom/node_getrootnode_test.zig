@@ -10,6 +10,19 @@ const webidl = @import("webidl");
 const NodeBase = dom.NodeBase;
 const Element = dom.ElementWithBase;
 
+/// Link `child` as `parent`'s last child (a node's children are its sibling
+/// links: NodeBase.children; lane perf2 batch 5).
+fn linkTestChild(parent: *NodeBase, child: *NodeBase) void {
+    child.previous_sibling = parent.last_child;
+    child.next_sibling = null;
+    if (parent.last_child) |last| {
+        last.next_sibling = child;
+    } else {
+        parent.first_child = child;
+    }
+    parent.last_child = child;
+}
+
 test "Node.getRoot - detached element is its own root" {
     const allocator = std.testing.allocator;
 
@@ -36,7 +49,7 @@ test "Node.getRoot - child's root is parent (orphaned subtree)" {
     const child = child_elem.asNode();
 
     // Build orphaned subtree: parent -> child
-    try parent.child_nodes.append(child);
+    linkTestChild(parent, child);
     child.parent_node = parent;
 
     const root = child.getRoot();
@@ -62,10 +75,10 @@ test "Node.getRoot - nested elements" {
     const child = child_elem.asNode();
 
     // Build tree: grandparent > parent > child
-    try grandparent.child_nodes.append(parent);
+    linkTestChild(grandparent, parent);
     parent.parent_node = grandparent;
 
-    try parent.child_nodes.append(child);
+    linkTestChild(parent, child);
     child.parent_node = parent;
 
     // All nodes should have grandparent as root
@@ -100,16 +113,16 @@ test "Node.getRoot - deeply nested" {
     const n4 = elem4.asNode();
 
     // Chain: n0 > n1 > n2 > n3 > n4
-    try n0.child_nodes.append(n1);
+    linkTestChild(n0, n1);
     n1.parent_node = n0;
 
-    try n1.child_nodes.append(n2);
+    linkTestChild(n1, n2);
     n2.parent_node = n1;
 
-    try n2.child_nodes.append(n3);
+    linkTestChild(n2, n3);
     n3.parent_node = n2;
 
-    try n3.child_nodes.append(n4);
+    linkTestChild(n3, n4);
     n4.parent_node = n3;
 
     // All should have n0 as root

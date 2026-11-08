@@ -557,8 +557,8 @@ pub const Matcher = struct {
 
     /// Check if element has descendant matching complex selector
     fn hasMatchingDescendant(self: *const Matcher, element: *Element, complex_selector: *const ComplexSelector) MatcherError!bool {
-        for (0..element.base.child_nodes.size()) |i| {
-            const child_node = element.base.child_nodes.get(i) orelse continue;
+        var children = element.base.children();
+        while (children.next()) |child_node| {
             if (child_node.node_type == NodeBase.ELEMENT_NODE) {
                 const child_element: *Element = @ptrCast(child_node);
                 if (try self.matchesComplexSelector(child_element, complex_selector)) {
@@ -574,8 +574,8 @@ pub const Matcher = struct {
 
     /// Check if element has direct child matching selector
     fn hasMatchingChild(self: *const Matcher, element: *Element, complex_selector: *const ComplexSelector) MatcherError!bool {
-        for (0..element.base.child_nodes.size()) |i| {
-            const child_node = element.base.child_nodes.get(i) orelse continue;
+        var children = element.base.children();
+        while (children.next()) |child_node| {
             if (child_node.node_type == NodeBase.ELEMENT_NODE) {
                 const child_element: *Element = @ptrCast(child_node);
                 if (try self.matchesComplexSelector(child_element, complex_selector)) {
@@ -713,47 +713,16 @@ pub const Matcher = struct {
 // Helper Functions - Tree Navigation
 // ============================================================================
 
-/// Get next sibling of an element
+/// Get next sibling of an element (its link: a node's children are its
+/// sibling links, NodeBase.children)
 fn getNextSibling(element: *const Element) ?*NodeBase {
-    const parent = element.base.parent_node orelse return null;
-
-    // Find element's index in parent's children
-    for (0..parent.child_nodes.size()) |i| {
-        const child = parent.child_nodes.get(i) orelse continue;
-        if (child == &element.base) {
-            // Found element, return next sibling if exists
-            if (i + 1 < parent.child_nodes.size()) {
-                return parent.child_nodes.get(i + 1);
-            }
-            return null;
-        }
-    }
-
-    return null; // Element not found in parent (should not happen)
+    return element.base.next_sibling;
 }
 
 /// Get previous sibling of an element
 fn getPreviousSibling(element: *const Element) ?*NodeBase {
-    const parent = element.base.parent_node orelse return null;
-
-    // Find element's index in parent's children
-    for (0..parent.child_nodes.size()) |i| {
-        const child = parent.child_nodes.get(i) orelse continue;
-        if (child == &element.base) {
-            // Found element, return previous sibling if exists
-            if (i > 0) {
-                return parent.child_nodes.get(i - 1);
-            }
-            return null;
-        }
-    }
-
-    return null; // Element not found in parent (should not happen)
+    return element.base.previous_sibling;
 }
-
-// ============================================================================
-// Helper Functions - String Matching
-// ============================================================================
 
 /// Check if class attribute contains specific class name
 fn hasClass(class_attr: []const u8, class_name: []const u8) bool {
@@ -853,8 +822,8 @@ fn matchAttributeDashMatch(value: []const u8, target: []const u8, case_sensitive
 fn matchesFirstChild(element: *Element) bool {
     const parent = element.base.parent_node orelse return false;
     // First child must be first element node
-    for (0..parent.child_nodes.size()) |i| {
-        const child = parent.child_nodes.get(i) orelse continue;
+    var children = parent.children();
+    while (children.next()) |child| {
         if (child.node_type == NodeBase.ELEMENT_NODE) {
             return child == &element.base;
         }
@@ -866,10 +835,8 @@ fn matchesFirstChild(element: *Element) bool {
 fn matchesLastChild(element: *Element) bool {
     const parent = element.base.parent_node orelse return false;
     // Last child must be last element node
-    var i = parent.child_nodes.size();
-    while (i > 0) {
-        i -= 1;
-        const child = parent.child_nodes.get(i) orelse continue;
+    var children = parent.childrenReversed();
+    while (children.next()) |child| {
         if (child.node_type == NodeBase.ELEMENT_NODE) {
             return child == &element.base;
         }
@@ -882,8 +849,8 @@ fn matchesOnlyChild(element: *Element) bool {
     const parent = element.base.parent_node orelse return false;
     // Count element children
     var count: usize = 0;
-    for (0..parent.child_nodes.size()) |i| {
-        const child = parent.child_nodes.get(i) orelse continue;
+    var children = parent.children();
+    while (children.next()) |child| {
         if (child.node_type == NodeBase.ELEMENT_NODE) {
             count += 1;
             if (count > 1) return false;
@@ -896,8 +863,8 @@ fn matchesOnlyChild(element: *Element) bool {
 fn matchesFirstOfType(element: *Element) bool {
     // Find first element sibling with same tag name
     const parent = element.base.parent_node orelse return false;
-    for (0..parent.child_nodes.size()) |i| {
-        const child = parent.child_nodes.get(i) orelse continue;
+    var children = parent.children();
+    while (children.next()) |child| {
         if (child.node_type == NodeBase.ELEMENT_NODE) {
             const elem: *Element = @ptrCast(child);
             if (std.mem.eql(u8, elem.tag_name, element.tag_name)) {
@@ -912,10 +879,8 @@ fn matchesFirstOfType(element: *Element) bool {
 fn matchesLastOfType(element: *Element) bool {
     // Find last element sibling with same tag name
     const parent = element.base.parent_node orelse return false;
-    var i = parent.child_nodes.size();
-    while (i > 0) {
-        i -= 1;
-        const child = parent.child_nodes.get(i) orelse continue;
+    var children = parent.childrenReversed();
+    while (children.next()) |child| {
         if (child.node_type == NodeBase.ELEMENT_NODE) {
             const elem: *Element = @ptrCast(child);
             if (std.mem.eql(u8, elem.tag_name, element.tag_name)) {
@@ -931,8 +896,8 @@ fn matchesOnlyOfType(element: *Element) bool {
     // Count elements with same tag name
     const parent = element.base.parent_node orelse return false;
     var count: usize = 0;
-    for (0..parent.child_nodes.size()) |i| {
-        const child = parent.child_nodes.get(i) orelse continue;
+    var children = parent.children();
+    while (children.next()) |child| {
         if (child.node_type == NodeBase.ELEMENT_NODE) {
             const elem: *Element = @ptrCast(child);
             if (std.mem.eql(u8, elem.tag_name, element.tag_name)) {
@@ -947,7 +912,7 @@ fn matchesOnlyOfType(element: *Element) bool {
 /// Match :empty
 fn matchesEmpty(element: *Element) bool {
     // Element is empty if it has no child nodes
-    return element.base.child_nodes.size() == 0;
+    return element.base.first_child == null;
 }
 
 /// Match :root
@@ -1000,8 +965,8 @@ fn matchesLanguageCode(value: []const u8, code: []const u8) bool {
 fn getChildIndex(element: *Element) ?usize {
     const parent = element.base.parent_node orelse return null;
     var index: usize = 1;
-    for (0..parent.child_nodes.size()) |i| {
-        const child = parent.child_nodes.get(i) orelse continue;
+    var children = parent.children();
+    while (children.next()) |child| {
         if (child == &element.base) return index;
         if (child.node_type == NodeBase.ELEMENT_NODE) {
             index += 1;
@@ -1014,10 +979,8 @@ fn getChildIndex(element: *Element) ?usize {
 fn getChildIndexFromLast(element: *Element) ?usize {
     const parent = element.base.parent_node orelse return null;
     var index: usize = 1;
-    var i = parent.child_nodes.size();
-    while (i > 0) {
-        i -= 1;
-        const child = parent.child_nodes.get(i) orelse continue;
+    var children = parent.childrenReversed();
+    while (children.next()) |child| {
         if (child == &element.base) return index;
         if (child.node_type == NodeBase.ELEMENT_NODE) {
             index += 1;
@@ -1030,8 +993,8 @@ fn getChildIndexFromLast(element: *Element) ?usize {
 fn getChildIndexOfType(element: *Element) ?usize {
     const parent = element.base.parent_node orelse return null;
     var index: usize = 1;
-    for (0..parent.child_nodes.size()) |i| {
-        const child = parent.child_nodes.get(i) orelse continue;
+    var children = parent.children();
+    while (children.next()) |child| {
         if (child == &element.base) return index;
         if (child.node_type == NodeBase.ELEMENT_NODE) {
             const elem: *Element = @ptrCast(child);
@@ -1047,10 +1010,8 @@ fn getChildIndexOfType(element: *Element) ?usize {
 fn getChildIndexOfTypeFromLast(element: *Element) ?usize {
     const parent = element.base.parent_node orelse return null;
     var index: usize = 1;
-    var i = parent.child_nodes.size();
-    while (i > 0) {
-        i -= 1;
-        const child = parent.child_nodes.get(i) orelse continue;
+    var children = parent.childrenReversed();
+    while (children.next()) |child| {
         if (child == &element.base) return index;
         if (child.node_type == NodeBase.ELEMENT_NODE) {
             const elem: *Element = @ptrCast(child);
@@ -1122,6 +1083,19 @@ fn destroyTestElement(allocator: Allocator, elem: *Element) void {
 // ============================================================================
 // Simple Selector Tests
 // ============================================================================
+
+/// Test fixtures: link `child` as `parent`'s last child (a node's children are
+/// its sibling links: NodeBase.children).
+fn linkTestChild(parent: *NodeBase, child: *NodeBase) void {
+    child.previous_sibling = parent.last_child;
+    child.next_sibling = null;
+    if (parent.last_child) |last| {
+        last.next_sibling = child;
+    } else {
+        parent.first_child = child;
+    }
+    parent.last_child = child;
+}
 
 test "Matcher: universal selector (*)" {
     const allocator = testing.allocator;
@@ -1487,7 +1461,7 @@ test "Matcher: child combinator (>)" {
     defer destroyTestElement(allocator, child);
 
     // Build tree: article > p
-    try parent.base.child_nodes.append(&child.base);
+    linkTestChild(&parent.base, &child.base);
     child.base.parent_node = &parent.base;
 
     var tokenizer = Tokenizer.init(allocator, "article > p");
@@ -1513,9 +1487,9 @@ test "Matcher: descendant combinator (space)" {
     defer destroyTestElement(allocator, child);
 
     // Build tree: div > section > p
-    try grandparent.base.child_nodes.append(&parent.base);
+    linkTestChild(&grandparent.base, &parent.base);
     parent.base.parent_node = &grandparent.base;
-    try parent.base.child_nodes.append(&child.base);
+    linkTestChild(&parent.base, &child.base);
     child.base.parent_node = &parent.base;
 
     var tokenizer = Tokenizer.init(allocator, "div p");
@@ -1541,9 +1515,9 @@ test "Matcher: next-sibling combinator (+)" {
     defer destroyTestElement(allocator, sibling2);
 
     // Build tree: div > h1 + p
-    try parent.base.child_nodes.append(&sibling1.base);
+    linkTestChild(&parent.base, &sibling1.base);
     sibling1.base.parent_node = &parent.base;
-    try parent.base.child_nodes.append(&sibling2.base);
+    linkTestChild(&parent.base, &sibling2.base);
     sibling2.base.parent_node = &parent.base;
 
     var tokenizer = Tokenizer.init(allocator, "h1 + p");
@@ -1572,11 +1546,11 @@ test "Matcher: subsequent-sibling combinator (~)" {
     defer destroyTestElement(allocator, sibling3);
 
     // Build tree: div > h1 ~ span ~ p
-    try parent.base.child_nodes.append(&sibling1.base);
+    linkTestChild(&parent.base, &sibling1.base);
     sibling1.base.parent_node = &parent.base;
-    try parent.base.child_nodes.append(&sibling2.base);
+    linkTestChild(&parent.base, &sibling2.base);
     sibling2.base.parent_node = &parent.base;
-    try parent.base.child_nodes.append(&sibling3.base);
+    linkTestChild(&parent.base, &sibling3.base);
     sibling3.base.parent_node = &parent.base;
 
     var tokenizer = Tokenizer.init(allocator, "h1 ~ p");
@@ -1605,9 +1579,9 @@ test "Matcher: :first-child" {
     const child2 = try createTestElement(allocator, "p");
     defer destroyTestElement(allocator, child2);
 
-    try parent.base.child_nodes.append(&child1.base);
+    linkTestChild(&parent.base, &child1.base);
     child1.base.parent_node = &parent.base;
-    try parent.base.child_nodes.append(&child2.base);
+    linkTestChild(&parent.base, &child2.base);
     child2.base.parent_node = &parent.base;
 
     var tokenizer = Tokenizer.init(allocator, "p:first-child");
@@ -1633,9 +1607,9 @@ test "Matcher: :last-child" {
     const child2 = try createTestElement(allocator, "p");
     defer destroyTestElement(allocator, child2);
 
-    try parent.base.child_nodes.append(&child1.base);
+    linkTestChild(&parent.base, &child1.base);
     child1.base.parent_node = &parent.base;
-    try parent.base.child_nodes.append(&child2.base);
+    linkTestChild(&parent.base, &child2.base);
     child2.base.parent_node = &parent.base;
 
     var tokenizer = Tokenizer.init(allocator, "p:last-child");
@@ -1658,7 +1632,7 @@ test "Matcher: :only-child" {
     const child = try createTestElement(allocator, "p");
     defer destroyTestElement(allocator, child);
 
-    try parent.base.child_nodes.append(&child.base);
+    linkTestChild(&parent.base, &child.base);
     child.base.parent_node = &parent.base;
 
     var tokenizer = Tokenizer.init(allocator, "p:only-child");
@@ -1683,7 +1657,7 @@ test "Matcher: :empty" {
     const child = try createTestElement(allocator, "span");
     defer destroyTestElement(allocator, child);
 
-    try non_empty.base.child_nodes.append(&child.base);
+    linkTestChild(&non_empty.base, &child.base);
     child.base.parent_node = &non_empty.base;
 
     var tokenizer = Tokenizer.init(allocator, "div:empty");
@@ -1712,11 +1686,11 @@ test "Matcher: :nth-child(2)" {
     const child3 = try createTestElement(allocator, "li");
     defer destroyTestElement(allocator, child3);
 
-    try parent.base.child_nodes.append(&child1.base);
+    linkTestChild(&parent.base, &child1.base);
     child1.base.parent_node = &parent.base;
-    try parent.base.child_nodes.append(&child2.base);
+    linkTestChild(&parent.base, &child2.base);
     child2.base.parent_node = &parent.base;
-    try parent.base.child_nodes.append(&child3.base);
+    linkTestChild(&parent.base, &child3.base);
     child3.base.parent_node = &parent.base;
 
     var tokenizer = Tokenizer.init(allocator, "li:nth-child(2)");
@@ -1746,11 +1720,11 @@ test "Matcher: :nth-child(odd)" {
     const child3 = try createTestElement(allocator, "li");
     defer destroyTestElement(allocator, child3);
 
-    try parent.base.child_nodes.append(&child1.base);
+    linkTestChild(&parent.base, &child1.base);
     child1.base.parent_node = &parent.base;
-    try parent.base.child_nodes.append(&child2.base);
+    linkTestChild(&parent.base, &child2.base);
     child2.base.parent_node = &parent.base;
-    try parent.base.child_nodes.append(&child3.base);
+    linkTestChild(&parent.base, &child3.base);
     child3.base.parent_node = &parent.base;
 
     var tokenizer = Tokenizer.init(allocator, "li:nth-child(odd)");
@@ -1863,15 +1837,15 @@ test "Matcher: deeply nested selectors" {
     const p_elem = try createTestElement(allocator, "p");
     defer destroyTestElement(allocator, p_elem);
 
-    try html.base.child_nodes.append(&body.base);
+    linkTestChild(&html.base, &body.base);
     body.base.parent_node = &html.base;
-    try body.base.child_nodes.append(&div.base);
+    linkTestChild(&body.base, &div.base);
     div.base.parent_node = &body.base;
-    try div.base.child_nodes.append(&article.base);
+    linkTestChild(&div.base, &article.base);
     article.base.parent_node = &div.base;
-    try article.base.child_nodes.append(&section.base);
+    linkTestChild(&article.base, &section.base);
     section.base.parent_node = &article.base;
-    try section.base.child_nodes.append(&p_elem.base);
+    linkTestChild(&section.base, &p_elem.base);
     p_elem.base.parent_node = &section.base;
 
     var tokenizer = Tokenizer.init(allocator, "html body div article section p");

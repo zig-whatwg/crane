@@ -16,13 +16,26 @@ fn createMockDocumentNode(allocator: std.mem.Allocator) NodeBase {
         .allocator = allocator,
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
-        .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
     };
 }
 
 fn deinitMockDocument(doc: *NodeBase) void {
-    doc.child_nodes.deinit();
+    // A node keeps no child list (lane perf2 batch 5): nothing to free.
+    _ = doc;
+}
+
+/// Link `child` as `parent`'s last child (a node's children are its sibling
+/// links: NodeBase.children; lane perf2 batch 5).
+fn linkTestChild(parent: *NodeBase, child: *NodeBase) void {
+    child.previous_sibling = parent.last_child;
+    child.next_sibling = null;
+    if (parent.last_child) |last| {
+        last.next_sibling = child;
+    } else {
+        parent.first_child = child;
+    }
+    parent.last_child = child;
 }
 
 test "Node.isConnected - document node is connected" {
@@ -62,7 +75,7 @@ test "Node.isConnected - element in document tree is connected" {
     try std.testing.expect(!node.isConnected());
 
     // Connect element to document
-    try doc.child_nodes.append(node);
+    linkTestChild(&doc, node);
     node.parent_node = &doc;
 
     // Now element is connected
@@ -85,10 +98,10 @@ test "Node.isConnected - nested elements in document are connected" {
     const child = child_elem.asNode();
 
     // Build tree: doc > parent > child
-    try doc.child_nodes.append(parent);
+    linkTestChild(&doc, parent);
     parent.parent_node = &doc;
 
-    try parent.child_nodes.append(child);
+    linkTestChild(parent, child);
     child.parent_node = parent;
 
     // Both elements are connected via the document
@@ -109,7 +122,7 @@ test "Node.isConnected - orphaned subtree is not connected" {
     const child = child_elem.asNode();
 
     // Build orphaned subtree: parent > child (no document)
-    try parent.child_nodes.append(child);
+    linkTestChild(parent, child);
     child.parent_node = parent;
 
     // Neither is connected (root is an Element, not a Document)
@@ -142,16 +155,16 @@ test "Node.isConnected - deeply nested element in document" {
     const n3 = elem3.asNode();
 
     // Build tree: doc > n0 > n1 > n2 > n3
-    try doc.child_nodes.append(n0);
+    linkTestChild(&doc, n0);
     n0.parent_node = &doc;
 
-    try n0.child_nodes.append(n1);
+    linkTestChild(n0, n1);
     n1.parent_node = n0;
 
-    try n1.child_nodes.append(n2);
+    linkTestChild(n1, n2);
     n2.parent_node = n1;
 
-    try n2.child_nodes.append(n3);
+    linkTestChild(n2, n3);
     n3.parent_node = n2;
 
     // All elements are connected
@@ -169,20 +182,15 @@ test "Node.isConnected - document fragment root is not connected" {
         .allocator = allocator,
         .node_type = NodeBase.DOCUMENT_FRAGMENT_NODE,
         .parent_node = null,
-        .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
     };
-    defer {
-        frag.child_nodes.deinit();
-    }
-
     var elem = Element.init(allocator, "div");
     defer elem.deinit();
 
     const node = elem.asNode();
 
     // Attach element to fragment
-    try frag.child_nodes.append(node);
+    linkTestChild(&frag, node);
     node.parent_node = &frag;
 
     // Fragment is not a document, so element is not connected

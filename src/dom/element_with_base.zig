@@ -54,7 +54,6 @@ pub const ElementWithBase = struct {
                 .allocator = allocator,
                 .node_type = NodeBase.ELEMENT_NODE,
                 .parent_node = null,
-                .child_nodes = infra.List(*NodeBase).init(allocator),
                 .owner_document = null,
             },
             .tag_name = tag_name,
@@ -67,7 +66,6 @@ pub const ElementWithBase = struct {
 
     /// Clean up resources
     pub fn deinit(self: *ElementWithBase) void {
-        self.base.child_nodes.deinit();
         self.base.deinitRareData();
 
         // Clean up attributes (they're heap-allocated)
@@ -220,8 +218,16 @@ pub const ElementWithBase = struct {
         if (child.parent_node != null) refcount.unlinkChild(child);
         refcount.linkChild(child, &self.base);
 
-        // Add to child list
-        try self.base.child_nodes.append(child);
+        // Link it last (a node's children are its sibling links:
+        // NodeBase.children)
+        child.previous_sibling = self.base.last_child;
+        child.next_sibling = null;
+        if (self.base.last_child) |last| {
+            last.next_sibling = child;
+        } else {
+            self.base.first_child = child;
+        }
+        self.base.last_child = child;
 
         return child;
     }
@@ -229,38 +235,34 @@ pub const ElementWithBase = struct {
     /// Remove a child node
     /// Simplified version for testing
     pub fn removeChild(self: *ElementWithBase, child: *NodeBase) !*NodeBase {
-        // Find and remove from child list
-        const items = self.base.child_nodes.items();
-        for (items, 0..) |item, i| {
-            if (item == child) {
-                _ = self.base.child_nodes.remove(i) catch unreachable;
-                refcount.unlinkChild(child);
-                return child;
-            }
-        }
-        return error.NotFoundError;
+        if (child.parent_node != &self.base) return error.NotFoundError;
+        // Unlink it (a node's children are its sibling links)
+        if (child.previous_sibling) |prev| prev.next_sibling = child.next_sibling else self.base.first_child = child.next_sibling;
+        if (child.next_sibling) |next| next.previous_sibling = child.previous_sibling else self.base.last_child = child.previous_sibling;
+        child.previous_sibling = null;
+        child.next_sibling = null;
+        refcount.unlinkChild(child);
+        return child;
     }
 
     /// Get first child
     pub fn getFirstChild(self: *const ElementWithBase) ?*NodeBase {
-        return self.base.child_nodes.get(0);
+        return self.base.first_child;
     }
 
     /// Get last child
     pub fn getLastChild(self: *const ElementWithBase) ?*NodeBase {
-        const size = self.base.child_nodes.size();
-        if (size == 0) return null;
-        return self.base.child_nodes.get(size - 1);
+        return self.base.last_child;
     }
 
     /// Check if element has children
     pub fn hasChildNodes(self: *const ElementWithBase) bool {
-        return self.base.child_nodes.size() > 0;
+        return self.base.first_child != null;
     }
 
     /// Get child nodes count
     pub fn getChildCount(self: *const ElementWithBase) usize {
-        return self.base.child_nodes.size();
+        return self.base.childCount();
     }
 };
 
