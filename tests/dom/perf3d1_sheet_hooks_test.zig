@@ -54,16 +54,30 @@ const Page = struct {
     }
 };
 
-test "a link or style element with no sheet has none through every owner hook, the PI's included" {
+/// `el`'s sheet through every owner hook is its own, or none: never a record
+/// read from another type's state. A connected style element has its own
+/// (HTML "update a style block" makes one, empty text included); a link with
+/// no stylesheet load and a div have none.
+fn expectOwnSheetOrNone(el: *runtime.Instance, has_own: bool) !void {
+    const record = dom.style.hooks.sheetOf(el);
+    if (has_own) {
+        const r = record orelse return error.NoOwnSheet;
+        try testing.expect(r.owner_node == el);
+    } else {
+        try testing.expect(record == null);
+    }
+}
+
+test "a link, style or div element's sheet through every owner hook is its own or none, never the PI's reading" {
     var page: Page = undefined;
     try page.open();
     defer page.close();
 
-    inline for (.{ "link", "style", "div" }) |name| {
-        const el = try page.element(name);
+    inline for (.{ .{ "link", false }, .{ "style", true }, .{ "div", false } }) |case| {
+        const el = try page.element(case[0]);
         try interfaces.Element.call_setAttribute(el, str("title"), .{ .domstring = str("t") });
         _ = try interfaces.Node.call_appendChild(page.body, el);
-        try testing.expect(dom.style.hooks.sheetOf(el) == null);
+        try expectOwnSheetOrNone(el, case[1]);
     }
 }
 
@@ -123,16 +137,21 @@ test "the PI's sheet hooks check the brand: a link, style or div whose bytes at 
 
     const Checks = struct {
         fn noSheet(_: void, el: *runtime.Instance) anyerror!void {
-            try testing.expect(dom.style.hooks.sheetOf(el) == null);
+            try expectOwnSheetOrNone(el, false);
+        }
+        fn ownSheet(_: void, el: *runtime.Instance) anyerror!void {
+            try expectOwnSheetOrNone(el, true);
         }
         fn arrives(_: void, el: *runtime.Instance) anyerror!void {
             dom.style.hooks.linkSheetArrived(el, "p { color: red }", "http://example.test/a.css", true);
             try testing.expect(dom.style.hooks.sheetOf(el) == null);
         }
     };
-    // sheetOf asks the style, the link and then the PI hook.
+    // sheetOf asks the style, the link and then the PI hook; the style
+    // element answers with its own sheet before the PI's is asked, so its
+    // case checks the record is its own.
     try withPoisonAtPiOffset(interfaces.HTMLLinkElement.State, link, {}, Checks.noSheet);
-    try withPoisonAtPiOffset(interfaces.HTMLStyleElement.State, style, {}, Checks.noSheet);
+    try withPoisonAtPiOffset(interfaces.HTMLStyleElement.State, style, {}, Checks.ownSheet);
     try withPoisonAtPiOffset(interfaces.HTMLDivElement.State, div, {}, Checks.noSheet);
     // A fetched sheet goes to the link's step and then the PI's: for a node
     // that is neither, both must decline without reading its state.
