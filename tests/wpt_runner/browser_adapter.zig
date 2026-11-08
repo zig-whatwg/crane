@@ -242,6 +242,24 @@ pub const BrowserAdapter = struct {
         return result;
     }
 
+    /// Run a WPT crashtest at `test_url` (wpt_browser.zig `runCrashtest`).
+    pub fn runCrashtest(
+        self: *BrowserAdapter,
+        test_url: []const u8,
+        test_path: []const u8,
+        timeout: config.Timeout,
+    ) !test_harness.TestResult {
+        const result = self.wpt_browser.runCrashtest(test_path, test_url, timeout.toMillis()) catch |err| {
+            var error_result = try test_harness.TestResult.init(self.allocator, test_path);
+            error_result.status = .@"error";
+            error_result.crashtest = true;
+            error_result.message = try std.fmt.allocPrint(self.allocator, "Crashtest execution failed: {}", .{err});
+            return error_result;
+        };
+        self.tests_run += 1;
+        return result;
+    }
+
     /// Run a WPT test via HTTP URL
     ///
     /// This method:

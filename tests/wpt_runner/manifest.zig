@@ -56,12 +56,18 @@ pub const Manifest = struct {
     url_to_source: std.StringHashMap([]const u8),
     /// Maps source file to list of test URLs
     source_to_urls: std.StringHashMap(UrlList),
+    /// The paths of items.crashtest: WPT's crashtests, each run by loading it
+    /// to the end of its `test-wait` (wpt_browser.zig `runCrashtest`) and
+    /// passing when nothing crashed. The manifest decides which file is one
+    /// (tools/manifest/sourcefile.py `name_is_crashtest`), as for wptrunner.
+    crashtests: std.StringHashMap(void),
 
     pub fn init(allocator: Allocator) Manifest {
         return .{
             .allocator = allocator,
             .url_to_source = std.StringHashMap([]const u8).init(allocator),
             .source_to_urls = std.StringHashMap(UrlList).init(allocator),
+            .crashtests = std.StringHashMap(void).init(allocator),
         };
     }
 
@@ -84,6 +90,22 @@ pub const Manifest = struct {
             entry.value_ptr.deinit(self.allocator);
         }
         self.source_to_urls.deinit();
+
+        var crash_iter = self.crashtests.keyIterator();
+        while (crash_iter.next()) |key| self.allocator.free(key.*);
+        self.crashtests.deinit();
+    }
+
+    /// Whether WPT's manifest lists `path` (a source path, a leading `/`
+    /// allowed) as a crashtest.
+    pub fn isCrashtest(self: *const Manifest, path: []const u8) bool {
+        const trimmed = if (path.len > 0 and path[0] == '/') path[1..] else path;
+        return self.crashtests.contains(trimmed);
+    }
+
+    /// How many crashtests the manifest lists.
+    pub fn crashtestCount(self: *const Manifest) usize {
+        return self.crashtests.count();
     }
 
     /// Resolve a test URL to its source file
@@ -197,6 +219,8 @@ pub fn parseManifestBytes(allocator: Allocator, contents: []const u8) !Manifest 
     // Navigate to items.testharness
     const items = root.object.get("items") orelse return manifest;
     if (items != .object) return manifest;
+    // items.crashtest: the same directory tree, each leaf's URL its path.
+    if (items.object.get("crashtest")) |crashtest| try parseCrashtestNode(allocator, &manifest, "", crashtest);
     const testharness = items.object.get("testharness") orelse return manifest;
 
     // The testharness node is a directory tree of arbitrary depth. Walk it.
@@ -235,6 +259,38 @@ fn parseNode(
             // Leaf: [hash, [url, extras], ...]. Anything shorter has no URLs.
             if (arr.items.len < 2) return;
             try addSourceUrls(allocator, manifest, path_prefix, arr.items[1..]);
+        },
+        else => {},
+    }
+}
+
+/// Walk items.crashtest as `parseNode` walks items.testharness, recording
+/// each leaf's path.
+fn parseCrashtestNode(
+    allocator: Allocator,
+    manifest: *Manifest,
+    path_prefix: []const u8,
+    node: std.json.Value,
+) !void {
+    switch (node) {
+        .object => |obj| {
+            var iter = obj.iterator();
+            while (iter.next()) |entry| {
+                const segment = entry.key_ptr.*;
+                const child_path = if (path_prefix.len == 0)
+                    try allocator.dupe(u8, segment)
+                else
+                    try std.fmt.allocPrint(allocator, "{s}/{s}", .{ path_prefix, segment });
+                defer allocator.free(child_path);
+                try parseCrashtestNode(allocator, manifest, child_path, entry.value_ptr.*);
+            }
+        },
+        .array => |arr| {
+            if (arr.items.len < 2) return;
+            if (manifest.crashtests.contains(path_prefix)) return;
+            const key = try allocator.dupe(u8, path_prefix);
+            errdefer allocator.free(key);
+            try manifest.crashtests.put(key, {});
         },
         else => {},
     }
@@ -437,6 +493,44 @@ test "parseManifestBytes tolerates malformed and empty nodes" {
     try std.testing.expectEqualStrings("d/ok.js", manifest.resolveUrlToSource("d/ok.html").?);
 }
 
+test "parseManifestBytes records crashtests apart from testharness tests" {
+    const allocator = std.testing.allocator;
+
+    // items.crashtest is where WPT's manifest puts a markup file named
+    // `-crash` before its extension or under a `crashtests/` directory
+    // (tools/manifest/sourcefile.py `name_is_crashtest`): its URL is its
+    // path. A crashtests/ .any.js file stays a testharness test.
+    const json =
+        \\{"items":{
+        \\ "crashtest":{"css":{"css-syntax":{"crashtests":{"deep.html":["h",[null,{}]]}},
+        \\   "selectors":{"is-where-error-crash.html":["h",[null,{}]]}}},
+        \\ "testharness":{"streams":{"crashtests":{"gc.any.js":["h",["streams/crashtests/gc.any.html",{}]]}}}
+        \\}}
+    ;
+
+    var manifest = try parseManifestBytes(allocator, json);
+    defer manifest.deinit();
+
+    try std.testing.expect(manifest.isCrashtest("css/css-syntax/crashtests/deep.html"));
+    try std.testing.expect(manifest.isCrashtest("/css/selectors/is-where-error-crash.html"));
+    try std.testing.expect(!manifest.isCrashtest("streams/crashtests/gc.any.js"));
+    try std.testing.expect(!manifest.isCrashtest("css/css-syntax/crashtests/other.html"));
+    // A crashtest is no testharness URL: the scoreboard's denominator is
+    // unchanged by it.
+    try std.testing.expectEqual(@as(usize, 1), manifest.urlCount());
+    try std.testing.expectEqual(@as(usize, 2), manifest.crashtestCount());
+}
+
+test "parseManifestBytes reads crashtests when items.testharness is absent" {
+    const allocator = std.testing.allocator;
+
+    var manifest = try parseManifestBytes(allocator, "{\"items\":{\"crashtest\":{\"a-crash.html\":[\"h\",[null,{}]]}}}");
+    defer manifest.deinit();
+
+    try std.testing.expect(manifest.isCrashtest("a-crash.html"));
+    try std.testing.expectEqual(@as(usize, 0), manifest.urlCount());
+}
+
 test "parseManifestBytes returns empty manifest when items.testharness is absent" {
     const allocator = std.testing.allocator;
 
@@ -481,6 +575,14 @@ test "real MANIFEST.json is enumerated at full depth" {
         "dom/abort/AbortSignal.any.js",
         manifest.resolveUrlToSource("dom/abort/AbortSignal.any.html").?,
     );
+
+    // Crashtests (lane crash1): the 60,000-bracket crashtest anim1 fixed,
+    // a `-crash` file, and a crashtests/ .any.js that is a testharness test.
+    try std.testing.expect(manifest.crashtestCount() > 1_000);
+    try std.testing.expect(manifest.isCrashtest("css/css-syntax/crashtests/unclosed-open-brackets.html"));
+    try std.testing.expect(manifest.isCrashtest("css/selectors/is-where-error-crash.html"));
+    try std.testing.expect(!manifest.isCrashtest("streams/readable-streams/crashtests/garbage-collection.any.js"));
+    try std.testing.expect(!manifest.isCrashtest("dom/nodes/Node-appendChild.html"));
 }
 
 test "resolveUrlToSource strips leading slash" {
