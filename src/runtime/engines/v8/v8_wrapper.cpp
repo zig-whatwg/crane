@@ -2561,6 +2561,55 @@ struct SyntheticJsonExport {
     Global<Value> value;
 };
 
+/// An isolate's full-collection pauses, for engine.diagnosticCounters'
+/// `full_gc_count`, `full_gc_pause_max_us` and `full_gc_pause_p95_us` (the
+/// wrapper redesign's P0, tmp/redesign/wrapper-redesign-design.md section 7:
+/// its later phases put C++ marking and the host walk in this pause, risk
+/// R4c). A pause is the time from the GC prologue to the GC epilogue of one
+/// mark-compact: V8 13.1 src/heap/heap.cc Heap::CollectGarbage calls
+/// CallGCPrologueCallbacks before StartObservablePause and
+/// CallGCEpilogueCallbacks after StopObservablePause, so the two bracket the
+/// collection's atomic pause. Only the isolate's own thread writes or reads
+/// it: V8 calls the callbacks on the thread collecting, and
+/// diagnosticCounters reads the current isolate.
+struct GCPauses {
+    /// How many pauses the p95 is taken over: the most recent ones.
+    static constexpr size_t kRecent = 1024;
+    std::chrono::steady_clock::time_point started{};
+    /// Prologue minus epilogue: "These callbacks may trigger GC themselves"
+    /// (heap.cc), so a nested collection is part of the outer one's pause.
+    int depth = 0;
+    uint64_t count = 0;
+    uint64_t max_us = 0;
+    /// The last kRecent pauses (us), a ring from `next`; reserved on the
+    /// first pause, so an agent that never collects fully keeps none.
+    std::vector<uint32_t> recent;
+    size_t next = 0;
+
+    void record(uint64_t us) {
+        count += 1;
+        if (us > max_us) max_us = us;
+        const uint32_t kept = us > 0xFFFFFFFFull ? 0xFFFFFFFFu : static_cast<uint32_t>(us);
+        if (recent.size() < kRecent) {
+            if (recent.empty()) recent.reserve(kRecent);
+            recent.push_back(kept);
+        } else {
+            recent[next] = kept;
+            next = (next + 1) % kRecent;
+        }
+    }
+
+    /// The 95th percentile of the recent pauses by nearest rank: the
+    /// ceil(0.95 n)-th smallest. 0 with none.
+    uint64_t p95() const {
+        if (recent.empty()) return 0;
+        std::vector<uint32_t> sorted(recent);
+        const size_t rank = (sorted.size() * 95 + 99) / 100;
+        std::nth_element(sorted.begin(), sorted.begin() + (rank - 1), sorted.end());
+        return sorted[rank - 1];
+    }
+};
+
 struct IsolateData {
     // Installed before Isolate::Initialize: V8 caches runners while setting up
     // its heap. Their shared state receives the host's sink after creation.
@@ -2610,6 +2659,10 @@ struct IsolateData {
     /// resolves (engine.HostHooks.importMetaResolve): the dispatcher is the
     /// process's, so whether the builtin is made is the isolate's.
     bool import_meta_resolve = false;
+    /// The isolate's full-collection pauses (GCPauses): the GC callbacks
+    /// installGCPauseRecorder adds after Isolate::Initialize write it, with
+    /// this record as their data until the record goes after Dispose.
+    GCPauses gc_pauses;
 
 
     /// Take out the entry whose module is `module`, if any.
@@ -2628,6 +2681,48 @@ struct IsolateData {
 /// snapshot creator's).
 static IsolateData* isolateData(Isolate* isolate) {
     return isolate ? static_cast<IsolateData*>(isolate->GetData(kIsolateDataSlot)) : nullptr;
+}
+
+/// GCPauses' two callbacks, for mark-compacts only (kGCTypeMarkSweepCompact):
+/// the prologue starts a pause, the matching epilogue records it.
+static void gcPausePrologue(Isolate*, GCType, GCCallbackFlags, void* data) {
+    GCPauses* pauses = static_cast<GCPauses*>(data);
+    if (pauses->depth++ == 0) pauses->started = std::chrono::steady_clock::now();
+}
+
+static void gcPauseEpilogue(Isolate*, GCType, GCCallbackFlags, void* data) {
+    GCPauses* pauses = static_cast<GCPauses*>(data);
+    // An epilogue with no prologue of ours: a collection already running
+    // when the callbacks were added.
+    if (pauses->depth == 0) return;
+    if (--pauses->depth != 0) return;
+    const auto elapsed = std::chrono::steady_clock::now() - pauses->started;
+    pauses->record(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count()));
+}
+
+/// Record `isolate`'s full-collection pauses in its record from now on: right
+/// after Isolate::Initialize, by each function that makes an isolate with a
+/// record. The callbacks go with the isolate; the record outlives it
+/// (v8_Isolate_Dispose deletes it after Isolate::Dispose).
+static void installGCPauseRecorder(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    isolate->AddGCPrologueCallback(gcPausePrologue, &record->gc_pauses, kGCTypeMarkSweepCompact);
+    isolate->AddGCEpilogueCallback(gcPauseEpilogue, &record->gc_pauses, kGCTypeMarkSweepCompact);
+}
+
+/// `isolate`'s full collections so far, their longest pause and the 95th
+/// percentile of the most recent ones (GCPauses), in microseconds: all 0 for
+/// a null isolate or one this file did not make. On the isolate's thread.
+extern "C" void v8_Debug_FullGCPauses(Isolate* isolate, uint64_t* count, uint64_t* max_us, uint64_t* p95_us) {
+    *count = 0;
+    *max_us = 0;
+    *p95_us = 0;
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    *count = record->gc_pauses.count;
+    *max_us = record->gc_pauses.max_us;
+    *p95_us = record->gc_pauses.p95();
 }
 
 /// The host's wall clock of the isolate current on this thread (ns since the
@@ -2934,6 +3029,7 @@ Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options) {
     }
     isolate->SetData(kIsolateDataSlot, record.release());
     Isolate::Initialize(isolate, create_params);
+    installGCPauseRecorder(isolate);
     return isolate;
 }
 
@@ -9827,7 +9923,8 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
     }
     isolate->SetData(kIsolateDataSlot, isolate_data);
     Isolate::Initialize(isolate, create_params);
-    
+    installGCPauseRecorder(isolate);
+
     return isolate;
 }
 
