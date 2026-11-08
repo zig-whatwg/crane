@@ -132,6 +132,16 @@ pub const InternalState = struct {
     /// Window frees its document itself (deinitOwn) until step 7.
     document_ref: @import("dom").node_holds.RefHold = .{},
 
+    /// DOM 2.3's "current event" ("Each Window object has an associated
+    /// current event"), which `window.event` returns: the event whose listener DOM's
+    /// inner invoke is calling in this Window's realm (steps 2.9-2.10, 2.15,
+    /// through dom.window_globals.swapCurrentEvent), or null for undefined.
+    /// BORROWED: set only while the dispatch that holds the event runs the
+    /// listener. Blink's LocalDOMWindow::current_event_, Gecko's
+    /// nsGlobalWindowInner::mEvent; it was a field of every EventTarget's
+    /// state until lane perf2 batch 7.
+    current_event: ?*runtime.Instance = null,
+
     /// The opener Window (if opened via window.open()), as it was when set:
     /// the IDL getter's fallback when the browsing context's opener has no
     /// active window to answer with. Held with its slab generation
@@ -425,6 +435,7 @@ pub fn installHooks() void {
         .release_browsing_context = &releaseBrowsingContext,
         .adopt_browsing_context = &replaceBrowsingContext,
         .move_auxiliary_navigables = &moveAuxiliaryNavigables,
+        .swap_current_event = &swapCurrentEvent,
     });
     // A hyperlink's or form's target that names no frame: the popups this
     // window keeps, or a new one (the rules for choosing a navigable).
@@ -1774,13 +1785,22 @@ pub fn get_documentPictureInPicture(instance: *runtime.Instance) anyerror!*runti
 }
 
 /// Getter for event
-/// Getter for event
 /// Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-window-event
 /// "return this's current event" - the event whose listener is running in this
 /// Window's realm (set by EventTarget's inner invoke), else undefined.
 pub fn get_event(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const event = @import("dom").fire_event.currentEvent(instance) orelse return runtime.JSValue.jsUndefined;
+    const internal = getInternal(instance) orelse return runtime.JSValue.jsUndefined;
+    const event = internal.current_event orelse return runtime.JSValue.jsUndefined;
     return .{ .instance = event };
+}
+
+/// dom.window_globals.swapCurrentEvent: set this Window's current event to
+/// `event` and return the previous one. A Window torn down keeps none.
+fn swapCurrentEvent(instance: *runtime.Instance, event: ?*runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    const previous = internal.current_event;
+    internal.current_event = event;
+    return previous;
 }
 
 /// Getter for orientation

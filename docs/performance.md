@@ -96,7 +96,7 @@ statement, the workload says so: that is its browser equivalent.
 | `load.news`, `load.docs`, `load.app` | a real-world-shaped page loaded 10 times in one tab: from the document's time origin to its load event, or to when its script says it is ready (the app's data rendered) | |
 | `memory.idle-page` | one small page, left alone 3 s: the footprint | |
 | `startup.idle-page` | from launching the engine to that page's load event: start-up, reported apart so no other row includes it | |
-| `memory.page-growth` | 30 documents in one tab, each with 2,000 elements and listeners: the footprint's slope per page | |
+| `memory.page-growth` | 30 documents in one tab, each with 2,000 elements and listeners: the footprint the chain levels off at (each run's median over the second half of its steps), with that half's slope per page beside it - what each further page still keeps. Until lane perf2 batch 7 it was the slope over all 30 steps, which reads a footprint that levels off later as more growth (a tip below its base at every step read 1.175 of it); every round is read the new way from its journals' series | |
 | `memory.instances` | 1 to 4 engines side by side on a small page: the footprint's slope per added instance | |
 | `elements.*` | memory per element, a suite of its own (`tests/perf/elements.json`): see "Memory per element" | |
 
