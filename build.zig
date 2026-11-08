@@ -1954,7 +1954,55 @@ fn addTestRootWith(
     }
 
     step.dependOn(&addSuiteRunWith(builder, launch, test_exe, name, config_name, groups).step);
+    // A -Dtest-file executable is named after its file and takes its
+    // directory's row (`config_name`).
+    if (link_v8 and holdsTestsV8(config_name orelse name, groups)) {
+        if (addEngineLateRun(builder, launch, test_exe, name, groups)) |late| step.dependOn(&late.step);
+    }
     return test_exe;
+}
+
+/// Whether the executable `name` (with `groups`, a joined one's members)
+/// holds tests/v8's tests.
+fn holdsTestsV8(name: []const u8, groups: []const SuiteGroup) bool {
+    if (std.mem.eql(u8, name, "tests-v8")) return true;
+    for (groups) |g| if (std.mem.eql(u8, g.prefix, "v8.")) return true;
+    return false;
+}
+
+/// tests/v8's platform start tests once more, each in a process whose start
+/// skipped engine.initializeBeforeThreadCreation (CRANE_TEST_ENGINE_EARLY=0,
+/// which the Crane test runner reads): there V8 starts on a later thread
+/// beside threads that already exist, and its platform must give it no
+/// thread-isolated allocator - the fallback of every host that skips the
+/// call, which would otherwise fault on x86-64 Linux (lane linux1; the
+/// integrator's ruling, 2026-11-08). The same executable, so nothing more
+/// is compiled; only the plain run has it (a variant or a -Dtest-filter run
+/// selects its own tests).
+fn addEngineLateRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, groups: []const SuiteGroup) ?*std.Build.Step.Run {
+    if (launch.sanitize_thread or launch.many_browsers or launch.filters.len != 0) return null;
+    const run = b.addRunArtifact(launch.launcher);
+    run.setName(b.fmt("test {s} (engine started late)", .{name}));
+    run.stdio = .zig_test;
+    run.addArtifactArg(test_exe);
+    run.addArg(b.fmt("--name={s}-engine-late", .{name}));
+    // A process per test: each race needs a process where nothing has
+    // started V8 yet.
+    run.addArg("--batch=1");
+    run.addArg(b.fmt("--launch-seed={s}", .{launch.seed}));
+    run.addArg(b.fmt("--timeout={d}", .{launch.timeout}));
+    addGroupArgs(b, run, launch, groups, false, false);
+    // A pattern matches a name with or without its directory prefix, so this
+    // selects the file in both layouts (-Dtest-binaries).
+    run.addArg("--filter=platform_start_once_test*");
+    // Its results beside the suite's own, never over them; the order is the
+    // plain run's (as a filtered run's is).
+    run.addArg(b.fmt("--out=tmp/test-launch/{s}.engine-late.jsonl", .{name}));
+    run.addArg(b.fmt("--timings=tmp/test-launch/{s}.jsonl", .{name}));
+    run.setCwd(b.path("."));
+    run.setEnvironmentVariable("CRANE_TEST_ENGINE_EARLY", "0");
+    if (std.mem.eql(u8, launch.seed, "random")) run.has_side_effects = true;
+    return run;
 }
 
 /// An executable that is compiled and never linked - nothing asks for its

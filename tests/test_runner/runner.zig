@@ -113,7 +113,11 @@ pub fn main(init: std.process.Init.Minimal) void {
     // initializeBeforeThreadCreation; V8's thread isolation key on x86-64
     // Linux), as every Crane host's main does first. A suite's tests start
     // V8 on whichever thread comes first, and every thread then has access.
-    if (suite.engine) |engine| engine.initializeBeforeThreadCreation();
+    // CRANE_TEST_ENGINE_EARLY=0 skips it, as a host that never calls it
+    // does: build.zig runs tests-v8's platform start tests that way too
+    // (`addEngineLateRun`), so the fallback - V8 without thread isolation,
+    // started on a later thread beside others - stays tested.
+    if (suite.engine) |engine| if (engineEarly(init.environ)) engine.initializeBeforeThreadCreation();
     const args = init.args.toSlice(fba.allocator()) catch |err| panic("unable to parse command line args: {t}", .{err});
 
     var listen = false;
@@ -139,6 +143,14 @@ pub fn main(init: std.process.Init.Minimal) void {
     } else {
         return mainTerminal(init);
     }
+}
+
+/// Whether the process start makes the engine's per-process state before any
+/// thread (engine.initializeBeforeThreadCreation): unless the environment
+/// says CRANE_TEST_ENGINE_EARLY=0.
+fn engineEarly(environ: std.process.Environ) bool {
+    const value = environ.getPosix("CRANE_TEST_ENGINE_EARLY") orelse return true;
+    return !std.mem.eql(u8, value, "0");
 }
 
 /// The many-Browsers variant, from the environment the launcher gives its

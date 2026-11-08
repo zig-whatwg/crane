@@ -155,9 +155,28 @@ fn memoryProtectionKeysAvailable() bool {
     return false;
 }
 
-test "the process start makes V8's platform before any thread: V8 gets thread isolation wherever the CPU has memory protection keys" {
-    // The Crane test runner calls engine.initializeBeforeThreadCreation()
-    // first in main, as every host's main does - so every thread a test makes
-    // inherits the key, and the races above run with V8's thread isolation on.
+/// Whether this process's start made V8's platform before any thread: the
+/// Crane test runner calls engine.initializeBeforeThreadCreation() first in
+/// main, as every host's main does, unless CRANE_TEST_ENGINE_EARLY=0 (build.zig
+/// runs this file both ways: `addEngineLateRun`).
+fn engineMadeEarly() bool {
+    const value = std.testing.environ.getPosix("CRANE_TEST_ENGINE_EARLY") orelse return true;
+    return !std.mem.eql(u8, value, "0");
+}
+
+test "V8 gets thread isolation exactly when the process start made its platform before any thread, on a CPU with memory protection keys" {
+    // Made first in main: every thread a test makes inherits the key, and the
+    // races above run with V8's thread isolation on. Skipped - the late runs:
+    // the races above start V8 on a later thread beside others, and V8 must
+    // then have no thread isolation, or the threads that existed before its
+    // key fault on their first read of its JSDispatchTable (x86-64 Linux).
+    if (!engineMadeEarly()) {
+        // The fallback: V8 started by an isolate made now, or earlier by a
+        // race above, gets no allocator.
+        const isolate = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
+        ffi.v8_Isolate_Dispose(isolate);
+        try std.testing.expect(!ffi.v8_Platform_HasThreadIsolation());
+        return;
+    }
     try std.testing.expectEqual(memoryProtectionKeysAvailable(), ffi.v8_Platform_HasThreadIsolation());
 }
