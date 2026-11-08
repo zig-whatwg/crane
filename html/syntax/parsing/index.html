@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../html/"><code>html/</code></a></li><li><a href="../../../html/syntax/"><code>syntax/</code></a></li><li aria-current="page"><code>parsing/</code></li></ol></nav>
 <h1 class="page-title"><code>html/<wbr>syntax/<wbr>parsing/</code></h1>
 <div class="figures" role="group" aria-label="html/syntax/parsing/">
-<p class="figures-main"><span class="fg-pass">8,090</span><span class="fg-of"> / 8,122</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>32</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>64</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">8,092</span><span class="fg-of"> / 8,122</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>30</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>64</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>8,114</b> / 8,122 WPT subtests passing on the same files, <span class="blk">2 blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of html/syntax/parsing/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">64 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="58 clean, 6 with failures, 0 blocking, 0 with no subtests, 0 not run, of 64 files"><span class="m-clean" style="width:90.625%"></span><span class="m-partial" style="width:9.375%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>58</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>6</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
+<div class="meter" role="img" aria-label="59 clean, 5 with failures, 0 blocking, 0 with no subtests, 0 not run, of 64 files"><span class="m-clean" style="width:92.188%"></span><span class="m-partial" style="width:7.813%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>59</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>5</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -1268,19 +1268,15 @@ elements</li><li>Testing altGlyph</li><li>Testing altGlyphDef</li><li>Testing al
 </div>
 </div>
 </details>
-<details class="tf" id="the-end.html" data-gate="partial" data-pass="2" data-of="4" data-failed="2" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>the-<wbr>end.<wbr>html</code></span><span class="tf-n"><b>2</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="the-end.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>the-<wbr>end.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/syntax/parsing/the-end.html"><code>html/<wbr>syntax/<wbr>parsing/<wbr>the-<wbr>end.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-d464c36de852"><details><summary><span class="mark">FAIL</span><span class="sub-name">load</span></summary><pre class="msg">assert_equals: target should be document expected Document node with 2 children but got object &quot;[object Window]&quot;</pre></details><a class="self" href="#s-d464c36de852" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-576ee1c9a85e"><details><summary><span class="mark">FAIL</span><span class="sub-name">pageshow</span></summary><pre class="msg">assert_true: bubbles should be true expected true got false</pre></details><a class="self" href="#s-576ee1c9a85e" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>DOMContentLoaded</li><li>order</li></ol></details>
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>DOMContentLoaded</li><li>load</li><li>pageshow</li><li>order</li></ol></details>
 </div>
 </div>
 </details>
@@ -1346,7 +1342,7 @@ elements</li><li>Testing altGlyph</li><li>Testing altGlyphDef</li><li>Testing al
 <li class="toc-suite"><a href="../../../cors/"><span class="secno">11</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
 <li class="toc-suite"><a href="../../../css/"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,297 test files">2,297</span></a></li>
 <li class="toc-suite"><a href="../../../custom-elements/"><span class="secno">13</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="180 test files">180</span></a></li>
-<li class="toc-suite"><a href="../../../dom/"><span class="secno">14</span><span class="toc-name">dom/</span><span class="toc-count" title="526 test files">526</span></a></li>
+<li class="toc-suite"><a href="../../../dom/"><span class="secno">14</span><span class="toc-name">dom/</span><span class="toc-count" title="525 test files">525</span></a></li>
 <li class="toc-suite"><a href="../../../domparsing/"><span class="secno">15</span><span class="toc-name">domparsing/</span><span class="toc-count" title="38 test files">38</span></a></li>
 <li class="toc-suite"><a href="../../../domxpath/"><span class="secno">16</span><span class="toc-name">domxpath/</span><span class="toc-count" title="28 test files">28</span></a></li>
 <li class="toc-suite"><a href="../../../editing/"><span class="secno">17</span><span class="toc-name">editing/</span><span class="toc-count" title="122 test files">122</span></a></li>
@@ -1355,7 +1351,7 @@ elements</li><li>Testing altGlyph</li><li>Testing altGlyphDef</li><li>Testing al
 <li class="toc-suite"><a href="../../../fetch/"><span class="secno">20</span><span class="toc-name">fetch/</span><span class="toc-count" title="310 test files">310</span></a></li>
 <li class="toc-suite"><a href="../../../hr-time/"><span class="secno">21</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
 <li class="toc-suite"><a href="../../../html-aam/"><span class="secno">22</span><span class="toc-name">html-aam/</span><span class="toc-count" title="25 test files">25</span></a></li>
-<li class="toc-suite"><a href="../../../html/" aria-current="page"><span class="secno">23</span><span class="toc-name">html/</span><span class="toc-count" title="2,807 test files">2,807</span></a></li>
+<li class="toc-suite"><a href="../../../html/" aria-current="page"><span class="secno">23</span><span class="toc-name">html/</span><span class="toc-count" title="2,804 test files">2,804</span></a></li>
 <li class="toc-suite"><a href="../../../mathml/"><span class="secno">24</span><span class="toc-name">mathml/</span><span class="toc-count" title="36 test files">36</span></a></li>
 <li class="toc-suite"><a href="../../../mimesniff/"><span class="secno">25</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
 <li class="toc-suite"><a href="../../../mixed-content/"><span class="secno">26</span><span class="toc-name">mixed-content/</span><span class="toc-count" title="384 test files">384</span></a></li>
@@ -1379,7 +1375,7 @@ elements</li><li>Testing altGlyph</li><li>Testing altGlyphDef</li><li>Testing al
 <li class="toc-suite"><a href="../../../user-timing/"><span class="secno">44</span><span class="toc-name">user-timing/</span><span class="toc-count" title="38 test files">38</span></a></li>
 <li class="toc-suite"><a href="../../../wai-aria/"><span class="secno">45</span><span class="toc-name">wai-aria/</span><span class="toc-count" title="21 test files">21</span></a></li>
 <li class="toc-suite"><a href="../../../wasm/"><span class="secno">46</span><span class="toc-name">wasm/</span><span class="toc-count" title="338 test files">338</span></a></li>
-<li class="toc-suite"><a href="../../../web-animations/"><span class="secno">47</span><span class="toc-name">web-animations/</span><span class="toc-count" title="135 test files">135</span></a></li>
+<li class="toc-suite"><a href="../../../web-animations/"><span class="secno">47</span><span class="toc-name">web-animations/</span><span class="toc-count" title="134 test files">134</span></a></li>
 <li class="toc-suite"><a href="../../../web-locks/"><span class="secno">48</span><span class="toc-name">web-locks/</span><span class="toc-count" title="23 test files">23</span></a></li>
 <li class="toc-suite"><a href="../../../webidl/"><span class="secno">49</span><span class="toc-name">webidl/</span><span class="toc-count" title="45 test files">45</span></a></li>
 <li class="toc-suite"><a href="../../../webmessaging/"><span class="secno">50</span><span class="toc-name">webmessaging/</span><span class="toc-count" title="130 test files">130</span></a></li>

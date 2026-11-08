@@ -68,9 +68,9 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-6ee7b5b75b04"><details><summary><span class="mark">FAIL</span><span class="sub-name">Initial about:blank is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;0c563403-f0e7-4f1f-8f39-27b50a6f0dd3&quot; but got &quot;72ccb052-84ef-44bb-8b80-d77b0ac2cd84&quot;</pre></details><a class="self" href="#s-6ee7b5b75b04" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-45d839f0b836"><details><summary><span class="mark">FAIL</span><span class="sub-name">Initial about:blank modified by parent is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;71770828-57e3-4906-9256-f0f623ae63f6&quot; but got &quot;b715c6d7-184a-49f6-8c78-4daeb4ea033e&quot;</pre></details><a class="self" href="#s-45d839f0b836" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9a02e1c30911"><details><summary><span class="mark">FAIL</span><span class="sub-name">Popup initial about:blank is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;454b10b0-77bc-44a2-8513-44c62ecaeef1&quot; but got &quot;e211280e-db9b-4377-908d-0a9f62ad384b&quot;</pre></details><a class="self" href="#s-9a02e1c30911" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6ee7b5b75b04"><details><summary><span class="mark">FAIL</span><span class="sub-name">Initial about:blank is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;84cb2fd1-58af-4282-bf6d-47e1fa929bae&quot; but got &quot;fa38ee1a-4eb5-4f4e-8c57-0c106c635465&quot;</pre></details><a class="self" href="#s-6ee7b5b75b04" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-45d839f0b836"><details><summary><span class="mark">FAIL</span><span class="sub-name">Initial about:blank modified by parent is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;30bd8067-6845-42f3-b7e8-4e45c490a66e&quot; but got &quot;54d42397-2506-4cf4-bc60-4e6ac2fa9a3e&quot;</pre></details><a class="self" href="#s-45d839f0b836" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9a02e1c30911"><details><summary><span class="mark">FAIL</span><span class="sub-name">Popup initial about:blank is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;700ad04e-2249-413c-b12e-ca9eedf339cf&quot; but got &quot;82e0785e-8af5-4baf-a9a4-1f798769526e&quot;</pre></details><a class="self" href="#s-9a02e1c30911" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-9ca26ac04137"><details><summary><span class="mark">FAIL</span><span class="sub-name">Nested about:srcdoc is controlled and is exposed to clients.matchAll().</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of null (reading &#39;scriptURL&#39;)&quot;</pre></details><a class="self" href="#s-9ca26ac04137" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 <details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>Initial about:blank is controlled, exposed to clients.matchAll(), and final Client is not controlled by a service worker.</li><li>Simple about:blank is controlled and is exposed to clients.matchAll().</li><li>Dynamic about:blank is controlled and is exposed to clients.matchAll().</li></ol></details>
@@ -1698,7 +1698,7 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-c7d239931278"><details><summary><span class="mark">FAIL</span><span class="sub-name">Service worker controlled navigation timing</span></summary><pre class="msg">assert_greater_than: fetchStart should be marked once the worker is activated expected a number greater than 1794051540234.5 but got 1794051540234.5</pre></details><a class="self" href="#s-c7d239931278" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c7d239931278"><details><summary><span class="mark">FAIL</span><span class="sub-name">Service worker controlled navigation timing</span></summary><pre class="msg">assert_greater_than: fetchStart should be marked before the Fetch event handler is called expected a number greater than 1794110923555.25 but got 1794110923555.25</pre></details><a class="self" href="#s-c7d239931278" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </div>
@@ -1724,7 +1724,7 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-3c9ac5423b6f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Service worker controlled navigation timing</span></summary><pre class="msg">assert_true: Expected fetchStart &lt;= requestStart expected true got false</pre></details><a class="self" href="#s-3c9ac5423b6f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-3c9ac5423b6f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Service worker controlled navigation timing</span></summary><pre class="msg">assert_greater_than: expected a number greater than 0 but got 0</pre></details><a class="self" href="#s-3c9ac5423b6f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-a2eec12c8da9"><details><summary><span class="mark">FAIL</span><span class="sub-name">Service worker controlled navigation timing network fallback</span></summary><pre class="msg">assert_greater_than: expected a number greater than 0 but got 0</pre></details><a class="self" href="#s-a2eec12c8da9" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 <details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Service worker controlled navigation timing redirect</li></ol></details>
@@ -2268,8 +2268,8 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-7f7231621b4c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test that timing allow check fails when service worker changes origin from same to cross origin (cors).</span></summary><pre class="msg">assert_equals: domainLookupStart and fetchStart should be the same in cross-origin request. expected 4.625 but got 0</pre></details><a class="self" href="#s-7f7231621b4c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-51b42e850b97"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test that timing allow check fails when service worker changes origin from same to cross origin (no-cors).</span></summary><pre class="msg">assert_equals: domainLookupStart and fetchStart should be the same in cross-origin request. expected 5 but got 0</pre></details><a class="self" href="#s-51b42e850b97" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7f7231621b4c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test that timing allow check fails when service worker changes origin from same to cross origin (cors).</span></summary><pre class="msg">assert_equals: domainLookupStart and fetchStart should be the same in cross-origin request. expected 3.625 but got 0</pre></details><a class="self" href="#s-7f7231621b4c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-51b42e850b97"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test that timing allow check fails when service worker changes origin from same to cross origin (no-cors).</span></summary><pre class="msg">assert_equals: domainLookupStart and fetchStart should be the same in cross-origin request. expected 5.875 but got 0</pre></details><a class="self" href="#s-51b42e850b97" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </div>
@@ -2299,7 +2299,7 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-2459fc990a2e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Controlled resource loads</span></summary><pre class="msg">assert_greater_than_equal: Generated response expected a number greater than or equal to 13.5 but got 0</pre></details><a class="self" href="#s-2459fc990a2e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2459fc990a2e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Controlled resource loads</span></summary><pre class="msg">assert_greater_than_equal: Generated response expected a number greater than or equal to 14.5 but got 0</pre></details><a class="self" href="#s-2459fc990a2e" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 <details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Non-controlled resource loads</li></ol></details>
 </div>
@@ -3186,7 +3186,7 @@
 <li class="toc-suite"><a href="../../cors/"><span class="secno">11</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
 <li class="toc-suite"><a href="../../css/"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,297 test files">2,297</span></a></li>
 <li class="toc-suite"><a href="../../custom-elements/"><span class="secno">13</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="180 test files">180</span></a></li>
-<li class="toc-suite"><a href="../../dom/"><span class="secno">14</span><span class="toc-name">dom/</span><span class="toc-count" title="526 test files">526</span></a></li>
+<li class="toc-suite"><a href="../../dom/"><span class="secno">14</span><span class="toc-name">dom/</span><span class="toc-count" title="525 test files">525</span></a></li>
 <li class="toc-suite"><a href="../../domparsing/"><span class="secno">15</span><span class="toc-name">domparsing/</span><span class="toc-count" title="38 test files">38</span></a></li>
 <li class="toc-suite"><a href="../../domxpath/"><span class="secno">16</span><span class="toc-name">domxpath/</span><span class="toc-count" title="28 test files">28</span></a></li>
 <li class="toc-suite"><a href="../../editing/"><span class="secno">17</span><span class="toc-name">editing/</span><span class="toc-count" title="122 test files">122</span></a></li>
@@ -3195,7 +3195,7 @@
 <li class="toc-suite"><a href="../../fetch/"><span class="secno">20</span><span class="toc-name">fetch/</span><span class="toc-count" title="310 test files">310</span></a></li>
 <li class="toc-suite"><a href="../../hr-time/"><span class="secno">21</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
 <li class="toc-suite"><a href="../../html-aam/"><span class="secno">22</span><span class="toc-name">html-aam/</span><span class="toc-count" title="25 test files">25</span></a></li>
-<li class="toc-suite"><a href="../../html/"><span class="secno">23</span><span class="toc-name">html/</span><span class="toc-count" title="2,807 test files">2,807</span></a></li>
+<li class="toc-suite"><a href="../../html/"><span class="secno">23</span><span class="toc-name">html/</span><span class="toc-count" title="2,804 test files">2,804</span></a></li>
 <li class="toc-suite"><a href="../../mathml/"><span class="secno">24</span><span class="toc-name">mathml/</span><span class="toc-count" title="36 test files">36</span></a></li>
 <li class="toc-suite"><a href="../../mimesniff/"><span class="secno">25</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
 <li class="toc-suite"><a href="../../mixed-content/"><span class="secno">26</span><span class="toc-name">mixed-content/</span><span class="toc-count" title="384 test files">384</span></a></li>
@@ -3219,7 +3219,7 @@
 <li class="toc-suite"><a href="../../user-timing/"><span class="secno">44</span><span class="toc-name">user-timing/</span><span class="toc-count" title="38 test files">38</span></a></li>
 <li class="toc-suite"><a href="../../wai-aria/"><span class="secno">45</span><span class="toc-name">wai-aria/</span><span class="toc-count" title="21 test files">21</span></a></li>
 <li class="toc-suite"><a href="../../wasm/"><span class="secno">46</span><span class="toc-name">wasm/</span><span class="toc-count" title="338 test files">338</span></a></li>
-<li class="toc-suite"><a href="../../web-animations/"><span class="secno">47</span><span class="toc-name">web-animations/</span><span class="toc-count" title="135 test files">135</span></a></li>
+<li class="toc-suite"><a href="../../web-animations/"><span class="secno">47</span><span class="toc-name">web-animations/</span><span class="toc-count" title="134 test files">134</span></a></li>
 <li class="toc-suite"><a href="../../web-locks/"><span class="secno">48</span><span class="toc-name">web-locks/</span><span class="toc-count" title="23 test files">23</span></a></li>
 <li class="toc-suite"><a href="../../webidl/"><span class="secno">49</span><span class="toc-name">webidl/</span><span class="toc-count" title="45 test files">45</span></a></li>
 <li class="toc-suite"><a href="../../webmessaging/"><span class="secno">50</span><span class="toc-name">webmessaging/</span><span class="toc-count" title="130 test files">130</span></a></li>

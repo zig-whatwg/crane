@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../web-animations/"><code>web-<wbr>animations/</code></a></li><li aria-current="page"><code>responsive/</code></li></ol></nav>
 <h1 class="page-title"><span class="secno">47.3</span><code>web-<wbr>animations/<wbr>responsive/</code></h1>
 <div class="figures" role="group" aria-label="web-animations/responsive/">
-<p class="figures-main"><span class="fg-pass">62</span><span class="fg-of"> / 98</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>36</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>39</dd></div><div class="blk"><dt>Blocking files</dt><dd>13</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">83</span><span class="fg-of"> / 98</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>15</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>39</dd></div><div class="blk"><dt>Blocking files</dt><dd>4</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>91</b> / 98 WPT subtests passing on the same files, <span class="quiet">none blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of web-animations/responsive/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">39 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="18 clean, 8 with failures, 13 blocking, 0 with no subtests, 0 not run, of 39 files"><span class="m-clean" style="width:46.154%"></span><span class="m-partial" style="width:20.513%"></span><span class="m-blocking" style="width:33.333%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>18</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>8</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>13</dd></div><p class="kinds"><b>13</b> NONE-PASSED</p></dl>
+<div class="meter" role="img" aria-label="29 clean, 6 with failures, 4 blocking, 0 with no subtests, 0 not run, of 39 files"><span class="m-clean" style="width:74.359%"></span><span class="m-partial" style="width:15.385%"></span><span class="m-blocking" style="width:10.256%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>29</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>6</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>4</dd></div><p class="kinds"><b>4</b> NONE-PASSED</p></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -66,46 +66,39 @@
 </div>
 </div>
 </details>
-<details class="tf" id="background-position-responsive.html" data-gate="none-passed" data-pass="0" data-of="2" data-failed="2" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>background-<wbr>position-<wbr>responsive.<wbr>html</code></span><span class="tf-n"><b>0</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="background-position-responsive.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>background-<wbr>position-<wbr>responsive.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/responsive/background-position-responsive.html"><code>web-<wbr>animations/<wbr>responsive/<wbr>background-<wbr>position-<wbr>responsive.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-b4fa26d6e3a0"><details><summary><span class="mark">FAIL</span><span class="sub-name">Animating from a neutral keyframe when the underlying style is explicitly set</span></summary><pre class="msg">assert_equals: backgroundPosition at 0.25 expected &quot;40px 70px&quot; but got &quot;20px 60px&quot;</pre></details><a class="self" href="#s-b4fa26d6e3a0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6d2a3287cc90"><details><summary><span class="mark">FAIL</span><span class="sub-name">Animating from a neutral keyframe when the underlying style is inherited from the parent</span></summary><pre class="msg">assert_equals: backgroundPosition at 0.25 expected &quot;40px 70px&quot; but got &quot;20px 60px&quot;</pre></details><a class="self" href="#s-6d2a3287cc90" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Animating from a neutral keyframe when the underlying style is explicitly set</li><li>Animating from a neutral keyframe when the underlying style is inherited from the parent</li></ol></details>
 </div>
 </div>
 </details>
-<details class="tf" id="backgroundPosition.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>backgroundPosition.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="backgroundPosition.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>backgroundPosition.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/responsive/backgroundPosition.html"><code>web-<wbr>animations/<wbr>responsive/<wbr>backgroundPosition.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-988f76cc1e0c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Background position responsive to style changes</span></summary><pre class="msg">assert_equals: expected &quot;15% 60px&quot; but got &quot;20% 100px&quot;</pre></details><a class="self" href="#s-988f76cc1e0c" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Background position responsive to style changes</li></ol></details>
 </div>
 </div>
 </details>
-<details class="tf" id="backgroundSize.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>backgroundSize.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="backgroundSize.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>backgroundSize.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/responsive/backgroundSize.html"><code>web-<wbr>animations/<wbr>responsive/<wbr>backgroundSize.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-f0287183f1dc"><details><summary><span class="mark">FAIL</span><span class="sub-name">Border image width responsive to font size changes</span></summary><pre class="msg">assert_equals: expected &quot;200px 20px&quot; but got &quot;100px 10px&quot;</pre></details><a class="self" href="#s-f0287183f1dc" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Border image width responsive to font size changes</li></ol></details>
 </div>
 </div>
 </details>
@@ -121,32 +114,27 @@
 </div>
 </div>
 </details>
-<details class="tf" id="borderImageWidth.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>borderImageWidth.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="borderImageWidth.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>borderImageWidth.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/responsive/borderImageWidth.html"><code>web-<wbr>animations/<wbr>responsive/<wbr>borderImageWidth.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-a99824b58bab"><details><summary><span class="mark">FAIL</span><span class="sub-name">Border image width responsive to font size changes</span></summary><pre class="msg">assert_equals: expected &quot;200px 20px&quot; but got &quot;100px 10px&quot;</pre></details><a class="self" href="#s-a99824b58bab" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Border image width responsive to font size changes</li></ol></details>
 </div>
 </div>
 </details>
-<details class="tf" id="borderRadius.html" data-gate="none-passed" data-pass="0" data-of="2" data-failed="2" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>borderRadius.<wbr>html</code></span><span class="tf-n"><b>0</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="borderRadius.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>borderRadius.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/responsive/borderRadius.html"><code>web-<wbr>animations/<wbr>responsive/<wbr>borderRadius.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-586032fbe976"><details><summary><span class="mark">FAIL</span><span class="sub-name">Border radius percentages are supported</span></summary><pre class="msg">assert_equals: expected &quot;10% 20%&quot; but got &quot;12% 24%&quot;</pre></details><a class="self" href="#s-586032fbe976" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5be974025fa2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Border radius lengths respond to style changes</span></summary><pre class="msg">assert_equals: expected &quot;200px 400px&quot; but got &quot;240px 480px&quot;</pre></details><a class="self" href="#s-5be974025fa2" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>Border radius percentages are supported</li><li>Border radius lengths respond to style changes</li></ol></details>
 </div>
 </div>
 </details>
@@ -239,17 +227,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="font-size-adjust.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>font-<wbr>size-<wbr>adjust.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="font-size-adjust.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>font-<wbr>size-<wbr>adjust.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/responsive/font-size-adjust.html"><code>web-<wbr>animations/<wbr>responsive/<wbr>font-<wbr>size-<wbr>adjust.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-75fcde8187b3"><details><summary><span class="mark">FAIL</span><span class="sub-name">font-size-adjust responsive to inherited font-size-adjust changes</span></summary><pre class="msg">assert_equals: expected &quot;3&quot; but got &quot;2&quot;</pre></details><a class="self" href="#s-75fcde8187b3" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>font-size-adjust responsive to inherited font-size-adjust changes</li></ol></details>
 </div>
 </div>
 </details>
@@ -305,17 +291,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="offset-path.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>offset-<wbr>path.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="offset-path.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>offset-<wbr>path.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/responsive/offset-path.html"><code>web-<wbr>animations/<wbr>responsive/<wbr>offset-<wbr>path.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-fb6ec3b6f807"><details><summary><span class="mark">FAIL</span><span class="sub-name">offset-path responsive to inherited offset-path changes</span></summary><pre class="msg">assert_equals: expected &quot;path(\&quot;M 0 0 H 300\&quot;)&quot; but got &quot;path(\&quot;M 0 0 H 200\&quot;)&quot;</pre></details><a class="self" href="#s-fb6ec3b6f807" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>offset-path responsive to inherited offset-path changes</li></ol></details>
 </div>
 </div>
 </details>
@@ -331,17 +315,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="offsetRotate.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>offsetRotate.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="offsetRotate.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>offsetRotate.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/responsive/offsetRotate.html"><code>web-<wbr>animations/<wbr>responsive/<wbr>offsetRotate.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-cdd6a041194f"><details><summary><span class="mark">FAIL</span><span class="sub-name">offsetRotate responsive to inherited offsetRotate changes</span></summary><pre class="msg">assert_equals: expected &quot;auto 150deg&quot; but got &quot;auto 200deg&quot;</pre></details><a class="self" href="#s-cdd6a041194f" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>offsetRotate responsive to inherited offsetRotate changes</li></ol></details>
 </div>
 </div>
 </details>
@@ -411,19 +393,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="shapeOutside.html" data-gate="partial" data-pass="1" data-of="3" data-failed="2" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>shapeOutside.<wbr>html</code></span><span class="tf-n"><b>1</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="shapeOutside.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>shapeOutside.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/responsive/shapeOutside.html"><code>web-<wbr>animations/<wbr>responsive/<wbr>shapeOutside.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-8dd10d1b56dd"><details><summary><span class="mark">FAIL</span><span class="sub-name">shapeOutside responsive to inherited shapeOutside changes</span></summary><pre class="msg">assert_equals: expected &quot;circle(150px at 50% 50%)&quot; but got &quot;circle(200px at 50% 50%)&quot;</pre></details><a class="self" href="#s-8dd10d1b56dd" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6439423fa93f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Neutral path() keyframes invalidate when the underlying &lt;shape-box&gt; changes</span></summary><pre class="msg">assert_equals: expected &quot;path(\&quot;M 30 30 L 40 40 Z\&quot;) border-box&quot; but got &quot;path(\&quot;M 50 50 L 60 60 Z\&quot;) border-box&quot;</pre></details><a class="self" href="#s-6439423fa93f" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>shapeOutside responsive to style changes</li></ol></details>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>shapeOutside responsive to style changes</li><li>shapeOutside responsive to inherited shapeOutside changes</li><li>Neutral path() keyframes invalidate when the underlying &lt;shape-box&gt; changes</li></ol></details>
 </div>
 </div>
 </details>
@@ -455,22 +433,19 @@
 </div>
 </div>
 </details>
-<details class="tf" id="textIndent.html" data-gate="partial" data-pass="1" data-of="2" data-failed="1" data-ref-pass="1" data-ref-of="2"><summary><span class="tf-name"><code>textIndent.<wbr>html</code></span><span class="tf-n"><b>1</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 2</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="textIndent.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="1" data-ref-of="2"><summary><span class="tf-name"><code>textIndent.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>1</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/responsive/textIndent.html"><code>web-<wbr>animations/<wbr>responsive/<wbr>textIndent.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-f9888dd22944"><details><summary><span class="mark">FAIL</span><span class="sub-name">textIndent responsive to inherited textIndent changes</span></summary><pre class="msg">assert_equals: expected &quot;150px hanging each-line&quot; but got &quot;200px hanging each-line&quot;</pre></details><a class="self" href="#s-f9888dd22944" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>textIndent responsive to style changes</li></ol></details>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>textIndent responsive to style changes</li><li>textIndent responsive to inherited textIndent changes</li></ol></details>
 </div>
 </div>
 </details>
-<details class="tf" id="to-color-change.html" data-gate="partial" data-pass="5" data-of="13" data-failed="8" data-ref-pass="13" data-ref-of="13"><summary><span class="tf-name"><code>to-<wbr>color-<wbr>change.<wbr>html</code></span><span class="tf-n"><b>5</b> / 13<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>13</b> / 13</span><span class="tf-fail"><span class="fail">8</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="to-color-change.html" data-gate="partial" data-pass="12" data-of="13" data-failed="1" data-ref-pass="13" data-ref-of="13"><summary><span class="tf-name"><code>to-<wbr>color-<wbr>change.<wbr>html</code></span><span class="tf-n"><b>12</b> / 13<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>13</b> / 13</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
@@ -479,16 +454,9 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-df5ffa287f51"><details><summary><span class="mark">FAIL</span><span class="sub-name">Background color responsive to currentColor changes</span></summary><pre class="msg">assert_equals: expected &quot;rgb(0, 34, 102)&quot; but got &quot;rgb(0, 68, 0)&quot;</pre></details><a class="self" href="#s-df5ffa287f51" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-35afc9fda5ba"><details><summary><span class="mark">FAIL</span><span class="sub-name">Fill color responsive to currentColor changes</span></summary><pre class="msg">assert_equals: expected &quot;rgb(0, 34, 102)&quot; but got &quot;rgb(0, 68, 0)&quot;</pre></details><a class="self" href="#s-35afc9fda5ba" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5c57bcc9d84d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Color interpolation uses pre-multiplied colors</span></summary><pre class="msg">assert_equals: expected &quot;rgba(206, 215, 200, 0.596)&quot; but got &quot;rgba(250, 240, 220, 0.43)&quot;</pre></details><a class="self" href="#s-5c57bcc9d84d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-f8042a0a09ba"><details><summary><span class="mark">FAIL</span><span class="sub-name">Border color responsive to currentColor changes</span></summary><pre class="msg">assert_equals: expected &quot;rgb(0, 34, 102)&quot; but got &quot;rgb(0, 68, 0)&quot;</pre></details><a class="self" href="#s-f8042a0a09ba" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b6ac5bd358cb"><details><summary><span class="mark">FAIL</span><span class="sub-name">Border color responsive to currentColor changes again</span></summary><pre class="msg">assert_equals: expected &quot;rgb(0, 34, 100)&quot; but got &quot;rgb(0, 68, 0)&quot;</pre></details><a class="self" href="#s-b6ac5bd358cb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e22a117ff74d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Outline color responsive to currentColor changes</span></summary><pre class="msg">assert_equals: expected &quot;rgb(0, 34, 102)&quot; but got &quot;rgb(0, 68, 0)&quot;</pre></details><a class="self" href="#s-e22a117ff74d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8d23f353afcb"><details><summary><span class="mark">FAIL</span><span class="sub-name">Stroke color responsive to currentColor changes</span></summary><pre class="msg">assert_equals: expected &quot;rgb(0, 34, 102)&quot; but got &quot;rgb(0, 0, 204)&quot;</pre></details><a class="self" href="#s-8d23f353afcb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ace30eb08c5f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Text decoration color responsive to currentColor changes</span></summary><pre class="msg">assert_equals: expected &quot;rgb(0, 34, 102)&quot; but got &quot;rgb(0, 0, 204)&quot;</pre></details><a class="self" href="#s-ace30eb08c5f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-5c57bcc9d84d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Color interpolation uses pre-multiplied colors</span></summary><pre class="msg">assert_equals: expected &quot;rgba(206, 215, 200, 0.596)&quot; but got &quot;rgba(206, 215, 200, 0.595)&quot;</pre></details><a class="self" href="#s-5c57bcc9d84d" aria-label="Link to this subtest">&para;</a></li>
 </ol>
-<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>Color responsive to parent currentColor changes</li><li>Color responsive to repeated parent currentColor changes</li><li>Color animations do not expose visited status</li><li>Color animations do not expose parent visited status</li><li>Color animations respond to inherited changes</li></ol></details>
+<details class="passing"><summary>12 passing subtests</summary><ol class="pass-list"><li>Background color responsive to currentColor changes</li><li>Fill color responsive to currentColor changes</li><li>Border color responsive to currentColor changes</li><li>Border color responsive to currentColor changes again</li><li>Outline color responsive to currentColor changes</li><li>Stroke color responsive to currentColor changes</li><li>Text decoration color responsive to currentColor changes</li><li>Color responsive to parent currentColor changes</li><li>Color responsive to repeated parent currentColor changes</li><li>Color animations do not expose visited status</li><li>Color animations do not expose parent visited status</li><li>Color animations respond to inherited changes</li></ol></details>
 </div>
 </div>
 </details>
@@ -519,17 +487,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="transform.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>transform.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="transform.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>transform.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/web-animations/responsive/transform.html"><code>web-<wbr>animations/<wbr>responsive/<wbr>transform.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-3ac79b182b0a"><details><summary><span class="mark">FAIL</span><span class="sub-name">Transform responsive to font size changes</span></summary><pre class="msg">assert_equals: expected &quot;matrix(1, 0, 0, 1, 240, 0)&quot; but got &quot;matrix(1, 0, 0, 1, 200, 0)&quot;</pre></details><a class="self" href="#s-3ac79b182b0a" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Transform responsive to font size changes</li></ol></details>
 </div>
 </div>
 </details>
@@ -598,7 +564,7 @@
 <li class="toc-suite"><a href="../../cors/"><span class="secno">11</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
 <li class="toc-suite"><a href="../../css/"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,297 test files">2,297</span></a></li>
 <li class="toc-suite"><a href="../../custom-elements/"><span class="secno">13</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="180 test files">180</span></a></li>
-<li class="toc-suite"><a href="../../dom/"><span class="secno">14</span><span class="toc-name">dom/</span><span class="toc-count" title="526 test files">526</span></a></li>
+<li class="toc-suite"><a href="../../dom/"><span class="secno">14</span><span class="toc-name">dom/</span><span class="toc-count" title="525 test files">525</span></a></li>
 <li class="toc-suite"><a href="../../domparsing/"><span class="secno">15</span><span class="toc-name">domparsing/</span><span class="toc-count" title="38 test files">38</span></a></li>
 <li class="toc-suite"><a href="../../domxpath/"><span class="secno">16</span><span class="toc-name">domxpath/</span><span class="toc-count" title="28 test files">28</span></a></li>
 <li class="toc-suite"><a href="../../editing/"><span class="secno">17</span><span class="toc-name">editing/</span><span class="toc-count" title="122 test files">122</span></a></li>
@@ -607,7 +573,7 @@
 <li class="toc-suite"><a href="../../fetch/"><span class="secno">20</span><span class="toc-name">fetch/</span><span class="toc-count" title="310 test files">310</span></a></li>
 <li class="toc-suite"><a href="../../hr-time/"><span class="secno">21</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
 <li class="toc-suite"><a href="../../html-aam/"><span class="secno">22</span><span class="toc-name">html-aam/</span><span class="toc-count" title="25 test files">25</span></a></li>
-<li class="toc-suite"><a href="../../html/"><span class="secno">23</span><span class="toc-name">html/</span><span class="toc-count" title="2,807 test files">2,807</span></a></li>
+<li class="toc-suite"><a href="../../html/"><span class="secno">23</span><span class="toc-name">html/</span><span class="toc-count" title="2,804 test files">2,804</span></a></li>
 <li class="toc-suite"><a href="../../mathml/"><span class="secno">24</span><span class="toc-name">mathml/</span><span class="toc-count" title="36 test files">36</span></a></li>
 <li class="toc-suite"><a href="../../mimesniff/"><span class="secno">25</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
 <li class="toc-suite"><a href="../../mixed-content/"><span class="secno">26</span><span class="toc-name">mixed-content/</span><span class="toc-count" title="384 test files">384</span></a></li>
@@ -631,7 +597,7 @@
 <li class="toc-suite"><a href="../../user-timing/"><span class="secno">44</span><span class="toc-name">user-timing/</span><span class="toc-count" title="38 test files">38</span></a></li>
 <li class="toc-suite"><a href="../../wai-aria/"><span class="secno">45</span><span class="toc-name">wai-aria/</span><span class="toc-count" title="21 test files">21</span></a></li>
 <li class="toc-suite"><a href="../../wasm/"><span class="secno">46</span><span class="toc-name">wasm/</span><span class="toc-count" title="338 test files">338</span></a></li>
-<li class="toc-suite"><a href="../../web-animations/" aria-current="page"><span class="secno">47</span><span class="toc-name">web-animations/</span><span class="toc-count" title="135 test files">135</span></a></li>
+<li class="toc-suite"><a href="../../web-animations/" aria-current="page"><span class="secno">47</span><span class="toc-name">web-animations/</span><span class="toc-count" title="134 test files">134</span></a></li>
 <li class="toc-suite"><a href="../../web-locks/"><span class="secno">48</span><span class="toc-name">web-locks/</span><span class="toc-count" title="23 test files">23</span></a></li>
 <li class="toc-suite"><a href="../../webidl/"><span class="secno">49</span><span class="toc-name">webidl/</span><span class="toc-count" title="45 test files">45</span></a></li>
 <li class="toc-suite"><a href="../../webmessaging/"><span class="secno">50</span><span class="toc-name">webmessaging/</span><span class="toc-count" title="130 test files">130</span></a></li>
