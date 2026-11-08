@@ -58,8 +58,6 @@ pub const InternalState = struct {
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
-    allocator: std.mem.Allocator,
-
     /// HTML 2.5.6 [[CryptographicNonce]], owned independently of the content
     /// attribute. Null means unused/removed; an explicitly empty slot may
     /// still accompany a nonempty attribute that must hide on connection.
@@ -97,9 +95,8 @@ pub const InternalState = struct {
     style_declaration: ?*runtime.Instance = null,
     style_declaration_kept: same_object.KeptChild = .{},
 
-    pub fn init(allocator: std.mem.Allocator) InternalState {
+    pub fn init() InternalState {
         return .{
-            .allocator = allocator,
             .cryptographic_nonce = null,
             .was_focused_by_script = false,
             .element_internals = null,
@@ -109,8 +106,11 @@ pub const InternalState = struct {
         };
     }
 
-    pub fn deinit(self: *InternalState) void {
-        if (self.cryptographic_nonce) |nonce| self.allocator.free(nonce);
+    /// `allocator` is its element's Browser's (runtime.allocatorOf), which
+    /// made the nonce: the state keeps no copy (lane perf3 D2). Both exits
+    /// run this: the element's deinit and its Browser's teardown sweep.
+    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
+        if (self.cryptographic_nonce) |nonce| allocator.free(nonce);
         // element.style is severed from the element (its wrapper, which the
         // element's traced, goes with the element's).
         if (self.style_declaration) |style| self.style_declaration_kept.releaseOwned(style);
@@ -131,12 +131,16 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = StateType;
     _ = args;
+    // What it frees goes through its Browser's allocator (runtime.allocatorOf),
+    // which Element's init, run first by the generated chain, asserts it was
+    // made with.
+    _ = allocator;
     // Initialize HTMLElement's own internal state in its own State (runtime.OwnState)
     // The block is the arena's, and `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.create(instance);
-    internal.* = InternalState.init(allocator);
+    internal.* = InternalState.init();
 }
 
 /// HTMLElement's own teardown: the generated chain runs Element's after it.
@@ -145,7 +149,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     if (Registry.get(instance)) |internal| {
         if (internal.internals_traced) @import("engine").forgetTracedChild(instance, .{ .name = "elementInternals" });
         if (!internal.internals_traced) if (internal.element_internals) |internals| runtime.Instance.deinit(internals);
-        internal.deinit();
+        internal.deinit(runtime.allocatorOf(instance));
     }
     Registry.remove(instance);
 }
@@ -766,8 +770,8 @@ pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: runtime.DOM
 
 pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternalState(instance) orelse return error.InvalidStateError;
-    const copy = try internal.allocator.dupe(u8, value.asSlice());
-    if (internal.cryptographic_nonce) |old| internal.allocator.free(old);
+    const copy = try runtime.allocatorOf(instance).dupe(u8, value.asSlice());
+    if (internal.cryptographic_nonce) |old| runtime.allocatorOf(instance).free(old);
     internal.cryptographic_nonce = copy;
 }
 
@@ -937,11 +941,11 @@ fn nonceAttributeChanged(instance: *runtime.Instance, _: []const u8, _: ?[]const
         set_nonce(instance, runtime.DOMString.initInterned(bytes)) catch {
             // The attribute has already changed. A failed copy must never
             // leave its previous nonce authorizing the new content.
-            if (internal.cryptographic_nonce) |old| internal.allocator.free(old);
+            if (internal.cryptographic_nonce) |old| runtime.allocatorOf(instance).free(old);
             internal.cryptographic_nonce = null;
         };
     } else {
-        if (internal.cryptographic_nonce) |old| internal.allocator.free(old);
+        if (internal.cryptographic_nonce) |old| runtime.allocatorOf(instance).free(old);
         internal.cryptographic_nonce = null;
     }
 }
@@ -974,7 +978,7 @@ fn nonceConnectionSteps(node: *dom.NodeBase) void {
     // attribute-change step clears it, then restore it without copying.
     internal.cryptographic_nonce = null;
     defer {
-        if (internal.cryptographic_nonce) |empty| internal.allocator.free(empty);
+        if (internal.cryptographic_nonce) |empty| runtime.allocatorOf(instance).free(empty);
         internal.cryptographic_nonce = saved;
     }
     dom.element_attributes.set(instance, "nonce", "", .{}) catch {};
@@ -986,7 +990,7 @@ fn nonceCloningSteps(node: *runtime.Instance, copy: *runtime.Instance, _: bool) 
     if (source.cryptographic_nonce) |nonce| {
         try set_nonce(copy, runtime.DOMString.initInterned(nonce));
     } else if (getInternalState(copy)) |target| {
-        if (target.cryptographic_nonce) |old| target.allocator.free(old);
+        if (target.cryptographic_nonce) |old| runtime.allocatorOf(copy).free(old);
         target.cryptographic_nonce = null;
     }
 }
