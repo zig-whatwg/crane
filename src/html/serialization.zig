@@ -24,7 +24,7 @@ pub fn fragment(node: *runtime.Instance, force_html: bool) !runtime.DOMString {
 pub fn fragmentWithShadowRoots(node: *runtime.Instance, serializable_shadow_roots: bool, shadow_roots: []const *runtime.Instance) !runtime.DOMString {
     var writer = Writer{ .allocator = node.ctx.allocator, .html = true, .well_formed = true, .serializable_shadow_roots = serializable_shadow_roots, .shadow_roots = shadow_roots };
     defer writer.deinit();
-    try writer.children(node, null);
+    try writer.walk(node, true, null);
     return runtime.DOMString.initOwned(try writer.output.toOwnedSlice(writer.allocator));
 }
 
@@ -46,7 +46,7 @@ fn serialize(allocator: std.mem.Allocator, node: *runtime.Instance, children_onl
     var writer = Writer{ .allocator = allocator, .html = html, .well_formed = well_formed };
     defer writer.deinit();
     if (!html) try writer.bindings.append(writer.allocator, .{ .prefix = "xml", .namespace = xml_ns });
-    if (children_only) try writer.children(node, null) else try writer.node(node, null);
+    try writer.walk(node, children_only, null);
     return runtime.DOMString.initOwned(try writer.output.toOwnedSlice(writer.allocator));
 }
 
@@ -87,8 +87,61 @@ const Writer = struct {
     /// and shadowRoots (getHTML's options; false and empty otherwise).
     serializable_shadow_roots: bool = false,
     shadow_roots: []const *runtime.Instance = &.{},
+    /// The containers whose children are being written, innermost last: the
+    /// algorithms' recursion over children, kept on the heap (`walk`).
+    open: std.ArrayList(Open) = .empty,
+
+    /// One container whose children are being written: an element, a
+    /// document or fragment, or a shadow root written as a template.
+    const Open = struct {
+        /// The next child to write; null once they are all written.
+        next: ?*runtime.Instance,
+        /// The namespace the children inherit (XML serialization's
+        /// "context namespace").
+        namespace: ?[]const u8,
+        /// A shadow root to write first, as a declarative shadow root's
+        /// template (HTML fragment serialization step 4), before the light
+        /// children.
+        shadow: ?*runtime.Instance = null,
+        /// What closes it once its children are written.
+        close: Close,
+    };
+
+    const Close = union(enum) {
+        /// A document, a fragment, or the node a children-only walk starts at.
+        none,
+        /// A shadow root's template: "</template>".
+        template,
+        /// An element's end tag, and its namespace scope.
+        element: ElementEnd,
+    };
+
+    /// What an element's end tag needs once its children are written: its
+    /// qualified name (`prefix` and `name` point into the strings kept here,
+    /// or into the writer's or the element's own storage), and where its
+    /// prefix scope began. The strings are freed when it closes.
+    const ElementEnd = struct {
+        allocator: std.mem.Allocator,
+        local: runtime.DOMString,
+        ns_string: ?runtime.DOMString,
+        prefix_string: ?runtime.DOMString,
+        prefix: ?[]const u8,
+        name: []const u8,
+        scope_start: usize,
+
+        fn deinit(self: *ElementEnd) void {
+            self.local.deinit(self.allocator);
+            if (self.ns_string) |*str| str.deinit(self.allocator);
+            if (self.prefix_string) |*str| str.deinit(self.allocator);
+        }
+    };
 
     fn deinit(self: *Writer) void {
+        for (self.open.items) |*open| switch (open.close) {
+            .element => |*end| end.deinit(),
+            else => {},
+        };
+        self.open.deinit(self.allocator);
         self.output.deinit(self.allocator);
         self.bindings.deinit(self.allocator);
         for (self.generated.items) |s| self.allocator.free(s);
@@ -138,24 +191,72 @@ const Writer = struct {
         try self.add("\"");
     }
 
-    fn children(self: *Writer, parent: *runtime.Instance, namespace: ?[]const u8) anyerror!void {
-        // HTML fragment steps 1 and 3; XML element steps 18–19.
-        if (self.html and parent.stateAs(interfaces.Element.State) != null) {
+    /// Write `root` - or, `children_only`, its children - with the children
+    /// inherited `namespace`: the HTML fragment serialization algorithm and
+    /// XML serialization, whose steps recurse once per tree level, over an
+    /// explicit stack of open containers instead (lane crash1 b2: a
+    /// 100,000-deep tree overflowed the native stack in outerHTML, innerHTML
+    /// and XMLSerializer, children -> node -> element -> children). The output
+    /// is the recursion's, byte for byte. Firefox 159 serializes a
+    /// 100,000-deep tree; Chrome 156 crashes; WebKit stops recursing at
+    /// ContainerNode.cpp's cloneMaxDepth (1024). The spec sets no limit, so
+    /// the whole tree, as Firefox.
+    fn walk(self: *Writer, root: *runtime.Instance, children_only: bool, namespace: ?[]const u8) anyerror!void {
+        if (children_only) try self.openChildren(root, namespace, .none) else try self.node(root, namespace);
+        while (self.open.items.len != 0) {
+            const top = &self.open.items[self.open.items.len - 1];
+            // HTML fragment step 4: the shadow root first, as a template.
+            if (top.shadow) |shadow| {
+                top.shadow = null;
+                try self.shadowRoot(shadow);
+                continue;
+            }
+            if (top.next) |child| {
+                top.next = try interfaces.Node.get_nextSibling(child);
+                try self.node(child, top.namespace);
+                continue;
+            }
+            var done = self.open.pop().?;
+            switch (done.close) {
+                .none => {},
+                .template => try self.add("</template>"),
+                .element => |*end| {
+                    defer end.deinit();
+                    try self.add("</");
+                    try self.qualified(end.prefix, end.name);
+                    try self.add(">");
+                    self.bindings.items.len = end.scope_start;
+                },
+            }
+        }
+    }
+
+    /// Start writing `parent`'s children (with `close` once they are done):
+    /// push it as an open container. HTML fragment steps 1 and 3; XML
+    /// element steps 18-19.
+    fn openChildren(self: *Writer, parent: *runtime.Instance, namespace: ?[]const u8, close: Close) anyerror!void {
+        var closing = close;
+        errdefer switch (closing) {
+            .element => |*end| end.deinit(),
+            else => {},
+        };
+        var open: Open = .{ .next = null, .namespace = namespace, .close = undefined };
+        if (self.html and parent.stateAs(interfaces.Element.State) != null) skip: {
             var ns = try interfaces.Element.get_namespaceURI(parent);
-            defer if (ns) |*s| s.deinit(parent.ctx.allocator);
+            defer if (ns) |*str| str.deinit(parent.ctx.allocator);
             var name = try interfaces.Element.get_localName(parent);
             defer name.deinit(parent.ctx.allocator);
-            if (same(optionalString(ns), html_ns) and isVoid(name.asSlice())) return;
+            if (same(optionalString(ns), html_ns) and isVoid(name.asSlice())) break :skip;
+            // HTML fragment step 4: a shadow host's shadow root, when asked
+            // for. innerHTML and outerHTML ask for none, and look nothing up.
+            if (self.serializable_shadow_roots or self.shadow_roots.len != 0) open.shadow = dom.shadow_hosts.rootForHost(parent);
+            open.next = try interfaces.Node.get_firstChild(try dom.template_contents.insertionTarget(parent));
+        } else {
+            open.next = try interfaces.Node.get_firstChild(try dom.template_contents.insertionTarget(parent));
         }
-        // HTML fragment step 4: a shadow host's shadow root, when asked for.
-        // innerHTML and outerHTML ask for none, and look nothing up.
-        if (self.html and (self.serializable_shadow_roots or self.shadow_roots.len != 0) and parent.stateAs(interfaces.Element.State) != null) {
-            if (dom.shadow_hosts.rootForHost(parent)) |shadow| try self.shadowRoot(shadow);
-        }
-        const target = try dom.template_contents.insertionTarget(parent);
-        var child = try interfaces.Node.get_firstChild(target);
-        while (child) |current| : (child = try interfaces.Node.get_nextSibling(current))
-            try self.node(current, namespace);
+        open.close = closing;
+        try self.open.append(self.allocator, open);
+        closing = .none;
     }
 
     /// HTML fragment serialization step 4.2: `shadow`, a shadow host's
@@ -182,10 +283,9 @@ const Writer = struct {
         if (try interfaces.ShadowRoot.get_clonable(shadow)) try self.add(" shadowrootclonable=\"\"");
         // 4.2.8-4.2.9: shouldAppendRegistryAttribute.
         if (try appendsRegistryAttribute(shadow)) try self.add(" shadowrootcustomelementregistry=\"\"");
-        // 4.2.10-4.2.12.
+        // 4.2.10-4.2.12: its children, then "</template>" (`walk`).
         try self.add(">");
-        try self.children(shadow, null);
-        try self.add("</template>");
+        try self.openChildren(shadow, null, .template);
     }
 
     /// Step 4.2.8: false when the shadow root's node document's registry and
@@ -234,7 +334,7 @@ const Writer = struct {
             // XML Document step 1.
             if (!self.html and self.well_formed and kind == interfaces.Node.get_DOCUMENT_NODE() and
                 try interfaces.Document.get_documentElement(value) == null) return error.InvalidStateError;
-            return self.children(value, namespace);
+            return self.openChildren(value, namespace, .none);
         }
         if (kind == interfaces.Node.get_ATTRIBUTE_NODE()) return;
         if (kind == interfaces.Node.get_DOCUMENT_TYPE_NODE()) return self.doctype(value);
@@ -278,19 +378,35 @@ const Writer = struct {
         }
     }
 
+    /// An element's start tag, and its children and end tag pushed for
+    /// `walk` - its strings and namespace scope kept until its end tag.
     fn element(self: *Writer, value: *runtime.Instance, inherited: ?[]const u8) anyerror!void {
-        var local = try interfaces.Element.get_localName(value);
-        defer local.deinit(value.ctx.allocator);
-        var ns_string = try interfaces.Element.get_namespaceURI(value);
-        defer if (ns_string) |*s| s.deinit(value.ctx.allocator);
-        var prefix_string = try interfaces.Element.get_prefix(value);
-        defer if (prefix_string) |*s| s.deinit(value.ctx.allocator);
-        const name = local.asSlice();
-        const ns = optionalString(ns_string);
-        var prefix = optionalString(prefix_string);
+        const allocator = value.ctx.allocator;
+        // Kept until the end tag (ElementEnd), unless no end tag is written.
+        var end: ElementEnd = .{
+            .allocator = allocator,
+            .local = try interfaces.Element.get_localName(value),
+            .ns_string = null,
+            .prefix_string = null,
+            .prefix = null,
+            .name = "",
+            .scope_start = self.bindings.items.len,
+        };
+        var end_owned = true;
+        defer if (end_owned) end.deinit();
+        end.ns_string = try interfaces.Element.get_namespaceURI(value);
+        end.prefix_string = try interfaces.Element.get_prefix(value);
+        const name = end.local.asSlice();
+        const ns = optionalString(end.ns_string);
+        var prefix = optionalString(end.prefix_string);
         var child_ns = inherited;
-        const scope_start = self.bindings.items.len;
-        defer self.bindings.items.len = scope_start;
+        const scope_start = end.scope_start;
+        // The scope ends with the element's end tag (`walk`), or here when
+        // none follows.
+        var scope_kept = false;
+        defer if (!scope_kept) {
+            self.bindings.items.len = scope_start;
+        };
         var default_ns: ?[]const u8 = null;
         var ignore_default = false;
         var declare: ?Binding = null;
@@ -384,10 +500,12 @@ const Writer = struct {
         }
         try self.add(">");
         if (self.html and same(ns, html_ns) and isVoid(name)) return;
-        try self.children(value, child_ns);
-        try self.add("</");
-        try self.qualified(prefix, name);
-        try self.add(">");
+        // Its children next, then its end tag (`walk`).
+        end.prefix = prefix;
+        end.name = name;
+        end_owned = false;
+        scope_kept = true;
+        try self.openChildren(value, child_ns, .{ .element = end });
     }
 
     fn found(self: *Writer, prefix: []const u8, namespace: ?[]const u8) bool {

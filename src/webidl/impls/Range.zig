@@ -27,8 +27,6 @@ const dom = @import("dom");
 const Link = @import("same_object.zig").Link;
 const document_internals = @import("dom").document_internals;
 
-const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
-
 pub const State = Range.State;
 
 pub const ImplError = error{
@@ -102,9 +100,6 @@ pub const InternalState = struct {
     }
 };
 
-/// Get internal state from instance using shared accessor
-const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
-
 /// The members a live range keeps its boundary nodes in (engine.traceChild).
 /// A range script holds keeps its start and end nodes - and through them
 /// their trees and their document - for as long as it lives. Blink:
@@ -140,8 +135,17 @@ fn keepContainers(range: *runtime.Instance, internal: *InternalState) void {
     }
 }
 
+/// This Range's state, or null when `instance` is not a Range: the brand check,
+/// as ProcessingInstruction's and HTMLLinkElement's (lane crash1 b2, the SAFETY
+/// item of perf3 D1). dom.range_boundaries promises null "for an object with no
+/// Range state" (`points`): a document's live-range walks (dom.mutation,
+/// execCommand) hand it each listed entry, and boundariesOf answers for every
+/// AbstractRange. The unchecked cast this replaces (InternalStateAccessor:
+/// `instance.getState(State)`) read another type's State at this one's
+/// `own._internal` offset as a pointer.
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return Accessor.get(instance);
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,

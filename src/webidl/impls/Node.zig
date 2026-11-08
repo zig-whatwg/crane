@@ -269,12 +269,10 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 
 /// Deinitialize instance
 ///
-/// This performs proper DOM tree cleanup by recursively deinitializing all
-/// child nodes before cleaning up this node's own resources. This ensures
-/// the entire subtree is properly freed when a node is destroyed.
-///
-/// Per DOM spec semantics, destroying a parent node should release all
-/// child nodes since they are no longer reachable through the tree.
+/// This frees the node's whole subtree - every descendant, leaves first,
+/// without recursion (dom.tree_teardown.freeAllDescendants) - before cleaning
+/// up this node's own resources, so the entire subtree is freed when a node
+/// is destroyed: its children are no longer reachable through the tree.
 pub fn deinit(instance: *runtime.Instance) void {
     // Check if cleanup was already marked as started. A tree's teardown
     // (deinitNodeByType) marks it before the node's own deinit runs; any
@@ -301,79 +299,25 @@ pub fn deinit(instance: *runtime.Instance) void {
     // target it was lets go of its hold.
     dom_module.intersection_targets.targetDestroyed(instance);
 
-    // First, recursively deinit all child nodes.
-    // We must do this BEFORE removing ourselves from the registry,
-    // and we need to collect children first since deinit modifies the tree.
+    // First, every descendant goes - leaves first, each unlinked from its
+    // parent and torn down only once it has no children left
+    // (dom.tree_teardown.freeAllDescendants): the teardown a tree runs for a
+    // child, deinitNodeByType, in constant stack at any depth. Calling each
+    // child's teardown from here - its Node.deinit calling its children's -
+    // took one set of frames per tree level: a 10,000-deep tree overflowed
+    // the stack at its teardown (lane crash1). WebKit unlinks each child
+    // before its last reference goes (ContainerNodeAlgorithms.cpp
+    // removeDetachedChildrenInContainer) and its earlier deletion queue,
+    // Blink's until Oilpan, destroyed no node inside its parent's
+    // destruction; Oilpan finalizes each node alone.
+    //
+    // This node's own type-specific teardown has run (the chain reaches here
+    // last); its descendants' each run in full, children first. A descendant
+    // whose teardown another path began already is unlinked and left to
+    // that path (deinitNodeByType's markCleanupStarted), as before.
     if (Registry.get(instance)) |internal| {
         if (internal.node_base) |node_base| {
-            // SAFETY: Collect child instances into a temporary array BEFORE iterating.
-            // This protects against the case where a child's NodeBase was freed by
-            // another path (e.g., GC callback during script execution) before this
-            // tree walk happens. By collecting instances first, we avoid following
-            // potentially dangling next_sibling pointers.
-            //
-            // The children are read off the parent's links (a node keeps no
-            // child list: NodeBase.children), all before the first is torn down.
-            const child_count = node_base.childCount();
-            if (child_count > 0) {
-                // Collect all child instances first
-                var child_instances: [256]*runtime.Instance = undefined;
-                var collected: usize = 0;
-
-                // Use bounded array for small trees, fall back to allocator for large trees
-                if (child_count <= 256) {
-                    var child_base_walk = node_base.children();
-                    while (child_base_walk.next()) |child_base| {
-                        if (instance_bridge.getInstance(child_base)) |child_opaque| {
-                            child_instances[collected] = @ptrCast(@alignCast(child_opaque));
-                            collected += 1;
-                        }
-                    }
-
-                    // Now deinit each collected child
-                    for (child_instances[0..collected]) |child_instance| {
-                        deinitNodeByType(child_instance);
-                    }
-                } else {
-                    // Large tree: allocate dynamic array
-                    const alloc_children = runtime.allocatorOf(instance).alloc(*runtime.Instance, child_count) catch {
-                        // On allocation failure, fall back to iterating directly
-                        // This is less safe but better than doing nothing
-                        var child = node_base.first_child;
-                        while (child) |child_base| {
-                            const next = child_base.next_sibling;
-                            if (instance_bridge.getInstance(child_base)) |child_opaque| {
-                                const child_instance: *runtime.Instance = @ptrCast(@alignCast(child_opaque));
-                                deinitNodeByType(child_instance);
-                            }
-                            child = next;
-                        }
-                        // Continue to cleanup below
-                        releaseNodeBase(instance, internal, node_base, .with_document_counts);
-                        internal.deinit();
-                        Registry.remove(instance);
-                        // Cleanup complete; see the note at the end of deinit.
-                        runtime.instance_lifecycle.markCleanupComplete(instance);
-                        interfaces.EventTarget.deinitChain(instance);
-                        return;
-                    };
-                    defer runtime.allocatorOf(instance).free(alloc_children);
-
-                    var child_base_walk = node_base.children();
-                    while (child_base_walk.next()) |child_base| {
-                        if (instance_bridge.getInstance(child_base)) |child_opaque| {
-                            alloc_children[collected] = @ptrCast(@alignCast(child_opaque));
-                            collected += 1;
-                        }
-                    }
-
-                    // Now deinit each collected child
-                    for (alloc_children[0..collected]) |child_instance| {
-                        deinitNodeByType(child_instance);
-                    }
-                }
-            }
-
+            _ = dom_module.tree_teardown.freeAllDescendants(node_base, &deinitNodeByType);
             releaseNodeBase(instance, internal, node_base, .with_document_counts);
         }
 
@@ -406,9 +350,10 @@ fn destroyUninsertedHook(instance: *runtime.Instance) void {
 /// Deinitialize a node based on its node type.
 /// This dispatches to the appropriate interface's deinit function.
 ///
-/// This is called from Node.deinit when iterating over children. The type-specific
-/// deinit (e.g., Element.deinit) will chain back to Node.deinit, which will then
-/// recursively deinit that node's children. This ensures the entire subtree is cleaned up.
+/// This is called from Node.deinit's subtree walk (dom.tree_teardown.freeAllDescendants)
+/// for each descendant once it has no children left. The type-specific deinit
+/// (e.g., Element.deinit) chains back to Node.deinit, which finds no subtree
+/// to walk: a tree of any depth is freed in constant stack.
 ///
 /// Also used by DomTreeAdapter to clean up orphaned nodes that were never attached
 /// to the document tree.
@@ -490,9 +435,9 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
         if (internal.node_base) |node_base| node_base.bound_v8_wrapper == null else false;
 
     // Dispatch based on node type to call the appropriate interface's deinit.
-    // Each interface's deinit will chain back to Node.deinit for proper recursive cleanup.
-    // DO NOT clear the child links here - the recursive Node.deinit needs them
-    // to properly clean up the entire subtree.
+    // Each interface's deinit chains back to Node.deinit, which frees the
+    // node's subtree (if it still has one: a root) through its links - so
+    // DO NOT clear the child links here.
     switch (internal.node_type) {
         NodeType.TEXT_NODE => {
             interfaces.Text.deinit(instance);
@@ -1184,8 +1129,52 @@ pub fn call_isSameNode(instance: *runtime.Instance, otherNode: ?*runtime.Instanc
 /// https://dom.spec.whatwg.org/#dom-node-isequalnode
 /// Returns true if nodes are equal (same type, attributes, children)
 pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instance) anyerror!bool {
-    const self_internal = getInternal(instance) orelse return false;
     const other_node = otherNode orelse return false;
+    // DOM 4.4 "A node A equals a node B": A's and B's own data are equal
+    // (`equalsShallow`), they have the same number of children, and each
+    // child of A equals the child of B at the same index. That definition
+    // recurses once per tree level, and so did this (lane crash1 b2: a
+    // 30,000-deep tree overflowed the stack); both trees are walked here in
+    // one lockstep pre-order over their links instead - no recursion, no
+    // allocation - comparing each pair as it is reached, so the answer and the
+    // order of the comparisons are the recursion's.
+    if (!try equalsShallow(instance, other_node)) return false;
+    const self_root = (getInternal(instance) orelse return false).node_base orelse return true;
+    const other_root = (getInternal(other_node) orelse return false).node_base orelse return true;
+    var a: *NodeBase = self_root;
+    var b: *NodeBase = other_root;
+    while (true) {
+        if (a.first_child) |a_child| {
+            // Both have children: compare the first ones next.
+            a = a_child;
+            b = b.first_child orelse return false;
+        } else {
+            if (b.first_child != null) return false;
+            // A leaf pair: on to the next sibling pair, climbing while both
+            // lists end at once - the same shape so far, so `b` climbs back
+            // to its root as `a` does.
+            while (true) {
+                if (a == self_root) return true;
+                if (a.next_sibling) |a_next| {
+                    a = a_next;
+                    b = b.next_sibling orelse return false;
+                    break;
+                }
+                if (b.next_sibling != null) return false;
+                a = a.parent_node orelse return false;
+                b = b.parent_node orelse return false;
+            }
+        }
+        const a_instance: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(a) orelse return false));
+        const b_instance: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(b) orelse return false));
+        if (!try equalsShallow(a_instance, b_instance)) return false;
+    }
+}
+
+/// DOM 4.4 "equals" for `instance` and `other_node` themselves - their
+/// type and the type's own fields - without their children.
+fn equalsShallow(instance: *runtime.Instance, other_node: *runtime.Instance) !bool {
+    const self_internal = getInternal(instance) orelse return false;
     const other_internal = getInternal(other_node) orelse return false;
 
     // Must be same node type
@@ -1241,28 +1230,7 @@ pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instan
         else => {},
     }
 
-    // Compare children recursively using NodeBase
-    const self_base = self_internal.node_base orelse return true;
-    const other_base = other_internal.node_base orelse return true;
-
-    var self_child = self_base.first_child;
-    var other_child = other_base.first_child;
-
-    while (self_child != null and other_child != null) {
-        // Get runtime.Instance for children via bridge
-        const self_child_opaque = instance_bridge.getInstance(self_child.?) orelse break;
-        const other_child_opaque = instance_bridge.getInstance(other_child.?) orelse break;
-        const self_child_instance: *runtime.Instance = @ptrCast(@alignCast(self_child_opaque));
-        const other_child_instance: *runtime.Instance = @ptrCast(@alignCast(other_child_opaque));
-
-        if (!try call_isEqualNode(self_child_instance, other_child_instance)) return false;
-
-        self_child = self_child.?.next_sibling;
-        other_child = other_child.?.next_sibling;
-    }
-
-    // Both should be null (same number of children)
-    return self_child == null and other_child == null;
+    return true;
 }
 
 /// IDL getters transfer their strings to the caller, including native callers.

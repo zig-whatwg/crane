@@ -26,7 +26,6 @@ const dom = @import("dom");
 const boundary_points = dom.boundary_points;
 const Link = @import("same_object.zig").Link;
 
-const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const engine = @import("engine");
 
 // Import interfaces for calling spec methods (per Golden Rule #13: impls call interfaces, not other impls)
@@ -170,11 +169,15 @@ fn liveRange(internal: *const InternalState) ?*runtime.Instance {
     return range;
 }
 
-/// Get internal state from instance using shared accessor
-const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
-
+/// This Selection's state, or null when `instance` is not a Selection: the
+/// brand check, as ProcessingInstruction's and HTMLLinkElement's (lane crash1
+/// b2, the SAFETY item of perf3 D1). dom.selection's steps take the selection a
+/// range names (Range's `selection` link) and the document's. The unchecked
+/// cast this replaces (InternalStateAccessor: `instance.getState(State)`) read
+/// another type's State at this one's `own._internal` offset as a pointer.
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return Accessor.get(instance);
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
 /// Initialize instance (creates the instance)

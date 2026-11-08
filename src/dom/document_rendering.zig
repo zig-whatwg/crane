@@ -148,10 +148,49 @@ pub fn remove(document: *runtime.Instance, element: *runtime.Instance) void {
     set.remove(element);
 }
 
+/// HTML 3.1.6 "render-blocked": the set is non-empty, or `document` allows
+/// adding render-blocking elements - here only while it is still loading -
+/// and the timeout has not passed.
+///
+/// The spec reads "allows adding" (text/html, no body element) with no
+/// regard to readiness, so a loaded document whose script removed its body
+/// or its root - or replaced the root with another element - is
+/// render-blocked until the timeout: no animation frames for 30 s here.
+/// No browser does that: Chrome 157, Firefox 159 and Safari 27.2 pass all 28
+/// WPT crashtests that wait for a frame after such a removal (wpt.fyi stable,
+/// run fea36e49dd; lane crash1 b2, tmp/crash1/b2/ct-timeouts-wptfyi.txt).
+/// While the document loads, a missing body does block - observably in
+/// Chrome and Firefox: a parser waiting 1.5 s on a script in <head> gave no
+/// animation frame before <body> in either, its first frame right after
+/// (crash1 b2's probe, tmp/crash1/probe/rafbody.html; Safari's background
+/// window gave no frames at all, so it does not decide).
+///
+/// Mechanism by mechanism: Gecko's Document::IsRenderBlocked is this one -
+/// "a missing body blocks rendering only while parsing, so that a document
+/// renders when script removes the body or the root element":
+/// `!mRenderBlockingElementSet.IsEmpty() ||
+/// (AllowsAddingRenderBlockingElements() && mReadyState ==
+/// READYSTATE_LOADING)`. Blink blocks on the set alone
+/// (RenderBlockingResourceManager; `body()` only stops resources joining)
+/// but makes no frames for an HTML document until Document::WillInsertBody
+/// or Document::FinishedParsing calls BeginLifecycleUpdatesIfRenderingReady
+/// - observably the same: none before the body while parsing, frames after
+/// parsing whatever the body. WebKit blocks on the set alone
+/// (Document::blockRenderingOn); its ReadyState visual-update reason applies
+/// only with suppressesIncrementalRendering. So no rendering before the body
+/// while loading is the majority (Chrome, Firefox) and rendering after it
+/// all three's: golden rule 2, no newer spec involved - this condition.
+/// html/dom/render-blocking/ (62 worklist files, wpt.fyi): Chrome passes
+/// all, Safari all but two optional ones, Firefox 159 none of 21 and part of
+/// 7 (Gecko main has `dom.element.blocking.enabled` on); the one that
+/// replaces the root, render-blocking-during-update-the-rendering-crash, is
+/// a crashtest that waits for a frame: PASS in all three.
+/// Adding to the set still follows "allows adding" alone (`block`).
 pub fn isBlocked(document: *runtime.Instance) bool {
     const impl = document_lifecycle.renderingImplementation() orelse return false;
     const set = impl.of(document) orelse return false;
-    return set.isBlocked(impl.allows_adding(document), impl.current_time_ms(document));
+    const loading = (interfaces.Document.get_readyState(document) catch ._loading_) == ._loading_;
+    return set.isBlocked(loading and impl.allows_adding(document), impl.current_time_ms(document));
 }
 
 pub fn isRenderBlocking(element: *runtime.Instance) bool {

@@ -1754,7 +1754,10 @@ pub const TreeBuilder = struct {
         if (self.dom_adapter_on_node_created) |callback| {
             callback(element, self.dom_adapter_context);
         }
-        self.insertAtAppropriatePlace(element);
+        // A self-closing one is popped at once; Blink attaches it without
+        // pushing it (InsertForeignElement), so the depth bound counts the
+        // open elements without it.
+        self.insertNodeAt(self.boundedLocation(!tag.self_closing), element);
         try self.pushOpenElement(element);
         return element;
     }
@@ -2090,12 +2093,10 @@ pub const TreeBuilder = struct {
                     std.mem.eql(u8, name, "bgsound") or
                     std.mem.eql(u8, name, "link"))
                 {
-                    _ = try self.insertHtmlElement(tag);
-                    _ = self.popCurrentNode();
+                    try self.insertVoidHtmlElement(tag);
                     // Acknowledge self-closing flag
                 } else if (std.mem.eql(u8, name, "meta")) {
-                    _ = try self.insertHtmlElement(tag);
-                    _ = self.popCurrentNode();
+                    try self.insertVoidHtmlElement(tag);
 
                     // "If the active speculative HTML parser is null" -
                     // Crane has none - the encoding the element declares
@@ -2262,7 +2263,8 @@ pub const TreeBuilder = struct {
         template.declarative_shadow = null;
         template.owns_declarative_shadow = false;
         self.allocator.destroy(recorded);
-        self.insertNodeAt(location, template);
+        // Pushed already, so the stack counts it (the depth bound).
+        self.insertNodeAt(if (self.fostersParentAtCurrentNode()) location else self.depthBounded(location, self.open_elements.len), template);
     }
 
     /// "In head", a start tag whose tag name is "template", for a template
@@ -2292,8 +2294,9 @@ pub const TreeBuilder = struct {
         // token's attribute storage does not outlive the element's creation.
         if (try self.prepareContentPatching(template, location, template.getAttribute("for") orelse "")) return;
         // Step 2.4: "insert an element at the adjusted insertion location
-        // with template, insertionLocation, and true."
-        self.insertNodeAt(location, template);
+        // with template, insertionLocation, and true." Pushed already, so the
+        // stack counts it (the depth bound).
+        self.insertNodeAt(if (self.fostersParentAtCurrentNode()) location else self.depthBounded(location, self.open_elements.len), template);
     }
 
     /// "Keep" steps 2.1-2.3 and HTML "prepare content patching" given
@@ -2475,7 +2478,9 @@ pub const TreeBuilder = struct {
     /// steps 2-5 ran (they change nothing it depends on).
     fn insertHtmlElementAt(self: *TreeBuilder, tag: TagToken, location: InsertionLocation) !void {
         const element = try self.createElementForToken(tag, .html, location);
-        self.insertNodeAt(location, element);
+        // Pushed next: it counts itself in the depth bound (Blink
+        // InsertHTMLTemplateElement pushes, then attaches).
+        self.insertNodeAt(if (self.fostersParentAtCurrentNode()) location else self.depthBounded(location, self.open_elements.len + 1), element);
         try self.pushOpenElement(element);
     }
 
@@ -2994,8 +2999,7 @@ pub const TreeBuilder = struct {
             // shared with the br end tag): reconstruct, insert and pop,
             // acknowledge the self-closing flag, frameset-ok "not ok".
             try self.reconstructActiveFormattingElements();
-            _ = try self.insertHtmlElement(tag);
-            _ = self.popCurrentNode();
+            try self.insertVoidHtmlElement(tag);
             self.frameset_ok = false;
         } else if (std.mem.eql(u8, name, "input")) {
             // "In body", a start tag whose tag name is "input".
@@ -3010,14 +3014,12 @@ pub const TreeBuilder = struct {
                 self.popUntilTagName("select");
             }
             try self.reconstructActiveFormattingElements();
-            _ = try self.insertHtmlElement(tag);
-            _ = self.popCurrentNode();
+            try self.insertVoidHtmlElement(tag);
             if (!hasHiddenType(tag)) self.frameset_ok = false;
         } else if (std.mem.eql(u8, name, "param") or std.mem.eql(u8, name, "source") or std.mem.eql(u8, name, "track")) {
             // "In body", a start tag whose tag name is one of: "param",
             // "source", "track": insert and pop.
-            _ = try self.insertHtmlElement(tag);
-            _ = self.popCurrentNode();
+            try self.insertVoidHtmlElement(tag);
         } else if (std.mem.eql(u8, name, "hr")) {
             // "In body", a start tag whose tag name is "hr".
             try self.closePElementIfInButtonScope();
@@ -3027,8 +3029,7 @@ pub const TreeBuilder = struct {
                 if (self.hasElementInScope("option") or self.hasElementInScope("optgroup"))
                     self.reportError(.invalid_first_character_of_tag_name);
             }
-            _ = try self.insertHtmlElement(tag);
-            _ = self.popCurrentNode();
+            try self.insertVoidHtmlElement(tag);
             self.frameset_ok = false;
         } else if (std.mem.eql(u8, name, "image")) {
             // "In body", a start tag whose tag name is "image": parse error;
@@ -3109,13 +3110,11 @@ pub const TreeBuilder = struct {
             self.insertion_mode = .in_table;
         } else if (std.mem.eql(u8, name, "br")) {
             try self.reconstructActiveFormattingElements();
-            _ = try self.insertHtmlElement(tag);
-            _ = self.popCurrentNode();
+            try self.insertVoidHtmlElement(tag);
             self.frameset_ok = false;
         } else if (isVoidElement(name)) {
             try self.reconstructActiveFormattingElements();
-            _ = try self.insertHtmlElement(tag);
-            _ = self.popCurrentNode();
+            try self.insertVoidHtmlElement(tag);
         } else if (std.mem.eql(u8, name, "math") or std.mem.eql(u8, name, "svg")) {
             // "A start tag whose tag name is "math"" / ""svg"": reconstruct
             // the active formatting elements, adjust the MathML or SVG
@@ -3716,8 +3715,7 @@ pub const TreeBuilder = struct {
                     // Check for hidden type
                     if (self.hasTypeHiddenAttribute(tag)) {
                         self.reportError(.invalid_first_character_of_tag_name);
-                        _ = try self.insertHtmlElement(tag);
-                        _ = self.popCurrentNode();
+                        try self.insertVoidHtmlElement(tag);
                     } else {
                         // Anything else
                         self.reportError(.invalid_first_character_of_tag_name);
@@ -3955,8 +3953,7 @@ pub const TreeBuilder = struct {
                 if (std.mem.eql(u8, name, "html")) {
                     try self.handleInBodyMode(token);
                 } else if (std.mem.eql(u8, name, "col")) {
-                    _ = try self.insertHtmlElement(tag);
-                    _ = self.popCurrentNode();
+                    try self.insertVoidHtmlElement(tag);
                 } else if (std.mem.eql(u8, name, "template")) {
                     try self.handleInHeadMode(token);
                 } else {
@@ -4429,8 +4426,7 @@ pub const TreeBuilder = struct {
                 } else if (std.mem.eql(u8, name, "frameset")) {
                     _ = try self.insertHtmlElement(tag);
                 } else if (std.mem.eql(u8, name, "frame")) {
-                    _ = try self.insertHtmlElement(tag);
-                    _ = self.popCurrentNode();
+                    try self.insertVoidHtmlElement(tag);
                 } else if (std.mem.eql(u8, name, "noframes")) {
                     try self.handleInHeadMode(token);
                 } else {
@@ -4676,10 +4672,100 @@ pub const TreeBuilder = struct {
         return element;
     }
 
-    /// Insert at the appropriate place.
+    /// "Insert an HTML element" for a void element's token, then "immediately
+    /// pop the current node off the stack of open elements". Apart from the
+    /// parser's depth bound, the same as insertHtmlElement then a pop: Blink
+    /// attaches a void element without pushing it
+    /// (HTMLConstructionSite::InsertSelfClosingHTMLElementDestroyingToken), so
+    /// its Attach counts the open elements without it (`depthBounded`).
+    fn insertVoidHtmlElement(self: *TreeBuilder, tag: TagToken) !void {
+        const element = try self.createElementForToken(tag, .html, self.appropriateLocation(null));
+        self.insertNodeAt(self.boundedLocation(false), element);
+        try self.pushOpenElement(element);
+        _ = self.popCurrentNode();
+    }
+
+    /// Insert at the appropriate place an element that is pushed onto the
+    /// stack of open elements next.
     fn insertAtAppropriatePlace(self: *TreeBuilder, node: *TreeNode) void {
-        const location = self.appropriateLocation(null);
-        self.insertNodeAt(location, node);
+        self.insertNodeAt(self.boundedLocation(true), node);
+    }
+
+    /// Blink's kMaximumHTMLParserDOMTreeDepth: past this many open elements,
+    /// the parser attaches a node to its parent's parent, so the DOM depth it
+    /// builds is bounded whatever the markup's nesting.
+    pub const max_dom_tree_depth: usize = 512;
+
+    /// The appropriate place for inserting a node, with the parser's DOM depth
+    /// bound (`depthBounded`) where Blink applies it: an element `pushed` onto
+    /// the stack next counts itself, as Blink pushes it before attaching it
+    /// (HTMLConstructionSite::AttachOrFosterParent), and a foster-parented one
+    /// is not bounded (Blink's FosterParent never reaches Attach's check).
+    fn boundedLocation(self: *TreeBuilder, pushed: bool) InsertionLocation {
+        const location = self.appropriateLocationIgnoringPatches(null);
+        if (self.fostersParentAtCurrentNode()) return self.patchedLocation(location);
+        return self.patchedLocation(self.depthBounded(location, self.open_elements.len + @intFromBool(pushed)));
+    }
+
+    /// Whether the appropriate place for inserting a node at the current node
+    /// is a foster parent's: foster parenting is enabled and the target is a
+    /// table, tbody, tfoot, thead or tr element (HTML 13.2.6.1 step 2; Blink
+    /// ShouldFosterParent).
+    fn fostersParentAtCurrentNode(self: *TreeBuilder) bool {
+        if (!self.foster_parenting) return false;
+        const target = self.currentNode() orelse return false;
+        return target.namespace == .html and
+            (target.hasTagName("table") or target.hasTagName("tbody") or target.hasTagName("tfoot") or
+                target.hasTagName("thead") or target.hasTagName("tr"));
+    }
+
+    /// The HTML parser's DOM depth bound - every browser has one, the spec
+    /// none: past `max_dom_tree_depth` open elements, a node inserted into
+    /// `location.parent` goes into that parent's parent instead, as its
+    /// sibling, so deeper nesting comes out flat. `stack_depth` is the number
+    /// of open elements Blink counts when it attaches the node: an element
+    /// pushed onto the stack is pushed first and counts itself; a void
+    /// element, a self-closing foreign element and a comment are attached
+    /// without being pushed, so they are bounded one level deeper. Text is
+    /// never bounded (insertTextRun does not come here).
+    ///
+    /// Blink HTMLConstructionSite::Attach (html_construction_site.cc): "Add as
+    /// a sibling of the parent if we have reached the maximum depth allowed",
+    /// `if (open_elements_.StackDepth() > kMaximumHTMLParserDOMTreeDepth + 1
+    /// && location.parent->parentNode()) location.parent =
+    /// location.parent->parentNode();`, kMaximumHTMLParserDOMTreeDepth = 512;
+    /// AttachOrFosterParent pushes an element before attaching it,
+    /// InsertSelfClosingHTMLElementDestroyingToken, a self-closing
+    /// InsertForeignElement and InsertComment attach without pushing, and
+    /// FosterParent and text never reach Attach's check.
+    ///
+    /// Measured (lane crash1 b1 and b2, tmp/crash1/probe/depth2.html,
+    /// results-{chromed,firefoxd,safarid}.jsonl), Chrome 157 / Firefox 159 /
+    /// Safari 27.2: nested elements stop at 512 / 512 / 511 levels under a
+    /// fragment's root, 511 / 511 / 510 under a body. At the bound a void
+    /// element or a self-closing <svg/> goes one level deeper in Chrome, where
+    /// an element goes in Firefox and Safari; a comment one level deeper in
+    /// Chrome, never bounded in Firefox, where an element goes in Safari; text
+    /// is bounded in none. No newer spec is involved, so golden rule 2 by
+    /// mechanism: the limit 512 (Chrome, Firefox), voids where elements go
+    /// (Firefox, Safari), comments bounded (Chrome, Safari), text not (all) -
+    /// majorities no single shipping browser combines, so the rule falls back
+    /// to the spec, which bounds nothing; all three bound nested elements, so
+    /// Crane departs from the spec only as one shipping browser does, and
+    /// takes Blink's mechanism whole (the integrator's ruling, crash1 b2).
+    ///
+    /// The parent's parent is read off this parser's tree: Blink reads the
+    /// live DOM's parentNode, which differs only when script has moved the
+    /// current node between two tokens. A parent whose parent is the Document
+    /// is never moved: in the fragment case that is the fragment's root, whose
+    /// counterpart in Blink (the DocumentFragment itself) has no parent; in a
+    /// document, only the html element's parent is the Document, and the html
+    /// element is never the current node under 512 others.
+    fn depthBounded(_: *const TreeBuilder, location: InsertionLocation, stack_depth: usize) InsertionLocation {
+        if (stack_depth <= max_dom_tree_depth + 1) return location;
+        const grandparent = location.parent.parent orelse return location;
+        if (grandparent.node_type == .document) return location;
+        return .{ .parent = grandparent };
     }
 
     pub const InsertionLocation = struct {
@@ -4908,8 +4994,10 @@ pub const TreeBuilder = struct {
         if (self.parser_sanitizer) |sanitizer| if (!sanitizer.allows_comments(sanitizer.context)) return;
         const node = try TreeNode.initComment(self.allocator);
         try node.appendText(comment.getData());
-        // A patching template's comment goes to its insertion target.
-        const location = self.patchedLocation(.{ .parent = parent });
+        // A patching template's comment goes to its insertion target; past
+        // the depth bound, a comment goes to its parent's parent (Blink
+        // InsertComment attaches it, never pushed: `depthBounded`).
+        const location = self.patchedLocation(self.depthBounded(.{ .parent = parent }, self.open_elements.len));
         location.parent.insertBefore(node, location.before);
 
         // Notify DOM adapter of comment creation and parent-child relationship
