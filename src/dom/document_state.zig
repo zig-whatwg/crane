@@ -16,7 +16,6 @@ const std = @import("std");
 const runtime = @import("runtime");
 const enums = @import("enums");
 const fetch = @import("fetch");
-const csp = @import("csp");
 const html_core = @import("html_core");
 const same_object = @import("same_object.zig");
 const KeptChild = same_object.KeptChild;
@@ -25,7 +24,7 @@ const SandboxingFlagSet = @import("sandboxing.zig").SandboxingFlagSet;
 const StylesheetBlockingTracker = html_core.StylesheetBlockingTracker;
 const dom_document_scripts = @import("document_scripts.zig");
 const dom_document_modules = @import("document_modules.zig");
-const SpeculationEagerness = dom_document_scripts.SpeculationEagerness;
+const DocumentRareData = @import("document_rare_data.zig").DocumentRareData;
 
 /// Each Document's state, in its Browser's side table.
 pub const Registry = runtime.InstanceRegistry(.document, InternalState);
@@ -155,10 +154,9 @@ pub const InternalState = struct {
     /// Cached DOMImplementation instance ([SameObject])
     implementation: ?*runtime.Instance,
 
-    /// HTML 4.12.3: one inert owner document per ordinary document. An inert
-    /// owner itself reuses its own document for nested templates.
-    template_owner_document: ?*runtime.Instance = null,
-    template_owner_generation: u64 = 0,
+    /// HTML 4.12.3: an inert template contents owner document reuses itself
+    /// for nested templates. The one an ordinary document made for its
+    /// templates is rare data (`rare`).
     is_template_owner_document: bool = false,
 
     /// The two counts of refcount design 1.5 (decision D6): the nodes that
@@ -166,18 +164,13 @@ pub const InternalState = struct {
     /// src/dom/refcount.zig, through `countsOf`.
     refcounts: @import("refcount.zig").DocumentCounts = .{},
 
-    /// String interning pool for tag names, attribute names, etc.
-    /// Provides memory savings and O(1) string comparison via pointer equality
-    string_pool: std.StringHashMap(void),
-
     /// Document base URL (fallback: empty string for about:blank)
     /// Stored as owned slice
     base_uri: []const u8,
 
-    /// HTML's first base[href], resolved when a base mutation occurs.
-    /// Owned bytes, independent of later changes to the document's URL.
-    /// Null leaves the live fallback effective (including a rejected base).
-    frozen_base_url: ?[]u8 = null,
+    // HTML's frozen base URL and the pragma-set default language are rare
+    // data (`rare`): few documents have a base element or a
+    // content-language pragma.
 
     /// Document content type (e.g., "text/html", "application/xml")
     /// Stored as DOMString for proper memory management
@@ -204,10 +197,6 @@ pub const InternalState = struct {
     /// Document encoding (default: UTF-8)
     /// Stored as DOMString for proper memory management
     encoding: runtime.DOMString,
-
-    /// HTML 4.2.5.3: owned pragma-set default language, null before any
-    /// content-language pragma. Removing its meta does not clear it.
-    pragma_language: ?[]const u8 = null,
 
     /// Document ready state
     ready_state: enums.DocumentReadyState,
@@ -310,16 +299,9 @@ pub const InternalState = struct {
     /// document's load event (dom.document_lifecycle.delayLoadEvent) - an
     /// object element's fetch, say. Blink's load_event_delay_count_.
     load_event_delay_count: u32 = 0,
-    /// HTML 7.4.6.4 "target element": what :target matches, set by "scroll
-    /// to the fragment"; initially null. A weak link - the element can be
-    /// removed and freed while it is the target (dom.target_element).
-    target_element: ?same_object.Link = null,
-    /// HTML 4.16.3: the elements :hover and :active rest on - designated by
-    /// a pointing device, being actively pointed at, in a formal activation
-    /// state (dom.pointer_states). Weak links, like target_element.
-    hovered_element: ?same_object.Link = null,
-    pointed_element: ?same_object.Link = null,
-    activated_element: ?same_object.Link = null,
+    // HTML's target element and the elements :hover and :active rest on
+    // are rare data (`rare`): few documents scroll to a fragment or are
+    // pointed at.
     /// HTML "will declaratively refresh": the shared declarative refresh
     /// steps have run to step 12 for this document.
     will_declaratively_refresh: bool = false,
@@ -360,13 +342,9 @@ pub const InternalState = struct {
 
     // === Fullscreen state ===
     fullscreen_enabled: bool,
-    fullscreen_element: ?*runtime.Instance,
-
-    // === Pointer lock state ===
-    pointer_lock_element: ?*runtime.Instance,
-
-    // === Picture-in-picture state ===
-    picture_in_picture_element: ?*runtime.Instance,
+    // The fullscreen, pointer lock and picture-in-picture elements are rare
+    // data (`rare`): none is ever set yet (Crane has no display mode, no
+    // pointer to lock, no video to present).
 
     // === Active element (focus) ===
     active_element: ?*runtime.Instance,
@@ -457,18 +435,9 @@ pub const InternalState = struct {
     module_loader: ?*anyopaque = null,
     dispose_module_loader: ?dom_document_modules.DisposeFn = null,
 
-    /// Import map for the document (type="importmap")
-    /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#import-map
-    /// Key: bare specifier, Value: resolved URL
-    import_map_imports: std.StringHashMap([]const u8),
-    /// HTML import map's integrity: owned serialized URLs and metadata.
-    import_map_integrity: std.StringHashMap([]const u8),
-
-    /// Import map scopes
-    /// Key: scope prefix URL, Value: map of specifier -> resolved URL
-    import_map_scopes: std.StringHashMap(std.StringHashMap([]const u8)),
-
-    /// Whether an import map has been acquired for this document
+    /// Whether an import map has been acquired for this document. The
+    /// import map itself (its imports, scopes and integrity) is rare data
+    /// (`rare`): made by the first mapping a document's import map adds.
     import_map_acquired: bool,
 
     /// The document's policy container (HTML 7.1.6): a new one until a
@@ -481,12 +450,11 @@ pub const InternalState = struct {
     // === Content Security Policy (CSP Level 3) ===
     // The CSP list is the policy container's (`policy_container.csp_list`).
 
-    /// Document origin for CSP 'self' matching
-    csp_self_origin: ?csp.Origin,
-
-    /// Speculation rules: Prefetch URL hints
-    /// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html
-    prefetch_hints: std.StringHashMap(SpeculationEagerness),
+    // No `csp_self_origin` (lane perf2 batch 7): nothing ever set it - its
+    // one setter had no caller, and its one reader (a document-level
+    // fallback for 'self') no caller either - 72 bytes on every Document.
+    // A policy's own self-origin is what 'self' matches (CSP 2.2).
+    // Speculation rules' prefetch hints are rare data (`rare`).
 
     /// Optional module dispose function - set when engine is configured
     /// Used to dispose V8/JSC module handles without compile-time dependency
@@ -542,11 +510,8 @@ pub const InternalState = struct {
     /// (dom.document_internals.allowsDeclarativeShadowRoots); this is set by
     /// parseHTMLUnsafe and copied by cloning.
     allow_declarative_shadow_roots: bool = false,
-    /// The HTML parser's form element pointer associations that differ from
-    /// the tree's (a misnested or foster-parented control), kept until
-    /// "reset the form owner" undoes them (html/form_associated.zig). Usually
-    /// empty. Raw links, generation-checked: they keep nothing alive.
-    parser_form_associations: std.ArrayListUnmanaged(@import("document_internals.zig").ParserFormAssociation) = .empty,
+    // The HTML parser's form element pointer associations are rare data
+    // (`rare`): usually there are none.
     custom_element_registry: @import("custom_elements.zig").RegistryAssociation = .{},
     owns_native_global_registry: bool = false,
 
@@ -563,11 +528,15 @@ pub const InternalState = struct {
     /// accessing context, which avoids callback corruption issues.
     bound_v8_wrapper: ?*anyopaque = null,
 
+    /// What few Documents set, made on first use and freed with this state
+    /// (dom.document_rare_data; lane perf2 batch 7). Read it through
+    /// `rareData`, make it through `ensureRareData`.
+    rare: ?*DocumentRareData = null,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
             .implementation = null,
-            .string_pool = std.StringHashMap(void).init(allocator),
             .base_uri = "",
             .content_type = runtime.DOMString.initEmpty(),
             .doc_type = .xml,
@@ -590,11 +559,6 @@ pub const InternalState = struct {
             // Per Fullscreen spec, fullscreenEnabled returns true only if fullscreen is supported
             // and the document's fullscreen flag is set. For a new Document, default to false.
             .fullscreen_enabled = false,
-            .fullscreen_element = null,
-            // Pointer lock
-            .pointer_lock_element = null,
-            // Picture-in-picture
-            .picture_in_picture_element = null,
             // Active element (focus)
             .active_element = null,
             // StyleSheetList
@@ -614,17 +578,10 @@ pub const InternalState = struct {
             .scripting_enabled = true, // Default to true for browser environments
             // Module map and import map
             .module_map = std.StringHashMap(*anyopaque).init(allocator),
-            .import_map_imports = std.StringHashMap([]const u8).init(allocator),
-            .import_map_integrity = std.StringHashMap([]const u8).init(allocator),
-            .import_map_scopes = std.StringHashMap(std.StringHashMap([]const u8)).init(allocator),
             .import_map_acquired = false,
             // Module disposal (set when engine is configured)
             .dispose_module_fn = null,
             .policy_container = fetch.internal.PolicyContainer.init(allocator),
-            // CSP
-            .csp_self_origin = null,
-            // Speculation rules
-            .prefetch_hints = std.StringHashMap(SpeculationEagerness).init(allocator),
             // Stylesheet blocking tracker
             .stylesheet_tracker = StylesheetBlockingTracker.init(allocator),
             // Selection
@@ -671,25 +628,13 @@ pub const InternalState = struct {
             self.module_loader = null;
             if (self.dispose_module_loader) |dispose| dispose(loader);
         }
-        // Free all interned strings from pool
-        var it = self.string_pool.keyIterator();
-        while (it.next()) |key_ptr| {
-            self.allocator.free(key_ptr.*);
-        }
-        self.string_pool.deinit();
-
         // Clean up lists (don't own the items, just the list storage)
         self.ranges.deinit(self.allocator);
-        self.parser_form_associations.deinit(self.allocator);
         self.node_iterators.deinit(self.allocator);
 
         // Free owned strings
         if (self.base_uri.len > 0) {
             self.allocator.free(self.base_uri);
-        }
-        if (self.frozen_base_url) |url| {
-            self.allocator.free(url);
-            self.frozen_base_url = null;
         }
         if (self.about_base_url) |url| {
             self.allocator.free(url);
@@ -716,7 +661,6 @@ pub const InternalState = struct {
         // Free DOMString storage
         self.content_type.deinit(self.allocator);
         self.encoding.deinit(self.allocator);
-        if (self.pragma_language) |language| self.allocator.free(language);
         self.design_mode.deinit(self.allocator);
 
         // Event handlers
@@ -744,59 +688,16 @@ pub const InternalState = struct {
             self.module_map.deinit();
         }
 
-        // Import map - free keys and values
-        {
-            var imp_it = self.import_map_imports.iterator();
-            while (imp_it.next()) |entry| {
-                self.allocator.free(entry.key_ptr.*);
-                self.allocator.free(entry.value_ptr.*);
-            }
-            self.import_map_imports.deinit();
-        }
-
-        {
-            var integrity_it = self.import_map_integrity.iterator();
-            while (integrity_it.next()) |entry| {
-                self.allocator.free(entry.key_ptr.*);
-                self.allocator.free(entry.value_ptr.*);
-            }
-            self.import_map_integrity.deinit();
-        }
-
-        // Import map scopes
-        {
-            var scope_it = self.import_map_scopes.iterator();
-            while (scope_it.next()) |entry| {
-                self.allocator.free(entry.key_ptr.*);
-                // Free nested map
-                var nested_it = entry.value_ptr.iterator();
-                while (nested_it.next()) |nested_entry| {
-                    self.allocator.free(nested_entry.key_ptr.*);
-                    self.allocator.free(nested_entry.value_ptr.*);
-                }
-                entry.value_ptr.deinit();
-            }
-            self.import_map_scopes.deinit();
-        }
-
         self.policy_container.deinit();
         if (permissions) |policy| {
             policy.deinit();
             self.allocator.destroy(policy);
         }
 
-        // CSP origin (the list is the policy container's)
-        if (self.csp_self_origin) |*origin| {
-            origin.deinit();
-        }
-
-        // Prefetch hints
-        {
-            var hint_it = self.prefetch_hints.keyIterator();
-            while (hint_it.next()) |key_ptr| {
-                self.allocator.free(key_ptr.*);
-            }
-            self.prefetch_hints.deinit();
+        // The rare data: what few Documents set (dom.document_rare_data).
+        if (self.rare) |rare| {
+            self.rare = null;
+            rare.destroy(self.allocator);
         }
 
         // Stylesheet blocking tracker
@@ -818,10 +719,20 @@ pub const InternalState = struct {
         return self.module_map.remove(url);
     }
 
-    /// Remove `specifier`'s entry from the import map's imports. The key and
-    /// the value are the caller's to release.
-    pub fn removeImport(self: *InternalState, specifier: []const u8) bool {
-        return self.import_map_imports.remove(specifier);
+    /// The rare data, or null when none was ever needed.
+    pub fn rareData(self: *const InternalState) ?*DocumentRareData {
+        return self.rare;
+    }
+
+    /// The rare data, made on first use (WebKit's and Blink's
+    /// ensureRareData) and kept, never moved, until this state's deinit.
+    /// `document` is the Document this is the state of: the block is
+    /// counted in its Browser's DOM memory.
+    pub fn ensureRareData(self: *InternalState, document: *runtime.Instance) error{OutOfMemory}!*DocumentRareData {
+        if (self.rare) |rare| return rare;
+        const rare = try DocumentRareData.create(self.allocator, document);
+        self.rare = rare;
+        return rare;
     }
 
     pub fn ensureInteractionState(self: *InternalState) !*InteractionState {

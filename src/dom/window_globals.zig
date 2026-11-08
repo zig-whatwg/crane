@@ -39,6 +39,13 @@ pub const Implementation = struct {
     /// made under is `to`'s: a navigation gave the opener's navigable the new
     /// Window `to` (lane newwin1, B7).
     move_auxiliary_navigables: *const fn (from: *runtime.Instance, to: *runtime.Instance) void,
+    /// Set `window`'s current event (DOM 2.3: "Each Window object has an
+    /// associated current event") to `event`, returning the previous one -
+    /// DOM's inner invoke, around each listener it calls in that Window's
+    /// realm (steps 2.9-2.10, 2.15). Null for undefined; BORROWED: set only
+    /// while the dispatch that holds the event runs the listener. A Window
+    /// torn down keeps none, and answers null.
+    swap_current_event: *const fn (window: *runtime.Instance, event: ?*runtime.Instance) ?*runtime.Instance,
 };
 
 var implementation: Hook(?Implementation) = .init(null);
@@ -84,4 +91,11 @@ pub fn adoptBrowsingContext(window: *runtime.Instance, browsing_context: *anyopa
 pub fn moveAuxiliaryNavigables(from: *runtime.Instance, to: *runtime.Instance) void {
     const impl = implementation.get() orelse return;
     impl.move_auxiliary_navigables(from, to);
+}
+
+/// See Implementation.swap_current_event. With no Window installed nothing
+/// keeps a current event: null.
+pub fn swapCurrentEvent(window: *runtime.Instance, event: ?*runtime.Instance) ?*runtime.Instance {
+    const impl = implementation.get() orelse return null;
+    return impl.swap_current_event(window, event);
 }

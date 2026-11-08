@@ -33,7 +33,10 @@ pub const InternalState = struct {
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
-    allocator: std.mem.Allocator,
+    // No allocator copy (lane perf2 batch 7): its one reader makes the
+    // StyleSheetList with the root's Browser's allocator
+    // (runtime.allocatorOf), the allocator the root was made with (asserted
+    // in Node's initOwn) - 16 bytes on every shadow root.
 
     /// The mode of this shadow root ("open" or "closed")
     shadow_mode: enums.ShadowRootMode,
@@ -98,7 +101,6 @@ pub const InternalState = struct {
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
-            .allocator = allocator,
             .shadow_mode = ._open_,
             .delegates_focus_flag = false,
             .slot_assignment_mode = ._named_,
@@ -428,7 +430,7 @@ pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.In
 pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const sheets = internal.style_sheets orelse blk: {
-        const made = interfaces.StyleSheetList.initWith(internal.allocator, instance.ctx, .{ .sheets_of = instance }) catch return error.OutOfMemory;
+        const made = interfaces.StyleSheetList.initWith(runtime.allocatorOf(instance), instance.ctx, .{ .sheets_of = instance }) catch return error.OutOfMemory;
         internal.style_sheets = made;
         internal.style_sheets_kept.made(made);
         break :blk made;
