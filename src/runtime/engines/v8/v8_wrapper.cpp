@@ -14906,6 +14906,12 @@ struct PatternMatcher {
     };
     Global<Context> context;
     std::vector<Entry> entries;
+    /// How often the cache missed, for the tests that pin "once per agent"
+    /// as a count rather than a time (v8_PatternMatcher_Counts): regexps
+    /// compiled (one per entry made: a pattern attribute's standalone and
+    /// anchored regexps are one compile) and utility contexts made.
+    uint64_t compiles = 0;
+    uint64_t contexts = 0;
 };
 
 /// The most backtracks one match of a regexp the adapter compiles for the
@@ -15003,6 +15009,7 @@ static Local<Context> RegExpContext(Isolate* isolate, PatternMatcher* matcher) {
         Local<Context> made = NewPlainGlobalContext(isolate);
         if (made.IsEmpty()) return made;
         matcher->context.Reset(isolate, made);
+        matcher->contexts += 1;
     }
     return matcher->context.Get(isolate);
 }
@@ -15033,6 +15040,7 @@ static int CachedRegExp(Isolate* isolate, PatternMatcher* matcher, Local<Context
         : CompileRegExpCreate(context, try_catch, source, kind == PatternMatcher::kRegExpCreateVI, regexp);
     if (compiled == 0) return 0;
     if (matcher) {
+        matcher->compiles += 1;
         auto& entries = matcher->entries;
         if (entries.size() >= PatternMatcher::kCapacity) {
             entries.back().regexp.Reset();
@@ -15051,6 +15059,11 @@ extern "C" {
 
 PatternMatcher* v8_PatternMatcher_New() {
     return new PatternMatcher();
+}
+
+void v8_PatternMatcher_Counts(const PatternMatcher* matcher, uint64_t* compiles, uint64_t* contexts) {
+    *compiles = matcher ? matcher->compiles : 0;
+    *contexts = matcher ? matcher->contexts : 0;
 }
 
 void v8_PatternMatcher_Delete(PatternMatcher* matcher) {

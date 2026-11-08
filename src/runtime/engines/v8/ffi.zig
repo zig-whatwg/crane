@@ -3608,6 +3608,11 @@ pub extern fn v8_Isolate_RunningScriptLocation(isolate: *Isolate, url: *?[*]u8, 
 pub const PatternMatcher = opaque {};
 pub extern fn v8_PatternMatcher_New() *PatternMatcher;
 pub extern fn v8_PatternMatcher_Delete(matcher: ?*PatternMatcher) void;
+/// How often `matcher`'s cache missed: the regexps it compiled (a pattern
+/// attribute's two regexps are one) and the utility contexts it made - what
+/// tests/v8 pins "compiled once per agent" with, a count and not a time. 0
+/// and 0 for a null matcher.
+pub extern fn v8_PatternMatcher_Counts(matcher: ?*const PatternMatcher, compiles: *u64, contexts: *u64) void;
 /// HTML 4.10.5.3.6, the pattern attribute (engine.matchesPatternAttribute),
 /// matched with the built-in RegExp of `matcher`'s utility context (a new
 /// context for the call when `matcher` is null), as v8_wrapper.cpp says why:

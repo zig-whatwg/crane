@@ -135,12 +135,23 @@ const Fixture = struct {
     /// `openPopup` on `origin` - http://localhost is a secure context, which
     /// Web Locks needs.
     fn openPopupAt(self: *Fixture, comptime origin: []const u8, comptime path: []const u8) !*html.BrowsingContext {
+        return self.openPopupShowing(origin, path, path);
+    }
+
+    /// Open `path` on `origin` in a noopener popup and wait until it shows a
+    /// loaded document at `shown`: the page a popup settles on, which for a
+    /// page that navigates itself as it loads (/post.html) is not `path`.
+    /// Wait only for a state the popup stays in until the test moves it: a
+    /// page that leaves itself on a 0 ms timer is complete for less than one
+    /// turn of the loop can last, and a check between turns misses it
+    /// (lane flaky7: openPopupAt TimedOut for /post.html on a loaded host).
+    fn openPopupShowing(self: *Fixture, comptime origin: []const u8, comptime path: []const u8, comptime shown: []const u8) !*html.BrowsingContext {
         const opened = try self.browser.evaluateScript("window.open('" ++ origin ++ path ++ "', '_blank', 'noopener')");
         opened.release();
         var turns: usize = 0;
         while (turns < 500) : (turns += 1) {
             if (self.popup()) |bc| {
-                if (try self.popupIs(bc, path)) return bc;
+                if (try self.popupIs(bc, shown)) return bc;
             }
             try self.turn(10);
         }
@@ -411,15 +422,12 @@ test "the eligibility matrix: a 404, a POST's response and a page still loading 
         try testing.expectEqual(@as(usize, 0), fixture.cached());
     }
     {
-        // /post.html submits to /a.html: the page left is a POST's.
+        // /post.html submits to /a.html: the page left is a POST's. Waited
+        // for at the POST's /a.html: /post.html is complete only until its
+        // 0 ms timer submits the form, and one turn can span all of it.
         const fixture = try Fixture.start(.{});
         defer fixture.stop();
-        const bc = try fixture.openPopup("/post.html");
-        var turns: usize = 0;
-        while (turns < 300) : (turns += 1) {
-            if (try fixture.popupIs(bc, "/a.html")) break;
-            try fixture.turn(10);
-        }
+        const bc = try fixture.openPopupShowing("http://bfb.test", "/post.html", "/a.html");
         try fixture.goTo(bc, "location.href = '/b.html'", "/b.html");
         // /post.html itself was kept (a GET); the POST's /a.html was not.
         try testing.expectEqual(@as(usize, 1), fixture.cached());

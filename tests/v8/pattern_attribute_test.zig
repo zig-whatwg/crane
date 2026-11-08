@@ -27,7 +27,7 @@ const test_process = @import("test_process.zig");
 const runtime = @import("runtime");
 const protocol = @import("engine");
 const interfaces = @import("interfaces");
-const clock = @import("clock");
+const v8 = @import("v8");
 
 const WindowHost = struct {
     fn createGlobalObject(r: runtime.Context, global_this: runtime.JSValue, host: ?*anyopaque) ?*runtime.Instance {
@@ -239,30 +239,39 @@ test "a match from native code with no script on the stack is no microtask check
     try std.testing.expect(marker.ran);
 }
 
-test "a pattern compiles once per agent: first and repeat call cost" {
+/// What the agent's regexp cache has missed so far: the regexps it compiled
+/// (a pattern attribute's standalone and anchored regexps are one compile)
+/// and the utility contexts it made (v8_wrapper.cpp, PatternMatcher).
+const CacheCounts = struct { compiles: u64, contexts: u64 };
+
+fn cacheCounts(agent: *protocol.Agent) CacheCounts {
+    var counts: CacheCounts = .{ .compiles = 0, .contexts = 0 };
+    ffi.v8_PatternMatcher_Counts(v8.protocol_agents.patternMatcherOf(@ptrCast(@alignCast(agent))), &counts.compiles, &counts.contexts);
+    return counts;
+}
+
+test "a pattern compiles once per agent: one utility context, and a repeat is a cache hit" {
+    // Counted, not timed: a ratio of wall-clock times failed on a loaded host
+    // (lane flaky7). A context per call (~200 us each, the cost this pins)
+    // would show as one context per match, and a recompile as one compile.
     const page = try Page.open();
     defer page.close();
+    try std.testing.expectEqual(CacheCounts{ .compiles = 0, .contexts = 0 }, cacheCounts(page.agent));
     // The first match of the agent makes its utility context and compiles.
-    var timer = clock.Timer.start();
     try std.testing.expect(try page.matches("[0-9]*[02468]", "1234"));
-    const first_ns = timer.read();
+    try std.testing.expectEqual(CacheCounts{ .compiles = 1, .contexts = 1 }, cacheCounts(page.agent));
     // A second pattern: a compile, no new context.
-    timer.reset();
     try std.testing.expect(try page.matches("[a-f0-9]{8}", "deadbeef"));
-    const compile_ns = timer.read();
-    // Repeats: cached.
-    const rounds = 2000;
-    timer.reset();
-    for (0..rounds) |i| {
+    try std.testing.expectEqual(CacheCounts{ .compiles = 2, .contexts = 1 }, cacheCounts(page.agent));
+    // Repeats, with either answer: cached, nothing compiled or made.
+    for (0..2000) |i| {
         try std.testing.expectEqual(i % 2 == 0, try page.matches("[0-9]*[02468]", if (i % 2 == 0) "1234" else "1235"));
     }
-    const repeat_ns = timer.read() / rounds;
-    std.debug.print("matchesPatternAttribute: first call {d} us (utility context + compile), new pattern {d} us, repeat {d} ns\n", .{
-        first_ns / std.time.ns_per_us, compile_ns / std.time.ns_per_us, repeat_ns,
-    });
-    // A context per call was ~200 us; the cached path is a few us. Loose, so
-    // a loaded machine does not fail it.
-    try std.testing.expect(repeat_ns < 50 * std.time.ns_per_us);
+    try std.testing.expectEqual(CacheCounts{ .compiles = 2, .contexts = 1 }, cacheCounts(page.agent));
+    // An invalid pattern is cached too: re-validating it compiles nothing.
+    try std.testing.expectError(error.InvalidPattern, page.matches("(", "("));
+    try std.testing.expectError(error.InvalidPattern, page.matches("(", "("));
+    try std.testing.expectEqual(CacheCounts{ .compiles = 3, .contexts = 1 }, cacheCounts(page.agent));
 }
 
 test "more patterns than the cache holds still match, and an invalid one stays invalid" {
