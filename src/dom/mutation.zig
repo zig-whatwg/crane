@@ -305,6 +305,17 @@ fn nextLightInTree(node: *NodeBase, root: *NodeBase) ?*NodeBase {
 /// DOM insert steps 10–12: snapshot the whole batch before a step can run
 /// script. A callback can remove nodes, retire a realm, and reuse slab slots.
 fn runPostConnectionStepsForTrees(allocator: std.mem.Allocator, roots: []const *NodeBase) !void {
+    // Step 11 runs a node's post-connection steps "if node is connected". The
+    // batch's nodes were just inserted under one parent, so each is
+    // connected exactly when its root is (the flag is exact), and none can
+    // become connected before some step has run script. A batch whose roots
+    // are not connected has nothing to run, and its subtrees are not
+    // collected: a deep detached subtree moved between detached parents
+    // (Range's subfragments) was walked here on every move, its steps all
+    // skipped (lane crash1 batch 3).
+    for (roots) |root| {
+        if (root.is_connected) break;
+    } else return;
     const Entry = struct {
         node: *NodeBase,
         instance: ?*runtime.Instance,
@@ -1536,9 +1547,13 @@ fn removeHeld(
     errdefer refcount.endRemovalHold(@ptrCast(node));
     leftTree(@ptrCast(node), @ptrCast(parent));
 
-    // Update is_connected for the removed node and all its descendants
-    // A removed node is no longer connected to the document tree
-    setConnectedRecursive(node, false);
+    // Update is_connected for the removed node and all its descendants. A
+    // removed node is no longer connected to the document tree; one that was
+    // not connected has no connected descendant (the flag is exact,
+    // dom.shadow_hosts.attached), so its subtree is not walked - a deep
+    // detached subtree moved between detached parents (Range's subfragments)
+    // paid a walk of it on every move (lane crash1 batch 3).
+    if (node.is_connected) setConnectedRecursive(node, false);
     // domindex1: the light subtree leaves its old tree scope's maps at the
     // unlink - before the form owner reset below, whose form-ID lookups
     // read them, and before any removing step (Blink and WebKit update
