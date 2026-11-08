@@ -109,6 +109,28 @@ pub fn isPageMarginRule(name: []const u8) bool {
     return false;
 }
 
+/// The most `{}` blocks a style sheet's rules open one inside another:
+/// Firefox 159's bound, cssparser's REASONABLE_NESTED_BLOCK_LIMIT
+/// (servo/rust-cssparser src/parser.rs `parse_nested_block`: entering a
+/// block when 75 are open is TooManyNestedBlocks, and the block is not
+/// entered). CSS Syntax 3 and CSS Nesting 1 set no limit; Chrome keeps 1,000
+/// nested rules and crashes at 10,000, Safari keeps 128 (WebKit CSSParser
+/// maximumRuleListNestingLevel). The user's ruling (2026-11-08): Firefox's
+/// bound over the spec's unlimited depth, because a deep-nesting crash takes
+/// down Crane's whole process - and the bound keeps every walker of the rule
+/// tree after this parser within 75 levels. What Firefox does at the bound,
+/// and so this parser (`Parser.enterBlock`, `consumeQualified`):
+/// - a rule whose block would be the 76th open one is dropped, and its block
+///   is NOT consumed as a block: its contents are read by the enclosing
+///   block (the "}" that closed it closes the enclosing one);
+/// - a qualified rule whose prelude opens blocks past the bound, counting
+///   the enclosing rule blocks, is dropped with its block - the selector
+///   parser keeps the same bound (selector.parser.max_nested_blocks) for
+///   the blocks of a selector alone.
+/// Values are not bounded here: Chrome and Safari keep custom property
+/// values nested 10,000 deep.
+pub const max_nested_blocks = 75;
+
 /// The at-rules whose block is a list of rules.
 fn isGroupRule(name: []const u8) bool {
     for ([_][]const u8{ "media", "supports", "layer", "container", "scope", "starting-style", "document", "-moz-document", "keyframes", "-webkit-keyframes" }) |group| {
@@ -219,8 +241,8 @@ pub fn parseStyleSheetContents(allocator: Allocator, text: []const u8) Allocator
             // Whitespace, and at the top level <CDO-token> and <CDC-token>,
             // are discarded.
             .whitespace, .cdo, .cdc => _ = parser.next(),
-            .at_keyword => {
-                var rule = try parser.consumeAtRule(false);
+            .at_keyword => if (try parser.consumeAtRule(false)) |parsed| {
+                var rule = parsed;
                 errdefer rule.deinit(allocator);
                 try rules.append(allocator, rule);
             },
@@ -250,7 +272,7 @@ pub fn parseRule(allocator: Allocator, text: []const u8) Allocator.Error!?Rule {
     // a syntax error.
     var rule: Rule = switch (parser.peek().token_type) {
         .eof => return null,
-        .at_keyword => try parser.consumeAtRule(false),
+        .at_keyword => (try parser.consumeAtRule(false)) orelse return null,
         else => (try parser.consumeQualifiedRule()) orelse return null,
     };
     errdefer rule.deinit(allocator);
@@ -270,7 +292,7 @@ pub fn parsePageMarginRule(allocator: Allocator, text: []const u8) Allocator.Err
     var parser: Parser = .{ .allocator = allocator, .tokens = Tokenizer.init(text), .page_margin_context = true };
     while (parser.peek().token_type == .whitespace) _ = parser.next();
     if (parser.peek().token_type != .at_keyword) return null;
-    var rule = try parser.consumeAtRule(false);
+    var rule = (try parser.consumeAtRule(false)) orelse return null;
     errdefer rule.deinit(allocator);
     while (parser.peek().token_type == .whitespace) _ = parser.next();
     if (parser.peek().token_type != .eof or !isPageMarginRule(rule.name) or !rule.has_block or rule.prelude.len != 0) {
@@ -293,6 +315,20 @@ const Parser = struct {
     /// tokens there (substitution.closeAtEof): a style sheet's, not a
     /// declaration list's (parseDeclarationList). Other values always do.
     close_at_eof: bool = true,
+    /// The rule blocks open where the parse is (`max_nested_blocks`).
+    depth: usize = 0,
+    /// The most blocks one component value consumed since `consumeQualified`
+    /// started its prelude opened one inside another.
+    deepest: usize = 0,
+
+    /// Enter a rule or declaration block whose "{" was just consumed, or -
+    /// at `max_nested_blocks` - leave it unentered (false): its contents are
+    /// then the enclosing block's. The caller leaves with `self.depth -= 1`.
+    fn enterBlock(self: *Parser) bool {
+        if (self.depth >= max_nested_blocks) return false;
+        self.depth += 1;
+        return true;
+    }
 
     fn next(self: *Parser) Token {
         if (self.peeked) |token| {
@@ -311,7 +347,9 @@ const Parser = struct {
 
     /// CSS Syntax 3 section 5.5.2: consume the prelude and the block's
     /// declarations or nested rules, according to the at-rule's grammar.
-    fn consumeAtRule(self: *Parser, nested: bool) Allocator.Error!Rule {
+    /// Null when its block would pass `max_nested_blocks`: the at-rule is
+    /// dropped, and its block's contents are left for the enclosing block.
+    fn consumeAtRule(self: *Parser, nested: bool) Allocator.Error!?Rule {
         const keyword = self.next();
         const name = try tokenizer.decode(self.allocator, keyword.value);
         errdefer self.allocator.free(name);
@@ -346,6 +384,22 @@ const Parser = struct {
                 .left_brace => {
                     prelude_end = self.tokens.pos - 1;
                     _ = self.next();
+                    // A block this parser reads (not one it skips) is a
+                    // nested block, bounded by `max_nested_blocks`.
+                    const skipped = if (self.font_feature_names)
+                        !isFontFeatureBlock(name)
+                    else if (self.page_margin_context)
+                        !isPageMarginRule(name)
+                    else
+                        !(std.mem.eql(u8, name, "page") or std.mem.eql(u8, name, "font-feature-values") or isGroupRule(name) or isDeclarationBlockRule(name));
+                    if (!skipped and !self.enterBlock()) {
+                        self.allocator.free(name);
+                        prelude.deinit();
+                        return null;
+                    }
+                    defer if (!skipped) {
+                        self.depth -= 1;
+                    };
                     if (self.font_feature_names) {
                         if (isFontFeatureBlock(name)) {
                             declarations = try self.consumeDeclarationList();
@@ -430,9 +484,11 @@ const Parser = struct {
                     const previous = self.font_feature_names;
                     self.font_feature_names = true;
                     defer self.font_feature_names = previous;
-                    var child = try self.consumeAtRule(true);
-                    errdefer child.deinit(self.allocator);
-                    try children.append(self.allocator, child);
+                    if (try self.consumeAtRule(true)) |parsed| {
+                        var child = parsed;
+                        errdefer child.deinit(self.allocator);
+                        try children.append(self.allocator, child);
+                    }
                 },
                 else => {
                     if (self.peek().token_type == .ident) {
@@ -485,9 +541,11 @@ const Parser = struct {
                     const previous = self.page_margin_context;
                     self.page_margin_context = true;
                     defer self.page_margin_context = previous;
-                    var child = try self.consumeAtRule(true);
-                    errdefer child.deinit(self.allocator);
-                    try children.append(self.allocator, child);
+                    if (try self.consumeAtRule(true)) |parsed| {
+                        var child = parsed;
+                        errdefer child.deinit(self.allocator);
+                        try children.append(self.allocator, child);
+                    }
                 },
                 else => {
                     if (self.peek().token_type == .ident) {
@@ -541,11 +599,15 @@ const Parser = struct {
                 },
                 .at_keyword => {
                     // At-rules always terminate the preceding run, even
-                    // when their grammar is unsupported by the CSSOM model.
-                    try self.flushDeclarations(&declarations, &children, &first, style);
-                    var rule = try self.consumeAtRule(true);
-                    errdefer rule.deinit(self.allocator);
-                    try children.append(self.allocator, rule);
+                    // when their grammar is unsupported by the CSSOM model -
+                    // but one dropped at `max_nested_blocks` is no rule: its
+                    // contents continue the run (Firefox 159).
+                    if (try self.consumeAtRule(true)) |parsed| {
+                        var rule = parsed;
+                        errdefer rule.deinit(self.allocator);
+                        try self.flushDeclarations(&declarations, &children, &first, style);
+                        try children.append(self.allocator, rule);
+                    }
                 },
                 else => {
                     const mark = self.markStream();
@@ -597,6 +659,7 @@ const Parser = struct {
     fn consumeQualified(self: *Parser, nested: bool, stop_at_semicolon: bool) Allocator.Error!?Rule {
         var prelude: Serializer = .{ .allocator = self.allocator };
         defer prelude.deinit();
+        self.deepest = 0;
         while (true) {
             const token = self.peek();
             switch (token.token_type) {
@@ -614,6 +677,17 @@ const Parser = struct {
                         return null;
                     }
                     _ = self.next();
+                    // A selector whose blocks pass `max_nested_blocks` with
+                    // the rule blocks around it is invalid: the rule is
+                    // dropped with its block. A rule whose own block would
+                    // pass it is dropped, and its block's contents are the
+                    // enclosing block's (Firefox 159).
+                    if (self.depth + self.deepest > max_nested_blocks) {
+                        try self.skipBlock(.right_brace);
+                        return null;
+                    }
+                    if (!self.enterBlock()) return null;
+                    defer self.depth -= 1;
                     const contents = try self.consumeBlockContents(true);
                     errdefer freeDeclarations(self.allocator, contents.declarations);
                     errdefer freeRules(self.allocator, contents.children);
@@ -950,6 +1024,7 @@ const Parser = struct {
         var expected: CloserStack = .{};
         defer expected.deinit(self.allocator);
         try expected.push(self.allocator, close);
+        self.deepest = @max(self.deepest, 1);
         while (true) {
             const inner = self.peek();
             if (inner.token_type == .eof) return;
@@ -959,7 +1034,10 @@ const Parser = struct {
             if (token.token_type == expected.top()) {
                 expected.pop();
                 if (expected.len() == 0) return;
-            } else if (blockCloser(token.token_type)) |nested| try expected.push(self.allocator, nested);
+            } else if (blockCloser(token.token_type)) |nested| {
+                try expected.push(self.allocator, nested);
+                self.deepest = @max(self.deepest, expected.len());
+            }
         }
     }
 

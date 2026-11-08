@@ -1004,6 +1004,7 @@ pub fn executeTests(
                     context_name,
                     variant,
                     server,
+                    if (report.manifest) |m| m.isCrashtest(test_file.path) else false,
                 ) catch |err| {
                     // Create error result with stack trace and context
                     var error_result = try test_harness.TestResult.initWithContext(allocator, test_file.path, context_name);
@@ -1390,7 +1391,19 @@ fn executeTestFileInContext(
     context_name: ?[]const u8,
     variant: []const u8,
     server: *wpt_server.WptServer,
+    crashtest: bool,
 ) !test_harness.TestResult {
+    // A WPT crashtest (MANIFEST.json items.crashtest) runs as wptrunner's
+    // crashtest executor runs it: load, then test-wait (wpt_browser.zig
+    // `runCrashtest`); it passes when nothing crashed.
+    if (crashtest and (test_file.file_type == .html or test_file.file_type == .xml)) {
+        const test_url = try server.buildTestUrl(allocator, test_file.path, .window, variant);
+        defer allocator.free(test_url);
+        var result = try browser.runCrashtest(test_url, test_file.path, parsed.metadata.timeout);
+        if (context_name) |ctx| result.context = try allocator.dupe(u8, ctx);
+        return result;
+    }
+
     // For documents, fetch from HTTP and let the response's MIME type select
     // HTML or XML parsing (HTML §7.5.2/§7.5.3). The suffix is not a MIME override.
     // This enables proper resource loading via wpt serve (URL rewrites, headers, etc.)
