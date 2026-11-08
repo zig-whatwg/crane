@@ -804,3 +804,11 @@ why = A bug: the runner process ran out of file descriptors. Generation 210's We
 commit = bd6c3de66a0
 test = tests/websocket/flaky5_bad_port_test.zig
 repro = before 20/20; after 0/20
+
+[html/browsers/browsing-the-web/overlapping-navigations-and-traversals/cross-document-nav-same-document-traversal.html]
+generation = 211
+kind = flake
+why = Not a code change: 1 -> 0 in generation 211's sweep, the first generation swept on server1 (Linux x86-64, 32 runners): "cross-document navigations are stopped by same-document back()" failed after 3,053 ms (it passes in ~150 ms) and the sweep's own retry passed (journal flaky: true). Its first disposition; one earlier flip in lane linux1 b1's server1 sweep (2026-11-08). Isolated runs, the file alone in a fresh runner each time (integrator, 2026-11-08): BASE ~/crane-frozen/main-c5214d1190 (generation 210's runner, chat.local, macOS) 10/10 at 21:34 UTC; TIP ~/crane-frozen/main-9053db756e (generation 211's runner, server1, Linux) 9/10 at 21:14 UTC with the host under lane load (~14 of 32) and 10/10 at 21:34 UTC. Likely the ordering of the in-flight cross-document navigation against the same-document traversal under load. Recorded as a FLAKE in tmp/plans/feature-queue.md: the next flip makes it a bug with an owner (a navigation lane).
+pair.1 = base 1/1; tip 1/1
+pair.2 = base 1/1; tip 1/1
+pair.3 = base 1/1; tip 1/1
