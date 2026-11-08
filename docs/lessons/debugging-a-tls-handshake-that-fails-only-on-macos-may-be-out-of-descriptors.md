@@ -9,4 +9,6 @@
 
 **Fix**: The bad ports are refused before any connection (Fetch main fetch step 7; bd6c3de66a0), which took the file's peak to 17 descriptors. And the platform's start raises the soft limit to 8192, or to the hard limit below it, never lowering it or touching the hard limit (`platform.initializePlatform`, kit/posix; 17d8a552a02), as Chromium's `BrowserMainLoop::EarlyInitialization` (`base::IncreaseFdLimitTo(8192)`: "the default limit on Apple is low (256)") and Gecko's `XRE_mainInit` (`mozilla::startup::IncreaseDescriptorLimits`) do.
 
+To reproduce at a lower limit, lower only the soft one (`ulimit -S -n 200`): bash's plain `ulimit -n 200` sets the hard limit too, and the platform's raise then stops at it, as it must - with the soft limit alone at 200 or 240, the build with the raise passed 20/20 where the build without it failed 20/20 and 7/20.
+
 **Takeaway**: **When a TLS failure is fast, platform-specific and load-dependent, log the process's open descriptors and its `RLIMIT_NOFILE` beside curl's error buffer before theorising: a failure decided by the exact descriptor count is deterministic in a fresh process and a flake in a long-lived one.**
