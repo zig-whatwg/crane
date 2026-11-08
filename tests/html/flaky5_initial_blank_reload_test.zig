@@ -42,8 +42,8 @@ fn run(browser: *Browser, script: []const u8) !void {
 
 /// Turn the event loop until `script` answers "true", or fail.
 fn waitFor(browser: *Browser, script: []const u8) !void {
-    var turns: usize = 0;
-    while (turns < 400) : (turns += 1) {
+    var turn: usize = 0;
+    while (turn < 400) : (turn += 1) {
         const now = try answer(browser, script);
         defer testing.allocator.free(now);
         if (std.mem.eql(u8, now, "true")) return;
