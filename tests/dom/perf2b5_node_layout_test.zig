@@ -79,7 +79,8 @@ test "NodeBase keeps no child list: the sibling links are the children" {
     // (ScriptWrappable::wrapper_). The per-node allocator (16) is the next
     // step: an owner-less NodeBase (the test-only WithBase types) still needs
     // it, so it waits for those to carry their own (design 3.4, deferred).
-    try expectSize(NodeBase, 96);
+    // Done in batch 6 (with last_child): 88 bytes, perf2b6_node_layout_test.zig.
+    try expectSize(NodeBase, 88);
     try std.testing.expect(!@hasField(NodeBase, "child_nodes"));
     try std.testing.expect(@hasField(NodeBase, "bound_v8_wrapper"));
 }
@@ -102,7 +103,7 @@ test "every OwnState level keeps its InternalState by value in its own State" {
     try std.testing.expectEqual(@as(usize, 0), missing);
 }
 
-test "Node's embedded state is its NodeBase by value and the fields a node uses: 136 bytes" {
+test "Node's embedded state is its NodeBase by value and the fields a node uses: 128 bytes" {
     const E = Embedded(interfaces.Node.State);
     if (E == void) {
         return error.NotEmbedded;
@@ -113,8 +114,8 @@ test "Node's embedded state is its NodeBase by value and the fields a node uses:
         // no caller), prefix and node_value (no writer) and is_connected
         // (NodeBase's is the one the DOM reads). The allocator copy stays
         // until every realm's creation allocator is its scope's (the V8
-        // tests' realms are not). Batch 6: no allocator copy, NodeBase 96.
-        try expectSize(E, 136);
+        // tests' realms are not). Batch 6: no allocator copy, NodeBase 88.
+        try expectSize(E, 128);
         try std.testing.expect(@FieldType(E, "base") == NodeBase);
         inline for (.{ "local_name", "namespace_uri", "prefix", "node_value", "is_connected" }) |dead| {
             if (@hasField(E, dead)) {

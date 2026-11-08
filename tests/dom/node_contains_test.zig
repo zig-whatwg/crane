@@ -13,14 +13,7 @@ const Element = dom.ElementWithBase;
 /// Link `child` as `parent`'s last child (a node's children are its sibling
 /// links: NodeBase.children; lane perf2 batch 5).
 fn linkTestChild(parent: *NodeBase, child: *NodeBase) void {
-    child.previous_sibling = parent.last_child;
-    child.next_sibling = null;
-    if (parent.last_child) |last| {
-        last.next_sibling = child;
-    } else {
-        parent.first_child = child;
-    }
-    parent.last_child = child;
+    parent.linkChildBefore(child, null);
 }
 
 test "Node.contains - self" {

@@ -592,8 +592,8 @@ fn isElementPreceding(parent: *NodeBase, child: ?*NodeBase) bool {
     if (child.?.parent_node != parent) return false;
 
     // Check all siblings before child
-    var sibling = child.?.previous_sibling;
-    while (sibling) |s| : (sibling = s.previous_sibling) {
+    var sibling = child.?.previousSibling();
+    while (sibling) |s| : (sibling = s.previousSibling()) {
         if (isElement(s)) return true;
     }
 
@@ -869,7 +869,7 @@ fn insertWith(
     }
 
     // Step 6: Let previousSibling be child's previous sibling or parent's last child if child is null
-    const previousSibling: ?*NodeBase = if (child) |c| c.previous_sibling else parent.last_child;
+    const previousSibling: ?*NodeBase = if (child) |c| c.previousSibling() else parent.lastChild();
 
     // Step 7: For each node in nodes, in tree order:
     for (nodes[0..count]) |n| {
@@ -896,29 +896,8 @@ fn insertWith(
         // Step 7.2-3: Insert node into parent's children: the links are the
         // children (NodeBase.children), so this cannot fail.
 
-        if (child) |c| {
-            // Insert before child
-            n.next_sibling = c;
-            n.previous_sibling = c.previous_sibling;
-
-            if (c.previous_sibling) |prev| {
-                prev.next_sibling = n;
-            } else {
-                parent.first_child = n;
-            }
-            c.previous_sibling = n;
-        } else {
-            // Append at end
-            n.previous_sibling = parent.last_child;
-            n.next_sibling = null;
-
-            if (parent.last_child) |last| {
-                last.next_sibling = n;
-            } else {
-                parent.first_child = n;
-            }
-            parent.last_child = n;
-        }
+        // Before child, or after the last child.
+        parent.linkChildBefore(n, child);
 
         // The parent write, and the holds it moves (refcount, step 3) - its
         // remover's hold ends here; a wrapped root joins its new tree's
@@ -1096,32 +1075,14 @@ pub fn appendChildren(
     }
 
     // Step 3: Get previous sibling for mutation record (last child before insertion)
-    const previousSibling: ?*NodeBase = parent.last_child;
+    const previousSibling: ?*NodeBase = parent.lastChild();
 
     // Steps 4-5: link every child after it - parent and sibling pointers
     // (the links are the children: NodeBase.children)
-    var prev_child: ?*NodeBase = previousSibling; // Last child before insertion (or null)
     for (children) |child| {
         refcount.linkChild(child, @ptrCast(parent));
         joinedTree(child, @ptrCast(parent));
-
-        // Update sibling pointers
-        child.previous_sibling = prev_child;
-        child.next_sibling = null; // Will be updated by next iteration if there is one
-
-        if (prev_child) |prev| {
-            prev.next_sibling = child;
-        } else {
-            // This is the first child being inserted AND parent had no children
-            parent.first_child = child;
-        }
-
-        prev_child = child;
-    }
-
-    // The last inserted child becomes parent's last_child
-    if (children.len > 0) {
-        parent.last_child = children[children.len - 1];
+        parent.linkChildBefore(child, null);
     }
     // domindex1: the tree scope's maps, once the batch is linked.
     for (children) |child| tree_ordered_map.inserted(child, @ptrCast(parent));
@@ -1243,7 +1204,7 @@ pub fn insertChildrenBefore(
     }
 
     // Get previous sibling for mutation record
-    const previousSibling: ?*NodeBase = ref_child.previous_sibling;
+    const previousSibling: ?*NodeBase = ref_child.previousSibling();
 
     // The parent link of each child (the holds it moves), in reverse order as
     // before; the sibling links below are the children (NodeBase.children).
@@ -1254,34 +1215,8 @@ pub fn insertChildrenBefore(
         joinedTree(children[i], @ptrCast(parent));
     }
 
-    // Link the inserted children together and to the nodes around them
-    if (children.len > 0) {
-        const first_inserted = children[0];
-        const last_inserted = children[children.len - 1];
-
-        // Connect first inserted to previous sibling
-        first_inserted.previous_sibling = previousSibling;
-        if (previousSibling) |prev| {
-            prev.next_sibling = first_inserted;
-        } else {
-            // First inserted becomes first child
-            parent.first_child = first_inserted;
-        }
-
-        // Connect last inserted to reference child (next sibling)
-        last_inserted.next_sibling = ref_child;
-        ref_child.previous_sibling = last_inserted;
-
-        // Link inserted children together (forward pass)
-        var prev_child: ?*NodeBase = null;
-        for (children) |child| {
-            if (prev_child) |prev| {
-                prev.next_sibling = child;
-                child.previous_sibling = prev;
-            }
-            prev_child = child;
-        }
-    }
+    // Link the inserted children, in order, before the reference child.
+    for (children) |child| parent.linkChildBefore(child, ref_child);
     // domindex1: the tree scope's maps, once the batch is linked.
     for (children) |child| tree_ordered_map.inserted(child, @ptrCast(parent));
 
@@ -1416,7 +1351,7 @@ pub fn replace(
     }
 
     // Step 9: Let previousSibling be child's previous sibling
-    const previousSibling: ?*NodeBase = child.previous_sibling;
+    const previousSibling: ?*NodeBase = child.previousSibling();
 
     // Deviation, stated: the spec text now leaves node's adoption to step
     // 13's insert, which would remove node from its old parent only after
@@ -1618,30 +1553,14 @@ fn removeHeld(
     runNodeIteratorPreRemoveSteps(node);
 
     // Step 5: Let oldPreviousSibling be node's previous sibling
-    const oldPreviousSibling: ?*NodeBase = node.previous_sibling;
+    const oldPreviousSibling: ?*NodeBase = node.previousSibling();
 
     // Step 6: Let oldNextSibling be node's next sibling
     const oldNextSibling: ?*NodeBase = node.next_sibling;
 
     // Step 7: Remove node from its parent's children: unlink it (the links
     // are the children, NodeBase.children)
-    if (node.previous_sibling) |prev| {
-        prev.next_sibling = node.next_sibling;
-    } else {
-        // node was first child
-        parent.first_child = node.next_sibling;
-    }
-
-    if (node.next_sibling) |next| {
-        next.previous_sibling = node.previous_sibling;
-    } else {
-        // node was last child
-        parent.last_child = node.previous_sibling;
-    }
-
-    // Clear node's sibling pointers
-    node.previous_sibling = null;
-    node.next_sibling = null;
+    parent.unlinkChild(node);
 
     // The parent write, and the holds it moves (refcount, step 3), with the
     // remover's hold (removeHeld); a wrapped root leaves its old tree's
@@ -1937,7 +1856,7 @@ pub fn move(node: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) DOMExcept
     // node and iterator."
     runNodeIteratorPreRemoveSteps(node);
     // 11. "Let oldPreviousSibling be node's previous sibling."
-    const old_previous_sibling = node.previous_sibling;
+    const old_previous_sibling = node.previousSibling();
     // 12. "Let oldNextSibling be node's next sibling."
     const old_next_sibling = node.next_sibling;
 
@@ -1987,7 +1906,7 @@ pub fn move(node: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) DOMExcept
 
     // 19. "Let newPreviousSibling be child's previous sibling if child is
     // non-null, and newParent's last child otherwise."
-    const new_previous_sibling = if (child) |c| c.previous_sibling else new_parent.last_child;
+    const new_previous_sibling = if (child) |c| c.previousSibling() else new_parent.lastChild();
 
     // 20. "If child is null, then append node to newParent's children."
     // 21. "Otherwise, insert node into newParent's children before child's
@@ -2519,18 +2438,7 @@ fn updateRangesForInsertionWithCount(doc: anytype, parent: anytype, child_index:
 /// removeHeld's step 7. Its parent link stays until linkForMove
 /// (refcount.moveChild writes it there with the counts): see `move`.
 fn unlinkForMove(node: *NodeBase, old_parent: *NodeBase) void {
-    if (node.previous_sibling) |prev| {
-        prev.next_sibling = node.next_sibling;
-    } else {
-        old_parent.first_child = node.next_sibling;
-    }
-    if (node.next_sibling) |next| {
-        next.previous_sibling = node.previous_sibling;
-    } else {
-        old_parent.last_child = node.previous_sibling;
-    }
-    node.previous_sibling = null;
-    node.next_sibling = null;
+    old_parent.unlinkChild(node);
 }
 
 /// Move steps 20-21: `node` joins `new_parent`'s children before `child`
@@ -2541,25 +2449,7 @@ fn unlinkForMove(node: *NodeBase, old_parent: *NodeBase) void {
 /// node's opaque root and tree edges following it: it leaves its old
 /// parent's and joins its new one's (refcount design section 7 step 4).
 fn linkForMove(node: *NodeBase, old_parent: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) void {
-    if (child) |c| {
-        node.next_sibling = c;
-        node.previous_sibling = c.previous_sibling;
-        if (c.previous_sibling) |prev| {
-            prev.next_sibling = node;
-        } else {
-            new_parent.first_child = node;
-        }
-        c.previous_sibling = node;
-    } else {
-        node.previous_sibling = new_parent.last_child;
-        node.next_sibling = null;
-        if (new_parent.last_child) |last| {
-            last.next_sibling = node;
-        } else {
-            new_parent.first_child = node;
-        }
-        new_parent.last_child = node;
-    }
+    new_parent.linkChildBefore(node, child);
     refcount.moveChild(node, new_parent);
     if (old_parent != new_parent) {
         leftTree(node, old_parent);

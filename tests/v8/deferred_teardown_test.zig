@@ -146,7 +146,7 @@ const Tree = struct {
         const root = try page.instance(source);
         const node = dom.instance_bridge.getNodeBase(@ptrCast(root)).?;
         const first = node.first_child.?;
-        const last = node.last_child.?;
+        const last = node.lastChild().?;
         // Since refcount step 7 the counts queue every tree they find
         // garbage - making this one leaves innerHTML's parse fragment - so
         // that goes first: the tree's root is then the one item a collection

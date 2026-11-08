@@ -83,7 +83,7 @@ const Fixture = struct {
     }
 };
 
-test "NodeBase is 96 bytes: the counts' 8 beside nodeholds' `holds` (until step 9b), the rest R6's" {
+test "NodeBase is 88 bytes: the counts' 8 beside nodeholds' `holds` (until step 9b), the rest R6's" {
     // 440 bytes before NodeBase.is_shadow_host, 448 since lane nodeholds' hold
     // chain head (`holds`, a pointer: the padding beside node_type and the
     // bools was 3 bytes), and 456 with `rc` and `subtree_holds` (8 bytes that
@@ -95,9 +95,9 @@ test "NodeBase is 96 bytes: the counts' 8 beside nodeholds' `holds` (until step 
     // infra.List of 96: 88 of Crane's own plus the SafetyLock word its heap
     // list carried in safe builds): the sibling links are the children, 112 in
     // every build. Lane perf2 batch 6 took the allocator copy (16: an owner
-    // word names it): 96. Step 9b of tmp/plans/refcount-design.md deletes
-    // `holds` and pins 8 fewer.
-    try testing.expectEqual(@as(usize, 96), @sizeOf(NodeBase));
+    // word names it) and last_child (8: the first child's previous link): 88.
+    // Step 9b of tmp/plans/refcount-design.md deletes `holds` and pins 8 fewer.
+    try testing.expectEqual(@as(usize, 88), @sizeOf(NodeBase));
 }
 
 test "a node is born with one reference and one hold" {

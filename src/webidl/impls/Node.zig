@@ -79,7 +79,7 @@ pub const InternalState = struct {
     // was made with, asserted in initOwn.
 
     /// NodeBase - THE source of truth for tree structure
-    /// Contains: parent_node, first_child, last_child, previous_sibling, next_sibling
+    /// Contains: parent_node, first_child, previous_or_last, next_sibling
     /// All tree operations go through this via src/dom/mutation.zig
     /// `&base` while the node lives; null once its teardown released it
     /// (`releaseNodeBase`).
@@ -221,8 +221,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
             .node_type = node_type,
             .parent_node = null,
             .first_child = null,
-            .last_child = null,
-            .previous_sibling = null,
+            .previous_or_last = null,
             .next_sibling = null,
             .owner_document = null,
             .is_connected = false,
@@ -492,7 +491,7 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
 
     // Dispatch based on node type to call the appropriate interface's deinit.
     // Each interface's deinit will chain back to Node.deinit for proper recursive cleanup.
-    // DO NOT clear first_child/last_child here - the recursive Node.deinit needs them
+    // DO NOT clear the child links here - the recursive Node.deinit needs them
     // to properly clean up the entire subtree.
     switch (internal.node_type) {
         NodeType.TEXT_NODE => {
@@ -816,7 +815,7 @@ pub fn get_firstChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 pub fn get_lastChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const node_base = internal.node_base orelse return null;
-    const last = node_base.last_child orelse return null;
+    const last = node_base.lastChild() orelse return null;
     const last_opaque = instance_bridge.getInstance(last) orelse return null;
     return @ptrCast(@alignCast(last_opaque));
 }
@@ -826,7 +825,7 @@ pub fn get_lastChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 pub fn get_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const node_base = internal.node_base orelse return null;
-    const prev = node_base.previous_sibling orelse return null;
+    const prev = node_base.previousSibling() orelse return null;
     const prev_opaque = instance_bridge.getInstance(prev) orelse return null;
     return @ptrCast(@alignCast(prev_opaque));
 }
@@ -2068,7 +2067,7 @@ pub fn getNextSibling(instance: *runtime.Instance) ?*runtime.Instance {
 pub fn getPreviousSibling(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     const node_base = internal.node_base orelse return null;
-    const prev_base = node_base.previous_sibling orelse return null;
+    const prev_base = node_base.previousSibling() orelse return null;
     const prev_opaque = instance_bridge.getInstance(prev_base) orelse return null;
     return @ptrCast(@alignCast(prev_opaque));
 }
@@ -2078,7 +2077,7 @@ pub fn getPreviousSibling(instance: *runtime.Instance) ?*runtime.Instance {
 pub fn getLastChild(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     const node_base = internal.node_base orelse return null;
-    const last_base = node_base.last_child orelse return null;
+    const last_base = node_base.lastChild() orelse return null;
     const last_opaque = instance_bridge.getInstance(last_base) orelse return null;
     return @ptrCast(@alignCast(last_opaque));
 }

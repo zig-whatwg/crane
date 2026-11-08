@@ -215,19 +215,15 @@ pub const ElementWithBase = struct {
         // Set parent relationship (and the holds it moves: refcount). This
         // simplified helper never took a child out of an old parent's list;
         // its counts leave the old chain all the same.
-        if (child.parent_node != null) refcount.unlinkChild(child);
+        if (child.parent_node) |old_parent| {
+            old_parent.unlinkChild(child);
+            refcount.unlinkChild(child);
+        }
         refcount.linkChild(child, &self.base);
 
         // Link it last (a node's children are its sibling links:
         // NodeBase.children)
-        child.previous_sibling = self.base.last_child;
-        child.next_sibling = null;
-        if (self.base.last_child) |last| {
-            last.next_sibling = child;
-        } else {
-            self.base.first_child = child;
-        }
-        self.base.last_child = child;
+        self.base.linkChildBefore(child, null);
 
         return child;
     }
@@ -237,10 +233,7 @@ pub const ElementWithBase = struct {
     pub fn removeChild(self: *ElementWithBase, child: *NodeBase) !*NodeBase {
         if (child.parent_node != &self.base) return error.NotFoundError;
         // Unlink it (a node's children are its sibling links)
-        if (child.previous_sibling) |prev| prev.next_sibling = child.next_sibling else self.base.first_child = child.next_sibling;
-        if (child.next_sibling) |next| next.previous_sibling = child.previous_sibling else self.base.last_child = child.previous_sibling;
-        child.previous_sibling = null;
-        child.next_sibling = null;
+        self.base.unlinkChild(child);
         refcount.unlinkChild(child);
         return child;
     }
@@ -252,7 +245,7 @@ pub const ElementWithBase = struct {
 
     /// Get last child
     pub fn getLastChild(self: *const ElementWithBase) ?*NodeBase {
-        return self.base.last_child;
+        return self.base.lastChild();
     }
 
     /// Check if element has children
