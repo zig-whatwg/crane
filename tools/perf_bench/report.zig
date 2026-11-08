@@ -2110,6 +2110,48 @@ test "memory compares the steady footprint where it was read, and the peak besid
     try testing.expect(std.mem.indexOf(u8, page.index_html, "Memory, peak") != null);
 }
 
+test "page growth compares the footprint the chain levels off at, not a slope over its whole length" {
+    // A chain's footprint rises while no collection runs, then levels off
+    // once collections keep up. The slope over all its steps reads a later
+    // knee as more growth: lane perf2 batch 7's tip was lower than its base
+    // at every one of 30 steps, levelled off 1.2 MB lower and two pages
+    // later - and its all-steps slope read 1.175 of the base's.
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var early: [30]u64 = @splat(0);
+    var late: [30]u64 = @splat(0);
+    for (0..30) |i| {
+        // Base: +10 MB a page for 5 pages, then level at 50 MB. Tip: +8 MB a
+        // page for 6 pages, then level at 48 MB - lower everywhere.
+        early[i] = @min(@as(u64, i) * 10, 50) * 1_000_000;
+        late[i] = @min(@as(u64, i) * 8, 48) * 1_000_000;
+    }
+    var base = try timed(a, 2, .crane_base, "base", "memory.page-growth", 0, 10, 0);
+    base.kind = .chain;
+    base.series = &early;
+    var tip = try timed(a, 2, .crane, "tip", "memory.page-growth", 0, 10, 0);
+    tip.kind = .chain;
+    tip.series = &late;
+    const m = try build(a, &.{ base, tip });
+    const b = m.current(2, .crane_base, "memory.page-growth").?;
+    const t = m.current(2, .crane, "memory.page-growth").?;
+    // The all-steps slope reads the tip as growing faster ...
+    try testing.expect(t.growth.? > b.growth.?);
+    // ... but the compared figure is the level, the median of the second
+    // half of the steps: 48 MB against 50 MB.
+    try testing.expectEqual(@as(?f64, 48_000_000), t.memoryFigure());
+    try testing.expectEqual(@as(?f64, 50_000_000), b.memoryFigure());
+    // What is still kept per page once levelled off: the second half's slope.
+    if (!@hasField(Cell, "late_growth")) return error.NoLateGrowth;
+    try testing.expectApproxEqAbs(@as(f64, 0), @field(t, "late_growth").?, 1e-6);
+    // A record without its series has no level: not measured.
+    var bare = try timed(a, 2, .crane, "old", "memory.page-growth", 0, 10, 0);
+    bare.kind = .chain;
+    const mb = try build(a, &.{bare});
+    try testing.expectEqual(@as(?f64, null), mb.current(2, .crane, "memory.page-growth").?.memoryFigure());
+}
+
 test "a browser updated within a round: its newest version is the one compared" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
