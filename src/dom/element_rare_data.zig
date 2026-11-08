@@ -45,6 +45,7 @@ const element_data = @import("element_data.zig");
 const same_object = @import("same_object.zig");
 const custom_elements = @import("custom_elements.zig");
 const element_references = @import("element_references.zig");
+const slot_helpers = @import("slot_helpers.zig");
 
 /// HTMLElement's part: every field its InternalState kept (88 bytes on every
 /// HTML element before D2). Written only by HTMLElement.
@@ -115,6 +116,13 @@ pub const ElementRareData = struct {
     /// The element references of the reflected element attributes (WebKit's
     /// m_explicitlySetAttrElementsMap, Blink's kExplicitlySetElementsForAttr).
     references: ?*element_references.State = null,
+    /// DOM 4.2.2.2: the element as a slottable - its assigned slot and its
+    /// manual slot assignment, weak references (NodeRefs) the slot
+    /// algorithms keep (dom.slot_helpers, dom.shadow_dom_algorithms). Made
+    /// only for an element a slot assigns: readers that find no rare data
+    /// read dom.slot_helpers.unassigned (lane perf3 E1; Blink's
+    /// FlatTreeNodeData in NodeRareData). Owns nothing.
+    slottable: slot_helpers.SlottableState = .{},
     /// HTMLElement's part.
     html: HTMLElementRareData = .{},
 

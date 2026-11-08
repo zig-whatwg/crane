@@ -84,15 +84,6 @@ pub const InternalState = struct {
     /// here, by "handle attribute changes" and "create an element".
     data: ElementData,
 
-    /// DOM 4.2.2.2: the element as a slottable - its assigned slot and its
-    /// manual slot assignment, weak references the slot algorithms keep
-    /// (dom.slot_helpers, dom.shadow_dom_algorithms). Its name is its slot
-    /// attribute's value (`slotName`). Not rare data: dom.slot_helpers hands
-    /// out this state, writable, on read paths that visit every element (an
-    /// event's path, innerText, the style engine), so making it on demand
-    /// would make rare data for every element they visit.
-    slottable: dom.slot_helpers.SlottableState = .{},
-
     /// The element's style state (dom.style.ElementStyle): its style
     /// attribute's declaration block and its cached computed style. Made on
     /// first use, freed with this state (lane style1). Kept here, not in
@@ -103,10 +94,10 @@ pub const InternalState = struct {
 
     /// The fields few elements use - its prefix, Attr nodes, NamedNodeMap,
     /// shadow root, definition, is value, element references, a registry
-    /// that is not its node document's (E1) and HTMLElement's part - or null
-    /// while none was needed (lane perf3 D2; WebKit's ElementRareData).
-    /// Made by `ensureRare`, never moved, freed by
-    /// `deinit` at both of the element's exits.
+    /// that is not its node document's and its slottable state (E1) and
+    /// HTMLElement's part - or null while none was needed (lane perf3 D2;
+    /// WebKit's ElementRareData). Made by `ensureRare`, never moved, freed
+    /// by `deinit` at both of the element's exits.
     rare: ?*ElementRareData = null,
 
     /// Custom element state per HTML spec
@@ -266,8 +257,8 @@ pub fn installHooks() void {
     // when its value is first needed (HTML 8.1.8.1).
     dom.event_handlers.installRawCompiler(&compileRawEventHandler);
     // The slot algorithms read an element's slottable state through
-    // `dom.slot_helpers`.
-    dom.slot_helpers.install(.{ .element_slottable = &slottableOf });
+    // `dom.slot_helpers`, and write it through its ensure path.
+    dom.slot_helpers.install(.{ .element_slottable = &slottableOf, .element_ensure_slottable = &ensureSlottableOf });
     dom.custom_elements.installElement(.{
         .get = &customElementData,
         .initialize = &initializeCustomElement,
@@ -335,11 +326,24 @@ fn shadowRootOf(instance: *runtime.Instance) ?*runtime.Instance {
     return rare.shadow_root;
 }
 
-/// `dom.slot_helpers`: the element as a slottable - its state and its name,
-/// which is its slot attribute's value (DOM 4.2.2.2).
+/// `dom.slot_helpers`' readers' path: the element as a slottable - its state
+/// and its name, which is its slot attribute's value (DOM 4.2.2.2). Its state
+/// (its assigned slot and manual slot assignment) is rare data (lane perf3
+/// E1): an element with none reads the shared `unassigned` state, so the
+/// read paths that visit every element (an event's path, innerText, the
+/// style engine) make nothing.
 fn slottableOf(instance: *runtime.Instance) ?dom.slot_helpers.Slottable {
     const internal = getInternal(instance) orelse return null;
-    return .{ .state = &internal.slottable, .name = slotName(internal) };
+    const state: *const dom.slot_helpers.SlottableState = if (internal.rare) |rare| &rare.slottable else &dom.slot_helpers.unassigned;
+    return .{ .state = state, .name = slotName(internal) };
+}
+
+/// `dom.slot_helpers`' writers' path: the element's slottable state, its rare
+/// data made now if it has none - only for an element a slot assigns.
+fn ensureSlottableOf(instance: *runtime.Instance) error{OutOfMemory}!?*dom.slot_helpers.SlottableState {
+    const internal = getInternal(instance) orelse return null;
+    const rare = try ensureRare(instance, internal);
+    return &rare.slottable;
 }
 
 fn markCustomElementEnqueued(instance: *runtime.Instance) void {

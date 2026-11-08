@@ -67,7 +67,7 @@ const has_rare_registry = @hasField(ElementRareData, "custom_element_registry");
 // Sizes (red until E1)
 // ============================================================================
 
-test "Element's InternalState keeps no 40-byte registry association: a one-byte place, 200 bytes" {
+test "Element's InternalState keeps no 40-byte registry association: a one-byte place, 136 bytes" {
     if (comptime @hasField(ElementState, "custom_element_registry")) {
         const F = @FieldType(ElementState, "custom_element_registry");
         if (@sizeOf(F) > 1) {
@@ -76,13 +76,14 @@ test "Element's InternalState keeps no 40-byte registry association: a one-byte 
         }
     }
     // 240 after D2: - 40 (the association) + a one-byte place, in the
-    // padding after the three one-byte fields.
-    try expectSize(ElementState, 200);
+    // padding after the three one-byte fields: 200; item 2 then took the
+    // slottable state out (tests/dom/perf3e1_slottable_test.zig): 136.
+    try expectSize(ElementState, 136);
 }
 
-test "a div's one block is 432 bytes: 472 less the association" {
+test "a div's one block is 368 bytes: 472 less the association (40) and the slottable state (64)" {
     const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 432);
+    try expectSize(S, 368);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
     if (held - @sizeOf(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });
@@ -90,10 +91,11 @@ test "a div's one block is 432 bytes: 472 less the association" {
     }
 }
 
-test "ElementRareData keeps the association for a registry that is not the node document's: 280 bytes" {
+test "ElementRareData keeps the association for a registry that is not the node document's: 344 bytes" {
     if (comptime !has_rare_registry) return error.NoRareRegistry;
     try testing.expectEqual(@sizeOf(dom.custom_elements.RegistryAssociation), @sizeOf(@FieldType(ElementRareData, "custom_element_registry")));
-    try expectSize(ElementRareData, 280);
+    // 240 after D2 + the association (40) + the slottable state (64, item 2).
+    try expectSize(ElementRareData, 344);
 }
 
 // ============================================================================
