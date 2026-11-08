@@ -275,6 +275,14 @@ pub fn assignSlottables(allocator: Allocator, slot: *NodeBase) Error!void {
     // then run signal a slot change for slot." Identical lists leave steps 3
     // and 4 nothing to change: each of those slottables already names slot.
     if (identical(slottables.items, state.assigned_nodes.items)) return;
+    // Step 4 writes each slottable's state, which an element keeps in its
+    // rare data (dom.slot_helpers' writers' path, lane perf3 E1): made here,
+    // before anything changes, so that running out of memory changes
+    // nothing; step 4 then finds it made.
+    for (slottables.items) |ref| {
+        const node = ref.get() orelse continue;
+        _ = try slot_helpers.ensureSlottable(node);
+    }
     signalSlotChange(slot);
     // The style engine's slot-assignment version (lane style2).
     @import("style/root.zig").slotAssignmentChanged(slot);
@@ -293,7 +301,11 @@ pub fn assignSlottables(allocator: Allocator, slot: *NodeBase) Error!void {
         const node = ref.get() orelse continue;
         const old = slot_helpers.slottable(node) orelse continue;
         const assigned = old.state.assigned_slot orelse continue;
-        if (assigned.eql(slot_ref)) old.state.assigned_slot = null;
+        // A state that names a slot is the node's own: the writers' path
+        // finds it, making nothing.
+        if (assigned.eql(slot_ref)) if (try slot_helpers.ensureSlottable(node)) |own| {
+            own.assigned_slot = null;
+        };
     }
 
     // Step 3: "Set slot's assigned nodes to slottables."
@@ -303,8 +315,8 @@ pub fn assignSlottables(allocator: Allocator, slot: *NodeBase) Error!void {
     // slot to slot."
     for (state.assigned_nodes.items) |ref| {
         const node = ref.get() orelse continue;
-        const slottable = slot_helpers.slottable(node) orelse continue;
-        slottable.state.assigned_slot = slot_ref;
+        const slottable = (try slot_helpers.ensureSlottable(node)) orelse continue;
+        slottable.assigned_slot = slot_ref;
     }
 }
 
@@ -577,6 +589,12 @@ pub fn assign(allocator: Allocator, slot: *runtime.Instance, nodes: []const *run
     }
     try previous_slots.ensureTotalCapacity(allocator, nodes_set.items.len);
     try state.manually_assigned_nodes.ensureTotalCapacity(state.allocator, nodes_set.items.len);
+    // Step 3.2 writes each node's state, which an element keeps in its rare
+    // data (dom.slot_helpers' writers' path, lane perf3 E1): made here too.
+    for (nodes_set.items) |ref| {
+        const node = ref.get() orelse continue;
+        _ = try slot_helpers.ensureSlottable(node);
+    }
 
     const old_manual = try allocator.dupe(NodeRef, state.manually_assigned_nodes.items);
     defer allocator.free(old_manual);
@@ -586,16 +604,20 @@ pub fn assign(allocator: Allocator, slot: *runtime.Instance, nodes: []const *run
     for (state.manually_assigned_nodes.items) |ref| {
         const node = ref.get() orelse continue;
         const slottable = slot_helpers.slottable(node) orelse continue;
-        slottable.state.manual_slot_assignment = null;
+        if (slottable.state.manual_slot_assignment == null) continue;
+        // A state that names a slot is the node's own: found, nothing made.
+        const own = (try slot_helpers.ensureSlottable(node)) orelse continue;
+        own.manual_slot_assignment = null;
     }
 
     // Step 3: "For each node of nodes":
     for (nodes_set.items) |ref| {
         const node = ref.get() orelse continue;
-        const slottable = slot_helpers.slottable(node) orelse continue;
+        // Made above, before step 1: found, nothing made.
+        const slottable = (try slot_helpers.ensureSlottable(node)) orelse continue;
         // Step 3.1: "If node's manual slot assignment refers to a slot, then
         // remove node from that slot's manually assigned nodes."
-        if (slottable.state.manualSlotAssignment()) |previous| {
+        if (slottable.manualSlotAssignment()) |previous| {
             if (slot_helpers.slotState(previous)) |previous_state| {
                 var i: usize = 0;
                 while (i < previous_state.manually_assigned_nodes.items.len) {
@@ -607,7 +629,7 @@ pub fn assign(allocator: Allocator, slot: *runtime.Instance, nodes: []const *run
             }
         }
         // Step 3.2: "Set node's manual slot assignment to this."
-        slottable.state.manual_slot_assignment = slot_ref;
+        slottable.manual_slot_assignment = slot_ref;
     }
 
     // Step 4: "Set this's manually assigned nodes to nodesSet." (Its memory

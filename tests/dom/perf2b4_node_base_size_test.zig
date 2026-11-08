@@ -63,9 +63,11 @@ test "NodeBase keeps the registered observer list and the node name in rare data
     try std.testing.expectEqual(@as(usize, 8), @sizeOf(@FieldType(NodeBase, "rare")));
 }
 
-test "NodeRareData is 40 bytes and a registration record 64" {
-    // The list head (16), the node name (16) and whether it was allocated.
-    try expectSize(NodeRareData, 40);
+test "NodeRareData is 104 bytes and a registration record 64" {
+    // The list head (16), the node name (16) and whether it was allocated:
+    // 40; lane perf3 E1 + a Text node's slottable state (64,
+    // tests/dom/perf3e1_text_slottable_test.zig).
+    try expectSize(NodeRareData, 104);
     // The link (16) and the registered observer (48).
     try expectSize(ObserverRegistration, 64);
 }

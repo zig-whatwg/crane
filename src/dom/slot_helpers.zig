@@ -3,11 +3,29 @@
 //!
 //! A slottable (an Element or a Text node) has an assigned slot and a manual
 //! slot assignment; a slot (an HTML `slot` element) has a name, its assigned
-//! nodes and its manually assigned nodes. That state lives in the owning
-//! impls' InternalState - Element and Text embed a `SlottableState`,
-//! HTMLSlotElement a `SlotState` - and each owner installs a function here,
-//! once, at process start, that hands the algorithms a pointer to it. The
+//! nodes and its manually assigned nodes. That state lives with its owners -
+//! an Element's `SlottableState` in its ElementRareData, a Text node's in its
+//! NodeBase's NodeRareData (lane perf3 E1), HTMLSlotElement's `SlotState` in
+//! its InternalState. Element and HTMLSlotElement install functions here,
+//! once, at process start, that hand the algorithms a pointer to theirs; a
+//! Text node's is read from its NodeBase, which this module is given. The
 //! algorithms never name an impl.
+//!
+//! Two paths (lane perf3 E1). Readers - an event's path, innerText, the style
+//! engine, "find a slot", assignedSlot - visit every slottable they walk and
+//! take `slottable`, which never allocates: an element no slot ever assigned
+//! reads `unassigned`, a shared state with neither slot. Writers - "assign
+//! slottables" step 4 and HTML assign() step 3.2, for the nodes they assign
+//! - take `ensureSlottable`, which makes an element's rare data. So only an
+//! element a slot assigns pays for the state: none of the 3,039,618 elements
+//! of the perf pages did, and each carried 64 bytes for it. Blink keeps the
+//! same two slots in NodeRareData's FlatTreeNodeData (kFlatTreeNodeData:
+//! assigned_slot_, manually_assigned_slot_; core/dom/flat_tree_node_data.h),
+//! made by Node::EnsureFlatTreeNodeData when a slot assigns the node and read
+//! through Node::GetFlatTreeNodeData, null for every other node; WebKit keeps
+//! no assigned slot on the node (Node::assignedSlot asks the shadow root's
+//! slot assignment) and its manually assigned slot in NodeRareData
+//! (m_manuallyAssignedSlot, read as null with no rare data).
 //!
 //! Every pointer between nodes here is a `NodeRef`: the node, its owning
 //! Instance and that Instance's slab generation when the reference was taken.
@@ -25,7 +43,7 @@
 //! the manually assigned nodes and the manual slot assignment "can be
 //! implemented using weak references".
 //!
-//! lint-impls: hook for Element, Text, HTMLSlotElement
+//! lint-impls: hook for Element, HTMLSlotElement
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
@@ -133,19 +151,27 @@ pub const SlotState = struct {
 };
 
 /// A slottable's state and its name (DOM 4.2.2.2: an Element's is its `slot`
-/// attribute's value; a Text node's is always the empty string).
+/// attribute's value; a Text node's is always the empty string), for reading:
+/// the state is the slottable's own, or `unassigned` for an element that has
+/// none. Writers take `ensureSlottable`.
 pub const Slottable = struct {
-    state: *SlottableState,
+    state: *const SlottableState,
     name: []const u8,
 };
+
+/// The state of an element no slot ever assigned: neither slot. Read-only (a
+/// `const`); what `slottable` hands a reader instead of making rare data.
+pub const unassigned: SlottableState = .{};
 
 /// What the owners supply. Each reads only the instance it is given.
 pub const Implementation = struct {
     /// Element: its slottable state and its `slot` attribute value, null for
-    /// an instance that is not an Element.
+    /// an instance that is not an Element. Never allocates: an element with
+    /// no state of its own answers `unassigned`.
     element_slottable: ?*const fn (element: *runtime.Instance) ?Slottable = null,
-    /// Text: its slottable state, null for an instance that is not a Text node.
-    text_slottable: ?*const fn (text: *runtime.Instance) ?*SlottableState = null,
+    /// Element: its slottable state, made now if it has none (its rare
+    /// data); null for an instance that is not an Element.
+    element_ensure_slottable: ?*const fn (element: *runtime.Instance) error{OutOfMemory}!?*SlottableState = null,
     /// HTMLSlotElement: its slot state, null for any other instance.
     slot_state: ?*const fn (slot: *runtime.Instance) ?*SlotState = null,
 };
@@ -159,7 +185,7 @@ var implementation: Hook(?Implementation) = .init(null);
 pub fn install(impl: Implementation) void {
     var combined = implementation.get() orelse Implementation{};
     if (impl.element_slottable) |f| combined.element_slottable = f;
-    if (impl.text_slottable) |f| combined.text_slottable = f;
+    if (impl.element_ensure_slottable) |f| combined.element_ensure_slottable = f;
     if (impl.slot_state) |f| combined.slot_state = f;
     implementation.install(combined);
 }
@@ -192,7 +218,8 @@ pub fn isSlot(node: *NodeBase) bool {
     return instance.vtable == &interfaces.HTMLSlotElement.vtable;
 }
 
-/// `node`'s slottable state and name, or null when it is not a slottable.
+/// `node`'s slottable state and name, or null when it is not a slottable: the
+/// readers' path, which never allocates.
 pub fn slottable(node: *NodeBase) ?Slottable {
     const instance = instanceOf(node) orelse return null;
     switch (node.node_type) {
@@ -201,11 +228,30 @@ pub fn slottable(node: *NodeBase) ?Slottable {
             const f = impl.element_slottable orelse return null;
             return f(instance);
         },
+        // A Text node's state is its NodeBase's rare data (lane perf3 E1).
         TEXT_NODE => {
-            const impl = implementation.get() orelse return null;
-            const f = impl.text_slottable orelse return null;
-            const state = f(instance) orelse return null;
+            const state: *const SlottableState = if (node.rareData()) |rare| &rare.slottable else &unassigned;
             return .{ .state = state, .name = "" };
+        },
+        else => return null,
+    }
+}
+
+/// `node`'s slottable state, writable, made now if it has none (an element's
+/// rare data, which never moves), or null when it is not a slottable: the
+/// writers' path, taken only for a node being assigned a slot (or one whose
+/// state already names one). A Text node's is its NodeBase's rare data.
+pub fn ensureSlottable(node: *NodeBase) error{OutOfMemory}!?*SlottableState {
+    const instance = instanceOf(node) orelse return null;
+    switch (node.node_type) {
+        ELEMENT_NODE => {
+            const impl = implementation.get() orelse return null;
+            const f = impl.element_ensure_slottable orelse return null;
+            return f(instance);
+        },
+        TEXT_NODE => {
+            const rare = try node.ensureRareData();
+            return &rare.slottable;
         },
         else => return null,
     }
@@ -237,4 +283,11 @@ test "slot state names are copied and freed" {
     try std.testing.expectEqualStrings("bb", state.name);
     try state.setName("");
     try std.testing.expectEqualStrings("", state.name);
+}
+
+test "the readers' shared state for an element with none names no slot" {
+    try std.testing.expect(unassigned.assigned_slot == null);
+    try std.testing.expect(unassigned.manual_slot_assignment == null);
+    try std.testing.expect(unassigned.assignedSlot() == null);
+    try std.testing.expect(unassigned.manualSlotAssignment() == null);
 }

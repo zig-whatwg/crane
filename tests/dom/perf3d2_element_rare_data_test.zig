@@ -93,7 +93,7 @@ test "HTMLElement's InternalState keeps no allocator copy" {
     try expectNoFields(HTMLElementState, .{"allocator"});
 }
 
-test "Element's InternalState is 240 bytes: the cold fields are rare data, the slot name its attribute" {
+test "Element's InternalState is 136 bytes: the cold fields are rare data, the slot name its attribute" {
     // 416 at dfa8592a878: - 16 (the allocator copy) - 40 (ElementData's
     // prefix and Attr nodes) - 104 (the NamedNodeMap and its generation, the
     // shadow root and its edge, the definition, the is value, the element
@@ -101,13 +101,16 @@ test "Element's InternalState is 240 bytes: the cold fields are rare data, the s
     // Blink does: Element keeps only computed_style_, tag_name_,
     // element_data_ and a bloom filter) + 8 (the rare data pointer). Left:
     // ElementData 112, the slottable state 64, the registry association 40,
-    // the style state 8, the rare data 8 and three one-byte fields.
+    // the style state 8, the rare data 8 and three one-byte fields: 240.
+    // E1 item 1 (tests/dom/perf3e1_element_registry_test.zig): the
+    // association became a one-byte place, -40; item 2 the slottable state
+    // went to rare data (tests/dom/perf3e1_slottable_test.zig), -64.
     try expectNoFields(ElementState, .{ "references", "shadow_root", "shadow_root_kept", "custom_element_definition", "is_value", "named_node_map", "named_node_map_generation", "slot" });
     if (comptime !@hasField(ElementState, "rare")) {
         printLayout(ElementState);
         return error.NoRareData;
     }
-    try expectSize(ElementState, 240);
+    try expectSize(ElementState, 136);
 }
 
 test "ElementData is 112 bytes: its prefix and Attr nodes are rare data" {
@@ -123,11 +126,11 @@ test "HTMLElement's InternalState is empty: every field it kept is rare data" {
     try expectSize(HTMLElementState, 0);
 }
 
-test "a div's one block is 464 bytes: 736 less Element's 176 and HTMLElement's 88, and perf2 b7's 8" {
+test "a div's one block is 360 bytes: 736 less Element's 176 and HTMLElement's 88 (D2), perf2 b7's 8, and the registry association's 40 and the slottable state's 64 (E1)" {
     // perf2 b7 (merged after D2): EventTarget's current event (8) is a
     // Window's, in Window's state now.
     const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 464);
+    try expectSize(S, 360);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
     if (held - @sizeOf(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });
@@ -135,12 +138,14 @@ test "a div's one block is 464 bytes: 736 less Element's 176 and HTMLElement's 8
     }
 }
 
-test "ElementRareData is 240 bytes, made only for the elements that use it" {
+test "ElementRareData is 344 bytes, made only for the elements that use it" {
     if (comptime !has_rare) return error.NoRareData;
     // prefix 32, Attr nodes 32 (a std.ArrayList: 24 and a safety field in
     // the safe builds these run in), NamedNodeMap 16, shadow root + edge 40,
-    // definition 8, is value 32, references 8, HTMLElement's part 72.
-    try expectSize(dom.element_rare_data.ElementRareData, 240);
+    // definition 8, is value 32, references 8, HTMLElement's part 72: 240;
+    // E1: + a registry that is not the node document's, 40, + the slottable
+    // state, 64.
+    try expectSize(dom.element_rare_data.ElementRareData, 344);
 }
 
 // ============================================================================
