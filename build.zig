@@ -2030,7 +2030,7 @@ fn addCompileCheck(
     });
     check.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = &.{ "-std=c++20", "-fno-exceptions", "-fno-rtti", "-DV8_COMPRESS_POINTERS", "-DV8_ENABLE_SANDBOX" },
+        .flags = v8WrapperFlags(b, target.result.os.tag, &.{}),
     });
     check.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
     check.root_module.link_libcpp = true;
@@ -2066,6 +2066,49 @@ fn addCrossLibraryStubs(b: *std.Build, module: *std.Build.Module, target: std.Bu
     }
 }
 
+/// The flags every compile of v8_wrapper.cpp passes: C++20 without exceptions
+/// or RTTI, and the defines V8's public headers must see to agree with the
+/// archive the artifact links - the V8 ones (pointer compression, the
+/// sandbox) and the cppgc ones, in this one place.
+///
+/// The cppgc defines are the archive's ABI, not a choice (the wrapper
+/// redesign, tmp/redesign/wrapper-redesign-design.md 2.6 and 4.12; risk R7).
+/// The headers inline `cppgc::Member`'s pointer compression, the write
+/// barrier's fast path and the cage constants, so they must see what the
+/// library was built with or a Member reads back another address than it was
+/// given. 13.1.203's BUILD.gn sets cppgc_enable_caged_heap on 64-bit, which
+/// forces CPPGC_YOUNG_GENERATION and CPPGC_POINTER_COMPRESSION, and its
+/// gni/v8.gni defaults cppgc_enable_slim_write_barrier and
+/// cppgc_enable_larger_cage to true; no args.gn Crane builds with
+/// (scripts/build-v8-official.sh control_args, scripts/build-v8-linux.sh)
+/// changes them. Read from the archives themselves (lane wr2, .wr2/abi-check.sh
+/// in its handoff): out/static on macOS and on Linux define
+/// CagedHeapBase::g_heap_base_, AgeTable, CombinedWriteBarrierSlow and
+/// CageBaseGlobal::g_base_, whose initial value - the cage alignment's mask -
+/// is 0x3ffffffff: the 16 GB "larger cage", compression shift 3
+/// (include/cppgc/internal/api-constants.h). out/ios-arm64's is 0xffffffff:
+/// built without the larger cage (shift 1), so an iOS compile leaves
+/// CPPGC_ENABLE_LARGER_CAGE out. tests/v8/cpp_heap_test.zig checks the result:
+/// a Member is 4 bytes and reads back what it was given.
+///
+/// `archive_os`: the OS whose archive the artifact links (tools/v8_archives.zig
+/// selects it by the target's OS). `extra`: flags of the artifact's own.
+fn v8WrapperFlags(b: *std.Build, archive_os: std.Target.Os.Tag, extra: []const []const u8) []const []const u8 {
+    const common = [_][]const u8{
+        "-std=c++20",
+        "-fno-exceptions",
+        "-fno-rtti",
+        "-DV8_COMPRESS_POINTERS",
+        "-DV8_ENABLE_SANDBOX",
+        "-DCPPGC_CAGED_HEAP",
+        "-DCPPGC_YOUNG_GENERATION",
+        "-DCPPGC_POINTER_COMPRESSION",
+        "-DCPPGC_SLIM_WRITE_BARRIER",
+    };
+    const larger_cage: []const []const u8 = if (archive_os == .ios) &.{} else &.{"-DCPPGC_ENABLE_LARGER_CAGE"};
+    return std.mem.concat(b.allocator, []const u8, &.{ &common, larger_cage, extra }) catch @panic("OOM");
+}
+
 /// Link the V8 C++ wrapper and the three static archives into `module`.
 ///
 /// `module` must be one the caller owns exclusively - a module created for a
@@ -2080,13 +2123,7 @@ fn linkV8(builder: *std.Build, module: *std.Build.Module, v8: v8_archives.Archiv
     // Add V8 C++ wrapper
     module.addCSourceFile(.{
         .file = builder.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = &.{
-            "-std=c++20",
-            "-fno-exceptions",
-            "-fno-rtti",
-            "-DV8_COMPRESS_POINTERS",
-            "-DV8_ENABLE_SANDBOX",
-        },
+        .flags = v8WrapperFlags(builder, module.resolved_target.?.result.os.tag, &.{}),
     });
 
     // Add custom-built V8 static libraries
@@ -4452,13 +4489,7 @@ pub fn build(b: *std.Build) void {
     // Add V8 C++ wrapper source
     full_static_lib.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = &.{
-            "-std=c++20",
-            "-fno-exceptions",
-            "-fno-rtti",
-            "-DV8_COMPRESS_POINTERS",
-            "-DV8_ENABLE_SANDBOX",
-        },
+        .flags = v8WrapperFlags(b, target.result.os.tag, &.{}),
     });
 
     // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
@@ -4653,13 +4684,7 @@ pub fn build(b: *std.Build) void {
     // Add V8 C++ wrapper
     crane_lib.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = &.{
-            "-std=c++20",
-            "-fno-exceptions",
-            "-fno-rtti",
-            "-DV8_COMPRESS_POINTERS",
-            "-DV8_ENABLE_SANDBOX",
-        },
+        .flags = v8WrapperFlags(b, target.result.os.tag, &.{}),
     });
 
     // V8 include paths - use local V8 headers
@@ -4711,13 +4736,7 @@ pub fn build(b: *std.Build) void {
     // Add V8 C++ wrapper
     crane_exe.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = &.{
-            "-std=c++20",
-            "-fno-exceptions",
-            "-fno-rtti",
-            "-DV8_COMPRESS_POINTERS",
-            "-DV8_ENABLE_SANDBOX",
-        },
+        .flags = v8WrapperFlags(b, target.result.os.tag, &.{}),
     });
 
     // V8 include paths - use local V8 headers
@@ -4967,13 +4986,7 @@ pub fn build(b: *std.Build) void {
     // Add V8 C++ wrapper
     snapshot_gen_exe.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = &.{
-            "-std=c++20",
-            "-fno-exceptions",
-            "-fno-rtti",
-            "-DV8_COMPRESS_POINTERS",
-            "-DV8_ENABLE_SANDBOX",
-        },
+        .flags = v8WrapperFlags(b, target.result.os.tag, &.{}),
     });
 
     // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
@@ -5104,13 +5117,7 @@ pub fn build(b: *std.Build) void {
     // Add V8 C++ wrapper
     repl_exe.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = &.{
-            "-std=c++20",
-            "-fno-exceptions",
-            "-fno-rtti",
-            "-DV8_COMPRESS_POINTERS",
-            "-DV8_ENABLE_SANDBOX",
-        },
+        .flags = v8WrapperFlags(b, target.result.os.tag, &.{}),
     });
 
     // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
@@ -5280,16 +5287,9 @@ pub fn build(b: *std.Build) void {
 
     gc_bench_exe.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = &.{
-            "-std=c++20",
-            "-fno-exceptions",
-            "-fno-rtti",
-            "-DV8_COMPRESS_POINTERS",
-            "-DV8_ENABLE_SANDBOX",
-            // Only this binary pays for Global<T> accounting. It runs on every
-            // handle creation, so a browser should not carry it.
-            "-DCRANE_TRACK_GLOBALS=1",
-        },
+        // Only this binary pays for Global<T> accounting. It runs on every
+        // handle creation, so a browser should not carry it.
+        .flags = v8WrapperFlags(b, target.result.os.tag, &.{"-DCRANE_TRACK_GLOBALS=1"}),
     });
     gc_bench_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
     gc_bench_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
@@ -5482,13 +5482,7 @@ pub fn build(b: *std.Build) void {
     // Add V8 C++ wrapper
     wpt_runner_exe.root_module.addCSourceFile(.{
         .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = &.{
-            "-std=c++20",
-            "-fno-exceptions",
-            "-fno-rtti",
-            "-DV8_COMPRESS_POINTERS",
-            "-DV8_ENABLE_SANDBOX",
-        },
+        .flags = v8WrapperFlags(b, target.result.os.tag, &.{}),
     });
 
     // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
