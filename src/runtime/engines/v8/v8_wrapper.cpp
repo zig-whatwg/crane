@@ -24,6 +24,7 @@
 #include <v8-cppgc.h>
 #include <cppgc/allocation.h>
 #include <cppgc/garbage-collected.h>
+#include <cppgc/heap.h>
 #include <cppgc/member.h>
 #include <cppgc/persistent.h>
 #include <cppgc/platform.h>
@@ -2385,6 +2386,10 @@ static Platform* defaultPlatform() {
 /// The per-isolate seed V8 asks for (defined with IsolateData, below).
 static bool craneEntropySource(unsigned char* buffer, size_t length);
 
+/// The address space cppgc's cage asks for (cppgc::InitializeProcess): 16 GB,
+/// as Chromium's on desktop (gin/cppgc.cc kCageSize).
+static constexpr size_t kCppgcCageBytes = static_cast<size_t>(16) * 1024 * 1024 * 1024;
+
 /// v8_Platform_Start's answer (ffi.zig PlatformStart).
 enum PlatformStartResult : int {
     /// v8_Platform_Dispose ran: V8 cannot start again in this process.
@@ -2436,6 +2441,20 @@ int v8_Platform_Start(const char* flags) {
             // allocator (CranePlatform::GetThreadIsolatedAllocator).
             if (!g_platform.platform) g_platform.platform = std::make_unique<CranePlatform>(false);
             V8::InitializePlatform(g_platform.platform.get());
+            // cppgc's process start, before any agent's C++ heap is made
+            // (CppHeap::Create - every isolate this file makes has one,
+            // IsolateData::cpp_heap): the GC info table and the cage every
+            // C++ heap of the process allocates in. V8 does not do it itself
+            // (13.1.203 calls cppgc::InitializeProcess nowhere in src/); an
+            // embedder does, once, with V8's platform's page allocator -
+            // Chromium in gin::InitializeCppgcFromV8Platform (gin/cppgc.cc),
+            // V8's cctest after InitializePlatform (test/cctest/cctest.cc).
+            // Without it CppHeap::Create reads a CagedHeap that does not exist.
+            // The cage is Chromium's desktop size, 16 GB of address space -
+            // reserved, not committed; out/ios-arm64's smaller cage clamps it
+            // (cppgc/platform.h: "clamped to minimum and maximum values").
+            // The state is V8's own, process-wide by design, under this lock.
+            cppgc::InitializeProcess(g_platform.platform->GetPageAllocator(), kCppgcCageBytes);
             V8::Initialize();
             g_platform.flags = flags ? flags : "";
             g_platform.started.store(true, std::memory_order_release);
@@ -2535,6 +2554,9 @@ void v8_Platform_Dispose() {
     std::lock_guard<std::mutex> guard(g_platform.mutex);
     if (g_platform.started.load(std::memory_order_relaxed)) {
         V8::Dispose();
+        // cppgc's process start's end, after every agent's C++ heap is gone
+        // (gin::MaybeShutdownCppgc's place).
+        cppgc::ShutdownProcess();
         V8::DisposePlatform();
         g_platform.started.store(false, std::memory_order_release);
         g_platform.disposed = true;
@@ -2918,6 +2940,27 @@ size_t v8_Process_LiveIsolates() {
     return g_read_only_heap.live;
 }
 
+/// A new agent's C++ heap (cppgc), for its isolate's CreateParams::cpp_heap -
+/// the wrapper redesign's P3 (tmp/redesign/wrapper-redesign-design.md 4.12):
+/// every agent has one, workers included (decision 6), as every Blink thread
+/// with V8 has its ThreadState's. Nothing allocates on it yet.
+///
+/// Marking is ATOMIC: C++ Trace methods run in the final pause, on the
+/// isolate's thread, with the mutator stopped - which the host's tree walk will
+/// rely on (design 4.4, risk R6). V8's flags can only lower it
+/// (CppHeap::UpdateGCCapabilitiesFromFlags takes the minimum), and they are
+/// atomic by default. Sweeping is incremental and concurrent: P4's anchors
+/// have no destructor. The platform is the one V8 runs on (CranePlatform), as
+/// Blink hands its heap gin's V8Platform: cppgc's foreground tasks reach the
+/// agent's loop through its task runner. Made after V8's start
+/// (cppgc::InitializeProcess, v8_Platform_Start).
+static std::unique_ptr<CppHeap> newAgentCppHeap() {
+    CppHeapCreateParams params(std::vector<std::unique_ptr<cppgc::CustomSpaceBase>>{});
+    params.marking_support = cppgc::Heap::MarkingType::kAtomic;
+    params.sweeping_support = cppgc::Heap::SweepingType::kIncrementalAndConcurrent;
+    return CppHeap::Create(g_platform.platform.get(), params);
+}
+
 Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options);
 
 Isolate* v8_Isolate_New() {
@@ -2934,6 +2977,8 @@ Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options) {
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     auto record = std::make_unique<IsolateData>();
     applyIsolateOptions(record.get(), options);
+    // The agent's C++ heap, attached from Isolate::Initialize on.
+    create_params.cpp_heap = newAgentCppHeap().release();
     // V8's built-in snapshot: always allowed (g_read_only_heap says why).
     (void)claimReadOnlyHeap(nullptr, 0);
     record->holds_read_only_heap = true;
@@ -9993,6 +10038,8 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     create_params.snapshot_blob = &isolate_data->startup_data;
     create_params.external_references = external_references;
+    // The agent's C++ heap, as v8_Isolate_NewWithOptions gives it.
+    create_params.cpp_heap = newAgentCppHeap().release();
     
     Isolate* isolate = Isolate::Allocate();
     if (!isolate) {
