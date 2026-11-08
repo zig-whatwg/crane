@@ -1137,6 +1137,27 @@ EXCLUDE = [
     # 100px-wide div, which needs the transform reference box (the element's border box) from layout.
     ('web-animations/animation-model/combining-effects/applying-interpolated-transform.html',
      'resolves translateX(100%) against the transform reference box (the border box), needs layout'),
+    # Geometry (the user's 0.1 scope line and the 2026-10-27 pointer ruling; lane forms1 batch 1's gap
+    # analysis, tmp/plans/forms1-design.md C11, 2026-11-07). None had a passing subtest in generation 208.
+    # Every subtest clicks through popover-utils' clickOn: the centre of getBoundingClientRect, then a
+    # viewport pointerMove - the runner's no-layout hit test answers <html>, so the select never opens.
+    ('html/semantics/forms/the-select-element/customizable-select/select-inside-top-layer.html',
+     'clicks at a getBoundingClientRect centre by viewport point, needs layout'),
+    # A pointer drag from one <span>'s centre to another: the selection's anchor must land in the Text
+    # node under the point (Ahem font) - hit-testing into laid-out text, as the excluded
+    # selection/selection-direction-on-single-click.html.
+    ('html/semantics/forms/the-input-element/selection-pointer.html',
+     'hit-tests into laid-out text under a pointer drag, needs layout'),
+    # PageUp/PageDown move to the "last visible option"; the test checks scrollTop and
+    # getBoundingClientRect (8 calls) - viewport geometry.
+    ('html/semantics/forms/the-select-element/customizable-select-listbox/select-listbox-home-end-pagedown-pageup.optional.html',
+     'PageUp/PageDown by the visible options, checks scrollTop and getBoundingClientRect, needs layout'),
+    # Geometry (the user's 0.1 scope line; lane move1 batch 1's gap analysis, tmp/plans/move1-design.md, 2026-11-07):
+    # after the moved element's transform transition continues, its one subtest checks
+    # getBoundingClientRect().x == 200 - the transformed box's position, from layout. Its siblings that check
+    # only the transition events (continue-css-transition-left, -transform-pseudo) stay.
+    ('dom/nodes/moveBefore/continue-css-transition-transform.html',
+     'checks getBoundingClientRect().x of the transformed box after a move, needs layout'),
     # COOP access reports that need the Report-To header (the integrator's ruling, 2026-11-05, lane coi2):
     # each file reaches its reports only through Report-To (reportToHeaders, resources/test-access-property.js:28
     # for the property-* files). The Reporting spec replaced Report-To with Reporting-Endpoints for documents

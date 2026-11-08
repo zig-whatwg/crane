@@ -414,6 +414,12 @@ pub const Keyword = enum(u16) {
     crisp_edges,
     from_image,
 
+    // SVG 2 §13.10.2 text-rendering (auto is shared). Serialized lowercase,
+    // as all three browsers return them from getComputedStyle.
+    optimizespeed,
+    optimizelegibility,
+    geometricprecision,
+
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
         return switch (self) {

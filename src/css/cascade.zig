@@ -192,7 +192,20 @@ pub const Context = struct {
     /// for the call; the style retains it. Null when the document has none:
     /// every custom property is unregistered and nothing below reads it.
     registered: ?*registered_mod.Snapshot = null,
+    /// What base appearance the element (or pseudo-element) can have, for
+    /// the UA sheet's -internal-auto-base() (substitution.zig) and the
+    /// inherited in-base-appearance bit (ComputedStyle.in_base_appearance).
+    appearance_support: AppearanceSupport = .none,
 };
+
+/// HTML 15.5.16 / CSS Forms 1 §2: which elements support base appearance.
+/// A select (`appearance: base-select`) and its select popover,
+/// ::picker(select), which "can only be rendered with base appearance if
+/// its associated select is being rendered with base appearance". Every
+/// other element has the bit its flat-tree parent has (Blink StyleAdjuster:
+/// InBaseAppearance is inherited, and cleared only on an element that itself
+/// supports base appearance - the nested select of a base select).
+pub const AppearanceSupport = enum { none, select, picker };
 
 const Candidate = struct {
     decl: *const Declaration,
@@ -625,6 +638,12 @@ const Builder = struct {
     /// a registered property's font-relative units pull them in.
     font_size_done: bool = false,
     line_height_done: bool = false,
+    /// `appearance`, computed early (and once) when an -internal-auto-base()
+    /// asks whether the element has base appearance: Blink's
+    /// ResolveAutoBaseInto does LookupAndApply(appearance) first, with a
+    /// cycle check. Elements whose declarations use no such function never
+    /// leave `.unresolved` here.
+    appearance_state: enum { unresolved, resolving, done } = .unresolved,
 
     const CustomState = struct {
         name: *custom_mod.Text,
@@ -1240,6 +1259,36 @@ const Builder = struct {
         return @import("supports.zig").evaluateTest(self.ctx.allocator, text, quirks, self.ctx.selector_check, namespaces);
     }
 
+    /// substitution.Host's -internal-auto-base() question.
+    fn baseAppearanceCallback(context: *anyopaque) substitution.Error!bool {
+        const self: *Builder = @ptrCast(@alignCast(context));
+        // An `appearance` whose own value asks: Blink's DetectCycle, the
+        // substitution fails (invalid at computed-value time).
+        if (self.appearance_state == .resolving) return error.Invalid;
+        try self.ensureAppearance();
+        return self.hasBaseAppearance();
+    }
+
+    /// Compute `appearance` once: early, for an -internal-auto-base(), or
+    /// at the head of run()'s low-priority pass.
+    fn ensureAppearance(self: *Builder) Allocator.Error!void {
+        if (self.appearance_state != .unresolved) return;
+        self.appearance_state = .resolving;
+        _ = try self.computeAndStore(.appearance);
+        self.appearance_state = .done;
+    }
+
+    /// Whether the element has base appearance, once `appearance` is
+    /// computed (Blink StyleCascade::ResolveAutoBaseInto and StyleAdjuster).
+    fn hasBaseAppearance(self: *const Builder) bool {
+        const inherited = if (self.ctx.parent) |p| p.in_base_appearance else false;
+        return switch (self.ctx.appearance_support) {
+            .none => inherited,
+            .select => self.style.keyword(.appearance) == .base_select,
+            .picker => inherited and self.style.keyword(.appearance) == .base_select,
+        };
+    }
+
     const Substituted = struct { text: []const u8, tainted: bool };
 
     /// `text` with its arbitrary substitution functions substituted for
@@ -1389,6 +1438,7 @@ const Builder = struct {
             .numeric_value = numericValueCallback,
             .media = mediaCallback,
             .supports = supportsCallback,
+            .base_appearance = baseAppearanceCallback,
             .environment = self.ctx.environment,
             .math = context,
         };
@@ -1526,6 +1576,12 @@ const Builder = struct {
         var todo = self.index.declared;
         todo.setUnion(computed_when_untouched);
         todo.setIntersection(low_priority);
+        // `appearance` through its guard (computed already when an
+        // -internal-auto-base() asked for it).
+        if (todo.contains(.appearance)) {
+            todo.remove(.appearance);
+            try self.ensureAppearance();
+        }
         var it = todo.iterator();
         while (it.next()) |l| _ = try self.computeAndStore(l);
         try self.adjust();
@@ -2012,6 +2068,13 @@ const Builder = struct {
             try s.set(.overflow_x, Value.kw(fixOverflow(ox)));
             try s.set(.overflow_y, Value.kw(fixOverflow(oy)));
         }
+
+        // HTML 15.5.16: whether the element is rendered with base appearance
+        // - a base-select select, its picker when the select is one, and
+        // what they contain (Blink StyleAdjuster's InBaseAppearance: set on
+        // an element that supports base appearance and has it, inherited,
+        // cleared on one that supports it and does not).
+        s.in_base_appearance = self.hasBaseAppearance();
     }
 };
 

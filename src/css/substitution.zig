@@ -88,6 +88,9 @@ pub const Id = enum {
     @"if",
     /// CSS Values 5 §8.7.
     attr,
+    /// The UA style sheet's `-internal-auto-base(<auto>, <base>)`: HTML
+    /// 15.5.16's base-appearance styles. UA sheets only (`user_agent_table`).
+    internal_auto_base,
 
     pub fn name(self: Id) []const u8 {
         return switch (self) {
@@ -96,6 +99,7 @@ pub const Id = enum {
             .random_item => "random-item",
             .@"if" => "if",
             .attr => "attr",
+            .internal_auto_base => "-internal-auto-base",
         };
     }
 };
@@ -143,8 +147,22 @@ pub const functions = [_]Function{
 pub const Table = []const Function;
 pub const default_table: Table = &functions;
 
+/// The rows a UA style sheet's declarations parse with: every author row and
+/// `-internal-auto-base()`. HTML 15.5.16 states the select's base-appearance
+/// styles on its COMPUTED appearance, which no selector can test; Blink
+/// (StyleCascade::ResolveAutoBaseInto, html.css) and WebKit
+/// (Style::SubstitutionResolver::substituteInternalAutoBaseFunction, html.css)
+/// both write them as this UA-only arbitrary substitution function. Blink's
+/// CSSVariableParser treats it as one only in kUASheetMode: in an author
+/// declaration it is an ordinary function token, which no property grammar
+/// accepts.
+pub const user_agent_functions = functions ++ [_]Function{
+    .{ .id = .internal_auto_base, .arguments = autoBaseArguments, .replace = replaceAutoBase },
+};
+pub const user_agent_table: Table = &user_agent_functions;
+
 pub fn function(id: Id) Function {
-    inline for (functions) |f| if (f.id == id) return f;
+    inline for (user_agent_functions) |f| if (f.id == id) return f;
     unreachable;
 }
 
@@ -154,21 +172,32 @@ fn functionIn(table: Table, id: Id) Function {
 }
 
 /// The arbitrary substitution function a function token names, ASCII
-/// case-insensitively (CSS Syntax 3: function names are).
+/// case-insensitively (CSS Syntax 3: function names are). Author rows only.
 pub fn functionId(token_value: []const u8) ?Id {
-    inline for (functions) |f| if (tokens.nameEql(token_value, f.id.name())) return f.id;
+    return functionIdIn(default_table, token_value);
+}
+
+/// `functionId` among the rows of `table` (`user_agent_table` for a UA
+/// sheet's declarations).
+pub fn functionIdIn(table: Table, token_value: []const u8) ?Id {
+    for (table) |f| if (tokens.nameEql(token_value, f.id.name())) return f.id;
     return null;
 }
 
 /// Whether `text` contains a function token of an arbitrary substitution
-/// function, at any depth. Function tokens only are compared.
+/// function, at any depth. Function tokens only are compared. Author rows.
 pub fn mentionsFunction(text: []const u8) bool {
+    return mentionsFunctionIn(default_table, text);
+}
+
+/// `mentionsFunction` among the rows of `table`.
+pub fn mentionsFunctionIn(table: Table, text: []const u8) bool {
     var tokenizer = tokens.Tokenizer.init(text);
     while (true) {
         const token = tokenizer.next();
         switch (token.token_type) {
             .eof => return false,
-            .function => if (functionId(token.value) != null) return true,
+            .function => if (functionIdIn(table, token.value) != null) return true,
             else => {},
         }
     }
@@ -356,7 +385,7 @@ const Parser = struct {
                 .function => blk: {
                     if (self.tokenizer.next().token_type != .left_paren) return error.Invalid;
                     node.raw = self.tokenizer.input[start..self.tokenizer.pos];
-                    node.function = functionId(token.value);
+                    node.function = functionIdIn(self.table, token.value);
                     if (node.function == .random_item) {
                         self.item_index += 1;
                         node.item_index = self.item_index;
@@ -674,6 +703,34 @@ fn replaceEnv(resolver: *Resolver, _: Node, args: []const []const Node) Error!Re
 }
 
 // ============================================================================
+// -internal-auto-base() - the UA sheet's base-appearance switch
+// ============================================================================
+
+/// `-internal-auto-base( <declaration-value>, <declaration-value> )`: exactly
+/// two arguments, split at the top-level comma (Blink
+/// ConsumeInternalAutoBase: two unparsed values; WebKit consumeArgument 0
+/// and 1). Each is a free-form argument and must not be empty.
+fn autoBaseArguments(allocator: Allocator, contents: []const Node, _: Phase) Error![]const []const Node {
+    const list = try splitCommas(allocator, contents);
+    if (list.len != 2) return error.Invalid;
+    const out = try allocator.alloc([]const Node, 2);
+    for (list, 0..) |raw, index| {
+        out[index] = try freeForm(raw);
+        if (out[index].len == 0) return error.Invalid;
+    }
+    return out;
+}
+
+/// The first argument for an element without base appearance, the second
+/// for one with it (HTML 15.5.16's "rendered with base appearance";
+/// css-forms-1 2: `appearance: base-select`). Only the chosen argument is
+/// substituted.
+fn replaceAutoBase(resolver: *Resolver, _: Node, args: []const []const Node) Error!Replacement {
+    const base = if (resolver.host.base_appearance) |read| try read(resolver.host.context) else false;
+    return resolver.substituteWithTaint(args[if (base) 1 else 0], false);
+}
+
+// ============================================================================
 // random-item() - CSS Values 5 §9.2 (row 118's algorithm)
 // ============================================================================
 
@@ -842,6 +899,11 @@ pub const Host = struct {
     environment: ?Environment = null,
     /// random-item()'s random base and tree counts; numeric math.
     math: math.Context = .{},
+    /// -internal-auto-base(): whether the element has base appearance (the
+    /// cascade resolves its `appearance` first, as Blink's
+    /// ResolveAutoBaseInto does). error.Invalid when that resolution is a
+    /// cycle (an `appearance` that itself uses the function). Null: false.
+    base_appearance: ?*const fn (context: *anyopaque) Error!bool = null,
 };
 
 /// One substitution: a declaration's value walked once, its functions
@@ -856,8 +918,11 @@ pub const Resolver = struct {
     namespaces: ?*const NamespaceMap = null,
     /// The consuming declaration's sheet's quirks mode (if()'s supports()).
     quirks: bool = false,
-    /// The function rows (tests stand a recording row in).
-    table: Table = default_table,
+    /// The function rows (tests stand a recording row in). Every row a
+    /// parse can have marked: a node is marked -internal-auto-base only when
+    /// a UA sheet's declaration was parsed with `user_agent_table`, so the
+    /// superset never resolves the function in author text.
+    table: Table = user_agent_table,
     early_numeric: usize = 0,
     depth: usize = 0,
     emitted: usize = 0,

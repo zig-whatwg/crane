@@ -496,7 +496,7 @@ pub fn installHooks() void {
         .legacy_pre_activation = &legacyPreActivation,
         .legacy_canceled_activation = &legacyCanceledActivation,
     });
-    dom.form_controls.install(.{ .is = &isInput, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_validity = &userValidity, .set_user_validity = &setUserValidity, .user_edit = &userEdit, .editor_text = &editorText, .has_range_limitations = &hasRangeLimitations });
+    dom.form_controls.install(.{ .is = &isInput, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_validity = &userValidity, .set_user_validity = &setUserValidity, .user_edit = &userEdit, .editor_text = &editorText, .editor_selection = &editorSelection, .set_editor_selection = &setEditorSelection, .has_range_limitations = &hasRangeLimitations });
     dom.mutation.registerInsertionStepsCallback(&insertionStepsCallback) catch |err| {
         log.warn("input insertion steps not registered: {}", .{err});
     };
@@ -1037,9 +1037,15 @@ fn currentValue(instance: *runtime.Instance) ![]u8 {
     return valueIn(instance, typeOf(instance));
 }
 
-/// The relevant value's length, in UTF-16 code units, for the selection.
+/// The relevant value's length, in UTF-16 code units, for the selection:
+/// the text the control shows. After a user edit that is the editor text,
+/// which for email and number can differ from the sanitized value (HTML: the
+/// user agent "may transform the value for display and editing"; the
+/// selection is of "the contents of the text control" - Blink's and WebKit's
+/// inner editor: the-input-element/email-set-value.html, all three browsers).
 fn relevantValueLength(instance: *runtime.Instance) u32 {
     const internal = getInternal(instance) orelse return 0;
+    if (internal.editor_text) |raw| return form_associated.utf16Length(raw);
     const text = currentValue(instance) catch return 0;
     defer internal.allocator.free(text);
     return form_associated.utf16Length(text);
@@ -2305,6 +2311,30 @@ fn setSelectionRange(instance: *runtime.Instance, start: ?u32, end: ?u32, direct
         dom.selection.scheduleTextControlSelectionchange(instance, &selectionchangeScheduled) catch {};
         form_associated.queueSelectEvent(instance, &pendingSelectTasks);
     }
+}
+
+/// The text control selection of a control with editable text, also where
+/// the selection APIs do not apply (dom.form_controls.editor_selection).
+fn editorSelection(instance: *runtime.Instance) ?dom.form_controls.EditorSelection {
+    const input_type = typeOf(instance);
+    if (!input_type.selectionApplies() and input_type != .email and input_type != .number) return null;
+    const selection = currentSelection(instance);
+    return .{ .start = selection.start, .end = selection.end, .backward = selection.direction == .backward };
+}
+
+/// A user's caret movement (dom.form_controls.set_editor_selection): the
+/// selection moves and selectionchange is scheduled, as for a user edit;
+/// no select event (that is setSelectionRange's step 6).
+fn setEditorSelection(instance: *runtime.Instance, selection: dom.form_controls.EditorSelection) void {
+    const internal = getInternal(instance) orelse return;
+    if (editorSelection(instance) == null) return;
+    const length = relevantValueLength(instance);
+    const start = @min(selection.start, length);
+    const end = @min(@max(selection.end, start), length);
+    const next: form_associated.TextSelection = .{ .start = start, .end = end, .direction = if (start == end) .none else if (selection.backward) .backward else .forward };
+    const previous = currentSelection(instance);
+    internal.selection = next;
+    if (!std.meta.eql(previous, next)) dom.selection.scheduleTextControlSelectionchange(instance, &selectionchangeScheduled) catch {};
 }
 
 /// The selection as it reads now.
