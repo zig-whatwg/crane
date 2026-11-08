@@ -388,12 +388,16 @@ pub fn animatedBlock(allocator: Allocator, element: *runtime.Instance, pseudo: ?
     // longhands' keyframes substitute their animated values with var().
     var customs: Customs = .empty;
     defer releaseCustoms(allocator, &customs);
+    // The typed values behind the custom property texts this evaluation
+    // combines (TypedCustoms).
+    var typed: TypedCustoms = .{ .allocator = allocator };
+    defer typed.deinit();
     var any = false;
     for (effects) |link| {
         const effect = liveEffect(link) orelse continue;
         if (!samePseudo(effect, pseudo) or levelOf(effect) != level) continue;
         any = true;
-        try applyEffect(allocator, effect, base, cascader, null, .early, &early, &customs);
+        try applyEffect(allocator, effect, base, cascader, null, .early, &early, &customs, &typed);
     }
     if (!any) return null;
     var early_block = try blockOf(allocator, &early, &customs);
@@ -403,7 +407,7 @@ pub fn animatedBlock(allocator: Allocator, element: *runtime.Instance, pseudo: ?
     for (effects) |link| {
         const effect = liveEffect(link) orelse continue;
         if (!samePseudo(effect, pseudo) or levelOf(effect) != level) continue;
-        try applyEffect(allocator, effect, base, cascader, if (early_block) |*b| b else null, .late, &composited, &customs);
+        try applyEffect(allocator, effect, base, cascader, if (early_block) |*b| b else null, .late, &composited, &customs, &typed);
     }
     for (early.keys(), early.values()) |l, *v| {
         try composited.put(allocator, l, v.*);
@@ -531,7 +535,7 @@ fn roundDeclares(block: *const DeclarationBlock, round: Round) bool {
 
 /// One effect of the stack (5.4.3): each target property's effect value over
 /// the underlying value so far, which it replaces.
-fn applyEffect(allocator: Allocator, effect: *model.Effect, base: *const ComputedStyle, cascader: Cascader, under: ?*const DeclarationBlock, round: Round, composited: *Composited, composited_customs: *Customs) Allocator.Error!void {
+fn applyEffect(allocator: Allocator, effect: *model.Effect, base: *const ComputedStyle, cascader: Cascader, under: ?*const DeclarationBlock, round: Round, composited: *Composited, composited_customs: *Customs, typed: *TypedCustoms) Allocator.Error!void {
     const registry = registry_mod.of(effect.instance.ctx);
     const commit = if (registry) |r| r.commit else null;
     const timing = effect.computedWith(commit != null);
@@ -712,7 +716,7 @@ fn applyEffect(allocator: Allocator, effect: *model.Effect, base: *const Compute
                 });
             }
         }
-        const ops: CustomOps = .{ .allocator = allocator, .syntax = registeredSyntax(base, seed.name.bytes) };
+        const ops: CustomOps = .{ .allocator = allocator, .syntax = registeredSyntax(base, seed.name.bytes), .typed = typed };
         const result = try effect_values.effectValue(CustomValue, ops, custom_keyframes.items, .{
             .progress = timing.progress,
             .current_iteration = timing.current_iteration orelse 0,
@@ -829,6 +833,8 @@ fn registeredSyntax(style: *const ComputedStyle, name: []const u8) ?*const css.s
 const CustomOps = struct {
     allocator: Allocator,
     syntax: ?*const css.syntax_definitions.Definition,
+    /// The evaluation's typed values (TypedCustoms); null outside one.
+    typed: ?*TypedCustoms = null,
 
     pub fn interpolate(self: CustomOps, a: CustomValue, b: CustomValue, p: f64) Allocator.Error!CustomValue {
         // "p = 0 produces V_A and p = 1 produces V_B" (Values 4 3).
@@ -854,21 +860,93 @@ const CustomOps = struct {
     }
 
     /// The combination as computed text, or null when the syntax has no
-    /// smooth combination for the pair.
+    /// smooth combination for the pair. Within an evaluation, an operand
+    /// that an earlier combination made is its typed value, and the result
+    /// keeps its own (TypedCustoms).
     fn combine(self: CustomOps, a: CustomValue, b: CustomValue, p: f64, op: interpolation.SyntaxOp) Allocator.Error!CustomValue {
         const definition = self.syntax orelse return null;
         const ta = a orelse return null;
         const tb = b orelse return null;
-        const options: css.properties.ParseOptions = .{ .allocator = self.allocator };
-        var va = (try css.syntax_values.parse(definition, options, ta.bytes)) orelse return null;
-        defer va.deinit();
-        var vb = (try css.syntax_values.parse(definition, options, tb.bytes)) orelse return null;
-        defer vb.deinit();
-        var result = (try interpolation.combineSyntax(self.allocator, &va, &vb, p, op)) orelse return null;
-        defer result.deinit();
+        var oa = (try self.operand(definition, ta)) orelse return null;
+        defer oa.deinit();
+        var ob = (try self.operand(definition, tb)) orelse return null;
+        defer ob.deinit();
+        var result = (try interpolation.combineSyntax(self.allocator, oa.value(), ob.value(), p, op)) orelse return null;
+        var kept = false;
+        defer if (!kept) result.deinit();
         var text: std.ArrayList(u8) = .empty;
         defer text.deinit(self.allocator);
         try result.serialize(&text, self.allocator);
-        return try css.custom_properties.Text.create(self.allocator, text.items);
+        const combined = try css.custom_properties.Text.create(self.allocator, text.items);
+        if (self.typed) |typed| {
+            typed.put(combined, result) catch |err| {
+                combined.release();
+                return err;
+            };
+            kept = true;
+        }
+        return combined;
+    }
+
+    /// `text`'s typed value: the one an earlier combination kept, else
+    /// `text` parsed by `definition`; null when it does not parse.
+    fn operand(self: CustomOps, definition: *const css.syntax_definitions.Definition, text: *css.custom_properties.Text) Allocator.Error!?Operand {
+        if (self.typed) |typed| if (typed.find(text)) |value| return .{ .kept = value };
+        const parsed = (try css.syntax_values.parse(definition, .{ .allocator = self.allocator }, text.bytes)) orelse return null;
+        return .{ .parsed = parsed };
+    }
+
+    const Operand = union(enum) {
+        kept: *const css.syntax_values.Value,
+        parsed: css.syntax_values.Value,
+
+        fn value(self: *const Operand) *const css.syntax_values.Value {
+            return switch (self.*) {
+                .kept => |v| v,
+                .parsed => |*v| v,
+            };
+        }
+        fn deinit(self: *Operand) void {
+            if (self.* == .parsed) self.parsed.deinit();
+        }
+    };
+};
+
+/// The typed values of the custom property texts one evaluation of the
+/// stack (animatedBlock) combines. A combination's result travels as text
+/// (custom properties are token streams), but the next combination starts
+/// from the typed value it serialized, never from that text: the text of a
+/// registered <color> is its FINAL, clamped rgb(), while CSS Values 4 3.1
+/// clamps "only ... the final result of applying all interpolation-related
+/// operations" (custom-property-animation-color's iterationComposite case
+/// accumulates 100 to 300 and interpolates back to 250; Chrome 157, Firefox
+/// 159 and Safari 27.2 pass it). Blink's CSS*InterpolationType keep the
+/// same values typed (InterpolableValue) between steps. Each entry holds a
+/// reference to its text, so no text it names is freed - and its address
+/// reused - while the table lives.
+const TypedCustoms = struct {
+    allocator: Allocator,
+    entries: std.ArrayListUnmanaged(Entry) = .empty,
+
+    const Entry = struct { text: *css.custom_properties.Text, value: css.syntax_values.Value };
+
+    fn find(self: *const TypedCustoms, text: *const css.custom_properties.Text) ?*const css.syntax_values.Value {
+        for (self.entries.items) |*entry| if (entry.text == text) return &entry.value;
+        return null;
+    }
+
+    /// Keep `value` (OWNED: taken only on success) as `text`'s typed value.
+    fn put(self: *TypedCustoms, text: *css.custom_properties.Text, value: css.syntax_values.Value) Allocator.Error!void {
+        try self.entries.ensureUnusedCapacity(self.allocator, 1);
+        text.retain();
+        self.entries.appendAssumeCapacity(.{ .text = text, .value = value });
+    }
+
+    fn deinit(self: *TypedCustoms) void {
+        for (self.entries.items) |*entry| {
+            entry.value.deinit();
+            entry.text.release();
+        }
+        self.entries.deinit(self.allocator);
     }
 };

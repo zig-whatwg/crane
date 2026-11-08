@@ -482,11 +482,14 @@ fn transitionable(allocator: Allocator, style: *const ComputedStyle, property: P
 
 /// The current value of the property in the running transition `animation`
 /// (CSS Transitions 1 section 4): its start and end values interpolated at
-/// its transformed progress now. OWNED.
+/// its transformed progress now, range-checked as the value the element
+/// shows (CSS Values 4 3.1: the final result is clamped - an easing that
+/// overshoots, or a color between bytes, is not a value the element has).
+/// OWNED.
 fn currentValue(allocator: Allocator, style: *const ComputedStyle, animation: *model.Animation, transition: *const Transition) Allocator.Error!TransitionValue {
     const p = progressOf(animation);
     switch (transition.property) {
-        .longhand => |l| return .{ .value = try css.interpolation.interpolate(allocator, l, transition.start.value, transition.end.value, p) },
+        .longhand => |l| return .{ .value = css.interpolation.clampFinal(l, try css.interpolation.interpolate(allocator, l, transition.start.value, transition.end.value, p)) },
         .custom => |n| return .{ .custom = try effect_stack.customInterpolate(allocator, style, n, transition.start.custom, transition.end.custom, p) },
     }
 }

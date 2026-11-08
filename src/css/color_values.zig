@@ -970,6 +970,54 @@ pub fn interpolateColors(allocator: Allocator, a: Color, b: Color, p: f64) Alloc
     return try Expression.create(allocator, .{ .mix = .{ .space = if (legacy) .srgb else .oklab, .items = items, .legacy = legacy } });
 }
 
+/// A COMPUTED legacy color (CSS Color 4 12.1: rgb(), hsl(), hwb(), named
+/// colors, hex, transparent; or the resolved legacy result of an earlier
+/// combination) as its sRGB channels on the 0-1 scale, unclamped, and its
+/// alpha: [r, g, b, alpha]. Null for any other color (a non-legacy one,
+/// currentcolor, an unresolved mix, a legacy one with a missing component).
+pub fn legacySrgb(color: Color) ?[4]f64 {
+    const components = switch (color) {
+        .rgba => |rgba| fromBytes(rgba),
+        .transparent_keyword => fromBytes(values.RgbaColor.transparent),
+        .named => |named| fromBytes(named.rgba),
+        .expression => |expression| blk: {
+            if (expression.data != .resolved or !expression.data.resolved.legacy) return null;
+            const value = expression.data.resolved.value;
+            if (value.missing != 0) return null;
+            break :blk value.convert(.srgb);
+        },
+        .system, .current => return null,
+    };
+    return .{ components.channels[0], components.channels[1], components.channels[2], components.alpha };
+}
+
+/// An intermediate legacy color of CSS Values 4 section 3's combining
+/// operations: sRGB `channels` on the 0-1 scale, NOT clamped, and `alpha`.
+/// Values 4 3.1: "clamping is only applied to the *final* result of
+/// applying all interpolation-related operations" - addition and
+/// accumulation carry rgb(128, 128, 128) + rgb(255, 0, 0) to a red of 383,
+/// which a later interpolation may bring back into range
+/// (web-animations addition-per-property-001 "overflowed", which Chrome,
+/// Firefox and Safari pass). It serializes as its legacy color does (each
+/// channel clipped and rounded, serializeResolved), and finalLegacy is its
+/// final value. Design: Blink InterpolableColor keeps unclamped float
+/// channels until CSSColorInterpolationType resolves the color. OWNED.
+pub fn unclampedLegacy(allocator: Allocator, channels: [3]f64, alpha: f64) Allocator.Error!Color {
+    return Expression.create(allocator, .{ .resolved = .{ .value = .{ .space = .srgb, .channels = channels, .alpha = alpha }, .legacy = true } });
+}
+
+/// The final value of a resolved legacy color (Values 4 3.1 range checking):
+/// the rgb() color it serializes as, each channel clipped to the sRGB range
+/// and rounded as CSSOM's legacy serialization does (legacyBytes). Null for
+/// any other color, which is final as it is. Blink keeps the float channels
+/// of an animated color; serialized, the two are the same color.
+pub fn finalLegacy(color: Color) ?values.RgbaColor {
+    if (color != .expression) return null;
+    const expression = color.expression;
+    if (expression.data != .resolved or !expression.data.resolved.legacy or expression.data.resolved.value.missing != 0) return null;
+    return legacyBytes(expression.data.resolved.value);
+}
+
 /// A legacy color (CSS Color 4 12.1: rgb(), hsl(), hwb(), named and system
 /// colors, hex) or currentcolor.
 fn legacyOrCurrent(color: Color) bool {
