@@ -179,8 +179,15 @@ pub const Entry = struct {
     /// `pending_replaces`.
     pending_push: bool = false,
     pending_replaces: u64 = 0,
+    /// HTML "persisted user state" (implementation-defined): its document's
+    /// form control states when the document was left - "save persisted
+    /// state" step 2 (html.forms.form_state, dom.saved_form_state's bytes),
+    /// which a back/forward traversal back to the entry gives the document
+    /// it makes. Owned.
+    persisted_user_state: ?[]u8 = null,
 
     fn deinit(self: *Entry, allocator: Allocator) void {
+        if (self.persisted_user_state) |bytes| allocator.free(bytes);
         allocator.free(self.url);
         self.state.deinit(allocator);
         self.api_state.deinit(allocator);
@@ -1522,6 +1529,27 @@ pub const JointHistory = struct {
         const copy: ?[]u8 = if (resource) |r| try self.allocator.dupe(u8, r) else null;
         if (entry.resource) |old| self.allocator.free(old);
         entry.resource = copy;
+    }
+
+    /// HTML 7.4.6.5 "save persisted state" step 2: `bytes` (taken, owned by
+    /// this history's allocator; null for none) become the persisted user
+    /// state of the entry `entry_id`, replacing what it held. False, and
+    /// `bytes` freed, when the entry is gone.
+    pub fn setPersistedUserState(self: *JointHistory, entry_id: u64, bytes: ?[]u8) bool {
+        const entry = self.entryById(entry_id) orelse {
+            if (bytes) |b| self.allocator.free(b);
+            return false;
+        };
+        if (entry.persisted_user_state) |old| self.allocator.free(old);
+        entry.persisted_user_state = bytes;
+        return true;
+    }
+
+    /// The persisted user state of the entry `entry_id`, borrowed until the
+    /// history next changes; null when it has none or is gone.
+    pub fn persistedUserState(self: *JointHistory, entry_id: u64) ?[]const u8 {
+        const entry = self.entryById(entry_id) orelse return null;
+        return entry.persisted_user_state;
     }
 
     /// Record `resource` - a srcdoc document's markup - as the document
