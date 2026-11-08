@@ -27,9 +27,6 @@ const dom = @import("dom");
 // which Element installs); written through dom.element_attributes.
 const element_data = dom.element_data;
 
-// [SameObject] children kept for the element's life (element.style).
-const same_object = @import("same_object.zig");
-
 // Platform layout backend for CSSOM View metrics
 const layout_backend = @import("platform").layout_backend;
 
@@ -52,71 +49,39 @@ pub const PopoverState = enum {
 };
 
 /// Internal state for HTMLElement implementation
-/// Stores HTML-specific data not exposed via WebIDL attributes
 pub const InternalState = struct {
     /// Kept by value in this interface's own State (runtime.OwnState, the
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
-    /// HTML 2.5.6 [[CryptographicNonce]], owned independently of the content
-    /// attribute. Null means unused/removed; an explicitly empty slot may
-    /// still accompany a nonempty attribute that must hide on connection.
-    cryptographic_nonce: ?[]u8 = null,
+    // Nothing here (lane perf3 D2): every field it kept - the nonce, the
+    // ElementInternals and element.style objects with their edges, the click
+    // and internals flags, 88 bytes on every HTML element - is HTMLElement's
+    // part of the element's rare data (dom.element_rare_data's
+    // HTMLElementRareData), made on first use: no element of the perf pages
+    // used any of them. Reached through the hooks Element installs (`partOf`,
+    // `ensurePart`), never through Element's impl.
 
-    // === Popover State ===
-
-    // === Focus State ===
-    /// Whether this element has been focused programmatically
-    was_focused_by_script: bool = false,
-
-    /// HTML "click in progress flag" (click() steps 2-5): a click() reached
-    /// again from its own event's handlers does nothing.
-    click_in_progress: bool = false,
-
-    // === Element Internals ===
-    /// ElementInternals instance if attachInternals() was called
-    element_internals: ?*runtime.Instance = null,
-    internals_traced: bool = false,
-
-    /// Whether attachInternals() has been called (can only be called once)
-    internals_attached: bool = false,
-
-    // === Drag State ===
-    /// Whether element is being dragged
-    is_dragging: bool = false,
-
-    // === Style ===
-    /// element.style ([SameObject]): the CSSStyleProperties over the
-    /// element's inline declaration block. The block is the element's
-    /// (dom.style.inline_style, in its style state), so it outlives this
-    /// object; the object itself is kept for the element's life
-    /// (`style_declaration_kept`).
-    /// Spec: https://drafts.csswg.org/cssom/#dom-elementcssinlinestyle-style
-    style_declaration: ?*runtime.Instance = null,
-    style_declaration_kept: same_object.KeptChild = .{},
-
-    pub fn init() InternalState {
-        return .{
-            .cryptographic_nonce = null,
-            .was_focused_by_script = false,
-            .element_internals = null,
-            .internals_attached = false,
-            .is_dragging = false,
-            .style_declaration = null,
-        };
-    }
-
-    /// `allocator` is its element's Browser's (runtime.allocatorOf), which
-    /// made the nonce: the state keeps no copy (lane perf3 D2). Both exits
-    /// run this: the element's deinit and its Browser's teardown sweep.
-    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        if (self.cryptographic_nonce) |nonce| allocator.free(nonce);
-        // element.style is severed from the element (its wrapper, which the
-        // element's traced, goes with the element's).
-        if (self.style_declaration) |style| self.style_declaration_kept.releaseOwned(style);
-        self.style_declaration = null;
+    pub fn deinit(self: *InternalState) void {
+        _ = self;
     }
 };
+
+/// HTMLElement's part of the element's rare data.
+const Part = dom.element_rare_data.HTMLElementRareData;
+
+/// `instance`'s part, if its rare data was made: a reader's path, which
+/// never allocates.
+fn partOf(instance: *runtime.Instance) ?*Part {
+    const rare = dom.element_rare_data.of(instance) orelse return null;
+    return &rare.html;
+}
+
+/// `instance`'s part, its rare data made now if it has none: a writer's
+/// path. The block never moves once made.
+fn ensurePart(instance: *runtime.Instance) !*Part {
+    return &(try dom.element_rare_data.ensure(instance)).html;
+}
 
 // Its internal state, in its own generated State (`own._internal`): runtime.OwnState.
 const utils = @import("webidl").utils;
@@ -140,16 +105,22 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.create(instance);
-    internal.* = InternalState.init();
+    internal.* = .{};
 }
 
 /// HTMLElement's own teardown: the generated chain runs Element's after it.
 pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up its internal state
     if (Registry.get(instance)) |internal| {
-        if (internal.internals_traced) @import("engine").forgetTracedChild(instance, .{ .name = "elementInternals" });
-        if (!internal.internals_traced) if (internal.element_internals) |internals| runtime.Instance.deinit(internals);
-        internal.deinit(runtime.allocatorOf(instance));
+        internal.deinit();
+        // Its part of the rare data, before Element's teardown (which the
+        // generated chain runs after this) frees the block.
+        if (partOf(instance)) |part| {
+            if (part.internals_traced) @import("engine").forgetTracedChild(instance, .{ .name = "elementInternals" });
+            if (!part.internals_traced) if (part.element_internals) |internals| runtime.Instance.deinit(internals);
+            part.element_internals = null;
+            part.release(runtime.allocatorOf(instance));
+        }
     }
     Registry.remove(instance);
 }
@@ -434,20 +405,23 @@ pub fn get_offsetHeight(instance: *runtime.Instance) anyerror!i32 {
 /// object's, so they survive V8 GC of the object's wrapper.
 pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Get internal state to check for cached style declaration
-    const internal = getInternalState(instance) orelse return error.InvalidStateError;
+    _ = getInternalState(instance) orelse return error.InvalidStateError;
 
     // The same object for the element's whole life.
-    if (internal.style_declaration) |style| {
-        internal.style_declaration_kept.handOut(instance, style, .{ .name = "style" });
+    if (partOf(instance)) |part| if (part.style_declaration) |style| {
+        part.style_declaration_kept.handOut(instance, style, .{ .name = "style" });
         return style;
-    }
+    };
 
+    // Kept in rare data (Blink's kCssomWrapper), made before the object so
+    // that nothing can fail after it is.
+    const part = try ensurePart(instance);
     // "A CSSStyleProperties object whose readonly flag is unset, whose parent
     // CSS rule is null, and whose owner node is this."
     const style = try interfaces.CSSStyleProperties.initWith(instance.ctx.allocator, instance.ctx, .{ .inline_owner = instance });
-    internal.style_declaration = style;
-    internal.style_declaration_kept.made(style);
-    internal.style_declaration_kept.handOut(instance, style, .{ .name = "style" });
+    part.style_declaration = style;
+    part.style_declaration_kept.made(style);
+    part.style_declaration_kept.handOut(instance, style, .{ .name = "style" });
     return style;
 }
 
@@ -769,10 +743,13 @@ pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: runtime.DOM
 // =============================================================================
 
 pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = getInternalState(instance) orelse return error.InvalidStateError;
-    const copy = try runtime.allocatorOf(instance).dupe(u8, value.asSlice());
-    if (internal.cryptographic_nonce) |old| runtime.allocatorOf(instance).free(old);
-    internal.cryptographic_nonce = copy;
+    _ = getInternalState(instance) orelse return error.InvalidStateError;
+    // [[CryptographicNonce]] is rare data (WebKit's m_nonce, Blink's kNonce).
+    const part = try ensurePart(instance);
+    const allocator = runtime.allocatorOf(instance);
+    const copy = try allocator.dupe(u8, value.asSlice());
+    if (part.cryptographic_nonce) |old| allocator.free(old);
+    part.cryptographic_nonce = copy;
 }
 
 // =============================================================================
@@ -795,17 +772,18 @@ pub fn call_blur(instance: *runtime.Instance) anyerror!void {
 /// Operation: click
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-click
 pub fn call_click(instance: *runtime.Instance) anyerror!void {
-    const internal = getInternalState(instance) orelse return;
+    _ = getInternalState(instance) orelse return;
     // Step 1: "If this element is a form control that is disabled, then
     // return."
     if (isDisabledFormControl(instance)) return;
     // Step 2: "If this element's click in progress flag is set, then return."
-    if (internal.click_in_progress) return;
-    // Step 3: "Set this element's click in progress flag."
-    internal.click_in_progress = true;
-    // Step 5, however the dispatch leaves. The state is looked up again: the
-    // handlers can run anything.
-    defer if (getInternalState(instance)) |after| {
+    if (partOf(instance)) |part| if (part.click_in_progress) return;
+    // Step 3: "Set this element's click in progress flag." The flag is rare
+    // data, made on the element's first click().
+    (try ensurePart(instance)).click_in_progress = true;
+    // Step 5, however the dispatch leaves. The part is looked up again: the
+    // handlers can run anything, its element's teardown included.
+    defer if (getInternalState(instance) != null) if (partOf(instance)) |after| {
         after.click_in_progress = false;
     };
     // Step 4: "Fire a synthetic pointer event named click at this element,
@@ -877,7 +855,7 @@ pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(dictionaries.
 /// Operation: attachInternals
 /// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#dom-attachinternals
 pub fn call_attachInternals(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternalState(instance) orelse return error.InvalidStateError;
+    _ = getInternalState(instance) orelse return error.InvalidStateError;
     const ce = @import("dom").custom_elements;
     const data = ce.get(instance) orelse return error.NotSupportedError;
     // HTML 4.13.7 steps 1–4: an autonomous definition must enable internals.
@@ -890,16 +868,20 @@ pub fn call_attachInternals(instance: *runtime.Instance) anyerror!*runtime.Insta
     const definition = ce.lookup(registry, if (namespace) |value| value.asSlice() else null, name.asSlice(), null) orelse return error.NotSupportedError;
     if (definition.disable_internals) return error.NotSupportedError;
     // Steps 5–6: reject repeat calls and elements whose upgrade has failed.
-    if (internal.internals_attached) return error.NotSupportedError;
+    if (partOf(instance)) |part| if (part.internals_attached) return error.NotSupportedError;
     if (data.state != .precustomized and data.state != .custom) return error.NotSupportedError;
     const internals = try ensureInternals(instance);
-    internal.internals_attached = true;
+    // ensureInternals made the part.
+    partOf(instance).?.internals_attached = true;
     return internals;
 }
 
 fn ensureInternals(instance: *runtime.Instance) !*runtime.Instance {
-    const internal = getInternalState(instance) orelse return error.InvalidStateError;
-    if (internal.element_internals) |internals| return internals;
+    _ = getInternalState(instance) orelse return error.InvalidStateError;
+    if (partOf(instance)) |part| if (part.element_internals) |internals| return internals;
+    // Kept in rare data (Blink's kElementInternals), made before the object
+    // so that nothing can fail after it is.
+    const part = try ensurePart(instance);
     // Steps 7–8: the element and its internals trace one another. Either can
     // survive alone in script, and neither creates a persistent engine root.
     const internals = try interfaces.ElementInternals.init(instance.ctx.allocator, instance.ctx);
@@ -907,9 +889,9 @@ fn ensureInternals(instance: *runtime.Instance) !*runtime.Instance {
     try @import("dom").custom_elements.setInternalsTarget(internals, instance);
     if (instance.ctx.hasEngine()) {
         @import("engine").traceChild(instance, internals, .{ .name = "elementInternals" });
-        internal.internals_traced = true;
+        part.internals_traced = true;
     }
-    internal.element_internals = internals;
+    part.element_internals = internals;
     return internals;
 }
 
@@ -927,8 +909,9 @@ pub fn installHooks() void {
 
 /// The internal CSP reader borrows; the IDL getter above copies.
 fn nonceValueOf(instance: *runtime.Instance) []const u8 {
-    const internal = getInternalState(instance) orelse return "";
-    return internal.cryptographic_nonce orelse "";
+    _ = getInternalState(instance) orelse return "";
+    const part = partOf(instance) orelse return "";
+    return part.cryptographic_nonce orelse "";
 }
 
 /// HTML 2.5.6 attribute change steps 1-4. The registry has checked the
@@ -936,17 +919,15 @@ fn nonceValueOf(instance: *runtime.Instance) []const u8 {
 /// not change [[CryptographicNonce]]. Removal clears it.
 fn nonceAttributeChanged(instance: *runtime.Instance, _: []const u8, _: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
     if (namespace != null) return;
-    const internal = getInternalState(instance) orelse return;
+    _ = getInternalState(instance) orelse return;
     if (value) |bytes| {
         set_nonce(instance, runtime.DOMString.initInterned(bytes)) catch {
             // The attribute has already changed. A failed copy must never
             // leave its previous nonce authorizing the new content.
-            if (internal.cryptographic_nonce) |old| runtime.allocatorOf(instance).free(old);
-            internal.cryptographic_nonce = null;
+            clearNonce(instance);
         };
     } else {
-        if (internal.cryptographic_nonce) |old| runtime.allocatorOf(instance).free(old);
-        internal.cryptographic_nonce = null;
+        clearNonce(instance);
     }
 }
 
@@ -960,8 +941,11 @@ fn nonceAttributeChanged(instance: *runtime.Instance, _: []const u8, _: ?[]const
 fn nonceConnectionSteps(node: *dom.NodeBase) void {
     if (node.node_type != 1 or !node.is_connected) return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return));
-    const internal = getInternalState(instance) orelse return;
-    const saved = internal.cryptographic_nonce orelse return;
+    _ = getInternalState(instance) orelse return;
+    // Every connected element passes here: one without rare data has no
+    // nonce, and none is made for it.
+    const part = partOf(instance) orelse return;
+    const saved = part.cryptographic_nonce orelse return;
     const data = element_data.of(instance) orelse return;
     const attribute = element_data.getAttributeByNamespaceAndLocalName(data, null, "nonce") orelse return;
     if (attribute.value.len == 0) return;
@@ -976,23 +960,31 @@ fn nonceConnectionSteps(node: *dom.NodeBase) void {
     if ((interfaces.Document.get_defaultView(document) catch null) == null) return;
     // Steps 2.1-2.3: keep the old allocation outside the slot while the
     // attribute-change step clears it, then restore it without copying.
-    internal.cryptographic_nonce = null;
+    part.cryptographic_nonce = null;
     defer {
-        if (internal.cryptographic_nonce) |empty| runtime.allocatorOf(instance).free(empty);
-        internal.cryptographic_nonce = saved;
+        if (part.cryptographic_nonce) |empty| runtime.allocatorOf(instance).free(empty);
+        part.cryptographic_nonce = saved;
     }
     dom.element_attributes.set(instance, "nonce", "", .{}) catch {};
 }
 
 /// HTML 2.5.6 cloning steps: the clone owns a copy, not the source buffer.
 fn nonceCloningSteps(node: *runtime.Instance, copy: *runtime.Instance, _: bool) anyerror!void {
-    const source = getInternalState(node) orelse return;
-    if (source.cryptographic_nonce) |nonce| {
-        try set_nonce(copy, runtime.DOMString.initInterned(nonce));
-    } else if (getInternalState(copy)) |target| {
-        if (target.cryptographic_nonce) |old| runtime.allocatorOf(copy).free(old);
-        target.cryptographic_nonce = null;
+    _ = getInternalState(node) orelse return;
+    const nonce = if (partOf(node)) |source| source.cryptographic_nonce else null;
+    if (nonce) |value| {
+        try set_nonce(copy, runtime.DOMString.initInterned(value));
+    } else if (getInternalState(copy) != null) {
+        clearNonce(copy);
     }
+}
+
+/// [[CryptographicNonce]] becomes null; nothing to do for an element with no
+/// rare data, which has none.
+fn clearNonce(instance: *runtime.Instance) void {
+    const part = partOf(instance) orelse return;
+    if (part.cryptographic_nonce) |old| runtime.allocatorOf(instance).free(old);
+    part.cryptographic_nonce = null;
 }
 
 fn popoverShowing(instance: *runtime.Instance) bool {
@@ -1001,11 +993,20 @@ fn popoverShowing(instance: *runtime.Instance) bool {
 }
 
 fn attachedInternals(instance: *runtime.Instance) ?*runtime.Instance {
-    return (getInternalState(instance) orelse return null).element_internals;
+    _ = getInternalState(instance) orelse return null;
+    const part = partOf(instance) orelse return null;
+    return part.element_internals;
 }
 
 /// dom.teardown_sweeps: at its Browser's end, every HTMLElement state still in
 /// `scope`'s table - an orphan's no teardown reached - frees what it owns.
 fn sweepRemaining(scope: *runtime.BrowserScope) void {
-    Registry.deinitAllAndClear(scope);
+    // Its part of each one's rare data, which Element's sweep (the next
+    // phase, dom.teardown_sweeps' order) then frees with the block.
+    Registry.sweep(scope, scope, struct {
+        fn visit(browser_scope: *runtime.BrowserScope, instance: *runtime.Instance, internal: *InternalState) void {
+            internal.deinit();
+            if (partOf(instance)) |part| part.release(browser_scope.allocator);
+        }
+    }.visit);
 }

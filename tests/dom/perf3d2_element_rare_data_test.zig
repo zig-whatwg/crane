@@ -133,11 +133,12 @@ test "a div's one block is 472 bytes: 736 less Element's 176 and HTMLElement's 8
     }
 }
 
-test "ElementRareData is 232 bytes, made only for the elements that use it" {
+test "ElementRareData is 240 bytes, made only for the elements that use it" {
     if (comptime !has_rare) return error.NoRareData;
-    // prefix 32, Attr nodes 24, NamedNodeMap 16, shadow root + edge 40,
+    // prefix 32, Attr nodes 32 (a std.ArrayList: 24 and a safety field in
+    // the safe builds these run in), NamedNodeMap 16, shadow root + edge 40,
     // definition 8, is value 32, references 8, HTMLElement's part 72.
-    try expectSize(dom.element_rare_data.ElementRareData, 232);
+    try expectSize(dom.element_rare_data.ElementRareData, 240);
 }
 
 // ============================================================================
