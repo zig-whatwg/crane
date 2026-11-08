@@ -209,6 +209,16 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // builds).
     const internal = try Registry.create(instance);
     errdefer Registry.remove(instance);
+    // Everything the node allocates later, and every free, goes through its
+    // Browser's allocator, runtime.allocatorOf (its NodeBase's `allocator()`),
+    // found from its address: so the allocator it is made with must BE that
+    // one - true in a Browser, whose realms are given its scope's allocator;
+    // a test realm is given its scope's too (lane perf2 batch 6;
+    // docs/lessons/architecture-a-nodes-creation-allocator-is-its-browsers-
+    // only-inside-a-browser.md). Asserted in every safe build: the unit tests
+    // and the WPT runner.
+    if (std.debug.runtime_safety and !runtime.isScopeAllocator(instance, allocator))
+        std.debug.panic("a node ({s}) made with an allocator that is not its Browser's (runtime.allocatorOf would free through another)", .{instance.vtable.name});
     internal.* = .{
         .allocator = allocator,
         .node_type = node_type,

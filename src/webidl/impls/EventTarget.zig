@@ -321,6 +321,16 @@ fn initInternal(instance: *runtime.Instance, allocator: std.mem.Allocator) !*Int
     // must exist, and know its scope, once a state is made here.
     const registry = try registryFor(instance);
     if (registry.scope.load(.monotonic) == null) registry.scope.store(runtime.BrowserScope.ofInstance(instance), .release);
+    // What the state owns is allocated from its Browser's allocator
+    // (runtime.allocatorOf), found from its address: so the allocator it was
+    // made with must BE that one - true in a Browser, whose realms are given
+    // its scope's allocator; a test realm is given its scope's too (lane perf2
+    // batch 6, docs/lessons/architecture-a-nodes-creation-allocator-is-its-
+    // browsers-only-inside-a-browser.md). Workers' targets included: a
+    // worker's realm carries its owner's Browser scope
+    // (tests/html/perf2b6_worker_target_allocator_test.zig).
+    if (std.debug.runtime_safety and !runtime.isScopeAllocator(instance, allocator))
+        std.debug.panic("an EventTarget ({s}) made with an allocator that is not its Browser's (runtime.allocatorOf would free through another)", .{instance.vtable.name});
     const internal = try Own.create(instance);
     internal.* = InternalState.init(allocator);
     return internal;
