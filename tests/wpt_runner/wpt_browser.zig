@@ -86,6 +86,9 @@ pub const WptBrowser = struct {
     testharness_js: ?[]const u8,
     /// Cached testharnessreport.js content
     testharnessreport_js: ?[]const u8,
+    /// wptrunner's executors/test-wait.js with its class name filled in
+    /// ("test-wait", as its crashtest executor fills it): `runCrashtest`.
+    test_wait_js: ?[]const u8 = null,
     /// Number of tests run
     tests_run: usize,
     /// testdriver.js's automation backend (the WebDriver remote end), whose
@@ -148,6 +151,7 @@ pub const WptBrowser = struct {
         // Pre-load testharness.js for efficiency
         self.testharness_js = self.loadWptScript("resources/testharness.js") catch null;
         self.testharnessreport_js = self.loadWptScript("resources/testharnessreport.js") catch null;
+        self.test_wait_js = self.loadTestWait() catch null;
 
         return self;
     }
@@ -186,9 +190,18 @@ pub const WptBrowser = struct {
         if (self.testharnessreport_js) |js| {
             self.allocator.free(js);
         }
+        if (self.test_wait_js) |js| self.allocator.free(js);
         self.allocator.free(self.wpt_root);
         self.browser.deinit();
         self.allocator.destroy(self);
+    }
+
+    /// wptrunner's test-wait.js, as its crashtest executor formats it
+    /// (`f.read() % {"classname": "test-wait"}`). OWNED.
+    fn loadTestWait(self: *WptBrowser) ![]const u8 {
+        const source = try self.loadWptScript("tools/wptrunner/wptrunner/executors/test-wait.js");
+        defer self.allocator.free(source);
+        return std.mem.replaceOwned(u8, self.allocator, source, "%(classname)s", "test-wait");
     }
 
     /// Load a script from WPT root
@@ -425,6 +438,132 @@ pub const WptBrowser = struct {
         self.tests_run += 1;
         return result;
     }
+
+    /// Run a WPT crashtest (docs/writing-tests/crashtest.md): the file passes
+    /// when its page loads and finishes without the process crashing - a
+    /// crash is the supervisor's CRASH, as for any file - and TIMEOUT when it
+    /// has not finished by the run's ceiling.
+    ///
+    /// What "finishes" means is wptrunner's own: its crashtest executor
+    /// (tools/wptrunner/wptrunner/executors/executorwebdriver.py
+    /// `WebDriverCrashtestExecutor.do_crashtest`) navigates to the file, which
+    /// WebDriver ends at the page's load (page load strategy "normal"), then
+    /// runs executors/test-wait.js with the class name "test-wait" as an
+    /// asynchronous script: after `document.fonts.ready` and two animation
+    /// frames it waits, while the root element has that class, for it to go
+    /// (dispatching a `TestRendered` event first), and then calls back
+    /// "complete". The runner reads that script from the WPT checkout
+    /// (`test_wait_js`) rather than keeping a copy of its steps.
+    pub fn runCrashtest(
+        self: *WptBrowser,
+        test_path: []const u8,
+        test_url: []const u8,
+        timeout_ms: u64,
+    ) !test_harness.TestResult {
+        const deadline = clock.monotonicMillis() + @as(i64, @intCast(timeout_ms));
+        self.armScriptDeadline(deadline);
+        defer _ = self.endScriptDeadline();
+        var phase: ?clock.Timer = clock.Timer.start();
+
+        self.browser.cookie_jar.clear();
+        try self.browser.navigateWithOptions(test_url, .window, .{ .skip_load = true });
+        defer self.test_driver.endTest();
+        const ctx = self.browser.current_context orelse return error.NoContext;
+
+        // A crashtest that includes the harness gets it where it includes it,
+        // as any page does; one that includes none gets none (no late install:
+        // wptrunner runs no harness in a crashtest).
+        const loader_ctx = try self.allocator.create(ScriptLoaderContext);
+        loader_ctx.* = .{ .allocator = self.allocator, .wpt_browser = self, .harness_load = .at_include, .explicit_timeout = false };
+        defer ScriptLoaderContext.release(loader_ctx);
+        const nav_ms = lapMs(&phase);
+
+        const left_ms: u64 = @intCast(@max(1, deadline - clock.monotonicMillis()));
+        ctx.loadPageWithOptions(.{
+            .script_loader = .{
+                .context = loader_ctx,
+                .loadScript = scriptLoaderCallback,
+                .retain = &ScriptLoaderContext.retain,
+                .release = &ScriptLoaderContext.release,
+            },
+            .timeout_ms = left_ms,
+        }) catch |err| {
+            if (!self.script_deadline.abortedThisRun() and err != error.NavigationTimedOut) {
+                var result = try test_harness.TestResult.init(self.allocator, test_path);
+                result.status = .@"error";
+                result.message = try std.fmt.allocPrint(self.allocator, "Page load error: {}", .{err});
+                result.nav_ms = nav_ms;
+                result.load_ms = lapMs(&phase);
+                return result;
+            }
+        };
+
+        // WebDriver "navigate to" returns once the document's readiness is
+        // "complete" (the load event has fired).
+        var loaded: PageLoaded = .{ .ctx = ctx };
+        if (!PageLoaded.met(&loaded) and clock.monotonicMillis() < deadline) {
+            _ = self.browser.spinEventLoopUntil(.{ .context = &loaded, .met = PageLoaded.met }, @intCast(@max(1, deadline - clock.monotonicMillis()))) catch null;
+        }
+        const load_ms = lapMs(&phase);
+
+        // WebDriver "execute async script": test-wait.js as a function body
+        // called with `this` the window and its arguments - the test URL, then
+        // the callback last.
+        const wait_body = self.test_wait_js orelse return error.TestWaitScriptNotFound;
+        const script = try std.mem.concat(self.allocator, u8, &.{
+            "(function () {\n",
+            "  var callback = function () { window.__wptrunner_crashtest_complete = true; };\n",
+            "  (function () {\n",
+            wait_body,
+            "\n  }).call(window, location.href, callback);\n",
+            "})();\n",
+        });
+        defer self.allocator.free(script);
+        var result = try test_harness.TestResult.init(self.allocator, test_path);
+        errdefer result.deinit(self.allocator);
+        result.nav_ms = nav_ms;
+        result.load_ms = load_ms;
+        result.crashtest = true;
+        if (!self.script_deadline.abortedThisRun()) ctx.runScript(script) catch |err| {
+            result.status = .@"error";
+            result.message = try std.fmt.allocPrint(self.allocator, "test-wait.js did not run: {}", .{err});
+            return result;
+        };
+
+        const start_time = clock.monotonicMillis();
+        while (!self.script_deadline.abortedThisRun()) {
+            const answer = ctx.evaluateScriptToString("window.__wptrunner_crashtest_complete === true", self.allocator) catch null;
+            if (answer) |text| {
+                defer self.allocator.free(text);
+                if (std.mem.eql(u8, text, "true")) {
+                    result.duration_ms = @intCast(clock.monotonicMillis() - start_time);
+                    self.tests_run += 1;
+                    return result;
+                }
+            }
+            const now = clock.monotonicMillis();
+            if (now >= deadline) break;
+            _ = self.browser.runEventLoopBlocking(@min(@as(u64, @intCast(deadline - now)), 50)) catch {};
+        }
+        result.status = .timeout;
+        result.message = try std.fmt.allocPrint(self.allocator, "Crashtest did not finish (load, then test-wait) within {}ms", .{timeout_ms});
+        result.duration_ms = @intCast(clock.monotonicMillis() - start_time);
+        self.tests_run += 1;
+        return result;
+    }
+
+    /// What `runCrashtest` waits for before test-wait.js: the page's document
+    /// is "complete", or the page has none.
+    const PageLoaded = struct {
+        ctx: *Context,
+
+        fn met(opaque_self: *anyopaque) bool {
+            const self: *PageLoaded = @ptrCast(@alignCast(opaque_self));
+            const document = self.ctx.document_instance orelse return true;
+            const state = interfaces.Document.get_readyState(document) catch return true;
+            return state == ._complete_;
+        }
+    };
 
     /// What `waitForParseEnd` waits for: the page's document is past
     /// readiness "loading" - HTML "the end" step 1 has run, so its parser
