@@ -71,6 +71,9 @@ pub const InteractionState = struct {
     /// Permissions Policy §§9.5–9.6: an owned construction fact, separate
     /// from Fetch's policy container.
     permissions_policy: ?*html_core.permissions_policy.Policies = null,
+    /// HTML 7.4.6.5: the form control states a back/forward traversal gave
+    /// this document, until its controls have taken them (saved_form_state).
+    saved_form_state: ?*@import("saved_form_state.zig").Saved = null,
 };
 
 /// Document's state (the impl keeps one per Document, in `Registry`).
@@ -641,6 +644,7 @@ pub const InternalState = struct {
         const permissions = if (interaction) |shared| shared.permissions_policy else null;
         self.interaction_state = null;
         if (interaction) |shared| if (shared.autofocus) |state| state.destroy(self.allocator);
+        if (interaction) |shared| if (shared.saved_form_state) |saved| saved.destroy();
         // domindex1: the maps go first, and keep nothing after: a node the
         // rest of this teardown releases is in no reader's answer.
         self.tree_index.deinit();
@@ -833,7 +837,7 @@ pub const InternalState = struct {
     pub fn discardEmptyInteractionState(self: *InternalState, shared: *InteractionState) void {
         std.debug.assert(self.interaction_state == shared);
         if (shared.permissions_policy != null) return;
-        std.debug.assert(shared.top_layer == null and shared.autofocus == null);
+        std.debug.assert(shared.top_layer == null and shared.autofocus == null and shared.saved_form_state == null);
         self.interaction_state = null;
         self.allocator.destroy(shared);
     }

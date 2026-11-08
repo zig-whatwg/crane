@@ -4345,6 +4345,9 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     const computed: ?[]u8 = if (record.target_origin == null) navigationParamsOrigin(integration, record.final_sandboxing_flags, final_url, if (record.srcdoc == null) record.initiator_origin else null, integration.allocator) catch null else null;
     defer if (computed) |o| integration.allocator.free(o);
     const origin: []const u8 = record.target_origin orelse computed orelse "null";
+    // "Activate history entry" step 1 (lane forms1 b2, C6): the leaving
+    // document's form control states, saved before the entry changes.
+    savePersistedState(integration, record);
     const document_state = recordInHistory(integration, record, final_url, origin);
     // Whether the back/forward cache may keep the document this response
     // makes, should a navigation leave it (`mayKeepInBfcache`).
@@ -4430,6 +4433,7 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
         return;
     };
     attachDocument(integration, document_state, response.is_network_error);
+    restorePersistedState(integration, record);
     // A push cleared the traversable's forward session history, other
     // navigables' entries with it: their navigation APIs dispose of them.
     if (record.traversal_entry == 0 and record.history_handling == .push) {
@@ -4441,6 +4445,50 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
         }
     }
     finishParserlessNavigation(integration);
+}
+
+/// HTML 7.4.6.5 "save persisted state" step 2, as "activate history entry"
+/// step 1 runs it for the navigable's active session history entry: the
+/// leaving document's form control states (html.forms.form_state - Blink's
+/// FormController, which HistoryItem::SetDocumentState keeps; WebKit
+/// HistoryController::saveDocumentState) go into the entry it shows - the
+/// one a traversal leaves, the one listed before the unload made way for
+/// (lane nav2 F1's listed_previous), or the navigable's current one. Its
+/// unload has run; the document is still the navigable's active one. None
+/// for the initial about:blank, whose entry a navigation replaces.
+fn savePersistedState(integration: *IFrameIntegration, record: *const Navigation) void {
+    const bc = integration.browsing_context orelse return;
+    const document = activeDocumentOf(integration) orelse return;
+    if (document_lifecycle.isInitialAboutBlank(document)) return;
+    const history = bc.jointHistory() catch return;
+    const entry_id: u64 = if (record.traversal_entry != 0)
+        record.traversal_from
+    else if (record.listed_previous) |previous|
+        previous.id
+    else if (history.currentEntry(bc.id)) |entry|
+        entry.id
+    else
+        return;
+    const bytes = html_module.forms.form_state.save(history.allocator, document) catch return;
+    _ = history.setPersistedUserState(entry_id, bytes);
+}
+
+/// HTML 7.4.6.5 "restore persisted state" step 2, for the document a
+/// back/forward traversal made: the entry's form control states are its new
+/// controls' (Blink DocumentLoader::DidInstallNewDocument ->
+/// SetStateForNewControls), restored once its parser finishes. Not after a
+/// reload - golden rule 2, the browsers split and the majority restores
+/// only on back/forward: Chrome (DocumentLoader::DidInstallNewDocument, only
+/// IsBackForwardOrRestore) and Safari (HistoryController::restoreDocumentState
+/// returns for FrameLoadType::Reload*) do not restore on reload, Firefox
+/// (nsDocShell's layout history state on a soft reload) does.
+fn restorePersistedState(integration: *IFrameIntegration, record: *const Navigation) void {
+    if (record.traversal_entry == 0 or record.traversal_entry == record.traversal_from) return;
+    const bc = integration.browsing_context orelse return;
+    const document = activeDocumentOf(integration) orelse return;
+    const history = bc.jointHistory() catch return;
+    const bytes = history.persistedUserState(record.traversal_entry) orelse return;
+    html_module.forms.form_state.setStateForNewControls(document, bytes);
 }
 
 /// "Finalize a cross-document navigation" steps 5-10: the new document's
