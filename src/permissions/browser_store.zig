@@ -28,6 +28,10 @@ pub const BrowserStore = struct {
         deliver: Deliver,
         key: []u8,
         descriptor: types.PermissionDescriptor,
+        /// The state the listener has without an override - the one it was
+        /// given when it listened - which a reset of the overrides returns
+        /// it to (`resetOverrides`).
+        fallback: types.PermissionState,
     };
 
     pub fn init(allocator: std.mem.Allocator) BrowserStore {
@@ -77,6 +81,7 @@ pub const BrowserStore = struct {
             .deliver = deliver,
             .key = owned_key,
             .descriptor = descriptor,
+            .fallback = fallback,
         });
         if (!same_allocator) key_allocator.free(key);
         return state;
@@ -120,6 +125,22 @@ pub const BrowserStore = struct {
         return self.overrides.get(key, descriptor);
     }
 
+    /// Give `entry`'s listener `state` on its own thread: a task on its sink,
+    /// or - an engine host without a loop, on this thread - `local`, run by
+    /// the caller once the subscription lock is released. Under the lock.
+    fn post(self: *BrowserStore, entry: Entry, state: types.PermissionState, batch: *ChangeBatch, local: *std.ArrayListUnmanaged(*Delivery)) void {
+        const delivery = Delivery.create(self, entry, state, batch) catch return;
+        if (entry.sink) |sink| {
+            // post owns the record even when it immediately drops it.
+            // Drop releases bytes/counts only, never this mutex.
+            _ = sink.post(.{ .run = Delivery.run, .drop = Delivery.drop, .data = delivery });
+        } else if (entry.thread == std.Thread.getCurrentId()) {
+            local.append(self.allocator, delivery) catch Delivery.drop(delivery);
+        } else {
+            Delivery.drop(delivery);
+        }
+    }
+
     fn isListening(self: *BrowserStore, listener: *runtime.Instance, generation: u64) bool {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
@@ -148,22 +169,38 @@ pub const BrowserStore = struct {
                 // A queued update can be skipped by an inactive document.
                 // Only the target knows its actual state; it compares that
                 // state when this task runs, including repeated overrides.
-                const delivery = Delivery.create(self, entry.*, next, batch) catch continue;
-                if (entry.sink) |sink| {
-                    // post owns the record even when it immediately drops it.
-                    // Drop releases bytes/counts only, never this mutex.
-                    _ = sink.post(.{ .run = Delivery.run, .drop = Delivery.drop, .data = delivery });
-                } else if (entry.thread == std.Thread.getCurrentId()) {
-                    // Engine hosts without a loop use the existing immediate
-                    // task fallback, after the subscription lock is released.
-                    local.append(self.allocator, delivery) catch {
-                        Delivery.drop(delivery);
-                        continue;
-                    };
-                } else {
-                    Delivery.drop(delivery);
-                }
+                self.post(entry.*, next, batch, &local);
             }
+        }
+        for (local.items) |delivery| Delivery.run(delivery);
+        return batch;
+    }
+
+    /// Drop every automation override, and tell each listener whose state
+    /// that changes its state without one. The automation's reset between
+    /// tests: wptrunner's Chrome executor sends CDP Browser.resetPermissions
+    /// before every test (ChromeDriverTestharnessProtocolPart.
+    /// reset_browser_state), which Chromium implements as
+    /// PermissionControllerImpl::ResetPermissionOverrides - the overrides
+    /// replaced by none, then NotifyChangedSubscriptions for every
+    /// subscription whose status they changed. The caller owns the returned
+    /// batch share, as `set`'s.
+    pub fn resetOverrides(self: *BrowserStore) std.mem.Allocator.Error!*ChangeBatch {
+        const batch = try ChangeBatch.create(self.allocator);
+        errdefer batch.release();
+        var local: std.ArrayListUnmanaged(*Delivery) = .empty;
+        defer local.deinit(self.allocator);
+        {
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.mutex);
+            for (self.entries.items) |entry| {
+                const overridden = self.overrides.get(entry.key, entry.descriptor) orelse continue;
+                const before = query.resultState(entry.descriptor.name, overridden);
+                const after = query.resultState(entry.descriptor.name, entry.fallback);
+                if (before == after) continue;
+                self.post(entry, after, batch, &local);
+            }
+            self.overrides.clear();
         }
         for (local.items) |delivery| Delivery.run(delivery);
         return batch;

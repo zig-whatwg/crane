@@ -750,8 +750,18 @@ fn prepareHandshakeRequest(instance: *runtime.Instance, connection: *WebSocketCo
     // same operation and client-policy predicate as ordinary Fetch.
     try fetch.algorithms.main_fetch.upgradeRequestToPotentiallyTrustworthyUrl(request);
     try fetch.mixed_content.upgradeRequest(request);
-    // Main fetch step 7: CSP (connect-src) and Mixed Content see the same
-    // final URL. The request carries the client's violation reporter.
+    // Main fetch step 7: "If should request be blocked due to a bad port,
+    // should fetching request be blocked as mixed content, should request be
+    // blocked by Content Security Policy ... returns blocked" - the port
+    // first: a WebSocket to a bad port is failed before its host is looked
+    // up or a connection made. Without it each of websockets/
+    // Create-blocked-port.any.js's 83 blocked sockets resolved its host and
+    // connected, refused by most ports and answered by any a service listens
+    // on (lane flaky5: wss://web-platform.test:22 reached the pool hosts'
+    // sshd and failed at its TLS handshake).
+    if (fetch.algorithms.main_fetch.shouldBlockDueToBadPort(request)) return false;
+    // CSP (connect-src) and Mixed Content see the same final URL. The
+    // request carries the client's violation reporter.
     if (fetch.algorithms.csp_check.shouldRequestBeBlockedWithOptions(request, .{ .report_url = url })) return false;
     if (try fetch.mixed_content.shouldBlockRequest(request)) return false;
 
