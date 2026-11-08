@@ -760,6 +760,9 @@ fn reifyComponent(out: *Reified, longhand: properties.Longhand, value: css.style
             break :blk try ordinaryOpaque(out.ctx, .{ .longhand = longhand }, &assignments, computed, null, false);
         },
         .image => try ordinaryOpaque(out.ctx, .{ .longhand = longhand }, &assignments, computed, null, true),
+        // 5.8 "reify a <transform-list>"; a function whose math Typed OM
+        // cannot reify keeps the whole value opaque (5.2 step 1).
+        .transform_list => |list| (try reifyTransformList(out.ctx, list)) orelse try ordinaryOpaque(out.ctx, .{ .longhand = longhand }, &assignments, computed, null, false),
         .unsupported => try ordinaryOpaque(out.ctx, .{ .longhand = longhand }, &assignments, computed, null, false),
     };
     try out.appendNew(object);
@@ -773,12 +776,18 @@ fn reifyRegistered(out: *Reified, property: []const u8, definition: *const css.s
         try out.appendNew(try stringUnparsed(out.ctx, owner.value.data.universal));
         return;
     }
-    // A transform-list is one value, not repeated <transform-function>s.
-    // Q32's routed hierarchy keeps this whole native representation meanwhile.
+    // A transform-list is one value, not repeated <transform-function>s:
+    // Properties and Values API 1 6.2 reifies it as Typed OM 5.8 does, one
+    // CSSTransformValue (opaque when a function cannot reify).
     if (owner.value.data == .list and owner.value.data.list.separator == .space and
         owner.value.data.list.items.len > 0 and owner.value.data.list.items[0] == .transform)
     {
-        try out.appendNew(try opaqueObject(out.ctx, .{ .registered = .{ .owner = owner, .property = property, .index = null } }, false));
+        const items = owner.value.data.list.items;
+        const list = try out.ctx.allocator.alloc(transforms.Function, items.len);
+        defer out.ctx.allocator.free(list);
+        for (items, list) |item, *function| function.* = item.transform;
+        const object = (try reifyTransformList(out.ctx, list)) orelse try opaqueObject(out.ctx, .{ .registered = .{ .owner = owner, .property = property, .index = null } }, false);
+        try out.appendNew(object);
         return;
     }
     // §5.2 step 1, Q126: a computed registered list containing
@@ -1161,6 +1170,19 @@ fn assignmentsFromInput(instance: *runtime.Instance, map: *const PropertyMap, pr
         if (!try properties.parseDeclaration(context.options(), property, escaped, &result.items)) return error.TypeError;
         return result;
     }
+    if (object.stateAs(interfaces.CSSTransformValue.State) != null) {
+        // Typed OM 3 "create an internal representation": a
+        // CSSTransformValue is the <transform-list> its serialization (6.6)
+        // names, through the property's own grammar (Blink
+        // CSSTransformValue::ToCSSValue builds the same list).
+        const text = try serializeTransformValue(object);
+        defer object.ctx.allocator.free(text);
+        var context = try map.parseContext(instance, text);
+        defer context.deinit();
+        context.parse.allocator = result.allocator;
+        if (!try properties.parseDeclaration(context.options(), property, text, &result.items)) return error.TypeError;
+        return result;
+    }
     if (object.stateAs(interfaces.CSSUnparsedValue.State) != null) {
         const text = try serializeUnparsed(object);
         defer object.ctx.allocator.free(text);
@@ -1405,4 +1427,436 @@ pub fn mapEntries(instance: *runtime.Instance) !IterableSnapshot {
     std.mem.sort([]const u8, names.items, {}, Order.less);
     for (names.items) |name| try result.append(instance, name);
     return result;
+}
+// ============================================================================
+// CSS Typed OM 1 4.4, 5.8 and 6.6: the CSSTransformValue family
+// ============================================================================
+//
+// Each impl (CSSTransformValue, CSSTransformComponent and its seven
+// subclasses) keeps its children in a TransformLinks and reaches its
+// relatives only through their generated interfaces; the steps every one of
+// them shares live here. css.typed_om.transforms is the pure part.
+
+const transforms = css.typed_om.transforms;
+pub const Production = transforms.Production;
+
+/// An owner's links to the objects it holds - a CSSTransformValue's
+/// components, a component's CSSNumericValue or CSSKeywordValue slots, a
+/// CSSMatrixComponent's DOMMatrix - each traced from the owner's wrapper (an
+/// edge per slot, as CSSUnparsedValue's), so a setter can replace one.
+pub const TransformLinks = struct {
+    links: std.ArrayList(ObjectLink) = .empty,
+
+    fn slot(index: usize, buffer: *[64]u8) engine.TracedSlot {
+        return .{ .name = std.fmt.bufPrint(buffer, "TypedOM:transform:{d}", .{index}) catch unreachable };
+    }
+
+    /// Links to `children`, not yet traced: the owner publishes them with
+    /// `trace` once its native state is complete.
+    pub fn init(instance: *runtime.Instance, children: []const *runtime.Instance) !TransformLinks {
+        var links: std.ArrayList(ObjectLink) = .empty;
+        try links.ensureTotalCapacity(instance.ctx.allocator, children.len);
+        for (children) |child| {
+            var link: ObjectLink = .{};
+            link.set(child);
+            links.appendAssumeCapacity(link);
+        }
+        return .{ .links = links };
+    }
+
+    pub fn trace(self: *const TransformLinks, instance: *runtime.Instance) void {
+        for (self.links.items, 0..) |link, index| if (link.get()) |child| {
+            var buffer: [64]u8 = undefined;
+            objects.keepFrom(instance, child, slot(index, &buffer));
+        };
+    }
+
+    pub fn len(self: *const TransformLinks) usize {
+        return self.links.items.len;
+    }
+
+    pub fn get(self: *const TransformLinks, index: usize) !*runtime.Instance {
+        if (index >= self.links.items.len) return error.RangeError;
+        return self.links.items[index].get() orelse error.InvalidStateError;
+    }
+
+    /// Replace slot `index` with `child`, or append it at index len.
+    pub fn set(self: *TransformLinks, instance: *runtime.Instance, index: usize, child: *runtime.Instance) !void {
+        if (index > self.links.items.len) return error.RangeError;
+        if (index == self.links.items.len) try self.links.append(instance.ctx.allocator, .{});
+        self.links.items[index].set(child);
+        var buffer: [64]u8 = undefined;
+        objects.keepFrom(instance, child, slot(index, &buffer));
+    }
+
+    pub fn deinit(self: *TransformLinks, instance: *runtime.Instance) void {
+        for (0..self.links.items.len) |index| {
+            var buffer: [64]u8 = undefined;
+            engine.forgetTracedChild(instance, slot(index, &buffer));
+        }
+        self.links.deinit(instance.ctx.allocator);
+    }
+};
+
+/// Typed OM 4.3.2: whether the CSSNumericValue `value` matches
+/// `production`; a TypeError for an object that is not one.
+pub fn numericMatches(value: *runtime.Instance, production: transforms.Production) !bool {
+    if (value.stateAs(interfaces.CSSNumericValue.State) == null) return error.TypeError;
+    return transforms.matches(try numericType(value), production);
+}
+
+/// "Rectify a numberish value" (4.3.1): a double is a new unit value of
+/// (value, "number"); a CSSNumericValue is itself. OWNED when made here:
+/// the caller's TransformLinks or Reified takes it, or it is released on
+/// failure.
+pub fn rectifyNumberish(ctx: runtime.Context, value: typedefs.CSSNumberish) !*runtime.Instance {
+    return switch (value) {
+        .double => |number| try interfaces.CSSUnitValue.call_constructor(ctx, number, "number"),
+        .cssnumeric_value => |numeric_value| if (numeric_value.stateAs(interfaces.CSSNumericValue.State) != null) numeric_value else error.TypeError,
+    };
+}
+
+/// A rectified numberish `value` that must match <number> (CSSRotate's and
+/// CSSScale's x, y and z: "If x, y, or z don't match <number>, throw a
+/// TypeError"). A unit value made here is released when it does not match.
+pub fn numberishSlot(ctx: runtime.Context, value: typedefs.CSSNumberish) !*runtime.Instance {
+    const result = try rectifyNumberish(ctx, value);
+    const generation = runtime.SlabAllocator.generationOf(result);
+    errdefer if (value == .double) runtime.Instance.releaseIfUnwrapped(result, generation);
+    if (!try numericMatches(result, .number)) return error.TypeError;
+    return result;
+}
+
+/// A new unit value (value, unit) for a slot the constructor fills in
+/// (4.4: CSSTranslate's z of (0, "px"), CSSScale's z of (1, "number"),
+/// CSSRotate's axis).
+pub fn unitSlot(ctx: runtime.Context, value: f64, unit: []const u8) !*runtime.Instance {
+    return interfaces.CSSUnitValue.call_constructor(ctx, value, unit);
+}
+
+/// Hold `values` (some made here, some the caller's) while a new object is
+/// constructed from them; made ones are released if construction fails.
+pub const SlotHolds = struct {
+    held: Reified,
+
+    pub fn init(ctx: runtime.Context) SlotHolds {
+        return .{ .held = .{ .ctx = ctx } };
+    }
+    pub fn deinit(self: *SlotHolds) void {
+        self.held.deinit();
+    }
+    /// Keep `value` alive until deinit; `made` says it was made here.
+    pub fn keep(self: *SlotHolds, value: *runtime.Instance, made: bool) !void {
+        if (made) return self.held.appendNew(value);
+        try self.held.values.ensureUnusedCapacity(self.held.ctx.allocator, 1);
+        try self.held.holds.ensureUnusedCapacity(self.held.ctx.allocator, 1);
+        const hold = try engine.retainValue(value.ctx, .{ .instance = value });
+        self.held.values.appendAssumeCapacity(value);
+        self.held.holds.appendAssumeCapacity(hold);
+    }
+    pub fn values(self: *const SlotHolds) []const *runtime.Instance {
+        return self.held.values.items;
+    }
+};
+
+/// The component class of a CSSTransformComponent object; a TypeError for
+/// any other object.
+pub fn componentClass(value: *runtime.Instance) !transforms.Component {
+    inline for (.{
+        .{ interfaces.CSSTranslate, transforms.Component.translate },
+        .{ interfaces.CSSRotate, transforms.Component.rotate },
+        .{ interfaces.CSSScale, transforms.Component.scale },
+        .{ interfaces.CSSSkew, transforms.Component.skew },
+        .{ interfaces.CSSSkewX, transforms.Component.skew_x },
+        .{ interfaces.CSSSkewY, transforms.Component.skew_y },
+        .{ interfaces.CSSPerspective, transforms.Component.perspective },
+        .{ interfaces.CSSMatrixComponent, transforms.Component.matrix },
+    }) |entry| if (value.stateAs(entry[0].State) != null) return entry[1];
+    return error.TypeError;
+}
+
+/// A component's numeric slots in their getters' order (translate x, y, z;
+/// rotate x, y, z, angle; scale x, y, z; skew ax, ay; skewX ax; skewY ay;
+/// perspective its length when it is a CSSNumericValue). Borrowed.
+fn componentSlots(component: *runtime.Instance, class: transforms.Component, out: *[4]*runtime.Instance) ![]*runtime.Instance {
+    const numberish = struct {
+        fn of(v: typedefs.CSSNumberish) *runtime.Instance {
+            return switch (v) {
+                .cssnumeric_value => |value| value,
+                .double => unreachable, // the getters return the slot objects
+            };
+        }
+    }.of;
+    switch (class) {
+        .translate => {
+            out.* = .{ try interfaces.CSSTranslate.get_x(component), try interfaces.CSSTranslate.get_y(component), try interfaces.CSSTranslate.get_z(component), undefined };
+            return out[0..3];
+        },
+        .rotate => {
+            out.* = .{ numberish(try interfaces.CSSRotate.get_x(component)), numberish(try interfaces.CSSRotate.get_y(component)), numberish(try interfaces.CSSRotate.get_z(component)), try interfaces.CSSRotate.get_angle(component) };
+            return out[0..4];
+        },
+        .scale => {
+            out.* = .{ numberish(try interfaces.CSSScale.get_x(component)), numberish(try interfaces.CSSScale.get_y(component)), numberish(try interfaces.CSSScale.get_z(component)), undefined };
+            return out[0..3];
+        },
+        .skew => {
+            out.* = .{ try interfaces.CSSSkew.get_ax(component), try interfaces.CSSSkew.get_ay(component), undefined, undefined };
+            return out[0..2];
+        },
+        .skew_x => {
+            out[0] = try interfaces.CSSSkewX.get_ax(component);
+            return out[0..1];
+        },
+        .skew_y => {
+            out[0] = try interfaces.CSSSkewY.get_ay(component);
+            return out[0..1];
+        },
+        .perspective => switch (try interfaces.CSSPerspective.get_length(component)) {
+            .cssnumeric_value => |value| {
+                out[0] = value;
+                return out[0..1];
+            },
+            .csskeywordish => return out[0..0],
+        },
+        .matrix => return out[0..0],
+    }
+}
+
+/// 6.6: serialize a CSSTranslate, CSSRotate, CSSScale, CSSSkew, CSSSkewX,
+/// CSSSkewY, CSSPerspective or CSSMatrixComponent. OWNED.
+pub fn serializeTransformComponent(component: *runtime.Instance) anyerror![]const u8 {
+    const allocator = component.ctx.allocator;
+    const class = try componentClass(component);
+    if (class == .matrix) {
+        // "Return the serialization of this's matrix internal slot."
+        return interfaces.DOMMatrixReadOnly.serialize(try interfaces.CSSMatrixComponent.get_matrix(component));
+    }
+    const is_2d = try interfaces.CSSTransformComponent.get_is2D(component);
+    var buffer: [4]*runtime.Instance = undefined;
+    const slots = try componentSlots(component, class, &buffer);
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    try out.appendSlice(allocator, transforms.serializationName(class, is_2d));
+    try out.append(allocator, '(');
+    const shown: []const *runtime.Instance = switch (class) {
+        // 6.6: a 2D translate serializes x and y; a 2D rotate its angle; a
+        // skew ax, then ay unless it is a CSSUnitValue of value 0. A 2D
+        // scale serializes x AND y even when they are equal numeric values
+        // (6.6 step 3.3 omits y then): both shipping browsers print both -
+        // WPT transform-interpolation-computed-value expects
+        // "scale(1.5, 1.5)" and Chrome 157 and Safari 27.2 pass it, Blink's
+        // CSSScale::ToCSSValue appends y unconditionally - and Firefox ships
+        // no Typed OM (golden rule 2: no newer spec; the shippers decide).
+        .translate => if (is_2d) slots[0..2] else slots[0..3],
+        .rotate => if (is_2d) slots[3..4] else slots[0..4],
+        .scale => if (is_2d) slots[0..2] else slots[0..3],
+        .skew => if (try zeroUnit(slots[1])) slots[0..1] else slots[0..2],
+        .skew_x, .skew_y => slots[0..1],
+        .perspective => slots,
+        .matrix => unreachable,
+    };
+    if (class == .perspective and shown.len == 0) {
+        // perspective(none): the keyword slot's own serialization.
+        const keyword = switch (try interfaces.CSSPerspective.get_length(component)) {
+            .csskeywordish => |k| switch (k) {
+                .csskeyword_value => |value| value,
+                .domstring => return error.InvalidStateError,
+            },
+            .cssnumeric_value => unreachable,
+        };
+        const text = try interfaces.CSSKeywordValue.get_value(keyword);
+        defer allocator.free(text);
+        try out.appendSlice(allocator, text);
+    }
+    for (shown, 0..) |value, i| {
+        // 6.6 CSSRotate step 2.7 appends "," alone before the angle; every
+        // browser that ships the family (Chrome 157, Safari 27.2) prints
+        // ", " - transform-interpolation-computed-value expects
+        // "rotate3d(0, 0, 1, 60deg)" - so every separator here is ", ".
+        if (i != 0) try out.appendSlice(allocator, ", ");
+        const text = if (class == .perspective) try serializeWithMinimum(value, 0) else try serializeNumeric(value);
+        defer allocator.free(text);
+        try out.appendSlice(allocator, text);
+    }
+    try out.append(allocator, ')');
+    return out.toOwnedSlice(allocator);
+}
+
+/// 6.6: serialize a CSSTransformValue: each component's serialization,
+/// separated by " ". OWNED.
+pub fn serializeTransformValue(value: *runtime.Instance) anyerror![]const u8 {
+    const allocator = value.ctx.allocator;
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    const count = try interfaces.CSSTransformValue.get_length(value);
+    for (0..count) |index| {
+        if (index != 0) try out.append(allocator, ' ');
+        const text = try serializeTransformComponent(try interfaces.CSSTransformValue.call_getter(value, @intCast(index)));
+        defer allocator.free(text);
+        try out.appendSlice(allocator, text);
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+/// 6.4 step 4 with a `minimum` (CSSPerspective's length, "with a minimum of
+/// 0px"): a unit value below it - or whose size relative to it cannot be
+/// determined, a percentage or a font-relative length - is wrapped in
+/// calc(). A math value serializes as it always does.
+fn serializeWithMinimum(value: *runtime.Instance, minimum_px: f64) ![]u8 {
+    const text = try serializeNumeric(value);
+    if (value.stateAs(interfaces.CSSUnitValue.State) == null) return text;
+    const unit_name = try interfaces.CSSUnitValue.get_unit(value);
+    defer value.ctx.allocator.free(unit_name);
+    const unit = numeric.parseUnit(unit_name) orelse return text;
+    const v = try interfaces.CSSUnitValue.get_value(value);
+    const scale = unit.absoluteScale();
+    if (scale) |s| if (v * s >= minimum_px) return text;
+    errdefer value.ctx.allocator.free(text);
+    const wrapped = try std.fmt.allocPrint(value.ctx.allocator, "calc({s})", .{text});
+    value.ctx.allocator.free(text);
+    return wrapped;
+}
+
+/// 6.6 CSSSkew step 3: "a CSSUnitValue with a value of 0".
+fn zeroUnit(value: *runtime.Instance) !bool {
+    if (value.stateAs(interfaces.CSSUnitValue.State) == null) return false;
+    return try interfaces.CSSUnitValue.get_value(value) == 0;
+}
+
+/// The value of the CSSNumericValue `value` in `unit` (4.3.1 to()), for
+/// toMatrix(): "if any <length>s ... are not compatible units with px (such
+/// as relative lengths or percentages), throw a TypeError".
+fn numberIn(value: *runtime.Instance, unit: []const u8) !f64 {
+    const converted = interfaces.CSSNumericValue.call_to(value, unit) catch return error.TypeError;
+    const generation = runtime.SlabAllocator.generationOf(converted);
+    defer runtime.Instance.releaseIfUnwrapped(converted, generation);
+    return interfaces.CSSUnitValue.get_value(converted);
+}
+
+/// 4.4 CSSTransformComponent toMatrix() step 1: the component's equivalent
+/// 4x4 matrix (css.typed_om.transforms.componentMatrix) and its is2D.
+fn componentMatrix(component: *runtime.Instance) !struct { m: transforms.Matrix, is_2d: bool } {
+    const class = try componentClass(component);
+    const is_2d = try interfaces.CSSTransformComponent.get_is2D(component);
+    if (class == .matrix) {
+        const matrix = try interfaces.CSSMatrixComponent.get_matrix(component);
+        var m: transforms.Matrix = undefined;
+        inline for (css.geometry.element_names, 0..) |name, i| m[i] = try @field(interfaces.DOMMatrixReadOnly, "get_" ++ name)(matrix);
+        return .{ .m = if (is_2d) transforms.flatten2d(m) else m, .is_2d = is_2d };
+    }
+    var buffer: [4]*runtime.Instance = undefined;
+    const slots = try componentSlots(component, class, &buffer);
+    var numbers: [4]f64 = undefined;
+    for (slots, 0..) |value, i| {
+        const unit: []const u8 = switch (class) {
+            .translate => "px",
+            .rotate => if (i == 3) "deg" else "number",
+            .scale => "number",
+            .skew, .skew_x, .skew_y => "deg",
+            .perspective => "px",
+            .matrix => unreachable,
+        };
+        numbers[i] = try numberIn(value, unit);
+    }
+    return .{ .m = transforms.componentMatrix(class, is_2d, numbers[0..slots.len]), .is_2d = is_2d };
+}
+
+/// A new DOMMatrix of `ctx` holding `m` with its is2D slot `is_2d`.
+fn newMatrix(ctx: runtime.Context, m: transforms.Matrix, is_2d: bool) !*runtime.Instance {
+    const matrix = try interfaces.DOMMatrix.init(ctx.allocator, ctx);
+    const generation = runtime.SlabAllocator.generationOf(matrix);
+    errdefer runtime.Instance.releaseIfUnwrapped(matrix, generation);
+    try @import("../geometry_storage.zig").setMatrix(matrix, .{ .m = m, .is_2d = is_2d });
+    return matrix;
+}
+
+/// A new DOMMatrix with the elements and is2D of `source`, a
+/// DOMMatrixReadOnly (CSSMatrixComponent's DOMMatrix slot). OWNED.
+pub fn copyMatrix(ctx: runtime.Context, source: *runtime.Instance) !*runtime.Instance {
+    var m: transforms.Matrix = undefined;
+    inline for (css.geometry.element_names, 0..) |name, i| m[i] = try @field(interfaces.DOMMatrixReadOnly, "get_" ++ name)(source);
+    return newMatrix(ctx, m, try interfaces.DOMMatrixReadOnly.get_is2D(source));
+}
+
+/// 4.4 CSSTransformComponent toMatrix(). OWNED.
+pub fn componentToMatrix(component: *runtime.Instance) !*runtime.Instance {
+    const result = try componentMatrix(component);
+    return newMatrix(component.ctx, result.m, result.is_2d);
+}
+
+/// 4.4 CSSTransformValue toMatrix(): the identity, 2D, multiplied by each
+/// component's matrix in turn (a product stays 2D only while both are).
+pub fn transformValueToMatrix(value: *runtime.Instance) !*runtime.Instance {
+    var m = transforms.identity;
+    var is_2d = true;
+    const count = try interfaces.CSSTransformValue.get_length(value);
+    for (0..count) |index| {
+        const part = try componentMatrix(try interfaces.CSSTransformValue.call_getter(value, @intCast(index)));
+        m = transforms.multiply(m, part.m);
+        is_2d = is_2d and part.is_2d;
+    }
+    return newMatrix(value.ctx, m, is_2d);
+}
+
+/// 4.4 CSSTransformValue is2D: every component's is2D.
+pub fn transformValueIs2d(value: *runtime.Instance) !bool {
+    const count = try interfaces.CSSTransformValue.get_length(value);
+    for (0..count) |index| {
+        if (!try interfaces.CSSTransformComponent.get_is2D(try interfaces.CSSTransformValue.call_getter(value, @intCast(index)))) return false;
+    }
+    return true;
+}
+
+/// 5.8 "reify a <transform-function>". Null when an argument cannot reify
+/// (math Typed OM does not support), for the caller to keep the whole value
+/// opaque (5.2 step 1). OWNED.
+fn reifyTransformFunction(ctx: runtime.Context, function: transforms.Function) !?*runtime.Instance {
+    const class = transforms.componentOf(function.kind);
+    const is_2d = transforms.is2d(function.kind);
+    if (class == .matrix) {
+        const entries = transforms.matrixEntries(function) orelse return null;
+        const matrix = try newMatrix(ctx, entries, is_2d);
+        var holds = SlotHolds.init(ctx);
+        defer holds.deinit();
+        try holds.keep(matrix, true);
+        return try interfaces.CSSMatrixComponent.initWith(ctx.allocator, ctx, .{ .transform_is_2d = is_2d, .transform_slots = holds.values() });
+    }
+    const slots = transforms.slotsOf(function);
+    for (slots.items()) |n| if (!canReifyNumber(n)) return null;
+    var holds = SlotHolds.init(ctx);
+    defer holds.deinit();
+    if (class == .perspective and slots.len == 0) {
+        // "reify an identifier if it is the keyword none".
+        try holds.keep(try keywordObject(ctx, "none"), true);
+    } else for (slots.items()) |n| try holds.keep(try reifyNumber(ctx, n), true);
+    const args = .{ .transform_is_2d = is_2d, .transform_slots = holds.values() };
+    return switch (class) {
+        .translate => try interfaces.CSSTranslate.initWith(ctx.allocator, ctx, args),
+        .rotate => try interfaces.CSSRotate.initWith(ctx.allocator, ctx, args),
+        .scale => try interfaces.CSSScale.initWith(ctx.allocator, ctx, args),
+        .skew => try interfaces.CSSSkew.initWith(ctx.allocator, ctx, args),
+        .skew_x => try interfaces.CSSSkewX.initWith(ctx.allocator, ctx, args),
+        .skew_y => try interfaces.CSSSkewY.initWith(ctx.allocator, ctx, args),
+        .perspective => try interfaces.CSSPerspective.initWith(ctx.allocator, ctx, args),
+        .matrix => unreachable,
+    };
+}
+
+/// 5.8 "reify a <transform-list>": a new CSSTransformValue of its reified
+/// functions; null when one cannot reify. OWNED.
+pub fn reifyTransformList(ctx: runtime.Context, list: []const transforms.Function) !?*runtime.Instance {
+    var holds = SlotHolds.init(ctx);
+    defer holds.deinit();
+    for (list) |function| try holds.keep((try reifyTransformFunction(ctx, function)) orelse return null, true);
+    return try interfaces.CSSTransformValue.initWith(ctx.allocator, ctx, .{ .transform_components = holds.values() });
+}
+
+/// CSS Typed OM 6 "serialize a CSSStyleValue" for the reified families
+/// dom.style.typed_om builds whose classes CSSStyleValue's stringifier does
+/// not know: the CSSTransformValue family now (6.6). Null for any other
+/// value, which CSSStyleValue serializes itself. OWNED.
+pub fn serializeReified(instance: *runtime.Instance) anyerror!?[]const u8 {
+    if (instance.stateAs(interfaces.CSSTransformValue.State) != null) return try serializeTransformValue(instance);
+    return null;
 }

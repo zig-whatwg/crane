@@ -87,9 +87,9 @@ pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
         return dom.style.typed_om.serializeUnparsed(instance);
     if (instance.stateAs(interfaces.CSSNumericValue.State) != null)
         return dom.style.typed_om.serializeNumeric(instance);
+    if (try dom.style.typed_om.serializeReified(instance)) |text| return text;
     if (nativeValue(instance)) |value| return value.serialize(instance.ctx.allocator);
-    // KNOWN-INCOMPLETE: Q32 routes the CSSTransformValue family and
-    // CSSPositionValue to a later batch. Other payload-free stubs retain
+    // KNOWN-INCOMPLETE: Q32 routes CSSPositionValue to a later batch. Other payload-free stubs retain
     // this legacy default too; they must not start throwing from toString().
     // TODO: CSS Typed OM "serialize a CSSStyleValue" (https://drafts.css-houdini.org/css-typed-om-1/#stylevalue-serialization). Until then, the placeholder - as a copy: the binding frees
     // the string toString() returns, and freeing a literal faulted in
