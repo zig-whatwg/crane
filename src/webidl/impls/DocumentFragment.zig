@@ -40,19 +40,15 @@ pub const InternalState = struct {
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
-    allocator: std.mem.Allocator,
+    // No allocator copy (lane perf2 batch 7): nothing read it - 16 bytes on
+    // every fragment. What a node allocates is its Browser's
+    // (runtime.allocatorOf), the allocator it was made with (asserted in
+    // Node's initOwn).
 
     /// The template that owns this fragment, null for ordinary fragments.
     /// ShadowRoot exposes its own host through the ShadowRoot interface.
-    host: ?*runtime.Instance,
+    host: ?*runtime.Instance = null,
     host_generation: u64 = 0,
-
-    pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-            .host = null,
-        };
-    }
 
     pub fn deinit(self: *InternalState) void {
         _ = self;
@@ -101,6 +97,7 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 
 /// DocumentFragment's own construction steps: the generated chain runs Node's first.
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = allocator;
     _ = StateType;
     _ = args;
     // Initialize DocumentFragment's own internal state and register it
@@ -108,7 +105,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.create(instance);
-    internal.* = InternalState.init(allocator);
+    internal.* = .{};
 }
 
 /// DocumentFragment's own teardown: the generated chain runs Node's after it.

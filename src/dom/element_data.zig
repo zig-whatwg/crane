@@ -283,9 +283,9 @@ pub const AttributeList = struct {
 /// The Attr nodes made for an element's attributes, each by its attribute's
 /// name record (an attribute's identity: one per namespace and local name),
 /// made when script asks for the first one. Blink keeps an element's Attr
-/// nodes apart from its attributes too (ElementRareData's AttrNodeList,
-/// looked up by QualifiedName); D2 moves this list into Crane's
-/// ElementRareData.
+/// nodes apart from its attributes too (its rare data's kAttrNodeList,
+/// looked up by QualifiedName); Crane keeps this list in the element's
+/// ElementRareData (dom.element_rare_data, lane perf3 D2).
 pub const AttrNodeList = struct {
     entries: std.ArrayList(Entry) = .empty,
 
@@ -300,15 +300,59 @@ pub const AttrNodeList = struct {
         }
         return null;
     }
+
+    /// The Attr node kept for the attribute named by `name`, if any.
+    pub fn get(self: *const AttrNodeList, name: *const QualifiedName) ?AttrNodeLink {
+        const index = self.indexOf(name) orelse return null;
+        return self.entries.items[index].node;
+    }
+
+    /// Keep `node` as the Attr node of the attribute named by `name`, and
+    /// return the one kept before, if any.
+    pub fn put(self: *AttrNodeList, allocator: std.mem.Allocator, name: *const QualifiedName, node: AttrNodeLink) !?AttrNodeLink {
+        if (self.indexOf(name)) |index| {
+            const old = self.entries.items[index].node;
+            self.entries.items[index].node = node;
+            return old;
+        }
+        try self.entries.append(allocator, .{ .name = name, .node = node });
+        return null;
+    }
+
+    /// Stop keeping the Attr node of the attribute named by `name` and hand
+    /// it back; the list's storage goes with its last node.
+    pub fn take(self: *AttrNodeList, allocator: std.mem.Allocator, name: *const QualifiedName) ?AttrNodeLink {
+        const index = self.indexOf(name) orelse return null;
+        const node = self.entries.swapRemove(index).node;
+        // std.ArrayList.deinit leaves the list `undefined`: empty it again.
+        if (self.entries.items.len == 0) self.deinit(allocator);
+        return node;
+    }
+
+    /// The attribute named by `old` is now named by `new` (the same
+    /// namespace and local name: "replace" gave it another prefix); an Attr
+    /// node kept for it follows.
+    pub fn rename(self: *AttrNodeList, old: *const QualifiedName, new: *const QualifiedName) void {
+        const index = self.indexOf(old) orelse return;
+        self.entries.items[index].name = new;
+    }
+
+    /// Free the list's storage, leaving it empty; the nodes are their
+    /// owner's to let go first.
+    pub fn deinit(self: *AttrNodeList, allocator: std.mem.Allocator) void {
+        self.entries.deinit(allocator);
+        self.entries = .empty;
+    }
 };
 
-/// An element's attribute list, ID, classes and qualified name.
+/// An element's attribute list, ID, classes and qualified name. Its
+/// namespace prefix and the Attr nodes made for its attributes are rare data
+/// (dom.element_rare_data, lane perf3 D2): no element of the perf pages had
+/// either.
 pub const ElementData = struct {
     /// The element's namespace (DOM 4.9); null for none. One of the six
     /// named namespaces is the static string (`internNamespace`), not a copy.
     namespace_uri: ?runtime.DOMString = null,
-    /// The element's namespace prefix; null for none.
-    prefix: ?runtime.DOMString = null,
     /// The element's local name, fixed by "create an element".
     local_name: runtime.DOMString = .{ .empty = {} },
 
@@ -325,20 +369,16 @@ pub const ElementData = struct {
 
     /// The attributes in list order; null while there are none.
     attrs: ?*AttributeList = null,
-    /// The Attr nodes script was handed; null until the first.
-    attr_nodes: ?*AttrNodeList = null,
 
     pub fn init() ElementData {
         return .{};
     }
 
     /// Free the names and every attribute. An attribute's Attr node is its
-    /// owner's to let go first (`takeAttrNode`): this frees the list only.
+    /// owner's to let go first (AttrNodeList.take): this frees the list only.
     pub fn deinit(self: *ElementData, allocator: std.mem.Allocator) void {
         if (self.namespace_uri) |*ns| ns.deinit(allocator);
         self.namespace_uri = null;
-        if (self.prefix) |*p| p.deinit(allocator);
-        self.prefix = null;
         self.local_name.deinit(allocator);
         self.local_name = .{ .empty = {} };
         // Views of attribute values: nothing of their own to free.
@@ -348,11 +388,6 @@ pub const ElementData = struct {
             for (list.items()) |attribute| freeAttribute(allocator, attribute);
             list.destroy(allocator);
             self.attrs = null;
-        }
-        if (self.attr_nodes) |nodes| {
-            nodes.entries.deinit(allocator);
-            allocator.destroy(nodes);
-            self.attr_nodes = null;
         }
     }
 
@@ -481,16 +516,13 @@ pub const ElementData = struct {
 
     /// Set the name record of the attribute at `index` (the same namespace
     /// and local name; "replace" gives it another prefix), and return its old
-    /// one for the caller to free (`QualifiedName.destroy`, if owned). An Attr
-    /// node kept for the attribute follows it to the new record.
+    /// one for the caller to free (`QualifiedName.destroy`, if owned) - after
+    /// moving an Attr node kept for it to the new record (AttrNodeList.rename).
     pub fn setNameAt(self: *ElementData, index: usize, name: *const QualifiedName) *const QualifiedName {
         const slot = &self.attrs.?.items()[index];
         const old = slot.name;
         std.debug.assert(name.isNamed(old.namespace_uri, old.local_name));
         slot.name = name;
-        if (self.attr_nodes) |nodes| if (nodes.indexOf(old)) |i| {
-            nodes.entries.items[i].name = name;
-        };
         return old;
     }
 
@@ -510,45 +542,6 @@ pub const ElementData = struct {
         const found = attribute orelse return .{ .empty = {} };
         if (found.value.len == 0) return .{ .empty = {} };
         return runtime.DOMString.initInterned(found.value);
-    }
-
-    /// The Attr node kept for the attribute named by `name`, if any.
-    pub fn attrNodeOf(self: *const ElementData, name: *const QualifiedName) ?AttrNodeLink {
-        const nodes = self.attr_nodes orelse return null;
-        const index = nodes.indexOf(name) orelse return null;
-        return nodes.entries.items[index].node;
-    }
-
-    /// Keep `node` as the Attr node of the attribute named by `name`, and
-    /// return the one kept before, if any.
-    pub fn setAttrNode(self: *ElementData, allocator: std.mem.Allocator, name: *const QualifiedName, node: AttrNodeLink) !?AttrNodeLink {
-        const nodes = self.attr_nodes orelse made: {
-            const made = try allocator.create(AttrNodeList);
-            made.* = .{};
-            self.attr_nodes = made;
-            break :made made;
-        };
-        if (nodes.indexOf(name)) |index| {
-            const old = nodes.entries.items[index].node;
-            nodes.entries.items[index].node = node;
-            return old;
-        }
-        try nodes.entries.append(allocator, .{ .name = name, .node = node });
-        return null;
-    }
-
-    /// Stop keeping the Attr node of the attribute named by `name` and hand
-    /// it back; the list goes with its last node.
-    pub fn takeAttrNode(self: *ElementData, allocator: std.mem.Allocator, name: *const QualifiedName) ?AttrNodeLink {
-        const nodes = self.attr_nodes orelse return null;
-        const index = nodes.indexOf(name) orelse return null;
-        const node = nodes.entries.swapRemove(index).node;
-        if (nodes.entries.items.len == 0) {
-            nodes.entries.deinit(allocator);
-            allocator.destroy(nodes);
-            self.attr_nodes = null;
-        }
-        return node;
     }
 };
 
@@ -588,10 +581,20 @@ pub fn hasAttribute(data: *const ElementData, local_name: []const u8) bool {
     return data.indexOfAttribute(null, local_name) != null;
 }
 
+/// An element's rare data (dom.element_rare_data), which Element keeps and
+/// reaches through this slot too: one hook per owner, not one per field.
+const element_rare_data = @import("element_rare_data.zig");
+
 /// What Element supplies.
 pub const Implementation = struct {
     /// `element`'s data, or null when `element` has no Element part.
     of: *const fn (element: *runtime.Instance) ?*ElementData,
+    /// `element`'s rare data, or null when it has none (or is no element).
+    /// Never makes one.
+    rare_of: *const fn (element: *runtime.Instance) ?*element_rare_data.ElementRareData,
+    /// `element`'s rare data, made now if it has none. InvalidStateError
+    /// for an instance that is no element.
+    ensure_rare: *const fn (element: *runtime.Instance) element_rare_data.Error!*element_rare_data.ElementRareData,
 };
 
 // process-wide: an immutable function pointer Element installs once at process start (crane.Process); it reads only the element it is given, so one serves every Browser and thread
@@ -607,6 +610,18 @@ pub fn install(impl: Implementation) void {
 pub fn of(element: *runtime.Instance) ?*const ElementData {
     const impl = implementation.get() orelse return null;
     return impl.of(element);
+}
+
+/// `element`'s rare data, or null when it has none: dom.element_rare_data.of.
+pub fn rareDataOf(element: *runtime.Instance) ?*element_rare_data.ElementRareData {
+    const impl = implementation.get() orelse return null;
+    return impl.rare_of(element);
+}
+
+/// `element`'s rare data, made on first use: dom.element_rare_data.ensure.
+pub fn ensureRareData(element: *runtime.Instance) element_rare_data.Error!*element_rare_data.ElementRareData {
+    const impl = implementation.get() orelse return error.InvalidStateError;
+    return impl.ensure_rare(element);
 }
 
 // ============================================================================
@@ -706,22 +721,29 @@ test "views survive the list's reallocation; Attr node links follow a renamed at
     try std.testing.expectEqualStrings("main", data.id.asSlice());
 
     // An Attr node link is keyed by the name record and follows "replace".
+    var nodes: AttrNodeList = .{};
+    defer nodes.deinit(allocator);
     const name0 = data.storedAt(0).?.name;
     var fake: runtime.Instance = undefined;
     const link: AttrNodeLink = .{ .instance = &fake, .generation = 7 };
-    try std.testing.expect((try data.setAttrNode(allocator, name0, link)) == null);
+    try std.testing.expect((try nodes.put(allocator, name0, link)) == null);
     const renamed = try QualifiedName.create(allocator, null, null, "id");
     const old = data.setNameAt(0, renamed);
+    nodes.rename(old, renamed);
     old.destroy(allocator);
-    try std.testing.expect(data.attrNodeOf(renamed).?.generation == 7);
-    try std.testing.expect(data.takeAttrNode(allocator, renamed) != null);
-    try std.testing.expect(data.attr_nodes == null);
+    try std.testing.expect(nodes.get(renamed).?.generation == 7);
+    try std.testing.expect(nodes.get(old) == null);
+    try std.testing.expect(nodes.take(allocator, renamed) != null);
+    try std.testing.expectEqual(@as(usize, 0), nodes.entries.capacity);
 }
 
-test "without an installed implementation no node has element data" {
+test "without an installed implementation no node has element data or rare data" {
     const override = implementation.overrideForTest(null);
     defer override.restore();
-    // Never dereferenced: with no implementation the call does not reach it.
+    // Never dereferenced: with no implementation the calls do not reach it.
     var element: runtime.Instance = undefined;
     try std.testing.expect(of(&element) == null);
+    try std.testing.expect(rareDataOf(&element) == null);
+    try std.testing.expectError(error.InvalidStateError, ensureRareData(&element));
+    try std.testing.expect(element_rare_data.of(&element) == null);
 }

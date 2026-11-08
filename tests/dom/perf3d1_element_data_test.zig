@@ -93,16 +93,18 @@ test "an Attribute is 24 bytes: its name record's address and its value" {
     }
 }
 
-test "ElementData is 152 bytes: the list and the Attr nodes out of line, no allocator" {
+test "ElementData is 112 bytes: the list out of line, no allocator, the prefix and Attr nodes rare data" {
     if (comptime !out_of_line) {
         printLayout(ElementData);
         return error.AttributesStillInline;
     } else {
         // 584 at 5b07812bf00: - 384 (four inline 96-byte slots) - 1 (their
         // count) - 40 (the heap list) - 16 (the allocator copy) + 8 (the
-        // list) + 8 (the Attr nodes, D2's rare data later): namespace 32,
-        // prefix 32, local name 24, ID 24, classes 24, list 8, Attr nodes 8.
-        try expectSize(ElementData, 152);
+        // list) + 8 (the Attr nodes) = 152 at D1; D2 moved the prefix (32)
+        // and the Attr nodes (8) to the element's rare data
+        // (tests/dom/perf3d2_element_rare_data_test.zig): namespace 32, local
+        // name 24, ID 24, classes 24, list 8.
+        try expectSize(ElementData, 112);
         inline for (.{ "allocator", "inline_attrs", "inline_attr_count", "heap_attrs" }) |gone| {
             if (@hasField(ElementData, gone)) {
                 std.debug.print("ElementData still has `{s}`\n", .{gone});
@@ -113,27 +115,30 @@ test "ElementData is 152 bytes: the list and the Attr nodes out of line, no allo
     }
 }
 
-test "Element's InternalState is 416 bytes" {
-    // 848 at 5b07812bf00: - 432 (ElementData's diet). Element keeps its own
-    // 16-byte allocator copy, as Node does (lane perf2 b5): in the V8 tests'
-    // realms the creation allocator is not the scope's (docs/lessons/
+test "Element's InternalState is 240 bytes" {
+    // 848 at 5b07812bf00: - 432 (ElementData's diet) = 416 at D1, Element
+    // still keeping its 16-byte allocator copy then (in the V8 tests' realms
+    // the creation allocator was not the scope's: docs/lessons/
     // architecture-a-nodes-creation-allocator-is-its-browsers-only-inside-a-
-    // browser.md); ElementData's copy is gone.
-    try expectSize(ElementState, 416);
+    // browser.md); D2 took the copy out and the cold fields into rare data
+    // (tests/dom/perf3d2_element_rare_data_test.zig).
+    try expectSize(ElementState, 240);
     // Kept by value in its element's one State block (perf2 b5, Z7), or in a
     // block of its own before that: either way at most 512 bytes of arena.
     try testing.expect(runtime.ArenaAllocator.heldBytes(@sizeOf(ElementState), @alignOf(ElementState)) <= 512);
 }
 
-test "a div's one block is 736 bytes: perf2 b5's 1,272 less D1's 432 and perf2 b6's 104" {
+test "a div's one block is 464 bytes: perf2 b5's 1,272 less D1's 432, perf2 b6's 104, D2's 264 and perf2 b7's 8" {
     // perf2 b5 made a node ONE exact-size State block holding every level's
     // InternalState (1,272 bytes for a div at a67aa1e08e5, Element's 848 of
     // them); D1 takes ElementData's 432 out of it; perf2 b6 the allocator
     // copies of NodeBase, Node and EventTarget (48), last_child (8),
     // EventTarget's lazy entry record (24 less 8 of padding) and four
-    // `_internal` pointers (32).
+    // `_internal` pointers (32); D2 Element's allocator copy and cold fields
+    // (176) and HTMLElement's whole state (88); perf2 b7 EventTarget's
+    // current event (8, a Window's: in Window's state now).
     const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 736);
+    try expectSize(S, 464);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
     if (held - @sizeOf(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });

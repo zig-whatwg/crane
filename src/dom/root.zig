@@ -189,6 +189,10 @@ pub const reflected_with_fallback = @import("reflected_with_fallback.zig");
 /// An element's attribute list, ID, classes and qualified name, read in
 /// place by the tree's own algorithms (WebKit's ElementData).
 pub const element_data = @import("element_data.zig");
+/// An element's rare data - the fields few elements use, made on first use
+/// and never moved (WebKit's ElementRareData; lane perf3 D2) - with
+/// HTMLElement's part, reached through the hooks Element installs.
+pub const element_rare_data = @import("element_rare_data.zig");
 /// HTML's algorithms for reflecting content attributes in IDL attributes.
 pub const reflection = @import("reflection.zig");
 /// The generated [SameObject] caches' edges: an owner keeps the child it
@@ -230,6 +234,8 @@ pub const slot_helpers = @import("slot_helpers.zig");
 pub const cookie_change_event = @import("cookie_change_event.zig");
 /// Document's state type: the impl owns the state, src/dom reads it here.
 pub const document_state = @import("document_state.zig");
+/// What few Documents set, made on first use (lane perf2 batch 7).
+pub const document_rare_data = @import("document_rare_data.zig");
 pub const document_internals = @import("document_internals.zig");
 pub const document_last_modified = @import("document_last_modified.zig");
 /// The CSSOM's model: what CSSStyleSheet, CSSRuleList and the CSSRule
