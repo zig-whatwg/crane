@@ -1057,6 +1057,24 @@ fn gate(comptime capability: Capability, comptime operation: []const u8) void {
 // 4.1 Engine and agents
 // ============================================================================
 
+/// The engine's part of a process start that must come before the process
+/// makes any thread: per-process state that only threads created after it
+/// inherit. A host calls it first in its `main`, on the main thread, before
+/// it - or anything it starts, a test runner included - creates a thread;
+/// later calls do nothing. It never starts the engine (`initializeEngine`
+/// does, later, on any thread).
+///
+/// V8: the memory protection key its thread isolation tags trusted memory
+/// with (x86-64 Linux with PKU). The key is allocated on the calling thread,
+/// and only threads created after that inherit access to it; a thread that
+/// already existed faults on its first read of that memory. A process that
+/// never calls this runs V8 without thread isolation - no key, no fault on
+/// any thread - as Node does. Chromium makes the same call first in its
+/// content main (gin::GetThreadIsolationData().InitializeBeforeThreadCreation()).
+pub inline fn initializeBeforeThreadCreation() void {
+    impl.initializeBeforeThreadCreation();
+}
+
 /// Initialize the process-wide engine: platform, flags, snapshot blob. Once,
 /// before any agent.
 pub inline fn initializeEngine(options: EngineOptions) Error!void {

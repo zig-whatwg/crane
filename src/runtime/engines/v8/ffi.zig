@@ -794,6 +794,15 @@ pub const PlatformStart = enum(c_int) {
 /// so every caller returns with V8 started. V8 itself FATALs on a second or
 /// concurrent start (13.1.203 src/init/v8.cc AdvanceStartupState).
 pub extern fn v8_Platform_Start(flags: ?[*:0]const u8) PlatformStart;
+/// The engine protocol's initializeBeforeThreadCreation: V8's platform -
+/// and the memory protection key of its thread isolation - made on the
+/// calling thread, first in a process's main, before it creates any thread;
+/// V8 starts later (v8_Platform_Start). Nothing once a platform exists.
+pub extern fn v8_Platform_InitializeBeforeThreadCreation() void;
+/// Whether V8 runs, or will run, with thread isolation: only on a platform
+/// made by v8_Platform_InitializeBeforeThreadCreation, where libplatform
+/// could allocate a memory protection key (x86-64 Linux with PKU).
+pub extern fn v8_Platform_HasThreadIsolation() bool;
 /// The flags V8's start applied ("" for none), or null before it started.
 /// Lives as long as the process.
 pub extern fn v8_Platform_StartFlags() ?[*:0]const u8;

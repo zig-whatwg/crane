@@ -107,6 +107,13 @@ comptime {
 }
 
 pub fn main(init: std.process.Init.Minimal) void {
+    // The process start's first step, before any thread exists - a test's,
+    // the busy Browser's, V8's own workers: the engine's per-process state
+    // that only threads created after it inherit (engine protocol
+    // initializeBeforeThreadCreation; V8's thread isolation key on x86-64
+    // Linux), as every Crane host's main does first. A suite's tests start
+    // V8 on whichever thread comes first, and every thread then has access.
+    if (suite.engine) |engine| engine.initializeBeforeThreadCreation();
     const args = init.args.toSlice(fba.allocator()) catch |err| panic("unable to parse command line args: {t}", .{err});
 
     var listen = false;

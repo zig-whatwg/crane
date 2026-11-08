@@ -26,6 +26,7 @@
 //!   zig build test-launch -Dspec=v8 -Dtest-file=tests/v8/platform_start_once_test.zig -Dlaunch-batch=1
 
 const std = @import("std");
+const builtin = @import("builtin");
 const engine = @import("engine");
 const v8 = @import("v8");
 const ffi = v8.ffi;
@@ -137,4 +138,26 @@ test "a start that asks for other flags than V8 started with is told so, and V8 
     // fatal CHECK, so this would have aborted had the start tried).
     try std.testing.expectEqual(ffi.PlatformStart.started_with_other_flags, ffi.v8_Platform_Start("--crane-flags-no-start-applies"));
     try std.testing.expectEqualStrings(started_with, try startFlags());
+}
+
+/// Whether libplatform can allocate a memory protection key here: V8 has
+/// PKU write protection only on x86-64 Linux (13.1.203
+/// src/base/build_config.h, V8_HAS_PKU_JIT_WRITE_PROTECT), and its
+/// DefaultThreadIsolatedAllocator gets a key only where the CPU has PKU and
+/// the kernel enabled it (/proc/cpuinfo's "ospke").
+fn memoryProtectionKeysAvailable() bool {
+    if (builtin.os.tag != .linux or builtin.cpu.arch != .x86_64) return false;
+    const io = std.testing.io;
+    const cpuinfo = std.Io.Dir.cwd().readFileAlloc(io, "/proc/cpuinfo", std.testing.allocator, .limited(4 << 20)) catch return false;
+    defer std.testing.allocator.free(cpuinfo);
+    var flags = std.mem.tokenizeAny(u8, cpuinfo, " \t\n");
+    while (flags.next()) |flag| if (std.mem.eql(u8, flag, "ospke")) return true;
+    return false;
+}
+
+test "the process start makes V8's platform before any thread: V8 gets thread isolation wherever the CPU has memory protection keys" {
+    // The Crane test runner calls engine.initializeBeforeThreadCreation()
+    // first in main, as every host's main does - so every thread a test makes
+    // inherits the key, and the races above run with V8's thread isolation on.
+    try std.testing.expectEqual(memoryProtectionKeysAvailable(), ffi.v8_Platform_HasThreadIsolation());
 }

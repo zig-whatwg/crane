@@ -4592,6 +4592,8 @@ pub fn build(b: *std.Build) void {
         .{ .name = "webdriver", .module = webdriver_mod },
         // main adopts std.start's Io as the process Io (src/platform/host.zig).
         .{ .name = "host", .module = host_mod },
+        // main's first step: engine.initializeBeforeThreadCreation.
+        .{ .name = "engine", .module = engine_mod },
     };
     for (crane_exe_imports) |import| crane_exe.root_module.addImport(import.name, import.module);
 
