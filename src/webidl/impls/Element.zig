@@ -251,9 +251,9 @@ pub fn installHooks() void {
     // The list, the ID and classes and the qualified name, read in place by
     // the tree's own algorithms (the selector matcher, getElementById, the
     // HTML elements' reflection, the CSSOM).
-    dom.element_data.install(.{ .of = &dataOf });
-    // The rare data, which HTMLElement keeps its part in.
-    dom.element_rare_data.install(.{ .of = &rareDataOf, .ensure = &ensureRareDataHook });
+    // And its rare data, which HTMLElement keeps its part in
+    // (dom.element_rare_data), through the same slot.
+    dom.element_data.install(.{ .of = &dataOf, .rare_of = &rareDataOf, .ensure_rare = &ensureRareDataHook });
     // The element's style state, which the style engine keeps in it.
     dom.style.hooks.install(.{ .element_style_slot = &styleSlotOf });
     // The parsers' "create an element" sets names through `dom.node_creation`.

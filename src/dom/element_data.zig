@@ -581,10 +581,20 @@ pub fn hasAttribute(data: *const ElementData, local_name: []const u8) bool {
     return data.indexOfAttribute(null, local_name) != null;
 }
 
+/// An element's rare data (dom.element_rare_data), which Element keeps and
+/// reaches through this slot too: one hook per owner, not one per field.
+const element_rare_data = @import("element_rare_data.zig");
+
 /// What Element supplies.
 pub const Implementation = struct {
     /// `element`'s data, or null when `element` has no Element part.
     of: *const fn (element: *runtime.Instance) ?*ElementData,
+    /// `element`'s rare data, or null when it has none (or is no element).
+    /// Never makes one.
+    rare_of: *const fn (element: *runtime.Instance) ?*element_rare_data.ElementRareData,
+    /// `element`'s rare data, made now if it has none. InvalidStateError
+    /// for an instance that is no element.
+    ensure_rare: *const fn (element: *runtime.Instance) element_rare_data.Error!*element_rare_data.ElementRareData,
 };
 
 // process-wide: an immutable function pointer Element installs once at process start (crane.Process); it reads only the element it is given, so one serves every Browser and thread
@@ -600,6 +610,18 @@ pub fn install(impl: Implementation) void {
 pub fn of(element: *runtime.Instance) ?*const ElementData {
     const impl = implementation.get() orelse return null;
     return impl.of(element);
+}
+
+/// `element`'s rare data, or null when it has none: dom.element_rare_data.of.
+pub fn rareDataOf(element: *runtime.Instance) ?*element_rare_data.ElementRareData {
+    const impl = implementation.get() orelse return null;
+    return impl.rare_of(element);
+}
+
+/// `element`'s rare data, made on first use: dom.element_rare_data.ensure.
+pub fn ensureRareData(element: *runtime.Instance) element_rare_data.Error!*element_rare_data.ElementRareData {
+    const impl = implementation.get() orelse return error.InvalidStateError;
+    return impl.ensure_rare(element);
 }
 
 // ============================================================================
@@ -715,10 +737,13 @@ test "views survive the list's reallocation; Attr node links follow a renamed at
     try std.testing.expectEqual(@as(usize, 0), nodes.entries.capacity);
 }
 
-test "without an installed implementation no node has element data" {
+test "without an installed implementation no node has element data or rare data" {
     const override = implementation.overrideForTest(null);
     defer override.restore();
-    // Never dereferenced: with no implementation the call does not reach it.
+    // Never dereferenced: with no implementation the calls do not reach it.
     var element: runtime.Instance = undefined;
     try std.testing.expect(of(&element) == null);
+    try std.testing.expect(rareDataOf(&element) == null);
+    try std.testing.expectError(error.InvalidStateError, ensureRareData(&element));
+    try std.testing.expect(element_rare_data.of(&element) == null);
 }

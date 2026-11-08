@@ -32,16 +32,15 @@
 //! teardown sweep for an element no teardown reached (docs/lessons/
 //! architecture-an-element-alive-at-teardown-is-swept-not-deinitd.md).
 //!
-//! Element owns it and installs `of` and `ensure` here: HTMLElement reaches
-//! its part (`html`) through them, never through Element's impl (AGENTS.md
-//! "The impls boundary"). What each field means is its owner's: Element's
-//! fields are written only by Element, `html` only by HTMLElement.
-//!
-//! lint-impls: hook for Element
+//! Element owns it and supplies `of` and `ensure` through the hook slot it
+//! already installs for its ElementData (dom.element_data's Implementation:
+//! one slot per owner, not one per field): HTMLElement reaches its part
+//! (`html`) through them, never through Element's impl (AGENTS.md "The impls
+//! boundary"). What each field means is its owner's: Element's fields are
+//! written only by Element, `html` only by HTMLElement.
 const std = @import("std");
 
 const runtime = @import("runtime");
-const Hook = @import("hook.zig").Hook;
 const element_data = @import("element_data.zig");
 const same_object = @import("same_object.zig");
 const custom_elements = @import("custom_elements.zig");
@@ -136,36 +135,16 @@ pub const ElementRareData = struct {
 
 pub const Error = error{ OutOfMemory, InvalidStateError };
 
-/// What Element supplies.
-pub const Implementation = struct {
-    /// `element`'s rare data, or null when it has none (or is no element).
-    /// Never makes one.
-    of: *const fn (element: *runtime.Instance) ?*ElementRareData,
-    /// `element`'s rare data, made now if it has none. InvalidStateError for
-    /// an instance that is no element.
-    ensure: *const fn (element: *runtime.Instance) Error!*ElementRareData,
-};
-
-// process-wide: immutable function pointers Element installs once at process start (crane.Process); they read only the element they are given, so one serves every Browser and thread
-var implementation: Hook(?Implementation) = .init(null);
-
-/// Called by Element's installHooks, once, at process start (process_start.zig).
-pub fn install(impl: Implementation) void {
-    implementation.install(impl);
-}
-
 /// `element`'s rare data, or null when it has none: a reader's path, which
 /// never allocates.
 pub fn of(element: *runtime.Instance) ?*ElementRareData {
-    const impl = implementation.get() orelse return null;
-    return impl.of(element);
+    return element_data.rareDataOf(element);
 }
 
 /// `element`'s rare data, made on first use: a writer's path. The block
 /// never moves once made.
 pub fn ensure(element: *runtime.Instance) Error!*ElementRareData {
-    const impl = implementation.get() orelse return error.InvalidStateError;
-    return impl.ensure(element);
+    return element_data.ensureRareData(element);
 }
 
 // ============================================================================
@@ -187,13 +166,4 @@ test "a new block is empty, counted while it lives, and frees what it owns" {
     _ = try rare.attr_nodes.put(allocator, &name, .{ .instance = &fake, .generation = 3 });
     rare.destroy(allocator, &memory);
     try std.testing.expectEqual(@as(usize, 0), memory.live);
-}
-
-test "without an installed implementation no element has rare data" {
-    const override = implementation.overrideForTest(null);
-    defer override.restore();
-    // Never dereferenced: with no implementation the calls do not reach it.
-    var element: runtime.Instance = undefined;
-    try std.testing.expect(of(&element) == null);
-    try std.testing.expectError(error.InvalidStateError, ensure(&element));
 }
