@@ -282,13 +282,24 @@ pub fn hasPostConnectionStepsCallbacks() bool {
     return post_connection_steps_callbacks.read().len > 0;
 }
 
-/// Recursively run insertion steps for a node and all its descendants
+/// Run insertion steps for a node and all its light descendants, in tree
+/// order - the fallback when the shadow-including list cannot be allocated.
+/// A loop over the links, no frame per level (lane crash1 batch 3).
 fn runInsertionStepsRecursive(node: anytype) void {
-    runInsertionSteps(node);
-    var children = node.children();
-    while (children.next()) |child| {
-        runInsertionStepsRecursive(child);
+    const root: *NodeBase = @ptrCast(node);
+    var at: ?*NodeBase = root;
+    while (at) |current| : (at = nextLightInTree(current, root)) runInsertionSteps(current);
+}
+
+/// The node after `node` in `root`'s light subtree, in tree order.
+fn nextLightInTree(node: *NodeBase, root: *NodeBase) ?*NodeBase {
+    if (node.first_child) |child| return child;
+    var current = node;
+    while (current != root) {
+        if (current.next_sibling) |sibling| return sibling;
+        current = current.parent_node orelse return null;
     }
+    return null;
 }
 
 /// DOM insert steps 10–12: snapshot the whole batch before a step can run
@@ -319,87 +330,37 @@ fn runPostConnectionStepsForTrees(allocator: std.mem.Allocator, roots: []const *
         }
         // Native parser nodes have no script-visible Instance to retire.
         // For registered nodes, validate the generation BEFORE reading NodeBase.
-        if (entry.node.is_connected or entry.node.node_type == DOCUMENT_NODE or isConnectedThroughShadow(entry.node)) {
+        if (entry.node.is_connected or entry.node.node_type == DOCUMENT_NODE) {
             runPostConnectionSteps(entry.node);
         }
     }
 }
 
-/// Recursively run removing steps for a node and all its descendants
-fn runRemovingStepsRecursive(node: anytype, old_parent: anytype, parent_connected: bool) void {
-    runRemovingSteps(node, old_parent);
-    if (parent_connected) enqueueCustomElementCallback(node, .disconnected, .none);
-    runRemovingStepsForDescendants(node, old_parent, parent_connected);
-}
-
 /// Allocation-free fallback for remove step 14, in the same shadow-including
 /// tree order as the collected list. Every callback receives the original
 /// ancestor that the subtree was removed from, including shadow descendants.
+/// The walk is a loop (tree_helpers.ShadowIncludingWalk), no frame per level
+/// (lane crash1 batch 3); its next node is read before a node's steps run,
+/// as the recursion read a node's children after them - a fallback for when
+/// no list can be allocated, whose steps run no script.
 fn runRemovingStepsForDescendants(node: anytype, old_parent: anytype, parent_connected: bool) void {
-    if (tree_helpers.shadowRootForHost(node)) |shadow| {
-        runRemovingStepsRecursive(shadow, old_parent, parent_connected);
-    }
-    var children = node.children();
-    while (children.next()) |child| {
-        runRemovingStepsRecursive(child, old_parent, parent_connected);
+    var walk = tree_helpers.ShadowIncludingWalk.init(@ptrCast(node));
+    _ = walk.next(); // `node` itself: its own steps ran
+    while (walk.next()) |descendant| {
+        runRemovingSteps(descendant, old_parent);
+        if (parent_connected) enqueueCustomElementCallback(descendant, .disconnected, .none);
     }
 }
 
-/// Check if a node is connected through shadow DOM.
-/// A node is connected through shadow if its root is a ShadowRoot whose host is connected.
-/// This handles nested shadow DOMs by recursively checking hosts.
-fn isConnectedThroughShadow(node: anytype) bool {
-    const node_ptr: *NodeBase = @ptrCast(node);
-
-    // Find the root node
-    var current: *const NodeBase = node_ptr;
-    while (current.parent_node) |parent| {
-        current = parent;
-    }
-
-    // If root is a Document, we're connected
-    if (current.node_type == DOCUMENT_NODE) {
-        return true;
-    }
-
-    // If root is a DocumentFragment, check if it's a ShadowRoot with a connected host
-    if (current.node_type == DOCUMENT_FRAGMENT_NODE) {
-        // Get the runtime.Instance for this DocumentFragment
-        const root_opaque = instance_bridge.getInstance(@constCast(current)) orelse return false;
-        const root_instance: *runtime.Instance = @ptrCast(@alignCast(root_opaque));
-
-        // A ShadowRoot whose host is alive (a host torn down first leaves
-        // its shadow root a hostless fragment: dom.shadow_hosts).
-        if (root_instance.stateAs(interfaces.ShadowRoot.State) == null) return false;
-        const host = interfaces.ShadowRoot.get_host(root_instance) catch return false;
-        const host_node_base = instance_bridge.getNodeBase(host) orelse return false;
-        // Check cached value first
-        if (host_node_base.is_connected) {
-            return true;
-        }
-        // Recurse to follow further shadow hosts
-        return isConnectedThroughShadow(host_node_base);
-    }
-
-    return false;
-}
-
-/// Recursively set the is_connected flag for a node and all its descendants
-/// Called during insert (connected=true) and remove (connected=false) operations
-/// Walks the sibling links (a node keeps no child list: NodeBase.children)
+/// Set the is_connected flag of a node and all its shadow-including
+/// descendants - connectedness follows the shadow-including root, so a host
+/// changes its shadow trees too. Called during insert (connected=true) and
+/// remove (connected=false). A loop over the links
+/// (tree_helpers.ShadowIncludingWalk), no frame per level: a deep tree moved
+/// into or out of a document overflowed the stack here (lane crash1 batch 3).
 fn setConnectedRecursive(node: anytype, connected: bool) void {
-    node.is_connected = connected;
-    // Connectedness follows the shadow-including root, so a host changes its
-    // own root and all nested shadow trees before its ordinary descendants.
-    if (tree_helpers.shadowRootForHost(node)) |shadow| {
-        setConnectedRecursive(shadow, connected);
-    }
-    // Use first_child/next_sibling which are always safely initialized to null
-    var child = node.first_child;
-    while (child) |c| {
-        setConnectedRecursive(c, connected);
-        child = c.next_sibling;
-    }
+    var walk = tree_helpers.ShadowIncludingWalk.init(@ptrCast(node));
+    while (walk.next()) |descendant| descendant.is_connected = connected;
 }
 
 /// DOM "remove" step 15: "For each inclusive ancestor inclusiveAncestor of
@@ -422,7 +383,14 @@ fn createTransientObserversForRemovedNode(node: anytype, parent: anytype) !void 
     else
         null;
     var current_ancestor: ?*NodeBase = @ptrCast(parent);
+    var visited: usize = 0;
     while (current_ancestor) |ancestor| : (current_ancestor = ancestor.parent_node) {
+        // A deep parent: no observer made in the agent means none registered
+        // on the rest of the ancestry (mutation_observer.anyObserverMade,
+        // as hasInterestedObservers asks it; Blink's and WebKit's
+        // hasMutationObserversOfType) - lane crash1 batch 3.
+        visited += 1;
+        if (visited == mutation_observer.walk_before_asking and !mutation_observer.anyObserverMade(removed)) return;
         // Appending below never touches this list: node is not an ancestor
         // of its old parent.
         var entries = ancestor.registeredObservers();
@@ -911,15 +879,14 @@ fn insertWith(
         // theirs in InsertedInto).
         tree_ordered_map.inserted(n, @ptrCast(parent));
 
-        // Update is_connected for the inserted node and all its descendants
-        // A node is connected if its shadow-including root is a Document.
-        // Per DOM spec: parent is connected if:
-        // 1. It's a Document, OR
-        // 2. Its is_connected flag is true, OR
-        // 3. It's inside a shadow tree whose host is connected
+        // Update is_connected for the inserted node and all its descendants.
+        // A node is connected if its shadow-including root is a Document:
+        // the parent is a Document, or its flag says so - exact in shadow
+        // trees too, which take their host's when attached
+        // (dom.shadow_hosts.attached), so no walk to the root (Blink and
+        // WebKit read their isConnected flag).
         const parent_is_connected = parent.is_connected or
-            parent.node_type == DOCUMENT_NODE or
-            isConnectedThroughShadow(parent);
+            parent.node_type == DOCUMENT_NODE;
         if (parent_is_connected) {
             setConnectedRecursive(n, true);
         }
@@ -1593,7 +1560,7 @@ fn removeHeld(
 
     // Steps 12–13: removing steps have run; read the parent's connectedness
     // now and enqueue disconnectedCallback for each custom descendant.
-    const parent_connected = parent.is_connected or parent.node_type == DOCUMENT_NODE or isConnectedThroughShadow(parent);
+    const parent_connected = parent.is_connected or parent.node_type == DOCUMENT_NODE;
     if (parent_connected) enqueueCustomElementCallback(node, .disconnected, .none);
 
     // Step 14: For each shadow-including descendant of node,
@@ -1936,7 +1903,7 @@ pub fn move(node: *NodeBase, new_parent: *NodeBase, child: ?*NodeBase) DOMExcept
     // 25. For each shadow-including inclusive descendant of node, in
     // shadow-including tree order: the moving steps, and connectedMoveCallback
     // for a custom one when newParent is connected.
-    const new_parent_connected = new_parent.is_connected or isDocument(new_parent) or isConnectedThroughShadow(new_parent);
+    const new_parent_connected = new_parent.is_connected or isDocument(new_parent);
     runMovingStepsForTree(node, old_parent, new_parent_connected);
 
     // 26. "Queue a tree mutation record for oldParent with « », « node »,
@@ -1971,7 +1938,7 @@ fn removingSlotSteps(allocator: std.mem.Allocator, node: *NodeBase, parent: *Nod
 
 /// DOM "shadow-including root": "its root's host's shadow-including root, if
 /// the object's root is a shadow root; otherwise its root." Through
-/// ShadowRoot's host, as isConnectedThroughShadow: a template's contents is a
+/// ShadowRoot's host only: a template's contents is a
 /// fragment with a host too, but not a shadow root, so it is a root here.
 /// Gecko's MoveBefore step 1 compares GetRootNode({composed: true}).
 fn shadowIncludingRoot(node: *NodeBase) *NodeBase {
@@ -2007,6 +1974,15 @@ fn shadowIncludingRoot(node: *NodeBase) *NodeBase {
 fn isHostIncludingInclusiveAncestor(node: anytype, other: anytype) bool {
     const ancestor: *const NodeBase = @ptrCast(node);
     var current: *const NodeBase = @ptrCast(other);
+    // A node with no children is an inclusive ancestor of itself alone, and
+    // a host-including ancestor of anything more only as a host - of a
+    // shadow root, or of template contents. So a new leaf, the node nearly
+    // every insert brings, answers here, where the walk below climbs the
+    // parent's whole ancestry and then its root's host chain: a tree built
+    // one node at a time cost O(nodes x depth) (lane crash1 batch 3). WebKit's
+    // Node::isDescendantOf returns false at `!other.hasChildNodes()`, Blink's
+    // Node::IsShadowIncludingAncestorOf at `!has_children && !has_shadow`.
+    if (ancestor.first_child == null and !ancestor.is_shadow_host and !hostsTemplateContents(ancestor)) return ancestor == current;
     // DOM host-including inclusive ancestor: follow every fragment host.
     // A fixed depth would permit a cycle through valid, deeply nested templates.
     while (true) {
@@ -2020,6 +1996,14 @@ fn isHostIncludingInclusiveAncestor(node: anytype, other: anytype) bool {
         const host = @import("template_contents.zig").host(root_instance) orelse return false;
         current = instance_bridge.getNodeBase(host) orelse return false;
     }
+}
+
+/// Whether `node` is a template whose contents exist: the host of a
+/// DocumentFragment that host-including ancestry passes through.
+fn hostsTemplateContents(node: *const NodeBase) bool {
+    if (node.node_type != ELEMENT_NODE) return false;
+    const instance = instanceOfNode(@constCast(node)) orelse return false;
+    return @import("template_contents.zig").contentOf(instance) != null;
 }
 
 // Stub: Queue tree mutation record for NodeBase nodes

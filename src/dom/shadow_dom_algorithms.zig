@@ -383,8 +383,16 @@ pub fn runInsertionSlotSteps(allocator: Allocator, node: *NodeBase, parent: *Nod
     }
 
     // Steps 7.5 and 7.6 concern parent's root, which is node's root now, only
-    // when it is a shadow root.
+    // when it is a shadow root - and then only if parent is a slot (7.5) or
+    // node brings one (7.6). The root is found only then: finding it climbs
+    // parent's whole ancestry, which on every insert made a tree built one
+    // node at a time cost O(nodes x depth) (lane crash1 batch 3; Blink asks
+    // its O(1) IsInShadowTree() bit instead). Node's subtree is searched for
+    // a slot once its root is known to be a shadow root, as before, unless
+    // node is a leaf, whose answer costs nothing.
     const parent_is_slot = slot_helpers.isSlot(parent);
+    const leaf_brings_slot: ?bool = if (node.first_child == null) slot_helpers.isSlot(node) else null;
+    if (!parent_is_slot and leaf_brings_slot == false) return;
     const root = rootOf(parent);
     if (!isShadowRoot(root)) return;
 
@@ -399,7 +407,7 @@ pub fn runInsertionSlotSteps(allocator: Allocator, node: *NodeBase, parent: *Nod
 
     // Step 7.6: "Run assign slottables for a tree with node's root." Only a
     // slot node brings can change an assignment here (file comment).
-    if (hasInclusiveDescendantSlot(node)) try assignSlottablesForTree(allocator, root);
+    if (leaf_brings_slot orelse hasInclusiveDescendantSlot(node)) try assignSlottablesForTree(allocator, root);
 }
 
 /// DOM remove steps 8-10 (and move steps 14-16, which are the same) for
@@ -419,8 +427,12 @@ pub fn runRemovingSlotSteps(allocator: Allocator, node: *NodeBase, parent: *Node
 
     // Steps 9 and 10 change nothing unless parent's root is a shadow root:
     // a slot outside a shadow tree, removed or left behind, has no assigned
-    // nodes before or after (file comment).
+    // nodes before or after (file comment). And then only if parent is a
+    // slot (9) or node takes one out (10): the root is found only then, as
+    // in runInsertionSlotSteps.
     const parent_is_slot = slot_helpers.isSlot(parent);
+    const leaf_takes_slot: ?bool = if (node.first_child == null) slot_helpers.isSlot(node) else null;
+    if (!parent_is_slot and leaf_takes_slot == false) return;
     const root = rootOf(parent);
     if (!isShadowRoot(root)) return;
 
@@ -434,7 +446,7 @@ pub fn runRemovingSlotSteps(allocator: Allocator, node: *NodeBase, parent: *Node
     }
 
     // Step 10: "If node has an inclusive descendant that is a slot":
-    if (hasInclusiveDescendantSlot(node)) {
+    if (leaf_takes_slot orelse hasInclusiveDescendantSlot(node)) {
         // Step 10.1: "Run assign slottables for a tree with parent's root."
         try assignSlottablesForTree(allocator, root);
         // Step 10.2: "Run assign slottables for a tree with node."

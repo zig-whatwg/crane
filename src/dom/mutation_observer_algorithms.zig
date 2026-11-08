@@ -483,13 +483,50 @@ fn wantsRecord(
 /// observes costs one walk up the ancestors and allocates nothing.
 pub fn hasInterestedObservers(target: *NodeBase, mutation_type: MutationType, name: ?[]const u8, namespace: ?[]const u8) bool {
     var current: ?*NodeBase = target;
+    var visited: usize = 0;
     while (current) |node| : (current = node.parent_node) {
         var entries = node.registeredObservers();
         while (entries.next()) |registered| {
             if (wantsRecord(registered.options, node == target, mutation_type, name, namespace)) return true;
         }
+        // A deep target: before climbing further, ask whether any
+        // MutationObserver was ever made in its agent. If none was, no node
+        // has a registered observer and the rest of the ancestry has nothing
+        // to find - where the walk visited every ancestor on every mutation
+        // of a deep tree (lane crash1 batch 3: O(nodes x depth) to build
+        // one). The agent's mutation observer counter (DOM 4.3) only grows,
+        // like Blink's and WebKit's per-document observer-type flags, which
+        // their MutationObserverInterestGroup::CreateIfNeeded /
+        // createIfNeeded ask before walking (Document::
+        // HasMutationObserversOfType / hasMutationObserversOfType). Asked
+        // only past `walk_before_asking` ancestors: finding the agent takes
+        // the engine's agent-registry lock (engine.agentHost), which costs
+        // what a walk of about 33 ancestors does (measured below).
+        visited += 1;
+        if (visited == walk_before_asking and !anyObserverMade(target)) return false;
     }
     return false;
+}
+
+/// How many ancestors a walk for registered observers visits before it asks
+/// the agent whether any observer exists (`anyObserverMade`). Measured (lane
+/// crash1 batch 3, server1 x86-64, ReleaseSafe, a Browser's page, medians of
+/// 5 x 2,000,000 calls): `anyObserverMade` - engine.agentHost's registry lock
+/// and lookup - 127 ns; walking 64 ancestors' registered observer lists 245
+/// ns, 3.8 ns an ancestor. So the lookup is worth about 33 ancestors: a tree
+/// up to 32 deep pays only its walk, a deeper one 32 ancestors and one
+/// lookup, where it paid its whole depth.
+pub const walk_before_asking = 32;
+
+/// Whether a MutationObserver was ever made in the agent `node`'s realm
+/// belongs to - true when that cannot be told (no instance, no agent: an
+/// engine-less realm keeps no agent state), so that the walk goes on. False
+/// means no node of the agent has a registered observer, transient or not.
+pub fn anyObserverMade(node: *NodeBase) bool {
+    const object = node.ownerInstance() orelse return true;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(object));
+    const agent = agentOf(instance.ctx) orelse return true;
+    return agent.observer_counter != 0;
 }
 
 /// DOM "handle attribute changes" step 1: "Queue a mutation record of
