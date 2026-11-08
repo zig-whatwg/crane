@@ -19,6 +19,9 @@ pub const Shape = union(enum) {
     calculation: *math.Expression,
     pending: *@import("../pending_values.zig").Pending,
     text_keywords: []const u8,
+    /// Typed OM 5.8: a <transform-list> reifies as a CSSTransformValue
+    /// (dom.style.typed_om.reifyTransformList); borrowed functions.
+    transform_list: []const @import("transforms.zig").Function,
     image,
     unsupported,
 };
@@ -152,8 +155,11 @@ pub fn shape(longhand: Longhand, value: Value) Shape {
         .content => if (urlImage(value) != null) .image else .unsupported,
         .color_scheme => |scheme| .{ .text_keywords = scheme.text.bytes }, // Q63 named cold-text exception.
         .text => |text| if (text.image_kind == .url) .image else if (text.image_kind == .generic) .{ .text_keywords = text.bytes } else .unsupported,
-        // Q32: transform/position subclasses are routed. These retain native
-        // data as KNOWN-INCOMPLETE until that family lands, never a fake API.
+        // Typed OM 5.8: transform's <transform-list> is the CSSTransformValue
+        // family (lane anim1 batch 5). Q32: position subclasses are routed;
+        // they retain native data as KNOWN-INCOMPLETE until that family
+        // lands, never a fake API.
+        .transform_list => |list| if (longhand == .transform) .{ .transform_list = list.items } else .unsupported,
         // font-family is always opaque by §5.1, even a lone generic family.
         else => .unsupported,
     };

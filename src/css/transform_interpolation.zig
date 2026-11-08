@@ -972,8 +972,7 @@ pub fn mixAxisAngle(a: AxisAngle, b: AxisAngle, p: f64) ?AxisAngle {
     const nb = normalizeAxis(b.axis) orelse return null;
     const same = na[0] == nb[0] and na[1] == nb[1] and na[2] == nb[2];
     if (same or a.angle == 0 or b.angle == 0) {
-        const axis = if (same or a.angle != 0) a.axis else b.axis;
-        return .{ .axis = axis, .angle = lerp(a.angle, b.angle, p) };
+        return .{ .axis = sharedAxis(a, na, nb, same), .angle = lerp(a.angle, b.angle, p) };
     }
     const q = slerp(quaternionOf(na, a.angle), quaternionOf(nb, b.angle), p);
     return axisAngleOf(q);
@@ -987,8 +986,7 @@ pub fn addAxisAngle(a: AxisAngle, b: AxisAngle) ?AxisAngle {
     const nb = normalizeAxis(b.axis) orelse return null;
     const same = na[0] == nb[0] and na[1] == nb[1] and na[2] == nb[2];
     if (same or a.angle == 0 or b.angle == 0) {
-        const axis = if (same or a.angle != 0) a.axis else b.axis;
-        return .{ .axis = axis, .angle = a.angle + b.angle };
+        return .{ .axis = sharedAxis(a, na, nb, same), .angle = a.angle + b.angle };
     }
     const x1, const y1, const z1, const w1 = quaternionOf(na, a.angle);
     const x2, const y2, const z2, const w2 = quaternionOf(nb, b.angle);
@@ -998,6 +996,19 @@ pub fn addAxisAngle(a: AxisAngle, b: AxisAngle) ?AxisAngle {
         w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
         w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
     });
+}
+
+/// The axis of two rotations that combine by their angles: the same
+/// normalized axis keeps the first one as written; a zero rotation about
+/// another axis is the identity, so the result turns about the other
+/// rotation's axis, NORMALIZED, as slerp from the identity gives it (Blink
+/// gfx::Rotation; web-animations interpolation-, addition- and
+/// accumulation-per-property-002 "rotate with different rotation axes"
+/// expect 0 0.707107 0.707107 from 0 1 1, and Chrome 157, Firefox 159 and
+/// Safari 27.2 pass all three).
+fn sharedAxis(a: AxisAngle, na: [3]f64, nb: [3]f64, same: bool) [3]f64 {
+    if (same) return a.axis;
+    return if (a.angle != 0) na else nb;
 }
 
 fn normalizeAxis(v: [3]f64) ?[3]f64 {

@@ -236,13 +236,16 @@ test "Typed OM opaque values own native data and pending values retain nested re
     );
 }
 
-test "KNOWN-INCOMPLETE Q32 transform and position subclasses retain an explicit base-value fallback" {
+test "Q32 transform reifies as a CSSTransformValue; KNOWN-INCOMPLETE position keeps an explicit base-value fallback" {
+    // css-typed-om 5.8 reifies a <transform-list> as a CSSTransformValue
+    // (lane anim1 batch 5), which 6.6 serializes; the position subclasses
+    // are still routed.
     try run(
         \\(() => {
-        \\for (const [p, text] of [['transform','translateX(2px)'], ['object-position','10px 20px']]) {
-        \\  const value = CSSStyleValue.parse(p, text);
-        \\  check(value.constructor === CSSStyleValue && String(value) === text, p + ' routed fallback');
-        \\}
+        \\const transform = CSSStyleValue.parse('transform', 'translateX(2px)');
+        \\check(transform.constructor === CSSTransformValue && String(transform) === 'translate(2px, 0px)', 'transform reified');
+        \\const position = CSSStyleValue.parse('object-position', '10px 20px');
+        \\check(position.constructor === CSSStyleValue && String(position) === '10px 20px', 'object-position routed fallback');
         \\return 'ok'; })()
     );
 }

@@ -73,7 +73,6 @@ const font_settings = @import("font_settings.zig");
 const Longhand = properties.Longhand;
 const Value = values.Value;
 const Length = values.Length;
-const RgbaColor = values.RgbaColor;
 
 /// Web Animations 1 5.2.
 pub const AnimationType = enum {
@@ -233,12 +232,11 @@ fn smooth(allocator: Allocator, l: Longhand, from: Value, to: Value, p: f64) All
         .number => |a| if (to == .number) return .{ .number = lerp(a, to.number, p) },
         .integer => |a| if (to == .integer) return .{ .integer = roundInteger(lerp(@floatFromInt(a), @floatFromInt(to.integer), p)) },
         .color => |a| if (to == .color) {
-            // Two legacy colors: premultiplied sRGB here; any other pair
-            // (a non-legacy color, currentcolor): color_values (Oklab, or a
-            // color-mix() naming currentcolor).
-            const ca = legacyRgba(a) orelse return try mixColors(allocator, a, to.color, p);
-            const cb = legacyRgba(to.color) orelse return try mixColors(allocator, a, to.color, p);
-            return .{ .color = .{ .rgba = mixPremultiplied(ca, cb, p) } };
+            // Two legacy colors: premultiplied sRGB here, unclamped until the
+            // final value; any other pair (a non-legacy color, currentcolor):
+            // color_values (Oklab, or a color-mix() naming currentcolor).
+            if (try combineLegacy(allocator, a, to.color, p, .interpolate)) |color| return .{ .color = color };
+            return try mixColors(allocator, a, to.color, p);
         },
         else => {},
     }
@@ -283,7 +281,7 @@ pub fn add(allocator: Allocator, l: Longhand, underlying: Value, value: Value) A
         .number => |a| if (value == .number) return .{ .number = a + value.number },
         .integer => |a| if (value == .integer) return .{ .integer = a +| value.integer },
         .color => |a| if (value == .color) {
-            if (legacyRgba(a)) |ca| if (legacyRgba(value.color)) |cb| return .{ .color = .{ .rgba = addPremultiplied(ca, cb) } };
+            if (try combineLegacy(allocator, a, value.color, 1, .accumulate)) |sum| return .{ .color = sum };
         },
         else => {},
     }
@@ -336,6 +334,11 @@ pub fn accumulate(allocator: Allocator, l: Longhand, underlying: Value, value: V
     if (l == .filter) if (filterList(underlying)) |a| if (filterList(value)) |b| {
         if (try mixFilters(allocator, a, b, 1, .accumulate)) |sum| return sum;
     };
+    // translate, rotate and scale accumulate component by component; scale's
+    // components as one-based values (mixTransforms).
+    if (individualTransform(underlying) != null or individualTransform(value) != null) {
+        if (try mixTransforms(allocator, underlying, value, 1, .accumulate)) |sum| return sum;
+    }
     return add(allocator, l, underlying, value);
 }
 
@@ -474,9 +477,8 @@ fn combineItem(allocator: Allocator, a: syntax_values.Item, b: syntax_values.Ite
         },
         .color => |x| {
             if (b != .color) return null;
-            const ca = legacyRgba(x) orelse return null;
-            const cb = legacyRgba(b.color) orelse return null;
-            return .{ .color = .{ .rgba = if (op == .interpolate) mixPremultiplied(ca, cb, p) else addPremultiplied(ca, cb) } };
+            const color = (try combineLegacy(allocator, x, b.color, p, if (op == .interpolate) .interpolate else .accumulate)) orelse return null;
+            return .{ .color = color };
         },
         .transform => {
             if (b != .transform) return null;
@@ -561,6 +563,17 @@ pub fn clampFinal(l: Longhand, v: Value) Value {
             if (nonNegativeLengths(grammar) and len.value < 0) return .{ .length = .{ .value = 0, .unit = len.unit } };
             return v;
         },
+        // A legacy color carried out of range (or between bytes) by the
+        // combining operations (colorOf) is final as the rgb() color it
+        // serializes as: each channel clipped to [0, 255] and rounded (CSS
+        // Color 4 12.1 legacy colors; color_values.finalLegacy). Shadow and
+        // drop-shadow() colors inside a list keep their resolved form, which
+        // serializes the same way.
+        .color => |c| {
+            const rgba = color_values.finalLegacy(c) orelse return v;
+            v.release();
+            return .{ .color = .{ .rgba = rgba } };
+        },
         else => return v,
     }
 }
@@ -640,7 +653,7 @@ fn individualTransform(v: Value) ?transform_values.Kind {
     return if (v == .transform) v.transform.kind else null;
 }
 
-const TransformOp = enum { interpolate, add };
+const TransformOp = enum { interpolate, add, accumulate };
 
 /// Transforms 2 section 5 (the translate, rotate and scale properties): "by
 /// computed value" for translate and scale - component by component, a
@@ -674,17 +687,24 @@ fn mixTransforms(allocator: Allocator, a: Value, b: Value, p: f64, op: Transform
         const y: transform_interpolation.AxisAngle = .{ .axis = axis_b, .angle = degrees(cb[3]) orelse return null };
         const r = switch (op) {
             .interpolate => transform_interpolation.mixAxisAngle(x, y, p),
-            .add => transform_interpolation.addAxisAngle(x, y),
+            .add, .accumulate => transform_interpolation.addAxisAngle(x, y),
         } orelse return null;
         for (0..3) |i| out[i] = Number.scalar(r.axis[i]);
         out[3] = .{ .literal = .{ .value = r.angle, .unit = .deg } };
     } else {
         const ka: f64, const kb: f64 = if (op == .interpolate) .{ 1 - p, p } else .{ 1, 1 };
         for (0..3) |i| {
-            if (kind == .scale and op == .add) {
+            if (kind == .scale and op != .interpolate) {
                 const x = literal(ca[i]) orelse return null;
                 const y = literal(cb[i]) orelse return null;
-                out[i] = Number.scalar(x.value * y.value);
+                // Addition multiplies scales; accumulation adds them with
+                // one subtracted (a + b - 1), as Transforms 2 15 combines a
+                // transform list's one-based parameters. Golden rule 2: the
+                // scale property's "by computed value" would give a + b, but
+                // Firefox 159 and Safari 27.2 give a + b - 1 and Chrome 157 a
+                // product (accumulation-per-property-002 "scale ..." expect
+                // -2 for 2 and -3): the majority.
+                out[i] = Number.scalar(if (op == .add) x.value * y.value else x.value + y.value - 1);
                 continue;
             }
             const component_kind: math.Kind = if (kind == .scale) .number else if (i < 2) .length_percentage else .length;
@@ -1230,17 +1250,22 @@ const ShadowColors = struct {
         const transparent: values.Color = .{ .rgba = .{ .r = 0, .g = 0, .b = 0, .a = 0 } };
         const cx = x orelse transparent;
         const cy = y orelse transparent;
-        if (legacyRgba(cx)) |a| if (legacyRgba(cy)) |b| return .{ .rgba = switch (op) {
-            .interpolate => mixPremultiplied(a, b, p),
-            .accumulate => addPremultiplied(a, b),
-        } };
-        if (op != .interpolate) return null;
-        const color = (try color_values.interpolateColors(allocator, cx, cy, p)) orelse return null;
+        const color = (try combineLegacy(allocator, cx, cy, p, op)) orelse blk: {
+            if (op != .interpolate) return null;
+            break :blk (try color_values.interpolateColors(allocator, cx, cy, p)) orelse return null;
+        };
+        try self.keep(allocator, color);
+        return color;
+    }
+
+    /// Hold `color` (OWNED) until the list that uses it takes its own
+    /// reference; released on failure.
+    fn keep(self: *ShadowColors, allocator: Allocator, color: values.Color) Allocator.Error!void {
+        if (color != .expression) return;
         self.owned.append(allocator, color) catch |err| {
             color.release();
             return err;
         };
-        return color;
     }
 
     fn release(self: *ShadowColors, allocator: Allocator) void {
@@ -1374,6 +1399,8 @@ fn mixFilters(allocator: Allocator, a: []const FilterItem, b: []const FilterItem
     if (n == 0) return Value.kw(.none);
     const items = try allocator.alloc(FilterItem, n);
     defer allocator.free(items);
+    var colors: ShadowColors = .{};
+    defer colors.release(allocator);
     for (0..n) |i| {
         const x: ?FilterFunction = if (i < a.len) (if (a[i] == .function) a[i].function else return null) else null;
         const y: ?FilterFunction = if (i < b.len) (if (b[i] == .function) b[i].function else return null) else null;
@@ -1381,7 +1408,7 @@ fn mixFilters(allocator: Allocator, a: []const FilterItem, b: []const FilterItem
         if (x != null and y != null and x.?.kind != y.?.kind) return null;
         const fx = x orelse initialFilter(kind);
         const fy = y orelse initialFilter(kind);
-        items[i] = .{ .function = (try mixFilterFunction(fx, fy, p, op)) orelse return null };
+        items[i] = .{ .function = (try mixFilterFunction(allocator, &colors, fx, fy, p, op)) orelse return null };
     }
     return .{ .filter = try filter_values.Filter.create(allocator, items) };
 }
@@ -1399,8 +1426,10 @@ fn initialFilter(kind: filter_values.Kind) FilterFunction {
 }
 
 /// One pair of computed functions of one kind; null for a component this
-/// cannot combine (a calc() or a non-legacy color).
-fn mixFilterFunction(x: FilterFunction, y: FilterFunction, p: f64, op: FilterOp) Allocator.Error!?FilterFunction {
+/// cannot combine (a calc() or a non-legacy color). A drop-shadow()'s
+/// combined color is held in `colors` until the filter list takes its own
+/// reference.
+fn mixFilterFunction(allocator: Allocator, colors: *ShadowColors, x: FilterFunction, y: FilterFunction, p: f64, op: FilterOp) Allocator.Error!?FilterFunction {
     const one: f64 = switch (x.kind) {
         .brightness, .contrast, .opacity, .saturate => 1,
         else => 0,
@@ -1441,8 +1470,6 @@ fn mixFilterFunction(x: FilterFunction, y: FilterFunction, p: f64, op: FilterOp)
         .shadow => |shx| {
             if (y.argument != .shadow) return null;
             const shy = y.argument.shadow;
-            const cx = legacyRgba(shx.color orelse return null) orelse return null;
-            const cy = legacyRgba(shy.color orelse return null) orelse return null;
             var lengths: [3]Value = undefined;
             for (0..3) |k| {
                 const lx = if (k < shx.count) pxOf(shx.lengths[k]) orelse return null else 0;
@@ -1451,11 +1478,12 @@ fn mixFilterFunction(x: FilterFunction, y: FilterFunction, p: f64, op: FilterOp)
                 // drop-shadow()'s blur (the third length) is never negative.
                 lengths[k] = Value.px(if (k == 2) @max(combined, 0) else combined);
             }
-            const color: RgbaColor = switch (op) {
-                .interpolate => mixPremultiplied(cx, cy, p),
-                .accumulate => addPremultiplied(cx, cy),
-            };
-            return .{ .kind = x.kind, .argument = .{ .shadow = .{ .color = .{ .rgba = color }, .lengths = lengths, .count = 3 } } };
+            const color = (try combineLegacy(allocator, shx.color orelse return null, shy.color orelse return null, p, switch (op) {
+                .interpolate => .interpolate,
+                .accumulate => .accumulate,
+            })) orelse return null;
+            try colors.keep(allocator, color);
+            return .{ .kind = x.kind, .argument = .{ .shadow = .{ .color = color, .lengths = lengths, .count = 3 } } };
         },
         .omitted => return null,
     }
@@ -1479,47 +1507,68 @@ fn mixColors(allocator: Allocator, a: values.Color, b: values.Color, p: f64) All
     return .{ .color = color };
 }
 
-/// The sRGB color of a computed legacy color; null for one that does not
-/// combine in sRGB here (a non-legacy color() / lab() expression, or
-/// currentcolor: mixColors).
-fn legacyRgba(c: values.Color) ?RgbaColor {
-    return switch (c) {
-        .rgba => |rgba| rgba,
-        .named => |n| n.rgba,
-        .transparent_keyword => .{ .r = 0, .g = 0, .b = 0, .a = 0 },
-        else => null,
-    };
-}
-
+/// A computed legacy color (CSS Color 4 12.1) as premultiplied sRGB: its
+/// channels on the 0-255 scale times its alpha, which is in [0, 1]. The
+/// channels are NOT clamped (CSS Values 4 3.1: "clamping is only applied to
+/// the *final* result of applying all interpolation-related operations"):
+/// an addition carries rgb(128, 128, 128) + rgb(255, 0, 0) to a red of 383
+/// that a later interpolation can bring back into range. Null for a color
+/// that does not combine in sRGB here (a non-legacy color, currentcolor:
+/// mixColors).
+///
+/// Golden rule 2: Values 4 8.1.1 says <color> is "not additive", but Chrome
+/// 157, Firefox 159 and Safari 27.2 all add colors - every color case of
+/// web-animations addition-per-property-001/002 and
+/// accumulation-per-property-001/002 passes in all three (wpt.fyi aligned
+/// stable run 8c04fb8d43), the "overflowed" ones included - so colors add
+/// premultiplied, channel by channel, as here.
 const Premultiplied = struct { r: f64, g: f64, b: f64, a: f64 };
 
-fn premultiply(c: RgbaColor) Premultiplied {
-    const a: f64 = std.math.clamp(@as(f64, c.a), 0, 1);
-    return .{ .r = @as(f64, @floatFromInt(c.r)) * a, .g = @as(f64, @floatFromInt(c.g)) * a, .b = @as(f64, @floatFromInt(c.b)) * a, .a = a };
+fn premultipliedOf(c: values.Color) ?Premultiplied {
+    const srgb = color_values.legacySrgb(c) orelse return null;
+    const a = std.math.clamp(srgb[3], 0, 1);
+    return .{ .r = srgb[0] * 255 * a, .g = srgb[1] * 255 * a, .b = srgb[2] * 255 * a, .a = a };
 }
 
-fn unpremultiply(c: Premultiplied) RgbaColor {
+/// The legacy color of `c`: its channels divided by its alpha clamped to
+/// [0, 1] (Blink InterpolableColor resolves the same way: the "#RGBa" case
+/// rgb(128, 128, 128) + rgba(255, 0, 0, 0.4) is rgb(230, 128, 128)), as an
+/// rgb() color when every channel is a byte, else an unclamped resolved
+/// legacy color (color_values.unclampedLegacy) that clampFinal makes final.
+/// OWNED.
+fn colorOf(allocator: Allocator, c: Premultiplied) Allocator.Error!values.Color {
     const a = std.math.clamp(c.a, 0, 1);
-    if (a == 0) return .{ .r = 0, .g = 0, .b = 0, .a = 0 };
-    return .{ .r = channel(c.r / a), .g = channel(c.g / a), .b = channel(c.b / a), .a = @floatCast(a) };
+    if (a == 0 or std.math.isNan(a)) return .{ .rgba = .{ .r = 0, .g = 0, .b = 0, .a = 0 } };
+    const channels = [3]f64{ c.r / a, c.g / a, c.b / a };
+    var bytes: [3]u8 = undefined;
+    for (channels, &bytes) |x, *byte| {
+        if (!(x >= 0 and x <= 255) or @round(x) != x) {
+            return color_values.unclampedLegacy(allocator, .{ channels[0] / 255, channels[1] / 255, channels[2] / 255 }, a);
+        }
+        byte.* = @intFromFloat(x);
+    }
+    return .{ .rgba = .{ .r = bytes[0], .g = bytes[1], .b = bytes[2], .a = @floatCast(a) } };
 }
 
-fn channel(x: f64) u8 {
-    return @intFromFloat(std.math.clamp(@round(x), 0, 255));
+fn mixPremultiplied(a: Premultiplied, b: Premultiplied, p: f64) Premultiplied {
+    return .{ .r = lerp(a.r, b.r, p), .g = lerp(a.g, b.g, p), .b = lerp(a.b, b.b, p), .a = lerp(a.a, b.a, p) };
 }
 
-fn mixPremultiplied(a: RgbaColor, b: RgbaColor, p: f64) RgbaColor {
-    const pa = premultiply(a);
-    const pb = premultiply(b);
-    return unpremultiply(.{ .r = lerp(pa.r, pb.r, p), .g = lerp(pa.g, pb.g, p), .b = lerp(pa.b, pb.b, p), .a = lerp(pa.a, pb.a, p) });
+/// Addition: channels add premultiplied, unclamped; alpha stays in [0, 1]
+/// (Gecko's color Animate clamps the summed alpha the same way).
+fn addPremultiplied(a: Premultiplied, b: Premultiplied) Premultiplied {
+    return .{ .r = a.r + b.r, .g = a.g + b.g, .b = a.b + b.b, .a = @min(a.a + b.a, 1) };
 }
 
-fn addPremultiplied(a: RgbaColor, b: RgbaColor) RgbaColor {
-    const pa = premultiply(a);
-    const pb = premultiply(b);
-    const alpha = @min(pa.a + pb.a, 1);
-    // Channels add premultiplied and clamp to the result's alpha range.
-    return unpremultiply(.{ .r = @min(pa.r + pb.r, 255 * alpha), .g = @min(pa.g + pb.g, 255 * alpha), .b = @min(pa.b + pb.b, 255 * alpha), .a = alpha });
+/// Two legacy colors combined in premultiplied sRGB; null when either is
+/// not a legacy color. OWNED.
+fn combineLegacy(allocator: Allocator, x: values.Color, y: values.Color, p: f64, op: ShadowOp) Allocator.Error!?values.Color {
+    const a = premultipliedOf(x) orelse return null;
+    const b = premultipliedOf(y) orelse return null;
+    return try colorOf(allocator, switch (op) {
+        .interpolate => mixPremultiplied(a, b, p),
+        .accumulate => addPremultiplied(a, b),
+    });
 }
 
 // ============================================================================
@@ -1576,7 +1625,8 @@ test "legacy colors: premultiplied sRGB" {
     const a = testing.allocator;
     const red: Value = .{ .color = .{ .rgba = .{ .r = 255, .g = 0, .b = 0 } } };
     const blue: Value = .{ .color = .{ .rgba = .{ .r = 0, .g = 0, .b = 255 } } };
-    const mid = (try interpolate(a, .color, red, blue, 0.5)).color.rgba;
+    // 127.5 stays a float until the final value rounds it (Values 4 3.1).
+    const mid = clampFinal(.color, try interpolate(a, .color, red, blue, 0.5)).color.rgba;
     try testing.expectEqual(@as(u8, 128), mid.r);
     try testing.expectEqual(@as(u8, 128), mid.b);
     const clear: Value = .{ .color = .transparent_keyword };
@@ -1584,7 +1634,11 @@ test "legacy colors: premultiplied sRGB" {
     // Premultiplied: the transparent end contributes no hue.
     try testing.expectEqual(@as(u8, 255), half.r);
     try testing.expectEqual(@as(f32, 0.5), half.a);
-    const sum = (try add(a, .color, .{ .color = .{ .rgba = .{ .r = 128, .g = 128, .b = 128 } } }, .{ .color = .{ .rgba = .{ .r = 128, .g = 128, .b = 128 } } })).color.rgba;
+    // 128 + 128 is 256, unclamped, until the final value clamps it.
+    const grey: Value = .{ .color = .{ .rgba = .{ .r = 128, .g = 128, .b = 128 } } };
+    const raw = try add(a, .color, grey, grey);
+    try testing.expectApproxEqAbs(@as(f64, 256), color_values.legacySrgb(raw.color).?[0] * 255, 1e-9);
+    const sum = clampFinal(.color, raw).color.rgba;
     try testing.expectEqual(@as(u8, 255), sum.r);
 }
 
