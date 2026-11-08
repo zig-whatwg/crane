@@ -43,10 +43,13 @@ pub const ImplError = error{
 /// Spec: https://html.spec.whatwg.org/#custom-element-state
 pub const CustomElementState = dom.custom_elements.State;
 
-/// An attribute of the list: the type is `dom.element_data`'s, which the
-/// tree reads in place (ElementData, below).
-const AttributeEntry = dom.element_data.AttributeEntry;
+/// The attribute list's types are `dom.element_data`'s, which the tree reads
+/// in place (ElementData, below): an Attribute is its name record - static
+/// for a known name (html_core's table), else its own - and its value.
+const Attribute = dom.element_data.Attribute;
+const QualifiedName = dom.element_data.QualifiedName;
 const ElementData = dom.element_data.ElementData;
+const html_core = @import("html_core");
 
 /// The slot an Attr node is kept in: one per node, named by its address - an
 /// element keeps a node for each attribute script asked one for.
@@ -130,7 +133,7 @@ pub const InternalState = struct {
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
-            .data = ElementData.init(allocator),
+            .data = ElementData.init(),
             .slot = runtime.DOMString.initEmpty(),
         };
     }
@@ -174,8 +177,8 @@ pub const InternalState = struct {
 
         // The attributes' Attr nodes go first, then the list with the names.
         var index: usize = 0;
-        while (self.data.attributeAtMut(index)) |entry| : (index += 1) detachAttrNode(null, entry);
-        self.data.deinit();
+        while (self.data.storedAt(index)) |attribute| : (index += 1) detachAttrNode(null, self, attribute);
+        self.data.deinit(self.allocator);
     }
 };
 
@@ -400,9 +403,14 @@ pub fn setNamespaceURI(instance: *runtime.Instance, namespace: ?[]const u8) !voi
         internal.data.namespace_uri = null;
     }
 
-    // Set new namespace if provided
+    // Set new namespace if provided: one of the six named namespaces is
+    // their static string (Blink and WebKit intern an element's namespace in
+    // its QualifiedName), any other a copy.
     if (namespace) |ns| {
-        internal.data.namespace_uri = try runtime.DOMString.initDupe(internal.allocator, ns);
+        internal.data.namespace_uri = if (dom.element_data.internNamespace(ns)) |static|
+            runtime.DOMString.initInterned(static)
+        else
+            try runtime.DOMString.initDupe(internal.allocator, ns);
     }
 }
 
@@ -434,7 +442,6 @@ pub fn setLocalName(instance: *runtime.Instance, local_name: []const u8) !void {
 
     // Try to use interned tag name for common HTML elements - on an exact
     // match only: a local name is case-sensitive.
-    const html_core = @import("html_core");
     if (html_core.internTagNameExact(local_name)) |interned| {
         // Use interned static string - no allocation needed
         internal.data.local_name = runtime.DOMString.initInterned(interned);
@@ -1045,17 +1052,23 @@ fn attributeChangeSteps(
     // DOM §4.9: "If localName is id, namespace is null, and value is null or
     // the empty string, then unset element's ID. Otherwise, if localName is
     // id, namespace is null, then set element's ID to value." The class and
-    // slot caches follow their attributes the same way.
+    // slot caches follow their attributes the same way. The ID and the
+    // classes are views of their attributes' values, RE-DERIVED from the
+    // list here, after the list changed (lane perf3 D1, the safety rule of
+    // tmp/plans/perf3b2-element-data-design.md 6): the old value's buffer is
+    // freed only after these steps, so `beginChange` below still reads the
+    // old ID. Blink's ElementData keeps `id_for_style_resolution_` and
+    // `class_names_` the same way, updated by Element::AttributeChanged.
     if (std.mem.eql(u8, local_name, "id")) {
         // domindex1: the element's tree scope's maps follow its ID - out
         // under the old one before the cache moves, in under the new one
         // after (Blink Element::UpdateId, WebKit Element::updateId). An
         // unchanged value changes nothing (and keeps a known order).
         if (sameAttributeValue(old_value, value)) {
-            replaceCachedValue(internal, &internal.data.id, value);
+            internal.data.rederiveId();
         } else {
             const change = dom.tree_ordered_map.beginChange(instance, &internal.data, .current);
-            replaceCachedValue(internal, &internal.data.id, value);
+            internal.data.rederiveId();
             dom.tree_ordered_map.endChange(&internal.data, change);
         }
     } else if (std.mem.eql(u8, local_name, "name")) {
@@ -1067,7 +1080,7 @@ fn attributeChangeSteps(
             dom.tree_ordered_map.endChange(&internal.data, dom.tree_ordered_map.beginChange(instance, &internal.data, .{ .was = old_value orelse "" }));
         }
     } else if (std.mem.eql(u8, local_name, "class")) {
-        replaceCachedValue(internal, &internal.data.class_name, value);
+        internal.data.rederiveClassName();
     } else if (std.mem.eql(u8, local_name, "slot")) {
         // DOM 4.2.2.2: the slottable's name follows its slot attribute, and
         // a changed name re-assigns it.
@@ -1115,19 +1128,33 @@ fn replaceCachedValue(internal: *InternalState, cache: *runtime.DOMString, value
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-change
 fn changeAttribute(instance: *runtime.Instance, internal: *InternalState, index: usize, value: []const u8) !void {
-    const entry = internal.data.attributeAtMut(index) orelse return error.InvalidStateError;
+    if (index >= internal.data.getAttributeCount()) return error.InvalidStateError;
     const new_value = try internal.allocator.dupe(u8, value);
 
-    // Step 1: "Let oldValue be attribute's value."
-    const old_value = entry.value;
+    // Step 1: "Let oldValue be attribute's value." Step 2: "Set attribute's
+    // value to value." The old value is freed once the change steps below
+    // have read it - and re-derived the ID and classes from the list.
+    const old_value = internal.data.setValueAt(index, new_value);
     defer internal.allocator.free(old_value);
-
-    // Step 2: "Set attribute's value to value."
-    entry.value = new_value;
+    // The name record, not the list: it does not move with the list.
+    const name = internal.data.storedAt(index).?.name;
 
     // Step 3: "Handle attribute changes for attribute with attribute's
     // element, oldValue, and value."
-    handleAttributeChanges(instance, entry.namespace_uri, entry.local_name, old_value, new_value);
+    handleAttributeChanges(instance, name.namespace_uri, name.local_name, old_value, new_value);
+}
+
+/// An attribute's name record: the static one for a known name (html_core's
+/// table, Blink's and WebKit's static QualifiedNames), else one of its own.
+fn attributeName(allocator: std.mem.Allocator, namespace: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) !*const QualifiedName {
+    return html_core.internAttributeName(namespace, prefix, local_name) orelse
+        QualifiedName.create(allocator, namespace, prefix, local_name);
+}
+
+fn optionalEql(a: ?[]const u8, b: ?[]const u8) bool {
+    const x = a orelse return b == null;
+    const y = b orelse return false;
+    return std.mem.eql(u8, x, y);
 }
 
 /// DOM "append an attribute" to this element.
@@ -1142,24 +1169,14 @@ fn appendAttribute(
     value: []const u8,
 ) !void {
     const allocator = internal.allocator;
-    const namespace_copy: ?[]const u8 = if (namespace) |ns| try allocator.dupe(u8, ns) else null;
-    errdefer if (namespace_copy) |ns| allocator.free(ns);
-    const prefix_copy: ?[]const u8 = if (prefix) |p| try allocator.dupe(u8, p) else null;
-    errdefer if (prefix_copy) |p| allocator.free(p);
-    const local_name_copy = try allocator.dupe(u8, local_name);
-    errdefer allocator.free(local_name_copy);
+    const name = try attributeName(allocator, namespace, prefix, local_name);
+    errdefer if (name.isOwned()) name.destroy(allocator);
     const value_copy = try allocator.dupe(u8, value);
     errdefer allocator.free(value_copy);
 
-    const entry = AttributeEntry{
-        .namespace_uri = namespace_copy,
-        .prefix = prefix_copy,
-        .local_name = local_name_copy,
-        .value = value_copy,
-    };
-
-    // Step 1: "Append attribute to element's attribute list."
-    try internal.data.addAttribute(entry);
+    // Step 1: "Append attribute to element's attribute list." The list may
+    // move: nothing holds a pointer into it.
+    try internal.data.appendAttribute(allocator, .{ .name = name, .value = value_copy });
 
     // Steps 2 and 3 set the attribute's element and node document: this list
     // stores the attribute's data, and an Attr node made for it takes both
@@ -1167,7 +1184,7 @@ fn appendAttribute(
 
     // Step 4: "Handle attribute changes for attribute with element, null, and
     // attribute's value."
-    handleAttributeChanges(instance, entry.namespace_uri, entry.local_name, null, entry.value);
+    handleAttributeChanges(instance, name.namespace_uri, name.local_name, null, value_copy);
 }
 
 /// DOM "remove an attribute" - the one at `index`.
@@ -1175,18 +1192,18 @@ fn appendAttribute(
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-remove
 fn removeAttributeAt(instance: *runtime.Instance, internal: *InternalState, index: usize) void {
     // Steps 1 and 2: "Let element be attribute's element. Remove attribute
-    // from element's attribute list." The entry is ours until the changes
-    // below have read its name and value.
-    var entry = internal.data.takeAttributeAt(index);
-    defer ElementData.freeAttributeEntry(internal.allocator, entry);
+    // from element's attribute list." The attribute - its name record and
+    // value - is ours until the changes below have read them.
+    const attribute = internal.data.takeAttributeAt(internal.allocator, index);
+    defer ElementData.freeAttribute(internal.allocator, attribute);
 
     // Step 3: "Set attribute's element to null." - its Attr node, if script
     // has one, keeps the value it had here.
-    detachAttrNode(instance, &entry);
+    detachAttrNode(instance, internal, attribute);
 
     // Step 4: "Handle attribute changes for attribute with element,
     // attribute's value, and null."
-    handleAttributeChanges(instance, entry.namespace_uri, entry.local_name, entry.value, null);
+    handleAttributeChanges(instance, attribute.name.namespace_uri, attribute.name.local_name, attribute.value, null);
 }
 
 /// DOM "set an attribute value": the setter steps of every reflected string
@@ -1334,8 +1351,8 @@ fn attrNodeAtHook(element: *runtime.Instance, index: usize) dom.element_attribut
 /// attribute at `index`, if one was and it is still alive; never makes one.
 fn existingAttrNodeAtHook(element: *runtime.Instance, index: usize) ?*runtime.Instance {
     const internal = getInternal(element) orelse return null;
-    const entry = internal.data.attributeAt(index) orelse return null;
-    const link = entry.attr_node orelse return null;
+    const attribute = internal.data.storedAt(index) orelse return null;
+    const link = internal.data.attrNodeOf(attribute.name) orelse return null;
     return if (link.isLive()) link.instance else null;
 }
 
@@ -1806,18 +1823,23 @@ pub fn call_getAttributeNodeNS(instance: *runtime.Instance, namespace: ?runtime.
 /// script asks for one, and the same node is handed out after that - the
 /// design of Blink's Element::EnsureAttr and WebKit's Element::ensureAttr.
 fn ensureAttrNode(instance: *runtime.Instance, internal: *InternalState, index: usize) !*runtime.Instance {
-    const entry = internal.data.attributeAtMut(index) orelse return error.InvalidStateError;
-    if (entry.attr_node) |link| {
+    const allocator = internal.allocator;
+    // The attribute by value: its name record and value, not a pointer into
+    // the list. `Attr.init` and the Attr hooks below change no attribute, so
+    // the record is still this attribute's after them.
+    const attribute = internal.data.storedAt(index) orelse return error.InvalidStateError;
+    if (internal.data.attrNodeOf(attribute.name)) |link| {
         if (link.isLive()) return link.instance;
     }
 
-    const attr = try interfaces.Attr.init(internal.allocator, instance.ctx);
+    const attr = try interfaces.Attr.init(allocator, instance.ctx);
     errdefer interfaces.Attr.deinit(attr);
-    try dom.attr_nodes.name(attr, entry.namespace_uri, entry.prefix, entry.local_name);
+    try dom.attr_nodes.name(attr, attribute.name.namespace_uri, attribute.name.prefix, attribute.name.local_name);
+    // A link left here is a dead node's (a live one returned above).
+    const old = try internal.data.setAttrNode(allocator, attribute.name, dom.element_data.AttrNodeLink.to(attr));
+    errdefer _ = internal.data.takeAttrNode(allocator, attribute.name);
+    if (old) |dead| forgetAttrNode(instance, dead.instance);
     try dom.attr_nodes.attach(attr, instance);
-    // `attach` can run nothing, so `entry` is still this attribute's.
-    if (entry.attr_node) |old| forgetAttrNode(instance, old.instance);
-    entry.attr_node = dom.element_data.AttrNodeLink.to(attr);
     traceAttrNode(instance, attr);
     return attr;
 }
@@ -1826,22 +1848,21 @@ fn ensureAttrNode(instance: *runtime.Instance, internal: *InternalState, index: 
 /// one was made, keeps the value and loses its element, and this element stops
 /// keeping it - `element` null when the element is being torn down, where the
 /// edge goes with its wrapper.
-fn detachAttrNode(element: ?*runtime.Instance, entry: *AttributeEntry) void {
-    const link = entry.attr_node orelse return;
-    entry.attr_node = null;
+fn detachAttrNode(element: ?*runtime.Instance, internal: *InternalState, attribute: Attribute) void {
+    const link = internal.data.takeAttrNode(internal.allocator, attribute.name) orelse return;
     if (element) |e| forgetAttrNode(e, link.instance);
     // A teardown sweep - or the collector, with the element - may have freed
     // the node first.
     if (!link.isLive()) return;
-    dom.attr_nodes.detach(link.instance, entry.value) catch {};
+    dom.attr_nodes.detach(link.instance, attribute.value) catch {};
 }
 
 /// `attr` is now the Attr node for the attribute at `index`.
 fn adoptAttrNode(instance: *runtime.Instance, internal: *InternalState, index: usize, attr: *runtime.Instance) !void {
-    const entry = internal.data.attributeAtMut(index) orelse return error.InvalidStateError;
+    const attribute = internal.data.storedAt(index) orelse return error.InvalidStateError;
     try dom.attr_nodes.attach(attr, instance);
-    if (entry.attr_node) |old| forgetAttrNode(instance, old.instance);
-    entry.attr_node = dom.element_data.AttrNodeLink.to(attr);
+    const old = try internal.data.setAttrNode(internal.allocator, attribute.name, dom.element_data.AttrNodeLink.to(attr));
+    if (old) |previous| forgetAttrNode(instance, previous.instance);
     traceAttrNode(instance, attr);
 }
 
@@ -1920,7 +1941,7 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
     };
 
     // Step 4: "If oldAttr is attr, return attr."
-    if (internal.data.attributeAt(old_index).?.attr_node) |link| {
+    if (internal.data.attrNodeOf(internal.data.storedAt(old_index).?.name)) |link| {
         if (link.isLive() and link.instance == attr) return attr;
     }
 
@@ -1931,7 +1952,7 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
     // "Set oldAttribute's element to null": oldAttr - the node script may
     // already hold, or one made now to hand back - keeps its last value.
     const old_attr = try ensureAttrNode(instance, internal, old_index);
-    detachAttrNode(instance, internal.data.attributeAtMut(old_index).?);
+    detachAttrNode(instance, internal, internal.data.storedAt(old_index).?);
     try replaceAttributeAt(instance, internal, old_index, prefix, verified);
     // Found again by name: the change steps can run script.
     if (internal.data.indexOfAttribute(namespace, local_name.asSlice())) |index| {
@@ -1948,25 +1969,30 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-replace
 fn replaceAttributeAt(instance: *runtime.Instance, internal: *InternalState, index: usize, prefix: ?[]const u8, value: []const u8) !void {
     const allocator = internal.allocator;
-    const entry = internal.data.attributeAtMut(index) orelse return error.InvalidStateError;
-    const new_prefix: ?[]const u8 = if (prefix) |p| try allocator.dupe(u8, p) else null;
-    errdefer if (new_prefix) |p| allocator.free(p);
+    const old_name = (internal.data.storedAt(index) orelse return error.InvalidStateError).name;
+    // newAttribute has oldAttribute's namespace and local name: its name
+    // record is the same one unless the prefix differs.
+    const new_name = if (optionalEql(old_name.prefix, prefix))
+        old_name
+    else
+        try attributeName(allocator, old_name.namespace_uri, prefix, old_name.local_name);
+    errdefer if (new_name != old_name and new_name.isOwned()) new_name.destroy(allocator);
     const new_value = try allocator.dupe(u8, value);
 
     // Step 2: "Replace oldAttribute by newAttribute in element's attribute
     // list." Steps 3 to 5 move the element from one Attr node to the other.
-    const old_prefix = entry.prefix;
-    const old_value = entry.value;
+    // oldAttribute's value and own name record are freed once the change
+    // steps below have read them.
+    const old_value = internal.data.setValueAt(index, new_value);
+    const replaced_name: ?*const QualifiedName = if (new_name != old_name) internal.data.setNameAt(index, new_name) else null;
     defer {
-        if (old_prefix) |p| allocator.free(p);
         allocator.free(old_value);
+        if (replaced_name) |name| if (name.isOwned()) name.destroy(allocator);
     }
-    entry.prefix = new_prefix;
-    entry.value = new_value;
 
     // Step 6: "Handle attribute changes for oldAttribute with element,
     // oldAttribute's value, and newAttribute's value."
-    handleAttributeChanges(instance, entry.namespace_uri, entry.local_name, old_value, new_value);
+    handleAttributeChanges(instance, new_name.namespace_uri, new_name.local_name, old_value, new_value);
 }
 
 /// Operation: scrollTo
@@ -2166,10 +2192,9 @@ pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Inst
     // Step 1: "If this's attribute list does not contain attr, then throw a
     // "NotFoundError" DOMException." The list contains attr when attr is the
     // node made for one of its attributes.
-    var iter = internal.data.attributeIterator();
     var index: usize = 0;
-    const found = while (iter.next()) |entry| : (index += 1) {
-        const link = entry.attr_node orelse continue;
+    const found = while (internal.data.storedAt(index)) |attribute| : (index += 1) {
+        const link = internal.data.attrNodeOf(attribute.name) orelse continue;
         if (link.isLive() and link.instance == attr) break true;
     } else false;
     if (!found) return error.NotFoundError;
