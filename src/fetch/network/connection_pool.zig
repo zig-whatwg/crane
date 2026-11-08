@@ -30,6 +30,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const curl = @import("curl_ffi.zig");
+const kit_curl = @import("kit_curl_share");
 const curl_error = @import("curl_error.zig");
 const backend_mod = @import("backend.zig");
 const NetworkRequest = backend_mod.NetworkRequest;
@@ -404,15 +405,14 @@ fn configureRequest(handle: *curl.CURL, request: *const NetworkRequest, ctx: *Co
         _ = curl.easy_setopt(handle, curl.CURLOPT_MAXREDIRS, @as(c_long, @intCast(request.max_redirects)));
     }
 
-    // TLS options
-    _ = curl.easy_setopt(handle, curl.CURLOPT_SSL_VERIFYPEER, @as(c_long, if (request.cert_options.verify_peer) 1 else 0));
-    _ = curl.easy_setopt(handle, curl.CURLOPT_SSL_VERIFYHOST, @as(c_long, if (request.cert_options.verify_host) 2 else 0));
-
-    if (request.cert_options.ca_bundle_path) |ca_path| {
-        const ca_z = try ctx.allocator.dupeSentinel(u8, ca_path, 0);
-        defer ctx.allocator.free(ca_z);
-        _ = curl.easy_setopt(handle, curl.CURLOPT_CAINFO, ca_z.ptr);
-    }
+    // TLS verification and trust, set by kit/curl's options as every
+    // transfer's are: the process's trust store with the request's extra
+    // anchors (kit/curl trust.zig) - curl itself loads no CA of its own.
+    try kit_curl.options.apply(handle, ctx.allocator, .{
+        .verify_peer = request.cert_options.verify_peer,
+        .verify_host = request.cert_options.verify_host,
+        .ca_bundle_path = request.cert_options.ca_bundle_path,
+    });
 
     // Proxy
     if (request.proxy) |proxy| {

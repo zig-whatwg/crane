@@ -26,6 +26,10 @@ const Allocator = std.mem.Allocator;
 /// TLS verification (options.zig).
 pub const options = @import("options.zig");
 
+/// The certificates TLS connections verify against: the system roots,
+/// parsed once per process, with a Browser's extra anchors (trust.zig).
+pub const trust = @import("trust.zig");
+
 /// curl.h's CURLSH (`typedef void CURLSH`).
 const CURLSH = anyopaque;
 

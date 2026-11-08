@@ -222,11 +222,35 @@ fn buildStaticLibcurl(
         .ares = false, // Use threaded resolver
         // Disable non-HTTP protocols
         .@"http-only" = true, // This disables FTP, TFTP, Telnet, etc.
+        // No CA bundle or CA directory of curl's own: every TLS connection
+        // verifies against Crane's trust store (src/platform/kit/curl/
+        // trust.zig - the system roots parsed once per process, with a
+        // Browser's extra anchors), which kit/curl's options attach to each
+        // handle. "auto", the default, made a native build read the build
+        // machine at configure time and compile what it found in: on Linux
+        // CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt AND
+        // CURL_CA_PATH=/etc/ssl/certs, which curl's mbedTLS backend parses
+        // again in every connection's first step (lib/vtls/mbedtls.c
+        // mbed_connect_step1: mbedtls_x509_crt_parse_path) - ~100 ms of CPU
+        // per HTTPS connection on server1 (lane linux1); on macOS
+        // /etc/ssl/cert.pem.
+        .@"ca-bundle" = @as([]const u8, "none"),
+        .@"ca-path" = @as([]const u8, "none"),
     }) orelse return null; // Lazy dependency not available
 
     // Get the libcurl static library artifact from the dependency
     // The curl package exposes both "curl" exe and lib, so we need to find the library specifically
     const libcurl = findLibraryArtifact(curl_dep, "curl") orelse return null;
+    // "none" above is what upstream curl's CMake takes as "no CA file / no CA
+    // directory" (CMakeLists.txt: unset when "none"), but allyourcodebase/curl
+    // (5184bb9ff2) writes it into curl_config.h as the PATH "none"
+    // (`.CURL_CA_BUNDLE = if (eql(ca_bundle, "auto")) null else ca_bundle`):
+    // every connection then failed to read a CA file named "none"
+    // (CURLE_SSL_CACERT_BADFILE). Both are left undefined in the header, as
+    // CMake leaves them; tests/fetch/trust_store_test.zig pins that curl names
+    // neither (CURLINFO_CAINFO, CURLINFO_CAPATH).
+    undefineConfigHeaderValue(libcurl.root_module, "curl_config.h", "CURL_CA_BUNDLE");
+    undefineConfigHeaderValue(libcurl.root_module, "curl_config.h", "CURL_CA_PATH");
 
     // mbedTLS and zlib: the versions build.zig.zon pins, not the curl package's.
     //
@@ -428,6 +452,22 @@ fn replaceLinkedLibrary(library: *std.Build.Step.Compile, name: []const u8, repl
 }
 
 /// Remove every `-D<name>=...` from `module`'s C macros.
+/// Leaves `name` undefined in `module`'s config header `include_path` (a
+/// ConfigHeader step a dependency made): for a value the dependency's build
+/// writes where its upstream leaves it unset. The build fails if the header or
+/// the value is not there, so a dependency bump that renames them is seen.
+fn undefineConfigHeaderValue(module: *std.Build.Module, include_path: []const u8, name: []const u8) void {
+    for (module.include_dirs.items) |dir| switch (dir) {
+        .config_header_step => |header| if (std.mem.eql(u8, header.include_path, include_path)) {
+            const value = header.values.getPtr(name) orelse std.debug.panic("{s} has no {s}", .{ include_path, name });
+            value.* = .undef;
+            return;
+        },
+        else => {},
+    };
+    std.debug.panic("no config header {s} in the module", .{include_path});
+}
+
 fn removeCMacro(module: *std.Build.Module, name: []const u8) void {
     const prefix = module.owner.fmt("-D{s}=", .{name});
     var i: usize = 0;
@@ -2439,6 +2479,10 @@ const PlatformBindingOptions = struct {
     static: []const []const u8 = &.{},
     http2: bool,
     libcurl: ?*std.Build.Step.Compile,
+    /// The mbedTLS libcurl links (StaticLibcurl.mbedtls): kit/curl's trust
+    /// store parses certificates with it and hands curl's TLS configuration
+    /// the chain. Null with a system libcurl, whose TLS library is its own.
+    mbedtls: ?*std.Build.Step.Compile = null,
     brotli: ?BrotliLibraries,
     image_codecs: ?*std.Build.Step.Compile,
     /// Register the facade by name (the public graph).
@@ -2540,6 +2584,20 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
         .link_libc = true,
     });
     kit[3].addImport("kit_curl_share", kit_curl_share);
+    // Its trust store (trust.zig) parses with libcurl's own mbedTLS, when
+    // libcurl is the bundled one; a system libcurl keeps its own CA loading.
+    const kit_curl_options = b.addOptions();
+    kit_curl_options.addOption(bool, "mbedtls_trust_store", options.mbedtls != null);
+    kit_curl_share.addOptions("kit_curl_options", kit_curl_options);
+    if (options.mbedtls) |mbedtls| {
+        kit_curl_share.linkLibrary(mbedtls);
+        kit_curl_share.addImport("mbedtls_c", addCImport(b, "mbedtls_trust_c", target, .{
+            .includes = &.{ "mbedtls/x509_crt.h", "mbedtls/ssl.h", "psa/crypto.h" },
+            .libs = &.{mbedtls},
+            .macros = &mbedtls_threading_macros,
+        }));
+        if (target.result.os.tag == .ios) addIosSdkPaths(kit_curl_share, iosSdkPath(b));
+    }
     // kit/curl/websocket.zig's header set (curl.h, websockets.h, header.h) is
     // its own module: fetch's curl_ffi translates curl.h alone, as the two
     // @cImports did.
@@ -3721,6 +3779,8 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "host", .module = testing_graph.host },
             .{ .name = "fetch", .module = testing_graph.fetch },
+            // kit/curl's share, options and trust store, as fetch reaches them.
+            .{ .name = "kit_curl_share", .module = testing_graph.fetch.import_table.get("kit_curl_share").? },
         };
         addTestFilesFromDir(b, test_step, "tests/fetch", target, &fetch_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add fetch test files: {}\n", .{err});
@@ -4096,6 +4156,7 @@ pub fn build(b: *std.Build) void {
                 .without = binding.without,
                 .http2 = enable_http2 and !use_system_curl,
                 .libcurl = if (static_libcurl) |lib| lib.libcurl else null,
+                .mbedtls = if (static_libcurl) |lib| lib.mbedtls else null,
                 .clock = testing_graph.clock,
                 .host = testing_graph.host,
                 .memory = testing_graph.memory,
@@ -7843,6 +7904,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .static = config.platform_static,
         .http2 = enable_http2 and !use_system_curl,
         .libcurl = if (config.static_libcurl) |lib| lib.libcurl else null,
+        .mbedtls = if (config.static_libcurl) |lib| lib.mbedtls else null,
         .public = public,
         .clock = clock_mod,
         .host = host_mod,
