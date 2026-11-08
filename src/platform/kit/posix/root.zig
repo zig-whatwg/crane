@@ -19,6 +19,8 @@ const memory = @import("memory");
 // the iPhoneOS SDK's for aarch64-ios.
 const c_time = @import("c_time");
 
+const log = std.log.scoped(.platform);
+
 const Str = platform.Str;
 const Bytes = platform.Bytes;
 const Error = platform.Error;
@@ -27,11 +29,53 @@ const Error = platform.Error;
 // 6.1 Process and identity
 // ---------------------------------------------------------------------------
 
-/// The process Io (host.zig) is the one per-process service today: it starts
-/// on first use, so initializing it here only moves that moment earlier.
+/// The process Io (host.zig) starts on first use, so initializing it here
+/// only moves that moment earlier. And the process's soft descriptor limit is
+/// raised (`raiseDescriptorLimit`).
 pub fn initializePlatform(options: *const platform.PlatformOptions) Error!void {
     _ = options;
     _ = host.io();
+    raiseDescriptorLimit(descriptor_limit);
+}
+
+/// The soft RLIMIT_NOFILE the platform's start asks for: Chromium's number.
+///
+/// A process inherits macOS's soft limit of 256 (Linux distributions start
+/// at 1024), and a page's connections hold descriptors - each WebSocket a
+/// curl multi handle's wakeup pipe and a socket while it connects - while
+/// mbedTLS on macOS opens /dev/urandom to seed every TLS connection
+/// (library/entropy_poll.c: no getrandom there). At 256 a burst of sockets
+/// left a wss:// handshake without the descriptor its seed needed: curl 35
+/// "CTR_DRBG - The entropy source failed" (lane flaky5,
+/// websockets/Create-blocked-port.any.js ?wss "Basic check").
+///
+/// Browsers raise it at start, as here. Chromium's
+/// BrowserMainLoop::EarlyInitialization calls base::IncreaseFdLimitTo(8192)
+/// on Apple platforms, Linux, ChromeOS and Android ("the default limit on
+/// Apple is low (256), so bump it up", crbug.com/539567); Gecko's
+/// XRE_mainInit calls mozilla::startup::IncreaseDescriptorLimits on Unix.
+const descriptor_limit: std.c.rlim_t = 8192;
+
+/// Raise the soft descriptor limit to `wanted`, or to the hard limit when
+/// that is lower, as base::IncreaseFdLimitTo does: a soft limit already at
+/// `wanted` or above (unlimited included) is kept, and the hard limit - the
+/// user's - is never changed. A failure leaves the limit as it was.
+fn raiseDescriptorLimit(wanted: std.c.rlim_t) void {
+    var limits: std.c.rlimit = undefined;
+    const read = std.c.getrlimit(.NOFILE, &limits);
+    if (read != 0) {
+        log.warn("could not read the descriptor limit (RLIMIT_NOFILE): {t}", .{std.posix.errno(read)});
+        return;
+    }
+    if (wanted <= limits.cur) return;
+    const soft = if (limits.max != std.c.RLIM.INFINITY and limits.max < wanted) limits.max else wanted;
+    if (soft <= limits.cur) return;
+    const from = limits.cur;
+    limits.cur = soft;
+    const set = std.c.setrlimit(.NOFILE, &limits);
+    if (set != 0) {
+        log.warn("could not raise the soft descriptor limit from {d} to {d}: {t}", .{ from, soft, std.posix.errno(set) });
+    }
 }
 
 pub fn deinitializePlatform() void {}
