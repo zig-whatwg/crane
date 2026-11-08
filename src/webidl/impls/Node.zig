@@ -269,12 +269,10 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 
 /// Deinitialize instance
 ///
-/// This performs proper DOM tree cleanup by recursively deinitializing all
-/// child nodes before cleaning up this node's own resources. This ensures
-/// the entire subtree is properly freed when a node is destroyed.
-///
-/// Per DOM spec semantics, destroying a parent node should release all
-/// child nodes since they are no longer reachable through the tree.
+/// This frees the node's whole subtree - every descendant, leaves first,
+/// without recursion (dom.tree_teardown.freeAllDescendants) - before cleaning
+/// up this node's own resources, so the entire subtree is freed when a node
+/// is destroyed: its children are no longer reachable through the tree.
 pub fn deinit(instance: *runtime.Instance) void {
     // Check if cleanup was already marked as started. A tree's teardown
     // (deinitNodeByType) marks it before the node's own deinit runs; any
@@ -301,79 +299,25 @@ pub fn deinit(instance: *runtime.Instance) void {
     // target it was lets go of its hold.
     dom_module.intersection_targets.targetDestroyed(instance);
 
-    // First, recursively deinit all child nodes.
-    // We must do this BEFORE removing ourselves from the registry,
-    // and we need to collect children first since deinit modifies the tree.
+    // First, every descendant goes - leaves first, each unlinked from its
+    // parent and torn down only once it has no children left
+    // (dom.tree_teardown.freeAllDescendants): the teardown a tree runs for a
+    // child, deinitNodeByType, in constant stack at any depth. Calling each
+    // child's teardown from here - its Node.deinit calling its children's -
+    // took one set of frames per tree level: a 10,000-deep tree overflowed
+    // the stack at its teardown (lane crash1). WebKit unlinks each child
+    // before its last reference goes (ContainerNodeAlgorithms.cpp
+    // removeDetachedChildrenInContainer) and its earlier deletion queue,
+    // Blink's until Oilpan, destroyed no node inside its parent's
+    // destruction; Oilpan finalizes each node alone.
+    //
+    // This node's own type-specific teardown has run (the chain reaches here
+    // last); its descendants' each run in full, children first. A descendant
+    // whose teardown another path began already is unlinked and left to
+    // that path (deinitNodeByType's markCleanupStarted), as before.
     if (Registry.get(instance)) |internal| {
         if (internal.node_base) |node_base| {
-            // SAFETY: Collect child instances into a temporary array BEFORE iterating.
-            // This protects against the case where a child's NodeBase was freed by
-            // another path (e.g., GC callback during script execution) before this
-            // tree walk happens. By collecting instances first, we avoid following
-            // potentially dangling next_sibling pointers.
-            //
-            // The children are read off the parent's links (a node keeps no
-            // child list: NodeBase.children), all before the first is torn down.
-            const child_count = node_base.childCount();
-            if (child_count > 0) {
-                // Collect all child instances first
-                var child_instances: [256]*runtime.Instance = undefined;
-                var collected: usize = 0;
-
-                // Use bounded array for small trees, fall back to allocator for large trees
-                if (child_count <= 256) {
-                    var child_base_walk = node_base.children();
-                    while (child_base_walk.next()) |child_base| {
-                        if (instance_bridge.getInstance(child_base)) |child_opaque| {
-                            child_instances[collected] = @ptrCast(@alignCast(child_opaque));
-                            collected += 1;
-                        }
-                    }
-
-                    // Now deinit each collected child
-                    for (child_instances[0..collected]) |child_instance| {
-                        deinitNodeByType(child_instance);
-                    }
-                } else {
-                    // Large tree: allocate dynamic array
-                    const alloc_children = runtime.allocatorOf(instance).alloc(*runtime.Instance, child_count) catch {
-                        // On allocation failure, fall back to iterating directly
-                        // This is less safe but better than doing nothing
-                        var child = node_base.first_child;
-                        while (child) |child_base| {
-                            const next = child_base.next_sibling;
-                            if (instance_bridge.getInstance(child_base)) |child_opaque| {
-                                const child_instance: *runtime.Instance = @ptrCast(@alignCast(child_opaque));
-                                deinitNodeByType(child_instance);
-                            }
-                            child = next;
-                        }
-                        // Continue to cleanup below
-                        releaseNodeBase(instance, internal, node_base, .with_document_counts);
-                        internal.deinit();
-                        Registry.remove(instance);
-                        // Cleanup complete; see the note at the end of deinit.
-                        runtime.instance_lifecycle.markCleanupComplete(instance);
-                        interfaces.EventTarget.deinitChain(instance);
-                        return;
-                    };
-                    defer runtime.allocatorOf(instance).free(alloc_children);
-
-                    var child_base_walk = node_base.children();
-                    while (child_base_walk.next()) |child_base| {
-                        if (instance_bridge.getInstance(child_base)) |child_opaque| {
-                            alloc_children[collected] = @ptrCast(@alignCast(child_opaque));
-                            collected += 1;
-                        }
-                    }
-
-                    // Now deinit each collected child
-                    for (alloc_children[0..collected]) |child_instance| {
-                        deinitNodeByType(child_instance);
-                    }
-                }
-            }
-
+            _ = dom_module.tree_teardown.freeAllDescendants(node_base, &deinitNodeByType);
             releaseNodeBase(instance, internal, node_base, .with_document_counts);
         }
 
@@ -406,9 +350,10 @@ fn destroyUninsertedHook(instance: *runtime.Instance) void {
 /// Deinitialize a node based on its node type.
 /// This dispatches to the appropriate interface's deinit function.
 ///
-/// This is called from Node.deinit when iterating over children. The type-specific
-/// deinit (e.g., Element.deinit) will chain back to Node.deinit, which will then
-/// recursively deinit that node's children. This ensures the entire subtree is cleaned up.
+/// This is called from Node.deinit's subtree walk (dom.tree_teardown.freeAllDescendants)
+/// for each descendant once it has no children left. The type-specific deinit
+/// (e.g., Element.deinit) chains back to Node.deinit, which finds no subtree
+/// to walk: a tree of any depth is freed in constant stack.
 ///
 /// Also used by DomTreeAdapter to clean up orphaned nodes that were never attached
 /// to the document tree.
@@ -490,9 +435,9 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
         if (internal.node_base) |node_base| node_base.bound_v8_wrapper == null else false;
 
     // Dispatch based on node type to call the appropriate interface's deinit.
-    // Each interface's deinit will chain back to Node.deinit for proper recursive cleanup.
-    // DO NOT clear the child links here - the recursive Node.deinit needs them
-    // to properly clean up the entire subtree.
+    // Each interface's deinit chains back to Node.deinit, which frees the
+    // node's subtree (if it still has one: a root) through its links - so
+    // DO NOT clear the child links here.
     switch (internal.node_type) {
         NodeType.TEXT_NODE => {
             interfaces.Text.deinit(instance);
