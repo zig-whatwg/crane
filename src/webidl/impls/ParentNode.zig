@@ -37,17 +37,8 @@ const NodeBase = dom.NodeBase;
 fn firstChild(node: *runtime.Instance) ?*runtime.Instance {
     return interfaces.Node.get_firstChild(node) catch null;
 }
-fn lastChild(node: *runtime.Instance) ?*runtime.Instance {
-    return interfaces.Node.get_lastChild(node) catch null;
-}
 fn nextSibling(node: *runtime.Instance) ?*runtime.Instance {
     return interfaces.Node.get_nextSibling(node) catch null;
-}
-fn previousSibling(node: *runtime.Instance) ?*runtime.Instance {
-    return interfaces.Node.get_previousSibling(node) catch null;
-}
-fn parentNode(node: *runtime.Instance) ?*runtime.Instance {
-    return interfaces.Node.get_parentNode(node) catch null;
 }
 fn nodeType(node: *runtime.Instance) ?u16 {
     return interfaces.Node.get_nodeType(node) catch null;
@@ -225,61 +216,21 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.P
     try dom.mutation.replaceAll(@as(?*NodeBase, node_base), parent_base);
 }
 
-/// moveBefore - Moves a node into this parent before child, preserving state
+/// moveBefore(node, child) - DOM ParentNode: move node into this before
+/// child, keeping its state (DOM "move", src/dom/mutation.zig).
 /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
 ///
-/// Deviation: step 3 is DOM "move", which keeps node's state; this removes
-/// node and inserts it again, running the removing and insertion steps.
-/// `mutation.move` in src/dom/ is a draft that has never compiled - it is
-/// written against `interfaces.Node` and sibling pointers, not `NodeBase` -
-/// so it cannot be called yet.
+/// The generated function's [CEReactions] scope is the one the move's
+/// connectedMoveCallback (or disconnected + connected) reactions run in;
+/// mutation.moveNode opens none of its own.
 pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
-    // Step 1: Let referenceChild be child
+    // 1. "Let referenceChild be child."
     var reference_child = child;
-
-    // Step 2: If referenceChild is node, set to node's next sibling
-    if (reference_child == node) {
-        reference_child = nextSibling(node);
-    }
-
-    // Validate: node must already be in a tree (have a parent)
-    const old_parent = parentNode(node) orelse return error.HierarchyRequestError;
-
-    // Validate: child (if non-null) must be a child of parent
-    if (reference_child) |rc| {
-        const rc_parent = parentNode(rc);
-        if (rc_parent != instance) {
-            return error.NotFoundError;
-        }
-    }
-
-    // Validate: node cannot be an ancestor of parent
-    var ancestor: ?*runtime.Instance = instance;
-    while (ancestor) |anc| {
-        if (anc == node) return error.HierarchyRequestError;
-        ancestor = parentNode(anc);
-    }
-
-    // Check if already at correct position
-    if (old_parent == instance) {
-        if (reference_child) |rc| {
-            const prev = previousSibling(rc);
-            if (prev == node) return;
-        } else {
-            const last = lastChild(instance);
-            if (last == node) return;
-        }
-    }
-
-    // Remove from old position
-    dom.mutation.removeNode(node) catch return error.HierarchyRequestError;
-
-    // Insert at new position (use interface per Golden Rule #13)
-    if (reference_child) |rc| {
-        _ = interfaces.Node.call_insertBefore(instance, node, rc) catch return error.HierarchyRequestError;
-    } else {
-        _ = interfaces.Node.call_appendChild(instance, node) catch return error.HierarchyRequestError;
-    }
+    // 2. "If referenceChild is node, then set referenceChild to node's next
+    // sibling."
+    if (reference_child == node) reference_child = nextSibling(node);
+    // 3. "Move node into this before referenceChild."
+    return dom.mutation.moveNode(node, instance, reference_child);
 }
 
 /// This's node document: a document is its own.

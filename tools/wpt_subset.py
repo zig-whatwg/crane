@@ -1152,6 +1152,12 @@ EXCLUDE = [
     # getBoundingClientRect (8 calls) - viewport geometry.
     ('html/semantics/forms/the-select-element/customizable-select-listbox/select-listbox-home-end-pagedown-pageup.optional.html',
      'PageUp/PageDown by the visible options, checks scrollTop and getBoundingClientRect, needs layout'),
+    # Geometry (the user's 0.1 scope line; lane move1 batch 1's gap analysis, tmp/plans/move1-design.md, 2026-11-07):
+    # after the moved element's transform transition continues, its one subtest checks
+    # getBoundingClientRect().x == 200 - the transformed box's position, from layout. Its siblings that check
+    # only the transition events (continue-css-transition-left, -transform-pseudo) stay.
+    ('dom/nodes/moveBefore/continue-css-transition-transform.html',
+     'checks getBoundingClientRect().x of the transformed box after a move, needs layout'),
     # COOP access reports that need the Report-To header (the integrator's ruling, 2026-11-05, lane coi2):
     # each file reaches its reports only through Report-To (reportToHeaders, resources/test-access-property.js:28
     # for the property-* files). The Reporting spec replaced Report-To with Reporting-Endpoints for documents

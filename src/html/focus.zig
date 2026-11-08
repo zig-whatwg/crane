@@ -274,6 +274,37 @@ pub fn designatedAreaOf(document: *Instance) ?*Instance {
     return element;
 }
 
+/// HTML removing steps, step 2 (Document's installHooks registers it), for
+/// each removed node: "If document's focused area is removedNode, then set
+/// document's focused area to document's viewport, and set document's
+/// relevant global object's navigation API's focus changed during ongoing
+/// navigation to false." No unfocusing, focusing or focus update steps run,
+/// so no blur or focusout fires. At the removal, not at the next read: an
+/// element removed and inserted again before any read must not still be
+/// focused (dom/nodes/moveBefore/fire-focusin-focusout.html, whose cleanups
+/// re-insert the focused button). DOM "move" runs no removing steps, so a
+/// moved element keeps the focus.
+///
+/// The steps run for every shadow-including inclusive descendant of the
+/// removed subtree; they are answered once, at its root, for the one element
+/// that can match - the designated one, when it is in the subtree - so a
+/// large removal pays one designation read (as pointer_states.removingSteps).
+pub fn removingSteps(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
+    // The removal's root alone: its descendants still have their parents.
+    if (node.parent_node != null) return;
+    const parent = old_parent orelse return;
+    const parent_instance: *Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(parent) orelse return));
+    // 1. "Let document be removedNode's node document" - the old parent's.
+    const document = nodeDocument(parent_instance) orelse return;
+    // 2.
+    const designation = dom.focused_area.get(document) orelse return;
+    if (!designation.isLive()) return;
+    const designated = dom.instance_bridge.getNodeBase(designation.element) orelse return;
+    if (!dom.pointer_states.isShadowIncludingInclusiveDescendant(designated, node)) return;
+    dom.focused_area.set(document, null);
+    if (windowOf(document)) |window| dom.navigation_api.setFocusChanged(window, false);
+}
+
 /// Apply rendering-time focus fixup and return the document's focused area.
 ///
 /// HTML update-the-rendering step 17 focuses the viewport when its focused
@@ -295,8 +326,10 @@ pub fn focusedAreaOf(document: *Instance) ?*Instance {
         return designatedAreaOf(document);
     }
     dom.focused_area.set(document, null);
-    // HTML removing steps, applied lazily with this focus fixup: removal
-    // clears the navigation flag rather than counting as a focus update.
+    // The net under removingSteps: a designation whose element is gone
+    // (freed, or in another document) reads as the viewport, as the
+    // removing steps would have left it - the navigation flag cleared, not a
+    // focus update.
     if (windowOf(document)) |window| dom.navigation_api.setFocusChanged(window, false);
     return null;
 }
