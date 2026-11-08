@@ -118,7 +118,7 @@ test "slotOf answers the node's own slot, empty until the wrap writes the wrappe
     // A second wrap, in any realm of the agent, answers the slot's wrapper.
     var again: Wrap = .{ .instance = div, .realm = page.realm };
     try engine.runInRealm(page.realm, Wrap.steps, &again);
-    try testing.expect(again.wrapper == wrapper);
+    try testing.expect(again.wrapper.? == wrapper);
 }
 
 test "a collected wrapper leaves its node's slot empty" {
