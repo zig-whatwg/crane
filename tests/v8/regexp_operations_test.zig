@@ -33,6 +33,7 @@ const runtime = @import("runtime");
 const protocol = @import("engine");
 const interfaces = @import("interfaces");
 const clock = @import("clock");
+const v8 = @import("v8");
 
 const WindowHost = struct {
     fn createGlobalObject(r: runtime.Context, global_this: runtime.JSValue, host: ?*anyopaque) ?*runtime.Instance {
@@ -344,18 +345,29 @@ test "more patterns than the agent caches still compile and match, and pattern a
     }
 }
 
-test "compiling once per agent: first and repeat call cost" {
+/// What the agent's regexp cache has missed so far: the regexps it compiled
+/// and the utility contexts it made (v8_wrapper.cpp, PatternMatcher).
+const CacheCounts = struct { compiles: u64, contexts: u64 };
+
+fn cacheCounts(agent: *protocol.Agent) CacheCounts {
+    var counts: CacheCounts = .{ .compiles = 0, .contexts = 0 };
+    v8.ffi.v8_PatternMatcher_Counts(v8.protocol_agents.patternMatcherOf(@ptrCast(@alignCast(agent))), &counts.compiles, &counts.contexts);
+    return counts;
+}
+
+test "compiling once per agent: one utility context, and RegExpBuiltinExec repeats are cache hits" {
+    // Counted, not timed: a ratio of wall-clock times failed on a loaded host
+    // (lane flaky7). A context per call, or a compile per exec, would show in
+    // the counts.
     const page = try Page.open();
     defer page.close();
-    var timer = clock.Timer.start();
+    try std.testing.expectEqual(CacheCounts{ .compiles = 0, .contexts = 0 }, cacheCounts(page.agent));
     try page.check("^(?:\\/([^\\/]+?))$", false);
-    const first_ns = timer.read();
-    const rounds = 2000;
-    timer.reset();
+    try std.testing.expectEqual(CacheCounts{ .compiles = 1, .contexts = 1 }, cacheCounts(page.agent));
     // The captures in the C allocator: std.testing.allocator records a
     // stack trace per allocation, which costs more than the match.
     const C = std.heap.c_allocator;
-    for (0..rounds) |i| {
+    for (0..2000) |i| {
         const captures = try protocol.regExpBuiltinExecCaptures(page.realm, "^(?:\\/([^\\/]+?))$", false, if (i % 2 == 0) "/abc" else "/a/b", C);
         defer if (captures) |list| {
             for (list) |capture| if (capture) |bytes| C.free(bytes);
@@ -363,9 +375,13 @@ test "compiling once per agent: first and repeat call cost" {
         };
         try std.testing.expectEqual(i % 2 == 0, captures != null);
     }
-    const repeat_ns = timer.read() / rounds;
-    std.debug.print("regExpBuiltinExecCaptures: first check {d} us (utility context + compile), repeat exec {d} ns\n", .{ first_ns / std.time.ns_per_us, repeat_ns });
-    try std.testing.expect(repeat_ns < 50 * std.time.ns_per_us);
+    try std.testing.expectEqual(CacheCounts{ .compiles = 1, .contexts = 1 }, cacheCounts(page.agent));
+    // The same source under "vi" is another regexp: one more compile, the
+    // same context; and a pattern attribute of it another again.
+    try page.check("^(?:\\/([^\\/]+?))$", true);
+    try std.testing.expectEqual(CacheCounts{ .compiles = 2, .contexts = 1 }, cacheCounts(page.agent));
+    _ = try protocol.matchesPatternAttribute(page.realm, "^(?:\\/([^\\/]+?))$", "/abc");
+    try std.testing.expectEqual(CacheCounts{ .compiles = 3, .contexts = 1 }, cacheCounts(page.agent));
 }
 
 fn execUnderAllocationFailure(allocator: std.mem.Allocator, realm: runtime.Context) !void {
