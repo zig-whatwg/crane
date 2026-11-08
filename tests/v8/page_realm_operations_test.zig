@@ -2466,27 +2466,32 @@ test "protocol: a node's wrapper in a live tree keeps its expandos without being
 
 test "a window's indexedDB, when making its IDBFactory fails at any allocation, frees what it made once" {
     defer test_agent.close();
-    var host: WindowHost = .{};
-    const w = try windowRealm(&host, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(w, .global_detached);
     // Each allocation the getter makes fails in turn. The allocator under it
     // reports a double free or an invalid free (a panic, or an error log,
     // which fails the test); it is never deinit'd - a Window torn down
     // unwrapped leaves state its realm's end would free, which this test does
     // not measure.
     var debug_allocator: @import("root").poisoning.DebugAllocator(.{}) = .init;
-    var k: usize = 0;
-    while (k < 8) : (k += 1) {
-        var failing = std.testing.FailingAllocator.init(debug_allocator.allocator(), .{});
-        // The Window is made with the failing allocator, so its scope is too
-        // (an EventTarget is made with the allocator its scope frees with:
-        // lane perf2 batch 6) - this round's own; the agent's comes back after.
-        const own_scope = test_process.OwnRuntime.begin(failing.allocator());
-        defer own_scope.end();
-        const window = try interfaces.Window.init(failing.allocator(), w);
-        failing.fail_index = failing.alloc_index + k;
-        _ = interfaces.Window.get_indexedDB(window) catch {};
-        runtime.Instance.releaseIfUnwrapped(window, runtime.SlabAllocator.generationOf(window));
+    var failing = std.testing.FailingAllocator.init(debug_allocator.allocator(), .{});
+    // The Windows are made with the failing allocator, so their scope is too
+    // (an EventTarget is made with the allocator its scope frees with: lane
+    // perf2 batch 6). It ends after the realm, whose end tears down what the
+    // getter wrapped there; the agent's scope is the standalone one again.
+    var own_scope: ?test_process.OwnRuntime = null;
+    defer if (own_scope) |scope| scope.end();
+    {
+        var host: WindowHost = .{};
+        const w = try windowRealm(&host, false, .new_window_proxy);
+        defer protocol.destroyWindowRealm(w, .global_detached);
+        own_scope = test_process.OwnRuntime.begin(failing.allocator());
+        var k: usize = 0;
+        while (k < 8) : (k += 1) {
+            const window = try interfaces.Window.init(failing.allocator(), w);
+            failing.fail_index = failing.alloc_index + k;
+            _ = interfaces.Window.get_indexedDB(window) catch {};
+            failing.fail_index = std.math.maxInt(usize);
+            runtime.Instance.releaseIfUnwrapped(window, runtime.SlabAllocator.generationOf(window));
+        }
     }
 }
 
