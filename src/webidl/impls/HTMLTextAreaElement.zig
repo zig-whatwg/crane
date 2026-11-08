@@ -266,7 +266,7 @@ fn styleStateCreated(instance: *runtime.Instance) void {
 pub fn installHooks() void {
     dom.style.hooks.install(.{ .textarea_style_state_created = &styleStateCreated });
     // The steps other code runs on textareas (each idempotent).
-    dom.form_controls.install(.{ .is = &isTextArea, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_validity = &userValidity, .set_user_validity = &setUserValidity, .user_edit = &userEdit, .editor_text = &editorText });
+    dom.form_controls.install(.{ .is = &isTextArea, .reset = &resetAlgorithm, .validity_flags = &constraintFlags, .user_validity = &userValidity, .set_user_validity = &setUserValidity, .user_edit = &userEdit, .editor_text = &editorText, .editor_selection = &editorSelection, .set_editor_selection = &setEditorSelection });
     dom.teardown_sweeps.install(.element_types, &cleanupAllRemainingInternal);
     dom.cloning_steps.install(&cloningSteps);
     dom.mutation.registerChildrenChangedCallback(&childrenChangedSteps) catch |err| {
@@ -549,6 +549,28 @@ fn pendingSelectTasks(instance: *runtime.Instance) ?*u32 {
 fn selectionchangeScheduled(instance: *runtime.Instance) ?*bool {
     const internal = StateMap.get(instance) orelse return null;
     return &internal.selectionchange_scheduled;
+}
+
+/// The text control selection over the API value (dom.form_controls
+/// .editor_selection): what a user's caret movement starts from.
+fn editorSelection(instance: *runtime.Instance) ?dom.form_controls.EditorSelection {
+    const selection = currentSelection(instance);
+    return .{ .start = selection.start, .end = selection.end, .backward = selection.direction == .backward };
+}
+
+/// A user's caret movement (dom.form_controls.set_editor_selection): the
+/// selection moves and selectionchange is scheduled, as for a user edit;
+/// no select event, which is "set the selection range" step 6, script's
+/// setSelectionRange() alone (an input's caret moves the same way).
+fn setEditorSelection(instance: *runtime.Instance, selection: dom.form_controls.EditorSelection) void {
+    const internal = StateMap.getOrPut(instance) catch return;
+    const length = apiValueLength(instance);
+    const start = @min(selection.start, length);
+    const end = @min(@max(selection.end, start), length);
+    const next: form_associated.TextSelection = .{ .start = start, .end = end, .direction = if (start == end) .none else if (selection.backward) .backward else .forward };
+    const previous = internal.selection.clamped(length);
+    internal.selection = next;
+    if (!std.meta.eql(previous, next)) dom.selection.scheduleTextControlSelectionchange(instance, &selectionchangeScheduled) catch {};
 }
 
 /// "Set the selection range": changes queue selectionchange and select.

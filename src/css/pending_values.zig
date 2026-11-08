@@ -50,6 +50,46 @@ pub const Pending = struct {
     namespaces: ?*NamespaceMap,
     urls: []const CapturedUrl = &.{},
     had_resolver: bool,
+    /// A UA style sheet's declaration whose whole value is one
+    /// -internal-auto-base(): both arguments parsed when the sheet is built
+    /// (AutoBase). Null for every other value.
+    auto_base: ?AutoBase = null,
+    /// `makeImmortal` ran: the arguments' text values are uncounted, and
+    /// the last reference frees them.
+    immortal: bool = false,
+
+    /// HTML 15.5.16's base-appearance switch, `-internal-auto-base(<native>,
+    /// <base>)`, as the WHOLE value of a UA declaration (every one in
+    /// html.css): each argument parsed with the property's grammar once,
+    /// when the sheet is built, so the cascade picks one by the element's
+    /// base appearance without substituting or parsing (lane forms1 b2: the
+    /// substitution path cost 200 selects x8.8). WebKit's design: a
+    /// CSSSubstitutionValue whose whole value is one -internal-auto-base()
+    /// is a "simple reference" (CSSSubstitutionValue::cacheSimpleReference),
+    /// and Style::SubstitutionResolver::trySimpleSubstitution reuses its
+    /// parsed value keyed by isBaseAppearance(). Crane parses both arguments
+    /// up front instead of caching the last one: the UA sheet is immortal
+    /// and read by every thread, so nothing in it may be written after it
+    /// is built. An argument with another substitution function in it
+    /// (html.css's attr()) is itself a pending value, substituted when the
+    /// cascade reaches it - what substituting the chosen argument does.
+    pub const AutoBase = struct {
+        /// The longhands each argument sets: [0] the first (native or
+        /// primitive appearance), [1] the second (base appearance). Null for
+        /// an argument the property's grammar rejects: substituting it
+        /// would be invalid at computed-value time (Values 5 "replace
+        /// substitution functions in a property", step 3).
+        arguments: [2]?[]const properties.Assignment,
+
+        /// What the argument for `base` assigns to `longhand` (a longhand
+        /// of the declaration's property), borrowed; `unset` for a rejected
+        /// argument, as an invalid substitution's outcome is.
+        pub fn select(self: *const AutoBase, base: bool, longhand: properties.Longhand) properties.Assigned {
+            const assignments = self.arguments[@intFromBool(base)] orelse return .{ .css_wide = .unset };
+            for (assignments) |a| if (a.longhand == longhand) return a.value;
+            return .{ .css_wide = .unset };
+        }
+    };
 
     /// The pending value of `text` for `property` (null for a custom
     /// property), or null when the value is invalid at parse time: not a
@@ -100,8 +140,92 @@ pub const Pending = struct {
             try captured.append(arena, .{ .raw = raw, .resolved = resolved });
         }
         self.urls = try captured.toOwnedSlice(arena);
+        if (options.user_agent) if (property) |p| {
+            self.auto_base = try parseAutoBase(options, p, self.nodes, arena);
+        };
         success = true;
         return self;
+    }
+
+    /// AutoBase for `nodes`, or null when they are not one
+    /// -internal-auto-base(), alone. Its arguments as substitution would
+    /// give them (each one's own text; a {}-wrapped one unwrapped, Values 5
+    /// §3.1.1), parsed with the declaration's options. The argument lists
+    /// live in `arena`; their values are the Pending's, released by unref.
+    fn parseAutoBase(options: properties.ParseOptions, property: properties.Property, nodes: []const Node, arena: Allocator) Allocator.Error!?AutoBase {
+        const value = substitution.trim(nodes);
+        if (value.len != 1 or value[0].function != .internal_auto_base) return null;
+        // A spread's arguments are known only after substitution.
+        if (substitution.hasSpread(value[0].children)) return null;
+        const arguments = substitution.arguments(arena, .internal_auto_base, value[0].children, .parse) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            // The parse above checked the argument grammar already.
+            error.Invalid, error.Unavailable => return null,
+        };
+        var result: AutoBase = .{ .arguments = .{ null, null } };
+        errdefer for (result.arguments) |list| {
+            const assignments = list orelse continue;
+            for (assignments) |a| a.value.release();
+        };
+        var argument_options = options;
+        argument_options.closes_at_eof = false;
+        for (arguments, 0..) |argument, index| {
+            const text = (try substitution.render(arena, argument)).text;
+            var assignments: std.ArrayList(properties.Assignment) = .empty;
+            defer assignments.deinit(options.allocator);
+            if (!try properties.parseDeclaration(argument_options, property, text, &assignments)) continue;
+            result.arguments[index] = arena.dupe(properties.Assignment, assignments.items) catch |err| {
+                for (assignments.items) |a| a.value.release();
+                return err;
+            };
+        }
+        return result;
+    }
+
+    /// Make the text values the arguments hold uncounted (the UA sheet's
+    /// policy, ua_sheet.makeImmortal: a computed style that copies one on
+    /// any thread touches no count). The last unref frees them.
+    pub fn makeImmortal(self: *Pending) void {
+        const auto_base = self.auto_base orelse return;
+        self.immortal = true;
+        for (auto_base.arguments) |list| {
+            const assignments = list orelse continue;
+            for (assignments) |a| if (immortalText(a)) |t| t.makeImmortal();
+        }
+    }
+
+    fn releaseAutoBase(self: *Pending) void {
+        const auto_base = self.auto_base orelse return;
+        // Every value first (an immortal text's count is not touched), then
+        // each immortal text once: a shorthand's longhands may share one
+        // value (ua_sheet.destroyContents frees a block's the same way).
+        for (auto_base.arguments) |list| {
+            const assignments = list orelse continue;
+            for (assignments) |a| a.value.release();
+        }
+        if (!self.immortal) return;
+        for (auto_base.arguments, 0..) |list, index| {
+            const assignments = list orelse continue;
+            for (assignments, 0..) |a, at| {
+                const text = immortalText(a) orelse continue;
+                if (!sharedEarlier(auto_base, index, at, text)) text.destroyImmortal();
+            }
+        }
+    }
+
+    fn immortalText(a: properties.Assignment) ?*@import("style_values.zig").SharedText {
+        if (a.value != .value) return null;
+        return a.value.value.sharedText();
+    }
+
+    /// Whether an assignment before arguments[index][at] holds `text`.
+    fn sharedEarlier(auto_base: AutoBase, index: usize, at: usize, text: *@import("style_values.zig").SharedText) bool {
+        for (auto_base.arguments[0 .. index + 1], 0..) |list, i| {
+            const assignments = list orelse continue;
+            const end = if (i == index) at else assignments.len;
+            for (assignments[0..end]) |b| if (immortalText(b)) |t| if (t == text) return true;
+        }
+        return false;
     }
 
     pub fn ref(self: *Pending) void {
@@ -109,6 +233,7 @@ pub const Pending = struct {
     }
     pub fn unref(self: *Pending) void {
         if (self.refs.fetchSub(1, .acq_rel) != 1) return;
+        self.releaseAutoBase();
         if (self.source) |source| source.unref();
         if (self.namespaces) |map| map.release();
         const allocator = self.allocator;

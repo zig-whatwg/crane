@@ -1039,9 +1039,9 @@ fn selectionOf(element: *Instance) ?[2]u32 {
 /// grapheme cluster (Blink and WebKit move by character granularity, a
 /// grapheme cluster); with Shift the focus end moves instead, the anchor
 /// staying. Logical direction: the visual order of bidirectional text needs
-/// the layout backend. An input's text control selection only (its hook):
-/// TODO(textarea): a textarea's caret moves need the same hook from
-/// HTMLTextAreaElement (its setSelectionRange would also fire select).
+/// the layout backend. The control's own text control selection, through
+/// its hook (an input's, a textarea's): setSelectionRange would also fire
+/// select, which a caret movement does not.
 fn moveTextControlByCharacter(target: *Instance, forward: bool, extend: bool) void {
     const selection = dom.form_controls.editorSelection(target) orelse return;
     var value = getValue(target) orelse return;
