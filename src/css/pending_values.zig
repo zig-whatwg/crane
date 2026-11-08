@@ -73,7 +73,9 @@ pub const Pending = struct {
         defer if (!success) self.unref();
         const arena = self.arena.allocator();
         self.text = try arena.dupe(u8, substitution.originalText(text));
-        self.nodes = substitution.parse(arena, self.text) catch |err| switch (err) {
+        // A UA sheet's declaration also has -internal-auto-base() (substitution.user_agent_table).
+        const table = if (options.user_agent) substitution.user_agent_table else substitution.default_table;
+        self.nodes = substitution.parseWith(arena, self.text, substitution.max_nodes, table) catch |err| switch (err) {
             error.Invalid, error.Unavailable => return null,
             error.OutOfMemory => return error.OutOfMemory,
         };

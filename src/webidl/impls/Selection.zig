@@ -1126,10 +1126,10 @@ const DomTree = struct {
 /// Blink DomSelection::toString likewise uses a rendered TextIterator; this
 /// leaves Range.toString's raw DOM concatenation unchanged. The binding owns
 /// the returned bytes in this Selection's allocator (possibly a different
-/// realm from the range's nodes). TODO(EDITING): a text control's persistent
-/// selection owner is part of the shared caret model, not focus designation.
+/// realm from the range's nodes).
 pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return "";
+    if (try textControlSelectedText(instance, internal)) |text| return text;
     const b = visibleBoundaries(internal) orelse return "";
     if (b.start_container == b.end_container and b.start_offset == b.end_offset) return "";
     const range = liveRange(internal) orelse return "";
@@ -1138,6 +1138,40 @@ pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
     defer text.deinit(common.ctx.allocator);
     if (text.isEmpty()) return "";
     return instance.ctx.allocator.dupe(u8, text.asSlice());
+}
+
+/// The stringifier's "If the selection is within a textarea or input
+/// element, it must return the selected substring in its value." The
+/// selection is within a text control while one is the document's focused
+/// area: Gecko's getSelection() is then the control's own selection
+/// (PresShell::GetLastFocusedFrameSelection), Blink's reads the control's
+/// inner editor. "Its value" is the text the control shows, unsanitized
+/// (the-input-element/email-set-value.html: all three browsers). Null when
+/// no text control is focused. OWNED by this Selection's allocator.
+fn textControlSelectedText(instance: *runtime.Instance, internal: *const InternalState) !?[]const u8 {
+    const document = associatedDocument(internal) orelse return null;
+    const focused = (interfaces.Document.get_activeElement(document) catch null) orelse return null;
+    const range: [2]u32 = if (dom.form_controls.editorSelection(focused)) |s|
+        .{ s.start, s.end }
+    else if (isHtmlTextArea(focused))
+        .{ try interfaces.HTMLTextAreaElement.get_selectionStart(focused), try interfaces.HTMLTextAreaElement.get_selectionEnd(focused) }
+    else
+        return null;
+    var text = (try dom.form_controls.editorText(focused)) orelse return null;
+    defer text.deinit(focused.ctx.allocator);
+    const value = text.asSlice();
+    const start = infra.wtf8.positionOfCodeUnit(value, range[0]).byte;
+    const end = infra.wtf8.positionOfCodeUnit(value, @max(range[0], range[1])).byte;
+    return try instance.ctx.allocator.dupe(u8, value[start..end]);
+}
+
+fn isHtmlTextArea(element: *runtime.Instance) bool {
+    var name = interfaces.Element.get_localName(element) catch return false;
+    defer name.deinit(element.ctx.allocator);
+    if (!std.mem.eql(u8, name.asSlice(), "textarea")) return false;
+    var namespace = (interfaces.Element.get_namespaceURI(element) catch return false) orelse return false;
+    defer namespace.deinit(element.ctx.allocator);
+    return std.mem.eql(u8, namespace.asSlice(), "http://www.w3.org/1999/xhtml");
 }
 
 /// DOM node length through the owning interfaces: CharacterData length (in

@@ -471,25 +471,159 @@ optgroup {
  font-weight: bolder;
 }
 
-/* 15.5.16 The select element */
+/* 15.5.16 The select element: "when they are being rendered as a drop-down
+ * box". HTML 15.5.16's conditions are on how the select renders: whether it
+ * is a list box or a drop-down box (:-internal-list-box, UA sheets only:
+ * Blink's :-internal-list-box, WebKit's :-internal-uses-menulist) and its
+ * COMPUTED appearance, which no selector can test:
+ * -internal-auto-base(<native or primitive>, <base>) picks at computed-value
+ * time (UA sheets only: Blink html.css and StyleCascade::ResolveAutoBaseInto,
+ * WebKit html.css and Style::SubstitutionResolver). revert-rule as the
+ * native value leaves the cascade as if the base declaration did not exist. */
 @namespace "http://www.w3.org/1999/xhtml";
 
-select {
+select:not(:-internal-list-box) {
  align-content: center;
 }
 
-/* 15.5.16 The select element */
+/* 15.5.16 The select element: "with native appearance or primitive
+ * appearance". */
 @namespace "http://www.w3.org/1999/xhtml";
 
 select {
- letter-spacing: initial;
- word-spacing: initial;
- line-height: initial;
+ letter-spacing: -internal-auto-base(initial, revert-rule);
+ word-spacing: -internal-auto-base(initial, revert-rule);
+ line-height: -internal-auto-base(initial, revert-rule);
 }
 
-/* 15.5.16 The select element */
+/* 15.5.16 The select element: "as a drop-down box with native appearance or
+ * primitive appearance" (inline-block), "as a drop-down box with base
+ * appearance" (inline-flex); a list box is "expected to render as an
+ * 'inline-block' box" in either. */
 @namespace "http://www.w3.org/1999/xhtml";
 
 select {
  display: inline-block;
+}
+
+select:not(:-internal-list-box) {
+ display: -internal-auto-base(revert-rule, inline-flex);
+}
+
+/* 15.5.16 The select element: "when they are being rendered with base
+ * appearance". text-shadow: Blink and WebKit (html.css: text-shadow:
+ * -internal-auto-base(none, inherit)) do not let 15.3.10's form-control
+ * text-shadow reset apply to a base-appearance select, which inherits it
+ * (select-base-appearance-computed-style.html, Chrome). */
+@namespace "http://www.w3.org/1999/xhtml";
+
+select {
+ background-color: -internal-auto-base(revert-rule, transparent);
+ border: -internal-auto-base(revert-rule, 1px solid currentColor);
+ user-select: -internal-auto-base(revert-rule, none);
+ box-sizing: -internal-auto-base(revert-rule, border-box);
+ text-shadow: -internal-auto-base(revert-rule, inherit);
+}
+
+select option:enabled:hover {
+ background-color: -internal-auto-base(revert-rule, color-mix(currentColor 10%, transparent));
+}
+select option:enabled:active {
+ background-color: -internal-auto-base(revert-rule, color-mix(currentColor 20%, transparent));
+}
+select option:disabled {
+ color: -internal-auto-base(revert-rule, color-mix(currentColor 50%, transparent));
+}
+
+select option {
+ min-inline-size: -internal-auto-base(revert-rule, 24px);
+ min-block-size: -internal-auto-base(revert-rule, max(24px, 1lh));
+ padding-inline: -internal-auto-base(revert-rule, 0.5em);
+ padding-block-end: -internal-auto-base(revert-rule, 0);
+ display: -internal-auto-base(revert-rule, flex);
+ align-items: -internal-auto-base(revert-rule, center);
+ gap: -internal-auto-base(revert-rule, 0.5em);
+ white-space: -internal-auto-base(revert-rule, nowrap);
+}
+
+select option::checkmark {
+ content: -internal-auto-base(revert-rule, '\2713' / '');
+}
+select option:not(:checked)::checkmark {
+ visibility: -internal-auto-base(revert-rule, hidden);
+}
+
+select optgroup option {
+ font-weight: -internal-auto-base(revert-rule, normal);
+}
+
+select optgroup legend {
+ padding-inline: -internal-auto-base(revert-rule, 0.5em);
+ min-block-size: -internal-auto-base(revert-rule, 1lh);
+}
+
+/* 15.5.16 The select element: "as a drop-down box with base appearance".
+ * TODO(css-values-5 calc-size()): the block's min-inline-size
+ * calc-size(auto, max(size, 24px)) and min-block-size calc-size(auto,
+ * max(size, 24px, 1lh)) wait for calc-size(), which Crane does not parse.
+ * The first-child button rule and the picker's own box values apply in
+ * either appearance, as in Blink and WebKit (the button and the picker are
+ * not rendered with native appearance); the picker's color, which its
+ * slotted options inherit, is the base appearance's only. */
+@namespace "http://www.w3.org/1999/xhtml";
+
+select:not(:-internal-list-box) {
+ border-radius: -internal-auto-base(revert-rule, 0.5em);
+ padding-block: -internal-auto-base(revert-rule, 0.25em);
+ padding-inline: -internal-auto-base(revert-rule, 0.5em);
+ gap: -internal-auto-base(revert-rule, 0.5em);
+ field-sizing: -internal-auto-base(revert-rule, content) !important;
+}
+
+select:not(:-internal-list-box) > button:first-child {
+ all: unset;
+ display: contents;
+}
+
+select:not(:-internal-list-box):enabled:hover {
+ background-color: -internal-auto-base(revert-rule, color-mix(currentColor 10%, transparent));
+}
+select:not(:-internal-list-box):enabled:active {
+ background-color: -internal-auto-base(revert-rule, color-mix(currentColor 20%, transparent));
+}
+select:not(:-internal-list-box):disabled {
+ color: -internal-auto-base(revert-rule, color-mix(currentColor 50%, transparent));
+}
+
+select:not(:-internal-list-box)::picker(select) {
+ box-sizing: border-box;
+ border: 1px solid;
+ padding: 0;
+ color: -internal-auto-base(inherit, CanvasText);
+ background-color: Canvas;
+ margin: 0;
+ inset: auto;
+ min-inline-size: anchor-size(self-inline);
+ max-block-size: stretch;
+ overflow: auto;
+ position-area: self-block-end span-self-inline-end;
+ position-try-order: most-block-size;
+ position-try-fallbacks:
+ self-block-start span-self-inline-end,
+ self-block-end span-self-inline-start,
+ self-block-start span-self-inline-start;
+}
+
+select:not(:-internal-list-box)::picker-icon {
+ content: -internal-auto-base(revert-rule, counter(fake-counter-name, disclosure-open));
+ display: block;
+ margin-inline-start: auto;
+}
+
+/* 15.5.16 The select element: "as a list box with base appearance". */
+@namespace "http://www.w3.org/1999/xhtml";
+
+select:-internal-list-box {
+ overflow: -internal-auto-base(revert-rule, auto);
+ block-size: -internal-auto-base(revert-rule, calc(max(24px, 1lh) * attr(size type(<integer>), 4)));
 }

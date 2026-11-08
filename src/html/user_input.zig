@@ -846,6 +846,11 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
             }
             return;
         }
+        if (!modifiers.ctrl and !modifiers.alt and !modifiers.meta and (isKey(key, "ArrowLeft") or isKey(key, "ArrowRight"))) {
+            if (form_associated.isDisabled(target)) return;
+            moveTextControlByCharacter(target, isKey(key, "ArrowRight"), modifiers.shift);
+            return;
+        }
         if (!isMutable(target)) return;
         if (key.text) |text| {
             if (!modifiers.ctrl and !modifiers.meta) insertText(target, kind, text, "insertText");
@@ -1023,9 +1028,50 @@ fn selectionOf(element: *Instance) ?[2]u32 {
         const end = interfaces.HTMLTextAreaElement.get_selectionEnd(element) catch return null;
         return .{ start, end };
     }
-    const start = (interfaces.HTMLInputElement.get_selectionStart(element) catch return null) orelse return null;
-    const end = (interfaces.HTMLInputElement.get_selectionEnd(element) catch return null) orelse return null;
-    return .{ start, end };
+    // An email or number input has no selection APIs but still a text
+    // control selection (its caret): the input's own, through its hook.
+    const selection = dom.form_controls.editorSelection(element) orelse return null;
+    return .{ selection.start, selection.end };
+}
+
+/// ArrowLeft / ArrowRight in a text control, without Ctrl, Alt or Meta: a
+/// selection collapses to its start (left) or end (right); a caret moves one
+/// grapheme cluster (Blink and WebKit move by character granularity, a
+/// grapheme cluster); with Shift the focus end moves instead, the anchor
+/// staying. Logical direction: the visual order of bidirectional text needs
+/// the layout backend. An input's text control selection only (its hook):
+/// TODO(textarea): a textarea's caret moves need the same hook from
+/// HTMLTextAreaElement (its setSelectionRange would also fire select).
+fn moveTextControlByCharacter(target: *Instance, forward: bool, extend: bool) void {
+    const selection = dom.form_controls.editorSelection(target) orelse return;
+    var value = getValue(target) orelse return;
+    defer value.deinit(target.ctx.allocator);
+    const text = value.asSlice();
+    const anchor = if (selection.backward) selection.end else selection.start;
+    const caret = if (selection.backward) selection.start else selection.end;
+    var next: u32 = undefined;
+    if (!extend and selection.start != selection.end) {
+        next = if (forward) selection.end else selection.start;
+    } else {
+        next = graphemeBoundary(text, caret, forward);
+    }
+    const start = if (extend) @min(anchor, next) else next;
+    const end = if (extend) @max(anchor, next) else next;
+    dom.form_controls.setEditorSelection(target, .{ .start = start, .end = end, .backward = extend and next < anchor });
+}
+
+/// The grapheme cluster boundary before (or after) UTF-16 offset `offset` of
+/// `text` (intl's UAX #29 iterator); the offset itself at either end.
+fn graphemeBoundary(text: []const u8, offset: u32, forward: bool) u32 {
+    var iterator = @import("intl").segmenter.GraphemeIterator.init(text);
+    var at: u32 = 0;
+    while (iterator.next()) |cluster| {
+        const after = at + form_associated.utf16Length(cluster);
+        if (forward and after > offset) return after;
+        if (!forward and after >= offset) return at;
+        at = after;
+    }
+    return if (forward) at else @min(offset, at);
 }
 
 fn isWordModifier(platform: []const u8, modifiers: Modifiers) bool {
@@ -1141,6 +1187,14 @@ fn insertText(target: *Instance, kind: TextControl, text_in: []const u8, input_t
         const length = form_associated.utf16Length(current);
         break :blk .{ length, length };
     };
+    // A number input takes only what keeps it a number in the making.
+    var filtered: std.ArrayList(u8) = .empty;
+    defer filtered.deinit(target.ctx.allocator);
+    if (isNumberInput(target)) {
+        filterNumberText(target.ctx.allocator, current, selection, text, &filtered) catch return;
+        text = filtered.items;
+        if (text.len == 0) return;
+    }
     // HTML 4.10.18.2: "the user agent must prevent the user from" making the
     // value's length exceed the maximum allowed value length.
     if (maxLengthOf(target)) |max| {
@@ -1164,6 +1218,92 @@ fn insertText(target: *Instance, kind: TextControl, text_in: []const u8, input_t
         }
     }
     _ = fireInputEvent(target, "input", input_type, if (std.mem.eql(u8, input_type, "insertText")) text else null);
+}
+
+/// execCommand("insertText" / "insertHTML") while `document`'s focused area
+/// is a text control: the text goes into the control at its selection, as
+/// typed text does (beforeinput, the maxlength cut, input). The Editing spec's
+/// commands act on editing hosts and do not cover text controls; Chrome and
+/// Safari run these two in the control's own editor (Blink's inner editor in
+/// the control's UA shadow tree, WebKit's the same):
+/// constraints/input-maxlength-emoji.html, where Firefox fails as Crane did.
+/// Null when no mutable text control is focused (the editing-host path then
+/// runs); otherwise whether the command ran.
+pub fn execInsertIntoTextControl(document: *Instance, text: []const u8, input_type: []const u8) ?bool {
+    const focused = (interfaces.Document.get_activeElement(document) catch return null) orelse return null;
+    const kind = textControlKind(focused);
+    if (kind == .none) return null;
+    if (!isMutable(focused)) return false;
+    // A text control holds no line breaks but a textarea's.
+    insertText(focused, kind, text, input_type);
+    return true;
+}
+
+fn isNumberInput(element: *Instance) bool {
+    if (!form_associated.isInput(element)) return false;
+    var buffer: [16]u8 = undefined;
+    return std.mem.eql(u8, form_associated.inputType(element, &buffer), "number");
+}
+
+fn isSign(c: u8) bool {
+    return c == '+' or c == '-';
+}
+
+fn isE(c: u8) bool {
+    return c == 'e' or c == 'E';
+}
+
+/// Typing into a number input (HTML 4.10.5.1.12: "User agents must not
+/// allow the user to set the value to a non-empty string that is not a valid
+/// floating-point number"): the characters of `text` that may stand, given
+/// the editor text `current` and the selection the insertion replaces.
+/// Blink NumberInputType::FilterBeforeTextInserted, one character at a time;
+/// WebKit NumberInputType::handleBeforeTextInsertedEvent applies the same
+/// rules (the-input-element/number-invalid-scientific-key-events.html: Chrome
+/// and Safari 4/4). Where WebKit refuses more (a sign in the middle without an
+/// 'e'; an 'e' after a leading '+'), Chrome and Firefox (no filter) accept:
+/// the majority, so Blink's set. Full-width digit normalization is not done.
+fn filterNumberText(allocator: std.mem.Allocator, current: []const u8, selection: [2]u32, text: []const u8, out: *std.ArrayList(u8)) !void {
+    // Left and right of the replaced selection.
+    var left: std.ArrayList(u8) = .empty;
+    defer left.deinit(allocator);
+    try left.appendSlice(allocator, current[0..form_associated.byteOffsetOfUtf16(current, selection[0])]);
+    const right = current[form_associated.byteOffsetOfUtf16(current, selection[1])..];
+    for (text) |c| {
+        // StripInvalidNumberCharacters(text, "0123456789.Ee-+").
+        if (!(std.ascii.isDigit(c) or c == '.' or isE(c) or isSign(c))) continue;
+        const l = left.items;
+        if (c == '.') {
+            // Another decimal point; an 'e' before the caret; a sign after
+            // the caret that does not follow an 'e'.
+            if (std.mem.indexOfScalar(u8, l, '.') != null or std.mem.indexOfScalar(u8, right, '.') != null or
+                std.mem.indexOfAny(u8, l, "eE") != null or signNotAfterE(right)) continue;
+        } else if (isE(c)) {
+            // Another 'e'; a decimal point after the caret.
+            if (std.mem.indexOfAny(u8, l, "eE") != null or std.mem.indexOfAny(u8, right, "eE") != null or
+                std.mem.indexOfScalar(u8, right, '.') != null) continue;
+        } else if (isSign(c)) {
+            // Two signs already; with an 'e', the caret neither at the start
+            // nor just after the 'e'; a sign right after the caret; a
+            // leading '+' with an 'e'.
+            const signs = std.mem.count(u8, l, "+") + std.mem.count(u8, l, "-") + std.mem.count(u8, right, "+") + std.mem.count(u8, right, "-");
+            const has_e = std.mem.indexOfAny(u8, l, "eE") != null or std.mem.indexOfAny(u8, right, "eE") != null;
+            if (signs >= 2 or (has_e and !(l.len == 0 or isE(l[l.len - 1]))) or
+                (right.len != 0 and isSign(right[0])) or (c == '+' and has_e and l.len == 0)) continue;
+        } else {
+            // A digit before a leading sign; a digit between an 'e' and its sign.
+            if ((l.len == 0 and right.len != 0 and isSign(right[0])) or
+                (l.len != 0 and isE(l[l.len - 1]) and right.len != 0 and isSign(right[0]))) continue;
+        }
+        try left.append(allocator, c);
+        try out.append(allocator, c);
+    }
+}
+
+/// Blink's HasSignNotAfterE: the first sign of `text` is not just after an 'e'.
+fn signNotAfterE(text: []const u8) bool {
+    for (text, 0..) |c, i| if (isSign(c)) return i == 0 or !isE(text[i - 1]);
+    return false;
 }
 
 const DeleteDirection = enum { backward, forward };

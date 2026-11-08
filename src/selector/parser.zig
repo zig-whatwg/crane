@@ -564,6 +564,10 @@ pub const PseudoClassKind = union(enum) {
     Open,
     PopoverOpen,
     Modal,
+    /// A UA style sheet's `:-internal-list-box`: a select element rendered
+    /// as a list box (HTML 15.5.16; Blink's :-internal-list-box, WebKit's
+    /// :not(:-internal-uses-menulist)). Never parsed in author style.
+    InternalListBox,
     Playing,
     Paused,
     Seeking,
@@ -676,6 +680,10 @@ pub const ParseOptions = struct {
     namespaces: ?NamespaceResolver = null,
     /// Nearest style/scope ancestor, ignoring intervening group rules.
     nesting: ?NestingContext = null,
+    /// A UA style sheet's selector: it may use the UA-only pseudo-classes
+    /// (:-internal-list-box), as Blink's CSSSelectorParser allows its
+    /// -internal- pseudo-classes only in UA sheet mode.
+    user_agent: bool = false,
 };
 
 pub fn parseWithOptions(allocator: Allocator, source: []const u8, options: ParseOptions) ParserError!SelectorList {
@@ -705,6 +713,7 @@ fn parseWithMode(allocator: Allocator, source: []const u8, options: ParseOptions
     defer parser.deinit();
     parser.namespaces = options.namespaces;
     parser.nesting = options.nesting;
+    parser.user_agent = options.user_agent;
     parser.support_check = support_check;
     return parser.parse();
 }
@@ -728,6 +737,7 @@ pub fn parseCssomOwned(allocator: Allocator, source: []u8, options: ParseOptions
     defer rewrites.deinit(scratch);
     parser.namespaces = options.namespaces;
     parser.nesting = options.nesting;
+    parser.user_agent = options.user_agent;
     parser.anb_rewrites = &rewrites;
     parser.preserve_nesting = true;
     var list = try parser.parse();
@@ -859,6 +869,8 @@ pub const Parser = struct {
     support_check: bool = false,
     nesting: ?NestingContext = null,
     preserve_nesting: bool = false,
+    /// ParseOptions.user_agent.
+    user_agent: bool = false,
     /// Present only for CSSOM: successful An+B spans, never a failed branch.
     anb_rewrites: ?*std.ArrayList(AnBRewrite) = null,
 
@@ -1411,6 +1423,8 @@ pub const Parser = struct {
                     if (std.ascii.eqlIgnoreCase(name, legacy)) return .{ .PseudoElement = .{ .name = legacy } };
                 }
                 const kind = simplePseudoClass(name) orelse return error.InvalidSelector;
+                // The UA-only pseudo-classes are unknown to author style.
+                if (kind == .InternalListBox and !self.user_agent) return error.InvalidSelector;
                 if (after_pseudo_element) |pseudo| if (!allowedAfterPseudoElement(pseudo, kind)) return error.InvalidSelector;
                 return .{ .PseudoClass = .{ .kind = kind } };
             },
@@ -1462,7 +1476,7 @@ pub const Parser = struct {
             .{ "stalled", .Stalled },                    .{ "muted", .Muted },
             .{ "volume-locked", .VolumeLocked },         .{ "heading", .{ .Heading = 0b111111 } },
             .{ "target", .Target },                      .{ "defined", .Defined },
-            .{ "host", .{ .Host = null } },
+            .{ "host", .{ .Host = null } },              .{ "-internal-list-box", .InternalListBox },
         };
         for (table) |entry| {
             if (std.ascii.eqlIgnoreCase(name, entry[0])) return entry[1];

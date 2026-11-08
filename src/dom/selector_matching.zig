@@ -552,6 +552,22 @@ fn readsVolatileState(kind: PseudoClassKind, data: *const ElementData) bool {
     };
 }
 
+/// HTML 4.10.7 / 15.5.16: an HTML select renders as a list box when it has
+/// the `multiple` attribute or a display size above 1, and as a drop-down
+/// box otherwise (Blink HTMLSelectElement::UsesMenuList). The display size
+/// is the size attribute's non-negative integer, 1 when it does not parse.
+pub const SelectKind = enum { none, drop_down, list_box };
+
+pub fn selectKindOf(data: *const ElementData) SelectKind {
+    if (!std.mem.eql(u8, data.local_name.asSlice(), "select") or !namespaceIs(data, html_namespace)) return .none;
+    if (data.findAttribute(null, "multiple") != null) return .list_box;
+    if (data.findAttribute(null, "size")) |size| {
+        const n = std.fmt.parseInt(u32, std.mem.trim(u8, size.value, " \t\n\r\x0c"), 10) catch 0;
+        if (n > 1) return .list_box;
+    }
+    return .drop_down;
+}
+
 fn isFormish(local: []const u8) bool {
     for ([_][]const u8{ "input", "select", "textarea", "button", "option", "optgroup", "fieldset", "form", "output", "object", "progress", "meter", "datalist" }) |name| {
         if (std.mem.eql(u8, local, name)) return true;
@@ -1099,6 +1115,8 @@ const Matcher = struct {
             .Muted => html_pseudo_classes.matches(element, .muted),
             .VolumeLocked => html_pseudo_classes.matches(element, .volume_locked),
             .Heading => |levels| html_pseudo_classes.matches(element, .{ .heading = levels }),
+            // The UA sheet's :-internal-list-box (HTML 15.5.16).
+            .InternalListBox => selectKindOf(data) == .list_box,
         };
     }
 

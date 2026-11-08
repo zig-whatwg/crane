@@ -1136,28 +1136,48 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
         parent_volatile = cached.@"volatile";
         parent_serial = cached.serial;
         parent_rendered = cached.rendered;
+        // HTML 15.5.16: a drop-down select's shadow tree puts its children
+        // - all but a first-child <button>, which the select button slot
+        // takes - in the select popover slot inside the select popover,
+        // ::picker(select). So they inherit from the picker's style, as in
+        // Blink and WebKit, whose select popover is a real UA shadow element
+        // (Safari's select-picker-exit-animation result, the picker's
+        // colour on the option, shows the same).
+        if (i > 0 and selectKind(e) == .drop_down and !isSelectButton(e, lineage.items[i - 1].node)) {
+            const picker = try pseudoStyle(&res, e, entry.node, state, "picker", &animation_reader, &generation);
+            parent_style = picker.style;
+            parent_volatile = picker.@"volatile";
+            parent_serial = picker.serial;
+            parent_rendered = picker.rendered;
+        }
     }
     const state = element_style.existingOf(element) orelse return null;
     const own = state.cached orelse return null;
     const p = pseudo orelse return own.style;
     if (!hasPseudoElement(element, p)) return null;
+    return (try pseudoStyle(&res, element, node, state, p, &animation_reader, &generation)).style;
+}
 
-    // A pseudo-element's style inherits from its originating element's.
-    // H-R3-ENGINE-KEY.
+/// The cached style of `element`'s pseudo-element `p`, resolved again when
+/// stale. A pseudo-element's style inherits from its originating element's
+/// (`state.cached`, already current). H-R3-ENGINE-KEY.
+fn pseudoStyle(res: *Resolution, element: *runtime.Instance, node: *NodeBase, state: *ElementStyle, p: []const u8, animation_reader: *animations.effect_stack.Reader, generation: *?u64) Error!*const element_style.Cached {
+    const own = state.cached.?;
     const pseudo_animated = animation_reader.component(element, p);
     if (state.pseudoCached(p)) |cached| {
-        if (!cached.cached.@"volatile" and !own.@"volatile" and cached.cached.key.eql(res.key) and cached.cached.animations == pseudo_animated and cached.cached.parent_serial == own.serial) return cached.cached.style;
+        if (!cached.cached.@"volatile" and !own.@"volatile" and cached.cached.key.eql(res.key) and cached.cached.animations == pseudo_animated and cached.cached.parent_serial == own.serial) return &cached.cached;
     }
     var reads: selector_matching.StateReads = .{};
     const previous: ?element_style.Cached = if (state.pseudoCached(p)) |cached| cached.cached else null;
-    const resolved = try resolveOne(&res, element, node, state, p, own.style, false, &reads, .{
+    const resolved = try resolveOne(res, element, node, state, p, own.style, false, &reads, .{
         .event = styleChangeEvent(previous, res.key, own.@"volatile"),
         .parent_rendered = own.rendered,
-        .generation = &generation,
+        .generation = generation,
     });
+    if (resolved.transitions_changed) animation_reader.* = animations.effect_stack.reader(element);
     const component = if (resolved.transitions_changed) animations.effect_stack.component(element, p) else pseudo_animated;
     try state.setPseudoCached(p, .{ .style = resolved.style, .base = resolved.base, .key = res.key, .@"volatile" = reads.@"volatile" or own.@"volatile", .animations = component, .serial = animations.effect_stack.nextStyleSerial(element), .parent_serial = own.serial, .rendered = resolved.rendered });
-    return state.pseudoCached(p).?.cached.style;
+    return &state.pseudoCached(p).?.cached;
 }
 
 /// Whether the author origin - the document's and its shadow trees' style
@@ -1210,14 +1230,39 @@ pub fn authorDeclares(element: *runtime.Instance, names: []const []const u8) Err
 /// (customizable-select/select-picker-pseudo-box-type.html).
 fn hasPseudoElement(element: *runtime.Instance, name: []const u8) bool {
     if (!std.mem.eql(u8, name, "picker")) return true;
-    const data = element_data.of(element) orelse return false;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "select")) return false;
-    if (data.findAttribute(null, "multiple") != null) return false;
-    if (data.findAttribute(null, "size")) |size| {
-        const n = std.fmt.parseInt(u32, std.mem.trim(u8, size.value, " \t\n\r\x0c"), 10) catch 0;
-        if (n > 1) return false;
+    return selectKind(element) == .drop_down;
+}
+
+/// HTML 4.10.7 / 15.5.16: whether `element` is an HTML select rendered as a
+/// drop-down box or a list box (the rule :-internal-list-box matches by).
+fn selectKind(element: *runtime.Instance) selector_matching.SelectKind {
+    const data = element_data.of(element) orelse return .none;
+    return selector_matching.selectKindOf(data);
+}
+
+/// HTML 15.5.16's select button slot: it takes the select's first child
+/// element when that is an HTML button.
+fn isSelectButton(select: *runtime.Instance, child: *NodeBase) bool {
+    const select_node = instance_bridge.getNodeBase(select) orelse return false;
+    var current = select_node.first_child;
+    while (current) |c| : (current = c.next_sibling) {
+        if (c.node_type != NodeBase.ELEMENT_NODE) continue;
+        if (c != child) return false;
+        const e = instanceOf(c) orelse return false;
+        const data = element_data.of(e) orelse return false;
+        return std.mem.eql(u8, data.local_name.asSlice(), "button") and std.mem.eql(u8, data.namespaceSlice() orelse "", html_namespace);
     }
-    return true;
+    return false;
+}
+
+/// What base appearance the element or pseudo-element can have
+/// (css.cascade.AppearanceSupport): a select, and a drop-down select's
+/// ::picker(select).
+fn appearanceSupport(element: *runtime.Instance, pseudo: ?[]const u8) css.cascade.AppearanceSupport {
+    const kind = selectKind(element);
+    if (kind == .none) return .none;
+    const p = pseudo orelse return .select;
+    return if (kind == .drop_down and std.mem.eql(u8, p, "picker")) .picker else .none;
 }
 
 const LineageEntry = struct {
@@ -1310,6 +1355,8 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .selector_check = &style_rules.selectorSupported,
         // Properties and Values API 1: the registrations; null when none.
         .registered = res.registered,
+        // HTML 15.5.16: a select and its picker support base appearance.
+        .appearance_support = appearanceSupport(element, pseudo),
     };
     const base = try css.cascade.cascade(ctx, res.matched.items);
     errdefer base.destroy();

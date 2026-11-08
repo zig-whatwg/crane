@@ -35,6 +35,12 @@ pub const Control = struct {
     user_edit: ?*const fn (element: *runtime.Instance, edit: UserEdit) anyerror!void = null,
     /// Owned with element.ctx.allocator; the caller must deinit the result.
     editor_text: ?*const fn (element: *runtime.Instance) anyerror!runtime.DOMString = null,
+    /// The text control selection over the editor text, in UTF-16 code
+    /// units - also for an input whose selection APIs do not apply (email,
+    /// number: HTML 4.10.5.2.10), which still has one (select() "must cause
+    /// the contents of the text control to be fully selected").
+    editor_selection: ?*const fn (element: *runtime.Instance) ?EditorSelection = null,
+    set_editor_selection: ?*const fn (element: *runtime.Instance, selection: EditorSelection) void = null,
     has_range_limitations: ?*const fn (element: *runtime.Instance) bool = null,
     selected_index: ?*const fn (select: *runtime.Instance) anyerror!?usize = null,
     set_selected_index: ?*const fn (select: *runtime.Instance, index: ?usize) anyerror!void = null,
@@ -127,6 +133,26 @@ pub fn editorText(element: *runtime.Instance) anyerror!?runtime.DOMString {
         if (control.editor_text) |read| if (control.is(element)) return try read(element);
     }
     return null;
+}
+
+/// A text control selection: start and end in UTF-16 code units of the
+/// editor text, and whether the focus is at the start (backward).
+pub const EditorSelection = struct { start: u32, end: u32, backward: bool = false };
+
+/// The control's text control selection (Control.editor_selection), or null
+/// for an element without one.
+pub fn editorSelection(element: *runtime.Instance) ?EditorSelection {
+    for (controls.read().slice()) |control| {
+        if (control.editor_selection) |read| if (control.is(element)) return read(element);
+    }
+    return null;
+}
+
+/// Set the control's text control selection (a user's caret movement).
+pub fn setEditorSelection(element: *runtime.Instance, selection: EditorSelection) void {
+    for (controls.read().slice()) |control| {
+        if (control.set_editor_selection) |write| if (control.is(element)) return write(element, selection);
+    }
 }
 
 /// HTML: whether the owner defines a minimum or maximum for this control.

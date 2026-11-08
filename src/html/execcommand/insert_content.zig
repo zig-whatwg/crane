@@ -181,7 +181,8 @@ const block_names = [_][]const u8{ "address", "article", "aside", "blockquote", 
 
 /// The text a plaintext-only host takes from `fragment`, LF between lines.
 const TextBuilder = struct {
-    edit: *Edit,
+    /// The scratch allocator the text is built in (an edit's arena).
+    arena: std.mem.Allocator,
     out: std.ArrayList(u8) = .empty,
     /// A line break is owed before the next text (a block boundary).
     pending_break: bool = false,
@@ -193,7 +194,7 @@ const TextBuilder = struct {
     }
 
     fn appendText(self: *TextBuilder, data: []const u8, preformatted: bool) !void {
-        const arena = self.edit.scratchAllocator();
+        const arena = self.arena;
         for (data) |byte| {
             const is_space = byte == ' ' or byte == '\t' or byte == '\n' or byte == '\r' or byte == 0x0c;
             if (!preformatted and is_space) {
@@ -223,7 +224,7 @@ const TextBuilder = struct {
         if (!common.isElement(node) and !common.isDocumentFragment(node)) return;
         if (try common.isHtmlElementIn(node, &skipped_names)) return;
         if (try common.isHtmlElementNamed(node, "br")) {
-            const arena = self.edit.scratchAllocator();
+            const arena = self.arena;
             if (self.out.items.len > 0 and self.out.items[self.out.items.len - 1] == ' ') self.out.items.len -= 1;
             try self.out.append(arena, '\n');
             self.last_space = true;
@@ -244,12 +245,24 @@ const TextBuilder = struct {
     }
 };
 
+/// The text a plaintext-only host takes from `markup` parsed as
+/// createContextualFragment does on a range in `node` (an inert fragment):
+/// what insertHTML puts into a focused text control (root.execCommand).
+/// Allocated in `arena`.
+pub fn plainTextOf(node: *Instance, markup: []const u8, arena: std.mem.Allocator) ![]const u8 {
+    const fragment = try contextualFragment(node, markup);
+    defer dom.node_creation.destroyUninserted(fragment);
+    var builder: TextBuilder = .{ .arena = arena };
+    try builder.walk(fragment, false);
+    return builder.text();
+}
+
 /// Replace `fragment`'s children with the text a plaintext-only host takes
 /// from them: a Text node per line, joined by <br> where the host's
 /// white-space collapses line feeds, one Text node with LFs where it keeps
 /// them.
 fn replaceWithText(edit: *Edit, fragment: *Instance, start_node: *Instance) !void {
-    var builder: TextBuilder = .{ .edit = edit };
+    var builder: TextBuilder = .{ .arena = edit.scratchAllocator() };
     try builder.walk(fragment, false);
     const text = builder.text();
     while (try common.firstChild(fragment)) |child| _ = try interfaces.Node.call_removeChild(fragment, child);

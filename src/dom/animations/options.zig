@@ -280,8 +280,11 @@ pub fn parsePseudoElement(allocator: Allocator, value: ?[]const u8) error{ Synta
         return out;
     };
     // 2. The pseudo-elements Crane's selectors support and that can be an
-    // effect target (Blink's and Gecko's animatable pseudo-elements).
-    const supported = [_][]const u8{ "::before", "::after", "::marker", "::first-letter", "::first-line", "::placeholder", "::selection", "::backdrop", "::file-selector-button" };
+    // effect target (Blink's and Gecko's animatable pseudo-elements). CSS
+    // Forms 1's ::checkmark and ::picker-icon: Chrome animates both, Safari
+    // accepts both (customizable-select/checkmark-animation.html,
+    // picker-icon-animation.html).
+    const supported = [_][]const u8{ "::before", "::after", "::marker", "::first-letter", "::first-line", "::placeholder", "::selection", "::backdrop", "::file-selector-button", "::checkmark", "::picker-icon" };
     for (supported) |name| if (std.ascii.eqlIgnoreCase(text, name)) {
         const out = try allocator.dupe(u8, name);
         return out;

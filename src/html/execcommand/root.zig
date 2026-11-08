@@ -315,6 +315,17 @@ fn insertParagraphAction(edit: *Edit) anyerror!bool {
 pub fn execCommand(document: *Instance, command: Command, value: []const u8) bool {
     var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
     defer arena.deinit();
+    // A focused text control takes insertText and insertHTML into its own
+    // editor (user_input.execInsertIntoTextControl: Chrome and Safari);
+    // insertHTML inserts the markup's plain text, as into a plaintext-only
+    // host (Blink's inner editor is one).
+    if (command == .insert_text or command == .insert_html) {
+        const text = if (command == .insert_html)
+            (insert_content.plainTextOf(document, value, arena.allocator()) catch return false)
+        else
+            value;
+        if (@import("../user_input.zig").execInsertIntoTextControl(document, text, command.inputType())) |ran| return ran;
+    }
     var edit = (beginEdit(document, arena.allocator()) catch return false) orelse return false;
     // Step 3: not enabled -> false.
     if (!(isEnabledIn(&edit, command) catch false)) return false;
