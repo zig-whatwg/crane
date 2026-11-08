@@ -1795,31 +1795,31 @@ fn ensureGlobalRegistry(instance: *runtime.Instance) !*runtime.Instance {
     return registry;
 }
 
-/// Getter for fullscreenElement
-/// Fullscreen API - Returns the current fullscreen element
+/// Getter for fullscreenElement (Fullscreen, "the fullscreenElement getter
+/// steps"): the fullscreen element retargeted against this document, if in
+/// its tree - an element inside a shadow tree reads as its host
+/// (dom.designated_elements).
 /// Spec: https://fullscreen.spec.whatwg.org/#dom-document-fullscreenelement
-/// Returns the element in this document that is currently in fullscreen mode, or null.
 pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const rare = internal.rareData() orelse return null;
-    return rare.fullscreen_element;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return @import("dom").designated_elements.of(instance, .fullscreen);
 }
 
-/// Getter for pictureInPictureElement
-/// Returns the element in this document that is currently in picture-in-picture mode, or null.
+/// Getter for pictureInPictureElement (Picture-in-Picture 4.3): the
+/// Picture-in-Picture element retargeted against this document, if in its
+/// tree (dom.designated_elements).
 pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const rare = internal.rareData() orelse return null;
-    return rare.picture_in_picture_element;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return @import("dom").designated_elements.of(instance, .picture_in_picture);
 }
 
-/// Getter for pointerLockElement
-/// Pointer Lock API - Returns the element that has pointer lock, or null.
+/// Getter for pointerLockElement (Pointer Lock 2.0): the element in pointer
+/// lock retargeted against this document, if in its tree
+/// (dom.designated_elements).
 /// Spec: https://w3c.github.io/pointerlock/#dom-documentorshadowroot-pointerlockelement
 pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const rare = internal.rareData() orelse return null;
-    return rare.pointer_lock_element;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return @import("dom").designated_elements.of(instance, .pointer_lock);
 }
 
 /// Getter for styleSheets: "a StyleSheetList collection representing the

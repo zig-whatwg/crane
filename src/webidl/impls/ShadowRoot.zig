@@ -69,17 +69,11 @@ pub const InternalState = struct {
     /// through `get()`: a registry whose keeper went reads null (CE2-M2).
     registry_edge: @import("dom").custom_elements.RegistryAssociation = .{},
 
-    /// Fullscreen element (from DocumentOrShadowRoot mixin)
-    fullscreen_element: ?*runtime.Instance,
-
-    /// Active element (from DocumentOrShadowRoot mixin)
-    active_element: ?*runtime.Instance,
-
-    /// Picture-in-picture element (from DocumentOrShadowRoot mixin)
-    picture_in_picture_element: ?*runtime.Instance,
-
-    /// Pointer lock element (from DocumentOrShadowRoot mixin)
-    pointer_lock_element: ?*runtime.Instance,
+    // No fullscreen, active, Picture-in-Picture or pointer lock element of
+    // its own (lane perf2 batch 8: 32 B a shadow root, never set): each getter
+    // retargets its node document's element against this
+    // (dom.designated_elements; activeElement, the focused area's anchor,
+    // html.focus).
 
     /// StyleSheetList (from DocumentOrShadowRoot mixin), and its keeping:
     /// see same_object.KeptChild.
@@ -110,10 +104,6 @@ pub const InternalState = struct {
             .declarative_flag = false,
             .keep_custom_element_registry_null = false,
             .host = null,
-            .fullscreen_element = null,
-            .active_element = null,
-            .picture_in_picture_element = null,
-            .pointer_lock_element = null,
             .style_sheets = null,
             .adopted_style_sheets = @import("dom").style.adopted.AdoptedSheets.init(allocator),
             .tree_index = @import("dom").tree_ordered_map.Maps.init(allocator, .shadow_root),
@@ -402,25 +392,26 @@ pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime
     return internal.registry_edge.get();
 }
 
-/// DocumentOrShadowRoot.fullscreenElement getter
-/// Returns the element in this shadow tree that is currently in fullscreen mode, or null.
+/// DocumentOrShadowRoot.fullscreenElement (Fullscreen, "the fullscreenElement
+/// getter steps"): null while this root's host is not connected, else the
+/// document's fullscreen element retargeted against this, if in this tree.
 pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.fullscreen_element;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return @import("dom").designated_elements.of(instance, .fullscreen);
 }
 
-/// DocumentOrShadowRoot.pictureInPictureElement getter
-/// Returns the element in this shadow tree that is currently in picture-in-picture mode, or null.
+/// DocumentOrShadowRoot.pictureInPictureElement (Picture-in-Picture 4.3):
+/// the fullscreen steps over the document's Picture-in-Picture element.
 pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.picture_in_picture_element;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return @import("dom").designated_elements.of(instance, .picture_in_picture);
 }
 
-/// DocumentOrShadowRoot.pointerLockElement getter
-/// Returns the element in this shadow tree that has pointer lock, or null.
+/// DocumentOrShadowRoot.pointerLockElement (Pointer Lock 2.0): the element in
+/// pointer lock retargeted against this, if the two are in the same tree.
 pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.pointer_lock_element;
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    return @import("dom").designated_elements.of(instance, .pointer_lock);
 }
 
 /// DocumentOrShadowRoot.styleSheets getter: "a StyleSheetList collection
