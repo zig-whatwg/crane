@@ -148,7 +148,13 @@ test "a start that asks for other flags than V8 started with is told so, and V8 
 fn memoryProtectionKeysAvailable() bool {
     if (builtin.os.tag != .linux or builtin.cpu.arch != .x86_64) return false;
     const io = std.testing.io;
-    const cpuinfo = std.Io.Dir.cwd().readFileAlloc(io, "/proc/cpuinfo", std.testing.allocator, .limited(4 << 20)) catch return false;
+    // Read as a stream: /proc/cpuinfo's size is 0, and a positional read of
+    // it (readFileAlloc) found nothing on server1 (lane linux1).
+    const file = std.Io.Dir.cwd().openFile(io, "/proc/cpuinfo", .{}) catch return false;
+    defer file.close(io);
+    var buffer: [4096]u8 = undefined;
+    var reader = file.readerStreaming(io, &buffer);
+    const cpuinfo = reader.interface.allocRemaining(std.testing.allocator, .limited(4 << 20)) catch return false;
     defer std.testing.allocator.free(cpuinfo);
     var flags = std.mem.tokenizeAny(u8, cpuinfo, " \t\n");
     while (flags.next()) |flag| if (std.mem.eql(u8, flag, "ospke")) return true;
