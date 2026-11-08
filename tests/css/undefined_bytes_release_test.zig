@@ -14,7 +14,15 @@
 //! releasing a ray position that was 0xAAAA...).
 //!
 //! Each test here fills the stack its subject will run on with 0xAA first,
-//! so the payload a failure leaves behind is poison on every platform.
+//! so the payload a failure leaves behind is poison.
+//!
+//! Where it reds (lane linux1 b2, 2026-11-08, with the fixes of 70d8cea0e3e
+//! reverted): on x86-64 Linux (server1, Debug) both tests fail - "General
+//! protection exception" for the ray() path, "index out of bounds: index
+//! 170, len 2" for the arc - as do ci1_shape_arc_math (3 tests) and
+//! fm1_motion (2). On arm64 macOS (chat.local, Debug) both still pass (why
+//! not measured). So they guard the fixes only where the pool's Linux host
+//! runs them.
 
 const std = @import("std");
 const css = @import("css");
