@@ -1,6 +1,6 @@
 //! The certificates TLS connections verify against (kit/curl's trust store,
 //! src/platform/kit/curl/trust.zig): the platform's system roots parsed once
-//! per process, a Browser's extra anchors beside them, and no CA file or CA
+//! per Browser, its extra anchors beside them, and no CA file or CA
 //! directory of curl's own - which curl's mbedTLS backend parsed again for
 //! every connection (lib/vtls/mbedtls.c mbed_connect_step1), ~100 ms of CPU
 //! per HTTPS connection on x86-64 Linux, where a native build compiled in
@@ -42,23 +42,26 @@ test "curl loads no CA bundle or CA directory of its own: a connection verifies 
     try testing.expectEqual(@as(c_uint, curl.c.CURLOPT_SSL_CTX_DATA), kit_curl.options.CURLOPT_SSL_CTX_DATA);
 }
 
-fn systemBundle() ?[]const u8 {
-    for (trust.system_bundles) |path| {
-        std.Io.Dir.cwd().access(testing.io, path, .{}) catch continue;
-        return path;
-    }
-    return null;
-}
-
-test "the system root store is parsed once per process, however many connections ask for it" {
+test "a Browser's system roots are parsed once, however many of its connections ask" {
     if (!trust.enabled) return error.SkipZigTest;
-    const first = trust.chainFor(null);
-    const parsed = trust.parseCount();
-    for (0..30) |_| try testing.expectEqual(first, trust.chainFor(null));
-    try testing.expectEqual(parsed, trust.parseCount());
+    var store = trust.Store.init(testing.allocator);
+    defer store.deinit();
+    const first = store.chainFor(null);
+    for (0..30) |_| try testing.expectEqual(first, store.chainFor(null));
+    try testing.expectEqual(@as(u32, 1), store.parseCount());
     // A platform with a bundle file trusts its roots; one without (iOS)
     // trusts none on its own.
-    if (systemBundle() != null) try testing.expect(trust.count(first.?) > 10) else try testing.expectEqual(@as(?*trust.Chain, null), first);
+    if (trust.systemBundle() != null) try testing.expect(trust.count(first.?) > 10) else try testing.expectEqual(@as(?*trust.Chain, null), first);
+}
+
+test "a Browser's network context hands every request and handshake its one trust store" {
+    var network = fetch.network.NetworkContext.init(testing.allocator);
+    defer network.deinit();
+    try network.configure(.{ .ca_bundle_path = fixture_ca });
+    const first = network.certOptions();
+    try testing.expectEqualStrings(fixture_ca, first.ca_bundle_path.?);
+    try testing.expect(first.trust != null);
+    try testing.expectEqual(first.trust, network.certOptions().trust);
 }
 
 /// mbedTLS's verdict on the PEM certificate at `path` against `chain`: its
@@ -79,16 +82,19 @@ fn verifyFlags(path: []const u8, chain: *trust.Chain) !u32 {
     return flags;
 }
 
-test "a Browser's extra trust anchors are trusted beside the system roots, and parsed once" {
+test "a Browser's extra trust anchors are trusted beside the system roots" {
     if (!trust.enabled) return error.SkipZigTest;
-    const with_extra = trust.chainFor(fixture_ca) orelse return error.NoChain;
-    const parsed = trust.parseCount();
-    try testing.expectEqual(with_extra, trust.chainFor(fixture_ca).?);
-    try testing.expectEqual(parsed, trust.parseCount());
+    var browser = trust.Store.init(testing.allocator);
+    defer browser.deinit();
+    const with_extra = browser.chainFor(fixture_ca) orelse return error.NoChain;
+    try testing.expectEqual(with_extra, browser.chainFor(fixture_ca).?);
+    try testing.expectEqual(@as(u32, 1), browser.parseCount());
     // The fixture CA's leaf verifies against the Browser's chain...
     try testing.expectEqual(@as(u32, 0), try verifyFlags(fixture_leaf, with_extra));
-    // ...and not against the system roots alone.
-    if (trust.chainFor(null)) |system| {
+    // ...and not against the system roots alone (another Browser's).
+    var other = trust.Store.init(testing.allocator);
+    defer other.deinit();
+    if (other.chainFor(null)) |system| {
         try testing.expect(try verifyFlags(fixture_leaf, system) & @as(u32, trust.mbedtls.MBEDTLS_X509_BADCERT_NOT_TRUSTED) != 0);
         // The system's roots are still in the Browser's chain: one more.
         try testing.expectEqual(trust.count(system) + 1, trust.count(with_extra));

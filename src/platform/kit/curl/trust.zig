@@ -1,24 +1,26 @@
 //! The certificates a TLS connection verifies its server against: the
-//! platform's system root store, parsed once per process, with a Browser's
-//! extra trust anchors (BrowserConfig.ca_bundle_path: the WPT runner's
-//! cacert.pem) - module `kit_curl_share`'s trust store.
+//! platform's system root store with a Browser's extra trust anchors
+//! (BrowserConfig.ca_bundle_path: the WPT runner's cacert.pem), parsed once
+//! per Browser - kit/curl's trust store, held by the Browser's network
+//! context (fetch.network.NetworkContext) and handed to every connection it
+//! makes.
 //!
-//! Chrome loads its root store once per process and gives each network
-//! context its additional trust anchors beside it (net/cert/internal/
-//! system_trust_store.cc; services/cert_verifier's per-NetworkContext
-//! `additional_trust_anchors`). curl's mbedTLS backend instead parses its CA
-//! file and CA directory again for every connection (lib/vtls/mbedtls.c
-//! mbed_connect_step1: mbedtls_x509_crt_parse_file and _parse_path), and a
-//! native Linux build of the bundled curl compiled in both
-//! /etc/ssl/certs/ca-certificates.crt and the 357 entries of /etc/ssl/certs:
-//! ~100 ms of CPU per HTTPS connection on server1 (lane linux1). So curl is
-//! built with no CA file or directory of its own (build.zig, "ca-bundle" and
-//! "ca-path" "none"), and every handle gets a chain from here through curl's
-//! SSL context callback (`attach`, which kit/curl's options set): parsed the
-//! first time a Browser's trust is asked for, kept for the process, read by
-//! every connection on every thread. mbedTLS only reads a trusted chain while
-//! it verifies (x509_crt_verify_chain), so one chain serves concurrent
-//! handshakes, as one mbedtls_ssl_config may serve several contexts.
+//! curl's mbedTLS backend parses its CA file and CA directory again for every
+//! connection (lib/vtls/mbedtls.c mbed_connect_step1:
+//! mbedtls_x509_crt_parse_file and _parse_path), and a native Linux build of
+//! the bundled curl compiled in both /etc/ssl/certs/ca-certificates.crt and
+//! the 357 entries of /etc/ssl/certs: ~100 ms of CPU per HTTPS connection on
+//! server1 (lane linux1). So curl is built with no CA file or directory of
+//! its own (build.zig, "ca-bundle" and "ca-path" "none"), and every handle
+//! gets the Browser's chain through curl's SSL context callback (`attach`,
+//! which kit/curl's options set). Chrome loads its root store once and gives
+//! each network context its additional anchors beside it
+//! (net/cert/internal/system_trust_store.cc; services/cert_verifier's
+//! per-NetworkContext `additional_trust_anchors`); here the system roots are
+//! the Browser's own copy - one parse per Browser instead of one per
+//! handshake, and no state outside an owner. mbedTLS only reads a trusted
+//! chain while it verifies (x509_crt_verify_chain), so one chain serves
+//! every concurrent handshake of the Browser, on any of its threads.
 //!
 //! A system libcurl (-Dsystem-curl) keeps its own CA loading: there the
 //! Browser's extra bundle goes to CURLOPT_CAINFO (options.zig), as before.
@@ -59,53 +61,76 @@ pub const system_bundles: []const []const u8 = switch (builtin.os.tag) {
     else => &.{},
 };
 
-/// One trust: the system roots and the extra bundle at `extra` ("" for none).
-const Entry = struct {
-    extra: []const u8,
-    chain: *Chain,
-};
-
-/// Every trust asked for in this process, by extra bundle path. A process
-/// has one or two (the WPT runner: its cacert.pem; the console: none).
-const Store = struct {
+/// A Browser's trust: the chain, parsed the first time a connection of the
+/// Browser asks for it. OWNED by the Browser's network context, which ends it
+/// after the last connection that could read the chain (its connection share
+/// and every transfer have ended).
+pub const Store = struct {
+    allocator: std.mem.Allocator,
+    /// Guards the parse: the first connection of the Browser to ask makes it,
+    /// on whichever thread; every later one finds it.
     mutex: std.Io.Mutex = .init,
-    entries: std.ArrayList(Entry) = .empty,
-    /// How many chains were parsed: one per distinct extra bundle, ever.
-    parses: std.atomic.Value(u32) = .init(0),
+    tried: bool = false,
+    chain: ?*Chain = null,
+    /// How many times the chain was parsed: once, ever (for tests).
+    parses: u32 = 0,
+
+    pub fn init(allocator: std.mem.Allocator) Store {
+        return .{ .allocator = allocator };
+    }
+
+    /// The chain for the Browser whose extra trust anchors are the PEM
+    /// bundle at `extra_bundle_path` (null: none - the same on every call):
+    /// the system root store, then those. Parsed on the first call, the same
+    /// chain after; lives until `deinit`. Null when nothing at all could be
+    /// parsed - the connection then has no trusted certificate, and a
+    /// verified handshake fails, as it would with no CA file.
+    pub fn chainFor(self: *Store, extra_bundle_path: ?[]const u8) ?*Chain {
+        if (!enabled) return null;
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        if (self.tried) return self.chain;
+        self.tried = true;
+        self.parses += 1;
+        self.chain = parse(self.allocator, extra_bundle_path orelse "");
+        return self.chain;
+    }
+
+    /// How many times the chain was parsed (0 or 1).
+    pub fn parseCount(self: *Store) u32 {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        return self.parses;
+    }
+
+    pub fn deinit(self: *Store) void {
+        if (enabled) {
+            if (self.chain) |chain| {
+                c.mbedtls_x509_crt_free(chain);
+                self.allocator.destroy(chain);
+            }
+        }
+        self.chain = null;
+        self.tried = false;
+    }
 };
 
-// process-wide: the trusted chains every TLS connection of every Browser verifies against, parsed once per distinct extra bundle and never changed after; entries are added under `mutex` and read by connections on any thread only after `chainFor` returned them; held until the process exits, like the system root store a browser loads once.
-var store: Store = .{};
-
-/// The process's own allocations: not any Browser's.
-const allocator = std.heap.page_allocator;
+/// The first of `system_bundles` that exists, for a handle made without a
+/// Browser's trust store (options.zig).
+pub fn systemBundle() ?[]const u8 {
+    // A plain system call on a path: the single-threaded Io (kit/curl
+    // root.zig's futexIo, for the same reason).
+    const io = std.Io.Threaded.global_single_threaded.io();
+    for (system_bundles) |path| {
+        std.Io.Dir.cwd().access(io, path, .{}) catch continue;
+        return path;
+    }
+    return null;
+}
 
 const log = std.log.scoped(.trust_store);
 
-/// The chain for a Browser whose extra trust anchors are the PEM bundle at
-/// `extra_bundle_path` (null: none): the system root store, then those.
-/// Parsed the first time it is asked for in the process, the same chain
-/// after; lives as long as the process. Null when nothing at all could be
-/// parsed - curl then has no trusted certificate, and every verified
-/// handshake fails, as it would with no CA file.
-pub fn chainFor(extra_bundle_path: ?[]const u8) ?*Chain {
-    if (!enabled) return null;
-    const extra = extra_bundle_path orelse "";
-    std.Io.Threaded.mutexLockUncancelable(&store.mutex);
-    defer std.Io.Threaded.mutexUnlock(&store.mutex);
-    for (store.entries.items) |entry| if (std.mem.eql(u8, entry.extra, extra)) return entry.chain;
-    const chain = parse(extra) orelse return null;
-    const key = allocator.dupe(u8, extra) catch return chain;
-    store.entries.append(allocator, .{ .extra = key, .chain = chain }) catch allocator.free(key);
-    return chain;
-}
-
-/// How many chains this process has parsed (one per distinct extra bundle).
-pub fn parseCount() u32 {
-    return store.parses.load(.acquire);
-}
-
-fn parse(extra: []const u8) ?*Chain {
+fn parse(allocator: std.mem.Allocator, extra: []const u8) ?*Chain {
     const chain = allocator.create(Chain) catch return null;
     c.mbedtls_x509_crt_init(chain);
     var parsed = false;
@@ -118,7 +143,6 @@ fn parse(extra: []const u8) ?*Chain {
     if (extra.len != 0) {
         if (parseFile(chain, extra)) parsed = true else log.warn("the extra trust anchors at {s} could not be read; trusting the system's alone", .{extra});
     }
-    _ = store.parses.fetchAdd(1, .acq_rel);
     if (!parsed) {
         c.mbedtls_x509_crt_free(chain);
         allocator.destroy(chain);

@@ -48,6 +48,7 @@ const log = std.log.scoped(.network_context);
 const backend = @import("backend.zig");
 const user_agent = @import("../internal/user_agent.zig");
 const Share = @import("kit_curl_share").Share;
+const TrustStore = @import("kit_curl_share").trust.Store;
 
 pub const CertVerifyOptions = backend.CertVerifyOptions;
 
@@ -64,6 +65,10 @@ pub const NetworkContext = struct {
     share_tried: bool = false,
     /// What `configure` set. OWNED copies.
     tls: CertVerifyOptions = .{},
+    /// The certificates the Browser's connections verify against: the system
+    /// roots and `tls.ca_bundle_path`, parsed the first time a connection asks
+    /// (kit/curl trust.zig) - once for the Browser, not once per handshake.
+    trust: TrustStore,
     /// WebSocket's CONNECTING gate: one holder per host and port.
     connecting: ConnectingGate = .{},
     /// HTTP/1.x connections per destination: at most `max_connections_per_
@@ -135,7 +140,7 @@ pub const NetworkContext = struct {
     };
 
     pub fn init(allocator: Allocator) NetworkContext {
-        return .{ .allocator = allocator, .preflight_cache = .init(allocator), .auth_entries = .init(allocator) };
+        return .{ .allocator = allocator, .preflight_cache = .init(allocator), .auth_entries = .init(allocator), .trust = .init(allocator) };
     }
 
     /// The end, with the Browser's scope - after every transfer of the
@@ -153,6 +158,9 @@ pub const NetworkContext = struct {
         if (self.share) |share| share.destroy();
         self.share = null;
         self.share_tried = false;
+        // After the share closed the connections it kept: no connection of
+        // the Browser reads the chain any more.
+        self.trust.deinit();
         self.connecting.deinit(self.allocator);
         self.slots.deinit(self.allocator);
         if (self.tls.ca_bundle_path) |path| self.allocator.free(path);
@@ -244,8 +252,10 @@ pub const NetworkContext = struct {
     }
 
     /// The certificate options a request of this Browser is verified with.
-    pub fn certOptions(self: *const NetworkContext) CertVerifyOptions {
-        return self.tls;
+    pub fn certOptions(self: *NetworkContext) CertVerifyOptions {
+        var options = self.tls;
+        options.trust = &self.trust;
+        return options;
     }
 
     /// The connection share a transfer of this Browser joins, made on first

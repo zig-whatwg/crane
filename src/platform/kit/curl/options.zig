@@ -11,7 +11,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const trust = @import("trust.zig");
+const trust_store = @import("trust.zig");
 
 /// Declared with the types translate-c gives curl.h's (CURL is void, the
 /// option and the result C enums), so it is the same extern as `fetch`'s
@@ -56,20 +56,31 @@ pub const HandleOptions = struct {
     verify_host: bool = true,
     /// A CA bundle trusted besides the system's (PEM).
     ca_bundle_path: ?[]const u8 = null,
+    /// The Browser's trust store (its network context's): the system roots
+    /// and `ca_bundle_path`, parsed once for the Browser. BORROWED for the
+    /// handle's life. Null - a handle made outside a Browser - trusts the
+    /// system bundle file, or `ca_bundle_path` alone, as curl's CA file.
+    trust: ?*trust_store.Store = null,
 };
 
 /// Apply `options` to the curl easy handle `handle`.
 pub fn apply(handle: *anyopaque, allocator: Allocator, options: HandleOptions) Allocator.Error!void {
     _ = curl_easy_setopt(handle, CURLOPT_SSL_VERIFYPEER, @as(c_long, if (options.verify_peer) 1 else 0));
     _ = curl_easy_setopt(handle, CURLOPT_SSL_VERIFYHOST, @as(c_long, if (options.verify_host) 2 else 0));
-    if (trust.enabled) {
-        // The process's trust store (trust.zig): the system roots, parsed
-        // once, and the Browser's extra bundle, handed to the connection's
-        // mbedTLS configuration before its handshake - curl itself loads no
-        // CA file or directory (build.zig, "ca-bundle"/"ca-path" "none").
-        if (trust.chainFor(options.ca_bundle_path)) |chain| {
-            _ = curl_easy_setopt(handle, CURLOPT_SSL_CTX_FUNCTION, @as(*const anyopaque, @ptrCast(&trust.attach)));
-            _ = curl_easy_setopt(handle, CURLOPT_SSL_CTX_DATA, @as(*anyopaque, @ptrCast(chain)));
+    if (trust_store.enabled) {
+        if (options.trust) |store| {
+            // The Browser's trust store (trust.zig): the system roots and its
+            // extra bundle, parsed once for the Browser, handed to the
+            // connection's mbedTLS configuration before its handshake - curl
+            // itself loads no CA file or directory (build.zig,
+            // "ca-bundle"/"ca-path" "none").
+            if (store.chainFor(options.ca_bundle_path)) |chain| {
+                _ = curl_easy_setopt(handle, CURLOPT_SSL_CTX_FUNCTION, @as(*const anyopaque, @ptrCast(&trust_store.attach)));
+                _ = curl_easy_setopt(handle, CURLOPT_SSL_CTX_DATA, @as(*anyopaque, @ptrCast(chain)));
+            }
+        } else if (options.ca_bundle_path orelse trust_store.systemBundle()) |path| {
+            // No Browser: curl parses one CA file for the connection.
+            try setString(handle, allocator, CURLOPT_CAINFO, path);
         }
     } else if (options.ca_bundle_path) |path| try setString(handle, allocator, CURLOPT_CAINFO, path);
     if (options.user_agent) |value| try setString(handle, allocator, CURLOPT_USERAGENT, value);
