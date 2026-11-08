@@ -82,8 +82,9 @@ test "Q190 abstract CSSColorValue retains the default" {
     try run(interfaces.CSSColorValue, null);
 }
 
-test "Q190 direct CSSTransformValue stringification does not abort registration" {
-    try constructed("new CSSTransformValue([new CSSTranslate(CSS.px(1), CSS.px(2))])");
+test "Q190 a constructed CSSTransformValue stringifies as css-typed-om 6.6 serializes it" {
+    // The transform family landed (lane anim1 batch 5): no placeholder.
+    try run(interfaces.CSSStyleValue, "(() => { const value = new CSSTransformValue([new CSSTranslate(CSS.px(1), CSS.px(2))]); if (String(value) !== 'translate(1px, 2px)') throw new Error(String(value)); return 'ok'; })()");
 }
 
 test "Q190 native CSSRGB retains its routed default" {
