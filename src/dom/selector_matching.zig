@@ -990,7 +990,7 @@ const Matcher = struct {
             const entry = data.findAttribute(null, wanted) orelse return false;
             const value_html = name_html or (attribute.html_case_insensitive_value and attribute.case == .default and
                 self.html_document and namespaceIs(data, html_namespace));
-            return matchesValue(attribute, entry, value_html);
+            return matchesValue(attribute, &entry, value_html);
         }
         var it = data.attributeIterator();
         while (it.next()) |entry| {
@@ -999,7 +999,7 @@ const Matcher = struct {
             // The value's case rule, read only for an attribute that is there.
             const value_html = name_html or (attribute.html_case_insensitive_value and attribute.case == .default and
                 self.html_document and namespaceIs(data, html_namespace));
-            if (matchesValue(attribute, entry, value_html)) return true;
+            if (matchesValue(attribute, &entry, value_html)) return true;
         }
         return false;
     }
@@ -1013,7 +1013,7 @@ const Matcher = struct {
         const entry = data.findAttribute(if (uri.len == 0) null else uri, wanted) orelse return false;
         const value_html = name_html or (attribute.html_case_insensitive_value and attribute.case == .default and
             self.html_document and namespaceIs(data, html_namespace));
-        return matchesValue(attribute, entry, value_html);
+        return matchesValue(attribute, &entry, value_html);
     }
 
     // ========================================================================

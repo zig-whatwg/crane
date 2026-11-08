@@ -23,8 +23,6 @@ const engine = @import("engine");
 const Attributes = dom.pi_attributes.Attributes;
 const style_sheet_loading = @import("html").style_sheet_loading;
 
-const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
-
 pub const State = ProcessingInstruction.State;
 
 pub const ImplError = error{
@@ -110,11 +108,16 @@ fn sweepLive(scope: *runtime.BrowserScope) void {
     set.clear();
 }
 
-/// Get internal state from instance using shared accessor
-const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
-
+/// This PI's state, or null when `instance` is no ProcessingInstruction. The
+/// brand check matters: dom.style.hooks hands every owner type's hook every
+/// style sheet owner (`sheetOf`, `linkSheetArrived`), so the PI's hooks are
+/// called with link and style elements too. The unchecked cast this replaces
+/// (InternalStateAccessor: `instance.getState(State)`) read a link element's
+/// State at the PI's `own._internal` offset as a pointer - 65 crashes in lane
+/// perf3 D1's A/B once Element's state shrank. HTMLLinkElement's getInternal.
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return Accessor.get(instance);
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,
