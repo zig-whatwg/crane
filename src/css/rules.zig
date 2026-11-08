@@ -922,43 +922,44 @@ const Parser = struct {
     fn consumeComponentValue(self: *Parser, out: *Serializer) Allocator.Error!void {
         const token = self.next();
         try out.token(token);
-        const closing: ?TokenType = switch (token.token_type) {
-            .left_brace => .right_brace,
-            .left_bracket => .right_bracket,
-            .left_paren => .right_paren,
-            else => null,
-        };
-        const close = closing orelse return;
-        while (true) {
-            const inner = self.peek();
-            if (inner.token_type == .eof) return;
-            if (inner.token_type == close) {
-                try out.token(self.next());
-                return;
-            }
-            try self.consumeComponentValue(out);
-        }
+        const close = blockCloser(token.token_type) orelse return;
+        try self.consumeBlockRest(close, out, null);
     }
 
     /// As consumeComponentValue, collecting the tokens instead.
     fn collectComponentValue(self: *Parser, list: *std.ArrayList(Token)) Allocator.Error!void {
         const token = self.next();
         try list.append(self.allocator, token);
-        const closing: ?TokenType = switch (token.token_type) {
-            .left_brace => .right_brace,
-            .left_bracket => .right_bracket,
-            .left_paren => .right_paren,
-            else => null,
-        };
-        const close = closing orelse return;
+        const close = blockCloser(token.token_type) orelse return;
+        try self.consumeBlockRest(close, null, list);
+    }
+
+    /// CSS Syntax 3 5.5.9 "consume a simple block" after its opening token,
+    /// through `close` or EOF, its nested blocks included, into `out` or
+    /// `list`. Iterative over an explicit stack of the closing tokens still
+    /// expected, never one native frame per nesting level: a style attribute
+    /// of 60,000 unclosed "(" (WPT css-syntax/crashtests/unclosed-open-
+    /// brackets.html, crbug 41343497) overflowed the stack. Blink tokenizes
+    /// blocks against CSSTokenizer's block_stack_ and skips them with a
+    /// nesting count (CSSParserTokenStream::SkipUntilPeekedTypeIs); Gecko's
+    /// cssparser skips with an explicit stack (Parser::
+    /// consume_until_end_of_block). As in both, a closing token of another
+    /// kind inside a block is an ordinary token; only the expected one ends
+    /// it.
+    fn consumeBlockRest(self: *Parser, close: TokenType, out: ?*Serializer, list: ?*std.ArrayList(Token)) Allocator.Error!void {
+        var expected: CloserStack = .{};
+        defer expected.deinit(self.allocator);
+        try expected.push(self.allocator, close);
         while (true) {
             const inner = self.peek();
             if (inner.token_type == .eof) return;
-            if (inner.token_type == close) {
-                try list.append(self.allocator, self.next());
-                return;
-            }
-            try self.collectComponentValue(list);
+            const token = self.next();
+            if (out) |o| try o.token(token);
+            if (list) |l| try l.append(self.allocator, token);
+            if (token.token_type == expected.top()) {
+                expected.pop();
+                if (expected.len() == 0) return;
+            } else if (blockCloser(token.token_type)) |nested| try expected.push(self.allocator, nested);
         }
     }
 
@@ -966,15 +967,48 @@ const Parser = struct {
     /// through its closing token.
     fn skipBlock(self: *Parser, close: TokenType) Allocator.Error!void {
         var sink: Serializer = .{ .allocator = self.allocator, .discard = true };
-        while (true) {
-            const inner = self.peek();
-            if (inner.token_type == .eof) return;
-            if (inner.token_type == close) {
-                _ = self.next();
-                return;
-            }
-            try self.consumeComponentValue(&sink);
-        }
+        try self.consumeBlockRest(close, &sink, null);
+    }
+};
+
+/// The closing token of a simple block `opener` opens; null for any other
+/// token. (A function's "(" is the token after its name.)
+fn blockCloser(opener: TokenType) ?TokenType {
+    return switch (opener) {
+        .left_brace => .right_brace,
+        .left_bracket => .right_bracket,
+        .left_paren => .right_paren,
+        else => null,
+    };
+}
+
+/// The closing tokens a run of nested simple blocks still expects, innermost
+/// last: the first 64 inline, deeper levels on the heap.
+const CloserStack = struct {
+    inline_items: [64]TokenType = undefined,
+    inline_len: usize = 0,
+    heap: std.ArrayList(TokenType) = .empty,
+
+    fn push(self: *CloserStack, allocator: Allocator, closer: TokenType) Allocator.Error!void {
+        if (self.inline_len < self.inline_items.len) {
+            self.inline_items[self.inline_len] = closer;
+            self.inline_len += 1;
+        } else try self.heap.append(allocator, closer);
+    }
+    fn top(self: *const CloserStack) TokenType {
+        if (self.heap.items.len > 0) return self.heap.items[self.heap.items.len - 1];
+        return self.inline_items[self.inline_len - 1];
+    }
+    fn pop(self: *CloserStack) void {
+        if (self.heap.items.len > 0) {
+            _ = self.heap.pop();
+        } else self.inline_len -= 1;
+    }
+    fn len(self: *const CloserStack) usize {
+        return self.inline_len + self.heap.items.len;
+    }
+    fn deinit(self: *CloserStack, allocator: Allocator) void {
+        self.heap.deinit(allocator);
     }
 };
 

@@ -58,7 +58,7 @@ pub fn importUrls(allocator: Allocator, sheet: []const u8) Allocator.Error![][]u
             // are skipped.
             .whitespace, .cdo, .cdc => {},
             .at_keyword => {
-                const rule = consumeAtRule(&tokens);
+                const rule = try consumeAtRule(allocator, &tokens);
                 if (tokenizer.nameEql(token.value, "import")) {
                     // An @import with a {} block is invalid; so is one with
                     // no URL. Neither ends the imports: an invalid rule is
@@ -79,7 +79,7 @@ pub fn importUrls(allocator: Allocator, sheet: []const u8) Allocator.Error![][]u
             },
             else => {
                 // A qualified rule: its prelude, then its {} block.
-                consumeQualifiedRule(&tokens, token);
+                try consumeQualifiedRule(allocator, &tokens, token);
                 imports_allowed = false;
             },
         }
@@ -105,7 +105,7 @@ const AtRule = struct {
 
 /// "Consume an at-rule", its at-keyword consumed: the prelude runs to a
 /// semicolon, a {} block (consumed with it) or EOF.
-fn consumeAtRule(tokens: *Tokenizer) AtRule {
+fn consumeAtRule(allocator: Allocator, tokens: *Tokenizer) Allocator.Error!AtRule {
     const start = tokens.pos;
     while (true) {
         const before = tokens.pos;
@@ -113,10 +113,10 @@ fn consumeAtRule(tokens: *Tokenizer) AtRule {
         switch (token.token_type) {
             .semicolon, .eof => return .{ .prelude = .{ .start = start, .end = before }, .has_block = false },
             .left_brace => {
-                consumeBlockContents(tokens, .right_brace);
+                try consumeBlockContents(allocator, tokens, .right_brace);
                 return .{ .prelude = .{ .start = start, .end = before }, .has_block = true };
             },
-            else => consumeComponentValue(tokens, token),
+            else => try consumeComponentValue(allocator, tokens, token),
         }
     }
 }
@@ -124,16 +124,16 @@ fn consumeAtRule(tokens: *Tokenizer) AtRule {
 /// "Consume a qualified rule" whose first token is `first`: its prelude up
 /// to and including its {} block, or to EOF (a parse error; the rule is
 /// dropped).
-fn consumeQualifiedRule(tokens: *Tokenizer, first: Token) void {
+fn consumeQualifiedRule(allocator: Allocator, tokens: *Tokenizer, first: Token) Allocator.Error!void {
     var token = first;
     while (true) {
         switch (token.token_type) {
             .eof => return,
             .left_brace => {
-                consumeBlockContents(tokens, .right_brace);
+                try consumeBlockContents(allocator, tokens, .right_brace);
                 return;
             },
-            else => consumeComponentValue(tokens, token),
+            else => try consumeComponentValue(allocator, tokens, token),
         }
         token = tokens.next();
     }
@@ -142,22 +142,40 @@ fn consumeQualifiedRule(tokens: *Tokenizer, first: Token) void {
 /// "Consume a component value" that starts with `token`: a simple block's
 /// contents through its closing token. (A function's "(" is the token after
 /// its name, and opens a block of its own.)
-fn consumeComponentValue(tokens: *Tokenizer, token: Token) void {
-    switch (token.token_type) {
-        .left_paren => consumeBlockContents(tokens, .right_paren),
-        .left_bracket => consumeBlockContents(tokens, .right_bracket),
-        .left_brace => consumeBlockContents(tokens, .right_brace),
-        else => {},
-    }
+fn consumeComponentValue(allocator: Allocator, tokens: *Tokenizer, token: Token) Allocator.Error!void {
+    const close: TokenType = switch (token.token_type) {
+        .left_paren => .right_paren,
+        .left_bracket => .right_bracket,
+        .left_brace => .right_brace,
+        else => return,
+    };
+    try consumeBlockContents(allocator, tokens, close);
 }
 
 /// "Consume a simple block", after its opening token: nested component
-/// values through `close`, or to EOF.
-fn consumeBlockContents(tokens: *Tokenizer, close: TokenType) void {
+/// values through `close`, or to EOF. Iterative over a stack of the closing
+/// tokens still expected (as rules.zig's consumeBlockRest; Blink's
+/// CSSTokenizer block_stack_, Gecko cssparser's consume_until_end_of_block):
+/// a sheet of 60,000 nested blocks must not take a native frame each.
+fn consumeBlockContents(allocator: Allocator, tokens: *Tokenizer, close: TokenType) Allocator.Error!void {
+    var expected: std.ArrayList(TokenType) = .empty;
+    defer expected.deinit(allocator);
+    try expected.append(allocator, close);
     while (true) {
         const token = tokens.next();
-        if (token.token_type == close or token.token_type == .eof) return;
-        consumeComponentValue(tokens, token);
+        if (token.token_type == .eof) return;
+        if (token.token_type == expected.items[expected.items.len - 1]) {
+            _ = expected.pop();
+            if (expected.items.len == 0) return;
+            continue;
+        }
+        const nested: ?TokenType = switch (token.token_type) {
+            .left_paren => .right_paren,
+            .left_bracket => .right_bracket,
+            .left_brace => .right_brace,
+            else => null,
+        };
+        if (nested) |n| try expected.append(allocator, n);
     }
 }
 
