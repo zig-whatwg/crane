@@ -1,0 +1,12 @@
+# Spec Compliance: Firefox's nesting bound leaves the unentered block to its parent
+
+**Date**: 2026-11-08
+**Lesson**: Firefox's 75-block bound (cssparser REASONABLE_NESTED_BLOCK_LIMIT) is not "drop what is deeper": the block it refuses is never entered, so its contents and its closer are read by the enclosing block - and the observable results follow from that, case by case.
+
+**Why**: `parse_nested_block` takes the parser's "at the start of a block" state and then returns TooManyNestedBlocks without consuming the block. The tokens inside, and the closer that matched the refused opener, are then the enclosing parser's: its "}" or ")" ends the enclosing block one token early, and one closer is left over at the top.
+
+**What Happened**: Lane crash1 implemented the user's ruling (Firefox's bound for selector and rule nesting; Crane crashed at 10,000 nested :is() and 1,000 nested rules). A boundary probe in Firefox 159 (tmp/crash1/probe/boundary.html) showed what a plain "limit" would have got wrong: 76 nested `&{` keep 75 rules AND the innermost `--p:1` (it is read as the 75th rule's declaration); a @font-face at the 76th block becomes `font-family` on the 75th style rule; insertRule of a 76-deep rule is a SyntaxError (the leftover "}"); a rule after the chain is swallowed into a "} :root" prelude; `:is(` x 76 is a SyntaxError even inside a forgiving list (the stray ")" reaches the top), while `:is(` x 75 + `[id]` parses and matches nothing (the stray "]" leaves the parentheses paired, and :is() forgives the item); `CSS.supports('selector(...)')` loses one level to selector('s own block; a nested rule's selector shares the bound with the rule blocks around it (10 rules + 65 :is() kept, + 66 dropped).
+
+**Fix**: src/css/rules.zig `Parser.enterBlock` (a refused block is consumed as its opener only; the loop of the enclosing block reads the rest) plus a prelude check (enclosing depth + the prelude's deepest component value > 75 drops the rule with its block); src/selector/parser.zig `enterFunctionBlock` (a refused function block sets `too_deep`, which forgiving lists do not forgive; an attribute selector there is an ordinary invalid item). Every case above is a unit test and a Crane test (crane/crash1-rule-depth.html, crash1-selector-depth.html), and both Crane tests pass in Firefox 159.
+
+**Takeaway**: **To copy a browser's limit, copy what its parser does at the limit, not the number: probe the boundary case by case (nested, mixed, forgiving, leftover tokens) and test each result.**

@@ -676,6 +676,19 @@ pub const NamespaceResolver = struct {
 
 pub const NestingContext = enum { style, scope };
 
+/// The most blocks a selector opens one inside another: Firefox 159's
+/// bound, cssparser's REASONABLE_NESTED_BLOCK_LIMIT (servo/rust-cssparser
+/// src/parser.rs `parse_nested_block`: entering a block when 75 are open is
+/// TooManyNestedBlocks). Selectors 4 sets no limit, and Chrome and Safari
+/// parse 10,000 nested :is() but crash at 60,000 (Safari at 10,000); the
+/// user's ruling (2026-11-08): Firefox's bound over the spec's unlimited
+/// depth, because a deep-nesting crash takes down Crane's whole process -
+/// and the bound keeps every walker of the selector tree (deinit,
+/// specificity, the matchers, nesting resolution) within 75 levels.
+/// css/rules.zig keeps the same bound for nested rules, and drops a style
+/// rule whose selector would pass it beside its enclosing rule blocks.
+pub const max_nested_blocks = 75;
+
 pub const ParseOptions = struct {
     namespaces: ?NamespaceResolver = null,
     /// Nearest style/scope ancestor, ignoring intervening group rules.
@@ -715,6 +728,10 @@ fn parseWithMode(allocator: Allocator, source: []const u8, options: ParseOptions
     parser.nesting = options.nesting;
     parser.user_agent = options.user_agent;
     parser.support_check = support_check;
+    // selector() is a function block of its own: the selector inside it
+    // starts one block deep (Firefox 159: CSS.supports("selector(" + 74
+    // nested :is() + ...) is true, 75 false).
+    if (support_check) parser.block_depth = 1;
     return parser.parse();
 }
 
@@ -873,6 +890,12 @@ pub const Parser = struct {
     user_agent: bool = false,
     /// Present only for CSSOM: successful An+B spans, never a failed branch.
     anb_rewrites: ?*std.ArrayList(AnBRewrite) = null,
+    /// The blocks open where the parse is: function blocks of functional
+    /// pseudo-classes and pseudo-elements (`max_nested_blocks`).
+    block_depth: usize = 0,
+    /// A function block past `max_nested_blocks` was met: the selector is
+    /// invalid whole, and no forgiving list recovers it.
+    too_deep: bool = false,
 
     pub fn init(allocator: Allocator, tokenizer: *Tokenizer) ParserError!Parser {
         return initWithScratch(allocator, tokenizer.allocator, tokenizer);
@@ -955,7 +978,11 @@ pub const Parser = struct {
                     // are invalid selectors."
                     else => {
                         if (self.anb_rewrites) |rewrites| rewrites.shrinkRetainingCapacity(rewrite_count);
-                        if (!kind.forgiving or self.support_check) return err;
+                        // A block past `max_nested_blocks` is not forgiven:
+                        // Firefox never enters it, and the ")" it leaves
+                        // unmatched ends the enclosing blocks early, so the
+                        // whole selector is invalid.
+                        if (!kind.forgiving or self.support_check or self.too_deep) return err;
                     },
                 }
                 if (i >= tokens.len) break;
@@ -1181,6 +1208,11 @@ pub const Parser = struct {
                 },
                 .lbracket => blk: {
                     if (pseudo_element != null) return error.InvalidSelector;
+                    // An attribute selector is a [] block: past
+                    // `max_nested_blocks` it is an invalid item (Firefox
+                    // 159: ':is(' x 75 + '[id]' parses, matching nothing -
+                    // the unentered block's "]" leaves the ")"s paired).
+                    if (self.block_depth >= max_nested_blocks) return error.InvalidSelector;
                     const close = try self.matchingClose(stream.tokens, stream.pos);
                     const contents = stream.tokens[stream.pos + 1 .. close];
                     stream.pos = if (close < stream.tokens.len) close + 1 else close;
@@ -1429,6 +1461,8 @@ pub const Parser = struct {
                 return .{ .PseudoClass = .{ .kind = kind } };
             },
             .function => {
+                try self.enterFunctionBlock();
+                defer self.block_depth -= 1;
                 const close = try self.matchingClose(stream.tokens, stream.pos);
                 const args = stream.tokens[stream.pos + 1 .. close];
                 stream.pos = if (close < stream.tokens.len) close + 1 else close;
@@ -1442,6 +1476,17 @@ pub const Parser = struct {
             },
             else => return error.InvalidSelector,
         }
+    }
+
+    /// Open a function block (a functional pseudo-class's or pseudo-
+    /// element's arguments), or fail the whole selector past
+    /// `max_nested_blocks` (`too_deep`).
+    fn enterFunctionBlock(self: *Parser) ParserError!void {
+        if (self.block_depth >= max_nested_blocks) {
+            self.too_deep = true;
+            return error.InvalidSelector;
+        }
+        self.block_depth += 1;
     }
 
     /// The non-functional pseudo-classes, by name (ASCII case-insensitive,
@@ -1664,6 +1709,8 @@ pub const Parser = struct {
                 return error.InvalidSelector;
             },
             .function => blk: {
+                try self.enterFunctionBlock();
+                defer self.block_depth -= 1;
                 const known = knownPseudoElement(token.value, &functional_pseudo_elements) orelse return error.InvalidSelector;
                 const close = try self.matchingClose(stream.tokens, stream.pos);
                 const args = stream.tokens[stream.pos + 1 .. close];

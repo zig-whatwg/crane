@@ -67,7 +67,8 @@ test "an element's data answers its qualified name, ID, classes and attributes i
     // The qualified name "create an element" gave it.
     try testing.expectEqualStrings("div", data.local_name.asSlice());
     try testing.expectEqualStrings(infra.namespaces.HTML_NAMESPACE, data.namespace_uri.?.asSlice());
-    try testing.expect(data.prefix == null);
+    // Its prefix is rare data since lane perf3 D2: read through the IDL getter.
+    try testing.expect((try interfaces.Element.get_prefix(page.div)) == null);
     // The ID and classes, as the attribute change steps keep them.
     try testing.expectEqualStrings("main", data.id.asSlice());
     try testing.expectEqualStrings("a b", data.class_name.asSlice());

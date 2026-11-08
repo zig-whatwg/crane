@@ -514,7 +514,9 @@ pub const WptReport = struct {
 
         var result = TestResultJson{
             .test_path = test_path,
-            .status = harness_result.status.toString(),
+            // A crashtest that finished is wptreport's PASS (wptrunner
+            // executors/base.py crashtest_result_converter: status "PASS").
+            .status = if (harness_result.crashtest and harness_result.status == .ok) "PASS" else harness_result.status.toString(),
             .message = if (harness_result.message) |m| try self.allocator.dupe(u8, m) else null,
             .expected = test_expected,
             .duration = harness_result.duration_ms,
@@ -647,8 +649,8 @@ pub const WptReport = struct {
             summary.total_tests += 1;
 
             // Map status string back to enum (strings are uppercase)
-            if (std.mem.eql(u8, result.status, "OK")) {
-                // ok - do nothing
+            if (std.mem.eql(u8, result.status, "OK") or std.mem.eql(u8, result.status, "PASS")) {
+                // ok (a crashtest's PASS) - do nothing
             } else if (std.mem.eql(u8, result.status, "ERROR")) {
                 summary.error_tests += 1;
             } else if (std.mem.eql(u8, result.status, "TIMEOUT")) {
@@ -1373,4 +1375,28 @@ test "a result stream appends across processes, one line per result" {
         const parsed = try std.json.parseFromSlice(std.json.Value, allocator, line, .{});
         parsed.deinit();
     }
+}
+
+test "a crashtest that finished is wptreport's PASS, with no subtests; one that timed out stays TIMEOUT" {
+    const allocator = std.testing.allocator;
+    var report = WptReport.init(allocator);
+    defer report.deinit();
+
+    var finished = try test_harness.TestResult.init(allocator, "css/css-syntax/crashtests/unclosed-open-brackets.html");
+    defer finished.deinit(allocator);
+    finished.crashtest = true;
+    try report.addResult(finished);
+
+    var timed_out = try test_harness.TestResult.init(allocator, "css/selectors/is-where-error-crash.html");
+    defer timed_out.deinit(allocator);
+    timed_out.crashtest = true;
+    timed_out.status = .timeout;
+    try report.addResult(timed_out);
+
+    try std.testing.expectEqualStrings("PASS", report.results.items[0].status);
+    try std.testing.expectEqual(@as(usize, 0), report.results.items[0].subtests.items.len);
+    try std.testing.expectEqualStrings("TIMEOUT", report.results.items[1].status);
+    const summary = report.getSummary();
+    try std.testing.expectEqual(@as(usize, 0), summary.error_tests);
+    try std.testing.expectEqual(@as(usize, 1), summary.timeout_tests);
 }

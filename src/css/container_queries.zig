@@ -99,6 +99,23 @@ fn components(a: Allocator, text: []const u8) Allocator.Error!?[]Component {
     }
 }
 
+/// How deeply <query-in-parens> may nest: media_queries.zig's bound for the
+/// same grammar (Media Queries 4 section 3; Conditional 5 section 5.4 reuses
+/// it). Deeper makes the whole condition invalid. Each level recursed (query
+/// -> inParens) and re-tokenized its contents, so 60,000 levels overflowed
+/// the stack (lane crash1). The evidence for 128 (integrator, 2026-11-08):
+/// Crane's @media bound for this grammar is 128; WebKit bounds nesting at 128
+/// too (CSSParser maximumRuleListNestingLevel, for rule lists); Firefox 159
+/// drops such a rule past its 75-block bound (cssparser
+/// REASONABLE_NESTED_BLOCK_LIMIT); Chrome 156 keeps it at 10,000 and crashes
+/// at 60,000. The user's 75-block ruling covers selector arguments and
+/// nested rules only.
+const max_nesting = 128;
+
+/// A condition nested past `max_nesting`: no <general-enclosed> fallback
+/// takes it, the condition is invalid.
+const DepthError = Allocator.Error || error{TooDeep};
+
 /// Conditional 5 section 5.4's non-forgiving <container-condition>#.
 pub fn parse(a: Allocator, text: []const u8) Allocator.Error!?List {
     const items = try components(a, text) orelse return null;
@@ -130,7 +147,10 @@ pub fn parse(a: Allocator, text: []const u8) Allocator.Error!?List {
         var out: Out = .empty;
         defer out.deinit(a);
         if (first != slice.len) {
-            if (!try query(a, text, slice[first..], .size, &out)) return null;
+            if (!(query(a, text, slice[first..], .size, &out, 0) catch |err| switch (err) {
+                error.TooDeep => return null,
+                error.OutOfMemory => return error.OutOfMemory,
+            })) return null;
         } else if (name.len == 0) return null;
         const query_text = try out.toOwnedSlice(a);
         errdefer a.free(query_text);
@@ -145,7 +165,7 @@ pub fn parse(a: Allocator, text: []const u8) Allocator.Error!?List {
 
 /// Boolean query grammar. Each attempt rolls output back on syntax failure,
 /// allowing the caller to preserve the entire production as general-enclosed.
-fn query(a: Allocator, text: []const u8, items: []const Component, kind: Kind, out: *Out) Allocator.Error!bool {
+fn query(a: Allocator, text: []const u8, items: []const Component, kind: Kind, out: *Out, depth: u32) DepthError!bool {
     const start = out.items.len;
     var valid = false;
     defer if (!valid) out.shrinkRetainingCapacity(start);
@@ -157,10 +177,10 @@ fn query(a: Allocator, text: []const u8, items: []const Component, kind: Kind, o
     if (items[0].is("not")) {
         if (items.len != 2) return false;
         try out.appendSlice(a, "not ");
-        valid = try inParens(a, text, items[1], kind, out);
+        valid = try inParens(a, text, items[1], kind, out, depth);
         return valid;
     }
-    if (!try inParens(a, text, items[0], kind, out)) return false;
+    if (!try inParens(a, text, items[0], kind, out, depth)) return false;
     if (items.len % 2 == 0) return false;
     var operation: ?bool = null;
     var i: usize = 1;
@@ -170,15 +190,16 @@ fn query(a: Allocator, text: []const u8, items: []const Component, kind: Kind, o
         if (operation) |prior| if (prior != and_op) return false;
         operation = and_op;
         try out.appendSlice(a, if (and_op) " and " else " or ");
-        if (!try inParens(a, text, items[i + 1], kind, out)) return false;
+        if (!try inParens(a, text, items[i + 1], kind, out, depth)) return false;
     }
     valid = true;
     return true;
 }
 
-fn inParens(a: Allocator, text: []const u8, item: Component, kind: Kind, out: *Out) Allocator.Error!bool {
+fn inParens(a: Allocator, text: []const u8, item: Component, kind: Kind, out: *Out, depth: u32) DepthError!bool {
     if (item.token.token_type != .left_paren and item.token.token_type != .function) return false;
     const span = item.inner orelse return false;
+    if (depth >= max_nesting) return error.TooDeep;
     const body = text[span.start..span.end];
     const nested = try components(a, body) orelse return false;
     defer a.free(nested);
@@ -189,8 +210,8 @@ fn inParens(a: Allocator, text: []const u8, item: Component, kind: Kind, out: *O
         if (kind != .size) break :blk false;
         const inner_kind: Kind = if (tokenizer.nameEql(item.token.value, "style")) .style else if (tokenizer.nameEql(item.token.value, "scroll-state")) .scroll else break :blk false;
         function_name = if (inner_kind == .style) "style" else "scroll-state";
-        break :blk try query(a, body, nested, inner_kind, &content);
-    } else (try query(a, body, nested, kind, &content)) or (try feature(a, body, nested, kind, &content));
+        break :blk try query(a, body, nested, inner_kind, &content, depth + 1);
+    } else (try query(a, body, nested, kind, &content, depth + 1)) or (try feature(a, body, nested, kind, &content));
     if (recognized) {
         try out.appendSlice(a, function_name);
         try out.append(a, '(');
