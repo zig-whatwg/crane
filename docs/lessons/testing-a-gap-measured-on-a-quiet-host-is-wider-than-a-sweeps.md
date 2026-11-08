@@ -1,0 +1,12 @@
+# Testing: A gap measured on a quiet host is wider than a sweep's
+
+**Date**: 2026-11-08
+**Lesson**: A timing-bound file's pass rate measured alone on a quiet host overstates its rate in a sweep: thread hops between two marks are slower on an idle host, whose sleeping threads wake slowly, than on one whose cores a sweep keeps busy.
+
+**Why**: When a mark is taken on one thread and the next on another, the gap between them is mostly the time a sleeping thread takes to wake up and run. On an idle machine the cores sit in idle states and a woken thread waits for one; under a 32-runner sweep the cores are already running, so the same hop takes a fraction of the time. A strict order between two coarse marks then fails MORE often under load, not less, which is the opposite of the usual "load makes it slow" intuition.
+
+**What Happened**: service-workers/service-worker/navigation-timing-extended.https.html failed in every generation sweep since 2026-10-31 (12 in a row) while quiet x10 runs passed it 3-5 times in 10, so each sweep's 0 looked like bad luck. Lane flaky7 logged the raw monotonic nanoseconds of each mark (every performance.now(), the fetch event dispatch time of Service Workers step 17.4.12, each worker state change) in a diagnostic runner on server1. Unloaded, the activation's then-callback to fetchStart took p50 589 us and the file passed 25/60. With `wpt_runner --repeat --load=28` beside it, the same gap took p50 79 us, and the file passed 5/40. Generation 211's own runner passed 24/60 unloaded and 2/40 under load. The raw gaps, floored onto the 125 us grid, predicted every run's result (58/59 unloaded, 39/39 loaded).
+
+**Fix**: Measure a timing-bound file under the condition its sweep runs it in. Add `--load=K` (K close to the host's runner count) to the `--repeat` run, beside the unloaded run, and record the loaded pass rate and gap in the timing-bound entry's `condition`. Log raw times rather than coarsened ones, and check that the model predicts each run's result before trusting the gap figures. Watch for marks that the code takes implicitly: an Event's timeStamp reads the same clock as performance.now(), so the reading just before a dispatch is the event's own and not the page's.
+
+**Takeaway**: **Before calling a sweep-only timing failure bad luck, re-measure the file under the sweep's load: busy cores shrink cross-thread gaps, and a quiet host's pass rate is the optimistic one.**
