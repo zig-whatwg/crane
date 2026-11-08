@@ -86,7 +86,7 @@ pub fn removingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
     const parent = old_parent orelse return;
     if (!parent.is_connected and parent.node_type != NodeBase.DOCUMENT_NODE) return;
     const impl = implementation.get() orelse return;
-    const parent_instance: *runtime.Instance = @ptrCast(@alignCast(parent.owner_instance orelse return));
+    const parent_instance: *runtime.Instance = @ptrCast(@alignCast(parent.ownerInstance() orelse return));
     const document = if (parent.node_type == NodeBase.DOCUMENT_NODE)
         parent_instance
     else
@@ -121,7 +121,7 @@ pub fn movingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
     if (node.node_type != NodeBase.ELEMENT_NODE) return;
     if (!parent.is_connected and parent.node_type != NodeBase.DOCUMENT_NODE) return;
     const impl = implementation.get() orelse return;
-    const parent_instance: *runtime.Instance = @ptrCast(@alignCast(parent.owner_instance orelse return));
+    const parent_instance: *runtime.Instance = @ptrCast(@alignCast(parent.ownerInstance() orelse return));
     const document = if (parent.node_type == NodeBase.DOCUMENT_NODE)
         parent_instance
     else
@@ -135,7 +135,7 @@ pub fn movingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
 /// The element a designation passes to when its element is removed from
 /// `parent`: the parent element, or a shadow root's host.
 fn successor(parent: *NodeBase) ?*runtime.Instance {
-    const instance: *runtime.Instance = @ptrCast(@alignCast(parent.owner_instance orelse return null));
+    const instance: *runtime.Instance = @ptrCast(@alignCast(parent.ownerInstance() orelse return null));
     if (parent.node_type == NodeBase.ELEMENT_NODE) return instance;
     if (instance.vtable == &interfaces.ShadowRoot.vtable) return interfaces.ShadowRoot.get_host(instance) catch null;
     return null;
@@ -151,7 +151,7 @@ pub fn isShadowIncludingInclusiveDescendant(node: *NodeBase, ancestor: *NodeBase
             continue;
         }
         // A shadow root: on to its host.
-        const instance: *runtime.Instance = @ptrCast(@alignCast(n.owner_instance orelse return false));
+        const instance: *runtime.Instance = @ptrCast(@alignCast(n.ownerInstance() orelse return false));
         if (instance.vtable != &interfaces.ShadowRoot.vtable) return false;
         const host = interfaces.ShadowRoot.get_host(instance) catch return false;
         current = instance_bridge.getNodeBase(host);

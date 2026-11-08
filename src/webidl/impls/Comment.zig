@@ -24,13 +24,8 @@ pub const InternalState = struct {
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
-    allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-        };
-    }
+    // Nothing here (lane perf2 batch 6): its one field was an allocator copy
+    // nothing read, 16 bytes on every Comment.
 
     pub fn deinit(self: *InternalState) void {
         _ = self;
@@ -43,6 +38,7 @@ const Registry = runtime.OwnState(State, InternalState);
 
 /// Comment's own construction steps: the generated chain runs CharacterData's first.
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = allocator;
     _ = StateType;
     _ = args;
 
@@ -51,7 +47,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.create(instance);
-    internal.* = InternalState.init(allocator);
+    internal.* = .{};
 }
 
 /// Get Comment's internal state

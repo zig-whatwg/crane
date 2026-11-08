@@ -27,22 +27,23 @@ pub const NodeBase = struct {
     // Core Node Fields (from webidl/src/dom/Node.zig)
     // ========================================================================
 
-    allocator: Allocator,
-
-    /// The runtime.Instance that owns this NodeBase, or null for a NodeBase built
-    /// outside the WebIDL layer.
+    /// Who owns this NodeBase, in one word (lane perf2 batch 6): the
+    /// runtime.Instance whose node it is (`ownerInstance`), or - for a
+    /// NodeBase built outside the WebIDL layer, the tests' fixtures and the
+    /// test-only WithBase types - the allocator it allocates from, tagged in
+    /// bit 0 (`ownerless`), or 0 for neither (a node before its registration
+    /// and after its release).
     ///
-    /// Stored here rather than in a side table. This replaced the global
-    /// `nodebase_to_instance: AutoHashMap(*NodeBase, *anyopaque)` in
-    /// src/dom/instance_bridge.zig: a process-wide mutable map on page_allocator,
-    /// explicitly documented as "NOT thread-safe", consulted 37 times across the DOM
-    /// hot path. The owning instance is a property OF the node, so it belongs on the
-    /// node - which also makes it die with the node instead of needing an unregister
-    /// call to avoid leaking an entry.
-    ///
-    /// Typed `?*anyopaque` to keep src/dom free of a hard dependency on the concrete
-    /// runtime.Instance type, matching the bridge API it replaces.
-    owner_instance: ?*anyopaque = null,
+    /// The owner is a property OF the node, so it belongs on the node: it
+    /// replaced the global `nodebase_to_instance` map in
+    /// src/dom/instance_bridge.zig (process-wide, on page_allocator, "NOT
+    /// thread-safe", consulted 37 times on the DOM hot path), and it dies
+    /// with the node. It also names the node's allocator, so the node keeps
+    /// no copy of one (`allocator`): an owned node's is its Browser's, found
+    /// from the Instance's address (runtime.allocatorOf), which is the
+    /// allocator it was made with - asserted where every node is made
+    /// (Node's initOwn). 16 bytes a node.
+    owner: usize = 0,
 
     node_type: u16,
 
@@ -176,6 +177,63 @@ pub const NodeBase = struct {
     };
 
     // ========================================================================
+    // The owner word (lane perf2 batch 6)
+    // ========================================================================
+
+    /// The runtime.Instance this node is, or null: a node not yet
+    /// registered, one its teardown released, or one no Instance owns.
+    /// Typed `?*anyopaque` to keep src/dom free of a hard dependency on the
+    /// concrete runtime.Instance type, matching the bridge API it replaces.
+    pub inline fn ownerInstance(self: *const NodeBase) ?*anyopaque {
+        if (self.owner & ownerless_tag != 0) return null;
+        return @ptrFromInt(self.owner);
+    }
+
+    /// dom.instance_bridge's register and unregister: the Instance this
+    /// node is from now on, or none.
+    pub fn setOwnerInstance(self: *NodeBase, instance: ?*anyopaque) void {
+        const address = @intFromPtr(instance);
+        std.debug.assert(address & ownerless_tag == 0);
+        self.owner = address;
+    }
+
+    /// The owner word of a NodeBase no Instance owns, which allocates from
+    /// `allocator_of_node` - borrowed: it must outlive the node (the tests
+    /// pass `&std.testing.allocator`, a WithBase type its own field).
+    pub fn ownerless(allocator_of_node: *const Allocator) usize {
+        const address = @intFromPtr(allocator_of_node);
+        std.debug.assert(address & ownerless_tag == 0);
+        return address | ownerless_tag;
+    }
+
+    /// The allocator an owner-less NodeBase's owner word names
+    /// (`ownerless`), for a WithBase type that makes a part of its own with
+    /// it (an attribute node).
+    pub fn ownerlessAllocator(self: *const NodeBase) *const Allocator {
+        std.debug.assert(self.owner & ownerless_tag != 0);
+        return @ptrFromInt(self.owner & ~ownerless_tag);
+    }
+
+    /// What this node allocates and frees from - its rare data, its observer
+    /// records, a mutation's scratch lists: its Browser's allocator for an
+    /// owned node (runtime.allocatorOf, the allocator it was made with), the
+    /// one its owner word names for an owner-less one. Never called on a
+    /// node with no owner (before its registration, after its release).
+    pub fn allocator(self: *const NodeBase) Allocator {
+        if (self.owner & ownerless_tag != 0) {
+            const named: *const Allocator = @ptrFromInt(self.owner & ~ownerless_tag);
+            return named.*;
+        }
+        if (self.owner == 0) @panic("a NodeBase with no owner allocates: not registered yet, or released");
+        const instance: *const runtime.Instance = @ptrFromInt(self.owner);
+        return runtime.allocatorOf(instance);
+    }
+
+    /// The owner word's tag: set for an allocator, clear for an Instance.
+    /// Both are 8-byte aligned, so bit 0 is free.
+    const ownerless_tag: usize = 1;
+
+    // ========================================================================
     // Rare data (lane perf2 batch 4, R6 part 1)
     // ========================================================================
 
@@ -188,7 +246,7 @@ pub const NodeBase = struct {
     /// kept, never moved, until the node's teardown (`deinitRareData`).
     fn ensureRareData(self: *NodeBase) error{OutOfMemory}!*NodeRareData {
         if (self.rare) |rare| return rare;
-        const rare = try self.allocator.create(NodeRareData);
+        const rare = try self.allocator().create(NodeRareData);
         rare.* = .{};
         self.rare = rare;
         if (self.domMemory()) |memory| memory.add(@sizeOf(NodeRareData));
@@ -202,7 +260,7 @@ pub const NodeBase = struct {
     /// a NodeBase no Instance owns (the test-only WithBase types), and after
     /// the node's teardown unregistered it - nothing is counted for it then.
     fn domMemory(self: *const NodeBase) ?*runtime.gc.ExternalMemory {
-        const owner = self.owner_instance orelse return null;
+        const owner = self.ownerInstance() orelse return null;
         const instance: *const runtime.Instance = @ptrCast(@alignCast(owner));
         return &runtime.BrowserScope.ofInstance(instance).dom_memory;
     }
@@ -213,8 +271,8 @@ pub const NodeBase = struct {
     pub fn deinitRareData(self: *NodeBase) void {
         const rare = self.rare orelse return;
         std.debug.assert(rare.registered_observers.first == null);
-        if (rare.node_name_allocated) self.allocator.free(rare.node_name);
-        self.allocator.destroy(rare);
+        if (rare.node_name_allocated) self.allocator().free(rare.node_name);
+        self.allocator().destroy(rare);
         self.rare = null;
         if (self.domMemory()) |memory| memory.sub(@sizeOf(NodeRareData));
     }
@@ -238,7 +296,7 @@ pub const NodeBase = struct {
     /// Name the node with `name`, which outlives it (a literal).
     pub fn setStaticNodeName(self: *NodeBase, name: []const u8) error{OutOfMemory}!void {
         const rare = try self.ensureRareData();
-        if (rare.node_name_allocated) self.allocator.free(rare.node_name);
+        if (rare.node_name_allocated) self.allocator().free(rare.node_name);
         rare.node_name = name;
         rare.node_name_allocated = false;
     }
@@ -248,7 +306,7 @@ pub const NodeBase = struct {
     /// the caller still owns it.
     pub fn setOwnedNodeName(self: *NodeBase, name: []const u8) error{OutOfMemory}!void {
         const rare = try self.ensureRareData();
-        if (rare.node_name_allocated) self.allocator.free(rare.node_name);
+        if (rare.node_name_allocated) self.allocator().free(rare.node_name);
         rare.node_name = name;
         rare.node_name_allocated = true;
     }
@@ -271,7 +329,7 @@ pub const NodeBase = struct {
     /// allocator, that stays where it is until it is removed.
     pub fn appendRegisteredObserver(self: *NodeBase, registered: RegisteredObserverType) error{OutOfMemory}!*RegisteredObserverType {
         const rare = try self.ensureRareData();
-        const record = try self.allocator.create(ObserverRegistration);
+        const record = try self.allocator().create(ObserverRegistration);
         record.* = .{ .registered = registered };
         rare.registered_observers.append(&record.link);
         if (self.domMemory()) |memory| memory.add(@sizeOf(ObserverRegistration));
@@ -284,7 +342,7 @@ pub const NodeBase = struct {
         const rare = self.rare.?;
         const record: *ObserverRegistration = @fieldParentPtr("registered", registered);
         rare.registered_observers.remove(&record.link);
-        self.allocator.destroy(record);
+        self.allocator().destroy(record);
         if (self.domMemory()) |memory| memory.sub(@sizeOf(ObserverRegistration));
     }
 

@@ -42,7 +42,7 @@ const TestDocument = struct {
         return .{
             .allocator = allocator,
             .root = NodeBase{
-                .allocator = allocator,
+                .owner = NodeBase.ownerless(&std.testing.allocator),
                 .node_type = NodeBase.DOCUMENT_NODE,
                 .parent_node = null,
                 .owner_document = null,
@@ -67,7 +67,7 @@ const TestDocument = struct {
         const elem = try self.allocator.create(ElementWithBase);
         errdefer self.allocator.destroy(elem);
 
-        elem.* = ElementWithBase.init(self.allocator, tag_name);
+        elem.* = ElementWithBase.init(&self.allocator, tag_name);
         try self.elements.append(self.allocator, elem);
         return elem;
     }

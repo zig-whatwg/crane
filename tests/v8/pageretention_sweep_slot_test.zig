@@ -135,7 +135,7 @@ fn speakingRootDeinit(instance: *runtime.Instance) void {
     }
     // Its own child's entry gone from the map: the walk reached it first.
     if (dom.instance_bridge.getNodeBase(instance)) |base| if (base.first_child) |child_base| {
-        const child: *runtime.Instance = @ptrCast(@alignCast(child_base.owner_instance.?));
+        const child: *runtime.Instance = @ptrCast(@alignCast(child_base.ownerInstance().?));
         if (realm.cache.cache.get(child) == null) seen.child_first += 1;
     };
     // What a later teardown allocates: never a slot a child still names.

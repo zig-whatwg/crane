@@ -160,11 +160,18 @@ pub fn OwnState(comptime State: type, comptime T: type) type {
         }
 
         /// A teardown sweep's: deinit every one of `scope`'s states no deinit
-        /// reached, and clear their fields (`sweep`).
+        /// reached, and clear their bits (`sweep`). A state that keeps no
+        /// allocator copy takes its Browser's in its deinit (lane perf2
+        /// batch 6: CharacterData's data).
         pub fn deinitAllAndClear(scope: *BrowserScope) void {
             sweep(scope, {}, struct {
-                fn visit(_: void, _: *Instance, internal: *T) void {
-                    if (@hasDecl(T, "deinit")) internal.deinit();
+                fn visit(_: void, instance: *Instance, internal: *T) void {
+                    if (!@hasDecl(T, "deinit")) return;
+                    if (@typeInfo(@TypeOf(T.deinit)).@"fn".param_types.len == 2) {
+                        internal.deinit(BrowserScope.ofInstance(instance).allocator);
+                    } else {
+                        internal.deinit();
+                    }
                 }
             }.visit);
         }

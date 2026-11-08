@@ -48,17 +48,17 @@ pub const ElementWithBase = struct {
     unique_id: ?[]const u8,
 
     /// Initialize a new Element
-    pub fn init(allocator: Allocator, tag_name: []const u8) ElementWithBase {
+    pub fn init(allocator: *const Allocator, tag_name: []const u8) ElementWithBase {
         return .{
             .base = NodeBase{
-                .allocator = allocator,
+                .owner = NodeBase.ownerless(allocator),
                 .node_type = NodeBase.ELEMENT_NODE,
                 .parent_node = null,
                 .owner_document = null,
             },
             .tag_name = tag_name,
             .namespace_uri = null,
-            .attributes = infra.List(*AttrWithBase).init(allocator),
+            .attributes = infra.List(*AttrWithBase).init(allocator.*),
             .class_bloom_filter = infra.BloomFilter.init(),
             .unique_id = null,
         };
@@ -72,14 +72,14 @@ pub const ElementWithBase = struct {
         for (0..self.attributes.size()) |i| {
             if (self.attributes.get(i)) |attr| {
                 attr.deinit();
-                self.base.allocator.destroy(attr);
+                self.base.allocator().destroy(attr);
             }
         }
         self.attributes.deinit();
 
         // Clean up unique ID if set
         if (self.unique_id) |id| {
-            self.base.allocator.free(id);
+            self.base.allocator().free(id);
         }
     }
 
@@ -118,11 +118,11 @@ pub const ElementWithBase = struct {
         }
 
         // Add new id attribute
-        const attr = try self.base.allocator.create(AttrWithBase);
-        errdefer self.base.allocator.destroy(attr);
+        const attr = try self.base.allocator().create(AttrWithBase);
+        errdefer self.base.allocator().destroy(attr);
 
         attr.* = try AttrWithBase.init(
-            self.base.allocator,
+            self.base.ownerlessAllocator(),
             "id", // local_name
             value, // value
             null, // namespace_uri
@@ -173,11 +173,11 @@ pub const ElementWithBase = struct {
         }
 
         // Add new attribute
-        const attr = try self.base.allocator.create(AttrWithBase);
-        errdefer self.base.allocator.destroy(attr);
+        const attr = try self.base.allocator().create(AttrWithBase);
+        errdefer self.base.allocator().destroy(attr);
 
         attr.* = try AttrWithBase.init(
-            self.base.allocator,
+            self.base.ownerlessAllocator(),
             name, // local_name
             value, // value
             null, // namespace_uri

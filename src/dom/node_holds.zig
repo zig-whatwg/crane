@@ -1321,7 +1321,7 @@ fn rescueForHolds(node: *NodeBase) void {
     const Entry = struct { holder: *Holder, owner: *runtime.Instance, generation: u64 };
     var stack_entries: [16]Entry = undefined;
     var heap_entries: std.ArrayListUnmanaged(Entry) = .empty;
-    const allocator = node.allocator;
+    const allocator = node.allocator();
     defer heap_entries.deinit(allocator);
     var count: usize = 0;
     var current = node.holds;

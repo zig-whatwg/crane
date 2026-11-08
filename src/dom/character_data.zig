@@ -90,7 +90,10 @@ pub const Data = struct {
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
-    allocator: std.mem.Allocator,
+    // No allocator copy (lane perf2 batch 6): the heap bytes are allocated
+    // and freed with the allocator the caller passes - the node's Browser's,
+    // runtime.allocatorOf, the one the node was made with. 16 bytes on every
+    // CharacterData node.
 
     /// The data's bytes on the heap, or null while they are inline.
     heap: ?[*]u8,
@@ -104,19 +107,18 @@ pub const Data = struct {
     /// Inline storage for small text.
     inline_text: [INLINE_TEXT_CAPACITY]u8,
 
-    pub fn init(allocator: std.mem.Allocator) !Data {
-        return .{
-            .allocator = allocator,
-            .heap = null,
-            .byte_len = 0,
-            .units = 0,
-            .inline_text = undefined,
-        };
-    }
+    /// Empty data. Every call below that can allocate or free takes the
+    /// allocator the data's heap bytes live in: the same one, every time.
+    pub const empty: Data = .{
+        .heap = null,
+        .byte_len = 0,
+        .units = 0,
+        .inline_text = undefined,
+    };
 
-    pub fn deinit(self: *Data) void {
+    pub fn deinit(self: *Data, allocator: std.mem.Allocator) void {
         if (self.heap) |heap| {
-            self.allocator.free(heap[0..self.byte_len]);
+            allocator.free(heap[0..self.byte_len]);
             self.heap = null;
         }
         self.byte_len = 0;
@@ -154,18 +156,18 @@ pub const Data = struct {
     }
 
     /// Set data - uses inline storage for small text, heap for larger
-    pub fn setData(self: *Data, data: []const u8) !void {
+    pub fn setData(self: *Data, allocator: std.mem.Allocator, data: []const u8) !void {
         if (data.len > std.math.maxInt(u32)) return error.OutOfMemory;
         const units: u32 = @intCast(infra.wtf8.codeUnitLength(data));
         if (data.len <= INLINE_TEXT_CAPACITY) {
             // Copied before the heap block is freed, and forwards: `data`
             // may be this state's own bytes.
             std.mem.copyForwards(u8, self.inline_text[0..data.len], data);
-            if (self.heap) |heap| self.allocator.free(heap[0..self.byte_len]);
+            if (self.heap) |heap| allocator.free(heap[0..self.byte_len]);
             self.heap = null;
         } else {
-            const heap = try self.allocator.dupe(u8, data);
-            self.deinit();
+            const heap = try allocator.dupe(u8, data);
+            self.deinit(allocator);
             self.heap = heap.ptr;
         }
         self.byte_len = @intCast(data.len);
@@ -175,12 +177,12 @@ pub const Data = struct {
     /// Replace `count_param` code units at `offset` with `data` (DOM replace
     /// data steps 2-3 and 5-7) - the core of replaceData, insertData,
     /// deleteData and appendData. Offsets are code units.
-    pub fn replaceData(self: *Data, offset: u32, count_param: u32, data: []const u8) !void {
-        try self.replaceDataUnits(offset, count_param, data, @intCast(infra.wtf8.codeUnitLength(data)));
+    pub fn replaceData(self: *Data, allocator: std.mem.Allocator, offset: u32, count_param: u32, data: []const u8) !void {
+        try self.replaceDataUnits(allocator, offset, count_param, data, @intCast(infra.wtf8.codeUnitLength(data)));
     }
 
     /// replaceData with `data`'s length in code units already counted.
-    pub fn replaceDataUnits(self: *Data, offset: u32, count_param: u32, data: []const u8, data_units: u32) !void {
+    pub fn replaceDataUnits(self: *Data, allocator: std.mem.Allocator, offset: u32, count_param: u32, data: []const u8, data_units: u32) !void {
         const length = self.units;
         if (offset > length) return error.IndexSizeError;
 
@@ -201,12 +203,12 @@ pub const Data = struct {
             // The pieces read the current data, which may be inline.
             var new_inline: [INLINE_TEXT_CAPACITY]u8 = undefined;
             pieces.writeJoined(new_inline[0..new_len]);
-            self.deinit();
+            self.deinit(allocator);
             @memcpy(self.inline_text[0..new_len], new_inline[0..new_len]);
         } else {
-            const new_data = try self.allocator.alloc(u8, new_len);
+            const new_data = try allocator.alloc(u8, new_len);
             pieces.writeJoined(new_data);
-            self.deinit();
+            self.deinit(allocator);
             self.heap = new_data.ptr;
         }
         self.byte_len = @intCast(new_len);
@@ -225,7 +227,8 @@ pub const Data = struct {
 };
 
 // One per CharacterData node: the code-unit count was fitted in beside the
-// byte length without growing the state past 64 bytes.
+// byte length without growing the state past 64 bytes, and the allocator copy
+// went (lane perf2 batch 6): 48.
 comptime {
-    std.debug.assert(@sizeOf(Data) <= 64);
+    std.debug.assert(@sizeOf(Data) <= 48);
 }

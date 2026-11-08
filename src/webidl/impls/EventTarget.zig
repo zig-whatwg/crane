@@ -82,7 +82,10 @@ pub const InternalState = struct {
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
-    allocator: std.mem.Allocator,
+    // No allocator copy (lane perf2 batch 6): what the state owns is
+    // allocated from its target's Browser's allocator, runtime.allocatorOf -
+    // the allocator a chained target is made with (asserted in initOwn), and
+    // the one a lazily made entry uses. 16 bytes on every node.
 
     /// DOM §2.7 - Each EventTarget has an associated event listener list
     /// (a list of zero or more event listeners). It is initially the empty list.
@@ -123,55 +126,48 @@ pub const InternalState = struct {
     /// that holds the event calls a listener. Null for every other target.
     current_event: ?*runtime.Instance = null,
 
-    pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-            .event_listener_list = null,
-        };
-    }
-
-    pub fn deinit(self: *InternalState) void {
-        self.deinitEx(true);
+    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
+        self.deinitEx(allocator, true);
     }
 
     /// Deinitialize, releasing the engine values held - the listeners'
     /// callbacks and the event handlers - only when `release_engine_values`:
     /// during final runtime cleanup the engine's agent is already gone.
-    pub fn deinitEx(self: *InternalState, release_engine_values: bool) void {
+    pub fn deinitEx(self: *InternalState, allocator: std.mem.Allocator, release_engine_values: bool) void {
         if (self.event_listener_list) |list| {
             // Free each record's type string and, with an agent to give it
             // back to, its callback.
             const slice = list.toSliceMut();
             for (slice) |*listener| {
                 var @"type" = listener.type;
-                @"type".deinit(self.allocator);
+                @"type".deinit(allocator);
                 if (release_engine_values) {
                     if (listener.callback) |callback| callback.release();
                 }
             }
             list.deinit();
-            self.allocator.destroy(list);
+            allocator.destroy(list);
         }
         if (self.event_handler_map) |map| {
             // Raw source is native memory even after the engine has ended.
             var values = map.valueIterator();
-            while (values.next()) |value| value.release(self.allocator, release_engine_values);
-            map.deinit(self.allocator);
-            self.allocator.destroy(map);
+            while (values.next()) |value| value.release(allocator, release_engine_values);
+            map.deinit(allocator);
+            allocator.destroy(map);
             self.event_handler_map = null;
         }
     }
 
     /// Ensure event listener list is allocated
     /// Lazily allocates the list on first use to save memory
-    pub fn ensureEventListenerList(self: *InternalState) !*infra.List(EventListenerRecord) {
+    pub fn ensureEventListenerList(self: *InternalState, allocator: std.mem.Allocator) !*infra.List(EventListenerRecord) {
         if (self.event_listener_list) |list| {
             return list;
         }
 
         // First time adding a listener - allocate the list
-        const list = try self.allocator.create(infra.List(EventListenerRecord));
-        list.* = infra.List(EventListenerRecord).init(self.allocator);
+        const list = try allocator.create(infra.List(EventListenerRecord));
+        list.* = infra.List(EventListenerRecord).init(allocator);
         self.event_listener_list = list;
         return list;
     }
@@ -186,11 +182,10 @@ pub const InternalState = struct {
     }
 };
 
-// Every node carries an InternalState: the watch flag sits in the room the
-// lazy entry's optional tag took (`LazyEntry`), so it cost no byte - 64
-// before it, 64 with it.
+// Every node carries an InternalState: 64 bytes until lane perf2 batch 6
+// took out the allocator copy (16).
 comptime {
-    if (@sizeOf(InternalState) > 64) @compileError(std.fmt.comptimePrint("EventTarget's InternalState grew past 64 bytes: {d}", .{@sizeOf(InternalState)}));
+    if (@sizeOf(InternalState) > 48) @compileError(std.fmt.comptimePrint("EventTarget's InternalState grew past 48 bytes: {d}", .{@sizeOf(InternalState)}));
 }
 
 /// What an entry made lazily records about the instance it was made for.
@@ -292,14 +287,14 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 /// chain. The slot itself is the collector's to free, or the queue's.
 pub fn deinitOwn(instance: *runtime.Instance) void {
     if (Own.get(instance)) |internal| {
-        internal.deinit();
+        internal.deinit(runtime.allocatorOf(instance));
         Own.remove(instance);
         return;
     }
     // An entry made lazily for it after its own state went (a listener added
     // to a torn-down target).
     if (getInternalFromRegistry(instance)) |internal| {
-        internal.deinit();
+        internal.deinit(runtime.allocatorOf(instance));
         removeFromRegistry(instance);
     }
 }
@@ -332,7 +327,7 @@ fn initInternal(instance: *runtime.Instance, allocator: std.mem.Allocator) !*Int
     if (std.debug.runtime_safety and !runtime.isScopeAllocator(instance, allocator))
         std.debug.panic("an EventTarget ({s}) made with an allocator that is not its Browser's (runtime.allocatorOf would free through another)", .{instance.vtable.name});
     const internal = try Own.create(instance);
-    internal.* = InternalState.init(allocator);
+    internal.* = .{};
     return internal;
 }
 
@@ -375,13 +370,14 @@ pub const Registry = struct {
         // The chained states left (Own): a walk of the scope's slab, which
         // ends after its tables. Without the engine, which is gone.
         if (self.scope.load(.acquire)) |scope| Own.sweep(scope, {}, struct {
-            fn visit(_: void, _: *runtime.Instance, internal: *InternalState) void {
-                internal.deinitEx(false);
+            fn visit(_: void, instance: *runtime.Instance, internal: *InternalState) void {
+                internal.deinitEx(runtime.allocatorOf(instance), false);
             }
         }.visit);
         var map = self.takeAll() orelse return;
+        // Every entry is this scope's: its allocator is this table's.
         var iter = map.valueIterator();
-        while (iter.next()) |internal_ptr| internal_ptr.*.deinitEx(false);
+        while (iter.next()) |internal_ptr| internal_ptr.*.deinitEx(self.allocator, false);
         map.deinit();
     }
 
@@ -436,8 +432,8 @@ fn sweepRemaining(scope: *runtime.BrowserScope) void {
     // The chained EventTargets no deinit reached: a walk of the Browser's
     // slab (runtime.OwnState.sweep), each field cleared after.
     Own.sweep(scope, {}, struct {
-        fn visit(_: void, _: *runtime.Instance, internal: *InternalState) void {
-            internal.deinitEx(true); // the agent is alive: release its values
+        fn visit(_: void, instance: *runtime.Instance, internal: *InternalState) void {
+            internal.deinitEx(runtime.allocatorOf(instance), true); // the agent is alive: release its values
         }
     }.visit);
     // Then the lazy entries.
@@ -448,7 +444,7 @@ fn sweepRemaining(scope: *runtime.BrowserScope) void {
     if (taken) |*map| {
         var iter = map.valueIterator();
         while (iter.next()) |internal_ptr| {
-            internal_ptr.*.deinitEx(true); // the agent is alive: release its values
+            internal_ptr.*.deinitEx(registry.allocator, true); // the agent is alive: release its values
         }
         map.deinit();
     }
@@ -505,7 +501,7 @@ fn lazyInternal(instance: *runtime.Instance) !*InternalState {
     if (getInternalFromRegistry(instance)) |internal| return internal;
     const internal = try runtime.arenaOf(instance).create(InternalState);
     errdefer runtime.arenaOf(instance).destroy(InternalState, internal);
-    internal.* = InternalState.init(std.heap.page_allocator);
+    internal.* = .{};
     internal.lazy = .{ .realm = instance.ctx, .generation = runtime.SlabAllocator.generationOf(instance) };
     try setInternalInRegistry(instance, internal);
     return internal;
@@ -517,8 +513,8 @@ fn lazyInternal(instance: *runtime.Instance) !*InternalState {
 /// `address` is its instance's: the block goes back to that instance's
 /// Browser's arena (runtime.arenaOf), where it was made.
 fn releaseEntry(address: usize, internal: *InternalState) void {
-    internal.deinitEx(true);
     const instance: *runtime.Instance = @ptrFromInt(address);
+    internal.deinitEx(runtime.allocatorOf(instance), true);
     runtime.arenaOf(instance).destroy(InternalState, internal);
 }
 
@@ -604,9 +600,9 @@ var next_listener_id: std.atomic.Value(u64) = .init(1);
 
 /// Free what a listener record owns - its type string and its callback -
 /// for a record that was never stored, or has just left the list.
-fn releaseRecord(internal: *InternalState, record: EventListenerRecord) void {
+fn releaseRecord(target: *runtime.Instance, record: EventListenerRecord) void {
     var record_type = record.type;
-    record_type.deinit(internal.allocator);
+    record_type.deinit(runtime.allocatorOf(target));
     if (record.callback) |callback| callback.release();
 }
 
@@ -633,7 +629,7 @@ const SignalRemoval = struct {
         for (slice, 0..) |*existing, i| {
             if (existing.id != self.listener_id) continue;
             existing.removed = true;
-            releaseRecord(internal, existing.*);
+            releaseRecord(self.target, existing.*);
             _ = list.remove(i) catch unreachable;
             listenersChanged(internal, self.target);
             return;
@@ -656,14 +652,14 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
     // Step 2: If listener's signal is not null and is aborted, then return
     if (listener.signal) |signal| {
         if (interfaces.AbortSignal.get_aborted(signal) catch false) {
-            releaseRecord(internal, listener);
+            releaseRecord(instance, listener);
             return;
         }
     }
 
     // Step 3: If listener's callback is null, then return
     if (listener.callback == null) {
-        releaseRecord(internal, listener);
+        releaseRecord(instance, listener);
         return;
     }
 
@@ -674,7 +670,7 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
     }
 
     // Step 5: If event listener list does not contain matching listener, append it
-    const list = try internal.ensureEventListenerList();
+    const list = try internal.ensureEventListenerList(runtime.allocatorOf(instance));
     const slice = list.toSlice();
 
     var already_exists = false;
@@ -693,13 +689,13 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, lis
         // Listener already exists - clean up the duplicate resources. Its
         // abort steps (step 6) would remove a listener that was never
         // appended, which does nothing, so none are added.
-        releaseRecord(internal, updated_listener);
+        releaseRecord(instance, updated_listener);
         return;
     }
 
     updated_listener.id = next_listener_id.fetchAdd(1, .monotonic);
     list.append(updated_listener) catch |err| {
-        releaseRecord(internal, updated_listener);
+        releaseRecord(instance, updated_listener);
         return err;
     };
     // Appended: its owner hears of it before step 6 can fail.
@@ -756,7 +752,7 @@ fn removeAnEventListener(internal: *InternalState, instance: *runtime.Instance, 
 
             // Free the type DOMString
             var existing_type = existing.type;
-            existing_type.deinit(internal.allocator);
+            existing_type.deinit(runtime.allocatorOf(instance));
 
             _ = list.remove(i) catch unreachable;
             listenersChanged(internal, instance);
@@ -808,7 +804,7 @@ var next_handler_serial: std.atomic.Value(u32) = .init(1);
 /// the callback, then the ones registered after" depends on.
 pub fn activateEventHandler(instance: *runtime.Instance, event_type: []const u8) !void {
     const internal = getInternalFromRegistry(instance) orelse return;
-    const list = try internal.ensureEventListenerList();
+    const list = try internal.ensureEventListenerList(runtime.allocatorOf(instance));
 
     // Step 3: If eventHandler's listener is not null, then return.
     for (list.toSliceMut()) |*existing| {
@@ -825,8 +821,8 @@ pub fn activateEventHandler(instance: *runtime.Instance, event_type: []const u8)
     var serial = next_handler_serial.fetchAdd(1, .monotonic);
     // 0 means "no handler": a wrapped counter skips it.
     if (serial == 0) serial = next_handler_serial.fetchAdd(1, .monotonic);
-    var owned_type = try runtime.DOMString.initDupe(internal.allocator, event_type);
-    errdefer owned_type.deinit(internal.allocator);
+    var owned_type = try runtime.DOMString.initDupe(runtime.allocatorOf(instance), event_type);
+    errdefer owned_type.deinit(runtime.allocatorOf(instance));
     try list.append(.{
         .type = owned_type,
         .callback = null,
@@ -851,7 +847,7 @@ pub fn deactivateEventHandler(instance: *runtime.Instance, event_type: []const u
         if (!std.mem.eql(u8, existing.type.asSlice(), event_type)) continue;
         existing.removed = true;
         var existing_type = existing.type;
-        existing_type.deinit(internal.allocator);
+        existing_type.deinit(runtime.allocatorOf(instance));
         _ = list.remove(i) catch {};
         listenersChanged(internal, instance);
         return;
@@ -870,7 +866,7 @@ pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
     // does its listener, which step 2 removes with the rest.
     if (internal.event_handler_map) |map| {
         var values = map.valueIterator();
-        while (values.next()) |value| value.release(internal.allocator, true);
+        while (values.next()) |value| value.release(runtime.allocatorOf(target), true);
         map.clearRetainingCapacity();
     }
     // Step 2: DOM "remove all event listeners" - for each listener, "remove
@@ -885,7 +881,7 @@ pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
         slot.removed = true;
         const record = slot.*;
         _ = list.remove(index) catch break;
-        releaseRecord(internal, record);
+        releaseRecord(target, record);
     }
     if (removed_any) listenersChanged(internal, target);
 }
@@ -915,7 +911,7 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
     // given eventTarget and name."
     const handler = value orelse {
         if (internal.event_handler_map) |map| {
-            if (map.fetchRemove(event_type)) |old| old.value.release(internal.allocator, true);
+            if (map.fetchRemove(event_type)) |old| old.value.release(runtime.allocatorOf(target), true);
         }
         deactivateEventHandler(target, event_type);
         return;
@@ -931,7 +927,7 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
         .callback = callback,
         .address = @intFromPtr(callback.function.value.handle.ptr),
     } };
-    errdefer handler_value.release(internal.allocator, true);
+    errdefer handler_value.release(runtime.allocatorOf(target), true);
     try storeHandlerEntry(target, internal, event_type, handler_value);
 }
 
@@ -940,16 +936,16 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
 /// preserves the listener's position and releases exactly the old value.
 fn storeHandlerEntry(target: *runtime.Instance, internal: *InternalState, event_type: []const u8, entry: HandlerEntry) !void {
     const map = internal.event_handler_map orelse blk: {
-        const created = try internal.allocator.create(std.StringHashMapUnmanaged(HandlerEntry));
+        const created = try runtime.allocatorOf(target).create(std.StringHashMapUnmanaged(HandlerEntry));
         created.* = .empty;
         internal.event_handler_map = created;
         break :blk created;
     };
-    try map.ensureUnusedCapacity(internal.allocator, 1);
+    try map.ensureUnusedCapacity(runtime.allocatorOf(target), 1);
     try activateEventHandler(target, event_type);
     const listener = handlerListener(internal, event_type) orelse unreachable;
     const slot = map.getOrPutAssumeCapacity(listener.type.asSlice());
-    if (slot.found_existing) slot.value_ptr.release(internal.allocator, true);
+    if (slot.found_existing) slot.value_ptr.release(runtime.allocatorOf(target), true);
     slot.value_ptr.* = entry;
 }
 
@@ -961,8 +957,8 @@ fn getHandlerAddress(target: *runtime.Instance, event_type: []const u8) ?usize {
 /// location and activate the handler, without compiling or running script.
 fn setRawEventHandler(target: *runtime.Instance, event_type: []const u8, source: dom_module.event_handlers.RawSource) anyerror!void {
     const internal = getInternalFromRegistry(target) orelse return error.InvalidStateError;
-    const entry: HandlerEntry = .{ .raw = try source.clone(internal.allocator) };
-    errdefer entry.release(internal.allocator, true);
+    const entry: HandlerEntry = .{ .raw = try source.clone(runtime.allocatorOf(target)) };
+    errdefer entry.release(runtime.allocatorOf(target), true);
     try storeHandlerEntry(target, internal, event_type, entry);
 }
 
@@ -998,7 +994,7 @@ fn currentHandlerValue(target: *runtime.Instance, event_type: []const u8) ?Handl
             // Step 3.7.1: null before compilation can report an error and
             // re-enter the getter. Keep the listener and its position. The
             // source is ours during reentrancy, even if the attribute changes.
-            const allocator = internal.allocator;
+            const allocator = runtime.allocatorOf(target);
             const removed = map.fetchRemove(event_type).?;
             switch (dom_module.event_handlers.compileRaw(target, event_type, source)) {
                 .scripting_disabled => {
@@ -1193,7 +1189,7 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
     // Duplicate the type string with internal allocator to ensure ownership
     // The incoming DOMString may be allocated with a different allocator (from V8 conversion layer)
     // and we need to own it to safely free it in deinit()
-    const owned_type = runtime.DOMString.initDupe(internal.allocator, @"type".asSlice()) catch {
+    const owned_type = runtime.DOMString.initDupe(runtime.allocatorOf(instance), @"type".asSlice()) catch {
         if (callback_value) |value| value.release();
         return error.OutOfMemory;
     };
@@ -1513,7 +1509,7 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
 
     // Step 8 of "invoke": let listeners be a clone of the listener list. See
     // Invocation for why this clones identity rather than the records.
-    var snapshot = infra.List(Invocation).init(internal.allocator);
+    var snapshot = infra.List(Invocation).init(runtime.allocatorOf(current_target));
     defer snapshot.deinit();
 
     var found = false;
@@ -1611,7 +1607,7 @@ fn detachListener(internal: *InternalState, target: *runtime.Instance, candidate
     list.toSliceMut()[index].removed = true;
     const removed = list.remove(index) catch return null;
     var removed_type = removed.type;
-    removed_type.deinit(internal.allocator);
+    removed_type.deinit(runtime.allocatorOf(target));
     listenersChanged(internal, target);
 
     return removed.callback;

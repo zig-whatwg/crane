@@ -19,9 +19,9 @@ const infra = @import("infra");
 const NodeBase = dom.NodeBase;
 const RegisteredObserver = dom.node_base.RegisteredObserverType;
 
-fn bareNode(allocator: std.mem.Allocator) NodeBase {
+fn bareNode() NodeBase {
     return .{
-        .allocator = allocator,
+        .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.ELEMENT_NODE,
     };
 }
@@ -49,7 +49,7 @@ const Observers = struct {
 };
 
 test "a node that never needs rare data has none" {
-    var node = bareNode(testing.allocator);
+    var node = bareNode();
     try testing.expect(node.rareData() == null);
     try testing.expectEqualStrings("", node.nodeName());
     try testing.expect(!node.hasOwnedNodeName());
@@ -62,7 +62,7 @@ test "a node that never needs rare data has none" {
 
 test "rare data is made once and never moves; the list keeps registration order" {
     var observers: Observers = .{};
-    var node = bareNode(testing.allocator);
+    var node = bareNode();
     defer node.deinitRareData();
 
     const first = try node.appendRegisteredObserver(observers.registration(0, false));
@@ -102,7 +102,7 @@ test "rare data is made once and never moves; the list keeps registration order"
 }
 
 test "the node name lives in rare data, and an owned one is freed with it" {
-    var node = bareNode(testing.allocator);
+    var node = bareNode();
 
     try node.setStaticNodeName("EMBED");
     try testing.expectEqualStrings("EMBED", node.nodeName());

@@ -26,7 +26,7 @@ fn linkTestChild(parent: *NodeBase, child: *NodeBase) void {
 test "Node.getRoot - detached element is its own root" {
     const allocator = std.testing.allocator;
 
-    var elem = Element.init(allocator, "div");
+    var elem = Element.init(&allocator, "div");
     defer elem.deinit();
 
     const node = elem.asNode();
@@ -39,10 +39,10 @@ test "Node.getRoot - detached element is its own root" {
 test "Node.getRoot - child's root is parent (orphaned subtree)" {
     const allocator = std.testing.allocator;
 
-    var parent_elem = Element.init(allocator, "div");
+    var parent_elem = Element.init(&allocator, "div");
     defer parent_elem.deinit();
 
-    var child_elem = Element.init(allocator, "span");
+    var child_elem = Element.init(&allocator, "span");
     defer child_elem.deinit();
 
     const parent = parent_elem.asNode();
@@ -61,13 +61,13 @@ test "Node.getRoot - child's root is parent (orphaned subtree)" {
 test "Node.getRoot - nested elements" {
     const allocator = std.testing.allocator;
 
-    var grandparent_elem = Element.init(allocator, "div");
+    var grandparent_elem = Element.init(&allocator, "div");
     defer grandparent_elem.deinit();
 
-    var parent_elem = Element.init(allocator, "section");
+    var parent_elem = Element.init(&allocator, "section");
     defer parent_elem.deinit();
 
-    var child_elem = Element.init(allocator, "span");
+    var child_elem = Element.init(&allocator, "span");
     defer child_elem.deinit();
 
     const grandparent = grandparent_elem.asNode();
@@ -91,19 +91,19 @@ test "Node.getRoot - deeply nested" {
     const allocator = std.testing.allocator;
 
     // Create a chain of 5 elements
-    var elem0 = Element.init(allocator, "div");
+    var elem0 = Element.init(&allocator, "div");
     defer elem0.deinit();
 
-    var elem1 = Element.init(allocator, "section");
+    var elem1 = Element.init(&allocator, "section");
     defer elem1.deinit();
 
-    var elem2 = Element.init(allocator, "article");
+    var elem2 = Element.init(&allocator, "article");
     defer elem2.deinit();
 
-    var elem3 = Element.init(allocator, "p");
+    var elem3 = Element.init(&allocator, "p");
     defer elem3.deinit();
 
-    var elem4 = Element.init(allocator, "span");
+    var elem4 = Element.init(&allocator, "span");
     defer elem4.deinit();
 
     const n0 = elem0.asNode();

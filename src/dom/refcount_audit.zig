@@ -258,7 +258,7 @@ fn documentUrlOf(node: *NodeBase) ?[]const u8 {
 // ============================================================================
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
-    const raw = node.owner_instance orelse return null;
+    const raw = node.ownerInstance() orelse return null;
     return @ptrCast(@alignCast(raw));
 }
 

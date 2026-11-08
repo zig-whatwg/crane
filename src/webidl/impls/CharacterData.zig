@@ -68,11 +68,12 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // The block is the arena's, and `Registry.remove` returns it to the
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
+    _ = allocator; // the node's Browser's (runtime.allocatorOf): asserted the same in Node's initOwn
     const internal = try Registry.create(instance);
-    internal.* = try InternalState.init(allocator);
+    internal.* = .empty;
     if (@hasField(@TypeOf(args), "data")) {
         errdefer deinitOwn(instance);
-        try internal.setData(args.data);
+        try internal.setData(runtime.allocatorOf(instance), args.data);
     }
 }
 
@@ -85,7 +86,7 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up its internal state
     if (Registry.get(instance)) |internal| {
-        internal.deinit();
+        internal.deinit(runtime.allocatorOf(instance));
     }
     Registry.remove(instance);
 }
@@ -235,7 +236,7 @@ fn replaceDataInternal(instance: *runtime.Instance, internal: *InternalState, of
     // inline vs heap storage, and a pair cut or completed at either seam.
     if (data.len > std.math.maxInt(u32)) return error.OutOfMemory;
     const data_units: u32 = @intCast(infra.wtf8.codeUnitLength(data));
-    try internal.replaceDataUnits(offset, count, data, data_units);
+    try internal.replaceDataUnits(runtime.allocatorOf(instance), offset, count, data, data_units);
     // The node document's DOM tree version moves with the data, parent or
     // none (Blink CharacterData::SetDataAndUpdate, WebKit
     // CharacterData::notifyParentAfterChange): an XPath iterator over the

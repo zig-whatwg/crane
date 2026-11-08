@@ -14,10 +14,13 @@ const dom = @import("dom");
 const refcount = dom.refcount;
 const NodeBase = dom.NodeBase;
 
+/// An owner-less node made with `allocator` - the test's allocator, which its
+/// owner word names (NodeBase.ownerless).
 fn newNode(allocator: std.mem.Allocator) !*NodeBase {
+    std.debug.assert(allocator.ptr == std.testing.allocator.ptr);
     const node = try allocator.create(NodeBase);
     node.* = .{
-        .allocator = allocator,
+        .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.ELEMENT_NODE,
     };
     return node;
