@@ -56,10 +56,17 @@ const Listener = struct {
     fn stop(self: *Listener) void {
         self.stopping.store(true, .release);
         const address: std.Io.net.IpAddress = .{ .ip4 = std.Io.net.Ip4Address.loopback(self.port) };
-        const wake = address.connect(io, .{ .mode = .stream }) catch |err| std.debug.panic("flaky5_bad_port_test: cannot wake the accept thread: {t}", .{err});
+        const wake: ?std.Io.net.Stream = address.connect(io, .{ .mode = .stream }) catch |err| switch (err) {
+            // Delivered: the accept thread took the connection and reset it
+            // before connect() came back, and the kernel reports the reset as
+            // the connect's error (seen under gate load, as
+            // tests/support/loopback_listener.zig notes).
+            error.ConnectionResetByPeer => null,
+            else => std.debug.panic("flaky5_bad_port_test: cannot wake the accept thread: {t}", .{err}),
+        };
         if (self.thread) |thread| thread.join();
         self.server.deinit(io);
-        wake.close(io);
+        if (wake) |stream| stream.close(io);
     }
 };
 
