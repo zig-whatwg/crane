@@ -195,6 +195,8 @@ pub fn installHooks() void {
     dom.style.engine.resource_loading.installHooks();
     dom.mutation.registerInsertionStepsCallback(&dom.style.engine.resource_loading.insertionSteps) catch @panic("failed to install style resource insertion steps");
     dom.mutation.registerChildrenChangedCallback(&dom.style.engine.resource_loading.childrenChanged) catch @panic("failed to install style resource children changed steps");
+    // A moved style sheet owner takes its new place in the sheets' tree order.
+    dom.mutation.registerMovingStepsCallback(&dom.style.engine.movingSteps) catch @panic("failed to install style sheet moving steps");
     dom.mutation.registerInsertionStepsCallback(&autofocusInsertionSteps) catch @panic("failed to install autofocus insertion steps");
     // Its states left at its Browser's end (Browser.deinit).
     @import("dom").teardown_sweeps.install(.elements, &sweepRemaining);
@@ -710,7 +712,8 @@ pub fn get_outerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// CSSOM View §3.1 - Returns scroll position from top
 /// Returns 0 for non-rendered elements (no layout engine)
 pub fn get_scrollTop(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
+    // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
+    dom.style.engine.updateStyleForRead(instance);
     return 0.0;
 }
 
@@ -718,7 +721,8 @@ pub fn get_scrollTop(instance: *runtime.Instance) anyerror!f64 {
 /// CSSOM View §3.1 - Returns scroll position from left
 /// Returns 0 for non-rendered elements (no layout engine)
 pub fn get_scrollLeft(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
+    // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
+    dom.style.engine.updateStyleForRead(instance);
     return 0.0;
 }
 
@@ -726,7 +730,8 @@ pub fn get_scrollLeft(instance: *runtime.Instance) anyerror!f64 {
 /// CSSOM View §3.1 - Returns scroll width of element
 /// Returns 0 for non-rendered elements (no layout engine)
 pub fn get_scrollWidth(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
+    // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
+    dom.style.engine.updateStyleForRead(instance);
     return 0;
 }
 
@@ -734,7 +739,8 @@ pub fn get_scrollWidth(instance: *runtime.Instance) anyerror!i32 {
 /// CSSOM View §3.1 - Returns scroll height of element
 /// Returns 0 for non-rendered elements (no layout engine)
 pub fn get_scrollHeight(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
+    // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
+    dom.style.engine.updateStyleForRead(instance);
     return 0;
 }
 
@@ -742,7 +748,8 @@ pub fn get_scrollHeight(instance: *runtime.Instance) anyerror!i32 {
 /// CSSOM View §3.1 - Returns top border width
 /// Returns 0 for non-rendered elements (no layout engine)
 pub fn get_clientTop(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
+    // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
+    dom.style.engine.updateStyleForRead(instance);
     return 0;
 }
 
@@ -750,7 +757,8 @@ pub fn get_clientTop(instance: *runtime.Instance) anyerror!i32 {
 /// CSSOM View §3.1 - Returns left border width
 /// Returns 0 for non-rendered elements (no layout engine)
 pub fn get_clientLeft(instance: *runtime.Instance) anyerror!i32 {
-    _ = instance;
+    // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
+    dom.style.engine.updateStyleForRead(instance);
     return 0;
 }
 
@@ -762,6 +770,8 @@ pub fn get_clientLeft(instance: *runtime.Instance) anyerror!i32 {
 /// dom.image_sources.replacedFacts), any other element's from layoutBox.
 /// Not modelled, stated: step 2's root and body elements (the viewport).
 pub fn get_clientWidth(instance: *runtime.Instance) anyerror!i32 {
+    // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
+    dom.style.engine.updateStyleForRead(instance);
     const box = clientBox(instance) orelse return 0;
     return roundedLength(box.client.width);
 }
@@ -769,6 +779,8 @@ pub fn get_clientWidth(instance: *runtime.Instance) anyerror!i32 {
 /// Getter for clientHeight
 /// CSSOM View §3.1 - Returns inner height of element; as clientWidth.
 pub fn get_clientHeight(instance: *runtime.Instance) anyerror!i32 {
+    // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
+    dom.style.engine.updateStyleForRead(instance);
     const box = clientBox(instance) orelse return 0;
     return roundedLength(box.client.height);
 }
@@ -1730,6 +1742,8 @@ pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(dictionaries
 /// Without a layout engine, returns an empty DOMRectList
 pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
+    dom.style.engine.updateStyleForRead(instance);
 
     // Return empty DOMRectList (no layout = no client rects)
     return interfaces.DOMRectList.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
@@ -2919,6 +2933,8 @@ fn parseCssLengthToPixels(value: []const u8) ?f64 {
 /// For elements without explicit dimensions or with relative units, returns zero dimensions.
 pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = getInternal(instance) orelse return error.InvalidStateError;
+    // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
+    dom.style.engine.updateStyleForRead(instance);
 
     var width: f64 = 0;
     var height: f64 = 0;

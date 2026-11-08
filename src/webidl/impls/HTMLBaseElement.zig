@@ -26,6 +26,7 @@ pub const InternalState = struct {};
 pub fn installHooks() void {
     dom.mutation.registerInsertionStepsCallback(inserted) catch @panic("base insertion hook allocation");
     dom.mutation.registerRemovingStepsCallback(removed) catch @panic("base removing hook allocation");
+    dom.mutation.registerMovingStepsCallback(moved) catch @panic("base moving hook allocation");
     dom.attribute_change_steps.install("base", attributeChanged);
 }
 
@@ -58,6 +59,18 @@ fn removed(node: *dom.NodeBase, old_parent: ?*dom.NodeBase) void {
     // DOM removing steps run after unlinking; descendants receive the removed
     // subtree's original parent, which still identifies the old document.
     refreshBaseURL(documentRoot(old_parent orelse return) orelse return);
+}
+
+/// DOM moving steps: a move can change which base element is the first one
+/// with an href in tree order, so the frozen base URL is set again, as for
+/// an insertion or a removal. Both shipping browsers reprocess on a move:
+/// Blink's moveBefore runs HTMLBaseElement::InsertedInto/RemovedFrom
+/// (Document::ProcessBaseElement) - the atomic move keeps them - and Gecko's
+/// runs HTMLSharedElement::BindToTree/UnbindFromTree
+/// (SetBaseURIUsingFirstBaseWithHref).
+fn moved(node: *dom.NodeBase, _: ?*dom.NodeBase) void {
+    _ = baseInstance(node) orelse return;
+    refreshBaseURL(documentRoot(node) orelse return);
 }
 
 fn attributeChanged(instance: *runtime.Instance, name: []const u8, _: ?[]const u8, _: ?[]const u8, namespace: ?[]const u8) void {

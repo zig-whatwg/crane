@@ -2013,6 +2013,53 @@ pub const AnimationGate = struct {
     };
 };
 
+/// DOM moving steps (Element's installHooks registers them): a style sheet
+/// owner moved by DOM "move" - a style, link or SVG style element, an
+/// xml-stylesheet processing instruction - keeps its sheet and stays a
+/// candidate (no removing or insertion steps run), but its place among the
+/// document's sheets is its tree order (CSSOM 6.2, "document or shadow root
+/// CSS style sheets"), so the active sheets are rebuilt in the new order
+/// when style is next read. Blink re-registers it for the same reason:
+/// HTMLLinkElement::RemovedFrom calls RemoveStyleSheetCandidateNode during an
+/// atomic move, and InsertedInto adds it again
+/// (dom/nodes/moveBefore/stylesheet-cascade-order.html).
+pub fn movingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
+    _ = old_parent;
+    if (node.node_type != NodeBase.ELEMENT_NODE and node.node_type != NodeBase.PROCESSING_INSTRUCTION_NODE) return;
+    const owner = instanceOf(node) orelse return;
+    if (hooks.sheetOf(owner) == null) return;
+    const document = (interfaces.Node.get_ownerDocument(owner) catch null) orelse return;
+    const engine = hooks.engineOf(document) orelse return;
+    engine.sheetsChanged();
+}
+
+/// CSSOM View's layout-dependent reads of `element` - getBoundingClientRect,
+/// getClientRects and the offset*, client* and scroll* getters - update style
+/// before they answer, as the browsers' do: Blink's
+/// Element::GetBoundingClientRect, Element::OffsetWidth and
+/// HTMLElement::offsetWidthForBinding (core/dom/element.cc,
+/// core/html/html_element.cc) each start with
+/// Document::UpdateStyleAndLayoutForNode; Gecko's flush FlushType::Layout.
+/// Crane has no layout, so this is the style half: HTML update the rendering
+/// 16.2.1's "recalculate styles" for the element's node document, the same
+/// gated pass the rendering opportunity runs (a no-op when no style input
+/// moved since the last one), in that document's realm. Each resolution
+/// whose inputs moved is the element's style change event, so the
+/// before-change style of a later change is the one this read saw (CSS
+/// Transitions 1 section 3; dom/nodes/moveBefore/continue-css-transition-*,
+/// css/css-transitions/properties-value-*). A document that declares no
+/// transition or animation skips it: there a resolution is unobservable
+/// until something reads a style, and that read resolves it.
+pub fn updateStyleForRead(element: *runtime.Instance) void {
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+    if (!declaresAnimations(document)) return;
+    @import("engine").runInRealm(document.ctx, recalculateForRead, document) catch {};
+}
+
+fn recalculateForRead(context: ?*anyopaque) void {
+    recalculateStyles(@ptrCast(@alignCast(context orelse return)));
+}
+
 /// Whether `document` declares CSS transitions or CSS animations: its
 /// rendering opportunities update its style (step 16) and its mutations ask
 /// for one.
