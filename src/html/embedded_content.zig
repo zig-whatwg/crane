@@ -113,6 +113,11 @@ pub const Content = struct {
     /// "the element is still in the stack of open elements of an HTML parser".
     parser_open: bool = false,
     represents: Represents = .nothing,
+    /// (object) Its last (re)determination failed - an error event fired
+    /// and it fell back (steps 3.3, 3.5 and 7) - and no data or type change
+    /// has asked again since: a move of the element does not fetch again
+    /// (`inserted`). Blink's HTMLObjectElement use_fallback_content_.
+    load_failed: bool = false,
     /// The current processing: every (re)queue takes the next number, and a
     /// task or fetch of an older one is superseded ("if another task has
     /// since been queued").
@@ -202,10 +207,28 @@ pub fn finishedParsingChildren(content: *Content) void {
 }
 
 /// The element's post-connection steps: it is in a document now.
+///
+/// An object whose load failed is not determined again by a move (stated
+/// deviation, golden rule 2): HTML 4.8.7 re-determines it whenever it is
+/// inserted into or removed from a document, so an error handler that moves
+/// its object fetches, fails and moves it forever, each round delaying the
+/// load event (editing/crashtests/insertAdjacentElement-with-
+/// DOMSubtreeModified.html; Firefox 159 does that). Measured with a 404
+/// object moved three times (lane crash1 b2, tmp/crash1/probe/d2b.html, a
+/// 404-counting server): Chrome 157 fetched once and fired one error event,
+/// Safari 27.2 fetched once and fired none, Firefox 159 fetched four times
+/// and fired four. By mechanism - an error event on a failed load (Chrome,
+/// Firefox), no new fetch when an object whose load failed moves (Chrome,
+/// Safari) - that is Chrome's behaviour: Blink's
+/// HTMLObjectElement::RenderFallbackContent sets use_fallback_content_, and
+/// HTMLPlugInElement::AttachLayoutTree returns early while UseFallbackContent()
+/// holds, so a re-attach never reloads. A data or type change still asks
+/// again (`attributeChanged`; Blink's ReloadPluginOnAttributeChange, whose
+/// reload its sticky flag then stops, is not followed there - unmeasured).
 pub fn inserted(content: *Content) void {
     if (content.parser_open) return;
     switch (content.kind) {
-        .object => queueProcessing(content),
+        .object => if (!content.load_failed) queueProcessing(content),
         // "Whenever an embed element that was not potentially active becomes
         // potentially active": with src or type set.
         .embed => if (hasAttribute(content.element, "src") or hasAttribute(content.element, "type")) queueProcessing(content),
@@ -232,8 +255,12 @@ pub fn attributeChanged(content: *Content, local_name: []const u8) void {
         // data ... are present, and its type attribute is set, changed, or
         // removed" (classid is obsolete and never read here).
         .object => {
-            if (std.mem.eql(u8, local_name, "data")) return queueProcessing(content);
-            if (std.mem.eql(u8, local_name, "type") and !hasAttribute(content.element, "data")) return queueProcessing(content);
+            if (std.mem.eql(u8, local_name, "data") or
+                (std.mem.eql(u8, local_name, "type") and !hasAttribute(content.element, "data")))
+            {
+                content.load_failed = false;
+                return queueProcessing(content);
+            }
         },
         // "a potentially active embed element that is remaining potentially
         // active has its src attribute set, changed, or removed or its type
@@ -441,16 +468,12 @@ fn processObject(content: *Content, id: u64) void {
     // data attribute's value, relative to the element's node document. If
     // url is failure, then fire an event named error at the element and jump
     // to the step below labeled fallback."
-    const url = (encoding_parse.encodingParseAndSerialize(element, data) catch null) orelse {
-        dom.navigables.fireSimpleEvent(element, "error");
-        return fallback(content);
-    };
+    const url = (encoding_parse.encodingParseAndSerialize(element, data) catch null) orelse return loadFailed(content);
     defer element.ctx.allocator.free(url);
     // 3.4-3.5: the request, fetched.
     startFetch(content, id, url) catch |err| {
         log.debug("object fetch of {s} not started: {}", .{ url, err });
-        dom.navigables.fireSimpleEvent(element, "error");
-        return fallback(content);
+        return loadFailed(content);
     };
     // 3.6: "If the resource is not yet available ... jump to the step below
     // labeled fallback. The task that is queued by the networking task
@@ -465,10 +488,7 @@ fn objectResponse(content: *Content, response: *const ResponseSummary) void {
     // Step 7: "If the load failed (e.g. there was an HTTP 404 error, there
     // was a DNS error), fire an event named error at the element, then jump
     // to the step below labeled fallback."
-    if (response.network_error or !response.ok) {
-        dom.navigables.fireSimpleEvent(element, "error");
-        return fallback(content);
-    }
+    if (response.network_error or !response.ok) return loadFailed(content);
     // Step 8: the resource type.
     const type_attribute = attributeValue(element, "type");
     const resource_type = object_resource_type.resourceType(content.allocator, .{
@@ -494,6 +514,17 @@ fn objectResponse(content: *Content, response: *const ResponseSummary) void {
         },
         .fallback => fallback(content),
     }
+}
+
+/// A failed load (steps 3.3, 3.5 and 7): "fire an event named error at the
+/// element, then jump to the step below labeled fallback" - and no new fetch
+/// when it moves (`inserted`). Marked before the event, so a handler that
+/// moves the element already finds it failed: Blink decides at the next
+/// layout attach, after RenderFallbackContent set use_fallback_content_.
+fn loadFailed(content: *Content) void {
+    content.load_failed = true;
+    dom.navigables.fireSimpleEvent(content.element, "error");
+    fallback(content);
 }
 
 /// Step 4, "Fallback": "The object element represents the element's

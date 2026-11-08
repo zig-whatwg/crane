@@ -1,4 +1,7 @@
-//! Freeing a detached tree a bounded number of nodes at a time.
+//! Freeing a tree's descendants leaves first: a bounded number at a time for
+//! a detached tree (`freeDescendants`), or all of them for a node's own
+//! teardown (`freeAllDescendants`, Node.deinit) - in constant stack either
+//! way, whatever the tree's depth.
 //!
 //! A tree nothing owns any more - its root's wrapper was collected, and no
 //! node of it has a wrapper (wrappers in a tree are upward-closed and linked
@@ -51,23 +54,67 @@ pub const Position = DeferredTeardown.Position;
 /// Returns how many were freed. `root` has no children left when
 /// `root.first_child == null` afterwards.
 pub fn freeDescendants(root: *NodeBase, position: *Position, budget: usize) usize {
-    var at = resumePoint(root, position.*);
+    // Node's own teardown of a node that has no children now: its type's
+    // deinit, its registries, its storage when no wrapper holds it - and the
+    // end of its creator's reference, should it still have one (a collected
+    // tree's nodes go the way an uninserted node goes:
+    // dom.node_creation.destroyUninserted). (Lane nodeholds'
+    // node_holds.nodeReleased runs inside it, in Node.deinit - at the real
+    // free, as it must.)
+    const walk = freeLeavesFirst(root, resumePoint(root, position.*), budget, &node_creation.destroyUninserted);
+    position.* = if (walk.at == root) .{} else positionOf(walk.at);
+    return walk.freed;
+}
+
+/// Free EVERY descendant of `root`, leaves first, each through `free` - the
+/// teardown a tree runs for a child (Node.deinitNodeByType) - and never
+/// `root` itself, whose own teardown is the caller's. Returns how many were
+/// freed.
+///
+/// A tree's teardown at any depth in constant stack: each node is unlinked
+/// from its parent and freed only once it has no children left, so its own
+/// teardown has no subtree to walk and never reaches this again for the same
+/// tree. Node.deinit frees its subtree this way. It used to call each child's
+/// teardown, which called its children's: one set of frames per tree level,
+/// and a 10,000-deep tree overflowed the stack (lane crash1's sweep: a
+/// SIGSEGV at the tree's teardown, the zero-crashes rule).
+///
+/// WebKit unlinks every child from its container - parent, siblings - before
+/// the child's last reference goes (ContainerNodeAlgorithms.cpp
+/// removeDetachedChildrenInContainer); its earlier deletion queue, which
+/// Blink shared until Oilpan, never destroyed a node inside its parent's
+/// destruction: "We have to tell all children that their parent has died",
+/// and the children joined one queue, "Reuse the nextSibling pointer for this
+/// purpose" (ContainerNodeAlgorithms.h addChildNodesToDeletionQueue, WebKit
+/// 11c11fd3c856). Blink's Oilpan finalizes each node on its own, so no
+/// destructor walks a subtree. Here the tree's links are the queue: the walk
+/// descends to the last leaf, frees it, and climbs - no list, no allocation.
+pub fn freeAllDescendants(root: *NodeBase, free: *const fn (*runtime.Instance) void) usize {
+    return freeLeavesFirst(root, root, std.math.maxInt(usize), free).freed;
+}
+
+const Walk = struct {
+    /// How many nodes left the tree.
+    freed: usize,
+    /// Where the walk stopped: an ancestor of everything freed, or `root`.
+    at: *NodeBase,
+};
+
+/// The walk both teardowns share: from `start` (in `root`'s tree), free at
+/// most `budget` of `root`'s descendants, leaves first, never `root`.
+fn freeLeavesFirst(root: *NodeBase, start: *NodeBase, budget: usize, free: *const fn (*runtime.Instance) void) Walk {
+    var at = start;
     var freed: usize = 0;
     while (freed < budget) {
         while (at.lastChild()) |child| at = child;
         if (at == root) break;
         const parent = at.parent_node orelse break;
         unlinkLastChild(parent, at);
-        // Node's own teardown of a node that has no children now: its type's
-        // deinit, its registries, its storage when no wrapper holds it.
-        // (Lane nodeholds' node_holds.nodeReleased runs inside it, in
-        // Node.deinit - at the real free, as it must.)
-        if (instance_bridge.getInstance(at)) |raw| node_creation.destroyUninserted(@ptrCast(@alignCast(raw)));
+        if (instance_bridge.getInstance(at)) |raw| free(@ptrCast(@alignCast(raw)));
         freed += 1;
         at = parent;
     }
-    position.* = if (at == root) .{} else positionOf(at);
-    return freed;
+    return .{ .freed = freed, .at = at };
 }
 
 /// How many nodes `root`'s tree holds, counting at most `cap` - an estimate

@@ -1,0 +1,16 @@
+# Spec Compliance: An association the spec keeps equal to the owner's needs no storage - but read it as the spec resets it
+
+**Date**: 2026-11-08
+**Lesson**: When every step that sets an association sets it to the owner's value, and the step that changes the owner resets it, the association needs no storage. Store only the exceptions. Read the inferred case the way the resetting step computes it, not as the owner's raw value: an algorithm that changes the owner first and reads the association later sees the new owner.
+
+**Why**: DOM keeps an element's GLOBAL custom element registry equal to its node document's registry. "create an element" takes the document's registry. Clone and importNode take the document's effective global registry. Adopt 3.3.2.4 resets a global association to the new document's effective global registry. And a document's registry, once set, is never replaced. So "the node document's" is a value the element can read instead of keep. But adopt runs step 3.3.2.1 (set the node document) before 3.3.2.4 (read the old association and reset it). An inferred association read between the two is the NEW document's.
+
+**What Happened**: Lane perf3 E1 item 1. Every element carried a 40-byte RegistryAssociation. 86.6% of the perf pages' elements held their node document's global registry, the rest null, none scoped. Element now keeps `RegistryPlace` {none, node_document, rare} in one byte of padding. Any other registry - a scoped one, or a global one that is not the node document's - goes to ElementRareData. The trap was dom.mutation's adopt: it sets the node document, then reads `Element.get_customElementRegistry`. For a new document with a SCOPED registry, the raw read would have returned that scoped registry. The adopt code keeps a scoped association, so the element would then have read the scoped registry for good, where 3.3.2.4 sets null. Reading `node_document` as the document's EFFECTIVE GLOBAL registry (null for a scoped one) makes the read equal to what 3.3.2.4 sets, in every case: new document global, null, or scoped. Blink infers from the tree scope unless NodeRareData holds one (kCustomElementRegistry; Element::SetCustomElementRegistry clears it when it equals the tree scope's). WebKit keeps two node flags and reads the tree scope's registry otherwise (CustomElementRegistry::registryForElement).
+
+**Fix**:
+1. Prove the invariant from the spec text: list every step that sets the association and every step that changes the owner.
+2. Store a small place tag plus the exceptions in rare data. Release an exception's edge when the place becomes inferred again.
+3. For each algorithm that changes the owner, find where it reads the association. If it reads after the owner changed, define the inferred read so that it gives what the resetting step would set.
+4. Test the transitions both ways (inferred -> rare -> inferred) and adopt into owners of each kind: global, none, scoped, and another browsing context's.
+
+**Takeaway**: **An association the spec keeps equal to its owner's can be inferred instead of stored, but define the inferred read as the value the resetting step computes - an algorithm that changes the owner before it reads the association must still see the right answer.**

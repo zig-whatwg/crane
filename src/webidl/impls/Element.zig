@@ -84,19 +84,6 @@ pub const InternalState = struct {
     /// here, by "handle attribute changes" and "create an element".
     data: ElementData,
 
-    /// DOM 4.2.2.2: the element as a slottable - its assigned slot and its
-    /// manual slot assignment, weak references the slot algorithms keep
-    /// (dom.slot_helpers, dom.shadow_dom_algorithms). Its name is its slot
-    /// attribute's value (`slotName`). Not rare data: dom.slot_helpers hands
-    /// out this state, writable, on read paths that visit every element (an
-    /// event's path, innerText, the style engine), so making it on demand
-    /// would make rare data for every element they visit.
-    slottable: dom.slot_helpers.SlottableState = .{},
-
-    /// HTML: the element's custom element registry (CE2-S2). Set on most
-    /// elements (the node document's global registry).
-    custom_element_registry: dom.custom_elements.RegistryAssociation = .{},
-
     /// The element's style state (dom.style.ElementStyle): its style
     /// attribute's declaration block and its cached computed style. Made on
     /// first use, freed with this state (lane style1). Kept here, not in
@@ -106,10 +93,11 @@ pub const InternalState = struct {
     style: ?*dom.style.ElementStyle = null,
 
     /// The fields few elements use - its prefix, Attr nodes, NamedNodeMap,
-    /// shadow root, definition, is value, element references and
+    /// shadow root, definition, is value, element references, a registry
+    /// that is not its node document's and its slottable state (E1) and
     /// HTMLElement's part - or null while none was needed (lane perf3 D2;
-    /// WebKit's ElementRareData). Made by `ensureRare`, never moved, freed by
-    /// `deinit` at both of the element's exits.
+    /// WebKit's ElementRareData). Made by `ensureRare`, never moved, freed
+    /// by `deinit` at both of the element's exits.
     rare: ?*ElementRareData = null,
 
     /// Custom element state per HTML spec
@@ -121,6 +109,12 @@ pub const InternalState = struct {
     /// by cloning, and consumed by the style attribute's change steps
     /// (`styleAttributeChangeSteps`), which then skip their CSP check.
     appending_clone: bool = false,
+    /// DOM: where the element's custom element registry is - none, its node
+    /// document's (most elements: read from the document), or its rare
+    /// data's association (lane perf3 E1, dom.custom_elements.RegistryPlace;
+    /// 40 bytes on every element before). Written only by
+    /// `setCustomElementRegistry`.
+    registry_place: dom.custom_elements.RegistryPlace = .none,
 
     pub fn init() InternalState {
         return .{ .data = ElementData.init() };
@@ -263,8 +257,8 @@ pub fn installHooks() void {
     // when its value is first needed (HTML 8.1.8.1).
     dom.event_handlers.installRawCompiler(&compileRawEventHandler);
     // The slot algorithms read an element's slottable state through
-    // `dom.slot_helpers`.
-    dom.slot_helpers.install(.{ .element_slottable = &slottableOf });
+    // `dom.slot_helpers`, and write it through its ensure path.
+    dom.slot_helpers.install(.{ .element_slottable = &slottableOf, .element_ensure_slottable = &ensureSlottableOf });
     dom.custom_elements.installElement(.{
         .get = &customElementData,
         .initialize = &initializeCustomElement,
@@ -332,11 +326,24 @@ fn shadowRootOf(instance: *runtime.Instance) ?*runtime.Instance {
     return rare.shadow_root;
 }
 
-/// `dom.slot_helpers`: the element as a slottable - its state and its name,
-/// which is its slot attribute's value (DOM 4.2.2.2).
+/// `dom.slot_helpers`' readers' path: the element as a slottable - its state
+/// and its name, which is its slot attribute's value (DOM 4.2.2.2). Its state
+/// (its assigned slot and manual slot assignment) is rare data (lane perf3
+/// E1): an element with none reads the shared `unassigned` state, so the
+/// read paths that visit every element (an event's path, innerText, the
+/// style engine) make nothing.
 fn slottableOf(instance: *runtime.Instance) ?dom.slot_helpers.Slottable {
     const internal = getInternal(instance) orelse return null;
-    return .{ .state = &internal.slottable, .name = slotName(internal) };
+    const state: *const dom.slot_helpers.SlottableState = if (internal.rare) |rare| &rare.slottable else &dom.slot_helpers.unassigned;
+    return .{ .state = state, .name = slotName(internal) };
+}
+
+/// `dom.slot_helpers`' writers' path: the element's slottable state, its rare
+/// data made now if it has none - only for an element a slot assigns.
+fn ensureSlottableOf(instance: *runtime.Instance) error{OutOfMemory}!?*dom.slot_helpers.SlottableState {
+    const internal = getInternal(instance) orelse return null;
+    const rare = try ensureRare(instance, internal);
+    return &rare.slottable;
 }
 
 fn markCustomElementEnqueued(instance: *runtime.Instance) void {
@@ -349,10 +356,41 @@ fn setCustomElementRegistry(instance: *runtime.Instance, registry: ?*runtime.Ins
     if (registry) |value| if (document) |owner| {
         try dom.custom_elements.associateDocument(value, owner);
     };
-    // CE2-S2: the document keeps its own global registry; only another one is
-    // traced from the element.
+    // CE2-S2: the document keeps its own global registry, so the element
+    // only names it (`.node_document`); another one is the rare data's
+    // association, traced from the element (lane perf3 E1,
+    // dom.custom_elements.RegistryPlace).
     const document_registry = if (document) |owner| try interfaces.Document.get_customElementRegistry(owner) else null;
-    internal.custom_element_registry.setForNode(instance, registry, document_registry);
+    const place = dom.custom_elements.RegistryPlace.of(registry, document_registry);
+    if (place == .rare) {
+        // Made before anything changes, so a failure leaves the old value.
+        const rare = try ensureRare(instance, internal);
+        rare.custom_element_registry.set(instance, registry);
+    } else if (internal.registry_place == .rare) {
+        // Its association let go; the block stays (it never moves).
+        if (internal.rare) |rare| rare.custom_element_registry.set(instance, null);
+    }
+    internal.registry_place = place;
+}
+
+/// DOM: the element's custom element registry, from where it is kept
+/// (`registry_place`). The node document's is read as its effective global
+/// registry: equal to the document's registry for every element whose place
+/// it is, and null - what adopt 3.3.2.4 sets - in the moment between adopt
+/// step 3.3.2.1 giving the element a document with a scoped registry and
+/// step 3.3.2.4 reading the old association (dom.mutation's adopt runs them
+/// in that order). A registry whose keeper went reads null (CE2-M2), here as
+/// through the document's own association.
+fn customElementRegistryOf(instance: *runtime.Instance, internal: *const InternalState) ?*runtime.Instance {
+    return switch (internal.registry_place) {
+        .none => null,
+        .node_document => {
+            const document = (interfaces.Node.get_ownerDocument(instance) catch return null) orelse return null;
+            const registry = interfaces.Document.get_customElementRegistry(document) catch return null;
+            return dom.custom_elements.effectiveGlobal(registry);
+        },
+        .rare => if (internal.rare) |rare| rare.custom_element_registry.get() else null,
+    };
 }
 
 fn customElementData(instance: *runtime.Instance) ?dom.custom_elements.ElementData {
@@ -438,7 +476,8 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up its internal state
     if (Registry.get(instance)) |internal| {
         if (internal.custom_element_ever_enqueued) dom.custom_elements.cancelElement(instance);
-        internal.custom_element_registry.release(instance);
+        // Only a rare association draws an edge to forget.
+        if (internal.registry_place == .rare) if (internal.rare) |rare| rare.custom_element_registry.release(instance);
         // The host lets its shadow root go: the shadow root forgets its host
         // (dom.shadow_hosts); the host's edge to it goes with the host's
         // wrapper, so the wrapper cache frees it - and its subtree - once
@@ -753,7 +792,8 @@ pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// Spec: https://html.spec.whatwg.org/#dom-element-customelementregistry
 ///
 pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return (getInternal(instance) orelse return error.InvalidStateError).custom_element_registry.get();
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return customElementRegistryOf(instance, internal);
 }
 
 /// Getter for part
@@ -2901,7 +2941,7 @@ fn attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootI
     // Step 3: "If element's local name is a valid custom element name, or
     // element's is value is non-null": if its definition's disable shadow is
     // true, throw a NotSupportedError DOMException.
-    if (dom.custom_elements.lookup(internal.custom_element_registry.get(), namespace, local_name, isValueOf(internal))) |definition| {
+    if (dom.custom_elements.lookup(customElementRegistryOf(instance, internal), namespace, local_name, isValueOf(internal))) |definition| {
         if (definition.disable_shadow) return error.NotSupportedError;
     }
 

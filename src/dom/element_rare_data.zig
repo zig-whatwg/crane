@@ -45,6 +45,7 @@ const element_data = @import("element_data.zig");
 const same_object = @import("same_object.zig");
 const custom_elements = @import("custom_elements.zig");
 const element_references = @import("element_references.zig");
+const slot_helpers = @import("slot_helpers.zig");
 
 /// HTMLElement's part: every field its InternalState kept (88 bytes on every
 /// HTML element before D2). Written only by HTMLElement.
@@ -101,12 +102,27 @@ pub const ElementRareData = struct {
     shadow_root_kept: same_object.KeptChild = .{},
     /// HTML: the element's custom element definition, retained.
     custom_element_definition: ?*custom_elements.Definition = null,
+    /// DOM: the element's custom element registry when it is not its node
+    /// document's (Element's `registry_place` is `.rare`): a scoped
+    /// registry, or a global one another document keeps - traced from the
+    /// element, which is all that keeps a scoped one (lane perf3 E1;
+    /// Blink's kCustomElementRegistry). Let go (`release`) by Element at its
+    /// deinit, while its wrapper's edge can still be forgotten; it owns no
+    /// memory, so `destroy` has nothing to free for it.
+    custom_element_registry: custom_elements.RegistryAssociation = .{},
     /// HTML: the element's is value, for a customized built-in element
     /// (Blink's kIsValue).
     is_value: ?runtime.DOMString = null,
     /// The element references of the reflected element attributes (WebKit's
     /// m_explicitlySetAttrElementsMap, Blink's kExplicitlySetElementsForAttr).
     references: ?*element_references.State = null,
+    /// DOM 4.2.2.2: the element as a slottable - its assigned slot and its
+    /// manual slot assignment, weak references (NodeRefs) the slot
+    /// algorithms keep (dom.slot_helpers, dom.shadow_dom_algorithms). Made
+    /// only for an element a slot assigns: readers that find no rare data
+    /// read dom.slot_helpers.unassigned (lane perf3 E1; Blink's
+    /// FlatTreeNodeData in NodeRareData). Owns nothing.
+    slottable: slot_helpers.SlottableState = .{},
     /// HTMLElement's part.
     html: HTMLElementRareData = .{},
 
