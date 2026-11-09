@@ -12,6 +12,6 @@
 2. The record is deleted after `Isolate::Dispose` returns, so the heap is freed once it is detached and terminated, and a failed creation frees it unused.
 3. `static_assert(V8_MAJOR_VERSION == 13 && V8_MINOR_VERSION < 4)` makes an upgrade revisit the double ownership: from 13.4 on, V8 frees the heap itself.
 4. `cppgc::InitializeProcess` runs once, in V8's start, with V8's platform's page allocator.
-5. `leaks --atExit` on an agent's creation and end is the proof, before the fix and after.
+5. The proof is not `leaks --atExit`. It reported 0 leaks for the build that never frees the heap, the same as for the base, because the abandoned heap is still reachable from cppgc's process-wide heap registry: every HeapBase registers in its constructor and unregisters in its destructor (13.1.203 src/heap/cppgc/process-heap.cc). The registry's size is the measure. tests/v8/cpp_heap_test.zig counts it around createAgent and destroyAgent (`v8_test_CppgcLiveHeaps`, a test-only read of `HeapRegistry::GetRegisteredHeapsForTesting`): red on that build, green with the record's ownership.
 
-**Takeaway**: **"Takes ownership" in a V8 header is a promise of the API's latest version: for every object you hand V8, read who deletes it in the linked tag's teardown, and pin what you find with a version assert.**
+**Takeaway**: **"Takes ownership" in a V8 header is a promise of the API's latest version: for every object you hand V8, read who deletes it in the linked tag's teardown, and pin what you find with a version assert. An object that is never freed but still referenced from a registry is invisible to `leaks`: count the registry instead.**
