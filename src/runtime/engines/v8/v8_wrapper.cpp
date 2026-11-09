@@ -3182,7 +3182,14 @@ extern "C" void v8_NodeWrapper_Attach(Isolate* isolate, Global<Object>* box, voi
         Local<Value> target = object.As<Proxy>()->GetTarget();
         if (target->IsObject()) wrappable = target.As<Object>();
     }
-    registry->anchors.reserve(registry->anchors.size() + 1);
+    // Room for the anchor before anything is made (the push_back below must
+    // not allocate), grown geometrically: an exact reserve(size + 1) per wrap
+    // copied the whole vector at every node wrap - quadratic in the live
+    // anchors (the perf pair's dom.create-element ran 9.6x, gc_bench's
+    // wrapper-churn-nogc 4.7x, 83f1e0e187b).
+    if (registry->anchors.size() == registry->anchors.capacity()) {
+        registry->anchors.reserve(std::max<size_t>(NodeWrapperRegistry::kShrinkFloor, registry->anchors.capacity() * 2));
+    }
     // 3. The anchor. A collection this allocation starts runs before it
     //    exists.
     NodeAnchor* anchor = cppgc::MakeGarbageCollected<NodeAnchor>(heap->GetAllocationHandle(), slot);
