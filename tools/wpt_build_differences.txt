@@ -1,0 +1,18 @@
+# Known differences between Crane's two WPT runs - the browsers' per-build expectations
+# (Firefox metadata's `if debug:` / `if asan:`, Chromium's `[ Debug ]`), for Crane.
+#
+# The PRODUCTION run (wpt_runner: Crane exactly as its own browser, the release console, runs) is
+# published and timed; the BUG-FINDING run (wpt_runner_bug_finding: the same product with a debug
+# allocator, poison-on-free, Debug checks and the full C sanitizer) never is. They differ only in
+# detection, so a test or subtest whose result differs between them is a bug to investigate - never
+# accepted silently (the user, 2026-11-09). `zig build wpt-build-compare` (tests/wpt_runner/
+# build_compare.zig) fails on any difference this file does not name, and on any line here that no
+# longer occurs: remove it. This list only goes down.
+#
+# One difference per line, six TAB-separated fields (\t, \n and \\ escaped inside a field):
+#   <test>  <subtest>  <production status>  <bug-finding status>  <owner>  <evidence>
+# <test>: the journal path (e.g. dom/nodes/x.html) for a file's own status, with <subtest> `*`;
+#         the result stream's test URL (e.g. /dom/nodes/x.html) for a subtest.
+# <owner>: the lane or person fixing it. <evidence>: what it is and where that is shown (a log, a
+#         lesson, a handoff). wpt_build_compare prints a NEW difference ready to paste, with
+#         <owner> and <evidence> to fill in - only after it has both, and the integrator's OK.

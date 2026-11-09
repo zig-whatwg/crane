@@ -114,8 +114,14 @@ pub const WptBrowser = struct {
         defer if (ca) |path| allocator.free(path);
 
         // Create the underlying browser (manages V8 isolate)
+        // The Browser Crane's own browser makes (tools/repl.zig, main): its
+        // BrowserConfig's defaults, and nothing the console does not set - no
+        // `log_performance`, which the runner used to turn on (the user,
+        // 2026-11-09: "We should never special case something"). What the
+        // runner adds is what WPT needs and a browser gets the same way: WPT's
+        // certificate authority (the console's --ca-bundle), the host's media
+        // decoders, and in the bug-finding run alone the poisoned frees.
         const browser_instance = try Browser.init(allocator, .{
-            .log_performance = true,
             // The runner is a host, and supplies media decoding as one: WAV
             // linear PCM and WebM (VP8/VP9, Vorbis/Opus), which it really
             // reads (host_media.zig). Crane itself builds in no decoder.
