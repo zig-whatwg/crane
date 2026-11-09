@@ -177,6 +177,9 @@ test "a detached wrapped tree collected during a teardown gives its nodes' slots
     var page = try Page.open();
     defer page.close();
     const tree = try Tree.make(page.realm);
+    // Both nodes wrapped: since the wrapper redesign's P7 a wrap no longer
+    // wraps the node's ancestors, so the root is wrapped here itself.
+    _ = try page.wrapIn(page.cache, tree.root);
     _ = try page.wrapIn(page.cache, tree.child);
     try testing.expect(page.cache.get(tree.root) != null);
     const child = Made.of(tree.child);

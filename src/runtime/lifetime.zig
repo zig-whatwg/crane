@@ -68,18 +68,6 @@ pub const Hooks = struct {
     /// pause: read-only, no allocation, no other engine operation
     /// (dom.wrapper_tracing).
     trace_tree: ?*const fn (target: *anyopaque, tracer: *engine.Tracer) void = null,
-    /// Whether the engine adapter keeps node tracing's JS edges (V8: each
-    /// wrapper's private upward edge and its parent's set of children, drawn
-    /// at the wrap and on joinOpaqueRoot / leaveOpaqueRoot, and the Node
-    /// impl's node-document edge redrawn on adopt) and the holders' edges to
-    /// the nodes they hold (keepOpaqueRoot for a node, and until the
-    /// redesign's P6 node_holds' and the parser's rescues) beside the
-    /// tracing. True, and never installed: only a test's override turns it
-    /// off (tests/v8/wrapper_walk_test.zig: the walk alone keeps trees;
-    /// tests/v8/wr6_holder_tracing_test.zig: the holders' tracing alone
-    /// keeps their nodes). The redesign's P7 deletes the edges and this
-    /// field with them.
-    tree_edges: bool = true,
 };
 
 // process-wide: dom.refcount's two functions, installed once while the process starts (refcount.install, from Document's and Node's installHooks) and the same for every Browser and thread; read-only after
@@ -106,7 +94,6 @@ fn merged(current: Hooks, owned: Hooks) ?Hooks {
     if (owned.slot_of) |f| next.slot_of = f;
     if (owned.target_of_slot) |f| next.target_of_slot = f;
     if (owned.trace_tree) |f| next.trace_tree = f;
-    // `tree_edges` is no owner's to install: only an override changes it.
     return if (std.meta.eql(next, current)) null else next;
 }
 
@@ -207,12 +194,6 @@ pub fn traceTree(target: *anyopaque, tracer: *engine.Tracer) bool {
 /// through it too, so the adapter skips them when it is absent.
 pub fn walkInstalled() bool {
     return hooks.read().trace_tree != null;
-}
-
-/// Whether node tracing's JS edges are drawn (`Hooks.tree_edges`): true
-/// outside a test's override, until the wrapper redesign's P7 deletes them.
-pub fn treeEdges() bool {
-    return hooks.read().tree_edges;
 }
 
 /// A wrapper's reference is dropped without `wrapperReleased`, because its

@@ -55,8 +55,9 @@
 //!   asks the host which wrappers its node keeps (runtime.lifetime.traceTree,
 //!   dom.wrapper_tracing: its host-including tree's and its node document's)
 //!   - `traceAnchor`, v8_wrapper.cpp NodeAnchor::Trace. The anchors'
-//!   registry walks the kept nodes' trees the same way (`traceKeeps`). Until
-//!   P7 the walk runs beside node tracing's JS edges (wrapper_cache.zig).
+//!   registry walks the kept nodes' trees the same way (`traceKeeps`). Since
+//!   P7 the walk alone keeps trees: node tracing's JS edges are gone, and a
+//!   wrapper no binding code changed is droppable in a scavenge (P8).
 //! - **The agent's end** (engine.releaseNodeWrappers, which the host calls
 //!   before its last drain and its sweeps, and destroyAgent): every live
 //!   wrapper the same way, so the host's drain frees the trees only wrappers
@@ -448,8 +449,9 @@ pub const Adopted = struct {
 /// wrapper, made from the interface's template with no internal field (step
 /// 2) - its anchor, the Wrap, the node's slot and the anchor registry
 /// (v8_NodeWrapper_Attach, steps 3-6). `box` keeps holding the wrapper
-/// strongly until `arm`, so what the caller does between - node tracing's
-/// edges, which may wrap ancestors and collect - cannot take it. On an error
+/// strongly until `arm`, so what the caller does between - the edges traced
+/// from the node before script saw it, which allocate - cannot take it. On an
+/// error
 /// nothing was taken and `box` is the caller's as before.
 pub fn adopt(isolate: *ffi.Isolate, instance: *runtime.Instance, box: *ffi.Object) error{ OutOfMemory, NoIsolateRecord, AgentEnded, NotANode, AlreadyWrapped, NotAnApiObject }!Adopted {
     const registry = try ensureRegistry(isolate);
@@ -473,8 +475,8 @@ pub fn adopt(isolate: *ffi.Isolate, instance: *runtime.Instance, box: *ffi.Objec
 }
 
 /// The end of `adopt`: a kept node's anchor becomes a traced root, then the
-/// box's strong hold goes - from here only script, node tracing's edges and
-/// the keeps hold the wrapper.
+/// box's strong hold goes - from here only script, the walk and the keeps
+/// hold the wrapper.
 pub fn arm(isolate: *ffi.Isolate, instance: *runtime.Instance, adopted: Adopted) void {
     defer ffi.v8_Object_Dispose(adopted.box);
     const slot: *NodeWrapperSlot = @ptrCast(@alignCast(adopted.handle));

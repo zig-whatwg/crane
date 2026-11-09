@@ -2783,8 +2783,8 @@ class NodeAnchor final : public cppgc::GarbageCollected<NodeAnchor> {
     /// 2. the walk, in the collection's atomic pause: every wrapper its node
     ///    keeps (its host-including tree's and its node document's;
     ///    dom.wrapper_tracing), as Blink's Node::Trace reaches its tree's
-    ///    wrappers through the tree's Member edges. Until P7 node tracing's
-    ///    JS edges keep the same trees beside it.
+    ///    wrappers through the tree's Member edges. Since P7 the walk alone
+    ///    keeps trees (node tracing's JS edges are gone).
     void Trace(cppgc::Visitor* visitor) const {
         if (!slot_) return;
         visitor->Trace(*static_cast<const TracedReference<Object>*>(slot_));

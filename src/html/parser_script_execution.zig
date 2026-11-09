@@ -372,6 +372,25 @@ pub fn domAdapterOnStructureRelease(tree_node: *TreeNode, context: ?*anyopaque) 
     adapter.releaseForStructures(tree_node);
 }
 
+/// Free a parentless node the adapter made and no wrapper holds - with its
+/// subtree - unless a node of its tree is wrapped. Since the wrapper
+/// redesign's P7 a wrap wraps no ancestor, so the root's own wrapper no longer
+/// answers for its tree: a script may have read a node out of it while it was
+/// in the document (getElementById), and HTML "in body" (a start tag
+/// "frameset" with the frameset-ok flag "ok": "remove the second element on
+/// the stack of open elements from its parent node") removes the body with
+/// everything parsed into it (tests/wpt/crane/wr7-parser-removed-body-keeps-
+/// held-node.html). A tree script reaches is left to the counts (refcount
+/// step 7): only its creator's reference ends here, and the agent's queue
+/// frees it once its last wrapper's reference goes - WebKit's removed body
+/// lives while a node of it is ref'd.
+fn freeOrphan(dom_node: *runtime.Instance) void {
+    if (dom.instance_bridge.getNodeBase(dom_node)) |base| {
+        if (dom.wrapper_tracing.holdsWrapper(base)) return dom.refcount.releaseCreatorReference(base);
+    }
+    dom.node_creation.destroyUninserted(dom_node);
+}
+
 pub fn domAdapterOnRemoved(node: *TreeNode, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
     const instance = adapter.getDomNode(node) orelse return;
@@ -803,7 +822,7 @@ pub const DomTreeAdapter = struct {
             // Belt: a node that somehow acquired a parent without going through
             // onChildAppended is attached, whatever the list says.
             const parent = interfaces.Node.get_parentNode(dom_node) catch null;
-            if (parent == null) dom.node_creation.destroyUninserted(dom_node);
+            if (parent == null) freeOrphan(dom_node);
         }
         self.orphans.deinit(self.allocator);
         for (self.pending.items) |held| held.owned.release();
@@ -890,7 +909,7 @@ pub const DomTreeAdapter = struct {
                 const previous: *runtime.Instance = @ptrCast(@alignCast(previous_opaque));
                 if (previous != dom_node and runtime.SlabAllocator.generationOf(previous) == tree_node.dom_generation and
                     !engine.hasWrapper(previous) and (interfaces.Node.get_parentNode(previous) catch null) == null)
-                    dom.node_creation.destroyUninserted(previous);
+                    freeOrphan(previous);
             }
         }
         tree_node.dom_node = dom_node;

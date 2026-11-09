@@ -185,6 +185,32 @@ const Pruned = struct {
     }
 };
 
+/// Whether a node of `top`'s host-including subtree - `top` included - has
+/// a wrapper: a creator that frees a subtree it made (dom.node_creation
+/// .destroyUninserted) must not free one script reaches. A wrapped node is
+/// held (its wrapper's reference), so only held subtrees are entered, and the
+/// walk stops at the first wrapper. Since the wrapper redesign's P7 a wrap
+/// reaches no ancestor, so `top`'s own slot does not answer for its tree.
+/// Read-only and allocation-free, as the walk.
+pub fn holdsWrapper(top: *NodeBase) bool {
+    if (!top.wrapper.isEmpty()) return true;
+    if (top.subtree_holds == 0 or isLone(top)) return false;
+    const Find = struct {
+        found: *bool,
+
+        fn enters(self: @This(), child: *NodeBase) bool {
+            return !self.found.* and child.subtree_holds != 0;
+        }
+
+        fn visit(self: @This(), node: *NodeBase) void {
+            if (!node.wrapper.isEmpty()) self.found.* = true;
+        }
+    };
+    var found = false;
+    walkDown(top, Find{ .found = &found });
+    return found;
+}
+
 /// The oracle's walk: EVERY node of `tree_root`'s host-including tree,
 /// unpruned, `check(context, slot)` for each wrapped one. Read-only and
 /// allocation-free like the walk; null and garbage roots visit nothing.

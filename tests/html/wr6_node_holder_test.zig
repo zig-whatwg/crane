@@ -10,9 +10,10 @@
 //!
 //! The dialog is opened and closed natively, so script never wraps it; the
 //! saved element is detached and dropped by script, so only the dialog's
-//! hold reaches it. With every node edge off (`tree_edges = false`) its
-//! wrapper and expando survive collections while the dialog is open, and go
-//! once the dialog closed.
+//! hold reaches it. With no node edge (P7 deleted them; P6 ran this with
+//! runtime.lifetime's test-only `tree_edges` off) its wrapper and expando
+//! survive collections while the dialog is open, and go once the dialog
+//! closed.
 const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
@@ -53,14 +54,10 @@ fn holds(page: anytype, source: []const u8) !bool {
     return ok;
 }
 
-fn dialogKeepsItsSavedFocus(edges: bool) !void {
+fn dialogKeepsItsSavedFocus() !void {
     const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
     defer browser.deinit();
     try browser.navigate("about:blank", .window);
-    var hooks = runtime.lifetime.installedHooks();
-    hooks.tree_edges = edges;
-    const override = runtime.lifetime.overrideHooksForTest(hooks);
-    defer override.restore();
     const page = browser.current_context orelse return error.NoPage;
     try page.loadHTML("<!doctype html><body><dialog id=d><p>dialog</p></dialog></body>", .{ .base_url = "http://example.test/dialog" });
     const document = page.document_instance orelse return error.NoDocument;
@@ -98,18 +95,6 @@ fn dialogKeepsItsSavedFocus(edges: bool) !void {
     try testing.expect(try holds(page, "String(window.ref.deref() === undefined)"));
 }
 
-fn edgesOff() !void {
-    try dialogKeepsItsSavedFocus(false);
-}
-
-fn edgesOn() !void {
-    try dialogKeepsItsSavedFocus(true);
-}
-
-test "wr6: with every node edge off, an open modal dialog script never wrapped keeps its detached saved focus's wrapper, and lets it go when closed" {
-    try onFreshThread(edgesOff);
-}
-
-test "wr6: production - an open modal dialog keeps its detached saved focus's wrapper, and lets it go when closed" {
-    try onFreshThread(edgesOn);
+test "wr6, production since P7 (no node edge): an open modal dialog script never wrapped keeps its detached saved focus's wrapper, and lets it go when closed" {
+    try onFreshThread(dialogKeepsItsSavedFocus);
 }

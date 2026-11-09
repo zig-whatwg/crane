@@ -1068,13 +1068,14 @@ pub const Capabilities = struct {
     /// 3.2-3.3): a wrapper of a node is kept while any wrapper of its
     /// host-including tree is, or of a node whose node document's tree it
     /// is. Native: the engine's collector calls runtime.lifetime's
-    /// `traceTree` hook while it marks, and the walk alone keeps trees.
-    /// Emulated: the adapter keeps the rule with edges it draws when the
-    /// host says a tree changed (joinOpaqueRoot / leaveOpaqueRoot /
-    /// keepOpaqueRoot) - V8 until the redesign's P7, which runs the walk
-    /// beside the edges from P5 on. Unsupported: only a wrapper script
-    /// reaches is kept, so an expando on a node script reaches only through
-    /// its tree can be lost (no node is wrapped there today).
+    /// `traceTree` hook while it marks, and the walk alone keeps trees - V8
+    /// since the redesign's P7. Emulated: the adapter keeps the rule with
+    /// edges it draws when the host says a tree changed (joinOpaqueRoot /
+    /// leaveOpaqueRoot / keepOpaqueRoot), which the host calls only for an
+    /// emulated engine (public-API JavaScriptCore, design 5.2). Unsupported:
+    /// only a wrapper script reaches is kept, so an expando on a node script
+    /// reaches only through its tree can be lost (no node is wrapped there
+    /// today).
     wrapper_tracing: Support,
 };
 
@@ -2696,26 +2697,25 @@ pub inline fn tracedValue(owner: *Instance, slot: TracedSlot) ?Owned {
 /// tree's root wrapper - and through it, the tree's node document. An edge,
 /// never a root: a tree script holds nothing of still goes whole.
 ///
-/// V8: node tracing's edges (wrapper_cache.zig) - `member`'s wrapper holds
-/// `parent`'s in its one upward slot (`dom.node_document.traced_slot`), and
-/// `parent`'s holds a Set of its wrapped children's. A `parent` script has not
-/// seen is wrapped first, with its unwrapped ancestors, top-down, in their
-/// relevant realm: the wrapped part of a tree is upward-closed. JavaScriptCore
-/// would keep the same edges in a per-realm WeakMap (design 2.5, decision D5);
-/// it and QuickJS wrap no node today and do nothing. Never call it while the
-/// collector runs; does nothing when `member` has no wrapper.
+/// The host calls it only for an engine whose `wrapper_tracing` is
+/// `.emulated`: one with native wrapper tracing (V8 since the redesign's P7)
+/// finds a tree's wrappers from its nodes while it marks, and does nothing
+/// here. JavaScriptCore's public-API path would keep the edges in a
+/// per-realm WeakMap (design 2.5, 5.2); it and QuickJS wrap no node today and
+/// do nothing. Never call it while the collector runs; does nothing when
+/// `member` has no wrapper.
 pub inline fn joinOpaqueRoot(member: *Instance, parent: *Instance) void {
     impl.joinOpaqueRoot(member, parent);
 }
 
 /// `member` - a node with a wrapper - left `old_parent`'s tree (DOM remove,
 /// move's old parent) and is the root of its own opaque root: `old_parent`'s
-/// wrappers no longer keep `member`'s, nor `member`'s theirs. A root keeps
-/// its node document: V8 points `member`'s upward slot at the document's
-/// wrapper (made in its relevant realm if script has not seen it), updated in
-/// place. A move is a leave followed by a join. Nothing on JavaScriptCore,
-/// QuickJS or the test adapter (no node is wrapped there). Never call it
-/// while the collector runs; does nothing when `member` has no wrapper.
+/// wrappers no longer keep `member`'s, nor `member`'s theirs; a root keeps
+/// its node document. A move is a leave followed by a join. Called only for
+/// an `.emulated` engine, as joinOpaqueRoot is: nothing on V8 (native),
+/// JavaScriptCore, QuickJS or the test adapter (no node is wrapped there).
+/// Never call it while the collector runs; does nothing when `member` has no
+/// wrapper.
 pub inline fn leaveOpaqueRoot(member: *Instance, old_parent: *Instance) void {
     impl.leaveOpaqueRoot(member, old_parent);
 }
@@ -2730,18 +2730,13 @@ pub inline fn leaveOpaqueRoot(member: *Instance, old_parent: *Instance) void {
 /// only - expandos, `===` - never the native node, whose lifetime is its
 /// counted holders' (refcount design 2.3-2.4).
 ///
-/// V8: the edge goes to `member`'s own wrapper when it has one - a node that
-/// moves takes its tree edges with it; else to its tree's root's wrapper
-/// when that is wrapped (the wrapped part of a tree is upward-closed, so an
-/// unwrapped root means no wrapper anywhere in the tree: nothing to keep);
-/// and nothing for a tree whose root is a document the host keeps (one with
-/// a browsing context). Never makes a wrapper. A member that is not a node
-/// is kept as `traceChild` keeps it. THE GAP against WebKit's reading at
-/// marking time: an unwrapped member that moves into a tree which only later
-/// gets wrappers is not followed (closing it needs a per-node hold chain;
-/// decision D4 keeps the gap unless a test shows it matters).
-/// JavaScriptCore, QuickJS and the test adapter keep nothing (no node is
-/// wrapped there). Never call it while the collector runs.
+/// The host calls it for a node `member` only on an `.emulated` engine: with
+/// native wrapper tracing (V8 since the redesign's P7) the holder's own trace
+/// keeps its nodes (VTable.trace_held_nodes), and V8 empties the slot for a
+/// node. A member that is not a node is kept as `traceChild` keeps it, on
+/// every engine. Never makes a wrapper. JavaScriptCore, QuickJS and the test
+/// adapter keep nothing (no node is wrapped there). Never call it while the
+/// collector runs.
 pub inline fn keepOpaqueRoot(owner: *Instance, member: *Instance, slot: TracedSlot) void {
     impl.keepOpaqueRoot(owner, member, slot);
 }

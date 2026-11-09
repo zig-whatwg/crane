@@ -37,6 +37,7 @@ const element_with_base = @import("element_with_base.zig");
 const attr_with_base = @import("attr_with_base.zig");
 const instance_bridge = @import("instance_bridge.zig");
 const refcount = @import("refcount.zig");
+const wrapper_tracing = @import("wrapper_tracing.zig");
 const engine = @import("engine");
 const node_document = @import("node_document.zig");
 const element_attributes = @import("element_attributes.zig");
@@ -1629,18 +1630,26 @@ fn removeHeld(
 }
 
 /// `node` left its tree. A root no wrapper of any realm ever reached - nor
-/// anything in its subtree, since a wrap reaches up to the root - is an
-/// ORPHAN: no tree teardown and no collector reaches it until reference
-/// counting decides (refcount design step 7). Its realm frees it at its end
-/// unless a tree or a wrapper takes it first (runtime.orphan_roots; lane
-/// unwrapped1). Only where the engine marks every wrap ([wrap_tracking]):
-/// elsewhere the missing mark proves nothing, and the orphan stays until its
-/// Browser ends, as before. A holder that holds the root rescued it with a
-/// wrapper in the removing steps above (node_holds), so a held root is never
-/// recorded.
+/// any node of its tree (dom.wrapper_tracing.holdsWrapper) - is an ORPHAN:
+/// no tree teardown and no collector reaches it until reference counting
+/// decides (refcount design step 7). Its realm frees it at its end unless a
+/// tree or a wrapper takes it first (runtime.orphan_roots; lane unwrapped1).
+/// Only where the engine marks every wrap ([wrap_tracking]): elsewhere the
+/// missing mark proves nothing, and the orphan stays until its Browser ends,
+/// as before. The root's own wrapper state no longer speaks for its subtree:
+/// since the wrapper redesign's P7 a wrap reaches no ancestor, so a node
+/// script read out of the tree - getElementById - can be wrapped and held
+/// under a root no script ever saw (tests/wpt/crane/wr7-removed-unwrapped-
+/// root-keeps-held-node.html); its wrapper's reference holds the tree, and
+/// the counts decide that tree's free. Exactly that question - is a node of
+/// the tree WRAPPED - and no broader one: a tree held only by holders'
+/// counts is still recorded and freed at the realm's end, as before P7
+/// (refusing every held tree left lone elements held at the agent's end in
+/// the editing1/2/3 tests; that drain's own fate is refcount step 7b's).
 fn orphanRemoved(node: *NodeBase) void {
     if (engine.capabilities.wrap_tracking == .unsupported) return;
     if (node.parent_node != null or !node.wrapper.isEmpty()) return;
+    if (wrapper_tracing.holdsWrapper(node)) return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(node.ownerInstance() orelse return));
     if (!runtime.instance_lifecycle.provablyUnwrapped(true, instance)) return;
     runtime.orphan_roots.record(instance.ctx, instance);
@@ -2458,12 +2467,17 @@ fn linkForMove(node: *NodeBase, old_parent: *NodeBase, new_parent: *NodeBase, ch
 
 /// Node tracing's opaque root follows the tree (refcount design 2.2, section 7
 /// step 4): `node` - the root of a subtree just linked under `parent` - joins
-/// `parent`'s opaque root, if it has a wrapper. One field test (the engine's
-/// wrapper slot on NodeBase, `wrapper.isEmpty()`), so a parse or an innerHTML of unwrapped nodes
-/// never calls the engine; only the subtree's root changes trees, so its
-/// descendants are not visited (the adapter's insertion-steps hook visited
-/// and looked up each one).
+/// `parent`'s opaque root, if it has a wrapper. Only for an engine that
+/// emulates wrapper tracing with edges (engine.capabilities.wrapper_tracing
+/// == .emulated): one that traces natively - V8 since the wrapper redesign's
+/// P7 - finds a tree's wrappers from its nodes while it marks, so the call
+/// compiles out there (tmp/redesign/wrapper-redesign-design.md 3.3). One
+/// field test (the engine's wrapper slot on NodeBase, `wrapper.isEmpty()`),
+/// so a parse or an innerHTML of unwrapped nodes never calls the engine;
+/// only the subtree's root changes trees, so its descendants are not visited
+/// (the adapter's insertion-steps hook visited and looked up each one).
 fn joinedTree(node: *NodeBase, parent: *NodeBase) void {
+    if (engine.capabilities.wrapper_tracing != .emulated) return;
     if (node.wrapper.isEmpty()) return;
     const member = instance_bridge.getInstance(node) orelse return;
     const owner = instance_bridge.getInstance(parent) orelse return;
@@ -2471,8 +2485,10 @@ fn joinedTree(node: *NodeBase, parent: *NodeBase) void {
 }
 
 /// `node` - the root of a subtree just unlinked from `old_parent` - leaves
-/// its old tree's opaque root and is a root of its own, if it has a wrapper.
+/// its old tree's opaque root and is a root of its own, if it has a wrapper
+/// (an `.emulated` engine's only, as `joinedTree`).
 fn leftTree(node: *NodeBase, old_parent: *NodeBase) void {
+    if (engine.capabilities.wrapper_tracing != .emulated) return;
     if (node.wrapper.isEmpty()) return;
     const member = instance_bridge.getInstance(node) orelse return;
     const owner = instance_bridge.getInstance(old_parent) orelse return;

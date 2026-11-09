@@ -234,13 +234,14 @@ pub fn wasWrapped(instance: *const Instance) bool {
 /// instance marked and not released since - is "it may be": nothing is freed
 /// on the strength of a missing mark (tests/runtime pins it).
 ///
-/// "Gone" proves as much as "never" for every reader (lane pageretention1):
-/// wrapped nodes are upward-closed - a wrap and an insertion wrap every
-/// unwrapped ancestor and draw the edges (wrapper_cache.drawTreeEdges) - and
-/// the wrapped part of a tree is one cycle the collector keeps or takes
-/// whole, so a node whose wrapper was finalized has no wrapped descendant
-/// left either: a subtree under it is no more reachable than a never-wrapped
-/// one. A later wrap clears the release before anything reads it again.
+/// "Gone" proves as much as "never" for the instance itself (lane
+/// pageretention1), and only for it: since the wrapper redesign's P7 a wrap
+/// wraps no ancestor (node tracing's upward closure and its edges are gone),
+/// so a node with no wrapper - never, or gone - can have a wrapped
+/// descendant script holds. A reader that frees a SUBTREE on this answer
+/// asks the counts or the subtree as well (subtree_holds, dom.wrapper_tracing
+/// .holdsWrapper). A later wrap clears the release before anything reads it
+/// again.
 pub fn provablyUnwrapped(tracked: bool, instance: *const Instance) bool {
     if (!tracked) return false;
     const flags = read(instance);

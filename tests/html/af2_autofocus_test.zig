@@ -317,6 +317,11 @@ fn dialogBeforeToggleRetiresRealm() !void {
     });
     defer if (realm.hasEngine()) engine.destroyWindowRealm(realm, .global_detached);
     const document = try interfaces.Document.init(std.testing.allocator, realm);
+    // The document's first wrapper takes its creator's reference over, so
+    // the document goes with its wrappers (until the wrapper redesign's P7
+    // the dialog's wrap made it, for node tracing's document edge; since P7
+    // a wrap makes no wrapper but its node's).
+    (try engine.retainValue(realm, .{ .instance = document })).release();
     const dialog = try interfaces.HTMLDialogElement.init(std.testing.allocator, realm);
     try dom.node_document.set(dialog, document);
     // Engine-backed show() keeps the existing beforetoggle cleanup path.

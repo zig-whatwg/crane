@@ -7,20 +7,21 @@
 //! Node::Trace through the tree's Member edges, WebKit's opaque roots. Until
 //! P7 node tracing's JS edges (wrapper_cache.zig) keep the same trees; P5
 //! adds the walk beside them (dom.wrapper_tracing, reached from V8's
-//! NodeAnchor::Trace in the collection's atomic pause).
+//! NodeAnchor::Trace in the collection's atomic pause). P7 deleted the
+//! edges: the walk alone keeps trees in production.
 //!
 //! What this file pins:
-//! - THE RED TEST: with the edges turned off by a test-only override of
-//!   runtime.lifetime's hooks (`tree_edges = false`), every identity
-//!   scenario of the Crane identity set (tests/wpt/crane/wr-*, rc-*, r3-
-//!   detached-tree-child-keeps-root, gc-keeps-connected-nodes) still holds:
-//!   the walk alone keeps trees. Red until the walk exists.
-//! - THE NEGATIVE CONTROL: with the edges AND the walk off, every scenario
-//!   whose identity rests on its tree loses it - the scenarios can fail.
-//! - Production (edges and walk on): every scenario holds, and every
-//!   collectability scenario (a dropped tree, a removed child, a dropped
-//!   document) is collected in all three modes -
-//!   the walk roots nothing.
+//! - THE RED TEST of P5, production since P7: every identity scenario of the
+//!   Crane identity set (tests/wpt/crane/wr-*, rc-*, r3-detached-tree-child-
+//!   keeps-root, gc-keeps-connected-nodes) holds with the walk alone, and
+//!   every collectability scenario (a dropped tree, a removed child, a
+//!   dropped document) is collected - the walk roots nothing. (Until P7 the
+//!   red ran with the edges turned off by runtime.lifetime's test-only
+//!   `tree_edges`, and production ran edges and walk together; P7 deleted
+//!   the switch with the edges, so the two modes are one.)
+//! - THE NEGATIVE CONTROL: with the walk off (a test-only override of
+//!   runtime.lifetime's `trace_tree`), every scenario whose identity rests on
+//!   its tree loses it - the scenarios can fail.
 //! - Rule 3.2 c: a kept node keeps its tree's wrappers whether or not it is
 //!   wrapped itself (the anchors' registry walks the keeps), and its release
 //!   lets them go.
@@ -69,27 +70,18 @@ const Reports = struct {
     }
 };
 
-/// Which of the two mechanisms keep trees.
+/// Whether the walk keeps trees.
 const Mode = enum {
-    /// Production until P7: node tracing's JS edges and the walk.
-    edges_and_walk,
-    /// The red test: the walk alone (`tree_edges = false`).
-    walk_only,
-    /// The negative control: neither (`tree_edges = false`, no `trace_tree`).
-    neither,
+    /// Production: the walk (P7 deleted node tracing's JS edges).
+    production,
+    /// The negative control: no walk (no `trace_tree`).
+    no_walk,
 };
 
 /// The hooks for `mode`, from the installed ones (start the process first).
 fn overrideFor(mode: Mode) runtime.lifetime.HooksOverride {
     var hooks = runtime.lifetime.installedHooks();
-    switch (mode) {
-        .edges_and_walk => {},
-        .walk_only => hooks.tree_edges = false,
-        .neither => {
-            hooks.tree_edges = false;
-            hooks.trace_tree = null;
-        },
-    }
+    if (mode == .no_walk) hooks.trace_tree = null;
     return runtime.lifetime.overrideHooksForTest(hooks);
 }
 
@@ -215,7 +207,7 @@ const Scenario = struct {
     setup: []const u8,
     checks: []const []const u8,
     /// Whether the identity checked rests on tree reachability alone - with
-    /// no edges and no walk, at least one check fails (the negative
+    /// no walk, at least one check fails (the negative
     /// control). False for a collectability case, which holds in every mode.
     tree_only: bool = true,
 };
@@ -539,7 +531,7 @@ fn failedChecks(mode: Mode, scenario: Scenario) !usize {
     for (scenario.checks) |check| {
         if (try page.holds(check)) continue;
         failed += 1;
-        if (mode != .neither or !scenario.tree_only) std.debug.print("{s} ({s}): does not hold: {s}\n", .{ scenario.name, @tagName(mode), check });
+        if (mode != .no_walk or !scenario.tree_only) std.debug.print("{s} ({s}): does not hold: {s}\n", .{ scenario.name, @tagName(mode), check });
     }
     return failed;
 }
@@ -550,27 +542,21 @@ test "wrapper walk P5: every agent's C++ heap marks atomically, so every Trace -
     try testing.expectEqual(@as(u8, 0), ffi.v8_test_AgentCppHeapMarkingSupport());
 }
 
-test "wrapper walk P5 RED: with node tracing's JS edges off, the walk alone keeps every tree of the identity set" {
-    var failures: usize = 0;
-    for (scenarios) |scenario| failures += try failedChecks(.walk_only, scenario);
-    try testing.expectEqual(@as(usize, 0), failures);
-}
-
-test "wrapper walk P5 negative control: with the edges and the walk off, every tree-only scenario loses identity, and collection still collects" {
+test "wrapper walk P5 negative control: with the walk off, every tree-only scenario loses identity, and collection still collects" {
     for (scenarios) |scenario| {
-        const failed = try failedChecks(.neither, scenario);
+        const failed = try failedChecks(.no_walk, scenario);
         if (scenario.tree_only) {
-            if (failed == 0) std.debug.print("negative control: {s} kept its identity with no edges and no walk\n", .{scenario.name});
+            if (failed == 0) std.debug.print("negative control: {s} kept its identity with no walk\n", .{scenario.name});
             try testing.expect(failed > 0);
         } else try testing.expectEqual(@as(usize, 0), failed);
     }
 }
 
-test "wrapper walk P5: production - the edges and the walk together keep every tree of the identity set, and the walk runs" {
+test "wrapper walk P5 RED, production since P7: the walk alone keeps every tree of the identity set, and the walk runs" {
     var failures: usize = 0;
-    for (scenarios) |scenario| failures += try failedChecks(.edges_and_walk, scenario);
+    for (scenarios) |scenario| failures += try failedChecks(.production, scenario);
     try testing.expectEqual(@as(usize, 0), failures);
-    // The walk ran beside the edges, and found nothing amiss.
+    // The walk ran, and found nothing amiss.
     test_process.start();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
@@ -621,10 +607,9 @@ fn keptUnwrappedNodeKeepsTree(mode: Mode) !bool {
 }
 
 test "wrapper walk P5: a kept node keeps its tree's wrappers even unwrapped (rule 3.2 c), and its release lets them go" {
-    try testing.expect(try keptUnwrappedNodeKeepsTree(.edges_and_walk));
-    try testing.expect(try keptUnwrappedNodeKeepsTree(.walk_only));
+    try testing.expect(try keptUnwrappedNodeKeepsTree(.production));
     // The negative control: nothing but the walk keeps such a tree.
-    try testing.expect(!try keptUnwrappedNodeKeepsTree(.neither));
+    try testing.expect(!try keptUnwrappedNodeKeepsTree(.no_walk));
 }
 
 /// The integrator's (a) and (b): a tree change made while V8's incremental
@@ -674,7 +659,7 @@ fn midCycleOnce(mode: Mode, setup: []const u8, mutation: []const u8, checks: []c
     var all = true;
     for (checks) |check| {
         if (try page.holds(check)) continue;
-        if (mode != .neither) std.debug.print("mid-cycle ({s}): does not hold: {s}\n", .{ @tagName(mode), check });
+        if (mode != .no_walk) std.debug.print("mid-cycle ({s}): does not hold: {s}\n", .{ @tagName(mode), check });
         all = false;
     }
     return all;
@@ -699,9 +684,8 @@ const appended_checks = [_][]const u8{
 };
 
 test "wrapper walk P5 (a): a subtree appended while incremental marking runs keeps its wrappers" {
-    try testing.expect(try midCycle(.walk_only, appended_setup, appended_mutation, &appended_checks));
-    try testing.expect(try midCycle(.edges_and_walk, appended_setup, appended_mutation, &appended_checks));
-    try testing.expect(!try midCycle(.neither, appended_setup, appended_mutation, &appended_checks));
+    try testing.expect(try midCycle(.production, appended_setup, appended_mutation, &appended_checks));
+    try testing.expect(!try midCycle(.no_walk, appended_setup, appended_mutation, &appended_checks));
 }
 
 const moved_setup = html_document ++
@@ -720,9 +704,8 @@ const moved_checks = [_][]const u8{
 };
 
 test "wrapper walk P5 (b): a subtree moved between trees while incremental marking runs keeps its wrappers" {
-    try testing.expect(try midCycle(.walk_only, moved_setup, moved_mutation, &moved_checks));
-    try testing.expect(try midCycle(.edges_and_walk, moved_setup, moved_mutation, &moved_checks));
-    try testing.expect(!try midCycle(.neither, moved_setup, moved_mutation, &moved_checks));
+    try testing.expect(try midCycle(.production, moved_setup, moved_mutation, &moved_checks));
+    try testing.expect(!try midCycle(.no_walk, moved_setup, moved_mutation, &moved_checks));
 }
 
 test "wrapper walk P5: two agents on one thread - each collection walks its own agent's trees through its own record" {

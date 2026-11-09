@@ -3,10 +3,9 @@
 //! teardown (`freeAllDescendants`, Node.deinit) - in constant stack either
 //! way, whatever the tree's depth.
 //!
-//! A tree nothing owns any more - its root's wrapper was collected, and no
-//! node of it has a wrapper (wrappers in a tree are upward-closed and linked
-//! both ways, so one live wrapper anywhere would have kept the root) - is
-//! freed by its root's teardown, which walks the whole subtree. For a tree of
+//! A tree nothing owns any more - its root's total of held nodes is zero, so
+//! no node of it has a wrapper (a wrapper holds its node: refcount step 7) -
+//! is freed by its root's teardown, which walks the whole subtree. For a tree of
 //! thousands of nodes that is one long pause wherever it runs. The agent's
 //! deferred teardown queue (runtime.gc.DeferredTeardown) frees such a tree in
 //! slices instead: `freeDescendants` frees at most a budget of the root's

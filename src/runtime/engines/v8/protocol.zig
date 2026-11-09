@@ -122,12 +122,13 @@ pub const capabilities: engine.Capabilities = .{
     // full past half its old-generation limit (V8 13.1 heap.cc
     // HandleExternalMemoryInterrupt).
     .external_memory = .native,
-    // Node wrapper reachability (the wrapper redesign, design 3.3): node
-    // tracing's JS edges (wrapper_cache.zig drawTreeEdges, joinOpaqueRoot /
-    // leaveOpaqueRoot / keepOpaqueRoot) keep the rule until P7; from P5 the
-    // walk (dom.wrapper_tracing, reached from NodeAnchor::Trace) runs beside
-    // them, and P7 makes it .native when the edges go.
-    .wrapper_tracing = .emulated,
+    // Node wrapper reachability (the wrapper redesign, design 3.3): the walk
+    // alone keeps trees (dom.wrapper_tracing, reached from NodeAnchor::Trace,
+    // HolderAnchor::Trace and the anchors' registry in cppgc's atomic pause:
+    // Blink's Node::Trace). P7 deleted node tracing's JS edges, so the host's
+    // joinOpaqueRoot / leaveOpaqueRoot / keepOpaqueRoot calls for nodes
+    // compile out here (they are the .emulated engines' path).
+    .wrapper_tracing = .native,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.

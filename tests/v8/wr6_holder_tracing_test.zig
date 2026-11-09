@@ -17,12 +17,13 @@
 //! nodes to the walk (VTable.trace_held_nodes -> dom.wrapper_tracing).
 //!
 //! What this file pins, each case in a page of its own:
-//! - THE RED TEST: with every node edge off (`tree_edges = false`: the tree
-//!   edges, keepOpaqueRoot's edges and node_holds' rescues), the holder's
-//!   wrapper alone keeps each held node's wrapper identity - its expando and
-//!   `===` through a WeakRef - through full collections; and dropping the
-//!   holder lets them go. Red until holders trace.
-//! - Production (edges on): the same.
+//! - THE RED TEST, production since P7: the holder's wrapper alone keeps
+//!   each held node's wrapper identity - its expando and `===` through a
+//!   WeakRef - through full collections; and dropping the holder lets them
+//!   go. (P6's red ran with every node edge off - runtime.lifetime's
+//!   test-only `tree_edges`: the tree edges, keepOpaqueRoot's edges and
+//!   node_holds' rescues - and production with them on; P7 deleted the
+//!   edges and the switch, so the two runs are one.)
 //! - The cost lesson (docs/lessons/architecture-tracing-a-holders-nodes-makes-
 //!   a-wrapper-per-node.md): a querySelectorAll of 1,000 nodes makes no node
 //!   wrapper, and neither does a collection while the list is held.
@@ -61,19 +62,6 @@ const Reports = struct {
         return .{ .report = report, .host = self };
     }
 };
-
-const Mode = enum {
-    /// Production until P7: the node edges and the tracing.
-    edges_on,
-    /// The red test: tracing alone (`tree_edges = false`).
-    edges_off,
-};
-
-fn overrideFor(mode: Mode) runtime.lifetime.HooksOverride {
-    var hooks = runtime.lifetime.installedHooks();
-    if (mode == .edges_off) hooks.tree_edges = false;
-    return runtime.lifetime.overrideHooksForTest(hooks);
-}
 
 const Page = struct {
     agent: *engine.Agent,
@@ -344,13 +332,10 @@ const scenarios = [_]Scenario{
     },
 };
 
-/// `scenario` in `mode`, in a page of its own: how many checks fail - the
-/// kept checks after the collections, then the gone check after the holder
-/// is dropped.
-fn failedChecks(mode: Mode, scenario: Scenario) !usize {
+/// `scenario`, in a page of its own: how many checks fail - the kept checks
+/// after the collections, then the gone check after the holder is dropped.
+fn failedChecks(scenario: Scenario) !usize {
     test_process.start();
-    const override = overrideFor(mode);
-    defer override.restore();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const page = try Page.open(&queue);
@@ -361,36 +346,28 @@ fn failedChecks(mode: Mode, scenario: Scenario) !usize {
     for (scenario.kept) |check| {
         if (try page.holds(check)) continue;
         failed += 1;
-        std.debug.print("{s} ({s}): does not hold: {s}\n", .{ scenario.name, @tagName(mode), check });
+        std.debug.print("{s}: does not hold: {s}\n", .{ scenario.name, check });
     }
     try page.run(scenario.drop);
     page.settle();
     if (!try page.holds(all_gone)) {
         failed += 1;
-        std.debug.print("{s} ({s}): dropping the holder did not let its nodes' wrappers go\n", .{ scenario.name, @tagName(mode) });
+        std.debug.print("{s}: dropping the holder did not let its nodes' wrappers go\n", .{scenario.name});
     }
     return failed;
 }
 
-test "wr6 RED: with every node edge off, a holder's wrapper alone keeps its held nodes' wrappers, and dropping it lets them go" {
+test "wr6 RED, production since P7: a holder's wrapper alone keeps its held nodes' wrappers, and dropping it lets them go" {
     var failures: usize = 0;
-    for (scenarios) |scenario| failures += try failedChecks(.edges_off, scenario);
-    try testing.expectEqual(@as(usize, 0), failures);
-}
-
-test "wr6: production - the edges and the holders' tracing together keep every holder's nodes, and let them go" {
-    var failures: usize = 0;
-    for (scenarios) |scenario| failures += try failedChecks(.edges_on, scenario);
+    for (scenarios) |scenario| failures += try failedChecks(scenario);
     try testing.expectEqual(@as(usize, 0), failures);
 }
 
 /// The cost lesson: a static list of 1,000 nodes, made and held across
 /// collections, makes no node wrapper - its holds are counted references,
 /// and its trace names only wrappers that exist.
-fn querySelectorAllWrapsNothing(mode: Mode) !void {
+fn querySelectorAllWrapsNothing() !void {
     test_process.start();
-    const override = overrideFor(mode);
-    defer override.restore();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const page = try Page.open(&queue);
@@ -411,6 +388,5 @@ fn querySelectorAllWrapsNothing(mode: Mode) !void {
 }
 
 test "wr6: a querySelectorAll of 1,000 nodes makes no node wrapper, held across collections or not" {
-    try querySelectorAllWrapsNothing(.edges_on);
-    try querySelectorAllWrapsNothing(.edges_off);
+    try querySelectorAllWrapsNothing();
 }
