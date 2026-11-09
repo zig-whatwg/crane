@@ -764,6 +764,7 @@ pub const Holder = struct {
     }
 
     /// The collector's pause: every held node's wrappers (`Hold.trace`). A
+    /// connected node's tree is its document's, named once per holder; a
     /// node whose parent is the previous held node's parent, or the previous
     /// held node itself, is in a tree already named - querySelectorAll's
     /// tree order makes that the common case - so its trees are not looked
@@ -771,9 +772,16 @@ pub const Holder = struct {
     /// (a wrapped node is held, so the walk enters it).
     pub fn trace(self: *const Holder, tracer: *engine.Tracer) void {
         var last: ?*NodeBase = null;
+        var last_document: ?*NodeBase = null;
         for (self.holds) |*held| {
             _ = held.get() orelse continue;
             const base = held.base;
+            // Connected: its tree is its document's, named once.
+            if (wrapper_tracing.connectedDocument(base)) |document| {
+                if (document != last_document) wrapper_tracing.traceHeld(document, tracer);
+                last_document = document;
+                continue;
+            }
             const parent = base.parent_node;
             if (last) |previous| {
                 if (parent != null and (parent == previous.parent_node or parent == previous)) {

@@ -106,9 +106,22 @@ pub fn traceTree(target: *anyopaque, tracer: *engine.Tracer) void {
 /// Called from a holder's `trace_held_nodes`, in the collection's atomic
 /// pause; reads only.
 pub fn traceHeld(node: *NodeBase, tracer: *engine.Tracer) void {
+    if (connectedDocument(node)) |document| return walkTree(document, null, tracer);
     const roots = treeRoots(node);
     walkTree(roots[0], null, tracer);
     if (roots[1]) |document| walkTree(document, null, tracer);
+}
+
+/// The Document a connected `node` is in - its host-including root and its
+/// node document at once (connected: its shadow-including root is a
+/// document; template contents are never connected) - or null for a node
+/// that is not connected. No climb: a holder of thousands of connected nodes
+/// (an observer's records during a parse) costs a field test each, and the
+/// document's tree is walked once per collection whoever asks.
+pub fn connectedDocument(node: *NodeBase) ?*NodeBase {
+    if (node.node_type == NodeBase.DOCUMENT_NODE) return node;
+    if (!node.is_connected) return null;
+    return @ptrCast(@alignCast(node.owner_document orelse return null));
 }
 
 /// `node` holds nodes for script itself (`NodeBase.traces_held`): its
