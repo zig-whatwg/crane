@@ -51,11 +51,32 @@ pub const file_status = "*";
 pub const Known = struct {
     test_id: []const u8,
     subtest: []const u8,
+    /// A status, or `|`-separated statuses the run may take (Firefox
+    /// metadata's `expected: [PASS, FAIL]`): a timing-bound subtest's.
     production: []const u8,
     bug_finding: []const u8,
     owner: []const u8,
     evidence: []const u8,
+
+    /// Whether a side lists more than one status: the difference comes and
+    /// goes (a timing-bound subtest, tools/wpt_loss_dispositions.txt), so a
+    /// run that does not show it is no reason to call the line stale.
+    pub fn intermittent(self: Known) bool {
+        return std.mem.indexOfScalar(u8, self.production, '|') != null or std.mem.indexOfScalar(u8, self.bug_finding, '|') != null;
+    }
+
+    fn matches(self: Known, d: Difference) bool {
+        return std.mem.eql(u8, self.test_id, d.test_id) and std.mem.eql(u8, self.subtest, d.subtest) and
+            listed(self.production, d.production) and listed(self.bug_finding, d.bug_finding);
+    }
 };
+
+/// Whether `status` is one of `list`'s `|`-separated statuses.
+fn listed(list: []const u8, status: []const u8) bool {
+    var it = std.mem.splitScalar(u8, list, '|');
+    while (it.next()) |s| if (std.mem.eql(u8, s, status)) return true;
+    return false;
+}
 
 pub const KnownError = error{ InvalidKnown, OutOfMemory };
 
@@ -94,7 +115,15 @@ pub fn parseKnown(allocator: Allocator, text: []const u8, diag: *KnownDiagnostic
             4 => "no owner: every known difference has one",
             else => "no evidence: every known difference has it",
         });
-        if (std.mem.eql(u8, fields[2], fields[3])) return invalid(diag, n, "the two statuses are the same: not a difference");
+        if (std.mem.eql(u8, fields[2], fields[3]) and std.mem.indexOfScalar(u8, fields[2], '|') == null) return invalid(diag, n, "the two statuses are the same: not a difference");
+        for (fields[2..4]) |statuses| {
+            var each = std.mem.splitScalar(u8, statuses, '|');
+            while (each.next()) |status| {
+                if (status.len == 0) return invalid(diag, n, "an empty status in a |-separated list");
+                var rest = each;
+                while (rest.next()) |other| if (std.mem.eql(u8, status, other)) return invalid(diag, n, "a status listed twice in one run's list");
+            }
+        }
         for (list.items) |k| {
             if (std.mem.eql(u8, k.test_id, fields[0]) and std.mem.eql(u8, k.subtest, fields[1])) return invalid(diag, n, "listed twice");
         }
@@ -278,8 +307,7 @@ pub fn check(arena: Allocator, differences: []const Difference, known: []const K
     var matched: usize = 0;
     for (differences) |d| {
         const hit = for (known, 0..) |k, i| {
-            if (std.mem.eql(u8, k.test_id, d.test_id) and std.mem.eql(u8, k.subtest, d.subtest) and
-                std.mem.eql(u8, k.production, d.production) and std.mem.eql(u8, k.bug_finding, d.bug_finding)) break i;
+            if (k.matches(d)) break i;
         } else null;
         if (hit) |i| {
             seen[i] = true;
@@ -287,7 +315,7 @@ pub fn check(arena: Allocator, differences: []const Difference, known: []const K
         } else try new.append(arena, d);
     }
     var stale: std.ArrayList(Known) = .empty;
-    for (known, seen) |k, s| if (!s) try stale.append(arena, k);
+    for (known, seen) |k, s| if (!s and !k.intermittent()) try stale.append(arena, k);
     return .{ .new = try new.toOwnedSlice(arena), .stale = try stale.toOwnedSlice(arena), .known = matched };
 }
 
@@ -676,6 +704,32 @@ test "a difference the list names is known; one it does not is NEW; a listed one
     const v2 = try check(a, &moved, known[0..1]);
     try testing.expectEqual(@as(usize, 1), v2.new.len);
     try testing.expectEqual(@as(usize, 1), v2.stale.len);
+}
+
+test "a timing-bound difference lists the statuses each run takes, and is neither new when seen nor stale when not" {
+    // Firefox metadata's `expected: [PASS, FAIL]`: a subtest that hinges on a
+    // sub-tick gap passes or fails in either build (tools/wpt_loss_dispositions.txt
+    // `timing-bound`). Seen with any of its statuses it is known; unseen it is
+    // not stale - it simply landed the same way in both runs.
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var diag: KnownDiagnostic = .{};
+    const known = try parseKnown(a, "/sw/nt.https.html\tnav timing\tPASS|FAIL\tPASS|FAIL\ttiming-bound\tgeneration 211's disposition; x10: production 3/10, bug-finding 4/10\n", &diag);
+    try testing.expect(known[0].intermittent());
+    const seen = [_]Difference{.{ .test_id = "/sw/nt.https.html", .subtest = "nav timing", .production = "PASS", .bug_finding = "FAIL" }};
+    const v = try check(a, &seen, known);
+    try testing.expectEqual(@as(usize, 1), v.known);
+    try testing.expectEqual(@as(usize, 0), v.new.len);
+    const flipped = [_]Difference{.{ .test_id = "/sw/nt.https.html", .subtest = "nav timing", .production = "FAIL", .bug_finding = "PASS" }};
+    try testing.expectEqual(@as(usize, 0), (try check(a, &flipped, known)).new.len);
+    const unseen = try check(a, &.{}, known);
+    try testing.expectEqual(@as(usize, 0), unseen.stale.len);
+    // A status outside the list is new.
+    const crashed = [_]Difference{.{ .test_id = "/sw/nt.https.html", .subtest = "nav timing", .production = "PASS", .bug_finding = "TIMEOUT" }};
+    try testing.expectEqual(@as(usize, 1), (try check(a, &crashed, known)).new.len);
+    // "PASS|PASS" names one status: no difference.
+    try testing.expectError(error.InvalidKnown, parseKnown(a, "/a\tx\tPASS|PASS\tPASS\to\te\n", &diag));
 }
 
 test "the bug-finding log: leaks, bad frees, panics, poison reads and refcount reports are counted" {

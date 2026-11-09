@@ -16,3 +16,10 @@
 # <owner>: the lane or person fixing it. <evidence>: what it is and where that is shown (a log, a
 #         lesson, a handoff). wpt_build_compare prints a NEW difference ready to paste, with
 #         <owner> and <evidence> to fill in - only after it has both, and the integrator's OK.
+#
+# A status may be a |-separated list (Firefox metadata's `expected: [PASS, FAIL]`): a subtest that
+# hinges on a sub-tick gap passes or fails in either build. Such a line is never stale - it has
+# simply landed the same way in both runs - and its owner is `timing-bound`, citing its entry in
+# tools/wpt_loss_dispositions.txt and each build's x10 count.
+/service-workers/service-worker/navigation-timing-extended.https.html	Service worker controlled navigation timing	PASS|FAIL	PASS|FAIL	timing-bound	tools/wpt_loss_dispositions.txt kind = timing-bound (generation 211: "fetchStart should be marked before the Fetch event handler is called" compares coarse marks the specs put back to back, 125 us tick); x10 on server1 2026-11-09 22:3x UTC (lane wptcfg tip2): production PASS 3 / FAIL 7, bug-finding PASS 4 / FAIL 6 - the same race in both builds
+/navigation-timing/nav2-test-redirect-server.html	Navigation Timing 2 WPT	PASS|FAIL	PASS|FAIL	timing-bound	tools/wpt_loss_dispositions.txt kind = timing-bound (generation 210: startTime vs redirectStart, a 32-58 us gap on the 125 us tick); x10 on server1 2026-11-09 22:4x UTC (lane wptcfg tip2): production PASS 5 / FAIL 5, bug-finding PASS 6 / FAIL 4 - the same race in both builds
