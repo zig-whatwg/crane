@@ -3288,8 +3288,9 @@ struct CraneNodeWrapperProbe {
     void* anchor;
     void* anchor_slot;
     /// The anchors the agent's registry holds (live, or dead and not yet
-    /// found by a collection).
+    /// found by a collection), and the room it has for them.
     uint64_t registered_anchors;
+    uint64_t anchor_capacity;
 };
 
 /// The wrapper in node slot `slot` of the current isolate (entered by the
@@ -3297,9 +3298,12 @@ struct CraneNodeWrapperProbe {
 /// anchor Object::Unwrap finds under the node anchors' tag and the slot that
 /// anchor holds.
 extern "C" void v8_test_NodeWrapper_Probe(Isolate* isolate, void* slot, CraneNodeWrapperProbe* out) {
-    *out = CraneNodeWrapperProbe{false, false, -1, nullptr, nullptr, 0};
+    *out = CraneNodeWrapperProbe{false, false, -1, nullptr, nullptr, 0, 0};
     IsolateData* record = isolateData(isolate);
-    if (record && record->node_anchors.Get()) out->registered_anchors = record->node_anchors->anchors.size();
+    if (record && record->node_anchors.Get()) {
+        out->registered_anchors = record->node_anchors->anchors.size();
+        out->anchor_capacity = record->node_anchors->anchors.capacity();
+    }
     // Read through the Global<Object>* every borrower holds (wrapperOf).
     Global<Object>* handle = static_cast<Global<Object>*>(slot);
     if (handle->IsEmpty()) return;

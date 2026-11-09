@@ -2814,6 +2814,7 @@ pub const NodeWrapperProbe = extern struct {
     anchor: ?*anyopaque,
     anchor_slot: ?*anyopaque,
     registered_anchors: u64,
+    anchor_capacity: u64,
 };
 pub extern fn v8_test_NodeWrapper_Probe(isolate: *Isolate, slot: *anyopaque, out: *NodeWrapperProbe) void;
 

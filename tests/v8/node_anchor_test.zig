@@ -327,6 +327,25 @@ const EpilogueWatch = struct {
     }
 };
 
+test "the anchor registry grows geometrically: a node wrap does not copy it" {
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    const made = try detachedDiv(page);
+    try page.run("globalThis.many = []; for (let i = 0; i < 3000; i++) many.push(d.createElement('p'));");
+    const seen = page.probe(made.node);
+    try testing.expect(seen.registered_anchors >= 3001);
+    // Room ahead of the anchors, by doubling: an exact reserve(size + 1) per
+    // wrap - every wrap copying the whole vector, quadratic in the live
+    // anchors (83f1e0e187b: the perf pair's create-element ran 9.6x) - left
+    // the capacity equal to the size after every wrap.
+    try testing.expect(seen.anchor_capacity > seen.registered_anchors);
+    try testing.expect(std.math.isPowerOfTwo(seen.anchor_capacity));
+    try page.run("globalThis.many = null;");
+    page.collect();
+}
+
 test "a dropped wrapper's slot is empty when the GC epilogue runs, and its count is released after" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
