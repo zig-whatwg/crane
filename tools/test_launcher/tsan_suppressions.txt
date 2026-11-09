@@ -68,7 +68,11 @@ race:v8::internal::PointersUpdatingJob::~PointersUpdatingJob
 # v8::internal::IndexGenerator::GetNext, inside the full collection the agent's end
 # requests while its isolate is live (protocol_agents.endAgent's
 # v8_Isolate_RequestGarbageCollection, before the isolate is disposed); the job made
-# by MarkCompactCollector::EvacuatePagesInParallel. The main thread is inside V8's
-# collection, joining the job: entry 1's mechanism, not an isolate ended under a
-# running job. Proved by wr1 b2, 2026-11-09.
+# by MarkCompactCollector::EvacuatePagesInParallel. The collection runs BEFORE the
+# isolate is disposed, so this has collectTwice's shape: Crane calls into V8's
+# collector, the main thread joins the job inside it, and both racing stacks are
+# V8's - entry 1's mechanism, not an isolate ended under a running job. A report
+# whose other stack is in Isolate::Dispose, the CppHeap's free or the adapter's
+# teardown is never suppressed by this entry's reasoning: it is a bug. Proved by
+# wr1 b2, 2026-11-09.
 race:v8::internal::PageEvacuationJob::~PageEvacuationJob
