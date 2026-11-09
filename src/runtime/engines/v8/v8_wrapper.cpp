@@ -2727,6 +2727,13 @@ struct IsolateData {
     void (*node_wrappers_drain)(void* registry) = nullptr;
     /// The registry's end, and its memory.
     void (*node_wrappers_end)(void* registry) = nullptr;
+    /// A drain task is posted and has not run (the wrapper redesign's P4).
+    bool node_wrappers_drain_posted = false;
+    /// tests/v8 only (v8_test_NodeWrappers_ObserveDrainTasks): counters a
+    /// posted drain task bumps when it runs, or when it is destroyed without
+    /// running - the test's own, which outlive the agent.
+    uint32_t* test_drain_task_runs = nullptr;
+    uint32_t* test_drain_task_drops = nullptr;
 
 
     /// Take out the entry whose module is `module`, if any.
@@ -2933,6 +2940,88 @@ extern "C" void v8_NodeWrapper_Reset(Isolate* isolate, void* slot, bool sever) {
     }
     forgetCountedHandle(wrapper);
     wrapper->Reset();
+}
+
+// ---- tests/v8/node_anchor_test.zig's probes (the wrapper redesign's P4) ----
+
+/// What v8_test_NodeWrapper_Probe saw; ffi.zig's NodeWrapperProbe mirrors it.
+struct CraneNodeWrapperProbe {
+    bool has_wrapper;
+    bool api_wrapper;
+    int32_t internal_fields;
+    void* anchor;
+    void* anchor_slot;
+    uint64_t registered_anchors;
+};
+
+/// The wrapper in node slot `slot` of the current isolate (entered by the
+/// caller): its internal field count, whether it is an API wrapper, the
+/// anchor Object::Unwrap finds under the node anchors' tag (256) and the slot
+/// that anchor holds (its first word).
+extern "C" void v8_test_NodeWrapper_Probe(Isolate* isolate, void* slot, CraneNodeWrapperProbe* out) {
+    *out = CraneNodeWrapperProbe{false, false, -1, nullptr, nullptr, 0};
+    Global<Object>* handle = static_cast<Global<Object>*>(slot);
+    if (handle->IsEmpty()) return;
+    out->has_wrapper = true;
+    HandleScope scope(isolate);
+    Local<Object> object = handle->Get(isolate);
+    out->api_wrapper = object->IsApiWrapper();
+    out->internal_fields = object->InternalFieldCount();
+    if (!out->api_wrapper) return;
+    const CppHeapPointerTag tag = static_cast<CppHeapPointerTag>(256);
+    void* anchor = Object::Unwrap(isolate, object, CppHeapPointerTagRange(tag, tag));
+    out->anchor = anchor;
+    out->anchor_slot = anchor ? *static_cast<void**>(anchor) : nullptr;
+}
+
+/// A callback the test's own, at the end of every full collection of
+/// `isolate`.
+struct CraneFullGCEpilogueProbe {
+    Isolate* isolate;
+    void (*callback)(void*);
+    void* data;
+};
+
+static void fullGCEpilogueProbe(Isolate*, GCType, GCCallbackFlags, void* data) {
+    CraneFullGCEpilogueProbe* probe = static_cast<CraneFullGCEpilogueProbe*>(data);
+    probe->callback(probe->data);
+}
+
+extern "C" CraneFullGCEpilogueProbe* v8_test_FullGCEpilogueProbe_New(Isolate* isolate, void (*callback)(void*), void* data) {
+    auto* probe = new CraneFullGCEpilogueProbe{isolate, callback, data};
+    isolate->AddGCEpilogueCallback(fullGCEpilogueProbe, probe, kGCTypeMarkSweepCompact);
+    return probe;
+}
+
+extern "C" void v8_test_FullGCEpilogueProbe_Delete(CraneFullGCEpilogueProbe* probe) {
+    probe->isolate->RemoveGCEpilogueCallback(fullGCEpilogueProbe, probe);
+    delete probe;
+}
+
+/// A full collection of `isolate` with no conservative scan of the stack
+/// and no drain at its end.
+extern "C" void v8_test_Isolate_CollectWithoutDrain(Isolate* isolate) {
+    CppHeap* heap = isolate->GetCppHeap();
+    if (!heap) {
+        isolate->LowMemoryNotification();
+        return;
+    }
+    cppgc::testing::OverrideEmbedderStackStateScope no_stack_scan(heap->GetHeapHandle(), cppgc::EmbedderStackState::kNoHeapPointers);
+    isolate->LowMemoryNotification();
+}
+
+/// Whether a drain task is posted and has not run.
+extern "C" bool v8_test_NodeWrappers_DrainPosted(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    return record && record->node_wrappers_drain_posted;
+}
+
+/// Drain tasks posted from now on bump `runs` / `drops`.
+extern "C" void v8_test_NodeWrappers_ObserveDrainTasks(Isolate* isolate, uint32_t* runs, uint32_t* drops) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    record->test_drain_task_runs = runs;
+    record->test_drain_task_drops = drops;
 }
 
 /// The host's wall clock of the isolate current on this thread (ns since the

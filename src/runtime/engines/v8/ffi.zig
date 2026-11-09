@@ -2779,6 +2779,35 @@ pub extern fn v8_NodeWrapper_ClearWeak(slot: *anyopaque) ?*anyopaque;
 /// fields cleared first - and leave the slot empty.
 pub extern fn v8_NodeWrapper_Reset(isolate: ?*Isolate, slot: *anyopaque, sever: bool) void;
 
+/// tests/v8/node_anchor_test.zig: what v8_test_NodeWrapper_Probe saw of the
+/// wrapper in a node slot; mirrors v8_wrapper.cpp's CraneNodeWrapperProbe.
+pub const NodeWrapperProbe = extern struct {
+    has_wrapper: bool,
+    api_wrapper: bool,
+    internal_fields: i32,
+    anchor: ?*anyopaque,
+    anchor_slot: ?*anyopaque,
+    registered_anchors: u64,
+};
+pub extern fn v8_test_NodeWrapper_Probe(isolate: *Isolate, slot: *anyopaque, out: *NodeWrapperProbe) void;
+
+/// tests/v8: `callback(data)` at the end of every full collection of
+/// `isolate`, until v8_test_FullGCEpilogueProbe_Delete.
+pub const FullGCEpilogueProbe = opaque {};
+pub extern fn v8_test_FullGCEpilogueProbe_New(isolate: *Isolate, callback: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque) *FullGCEpilogueProbe;
+pub extern fn v8_test_FullGCEpilogueProbe_Delete(probe: *FullGCEpilogueProbe) void;
+
+/// tests/v8: a full collection with no conservative stack scan and no drain
+/// at its end (what it collected waits for the posted drain task).
+pub extern fn v8_test_Isolate_CollectWithoutDrain(isolate: *Isolate) void;
+
+/// tests/v8: whether a node wrappers' drain task is posted and has not run.
+pub extern fn v8_test_NodeWrappers_DrainPosted(isolate: *Isolate) bool;
+
+/// tests/v8: drain tasks posted from now on count their runs and their drops
+/// (destroyed without running) in the caller's two counters.
+pub extern fn v8_test_NodeWrappers_ObserveDrainTasks(isolate: *Isolate, runs: *u32, drops: *u32) void;
+
 /// Clear weak reference and restore strong reference
 ///
 /// Arguments:
