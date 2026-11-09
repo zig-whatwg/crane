@@ -211,6 +211,10 @@ pub const Registry = struct {
     /// (engine.traceVisitOnce): filled in a collection's atomic pause, emptied
     /// at the end of its marking (`markedCallback`), its capacity kept.
     visited: std.AutoHashMapUnmanaged(usize, void) = .empty,
+    /// The key `visited` answered last - in front of its hash: every
+    /// detached node of a document asks for that document's tree in turn
+    /// (design R4c). Zero when `visited` is empty.
+    last_visited: usize = 0,
     /// -Dwrapper-trace-check: the slots the walk named in this collection.
     traced: std.AutoHashMapUnmanaged(usize, void) = .empty,
     /// No walk was installed for a trace this collection (a test's override
@@ -666,7 +670,10 @@ pub fn traceNodeWrapper(tracer: *Tracer, slot: *const NodeWrapperSlot) void {
 /// memory, true - the tree is walked again, which costs time, never a
 /// wrapper.
 pub fn traceVisitOnce(tracer: *Tracer, key: *const anyopaque) bool {
-    const entry = tracer.registry.visited.getOrPut(std.heap.c_allocator, @intFromPtr(key)) catch return true;
+    const registry = tracer.registry;
+    if (registry.last_visited == @intFromPtr(key)) return false;
+    const entry = registry.visited.getOrPut(std.heap.c_allocator, @intFromPtr(key)) catch return true;
+    registry.last_visited = @intFromPtr(key);
     return !entry.found_existing;
 }
 
@@ -725,6 +732,7 @@ fn traceKeeps(raw_registry: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void
 fn markedCallback(raw_registry: ?*anyopaque) callconv(.c) void {
     const registry: *Registry = @ptrCast(@alignCast(raw_registry orelse return));
     endSet(&registry.visited);
+    registry.last_visited = 0;
     endSet(&registry.traced);
     registry.walk_absent = false;
 }
@@ -741,7 +749,8 @@ fn endSet(set: *std.AutoHashMapUnmanaged(usize, void)) void {
 /// not. It checks, logging each finding (an error log fails a unit test):
 /// 1. every kept anchor's node was reached by the walk itself, not only by
 ///    its anchor's own slot - a pruning or a dedupe mistake shows here even
-///    while the JS edges keep the wrapper;
+///    while the JS edges keep the wrapper (a lone root's walk names nothing:
+///    its anchor's own slot is the whole of it);
 /// 2. walked UNPRUNED, no tree a kept anchor's node or a live keep keeps
 ///    holds a wrapper the collection is dropping - what the browsers keep;
 /// 3. no dropped anchor's node is in a tree the walk visited.
@@ -771,13 +780,14 @@ fn checkWalk(raw_registry: ?*anyopaque, raw_live: ?[*]const ?*anyopaque, live_le
     const check: Check = .{ .registry = registry, .dropped = &dropped };
     for (live) |maybe_slot| {
         const slot: *NodeWrapperSlot = @ptrCast(@alignCast(maybe_slot orelse continue));
-        // 1.
-        if (!registry.traced.contains(@intFromPtr(slot))) {
+        const node: *dom.NodeBase = @ptrCast(@alignCast(runtime.lifetime.targetOfSlot(slot)));
+        // 1. (A lone root is not walked: its anchor's own slot is all.)
+        const lone_self = dom.refcount.root(null, node) == node and dom.wrapper_tracing.isLone(node);
+        if (!lone_self and !registry.traced.contains(@intFromPtr(slot))) {
             registry.trace_check_failures += 1;
             log.err("wrapper-trace-check: a kept node wrapper's node was not reached by the walk (node type {d})", .{nodeTypeOfSlot(slot)});
         }
         // 2.
-        const node: *dom.NodeBase = @ptrCast(@alignCast(runtime.lifetime.targetOfSlot(slot)));
         for (dom.wrapper_tracing.treeRoots(node)) |maybe_root| {
             const tree_root = maybe_root orelse continue;
             const entry = walked.getOrPut(gpa, @intFromPtr(tree_root)) catch return;

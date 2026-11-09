@@ -70,11 +70,13 @@ const refcount = @import("refcount.zig");
 /// host-including tree is kept, and every wrapper of its node document's
 /// tree (refcount decision D6: a node keeps its document's tree; Blink's
 /// `Node::Trace` visits `tree_scope_`, whose `document_` it traces).
+/// `target`'s own wrapper is the engine's to keep (a reached wrapper's, or a
+/// kept one's rooted anchor): a lone `target` names nothing again.
 pub fn traceTree(target: *anyopaque, tracer: *engine.Tracer) void {
     const node: *NodeBase = @ptrCast(@alignCast(target));
     const roots = treeRoots(node);
-    walkTree(roots[0], tracer);
-    if (roots[1]) |document| walkTree(document, tracer);
+    walkTree(roots[0], node, tracer);
+    if (roots[1]) |document| walkTree(document, node, tracer);
 }
 
 /// The roots of the trees `node` keeps: its host-including tree's, and its
@@ -86,21 +88,28 @@ pub fn treeRoots(node: *NodeBase) [2]?*NodeBase {
 }
 
 /// The held part of `tree_root`'s tree, once per collection: each wrapper in
-/// it named to the engine.
-fn walkTree(maybe_root: ?*NodeBase, tracer: *engine.Tracer) void {
+/// it named to the engine (`target`'s own excepted when it is a lone root).
+fn walkTree(maybe_root: ?*NodeBase, target: *NodeBase, tracer: *engine.Tracer) void {
     const tree_root = maybe_root orelse return;
     // A garbage tree holds nothing (its total is 0, so no node of it is
     // wrapped), and its teardown may be under way: never walked (design R2).
     if (tree_root.rc_flags.garbage) return;
     // No held node below the root (its own hold, if any, is the whole
     // total): the root's wrapper is all there is - no visited-set entry for
-    // the common lone node.
-    if (tree_root.subtree_holds == @intFromBool(refcount.isHeld(tree_root))) {
-        engine.traceNodeWrapper(tracer, &tree_root.wrapper);
+    // the common lone node, and nothing at all when it is `target` itself,
+    // whose wrapper the engine keeps (the per-anchor cost, design R4c).
+    if (isLone(tree_root)) {
+        if (tree_root != target) engine.traceNodeWrapper(tracer, &tree_root.wrapper);
         return;
     }
     if (!engine.traceVisitOnce(tracer, tree_root)) return;
     walkDown(tree_root, Pruned{ .tracer = tracer });
+}
+
+/// Whether no node below `tree_root` is held: its own hold, if any, is its
+/// whole total.
+pub fn isLone(tree_root: *const NodeBase) bool {
+    return tree_root.subtree_holds == @intFromBool(refcount.isHeld(tree_root));
 }
 
 /// The walk's visitor: held subtrees only, each wrapper named to the engine.

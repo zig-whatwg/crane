@@ -63,8 +63,10 @@ pub const Hooks = struct {
     /// answers it - has a wrapper the engine's collector reached, or is
     /// kept; name every wrapper it keeps to the engine (engine.
     /// traceNodeWrapper), deduplicated per collection (engine.
-    /// traceVisitOnce). Runs INSIDE the collection's atomic pause: read-only,
-    /// no allocation, no other engine operation (dom.wrapper_tracing).
+    /// traceVisitOnce). `target`'s own wrapper is the engine's to keep (it
+    /// reached it, or roots a kept one). Runs INSIDE the collection's atomic
+    /// pause: read-only, no allocation, no other engine operation
+    /// (dom.wrapper_tracing).
     trace_tree: ?*const fn (target: *anyopaque, tracer: *engine.Tracer) void = null,
     /// Whether the engine adapter keeps node tracing's JS edges (V8: each
     /// wrapper's private upward edge and its parent's set of children, drawn
