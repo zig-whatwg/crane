@@ -555,10 +555,17 @@ pub const SweepHost = struct {
     /// "<os>-<arch>": "linux-x86_64", "macos-arm64".
     os: []const u8,
     runners: u32,
+    /// The host's installed font set when the run was made (`fonts=<hash>`,
+    /// a hash of its fontconfig list): the production run takes its fonts
+    /// from the host, as a browser does (lane wptcfg; the integrator accepted
+    /// recording it with each generation, as wpt.fyi pins its font set in its
+    /// image), so a generation names the set its font results came from.
+    /// Null: not recorded.
+    fonts: ?[]const u8 = null,
 };
 
 /// Parses tools/wpt_generation_hosts.txt (its header documents the format):
-/// one `<label> <host> <os>-<arch> <runners>` line per run. Any invalid line
+/// one `<label> <host> <os>-<arch> <runners> [fonts=<hash>]` line per run. Any invalid line
 /// fails the whole parse with `diag` set: a wrong host must stop the site,
 /// never print silently.
 pub fn parseSweepHosts(arena: std.mem.Allocator, text: []const u8, diag: *ExemptionDiag) error{ InvalidHosts, OutOfMemory }![]const SweepHost {
@@ -569,14 +576,24 @@ pub fn parseSweepHosts(arena: std.mem.Allocator, text: []const u8, diag: *Exempt
         n += 1;
         const line = std.mem.trim(u8, raw, " \t\r");
         if (line.len == 0 or line[0] == '#') continue;
-        var fields: [5][]const u8 = undefined;
+        // One more than a line may hold, so a line with too many is seen.
+        var fields: [6][]const u8 = undefined;
         var count: usize = 0;
         var words = std.mem.tokenizeAny(u8, line, " \t");
         while (words.next()) |word| : (count += 1) {
             if (count == fields.len) break;
             fields[count] = word;
         }
-        if (count != 4) return hostsInvalid(diag, n, "\"{s}\": expected <label> <host> <os>-<arch> <runners>", .{line});
+        if (count != 4 and count != 5) return hostsInvalid(diag, n, "\"{s}\": expected <label> <host> <os>-<arch> <runners> [fonts=<hash>]", .{line});
+        const fonts: ?[]const u8 = if (count == 5) fonts: {
+            const prefix = "fonts=";
+            const hash = if (std.mem.startsWith(u8, fields[4], prefix)) fields[4][prefix.len..] else "";
+            const hex = hash.len > 0 and for (hash) |c| {
+                if (!std.ascii.isHex(c)) break false;
+            } else true;
+            if (!hex) return hostsInvalid(diag, n, "\"{s}\": the fifth field must read fonts=<hash> (hex)", .{fields[4]});
+            break :fonts hash;
+        } else null;
         const os = fields[2];
         const dash = std.mem.indexOfScalar(u8, os, '-') orelse 0;
         const known_os = std.mem.eql(u8, os[0..dash], "linux") or std.mem.eql(u8, os[0..dash], "macos");
@@ -590,7 +607,7 @@ pub fn parseSweepHosts(arena: std.mem.Allocator, text: []const u8, diag: *Exempt
         if (runners == 0) return hostsInvalid(diag, n, "\"{s}\": runners must be a whole number above 0", .{fields[3]});
         for (out.items) |h| if (std.mem.eql(u8, h.label, fields[0]))
             return hostsInvalid(diag, n, "{s} is listed twice", .{fields[0]});
-        try out.append(arena, .{ .label = fields[0], .host = fields[1], .os = os, .runners = runners });
+        try out.append(arena, .{ .label = fields[0], .host = fields[1], .os = os, .runners = runners, .fonts = fonts });
     }
     return out.items;
 }
@@ -1090,7 +1107,8 @@ fn expectInvalidHosts(text: []const u8, needle: []const u8) !void {
 
 test "hosts: a malformed or repeated line is invalid" {
     try expectInvalidHosts("sweep-a server1 linux-x86_64\n", "expected <label> <host> <os>-<arch> <runners>");
-    try expectInvalidHosts("sweep-a server1 linux-x86_64 32 extra\n", "expected <label> <host> <os>-<arch> <runners>");
+    try expectInvalidHosts("sweep-a server1 linux-x86_64 32 extra\n", "the fifth field must read fonts=<hash>");
+    try expectInvalidHosts("sweep-a server1 linux-x86_64 32 fonts=ab extra\n", "expected <label> <host> <os>-<arch> <runners>");
     try expectInvalidHosts("sweep-a server1 Linux 32\n", "<os>-<arch>");
     try expectInvalidHosts("sweep-a server1 freebsd-x86_64 32\n", "<os>-<arch>");
     try expectInvalidHosts("sweep-a server1 linux- 32\n", "<os>-<arch>");
@@ -1103,6 +1121,18 @@ test "hosts: a malformed or repeated line is invalid" {
     var diag: ExemptionDiag = .{};
     try testing.expectError(error.InvalidHosts, parseSweepHosts(arena.allocator(), "# c\nsweep-a server1 linux-x86_64 32\nsweep-b x\n", &diag));
     try testing.expectEqual(@as(usize, 3), diag.line);
+}
+
+test "hosts: a run may name its host's font set, as a hash" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    const list = try parseSweepHosts(arena.allocator(), "sweep-a server1 linux-x86_64 32 fonts=1a2b3c4d\nsweep-b chat.local macos-arm64 8\n", &diag);
+    try testing.expectEqualStrings("1a2b3c4d", list[0].fonts.?);
+    try testing.expect(list[1].fonts == null);
+    try testing.expectError(error.InvalidHosts, parseSweepHosts(arena.allocator(), "sweep-a server1 linux-x86_64 32 fonts=\n", &diag));
+    try testing.expectError(error.InvalidHosts, parseSweepHosts(arena.allocator(), "sweep-a server1 linux-x86_64 32 production\n", &diag));
+    try testing.expectError(error.InvalidHosts, parseSweepHosts(arena.allocator(), "sweep-a server1 linux-x86_64 32 fonts=xyz\n", &diag));
 }
 
 test "hosts: an OS as the site says it" {

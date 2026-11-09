@@ -111,9 +111,11 @@ pub fn wantsPoison(value: ?[]const u8) bool {
 ///   allocator whatever the scribble says (docs/lessons/debugging-macos-27s-
 ///   malloc-zeroes-small-blocks-on-free-mallocscribble-covers-the-large-
 ///   ones.md), so a small block's use-after-free reads zeros there.
-/// - Linux (glibc): `MALLOC_PERTURB_=221` (mallopt(3) M_PERTURB): 0xdd -
-///   the Zig poison's byte - over a freed block, its complement 0x22 over a
-///   new one.
+/// - Linux (glibc): `MALLOC_PERTURB_=85` (mallopt(3) M_PERTURB): 0x55 over
+///   a freed block, its complement 0xaa over a new one - the bytes macOS's
+///   scribble writes, and the Crane test launcher's own setting
+///   (tools/test_launcher/child.zig, tests/AGENTS.md), so a fault reads the
+///   same on every host.
 ///
 /// A value the caller's environment already sets is kept: a diagnosis may
 /// turn the scribble off (`MallocScribble=0`) or pick its own byte. Never
@@ -121,7 +123,7 @@ pub fn wantsPoison(value: ?[]const u8) bool {
 pub fn addLibcScribble(env: *std.process.Environ.Map, os: std.Target.Os.Tag) error{OutOfMemory}!void {
     const name: []const u8, const value: []const u8 = switch (os) {
         .macos, .ios => .{ "MallocScribble", "1" },
-        .linux => .{ "MALLOC_PERTURB_", "221" },
+        .linux => .{ "MALLOC_PERTURB_", "85" },
         else => return,
     };
     if (env.contains(name)) return;
@@ -140,9 +142,9 @@ test "a bug-finding child's environment turns on libc's poison-on-free, the host
     var linux: std.process.Environ.Map = .init(std.testing.allocator);
     defer linux.deinit();
     try addLibcScribble(&linux, .linux);
-    // 0xdd, the byte the Zig allocator's Poisoning writes.
-    try std.testing.expectEqualStrings("221", linux.get("MALLOC_PERTURB_").?);
-    try std.testing.expectEqual(@as(u8, 0xdd), try std.fmt.parseInt(u8, linux.get("MALLOC_PERTURB_").?, 10));
+    // 0x55 over a freed block, as macOS's scribble and the test launcher.
+    try std.testing.expectEqualStrings("85", linux.get("MALLOC_PERTURB_").?);
+    try std.testing.expectEqual(@as(u8, 0x55), try std.fmt.parseInt(u8, linux.get("MALLOC_PERTURB_").?, 10));
     try std.testing.expect(linux.get("MallocScribble") == null);
 }
 

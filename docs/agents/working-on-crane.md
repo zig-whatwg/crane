@@ -71,6 +71,11 @@ ReleaseSafe runner build about 12, and a sweep over an hour. Never pay those for
   still its own commit.
 - **Before starting any gate or run over 20 minutes,** look at what else is about to land, and batch it in
   instead of starting the next long job the moment this one ends.
+- **WPT pass counts and timing come only from the production runner** (`wpt_runner`, the release
+  console's build: the user, 2026-11-09). A batch that touches memory, lifetime, teardown, the engine
+  adapter or the event loop also runs the bug-finding runner (`wpt_runner_bug_finding`) over the same files
+  and reports its gate and its differences, never its pass counts (.claude/rules/wpt-workflow.md, "The two
+  runs").
 - **Merge current main into your branch before you report.** If your gated tip's tree is the tree the
   integrator would merge, your gates stand and the merge needs no re-run.
 

@@ -306,7 +306,7 @@ pub const LogFindings = struct {
     /// `panic:` - a failed assertion, a safety check, the full C sanitizer.
     panics: usize = 0,
     /// A fault at a poison address: the Zig allocator's 0xdd fill, glibc's
-    /// MALLOC_PERTURB_ fill (0xdd), macOS's MallocScribble fills (0x55 freed,
+    /// MALLOC_PERTURB_=85 fill and macOS's MallocScribble (0x55 freed,
     /// 0xaa new) - a read of freed (or never-written) memory.
     poison_reads: usize = 0,
     /// `refcount:` invariant reports (CRANE_REFCOUNT_CHECK) and failed

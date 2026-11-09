@@ -109,7 +109,7 @@ sufficient — see the regression protocol above.
 - **Lane agents compile nothing on this Mac** (the user, 2026-10-29): every `zig build`, test run and benchmark goes through `crane-remote.sh` or `crane-pool.sh`; on the Mac a lane edits, reads, runs git and `zig fmt`.
 - **Local builds use `--cache-dir ~/Library/Caches/crane-z16-cache`, never a cache in `/tmp`;** `zig build codegen` and `codegen-check` use a cache of your own (`~/Library/Caches/crane-<lane>-codegen`, deleted when you are done).
 - **The toolchain is Zig 0.17, pinned** (the user, 2026-10-28): `0.17.1-dev+77c319a0f0`; `zig build` takes no `--global-cache-dir`, the global cache is set only through `ZIG_GLOBAL_CACHE_DIR`; anything `build.zig` reads from the machine at configure time calls `b.graph.poisonCache()`; never put an `xcrun` shim on PATH.
-- **The WPT runner is built ReleaseSafe** (the user, 2026-10-11), about 12 minutes cold: `-Dwpt-runner-optimize=Debug` for red/green, and an A/B compares runners built in the same mode as its baseline (.claude/rules/wpt-workflow.md).
+- **The production WPT runner is the release console's build** (ReleaseSafe throughout, libc malloc, the console's platform graph: the user, 2026-11-09), about 12 minutes cold; the bug-finding runner is ReleaseSafe with Crane's modules in Debug (the user, 2026-10-11), `-Dwpt-runner-optimize=Debug` for a diagnosis; an A/B compares runners built in the same mode as its baseline (.claude/rules/wpt-workflow.md).
 
 ## Boundaries
 
@@ -132,6 +132,7 @@ sufficient — see the regression protocol above.
 - Only main's runs go where the report reads them (`wpt-results/<label>/`, one directory deep), a lane's to `wpt-results/lanes/<label>/`.
 - After a feature commit, regenerate (`zig build wpt-progress`; push `gh-pages` with main) and keep `docs/roadmap.toml` current; once per working session, a full worklist sweep at HEAD from a frozen runner, with its `journal.wptreport.jsonl`.
 - Every summary reports the headline - blocking files and passing subtests, the rate outside `encoding/` and the mean per-file rate - beside the engine-boundary baseline total and the global-state total with its `by rule:` line.
+- **WPT runs Crane only in its production configuration** (the user, 2026-11-09: "I want our WPT to only ever run Crane with the exact same configuration and memory setup that Crane would have running in a production environment. We should never special case something" - "architect ours like the way browsers do it"): two builds of one tree. The PRODUCTION run, `wpt_runner` (`zig build wpt-runner`), is the release console's build and platform graph exactly, and it alone feeds generations, the site, A/B pass counts and every timing. The BUG-FINDING run, `wpt_runner_bug_finding`, adds detection only (debug allocator, poison-on-free, Debug checks, the full C sanitizer). It is never published or timed; its gate is no crash, poison read, leak or assertion, and any subtest that differs between the two runs is a bug, listed with an owner in `tools/wpt_build_differences.txt`, which only goes down (.claude/rules/wpt-workflow.md).
 
 ## Clean up as you go, not at the end
 
@@ -194,7 +195,7 @@ Every section moved out of this file kept its heading there: a comment citing `A
 | `tests/`, a test, the launcher | [tests/AGENTS.md](tests/AGENTS.md) | Tests come first (A test directory is one executable; Seeds; Shapes; Two variants; Two kinds: Memory, Comptime predicates); Regression protocol for handle-ownership changes; Verify mode |
 | `tools/`, a lint, a baseline | [tools/AGENTS.md](tools/AGENTS.md) | Tools are Zig; lint-impls; lint-engine; The other lints; Known debt — do not add to it |
 | a spec, `specs/` | [specs/AGENTS.md](specs/AGENTS.md) | Know what kind of work you're doing (Spec work; Specs are cached in `specs/`); WHATWG specifications |
-| WPT: a failure, a run, the report, the runner | [.claude/rules/wpt-workflow.md](.claude/rules/wpt-workflow.md) | Fixing a WPT failure; Keep the progress report current (The 0.1 gate; Keep the roadmap current); The runner's build mode (The WPT runner is built optimized) |
+| WPT: a failure, a run, the report, the runner | [.claude/rules/wpt-workflow.md](.claude/rules/wpt-workflow.md) | Fixing a WPT failure; Keep the progress report current (The 0.1 gate; Keep the roadmap current); The two runs: production and bug-finding; The runner's build modes |
 | `build.zig`, caches, `-j`, the toolchain | [.claude/rules/build-and-toolchain.md](.claude/rules/build-and-toolchain.md) | `crane-check` and the merge check; Local builds use `--cache-dir`; Never run a bare `zig build`; The toolchain is Zig 0.17 |
 | a lesson: using or writing one | [docs/lessons/AGENTS.md](docs/lessons/AGENTS.md) | Record what you learn: the format; Lessons index: using them |
 | how to work here | [docs/agents/working-on-crane.md](docs/agents/working-on-crane.md) | What Crane is: the details (Stuck on HOW); Engine work; Batch the expensive gates; Generated files go in `tmp/`; Clean up as you go: the details; When in doubt |

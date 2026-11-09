@@ -107,37 +107,107 @@ worklist sweep at HEAD, from a frozen copy of the runner, into
 `wpt-results/sweep-<short-sha>/`, then regenerate. Targeted runs keep the areas
 you touched current; only a sweep catches what moved elsewhere.
 
-### The runner's build mode
+### The two runs: production and bug-finding
 
-**The WPT runner is built optimized: ReleaseSafe** (the user, 2026-10-11). Zig
-optimizes a compilation at its root module's level, so `zig build wpt-runner`
-puts ALL of the runner's Zig through LLVM's O3 pipeline. v8_wrapper.cpp and the
-runner's own libcurl, mbedTLS, zlib and nghttp2 build at -O2, with the full C
-sanitizer, so a failed check names itself as it does in Debug. Crane's modules
-keep `-Doptimize`'s `builtin.mode` (Debug), so the refcount ledger, the
-ownership checks and the cleanup validation stay.
-`tests/wpt_runner/build_mode.zig` decides each part and pins it, and the banner
-names all three: `wpt_runner: ReleaseSafe build (Crane modules Debug, C
-libraries ReleaseSafe)`. gc_bench is built the same way. The snapshot generator
-and every unit test stay Debug: `zig build test` builds neither the runner nor
-gc_bench.
+**WPT runs Crane only in its production configuration, the way browsers run
+it** (the user, 2026-11-09, 15:38 ET: "I want our WPT to only ever run Crane
+with the exact same configuration and memory setup that Crane would have
+running in a production environment. We should never special case
+something."; 15:40 ET: "ok then we should architect ours like the way browsers
+do it"). wpt.fyi scores the browsers' SHIPPING builds. Chromium's and
+Firefox's own CI also run WPT on debug, AddressSanitizer and TSan builds,
+which never feed a score: their expectations carry per-build conditions
+(Firefox metadata's `if debug:` / `if asan:`, Chromium's `[ Debug ]`). Speed
+is measured only on release builds. Crane does the same with two builds of one
+tree (`tests/wpt_runner/build_mode.zig` `RunnerBuild`, pinned by its tests):
 
-- **The price is the compile.** Any edit recompiles the whole runner: on Zig
-  0.17 about 12 min and 20.5 GB cold (7 min and 14 GB on 0.16), against
-  2 min and 10 GB in Debug. Locally, on a 32 GB Mac, run only one ReleaseSafe
-  runner compile at a time.
-- **`-Dwpt-runner-optimize=Debug`** (or an explicit `-Doptimize=Debug`) builds
-  the Debug runner and gc_bench. Use it for red/green iteration and for a
-  diagnosis. The leak and double-free reports are the same in both modes, but
-  `CRANE_LEAK_TRACES=1` traces need the Debug runner. Optimized, an allocation
-  inlined into its caller is traced from that caller's return address, so the
-  trace names no allocation site, and the runner says so when it starts.
-- **An A/B compares runners built in the same mode as its baseline**, and
-  main's baselines are ReleaseSafe. Between modes, timeouts move. The
-  parity sweep (2026-10-11, 10,035 files in each mode) found the
-  dom/nodes tampered NodeList files timing out at 60 s in Debug and passing
-  in 24 s, a few timing-sensitive resource-timing files passing more often,
-  and nothing else once the release-only defects it exposed were fixed. The
-  bars ran 2-5x faster. A release build folds identical functions and merges
-  equal constants: an identity built on either is Debug-only
+- **The PRODUCTION run: `wpt_runner`** (the `wpt-runner` step). It is Crane
+  exactly as its own browser, the release console, runs. Every part is
+  ReleaseSafe, the C code is at ReleaseSafe's own sanitizer (`.trap`), it
+  allocates with libc's malloc (the allocator the console passes to
+  Browser.init), and it links the console's platform graph (linux, darwin),
+  the very graph the release console links. It has no poisoning, no debug
+  allocator and no test-only hooks, and its banner says so. **It alone
+  feeds:** generation sweeps and the progress site, every lane A/B's pass
+  counts, cost pairs, perf pairs and every timing gate. Its journal records
+  carry `"build":"production"`.
+- **The BUG-FINDING run: `wpt_runner_bug_finding`** (the
+  `wpt-runner-bug-finding` step). It is the same product on the same platform
+  graph with detection added. Crane's modules keep `-Doptimize`'s Debug (the
+  refcount ledger, the isolate cleanup validation, the teardown-hold checks).
+  The C code runs under the full sanitizer. The allocator is the leak- and
+  double-free-detecting one with poison-on-free (`CRANE_POISON_FREES`,
+  `CRANE_LEAK_FILES`, `CRANE_LEAK_TRACES` and `CRANE_REFCOUNT_*` live here
+  only), and its children start with libc's own scribble (`MallocScribble=1`
+  on macOS, `MALLOC_PERTURB_=85` on glibc). It runs the same worklist and is
+  **never published and never timed**: `tools/wpt_progress.py` refuses a
+  journal whose records say `"build":"bug-finding"`. **Its gate:** no crash,
+  no poison read, no leak, no bad free, no panic or failed assertion, no
+  refcount or ownership violation.
+- **A subtest whose result differs between the two runs is a bug**, never
+  accepted silently (flakes are bugs). The `wpt-build-compare` step
+  (`-- --production=<dir> --bug-finding=<dir> --log=<bug sweep.log>`,
+  `tests/wpt_runner/build_compare.zig`) checks the gate and every difference
+  against `tools/wpt_build_differences.txt`. That file is Firefox-metadata
+  style: one line per known difference, with an owner and its evidence. It
+  only goes down: a difference no longer seen must be removed, and a new one
+  fails the comparison until it has an owner and the integrator's OK.
+- **A generation is both runs** (the integrator's `freeze-gen.sh` and
+  `gen-sweep.sh`): the production journal goes to `wpt-results/<label>/` and
+  the site; the bug-finding summary (`compare.txt`) goes to the held-files
+  report. The first production generation carries the history's one-time
+  marker, "configuration change: production build", and from then on each
+  generation's line in `tools/wpt_generation_hosts.txt` records the host's
+  font set (`fonts=<hash>`): the production run takes its fonts from the host,
+  as a browser does.
+- **WPT's own needs reach Crane the way they reach a browser.** The page
+  fetches testharness.js from `wpt serve`. At /resources/testharnessreport.js
+  the server serves the runner's own report through a config alias, as
+  wptrunner serves its own (environment.py, `get_routes`). A runner refuses a
+  server that serves the stock file. WPT's certificate authority goes in
+  through the console's own `--ca-bundle` option (BrowserConfig.ca_bundle_path),
+  and host names resolve through the host's resolver (/etc/hosts, as Safari
+  does). The one runner-only path left is test_driver's natives: the vendor
+  file, which html.embedder_scripts answers, until its commands move into
+  src/webdriver and the runner becomes an in-process WebDriver client (lane
+  wptcfg batch 2).
+
+**For a lane:** pass counts and timing come from the production runner, on
+both sides of an A/B. **A batch that touches memory, object lifetime,
+teardown, the engine adapter or the event loop also runs a bug-finding sweep
+of the same directories** and reports its gate and its differences from the
+production run. It never reports bug-finding pass counts as results.
+
+### The runner's build modes
+
+**The production runner's modes are the release console's** (above):
+ReleaseSafe throughout. **The bug-finding runner is built optimized,
+ReleaseSafe** (the user, 2026-10-11). Zig optimizes a compilation at its root
+module's level, so the `wpt-runner-bug-finding` step puts ALL of its Zig
+through LLVM's O3 pipeline. v8_wrapper.cpp and its own libcurl, mbedTLS, zlib
+and nghttp2 build at -O2, with the full C sanitizer, so a failed check names
+itself as it does in Debug. Crane's modules keep `-Doptimize`'s `builtin.mode`
+(Debug), so the refcount ledger, the ownership checks and the cleanup
+validation stay. Each banner names its build: `wpt_runner: the PRODUCTION run`
+or `wpt_runner_bug_finding: the BUG-FINDING run`. gc_bench is built in the
+bug-finding root's mode (or the release build under `-Dwpt-runner-release`).
+The snapshot generator and every unit test stay Debug: the `test` step builds
+neither runner nor gc_bench.
+
+- **The price is the compile.** Each runner is one ReleaseSafe compile of the
+  whole tree: on Zig 0.17 about 12 min and 20.5 GB cold. Build only the one a
+  step needs.
+- **`-Dwpt-runner-optimize=Debug`** (or an explicit `-Doptimize=Debug`)
+  builds a Debug bug-finding runner and gc_bench. Use it for red/green
+  iteration and for a diagnosis. `CRANE_LEAK_TRACES=1` traces need it:
+  optimized, an allocation inlined into its caller is traced from that
+  caller's return address, so the trace names no allocation site, and the
+  runner says so when it starts. The production runner has no Debug variant:
+  it is always the release console's build.
+- **An A/B compares runners built in the same mode as its baseline.** Main's
+  baselines are production runs from the first production generation on, and
+  generation 213 and earlier were the hybrid runner (ReleaseSafe root, Debug
+  Crane modules, the debug allocator, the testing platform). Between modes,
+  timeouts move. A release build folds identical functions and merges equal
+  constants: an identity built on either is Debug-only
   ([lesson](../../docs/lessons/debugging-equal-constants-share-one-address-in-a-release-build.md)).

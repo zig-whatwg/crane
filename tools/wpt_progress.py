@@ -116,6 +116,38 @@ def is_crane(rec):
     return rec.get('engine') in (None, 'crane')
 
 
+# The WPT runner's two builds (tests/wpt_runner/build_mode.zig RunnerBuild; the user, 2026-11-09:
+# WPT runs Crane only "with the exact same configuration and memory setup that Crane would have
+# running in a production environment"). Each journal record names the build that wrote it; only
+# the PRODUCTION run is published. A record naming none predates the split (the hybrid runner of
+# generation 213 and before).
+BUG_FINDING = 'bug-finding'
+CONFIGURATION_CHANGE_PRODUCTION = 'configuration change: production build'
+
+
+def is_bug_finding(rec):
+    """Whether a record is the bug-finding run's: never published, never timed."""
+    return rec.get('build') == BUG_FINDING
+
+
+def generation_build(worklist, records):
+    """'production' when every worklist file with a record has the production run's, else None
+    (the hybrid runner's records, or a mix while a production sweep has not covered the worklist)."""
+    recs = [records[p] for p in worklist if p in records]
+    if recs and all(r.get('build') == 'production' for r in recs):
+        return 'production'
+    return None
+
+
+def configuration_change(previous_generation, build):
+    """The marker the first production generation carries (the site draws it on the history), or None."""
+    if build != 'production':
+        return None
+    if previous_generation is not None and previous_generation.get('build') == 'production':
+        return None
+    return CONFIGURATION_CHANGE_PRODUCTION
+
+
 def engine_label(engine):
     return {'chrome': 'Chrome', 'firefox': 'Firefox', 'safari': 'Safari'}.get(engine, engine)
 
@@ -861,12 +893,20 @@ def load_results():
     if dropped:
         print(f"wpt_progress: dropped {len(dropped)} record{'s' if len(dropped) != 1 else ''} "
               f"of another engine from {STATE}: a reference run is never Crane's")
+    # Nor is a bug-finding run's record ever published (lane wptcfg).
+    dropped_bug = [p for p, r in records.items() if is_bug_finding(r)]
+    for p in dropped_bug:
+        del records[p]
+    if dropped_bug:
+        print(f"wpt_progress: dropped {len(dropped_bug)} bug-finding record{'s' if len(dropped_bug) != 1 else ''} "
+              f"from {STATE}: only the production run is published")
     # A reference.json is read only from wpt-results/reference/<run>/, and never as Crane's.
     for fn in sorted(glob.glob(os.path.join(RESULTS, 'reference.json')) +
                      glob.glob(os.path.join(RESULTS, '*', 'reference.json'))):
         print(f"wpt_progress: ignored {os.path.relpath(fn, RESULTS)}: a reference run is read only "
               f"from wpt-results/{REFERENCE_SUBDIR}/<run>/reference.json, never as Crane's")
     refused = collections.Counter()
+    bug_finding = collections.Counter()
     # High-water marks kept under an older rule are rebuilt from the journals
     # present, and from the record itself (`high_water` counts it).
     revisions = {}
@@ -898,6 +938,9 @@ def load_results():
             if 'path' in rec and not is_crane(rec):
                 refused[(os.path.relpath(fn, RESULTS), str(rec.get('engine')))] += 1
                 continue
+            if 'path' in rec and is_bug_finding(rec):
+                bug_finding[os.path.relpath(fn, RESULTS)] += 1
+                continue
             if 'path' in rec:
                 rec['_journal'] = journal
                 # The run's label: the directory under wpt-results/ ('' for a
@@ -913,6 +956,11 @@ def load_results():
                 # a floor only when it measured the same WPT snapshot.
                 records[rec['path']] = merge_result(rec, prev)
 
+    if bug_finding:
+        named = ', '.join(f'{rel} ({n} record{"s" if n != 1 else ""})' for rel, n in sorted(bug_finding.items()))
+        sys.exit(f"wpt_progress: refused a bug-finding run given as a generation: {named}. Only the "
+                 "production run (wpt_runner) is published; the bug-finding run's (wpt_runner_bug_finding) "
+                 "summary goes to the held-files report, never under wpt-results/ (lane wptcfg).")
     for (rel, engine), n in sorted(refused.items()):
         print(f"wpt_progress: refused {n} record{'s' if n != 1 else ''} of engine {engine} in {rel}: "
               f"a reference run is never Crane's; it belongs in wpt-results/{REFERENCE_SUBDIR}/<run>/ "
@@ -1635,6 +1683,8 @@ def record_generation(worklist, records, areas, previous_records=None):
     for c in areas.values():
         tot.update(c)
     subs = subtest_sums(worklist, records)
+    build = generation_build(worklist, records)
+    change = configuration_change(history['generations'][-1] if history['generations'] else None, build)
     snap = {
         'n': history['generations'][-1]['n'] + 1 if history['generations'] else 1,
         'at': datetime.datetime.now().isoformat(timespec='seconds'),
@@ -1663,6 +1713,8 @@ def record_generation(worklist, records, areas, previous_records=None):
         'areas': {a: {'run': c['run'], 'blocking': c['gating'], 'clean': c['clean']}
                   for a, c in areas.items()},
         'regenerations': 0,
+        # The runner build whose results these are ('production', or None: the hybrid runner's).
+        'build': build,
         'losses': losses,
         'loss_baseline_missing': sorted(p for p in worklist if prev is not None and
                                        p in prev and p not in (prev_passes or {})),
@@ -1721,6 +1773,8 @@ def record_generation(worklist, records, areas, previous_records=None):
         snap['samples'] = dict(samples)
 
     snap['gate_rule'] = GATE_RULE
+    if change:
+        snap['configuration_change'] = change
     history['generations'].append(snap)
     history['last_statuses'] = cur
     history['last_sources'] = idents
@@ -4210,8 +4264,88 @@ def _check_reference_render():
     assert 'Crane and Chrome' not in plain and 'Chrome&nbsp;pass' not in plain
 
 
+def _check_production_journal_only():
+    """Only the production run is published (the user, 2026-11-09: WPT runs Crane only "with the
+    exact same configuration and memory setup that Crane would have running in a production
+    environment"; lane wptcfg): a production record is read, a bug-finding journal given as a
+    generation is refused - the report stops, naming it - and a bug-finding record already in the
+    state is dropped."""
+    import tempfile, io, contextlib
+    global RESULTS, STATE
+    saved = RESULTS, STATE
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            RESULTS, STATE = d, os.path.join(d, 'state.json')
+
+            def journal(rel, recs, mtime):
+                fn = os.path.join(d, rel)
+                os.makedirs(os.path.dirname(fn), exist_ok=True)
+                with open(fn, 'w') as f:
+                    for r in recs:
+                        f.write(json.dumps(r) + '\n')
+                os.utime(fn, (mtime, mtime))
+
+            mt = QUERY_REACHES_PAGE + 100
+            journal('sweep-abc1234/journal.jsonl', [
+                {'path': 'dom/a.html', 'status': 'OK', 'passed': 3, 'failed': 0, 'build': 'production'},
+                # Records from before the split name no build: today's hybrid runner's.
+                {'path': 'dom/b.html', 'status': 'OK', 'passed': 2, 'failed': 1}], mt)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                records, _ = load_results()
+            assert records['dom/a.html']['passed'] == 3 and records['dom/a.html']['build'] == 'production'
+            assert records['dom/b.html']['passed'] == 2
+
+            # A bug-finding run's journal copied where the generations are read.
+            journal('sweep-def5678/journal.jsonl', [
+                {'path': 'dom/a.html', 'status': 'CRASH', 'passed': 0, 'build': 'bug-finding'}], mt + 1)
+            out = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(out):
+                    load_results()
+            except SystemExit as err:
+                assert 'bug-finding' in str(err) and 'sweep-def5678/journal.jsonl' in str(err), str(err)
+            else:
+                raise AssertionError('a bug-finding journal was read as a generation')
+
+            # A bug-finding record in the state (put there by hand, or by an older report) is dropped.
+            os.remove(os.path.join(d, 'sweep-def5678', 'journal.jsonl'))
+            with open(STATE) as f:
+                state = json.load(f)
+            state['dom/c.html'] = {'path': 'dom/c.html', 'status': 'OK', 'passed': 1, 'build': 'bug-finding'}
+            with open(STATE, 'w') as f:
+                json.dump(state, f)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                records, _ = load_results()
+            assert 'dom/c.html' not in records, records.keys()
+            assert 'bug-finding' in out.getvalue()
+    finally:
+        RESULTS, STATE = saved
+
+
+def _check_configuration_marker():
+    """The generation whose results are the production run's, after hybrid ones, records the
+    configuration change - once - and names its build; the site marks it on the history chart,
+    as it marks a new snapshot (lane wptcfg)."""
+    hybrid = {'a.html': {'path': 'a.html', 'status': 'OK', 'passed': 1}, 'b.html': {'path': 'b.html', 'status': 'OK', 'passed': 1}}
+    production = {p: dict(r, build='production') for p, r in hybrid.items()}
+    assert generation_build(['a.html', 'b.html'], hybrid) is None
+    assert generation_build(['a.html', 'b.html'], production) == 'production'
+    # A targeted production run over part of a hybrid generation's files does not yet make it production.
+    mixed = dict(hybrid, **{'a.html': production['a.html']})
+    assert generation_build(['a.html', 'b.html'], mixed) is None
+    assert configuration_change(None, 'production') == CONFIGURATION_CHANGE_PRODUCTION
+    assert configuration_change({'n': 213}, 'production') == CONFIGURATION_CHANGE_PRODUCTION
+    assert configuration_change({'n': 214, 'build': 'production'}, 'production') is None
+    assert configuration_change({'n': 213}, None) is None
+    assert CONFIGURATION_CHANGE_PRODUCTION == 'configuration change: production build'
+
+
 if __name__ == '__main__':
     if sys.argv[1:] == ['--self-test']:
+        _check_production_journal_only()
+        _check_configuration_marker()
         _check_declared_variants()
         _check_history_chart()
         _check_gate_rule()

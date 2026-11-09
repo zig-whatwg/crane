@@ -1221,7 +1221,7 @@ fn writeHistory(w: W, site: *const Site, tot: model.Totals) Error!void {
     }
     var marked = false;
     for (gens) |g| {
-        const label = chart.eventAt(&chart.events, g.n) orelse continue;
+        const label = chart.eventOf(&chart.events, g) orelse continue;
         if (!marked) try w.writeAll("The dashed lines mark changes of measurement: ");
         if (marked) try w.writeAll("; ");
         marked = true;
@@ -1266,6 +1266,7 @@ fn writeHostDetail(w: W, h: *const model.SweepHost) Error!void {
     try model.osLabel(w, h.os);
     try w.writeAll(", ");
     try html.plural(w, h.runners, "runner", "runners");
+    if (h.fonts) |fonts| try w.print(", fonts {s}", .{fonts});
 }
 
 /// One generation's row. Its data attributes are what site.js charts: the
@@ -1309,7 +1310,7 @@ fn writeGenRow(w: W, g: Generation, hosts: bool) Error!void {
         try writeHostDetail(w, h);
         try w.writeAll(")\"");
     }
-    if (chart.eventAt(&chart.events, g.n)) |label| {
+    if (chart.eventOf(&chart.events, g)) |label| {
         try w.writeAll(" data-event=\"");
         try html.text(w, label);
         try w.writeAll("\"");

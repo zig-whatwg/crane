@@ -12,14 +12,21 @@
 # sweep's own journals record no host, OS or runner count, and wpt-results/ is
 # not committed. So this committed file is the record (lane site1, 2026-11-09).
 #
-# Format: one run per line, four fields separated by spaces:
+# Format: one run per line, four or five fields separated by spaces:
 #
-#   <label>  <host>  <os>-<arch>  <runners>
+#   <label>  <host>  <os>-<arch>  <runners>  [fonts=<hash>]
 #
 #   label    the run's directory under wpt-results/ (sweep-<sha>), listed once
 #   host     the pool host's name as crane-pool.sh prints it (chat.local, server1)
 #   os-arch  linux-<arch> or macos-<arch> (linux-x86_64, macos-arm64)
 #   runners  the runner count the sweep used, a whole number above 0
+#   fonts    the host's font set when it swept: the first 16 hex digits of the
+#            sha256 of its `fc-list : family style file` output, sorted (Linux)
+#            or of `system_profiler SPFontsDataType` (macOS), which gen-sweep.sh
+#            writes beside the sweep as fonts.txt. The production run (wpt_runner,
+#            from its first generation on) takes its fonts from the host as a browser
+#            does, so a generation names the set its results came from (lane
+#            wptcfg; wpt.fyi pins its runners' fonts in their image). Optional.
 #
 # Blank lines and lines starting with # are ignored. An invalid line stops the
 # site with its line number. A run that is not listed shows as "not recorded".
