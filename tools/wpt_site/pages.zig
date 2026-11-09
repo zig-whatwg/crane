@@ -139,6 +139,10 @@ pub const Site = struct {
     card_ref: []const u8,
     /// tools/wpt_gate_exemptions.txt's entries, in the file's order.
     exemptions: []const model.Exemption = &.{},
+    /// Whether tools/wpt_generation_hosts.txt lists any run: the generation
+    /// entry and the history table then say where each generation was swept
+    /// (`Generation.swept`); with none listed they are as they were before.
+    hosts_listed: bool = false,
     /// Another engine's run on the same worklist (reference.zig), shown beside
     /// Crane's and never counted as Crane's; null: no comparison.
     reference: ?*const reference_mod.Reference = null,
@@ -253,7 +257,7 @@ fn markClass(status: []const u8) []const u8 {
     return "s-other";
 }
 
-const reserved_ids = [_][]const u8{ "status", "exempt", "versus", "contents", "history", "main", "toc", "gens", "chart", "hl-label", "toc-title" };
+const reserved_ids = [_][]const u8{ "status", "exempt", "exempt-test-bug", "versus", "contents", "history", "main", "toc", "gens", "chart", "hl-label", "toc-title" };
 
 /// The index section id of a suite ("dom/" -> "dom"), `suite-` prefixed
 /// when it would collide with one of the page's own ids.
@@ -820,6 +824,15 @@ pub fn writeIndex(w: W, site: *const Site) Error!void {
     } else try commitLink(w, g.head);
     try w.writeAll("</dd></div>\n<div><dt>Runs</dt><dd>");
     try writeRuns(w, site);
+    if (site.hosts_listed) {
+        try w.writeAll("</dd></div>\n<div><dt>Swept on</dt><dd>");
+        if (g.swept) |h| {
+            try w.writeAll("<code>");
+            try html.text(w, h.host);
+            try w.writeAll("</code>, ");
+            try writeHostDetail(w, h);
+        } else try w.writeAll("not recorded for this generation");
+    }
     try w.writeAll("</dd></div>\n<div><dt>WPT revision</dt><dd>");
     try writeRevision(w, site.wpt);
     // The benchmark report beside this one (tools/perf_bench): on the index
@@ -836,7 +849,8 @@ pub fn writeIndex(w: W, site: *const Site) Error!void {
     try w.writeAll("</span></a></dd></div>\n</dl>\n</header>\n");
 
     try writeStatus(w, site, tot);
-    try writeExempt(w, site);
+    try writeExempt(w, site, .intentional);
+    try writeExempt(w, site, .test_bug);
     try writeVersus(w, site);
     try writeContents(w, site);
     for (site.suites, 1..) |s, i| try writeSuite(w, site, s, i);
@@ -976,10 +990,24 @@ fn writeStatus(w: W, site: *const Site, tot: model.Totals) Error!void {
     try w.writeAll(". A file <strong>blocks</strong> the 0.1 gate when it times out, errors, crashes or finishes with no subtest passing (<span class=\"st st-issue\">TIMEOUT</span>, <span class=\"st st-issue\">ERROR</span>, <span class=\"st st-issue\">CRASH</span>, <span class=\"st st-issue\">NONE-PASSED</span>): ");
     try html.plural(w, tot.blocking(), "file blocks", "files block");
     try w.writeAll(" today.");
-    if (site.exemptions.len > 0) {
+    const listed = exemptKinds(site);
+    if (listed.intentional) {
         try w.writeAll(" Not counted among them: ");
-        try html.plural(w, tot.exempt, "file that would block is", "files that would block are");
+        try html.plural(w, exemptCount(site, .intentional), "file that would block is", "files that would block are");
         try w.writeAll(" <a href=\"#exempt\">exempt</a>, because all three of Chrome, Firefox and Safari intentionally deviate from the spec they test.");
+    }
+    if (listed.test_bug) {
+        // The user's 2026-11-08 ruling: a test bug filed upstream that every
+        // browser fails identically does not block until it is resolved.
+        const n = exemptCount(site, .test_bug);
+        if (listed.intentional) {
+            try w.writeAll(if (n == 1) " Nor is " else " Nor are ");
+            try html.plural(w, n, "file that would block,", "files that would block,");
+        } else {
+            try w.writeAll(" Not counted among them: ");
+            try html.plural(w, n, "file that would block is", "files that would block are");
+        }
+        try w.print(" <a href=\"#exempt-test-bug\">exempt until an upstream test bug is fixed</a>: Chrome, Firefox and Safari fail {s} identically because of a bug in the test, filed with web-platform-tests.", .{if (n == 1) "it" else "each"});
     }
     try w.writeAll(" Per-subtest detail comes from the runner&rsquo;s result streams: ");
     if (site.detail_files > 0) {
@@ -991,40 +1019,100 @@ fn writeStatus(w: W, site: *const Site, tot: model.Totals) Error!void {
         try w.writeAll("no file has it in this generation yet, so each file&rsquo;s section gives its counts.");
     }
     try w.writeAll("</p>\n</div>\n<div class=\"note\" role=\"note\">\n<p class=\"note-label\">How to read a section</p>\n<p>Each suite is a numbered section that opens with its own subtest numbers. Its <em>Conformance</em> box counts files by standing; its <em>Tests</em> tables link to a page for every directory, where each test file opens in place to its subtests. Everything has a permanent link, <span class=\"self-demo\" aria-hidden=\"true\">&para;</span>.</p>\n<dl class=\"legend\" aria-label=\"File standings\">\n<div><dt><span class=\"key key-clean\"></span>Clean</dt><dd>every reported subtest passed</dd></div>\n<div><dt><span class=\"key key-partial\"></span>With failures</dt><dd>some subtests passed, some did not</dd></div>\n<div><dt><span class=\"key key-blocking\"></span>Blocking</dt><dd>NONE-PASSED, TIMEOUT, ERROR, CRASH</dd></div>\n<div><dt><span class=\"key key-empty\"></span>No subtests</dt><dd>the file ran and reported none</dd></div>\n<div><dt><span class=\"key key-unrun\"></span>Not run</dt><dd>no result yet</dd></div>\n");
-    if (site.exemptions.len > 0) try w.writeAll("<div><dt><span class=\"key key-exempt\"></span>Exempt</dt><dd>would block, but all three browsers intentionally deviate from the spec it tests</dd></div>\n");
+    if (listed.intentional or listed.test_bug) {
+        try w.writeAll("<div><dt><span class=\"key key-exempt\"></span>Exempt</dt><dd>would block, but all three browsers ");
+        if (listed.intentional) try w.writeAll("intentionally deviate from the spec it tests");
+        if (listed.intentional and listed.test_bug) try w.writeAll(", or ");
+        if (listed.test_bug) try w.writeAll("fail it identically because of a test bug filed upstream");
+        try w.writeAll("</dd></div>\n");
+    }
     try w.writeAll("</dl>\n</div>\n</section>\n");
 }
 
-/// One exemption's evidence: what the browsers do instead, the spec, and
-/// each browser's wpt.fyi result and evidence of intent.
+const ExemptKinds = struct { intentional: bool = false, test_bug: bool = false };
+
+/// Which kinds tools/wpt_gate_exemptions.txt lists.
+fn exemptKinds(site: *const Site) ExemptKinds {
+    var k: ExemptKinds = .{};
+    for (site.exemptions) |e| switch (e.kind) {
+        .intentional => k.intentional = true,
+        .test_bug => k.test_bug = true,
+    };
+    return k;
+}
+
+/// How many files of `kind` would block and are exempt.
+fn exemptCount(site: *const Site, kind: model.ExemptionKind) u64 {
+    var n: u64 = 0;
+    for (site.files) |f| {
+        const e = f.exemption orelse continue;
+        if (e.kind == kind and f.gate == .exempt) n += 1;
+    }
+    return n;
+}
+
+/// One exemption's evidence. Intentional: what the browsers do instead, the
+/// spec, and each browser's wpt.fyi result and evidence of intent. A test
+/// bug: what is wrong with the test, the upstream report, each browser's
+/// wpt.fyi result, and when the entry is revisited.
 fn writeEvidence(w: W, e: *const model.Exemption) Error!void {
     try w.writeAll("<p>");
     try html.text(w, e.why);
-    try w.writeAll("</p>\n<dl class=\"evidence\"><div><dt>Spec</dt><dd><a href=\"");
-    try html.text(w, e.spec);
-    try w.writeAll("\">");
-    try html.text(w, e.spec);
-    try w.writeAll("</a></dd></div>");
-    inline for (comptime std.enums.values(model.Browser)) |b| {
-        const i = @backingInt(b);
-        try w.print("<div><dt>{s}</dt><dd>", .{b.label()});
-        try html.text(w, e.result[i]);
-        try w.writeAll("; intent: <a href=\"");
-        try html.text(w, e.intent[i]);
-        try w.writeAll("\">");
-        try html.text(w, e.intent[i]);
-        try w.writeAll("</a></dd></div>");
+    try w.writeAll("</p>\n<dl class=\"evidence\">");
+    switch (e.kind) {
+        .intentional => {
+            try w.writeAll("<div><dt>Spec</dt><dd><a href=\"");
+            try html.text(w, e.spec);
+            try w.writeAll("\">");
+            try html.text(w, e.spec);
+            try w.writeAll("</a></dd></div>");
+            inline for (comptime std.enums.values(model.Browser)) |b| {
+                const i = @backingInt(b);
+                try w.print("<div><dt>{s}</dt><dd>", .{b.label()});
+                try html.text(w, e.result[i]);
+                try w.writeAll("; intent: <a href=\"");
+                try html.text(w, e.intent[i]);
+                try w.writeAll("\">");
+                try html.text(w, e.intent[i]);
+                try w.writeAll("</a></dd></div>");
+            }
+        },
+        .test_bug => {
+            try w.writeAll("<div><dt>Upstream</dt><dd><a href=\"");
+            try html.text(w, e.upstream);
+            try w.writeAll("\">");
+            try html.text(w, e.upstream);
+            try w.writeAll("</a></dd></div>");
+            inline for (comptime std.enums.values(model.Browser)) |b| {
+                try w.print("<div><dt>{s}</dt><dd>", .{b.label()});
+                try html.text(w, e.result[@backingInt(b)]);
+                try w.writeAll("</dd></div>");
+            }
+            try w.writeAll("<div><dt>Revisit</dt><dd>");
+            try html.text(w, e.revisit);
+            try w.writeAll("</dd></div>");
+        },
     }
     try w.writeAll("</dl>\n");
 }
 
-/// The exempt group: every file tools/wpt_gate_exemptions.txt lists, with its
-/// evidence. Written only when the file lists one, so an empty list changes
-/// no byte of the page.
-fn writeExempt(w: W, site: *const Site) Error!void {
-    if (site.exemptions.len == 0) return;
-    try w.writeAll("<section class=\"front\" id=\"exempt\" aria-labelledby=\"exempt-h\">\n<h2 id=\"exempt-h\">Exempt from the gate</h2>\n<div class=\"front-prose\">\n<p>These files are omitted from the blocking count: all three of Chrome, Firefox and Safari intentionally deviate from the spec each tests, each with evidence of intent (a standards position, a WontFix bug or an implementer&rsquo;s objection), and Crane does as they do. A listed file that does not block keeps its own standing.</p>\n<ol class=\"exempt-list\">\n");
+/// One exempt group: every file tools/wpt_gate_exemptions.txt lists with
+/// `kind`, with its evidence. Written only when the file lists one, so a
+/// list without that kind changes no byte of the page.
+fn writeExempt(w: W, site: *const Site, kind: model.ExemptionKind) Error!void {
+    const listed = exemptKinds(site);
+    switch (kind) {
+        .intentional => {
+            if (!listed.intentional) return;
+            try w.writeAll("<section class=\"front\" id=\"exempt\" aria-labelledby=\"exempt-h\">\n<h2 id=\"exempt-h\">Exempt from the gate</h2>\n<div class=\"front-prose\">\n<p>These files are omitted from the blocking count: all three of Chrome, Firefox and Safari intentionally deviate from the spec each tests, each with evidence of intent (a standards position, a WontFix bug or an implementer&rsquo;s objection), and Crane does as they do. A listed file that does not block keeps its own standing.</p>\n<ol class=\"exempt-list\">\n");
+        },
+        .test_bug => {
+            if (!listed.test_bug) return;
+            try w.writeAll("<section class=\"front\" id=\"exempt-test-bug\" aria-labelledby=\"exempt-test-bug-h\">\n<h2 id=\"exempt-test-bug-h\">Exempt until an upstream test bug is fixed</h2>\n<div class=\"front-prose\">\n<p>These files are omitted from the blocking count until a bug in the test itself is resolved: Chrome, Firefox and Safari all fail each one identically because of it, and the bug is filed with web-platform-tests. When the upstream issue is resolved the exemption ends and the file is revisited. A listed file that does not block keeps its own standing.</p>\n<ol class=\"exempt-list\">\n");
+        },
+    }
     for (site.exemptions) |*e| {
+        if (e.kind != kind) continue;
         try w.writeAll("<li><a href=\"");
         try writeFileHref(w, "", e.path);
         try w.writeAll("\"><code>");
@@ -1163,18 +1251,26 @@ fn writeHistory(w: W, site: *const Site, tot: model.Totals) Error!void {
     for ([_][]const u8{ "Gen.", "Date", "Crane", "Subtests passing", "Total subtests", "Not passing", "Blocking files", "Flaky files" }) |h| {
         try w.print("<th scope=\"col\">{s}</th>", .{h});
     }
+    if (site.hosts_listed) try w.writeAll("<th scope=\"col\">Swept on</th>");
     try w.writeAll("</tr></thead>\n<tbody>\n");
     var i = gens.len;
     while (i > 0) {
         i -= 1;
-        try writeGenRow(w, gens[i]);
+        try writeGenRow(w, gens[i], site.hosts_listed);
     }
     try w.writeAll("</tbody>\n</table>\n</div>\n</details>\n</section>\n");
 }
 
+/// A sweep's OS and runners: "Linux x86-64, 32 runners".
+fn writeHostDetail(w: W, h: *const model.SweepHost) Error!void {
+    try model.osLabel(w, h.os);
+    try w.writeAll(", ");
+    try html.plural(w, h.runners, "runner", "runners");
+}
+
 /// One generation's row. Its data attributes are what site.js charts: the
-/// cells say the same in words.
-fn writeGenRow(w: W, g: Generation) Error!void {
+/// cells say the same in words. `hosts`: the table has the Swept on column.
+fn writeGenRow(w: W, g: Generation, hosts: bool) Error!void {
     const known_head = g.head.len > 0 and !std.mem.eql(u8, g.head, "?");
     try w.print("<tr{s} data-n=\"{d}\" data-at=\"", .{ if (g.reconstructed) " class=\"recon\"" else "", g.n });
     try html.text(w, g.at);
@@ -1206,6 +1302,13 @@ fn writeGenRow(w: W, g: Generation) Error!void {
     if (g.retried) |n| try w.print(" data-retried=\"{d}\"", .{n});
     if (g.retry_skipped) |n| try w.print(" data-retry-skipped=\"{d}\"", .{n});
     if (g.reconstructed) try w.writeAll(" data-recon=\"1\"");
+    if (g.swept) |h| {
+        try w.writeAll(" data-swept=\"");
+        try html.text(w, h.host);
+        try w.writeAll(" (");
+        try writeHostDetail(w, h);
+        try w.writeAll(")\"");
+    }
     if (chart.eventAt(&chart.events, g.n)) |label| {
         try w.writeAll(" data-event=\"");
         try html.text(w, label);
@@ -1248,6 +1351,16 @@ fn writeGenRow(w: W, g: Generation) Error!void {
             try w.writeAll(" skipped");
         };
         try w.writeAll("</small>");
+    }
+    if (hosts) {
+        try w.writeAll("</td><td class=\"host\">");
+        if (g.swept) |h| {
+            try w.writeAll("<code>");
+            try html.text(w, h.host);
+            try w.writeAll("</code> <small class=\"dim\">");
+            try writeHostDetail(w, h);
+            try w.writeAll("</small>");
+        } else try w.writeAll("&mdash;");
     }
     try w.writeAll("</td></tr>\n");
 }
@@ -1457,7 +1570,10 @@ pub fn writeFileSection(w: W, gpa: std.mem.Allocator, site: *const Site, f: *con
     try html.path(w, f.path);
     try w.writeAll("</a></dd></div>\n</dl>\n");
     if (f.exemption) |e| {
-        try w.writeAll("<div class=\"note\" role=\"note\"><p class=\"note-label\">Exempt from the 0.1 gate</p>\n");
+        try w.writeAll(switch (e.kind) {
+            .intentional => "<div class=\"note\" role=\"note\"><p class=\"note-label\">Exempt from the 0.1 gate</p>\n",
+            .test_bug => "<div class=\"note\" role=\"note\"><p class=\"note-label\">Exempt from the 0.1 gate until an upstream test bug is fixed</p>\n",
+        });
         try writeEvidence(w, e);
         try w.writeAll("</div>\n");
     }
