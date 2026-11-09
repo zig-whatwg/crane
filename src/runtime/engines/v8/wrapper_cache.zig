@@ -498,6 +498,9 @@ pub fn keepOpaqueRoot(owner: *runtime.Instance, member: *runtime.Instance, slot:
     const tracing = @import("protocol_tracing.zig");
     const dom = @import("dom");
     const node = dom.instance_bridge.getNodeBase(@ptrCast(member)) orelse return tracing.traceChild(owner, member, slot);
+    // The holder's tracing alone keeps its nodes under a test's override
+    // (runtime.lifetime.treeEdges; the redesign's P6).
+    if (!runtime.lifetime.treeEdges()) return tracing.forgetTracedChild(owner, slot);
     if (!runtime.lifetime.slotOf(node).isEmpty()) return tracing.traceChild(owner, member, slot);
     var root = node;
     while (root.parent_node) |parent| root = parent;

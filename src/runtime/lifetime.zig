@@ -71,10 +71,14 @@ pub const Hooks = struct {
     /// Whether the engine adapter keeps node tracing's JS edges (V8: each
     /// wrapper's private upward edge and its parent's set of children, drawn
     /// at the wrap and on joinOpaqueRoot / leaveOpaqueRoot, and the Node
-    /// impl's node-document edge redrawn on adopt) beside the walk. True, and
-    /// never installed: only a test's override turns it off
-    /// (tests/v8/wrapper_walk_test.zig: the walk alone keeps trees). The
-    /// redesign's P7 deletes the edges and this field with them.
+    /// impl's node-document edge redrawn on adopt) and the holders' edges to
+    /// the nodes they hold (keepOpaqueRoot for a node, and until the
+    /// redesign's P6 node_holds' and the parser's rescues) beside the
+    /// tracing. True, and never installed: only a test's override turns it
+    /// off (tests/v8/wrapper_walk_test.zig: the walk alone keeps trees;
+    /// tests/v8/wr6_holder_tracing_test.zig: the holders' tracing alone
+    /// keeps their nodes). The redesign's P7 deletes the edges and this
+    /// field with them.
     tree_edges: bool = true,
 };
 

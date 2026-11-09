@@ -80,8 +80,9 @@ test "NodeBase keeps no child list: the sibling links are the children" {
     // (ScriptWrappable::wrapper_). The per-node allocator (16) is the next
     // step: an owner-less NodeBase (the test-only WithBase types) still needs
     // it, so it waits for those to carry their own (design 3.4, deferred).
-    // Done in batch 6 (with last_child): 88 bytes, perf2b6_node_layout_test.zig.
-    try expectSize(NodeBase, 88);
+    // Done in batch 6 (with last_child): 88 bytes, perf2b6_node_layout_test.zig;
+    // 80 since the wrapper redesign's P6 (no holds chain).
+    try expectSize(NodeBase, 80);
     try std.testing.expect(!@hasField(NodeBase, "child_nodes"));
     try std.testing.expect(@hasField(NodeBase, "wrapper"));
 }

@@ -765,6 +765,8 @@ pub const DocumentParser = struct {
     /// wrapper, never one per node: by L2 the root's wrapper keeps its whole
     /// tree, wherever script moves the root later. Runs no script.
     pub fn rescue(self: *DocumentParser, root: *runtime.Instance) void {
+        // No rescue edge under a test's override (runtime.lifetime.treeEdges).
+        if (!runtime.lifetime.treeEdges()) return;
         const generation = runtime.SlabAllocator.generationOf(root);
         // Step 1: once per root.
         for (self.rescues.items) |kept| {

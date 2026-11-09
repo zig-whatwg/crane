@@ -183,6 +183,8 @@ pub fn keepMember(owner: *runtime.Instance, member: *runtime.Instance, slot: eng
 /// `keepMember`, told whether `member` is a node.
 fn keepMemberOf(owner: *runtime.Instance, member: *runtime.Instance, is_node: bool, slot: engine.TracedSlot) void {
     if (!owner.ctx.hasEngine() or !member.ctx.hasEngine()) return;
+    // No node edge under a test's override (runtime.lifetime.treeEdges).
+    if (is_node and !runtime.lifetime.treeEdges()) return;
     if (is_node and !engine.hasWrapper(member)) {
         engine.traceChild(owner, member, slot);
         return;
@@ -874,6 +876,8 @@ pub const Holder = struct {
     /// is released - one wrapper at most, never one per node. Whether the
     /// holder is still there afterwards (engine work can tear down objects).
     pub fn rescue(self: *Holder, root: *NodeBase) bool {
+        // No rescue edge under a test's override (runtime.lifetime.treeEdges).
+        if (!runtime.lifetime.treeEdges()) return true;
         const root_instance: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(root) orelse return true));
         const generation = runtime.SlabAllocator.generationOf(root_instance);
         if (self.rescues.contains(root_instance, generation)) return true;
