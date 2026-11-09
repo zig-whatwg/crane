@@ -1,6 +1,7 @@
 # Architecture: Droppable wrapper references need unmodified wrappers - a hidden JS edge property pins every one
 
 **Date**: 2026-11-09
+**Status**: 2026-11-09 (lane wr1 batch 5) - confirmed: with node tracing's JS edges turned off (runtime.lifetime's test-only `tree_edges`) and the wrapper redesign's walk keeping trees, 2,000 of 2,000 lone dropped `createElement('div')` wrappers are dropped in scavenges (tests/v8/wr8_young_generation_test.zig); with the edges on, 0 (pinned as a known red until P7 deletes them).
 **Lesson**: V8 drops a droppable TracedReference in a scavenge only when its wrapper is still an "unmodified API object", and a binding that writes any property on its wrappers - even a private symbol for its own bookkeeping - makes every wrapper modified, so droppable references free nothing.
 
 **Why**: 13.1.203 `TracedHandles::ComputeWeaknessForYoungObject` (src/handles/traced-handles.cc) makes a young traced node weak only if `JSObject::IsUnmodifiedApiObject` holds (src/objects/js-objects.cc): the object's map is still its constructor's `initial_map`, it has no elements and no identity hash. `Object::SetPrivate` is `DefineOwnPropertyIgnoreAttributes` (src/api/api.cc) - a map transition like any expando. The same holds for an instance template with its own properties: `ApiNatives::InstantiateObject` makes the object from the initial map and then `ConfigureInstance` adds them. Blink can drop wrappers because it keeps its DOM tree edges in C++ (Node::Trace); a binding whose tree edges are JS properties cannot.
