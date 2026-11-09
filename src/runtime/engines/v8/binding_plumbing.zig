@@ -513,6 +513,10 @@ fn unbindReceiver(receiver: *v8.Object) void {
 /// What an operation's callback needs that is its own.
 pub const Operation = struct {
     interface_name: []const u8,
+    /// Every instance of the interface is a node (interface.zig
+    /// `node_interface`): `this` is unwrapped as a node wrapper only
+    /// (`thisNodeInstance`; the wrapper redesign's P4).
+    node_receiver: bool = false,
     /// The operation's name as WebIDL spells it (the Zig name without its
     /// `call_` prefix), for the argument-count TypeError.
     operation_name: []const u8,
@@ -753,8 +757,9 @@ fn operationReceiver(self: *const Operation, info: *const v8.FunctionCallbackInf
     // [Global] interface, a `this` that is no instance of this one (the
     // implicit global `this` below) - takes the handle.
     if (!self.global_interface) {
-        if (thisInstanceOf(info, self.interface_name)) |found| {
-            if (!isPoisoned(@intFromPtr(found))) return @ptrCast(@alignCast(found));
+        const found = if (self.node_receiver) thisNodeInstance(info) else thisInstanceOf(info, self.interface_name);
+        if (found) |instance| {
+            if (!isPoisoned(@intFromPtr(instance))) return @ptrCast(@alignCast(instance));
         }
     }
     const this_obj = info.getThis();
@@ -962,6 +967,8 @@ pub const ErrorRealm = struct {
 /// What an attribute's getter callback needs that is its own.
 pub const Getter = struct {
     interface_name: []const u8,
+    /// `Operation.node_receiver`.
+    node_receiver: bool = false,
     /// The impl function's name (`get_<attribute>`), for the debug trace.
     getter_name: []const u8,
     kind: Kind,
@@ -1198,7 +1205,13 @@ pub fn attributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter
                 // getInstance read them from a handle)
                 var this_instance: ?*anyopaque = null;
                 var this_type_info: ?*anyopaque = null;
-                v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ThisInstanceFields(info, &this_instance, &this_type_info);
+                if (self.node_receiver) {
+                    // A node interface's receiver: a node wrapper's
+                    // instance, through its anchor (`thisNodeInstance`).
+                    this_instance = thisNodeInstance(info);
+                } else {
+                    v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ThisInstanceFields(info, &this_instance, &this_type_info);
+                }
                 if (if (this_type_info) |ptr| @as(?*const interface.WrapperTypeInfo, @ptrCast(@alignCast(ptr))) else null) |stored_type_info| {
                     // WrapperTypeInfo is present - use it for type checking
                     // Per WebIDL spec: "If the this value is null or undefined, or is not a
@@ -1859,6 +1872,8 @@ pub fn isOptionalCallbackType(comptime T: type) bool {
 /// What an attribute's setter callback needs that is its own.
 pub const Setter = struct {
     interface_name: []const u8,
+    /// `Operation.node_receiver`.
+    node_receiver: bool = false,
     /// [CEReactions]: dispatched in a binding catch scope.
     ce_reactions: bool,
     /// Whether converting the value may make the engine keep the current
@@ -1962,6 +1977,19 @@ pub fn thisInstanceOf(info: *const v8.FunctionCallbackInfo, interface_name: []co
         if (std.mem.eql(u8, type_info.getName(), interface_name)) return instance;
     }
     return null;
+}
+
+/// `this`'s instance for a member of a node interface (`node_receiver`,
+/// chosen at comptime per interface): the wrapper redesign's P4 unwrap -
+/// Object::Unwrap under the node anchors' tag, the anchor's slot, its node's
+/// instance (design 4.3) - with no handle. Null for a `this` that is no node
+/// wrapper (a plain object, a prototype, another interface's wrapper), or one
+/// whose node's teardown severed it; the caller's brand check
+/// (`implements`, the state ancestry) decides the interface, as for every
+/// receiver.
+pub fn thisNodeInstance(info: *const v8.FunctionCallbackInfo) ?*anyopaque {
+    const slot = v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ThisNodeSlot(info) orelse return null;
+    return @ptrCast(@import("node_wrappers.zig").instanceOfSlot(slot) orelse return null);
 }
 
 /// An attribute setter function's steps (the generic makeSetterCallback's
@@ -2118,7 +2146,7 @@ fn setterBody(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
             // `this`'s internal fields, read from `info` with no handle
             // (`thisInstanceOf`, as the attribute getter reads them): a
             // Global<Object> per assignment before (perf3 phase 1b).
-            if (thisInstanceOf(info, self.interface_name)) |instance_ptr| break :blk instance_ptr;
+            if (if (self.node_receiver) thisNodeInstance(info) else thisInstanceOf(info, self.interface_name)) |instance_ptr| break :blk instance_ptr;
             // [LegacyLenientThis] - silently return instead of throwing
             if (is_lenient_this) {
                 conv.setReturnUndefined(info);

@@ -578,7 +578,7 @@ pub fn install(owned: Hooks) void {
     // Through install even when nothing changes: the slot refuses a write
     // outside the process start either way.
     hooks.install(merged(current, owned) orelse current);
-    runtime.lifetime.install(.{ .acquire = wrapperAcquire, .release = wrapperRelease, .slot_of = wrapperSlotOf });
+    runtime.lifetime.install(.{ .acquire = wrapperAcquire, .release = wrapperRelease, .slot_of = wrapperSlotOf, .target_of_slot = wrapperTargetOfSlot });
 }
 
 /// `current` with `owned`'s non-null entries, or null when that changes
@@ -650,6 +650,14 @@ pub fn wrapperRelease(target: *anyopaque) void {
 pub fn wrapperSlotOf(target: *anyopaque) *engine.NodeWrapperSlot {
     const node: *NodeBase = @ptrCast(@alignCast(target));
     return &node.wrapper;
+}
+
+/// runtime.lifetime's targetOfSlot hook: the node whose wrapper slot `slot`
+/// is - `wrapperSlotOf`'s inverse (the wrapper redesign's P4: V8's node
+/// anchor holds the slot, tmp/redesign/wrapper-redesign-design.md 4.1).
+pub fn wrapperTargetOfSlot(slot: *engine.NodeWrapperSlot) *anyopaque {
+    const node: *NodeBase = @fieldParentPtr("wrapper", slot);
+    return node;
 }
 
 /// A wrapper's reference on `node` (`ref` without a ledger): a count going

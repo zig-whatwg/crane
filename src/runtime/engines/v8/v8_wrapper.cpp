@@ -2644,6 +2644,89 @@ struct GCPauses {
     }
 };
 
+// ----------------------------------------------------------------------------
+// Node anchors: node wrappers on the agent's C++ heap (the wrapper redesign's
+// P4, tmp/redesign/wrapper-redesign-design.md 4.1-4.5)
+// ----------------------------------------------------------------------------
+
+struct IsolateData;
+
+/// The CppHeapPointerTag every node wrapper's anchor is wrapped with
+/// (Object::Wrap) and unwrapped under (Object::Unwrap). One tag for every
+/// node interface: Crane's brand check is the instance's state ancestry
+/// (binding_plumbing `implements`, conversions.implements), so the tag only
+/// says "a node anchor" - the role of Blink's type-unknown range,
+/// `ToAnyScriptWrappable`'s kScriptWrappableTagRange
+/// (third_party/blink/renderer/platform/bindings/wrapper_type_info.h), where
+/// Blink's per-interface tags (WrapperTypeInfo::this_tag) are its brand.
+/// Blink's first ScriptWrappable tag (kScriptWrappableStartTag, 256), below
+/// V8's kDefaultTag (0x7000, include/v8-sandbox.h).
+static constexpr CppHeapPointerTag kNodeAnchorTag = static_cast<CppHeapPointerTag>(256);
+static constexpr CppHeapPointerTagRange kNodeAnchorTagRange(kNodeAnchorTag, kNodeAnchorTag);
+
+/// What a node wrapper points at (design 4.1): a cppgc object behind the
+/// wrapper's CppHeap pointer, so V8's marker consults the host about the
+/// wrapper - the only way it can (design 2.6). It holds the node's wrapper
+/// SLOT (engine.NodeWrapperSlot: the TracedReference in the node, 8 bytes),
+/// from which the Zig side finds the node (runtime.lifetime.targetOfSlot) -
+/// so its Trace reads its slot with no call into the host, once per live
+/// anchor per major GC. 8 bytes of payload: 16 with cppgc's header.
+///
+/// Its wrapper's counted reference is the anchor's: taken before the anchor
+/// exists (node_wrappers.adopt, design 4.2 step 1) and released after the
+/// anchor dies (the registry's drain). `slot_` is null once its wrapper
+/// ended outside a collection - its node's teardown (v8_NodeWrapper_End) or
+/// its agent's end (v8_NodeWrappers_EndAll) - and the anchor then traces
+/// nothing and is dropped when it dies. Trivially destructible: cppgc
+/// sweeps it with no finalizer (concurrently: nothing reads it then).
+class NodeAnchor final : public cppgc::GarbageCollected<NodeAnchor> {
+ public:
+    explicit NodeAnchor(void* slot) : slot_(slot) {}
+
+    /// Its own slot only (design 7, P4: "NodeAnchor::Trace traces its own
+    /// slot only"): a live anchor always marks its own TracedNode, so no
+    /// later pruning mistake can leave a non-empty slot whose TracedNode V8
+    /// freed (design 4.4, principle 3). The tree edges still carry trees.
+    void Trace(cppgc::Visitor* visitor) const {
+        if (!slot_) return;
+        visitor->Trace(*static_cast<const TracedReference<Object>*>(slot_));
+    }
+
+    void* slot_;
+};
+
+static_assert(std::is_trivially_destructible_v<NodeAnchor>, "a node anchor needs no finalizer");
+static_assert(sizeof(TracedReference<Object>) == sizeof(void*), "a node's wrapper slot holds exactly one TracedReference<Object>");
+
+/// The agent's node anchors, for weak processing (design 4.5): a cppgc
+/// object rooted by its record (IsolateData::node_anchors), whose Trace only
+/// registers ProcessWeak - Blink's ActiveScriptWrappableManager pattern
+/// (third_party/blink/renderer/platform/bindings/
+/// active_script_wrappable_manager.h). The anchors are held raw and
+/// untraced: a wrapper keeps its anchor, nothing here does.
+class NodeWrapperRegistry final : public cppgc::GarbageCollected<NodeWrapperRegistry> {
+ public:
+    explicit NodeWrapperRegistry(IsolateData* record) : record_(record) {}
+
+    void Trace(cppgc::Visitor* visitor) const {
+        visitor->RegisterWeakCallbackMethod<NodeWrapperRegistry, &NodeWrapperRegistry::ProcessWeak>(this);
+    }
+
+    void ProcessWeak(const cppgc::LivenessBroker& broker);
+
+    /// Every anchor not yet found dead: outside a collection's atomic pause
+    /// each is alive (ProcessWeak runs in every major GC; cppgc collects
+    /// only in major GCs - no cppgc young generation, --cppgc-young-generation
+    /// is off).
+    std::vector<NodeAnchor*> anchors;
+
+    /// The capacity kept after a collection empties most of `anchors`.
+    static constexpr size_t kShrinkFloor = 1024;
+
+ private:
+    IsolateData* record_;
+};
+
 struct IsolateData {
     // Installed before Isolate::Initialize: V8 caches runners while setting up
     // its heap. Their shared state receives the host's sink after creation.
@@ -2712,22 +2795,40 @@ struct IsolateData {
     /// its end touches no isolate - or when no isolate was made with it.
     std::unique_ptr<CppHeap> cpp_heap;
     /// The agent's node wrapper registry (node_wrappers.zig `Registry`, the
-    /// wrapper redesign's P2), OWNED: made by the adapter's Zig side on the
-    /// isolate's first node wrap (v8_Isolate_SetNodeWrappers) with the three
-    /// functions below, and ended by `node_wrappers_end` at the start of
-    /// v8_Isolate_Dispose, while the isolate lives - every node wrapper's
-    /// slot reset and its reference released first, so no weak callback is
-    /// left to find the record gone. Read on the isolate's thread only.
+    /// wrapper redesign's P2 and P4), OWNED: made by the adapter's Zig side on
+    /// the isolate's first node wrap or keep (v8_Isolate_SetNodeWrappers) with
+    /// the four functions below, and ended by `node_wrappers_end` at the start
+    /// of v8_Isolate_Dispose, while the isolate lives - every node wrapper's
+    /// slot emptied, its anchor's slot cleared and its reference released
+    /// first, so no weak processing is left to find the record gone. Read on
+    /// the isolate's thread only.
     void* node_wrappers = nullptr;
-    /// The first pass of a node wrapper's weak callback: `cell` is its weak
-    /// parameter. Zig bookkeeping only (the cell freed, the release
-    /// recorded); answers the node's slot, which the caller Resets.
-    void* (*node_wrapper_collected)(void* registry, void* cell) = nullptr;
-    /// The second pass: the agent's released references go (its drain).
+    /// A node wrapper's anchor was found dead in a collection's atomic pause
+    /// (NodeWrapperRegistry::ProcessWeak): `slot` is its node's slot. Zig
+    /// bookkeeping only - the slot written empty (raw: V8 frees the unmarked
+    /// TracedNode itself in the same pause), the release recorded. No V8
+    /// call, no count change, no free.
+    void (*node_wrapper_collected)(void* registry, void* slot) = nullptr;
+    /// The agent's released references go (its drain): after a collection,
+    /// from a posted task (nodeWrappersEpilogue) or a requested collection's
+    /// end (v8_Isolate_RequestGarbageCollection).
     void (*node_wrappers_drain)(void* registry) = nullptr;
     /// The registry's end, and its memory.
     void (*node_wrappers_end)(void* registry) = nullptr;
-    /// A drain task is posted and has not run (the wrapper redesign's P4).
+    /// The instance of the node whose wrapper slot is `slot` - the last step
+    /// of a node wrapper's unwrap (Object::Unwrap -> anchor -> slot -> node
+    /// -> instance; design 4.3), the Zig side's: the adapter never reads a
+    /// node's fields here.
+    void* (*node_wrapper_instance)(void* slot) = nullptr;
+    /// The agent's node anchors (the wrapper redesign's P4): the weak-callback
+    /// registry on its C++ heap, rooted here while the Zig registry lives
+    /// (v8_Isolate_SetNodeWrappers to v8_Isolate_Dispose's start, which
+    /// clears it before Isolate::Dispose terminates the heap).
+    cppgc::Persistent<NodeWrapperRegistry> node_anchors;
+    /// A collection found node anchors dead: their releases wait for the
+    /// drain, posted after the collection (nodeWrappersEpilogue).
+    bool node_wrappers_drain_due = false;
+    /// A drain task is posted and has not run.
     bool node_wrappers_drain_posted = false;
     /// tests/v8 only (v8_test_NodeWrappers_ObserveDrainTasks): counters a
     /// posted drain task bumps when it runs, or when it is destroyed without
@@ -2803,55 +2904,174 @@ extern "C" void v8_Debug_FullGCPauses(Isolate* isolate, uint64_t* count, uint64_
 }
 
 // ============================================================================
-// Node wrappers in the node's own slot (the wrapper redesign's P2)
+// Node wrappers on the agent's C++ heap (the wrapper redesign's P4)
 // ============================================================================
 //
-// tmp/redesign/wrapper-redesign-design.md section 7, P2. A node's one wrapper
-// per agent is a weak `Global<Object>` CONSTRUCTED IN PLACE in the node's
-// engine.NodeWrapperSlot (8 bytes of its NodeBase; node_wrappers.zig): the
-// slot's word is the Global's own slot pointer, so the slot's address IS the
-// `Global<Object>*` every borrower of the node's wrapper gets. Pre-Oilpan
-// Blink's design (Chromium 45, bindings/core/v8/ScriptWrappable.h: a
-// `ScopedPersistent<v8::Object> m_wrapper` inside the object, made weak with
-// the object as its parameter; `firstWeakCallback` reset it and
-// `secondWeakCallback` dropped the object's reference).
+// tmp/redesign/wrapper-redesign-design.md section 7, P4 (4.1-4.5, 4.8, 4.9).
+// A node's one wrapper per agent is a `TracedReference<Object>` in the node's
+// own engine.NodeWrapperSlot (8 bytes of its NodeBase; node_wrappers.zig) -
+// Blink's `ScriptWrappable::wrapper_` (a TraceWrapperV8Reference,
+// third_party/blink/renderer/platform/bindings/script_wrappable.h) - and the
+// wrapper points at a NodeAnchor on the agent's C++ heap through
+// `Object::Wrap` (design 4.2): a node interface's template has NO internal
+// fields (interface.zig), so the wrapper is 16 bytes, and unwrapping it is
+// `Object::Unwrap` under kNodeAnchorTag (design 4.3).
 //
-// No `new Global` box survives the wrap, and no WeakCallbackData or entry in
-// armedWeakData() is made: the weak parameter is the node's 8-byte cell in
-// its agent's registry, and the first pass touches no handle but the slot it
-// resets - so the hazard armedWeakData() exists for (a callback disposing a
-// SECOND armed handle whose callback is still queued, releaseWeakArm's note)
-// cannot arise. The node is never freed here: the second pass only releases
-// the wrapper's counted reference, and the counts decide.
+// - Reachability is V8's: a reachable wrapper marks its anchor (V8's marker
+//   follows the CppHeap pointer, MarkingVisitorBase::VisitCppHeapPointer),
+//   whose Trace marks the TracedReference in the slot. A slot is never a
+//   root: a TracedReference lives only while something traces it in every
+//   major GC (TracedHandles::ResetDeadNodes frees every unmarked node).
+// - Collection: the registry's ProcessWeak, in the atomic pause, finds the
+//   anchors that died and hands each one's slot to the Zig side, which writes
+//   it empty (raw: V8 frees the unmarked TracedNode in the same pause;
+//   TracedReference::Reset would free it twice) and records the release. No
+//   V8 call, no count change, no free. The drain - the counts' release -
+//   runs after the collection: from a posted foreground task, as V8 posts
+//   its own second-pass callbacks (13.1 src/handles/global-handles.cc,
+//   GlobalHandles::PostGarbageCollectionProcessing), or at a requested
+//   collection's end.
+// - Keeps (a node's pending activity): a cppgc::Persistent on the anchor
+//   (v8_NodeWrapper_Root) - a traced root, its own slot only (design 7 P4).
+// - The node's teardown under a live wrapper, and the agent's end: the
+//   anchor's slot is cleared (the wrapper reaches no node through it: a
+//   TypeError at the binding's unwrap) and the slot Reset - V8 frees its
+//   TracedNode - before the counted reference goes (design 4.9).
+//
+// The slot's address doubles as the BORROWED handle the binding passes
+// around (node_wrappers.wrapperOf), as it did with P2's in-place Global: a
+// TracedReference and a Global are both an IndirectHandleBase - one
+// `internal::Address*` - and the only operations a borrower may apply, Get /
+// Local::New / IsEmpty / ReturnValue::Set, read that one word identically
+// for both (IndirectHandleBase::value; v8-local-handle.h's two Local::New
+// overloads, v8-function-callback.h's two ReturnValue::Set overloads). A
+// borrower never disposes, re-arms or tags a node wrapper's handle - none
+// ever did with P2's Global either: it lived in the node.
 
-static_assert(sizeof(Global<Object>) == sizeof(void*), "a node's wrapper slot holds exactly one Global<Object>");
+static_assert(std::is_base_of_v<api_internal::IndirectHandleBase, TracedReference<Object>> &&
+                  std::is_base_of_v<api_internal::IndirectHandleBase, Global<Object>> &&
+                  sizeof(TracedReference<Object>) == sizeof(Global<Object>),
+              "a node wrapper's slot is read through the Global<Object>* every borrower holds");
 
-static void nodeWrapperSecondPass(const WeakCallbackInfo<void>& info) {
-    IsolateData* record = isolateData(info.GetIsolate());
-    // The parameter is the cell the first pass freed: not read.
-    if (record && record->node_wrappers && record->node_wrappers_drain) record->node_wrappers_drain(record->node_wrappers);
+/// The node anchor `object` - a wrapper, or a legacy platform object's proxy
+/// around one - points at, or null: not an API wrapper (Object::Unwrap reads
+/// the CppHeap pointer field only API wrappers have), never wrapped, or
+/// wrapped under another tag.
+static NodeAnchor* nodeAnchorOf(Isolate* isolate, Local<Object> object) {
+    if (object->IsProxy()) {
+        Local<Value> target = object.As<Proxy>()->GetTarget();
+        if (!target->IsObject()) return nullptr;
+        object = target.As<Object>();
+    }
+    if (!object->IsApiWrapper()) return nullptr;
+    return Object::Unwrap<NodeAnchor>(isolate, object, kNodeAnchorTagRange);
 }
 
-/// V8's first pass for a collected node wrapper. "When first called, the
-/// embedder MUST Reset() the Global which triggered the callback"
-/// (v8-weak-callback-info.h): the node's slot, which the registry answers for
-/// the cell. No other V8 call; the release waits for the second pass.
-static void nodeWrapperFirstPass(const WeakCallbackInfo<void>& info) {
-    IsolateData* record = isolateData(info.GetIsolate());
-    // A cell exists only while its registry does, and the registry outlives
-    // every weak arm (it ends at the start of v8_Isolate_Dispose, after
-    // resetting every slot).
-    if (!record || !record->node_wrappers || !record->node_wrapper_collected) {
-        fprintf(stderr, "v8_wrapper: a node wrapper's weak callback found no registry\n");
-        abort();
+/// The instance a node wrapper `object` reaches (design 4.3: Unwrap, the
+/// anchor, its slot, the node, its instance), or null: no node wrapper, or
+/// one whose node's teardown or agent's end severed it.
+static void* nodeInstanceOf(Isolate* isolate, Local<Object> object) {
+    NodeAnchor* anchor = nodeAnchorOf(isolate, object);
+    if (!anchor || !anchor->slot_) return nullptr;
+    IsolateData* record = isolateData(isolate);
+    if (!record || !record->node_wrapper_instance) return nullptr;
+    return record->node_wrapper_instance(anchor->slot_);
+}
+
+void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
+    IsolateData* record = record_;
+    size_t kept = 0;
+    bool released = false;
+    for (NodeAnchor* anchor : anchors) {
+        if (broker.IsHeapObjectAlive(anchor)) {
+            anchors[kept++] = anchor;
+            continue;
+        }
+        // A dead anchor's fields read as they were until sweeping (cppgc:
+        // weak callbacks run before the sweep).
+        void* slot = anchor->slot_;
+        if (!slot) continue;
+        if (record->node_wrappers && record->node_wrapper_collected) {
+            record->node_wrapper_collected(record->node_wrappers, slot);
+            released = true;
+        }
     }
-    ++g_first_pass_depth;
-    void* slot = record->node_wrapper_collected(record->node_wrappers, info.GetParameter());
-    --g_first_pass_depth;
-    Global<Object>* wrapper = static_cast<Global<Object>*>(slot);
-    forgetCountedHandle(wrapper);
-    wrapper->Reset();
-    info.SetSecondPassCallback(nodeWrapperSecondPass);
+    anchors.resize(kept);
+    // The bookkeeping follows the live count down (P2's note: its chunks
+    // never shrank): a collection that leaves a quarter of the capacity
+    // used gives the rest back, above a floor.
+    if (anchors.capacity() > kShrinkFloor && anchors.size() * 4 < anchors.capacity()) {
+        std::vector<NodeAnchor*> smaller;
+        smaller.reserve(anchors.size() * 2 > kShrinkFloor ? anchors.size() * 2 : kShrinkFloor);
+        smaller.insert(smaller.end(), anchors.begin(), anchors.end());
+        anchors.swap(smaller);
+    }
+    if (released) record->node_wrappers_drain_due = true;
+}
+
+/// The agent's drain, now: the releases its collections recorded go (the
+/// Zig side defers them while a walk holds the agent's teardowns).
+static void drainNodeWrappers(IsolateData* record) {
+    record->node_wrappers_drain_due = false;
+    if (record->node_wrappers && record->node_wrappers_drain) record->node_wrappers_drain(record->node_wrappers);
+}
+
+/// The drain after a collection, on the agent's foreground task runner: V8's
+/// own model for the work a collection's weak processing leaves (13.1
+/// GlobalHandles::PostGarbageCollectionProcessing posts its second-pass
+/// callbacks the same way). A task the runner drops at the agent's end
+/// (v8_Isolate_Dispose closes it) never runs: that end drains itself.
+class NodeWrappersDrainTask final : public Task {
+ public:
+    NodeWrappersDrainTask(Isolate* isolate, uint32_t* runs, uint32_t* drops)
+        : isolate_(isolate), runs_(runs), drops_(drops) {}
+    ~NodeWrappersDrainTask() override {
+        if (!ran_ && drops_) ++*drops_;
+    }
+    void Run() override {
+        ran_ = true;
+        if (runs_) ++*runs_;
+        IsolateData* record = isolateData(isolate_);
+        if (!record) return;
+        record->node_wrappers_drain_posted = false;
+        if (record->node_wrappers_drain_due) drainNodeWrappers(record);
+    }
+
+ private:
+    Isolate* isolate_;
+    uint32_t* runs_;
+    uint32_t* drops_;
+    bool ran_ = false;
+};
+
+/// Before every collection, minor ones included: what an earlier collection
+/// released goes first - where V8 runs the second-pass callbacks still
+/// pending (13.1 src/heap/heap.cc Heap::CollectGarbage, "Ensure that all
+/// pending phantom callbacks are invoked", ahead of the prologue callbacks).
+/// So a long script that collects many times releases as it goes, as P2's
+/// second passes did (tests/html/rc9_document_tasks_test.zig).
+static void nodeWrappersPrologue(Isolate*, GCType, GCCallbackFlags, void* data) {
+    IsolateData* record = static_cast<IsolateData*>(data);
+    if (record->node_wrappers_drain_due) drainNodeWrappers(record);
+}
+
+/// After every full collection that found node anchors dead: a forced one
+/// drains at once - V8 runs second-pass callbacks synchronously at the end of
+/// a collection made with these flags (GlobalHandles::
+/// PostGarbageCollectionProcessing) - and any other posts one drain task (one
+/// at a time), unless the next collection's start drains first.
+static void nodeWrappersEpilogue(Isolate* isolate, GCType, GCCallbackFlags flags, void* data) {
+    IsolateData* record = static_cast<IsolateData*>(data);
+    if (!record->node_wrappers_drain_due) return;
+    if ((flags & (kGCCallbackFlagForced | kGCCallbackFlagCollectAllAvailableGarbage |
+                  kGCCallbackFlagSynchronousPhantomCallbackProcessing)) != 0) {
+        drainNodeWrappers(record);
+        return;
+    }
+    if (record->node_wrappers_drain_posted) return;
+    record->node_wrappers_drain_posted = true;
+    g_platform.platform->GetForegroundTaskRunner(isolate)->PostTask(
+        std::make_unique<NodeWrappersDrainTask>(isolate, record->test_drain_task_runs, record->test_drain_task_drops));
 }
 
 /// The isolate's node wrapper registry (IsolateData::node_wrappers), or null
@@ -2862,87 +3082,161 @@ extern "C" void* v8_Isolate_NodeWrappers(Isolate* isolate) {
 }
 
 /// The isolate takes `registry` over (IsolateData::node_wrappers), with its
-/// first pass, its drain and its end. False for an isolate with no record.
-extern "C" bool v8_Isolate_SetNodeWrappers(Isolate* isolate, void* registry, void* (*collected)(void*, void*),
-                                           void (*drain)(void*), void (*end)(void*)) {
+/// collection callback, its drain, its end and its unwrap's last step - and
+/// its anchors' registry is made on its C++ heap, rooted by the record, with
+/// the full collections' epilogue that posts the drain. False for an isolate
+/// with no record or no C++ heap (the snapshot creator's): no node is
+/// wrapped there.
+extern "C" bool v8_Isolate_SetNodeWrappers(Isolate* isolate, void* registry, void (*collected)(void*, void*),
+                                           void (*drain)(void*), void (*end)(void*), void* (*instance_of)(void*)) {
     IsolateData* record = isolateData(isolate);
     if (!record) return false;
+    CppHeap* heap = isolate->GetCppHeap();
+    if (!heap) return false;
+    record->node_anchors = cppgc::MakeGarbageCollected<NodeWrapperRegistry>(heap->GetAllocationHandle(), record);
+    isolate->AddGCPrologueCallback(nodeWrappersPrologue, record, kGCTypeAll);
+    isolate->AddGCEpilogueCallback(nodeWrappersEpilogue, record, kGCTypeMarkSweepCompact);
     record->node_wrappers = registry;
     record->node_wrapper_collected = collected;
     record->node_wrappers_drain = drain;
     record->node_wrappers_end = end;
+    record->node_wrapper_instance = instance_of;
     return true;
 }
 
-/// Move the wrapper `box` holds - a fresh `new Global<Object>` the wrap made
-/// (v8_ObjectTemplate_NewInstance, a constructor's receiver), unarmed - into
-/// the node's empty `slot`, constructing the slot's Global in place, and
-/// delete the box. The V8 node and its class id (the live-object count) move
-/// with it. The caller holds the wrapper through the slot from here.
-extern "C" void v8_NodeWrapper_Adopt(Global<Object>* box, void* slot) {
-    if (g_snapshot_mode) {
-        // The generator's list must not keep the box it frees here.
-        for (size_t i = 0; i < g_snapshot_handles.size(); i++) {
-            if (g_snapshot_handles[i].handle != box) continue;
-            g_snapshot_handles.erase(g_snapshot_handles.begin() + static_cast<std::ptrdiff_t>(i));
-            break;
-        }
+/// Whether `box`'s object can be a node's wrapper: an API object (made from a
+/// template), which Object::Wrap can point at an anchor - the binding's
+/// always is; asked before the wrap takes the count.
+extern "C" bool v8_NodeWrapper_Wrappable(Isolate* isolate, Global<Object>* box) {
+    HandleScope scope(isolate);
+    Local<Object> object = box->Get(isolate);
+    if (object->IsProxy()) {
+        Local<Value> target = object.As<Proxy>()->GetTarget();
+        if (!target->IsObject()) return false;
+        object = target.As<Object>();
     }
-    new (slot) Global<Object>(std::move(*box));
-    delete box;
+    return object->IsApiWrapper();
 }
 
-/// Arm the slot's wrapper weak with `cell` (its registry cell) as the
-/// parameter; replaces an earlier arm of the same slot.
-extern "C" void v8_NodeWrapper_SetWeak(void* slot, void* cell) {
-    static_cast<Global<Object>*>(slot)->SetWeak(cell, nodeWrapperFirstPass, WeakCallbackType::kParameter);
+/// The node wrap's steps 3-6 (design 4.2; step 1, the count, and step 2, the
+/// object - `box`, a fresh `new Global<Object>` the binding made from the
+/// interface's template, with no internal field - are the caller's): the
+/// anchor is made, `box`'s object is Wrapped with it, the node's empty
+/// `slot` takes the object as a TracedReference, and the anchor joins the
+/// registry. `box` stays the caller's, holding the wrapper strongly until it
+/// disposes it: no collection can take the wrapper meanwhile.
+///
+/// No collection sees a half-made wrapper: the anchor's allocation is the
+/// only one that can collect, and it runs before the anchor exists - the
+/// object then reaches nothing of the node, and the slot is still empty.
+/// From the Wrap on nothing allocates on either heap (the registry's
+/// capacity is reserved first; a TracedNode block is malloc). The
+/// TracedReference is made by assignment (Reset), whose store applies V8's
+/// marking barrier when a collection is marking (TracedReferenceStoreMode
+/// kAssigningStore: the slot's holder, the node, is no cppgc object).
+extern "C" void v8_NodeWrapper_Attach(Isolate* isolate, Global<Object>* box, void* slot) {
+    IsolateData* record = isolateData(isolate);
+    NodeWrapperRegistry* registry = record ? record->node_anchors.Get() : nullptr;
+    CppHeap* heap = isolate->GetCppHeap();
+    if (!registry || !heap) {
+        fprintf(stderr, "v8_wrapper: a node wrap on an isolate with no node anchor registry\n");
+        abort();
+    }
+    HandleScope scope(isolate);
+    Local<Object> object = box->Get(isolate);
+    // A legacy platform object's wrapper is its proxy; the anchor goes on
+    // the API object behind it (no node interface is one today).
+    Local<Object> wrappable = object;
+    if (object->IsProxy()) {
+        Local<Value> target = object.As<Proxy>()->GetTarget();
+        if (target->IsObject()) wrappable = target.As<Object>();
+    }
+    registry->anchors.reserve(registry->anchors.size() + 1);
+    // 3. The anchor. A collection this allocation starts runs before it
+    //    exists.
+    NodeAnchor* anchor = cppgc::MakeGarbageCollected<NodeAnchor>(heap->GetAllocationHandle(), slot);
+    // 4. The wrapper points at it (WriteBarrier::ForCppHeapPointer marks it
+    //    if the wrapper is already marked).
+    Object::Wrap<kNodeAnchorTag>(isolate, wrappable, anchor);
+    // 5. The node's slot holds the wrapper.
+    TracedReference<Object>* traced = new (slot) TracedReference<Object>();
+    traced->Reset(isolate, object);
+    // 6. The registry.
+    registry->anchors.push_back(anchor);
 }
 
-/// Hold the slot's wrapper strongly (a pending-activity keep, or its end
-/// outside a collection): the weak arm goes. Answers the arm's parameter -
-/// the node's registry cell - or null for a wrapper that was not weak.
-extern "C" void* v8_NodeWrapper_ClearWeak(void* slot) {
-    Global<Object>* wrapper = static_cast<Global<Object>*>(slot);
-    if (wrapper->IsEmpty() || !wrapper->IsWeak()) return nullptr;
-    return wrapper->ClearWeak<void>();
+/// A kept node's wrapper becomes a traced root (design 7 P4: "Kept nodes are
+/// traced roots, their own slot only"): a cppgc::Persistent on its anchor,
+/// whose Trace marks the slot. OWNED by the caller until
+/// v8_NodeWrapper_Unroot. Null for an empty slot or no anchor.
+extern "C" void* v8_NodeWrapper_Root(Isolate* isolate, void* slot) {
+    TracedReference<Object>* traced = static_cast<TracedReference<Object>*>(slot);
+    if (traced->IsEmpty()) return nullptr;
+    HandleScope scope(isolate);
+    NodeAnchor* anchor = nodeAnchorOf(isolate, traced->Get(isolate));
+    if (!anchor) return nullptr;
+    return new cppgc::Persistent<NodeAnchor>(anchor);
 }
 
-static void clearInternalFields(Local<Object> object) {
-    const int count = object->InternalFieldCount();
-    if (count >= 1) object->SetAlignedPointerInInternalField(0, nullptr);
-    if (count >= 2) object->SetAlignedPointerInInternalField(1, nullptr);
+/// A keep's root (v8_NodeWrapper_Root) goes. On the isolate's thread, while
+/// its heap lives.
+extern "C" void v8_NodeWrapper_Unroot(void* root) {
+    delete static_cast<cppgc::Persistent<NodeAnchor>*>(root);
 }
 
 /// The node's wrapper ends outside a collection: its node's teardown began
-/// under it, or its agent ends. With `sever`, its internal fields are cleared
-/// first (a legacy platform object's on its proxy's target), so script that
-/// still holds the object finds no instance through it - a TypeError at the
-/// binding's unwrap, never the freed node (wrapper_cache severWrapper; Blink's
-/// V8DOMWrapper::ClearNativeInfo). Then the slot is Reset: empty from here.
-/// On the isolate's thread; it is entered for the call if it is not current.
-extern "C" void v8_NodeWrapper_Reset(Isolate* isolate, void* slot, bool sever) {
-    Global<Object>* wrapper = static_cast<Global<Object>*>(slot);
-    if (wrapper->IsEmpty()) return;
-    if (sever && isolate) {
+/// under it (a forced realm end's coordinated teardown). Its anchor lets go
+/// of the slot - the wrapper reaches no node from here, so script that still
+/// holds it gets a TypeError at the binding's unwrap, never the freed node
+/// (Blink's V8DOMWrapper::ClearNativeInfo) - and the slot is Reset, V8
+/// freeing its TracedNode. On the isolate's thread; it is entered for the
+/// call if it is not current.
+extern "C" void v8_NodeWrapper_End(Isolate* isolate, void* slot) {
+    TracedReference<Object>* traced = static_cast<TracedReference<Object>*>(slot);
+    if (traced->IsEmpty()) return;
+    if (isolate) {
         const bool enter = Isolate::TryGetCurrent() != isolate;
         if (enter) isolate->Enter();
         {
             HandleScope scope(isolate);
-            Local<Object> object = wrapper->Get(isolate);
-            if (object->IsProxy()) {
-                Local<Value> target = object.As<Proxy>()->GetTarget();
-                if (target->IsObject()) clearInternalFields(target.As<Object>());
-            } else {
-                clearInternalFields(object);
+            if (NodeAnchor* anchor = nodeAnchorOf(isolate, traced->Get(isolate))) {
+                if (anchor->slot_ == slot) anchor->slot_ = nullptr;
             }
         }
         if (enter) isolate->Exit();
     }
-    forgetCountedHandle(wrapper);
-    wrapper->Reset();
+    traced->Reset();
 }
 
-// ---- tests/v8/node_anchor_test.zig's probes (the wrapper redesign's P4) ----
+/// The agent's end (design 4.9 step 2): every live anchor lets go of its
+/// slot, which is Reset, and `ended` is told each slot - the Zig side
+/// releases its reference. No node is read after this by anything of the
+/// adapter: an anchor's Trace and the weak processing read only a slot an
+/// anchor still holds. The anchors themselves go with their wrappers.
+extern "C" void v8_NodeWrappers_EndAll(Isolate* isolate, void* registry_data, void (*ended)(void* registry, void* slot)) {
+    IsolateData* record = isolateData(isolate);
+    NodeWrapperRegistry* registry = record ? record->node_anchors.Get() : nullptr;
+    if (!registry) return;
+    // By index: `ended` only counts (no V8 call, no wrap), but the vector is
+    // read afresh at each step all the same.
+    for (size_t i = 0; i < registry->anchors.size(); i++) {
+        NodeAnchor* anchor = registry->anchors[i];
+        void* slot = anchor->slot_;
+        if (!slot) continue;
+        anchor->slot_ = nullptr;
+        static_cast<TracedReference<Object>*>(slot)->Reset();
+        ended(registry_data, slot);
+    }
+}
+
+/// The anchors' registry goes (v8_Isolate_Dispose, after the Zig registry's
+/// end): unrooted, collected by the heap's termination with every anchor.
+static void releaseNodeAnchors(IsolateData* record) {
+    if (NodeWrapperRegistry* registry = record->node_anchors.Get()) registry->anchors.clear();
+    record->node_anchors.Clear();
+}
+
+// ---- tests/v8/node_anchor_test.zig's probes ----
 
 /// What v8_test_NodeWrapper_Probe saw; ffi.zig's NodeWrapperProbe mirrors it.
 struct CraneNodeWrapperProbe {
@@ -2951,15 +3245,20 @@ struct CraneNodeWrapperProbe {
     int32_t internal_fields;
     void* anchor;
     void* anchor_slot;
+    /// The anchors the agent's registry holds (live, or dead and not yet
+    /// found by a collection).
     uint64_t registered_anchors;
 };
 
 /// The wrapper in node slot `slot` of the current isolate (entered by the
 /// caller): its internal field count, whether it is an API wrapper, the
-/// anchor Object::Unwrap finds under the node anchors' tag (256) and the slot
-/// that anchor holds (its first word).
+/// anchor Object::Unwrap finds under the node anchors' tag and the slot that
+/// anchor holds.
 extern "C" void v8_test_NodeWrapper_Probe(Isolate* isolate, void* slot, CraneNodeWrapperProbe* out) {
     *out = CraneNodeWrapperProbe{false, false, -1, nullptr, nullptr, 0};
+    IsolateData* record = isolateData(isolate);
+    if (record && record->node_anchors.Get()) out->registered_anchors = record->node_anchors->anchors.size();
+    // Read through the Global<Object>* every borrower holds (wrapperOf).
     Global<Object>* handle = static_cast<Global<Object>*>(slot);
     if (handle->IsEmpty()) return;
     out->has_wrapper = true;
@@ -2967,15 +3266,14 @@ extern "C" void v8_test_NodeWrapper_Probe(Isolate* isolate, void* slot, CraneNod
     Local<Object> object = handle->Get(isolate);
     out->api_wrapper = object->IsApiWrapper();
     out->internal_fields = object->InternalFieldCount();
-    if (!out->api_wrapper) return;
-    const CppHeapPointerTag tag = static_cast<CppHeapPointerTag>(256);
-    void* anchor = Object::Unwrap(isolate, object, CppHeapPointerTagRange(tag, tag));
+    NodeAnchor* anchor = nodeAnchorOf(isolate, object);
     out->anchor = anchor;
-    out->anchor_slot = anchor ? *static_cast<void**>(anchor) : nullptr;
+    out->anchor_slot = anchor ? anchor->slot_ : nullptr;
 }
 
 /// A callback the test's own, at the end of every full collection of
-/// `isolate`.
+/// `isolate` (after the collection's weak processing, before anything a
+/// collection posts runs).
 struct CraneFullGCEpilogueProbe {
     Isolate* isolate;
     void (*callback)(void*);
@@ -2998,8 +3296,11 @@ extern "C" void v8_test_FullGCEpilogueProbe_Delete(CraneFullGCEpilogueProbe* pro
     delete probe;
 }
 
-/// A full collection of `isolate` with no conservative scan of the stack
-/// and no drain at its end.
+/// A full collection of `isolate` (entered by the caller) with no
+/// conservative scan of the stack - a stale anchor pointer in a frame must not
+/// keep a test's wrapper (cppgc::testing::OverrideEmbedderStackStateScope) -
+/// and, unlike v8_Isolate_RequestGarbageCollection, no drain at its end: what
+/// it collected waits for the posted drain task.
 extern "C" void v8_test_Isolate_CollectWithoutDrain(Isolate* isolate) {
     CppHeap* heap = isolate->GetCppHeap();
     if (!heap) {
@@ -3016,7 +3317,9 @@ extern "C" bool v8_test_NodeWrappers_DrainPosted(Isolate* isolate) {
     return record && record->node_wrappers_drain_posted;
 }
 
-/// Drain tasks posted from now on bump `runs` / `drops`.
+/// Drain tasks posted from now on bump `runs` when they run and `drops` when
+/// they are destroyed without running; both are the caller's and must
+/// outlive the agent.
 extern "C" void v8_test_NodeWrappers_ObserveDrainTasks(Isolate* isolate, uint32_t* runs, uint32_t* drops) {
     IsolateData* record = isolateData(isolate);
     if (!record) return;
@@ -3412,6 +3715,11 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             // may not have), so no weak callback can find the record gone.
             if (record->node_wrappers && record->node_wrappers_end) record->node_wrappers_end(record->node_wrappers);
             record->node_wrappers = nullptr;
+            // Its anchors' registry, unrooted while the heap lives: the
+            // heap's termination in Isolate::Dispose collects it and every
+            // anchor (none holds a slot any more), and no Persistent of the
+            // record outlives the heap.
+            releaseNodeAnchors(record);
             record->foreground_tasks->close();
             isolate->SetData(kIsolateDataSlot, nullptr);
             for (SyntheticJsonExport* entry : record->synthetic_json_exports) deleteSyntheticExport(entry);
@@ -5448,7 +5756,11 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
     // This prevents crashes when accessing prototype objects or other objects
     // that don't have internal fields set up
     if (local_obj->InternalFieldCount() <= index) {
-        return nullptr;
+        // Field 0 is the platform object's instance: a node wrapper has no
+        // internal field (the wrapper redesign's P4) and reaches its
+        // instance through its anchor. Field 1, the WrapperTypeInfo, it has
+        // none of: the state ancestry is the brand.
+        return index == 0 ? nodeInstanceOf(isolate, local_obj) : nullptr;
     }
 
     void* result = local_obj->GetAlignedPointerFromInternalField(index);
@@ -6873,6 +7185,23 @@ void v8_FunctionCallbackInfo_ThisInstanceFields(const FunctionCallbackInfo<Value
     Isolate* isolate = info->GetIsolate();
     if (count >= 1) *instance = self->GetAlignedPointerFromInternalField(isolate, 0);
     if (count >= 2) *type_info = self->GetAlignedPointerFromInternalField(isolate, 1);
+    // A node wrapper has no internal field (the wrapper redesign's P4): its
+    // instance through its anchor, and no WrapperTypeInfo.
+    if (count == 0) *instance = nodeInstanceOf(isolate, self);
+}
+
+// FunctionCallbackInfo - the receiver's node wrapper slot, for a member of a
+// node interface (one whose instances are all nodes: the binding knows it at
+// comptime, interface.zig): Object::Unwrap under the node anchors' tag, the
+// anchor, its slot (design 4.3) - the node and its instance are the Zig
+// side's to find (node_wrappers.instanceOfSlot). Null for a receiver that is
+// no node wrapper, or one whose node's teardown severed it. No Global, no
+// HandleScope (v8_FunctionCallbackInfo_ThisInstanceFields says why).
+void* v8_FunctionCallbackInfo_ThisNodeSlot(const FunctionCallbackInfo<Value>* info) {
+    Local<Value> receiver = info->This();
+    if (!receiver->IsObject()) return nullptr;
+    NodeAnchor* anchor = nodeAnchorOf(info->GetIsolate(), receiver.As<Object>());
+    return anchor ? anchor->slot_ : nullptr;
 }
 
 // FunctionCallbackInfo - set a primitive return value straight into the
@@ -7013,6 +7342,8 @@ void v8_FunctionCallbackInfo_ReadArgument(const FunctionCallbackInfo<Value>* inf
         const int count = object->InternalFieldCount();
         if (count >= 1) out->instance = object->GetAlignedPointerFromInternalField(isolate, 0);
         if (count >= 2) out->type_info = object->GetAlignedPointerFromInternalField(isolate, 1);
+        // A node wrapper (no internal field: P4) - its anchor's instance.
+        if (count == 0) out->instance = nodeInstanceOf(isolate, object);
     } else {
         out->kind = 7;
     }
@@ -7987,7 +8318,10 @@ Global<Object>* v8_PropertyCallbackInfo_This(const PropertyCallbackInfo<Value>* 
 // - was a third of the read (gc_bench profile, 2026-10-11).
 void* v8_PropertyCallbackInfo_HolderAlignedPointer(const PropertyCallbackInfo<Value>* info, int index) {
     Local<Object> holder = info->HolderV2();
-    if (holder->InternalFieldCount() <= index) return nullptr;
+    // A node interface's holder (Document's named properties, a form's or a
+    // select's indexed ones) has no internal field (P4): its instance is its
+    // anchor's.
+    if (holder->InternalFieldCount() <= index) return index == 0 ? nodeInstanceOf(info->GetIsolate(), holder) : nullptr;
     // The isolate overload: the one without it finds the isolate from the
     // object's page (GetIsolateForSandbox) on every read.
     return holder->GetAlignedPointerFromInternalField(info->GetIsolate(), index);
@@ -10031,6 +10365,25 @@ void v8_Isolate_RequestGarbageCollection(Isolate* isolate) {
     // LowMemoryNotification triggers V8 to perform garbage collection
     // as aggressively as possible. Per V8 docs, this is a synchronous
     // call that attempts to reclaim as much memory as possible.
+    //
+    // A precise collection of the agent's C++ heap: no conservative scan of
+    // the stack for its objects. A requested collection is a host's call
+    // between its own steps (TestUtils.gc(), a memory-pressure notice, a
+    // test), and no frame of Crane holds a C++-heap pointer across one - the
+    // node anchors and their registry are held by wrappers and a
+    // cppgc::Persistent only, their raw pointers live in v8_wrapper.cpp's
+    // frames that never call a collection. A stale pointer the scan found
+    // instead kept an anchor, its wrapper and its tree for a cycle
+    // (tests/v8/node_wrapper_inline_test.zig). Chromium's web-test collector
+    // runs on an empty stack the same way (content/web_test/renderer/
+    // gc_controller.cc AsyncCollectAllWithEmptyStack: kNoHeapPointers).
+    // The node wrappers it collected let their references go at its end
+    // (nodeWrappersEpilogue: a forced collection drains synchronously).
+    if (CppHeap* heap = isolate->GetCppHeap()) {
+        cppgc::testing::OverrideEmbedderStackStateScope precise(heap->GetHeapHandle(), cppgc::EmbedderStackState::kNoHeapPointers);
+        isolate->LowMemoryNotification();
+        return;
+    }
     isolate->LowMemoryNotification();
 }
 
@@ -12323,6 +12676,22 @@ class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
     /// sub-serialization the steps write through WriteValue on this same
     /// serializer shares `memory` with the whole graph: identity and cycles
     /// hold across it.
+    /// Which API objects are platform objects (13.1 value-serializer.cc
+    /// ValueSerializer::IsHostObject, asked for a JS_API_OBJECT): V8's own
+    /// answer, with no custom host objects, is "it has embedder fields" - and
+    /// a node wrapper has none since the wrapper redesign's P4 (its instance
+    /// is behind Object::Wrap), so V8 alone would serialize a node as an
+    /// ordinary object instead of throwing. The delegate answers, as Blink's
+    /// does (V8ScriptValueSerializer::HasCustomHostObject true; its
+    /// IsHostObject answers IsApiWrapper, Blink's wrappers being all on the
+    /// CppHeap): V8's embedder-field rule, so no other object's answer
+    /// changes, or a node anchor behind Object::Wrap.
+    bool HasCustomHostObject(Isolate*) override { return true; }
+
+    Maybe<bool> IsHostObject(Isolate* isolate, Local<Object> object) override {
+        return Just(object->InternalFieldCount() > 0 || nodeAnchorOf(isolate, object) != nullptr);
+    }
+
     Maybe<bool> WriteHostObject(Isolate* isolate, Local<Object> object) override {
         if (host_ == nullptr || host_->write == nullptr || serializer_ == nullptr) {
             ThrowDataCloneError(String::NewFromUtf8Literal(isolate, "A platform object could not be cloned."));

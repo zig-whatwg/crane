@@ -331,3 +331,16 @@ pub const TestAgent = struct {
         engine.destroyAgent(@ptrCast(isolate));
     }
 };
+
+/// An object made as the binding makes a node's wrapper since the wrapper
+/// redesign's P4: an API object from a FunctionTemplate's instance template
+/// with no internal field (a node interface's), which the node's anchor is
+/// Wrapped onto (node_wrappers.adopt; v8::Object::Wrap needs an API object).
+/// OWNED, like v8_Object_New's; `isolate` entered.
+pub fn nodeWrapperObject(isolate: *ffi.Isolate, context: *ffi.Context) ?*ffi.Object {
+    const template = ffi.v8_FunctionTemplate_New(isolate, null, null) orelse return null;
+    defer ffi.v8_FunctionTemplate_Dispose(template);
+    const instance_template = ffi.v8_FunctionTemplate_InstanceTemplate(template);
+    defer ffi.v8_ObjectTemplate_Dispose(instance_template);
+    return ffi.v8_ObjectTemplate_NewInstance(instance_template, context);
+}

@@ -2033,8 +2033,9 @@ pub const WrapperCache = struct {
     /// realm, and answer the handle the caller holds it by from here,
     /// BORROWED: `wrapper` itself for an instance the cache keeps (a weak
     /// entry), and for a NODE its slot's handle - `wrapper`'s box is gone
-    /// then (node_wrappers.adopt: the wrapper redesign's P2, the node's
-    /// wrapper is its agent's, in its own slot, never in a cache). On an
+    /// then, disposed once the node's wrapper is made (node_wrappers.adopt
+    /// and arm: the wrapper redesign's P2 and P4, the node's wrapper is its
+    /// agent's, a TracedReference in its own slot, never in a cache). On an
     /// error nothing was taken and `wrapper` is still the caller's.
     pub fn set(
         self: *Self,
@@ -2134,17 +2135,19 @@ pub const WrapperCache = struct {
         return wrapper;
     }
 
-    /// `set` for a node: its wrapper moves into the node's own slot, its
-    /// agent's (node_wrappers.adopt) - then, as for every wrapper, the edges
-    /// traced from it before script saw it, and node tracing's edges between
-    /// its wrapper and its parent's (or its node document's, for a root).
-    /// Tree edges are unchanged by P2 (design 7, P2): `drawTreeEdges` finds a
-    /// parent's wrapper through the slot.
+    /// `set` for a node: its wrapper goes into the node's own slot, its
+    /// agent's, with its anchor on the agent's C++ heap (node_wrappers.adopt)
+    /// - then, as for every wrapper, the edges traced from it before script
+    /// saw it, and node tracing's edges between its wrapper and its parent's
+    /// (or its node document's, for a root). Tree edges are unchanged by P2
+    /// and P4 (design 7: P7 removes them): `drawTreeEdges` finds a parent's
+    /// wrapper through the slot.
     fn setNode(self: *Self, instance: *runtime.Instance, box: *v8.Object, isolate: *v8.Isolate) !*v8.Object {
         const generation = runtime.SlabAllocator.generationOf(instance);
         const adopted = try node_wrappers.adopt(isolate, instance, box);
-        // Held strongly while the edges are drawn: they may wrap ancestors,
-        // and a collection then must not take this wrapper.
+        // Held strongly - by `box`, which `arm` disposes - while the edges
+        // are drawn: they may wrap ancestors, and a collection then must not
+        // take this wrapper.
         defer node_wrappers.arm(isolate, instance, adopted);
         // Edges traced from the node before script saw it.
         self.drawDeferredEdges(instance, generation, adopted.handle);

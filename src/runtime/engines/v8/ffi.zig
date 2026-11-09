@@ -137,8 +137,16 @@ pub const FunctionCallbackInfo = opaque {
     /// Internal fields 0 and 1 of the receiver (the instance and its
     /// WrapperTypeInfo), looked through a legacy platform object's proxy, in
     /// one call; a field the receiver lacks, or a receiver that is not an
-    /// object, reads as null. Makes no handle.
+    /// object, reads as null. A node wrapper (no internal field: the wrapper
+    /// redesign's P4) reads as its anchor's instance and no type info. Makes
+    /// no handle.
     pub extern fn v8_FunctionCallbackInfo_ThisInstanceFields(self: *const FunctionCallbackInfo, instance: *?*anyopaque, type_info: *?*anyopaque) void;
+
+    /// The receiver's node wrapper slot (Object::Unwrap under the node
+    /// anchors' tag, the anchor's slot), for a member of a node interface;
+    /// null for a receiver that is no node wrapper or one severed. Makes no
+    /// handle.
+    pub extern fn v8_FunctionCallbackInfo_ThisNodeSlot(self: *const FunctionCallbackInfo) ?*anyopaque;
 
     /// A primitive return value, written into the return slot: no handle.
     pub extern fn v8_FunctionCallbackInfo_SetReturnValueDouble(self: *const FunctionCallbackInfo, value: f64) void;
@@ -2744,40 +2752,58 @@ pub extern fn v8_Global_SetWeakFinalizer(
 /// that a finalizer runs after the collection, never inside it.
 pub extern fn v8_Debug_InFirstPassWeakCallback() bool;
 
-// ---- Node wrappers in the node's own slot (the wrapper redesign's P2;
-// node_wrappers.zig, v8_wrapper.cpp "Node wrappers in the node's own slot") ----
+// ---- Node wrappers on the agent's C++ heap (the wrapper redesign's P4;
+// node_wrappers.zig, v8_wrapper.cpp "Node wrappers on the agent's C++ heap") ----
 
 /// The isolate's node wrapper registry (node_wrappers.Registry), or null
 /// before its first node wrap and for an isolate v8_wrapper.cpp did not make.
 pub extern fn v8_Isolate_NodeWrappers(isolate: *Isolate) ?*anyopaque;
 
-/// The isolate's record takes `registry` over: `collected` is a node
-/// wrapper's first pass (answers the node's slot, which the C++ side
-/// Resets), `drain` its second, `end` the registry's end at the start of
-/// v8_Isolate_Dispose. False for an isolate with no record.
+/// The isolate's record takes `registry` over, and its node anchors'
+/// registry is made on its C++ heap: `collected` is told the slot of each
+/// node wrapper whose anchor a collection found dead (in its atomic pause:
+/// it writes the slot empty and records the release), `drain` releases what
+/// was recorded (after the collection), `end` is the registry's end at the
+/// start of v8_Isolate_Dispose, `instance_of` the instance of the node whose
+/// slot it is given (a node wrapper's unwrap). False for an isolate with no
+/// record or no C++ heap.
 pub extern fn v8_Isolate_SetNodeWrappers(
     isolate: *Isolate,
     registry: *anyopaque,
-    collected: *const fn (registry: ?*anyopaque, cell: ?*anyopaque) callconv(.c) ?*anyopaque,
+    collected: *const fn (registry: ?*anyopaque, slot: ?*anyopaque) callconv(.c) void,
     drain: *const fn (registry: ?*anyopaque) callconv(.c) void,
     end: *const fn (registry: ?*anyopaque) callconv(.c) void,
+    instance_of: *const fn (slot: ?*anyopaque) callconv(.c) ?*anyopaque,
 ) bool;
 
-/// Move the fresh, unarmed `Global<Object>` `box` holds into the empty node
-/// slot `slot` (constructed in place) and delete the box: from here the
-/// slot's address is the wrapper's handle.
-pub extern fn v8_NodeWrapper_Adopt(box: *Object, slot: *anyopaque) void;
+/// Whether `box`'s object is an API object a node's anchor can be Wrapped
+/// onto (the binding's wrappers always are).
+pub extern fn v8_NodeWrapper_Wrappable(isolate: *Isolate, box: *Object) bool;
 
-/// Arm the slot's wrapper weak, `cell` its parameter.
-pub extern fn v8_NodeWrapper_SetWeak(slot: *anyopaque, cell: *anyopaque) void;
+/// The node wrap's steps 3-6 (design 4.2): an anchor for the empty node slot
+/// `slot`, the wrapper `box` holds (no internal field) Wrapped with it, the
+/// slot made a TracedReference to it, the anchor registered. `box` stays the
+/// caller's: it holds the wrapper strongly until the caller disposes it.
+pub extern fn v8_NodeWrapper_Attach(isolate: *Isolate, box: *Object, slot: *anyopaque) void;
 
-/// Hold the slot's wrapper strongly (no weak arm). Answers the arm's
-/// parameter (the node's registry cell), or null when it was not weak.
-pub extern fn v8_NodeWrapper_ClearWeak(slot: *anyopaque) ?*anyopaque;
+/// A traced root for a kept node's wrapper (a cppgc::Persistent on its
+/// anchor), OWNED until v8_NodeWrapper_Unroot; null for an empty slot.
+pub extern fn v8_NodeWrapper_Root(isolate: *Isolate, slot: *anyopaque) ?*anyopaque;
 
-/// End the slot's wrapper outside a collection - with `sever`, its internal
-/// fields cleared first - and leave the slot empty.
-pub extern fn v8_NodeWrapper_Reset(isolate: ?*Isolate, slot: *anyopaque, sever: bool) void;
+/// The root v8_NodeWrapper_Root made goes.
+pub extern fn v8_NodeWrapper_Unroot(root: *anyopaque) void;
+
+/// End the slot's wrapper outside a collection: its anchor lets go of the
+/// slot (the wrapper reaches no node from here) and the slot is Reset, empty.
+pub extern fn v8_NodeWrapper_End(isolate: ?*Isolate, slot: *anyopaque) void;
+
+/// The agent's end: every live anchor lets go of its slot, which is Reset,
+/// and `ended` is told each slot.
+pub extern fn v8_NodeWrappers_EndAll(
+    isolate: *Isolate,
+    registry: *anyopaque,
+    ended: *const fn (registry: ?*anyopaque, slot: ?*anyopaque) callconv(.c) void,
+) void;
 
 /// tests/v8/node_anchor_test.zig: what v8_test_NodeWrapper_Probe saw of the
 /// wrapper in a node slot; mirrors v8_wrapper.cpp's CraneNodeWrapperProbe.

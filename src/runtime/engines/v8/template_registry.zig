@@ -220,8 +220,8 @@ pub fn wrapInstanceAsV8Object(
     // we need to return the SAME wrapper to ensure JavaScript === identity works.
     // The node's wrapper slot (engine.NodeWrapperSlot), reached through
     // runtime.lifetime.slotOf: the adapter never names NodeBase's field. The
-    // slot holds the wrapper itself - a Global constructed in place - and its
-    // address is the handle (node_wrappers, the wrapper redesign's P2).
+    // slot holds the wrapper itself - a TracedReference - and its address is
+    // the handle (node_wrappers, the wrapper redesign's P2 and P4).
     if (@import("node_wrappers.zig").wrapperOfInstance(instance)) |bound_wrapper| return bound_wrapper;
 
     // ========================================
@@ -348,8 +348,13 @@ pub fn wrapInstanceAsV8Object(
         }
     }
 
-    // Store the Zig instance in internal field 0
-    v8.v8_Object_SetAlignedPointerInInternalField(
+    // Store the Zig instance in internal field 0 - not a node's: a node
+    // interface's template has no internal field (the wrapper redesign's
+    // P4), and its wrapper reaches the node through its anchor, made at the
+    // cache step below (WrapperCache.set -> node_wrappers.adopt: Object::Wrap,
+    // design 4.2).
+    const is_node = instance.vtable.counted != null;
+    if (!is_node) v8.v8_Object_SetAlignedPointerInInternalField(
         v8_object,
         0,
         @ptrCast(instance),
@@ -360,13 +365,13 @@ pub fn wrapInstanceAsV8Object(
     runtime.instance_lifecycle.markWrapped(instance);
 
     // Store WrapperTypeInfo in internal field 1 (for type-safe unwrapping)
-    if (dom_type_info.getTypeInfoByName(interface_name)) |type_info| {
+    if (!is_node) if (dom_type_info.getTypeInfoByName(interface_name)) |type_info| {
         v8.v8_Object_SetAlignedPointerInInternalField(
             v8_object,
             1,
             @ptrCast(@constCast(type_info)),
         );
-    }
+    };
 
     // Realm-dependent non-configurable members cannot live on an isolate's
     // shared template. The dispatcher has no work for all other interfaces.

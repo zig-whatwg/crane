@@ -55,6 +55,9 @@ pub const Hooks = struct {
     /// The engine's wrapper slot of `target` - what `acquire` answers for a
     /// counted object (a node's NodeBase): `slotOf`.
     slot_of: ?*const fn (target: *anyopaque) *engine.NodeWrapperSlot = null,
+    /// The counted object whose slot `slot` is - `slot_of`'s inverse
+    /// (`targetOfSlot`).
+    target_of_slot: ?*const fn (slot: *engine.NodeWrapperSlot) *anyopaque = null,
 };
 
 // process-wide: dom.refcount's two functions, installed once while the process starts (refcount.install, from Document's and Node's installHooks) and the same for every Browser and thread; read-only after
@@ -79,6 +82,7 @@ fn merged(current: Hooks, owned: Hooks) ?Hooks {
     if (owned.release) |f| next.release = f;
     if (owned.forget) |f| next.forget = f;
     if (owned.slot_of) |f| next.slot_of = f;
+    if (owned.target_of_slot) |f| next.target_of_slot = f;
     return if (std.meta.eql(next, current)) null else next;
 }
 
@@ -142,6 +146,17 @@ pub fn wrapperReleased(target: *anyopaque) void {
 pub fn slotOf(target: *anyopaque) *engine.NodeWrapperSlot {
     const slot_of = hooks.read().slot_of orelse @panic("runtime.lifetime.slotOf: no owner of the counts installed its slot_of hook");
     return slot_of(target);
+}
+
+/// The counted object (a node's NodeBase) whose engine wrapper slot `slot`
+/// is: `slotOf`'s inverse, for an adapter that keeps the slot's address and
+/// not the node's - V8's node anchor (the wrapper redesign's P4,
+/// tmp/redesign/wrapper-redesign-design.md 4.1), whose marking reads its
+/// slot with no call into the host - and still never names a node's field.
+/// Installed with `slot_of`, at process start.
+pub fn targetOfSlot(slot: *engine.NodeWrapperSlot) *anyopaque {
+    const target_of_slot = hooks.read().target_of_slot orelse @panic("runtime.lifetime.targetOfSlot: no owner of the counts installed its target_of_slot hook");
+    return target_of_slot(slot);
 }
 
 /// A wrapper's reference is dropped without `wrapperReleased`, because its
