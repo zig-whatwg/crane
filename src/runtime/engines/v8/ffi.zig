@@ -993,6 +993,14 @@ pub extern fn v8_Isolate_CppHeapUsedBytes(isolate: *Isolate) usize;
 /// `sizeof(cppgc::Member<T>)` as v8_wrapper.cpp is compiled: 4 with the
 /// archive's CPPGC_POINTER_COMPRESSION. For tests/v8/cpp_heap_test.zig.
 pub extern fn v8_test_CppgcMemberSize() usize;
+/// How many C++ heaps the process has alive (cppgc's heap registry; each
+/// heap registers when made and unregisters when freed). TEST-ONLY, and a
+/// V8-INTERNAL read: cppgc::internal::HeapRegistry::GetRegisteredHeapsForTesting,
+/// exported by the archive but not in include/, declared in v8_wrapper.cpp as
+/// 13.1.203's src/heap/cppgc/process-heap.h has it - pinned to that version
+/// (IsolateData::cpp_heap's static_assert). Unlocked, for a test that has its
+/// process to itself (build.zig v8_alone).
+pub extern fn v8_test_CppgcLiveHeaps() usize;
 /// tests/v8/cpp_heap_test.zig's probe on an isolate's C++ heap: a holder
 /// rooted by a cppgc::Persistent holding a leaf through a cppgc::Member
 /// (v8_wrapper.cpp says what it answers).

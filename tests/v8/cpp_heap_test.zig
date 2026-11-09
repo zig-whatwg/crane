@@ -16,6 +16,9 @@
 //! - a C++ `Trace` runs on the agent's thread, inside a major GC's pause - the
 //!   atomic marking (`CppHeapCreateParams.marking_support = kAtomic`) the
 //!   host's tree walk will rely on (R6), never while script runs;
+//! - an agent's end frees its heap (cppgc's heap registry counts it): V8
+//!   13.1.203 never frees a heap given in CreateParams, and leaks --atExit
+//!   cannot see that, the heap staying reachable from the registry;
 //! - the diagnostics tier reports the heap's bytes (`cpp_heap_used_bytes`).
 //!
 //! The probe is v8_wrapper.cpp's (v8_test_CppHeapProbe_*): a holder holding a
@@ -82,6 +85,30 @@ test "an agent createAgent makes has a C++ heap" {
     defer test_agent.close();
     const isolate = try test_agent.open(.{});
     try testing.expect(ffi.v8_Isolate_HasCppHeap(isolate));
+}
+
+test "an agent's end frees its C++ heap: cppgc's heap registry is back where it was" {
+    // The process's count of live C++ heaps (each registers when made and
+    // unregisters when freed). V8 13.1.203 terminates a heap given in
+    // CreateParams inside Isolate::Dispose but never deletes it
+    // (Heap::StartTearDown): this count is the only thing that sees that -
+    // leaks --atExit reports 0, the heap staying reachable from the registry.
+    // The adapter's record frees it (v8_wrapper.cpp IsolateData::cpp_heap).
+    // The count is the process's: build.zig runs this test alone beside the
+    // many-Browsers variant's busy Browser (v8_alone).
+    test_process.start();
+    const before = ffi.v8_test_CppgcLiveHeaps();
+    for (0..3) |_| {
+        const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &test_process.no_hooks, .host = null, .allocator = std.heap.c_allocator });
+        try testing.expectEqual(before + 1, ffi.v8_test_CppgcLiveHeaps());
+        engine.destroyAgent(agent);
+        try testing.expectEqual(before, ffi.v8_test_CppgcLiveHeaps());
+    }
+    // worker_realm's bare isolate the same way.
+    const isolate = ffi.v8_Isolate_New() orelse return error.IsolateFailed;
+    try testing.expectEqual(before + 1, ffi.v8_test_CppgcLiveHeaps());
+    ffi.v8_Isolate_Dispose(isolate);
+    try testing.expectEqual(before, ffi.v8_test_CppgcLiveHeaps());
 }
 
 test "cppgc::Member is 4 bytes, as the archive's CPPGC_POINTER_COMPRESSION makes it" {

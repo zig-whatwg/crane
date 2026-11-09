@@ -1204,6 +1204,7 @@ const snapshot_first_reason = "restores agents from Crane's snapshot, so it must
 const snapshot_first = [_]DeclaredTest{
     .{ .name = "agents_concurrent_engine_state_test.test.two agents restored from the snapshot, on two threads: for-await, Intl, ShadowRealm, JSON modules and ObservableArray 200 times at once", .reason = snapshot_first_reason },
     .{ .name = "bf1_engine_task_initialization_test.test.snapshot initialization runner wakes a later sink and closes safely", .reason = snapshot_first_reason },
+    .{ .name = "cpp_heap_test.test.an agent restored from the snapshot has a C++ heap", .reason = snapshot_first_reason },
     .{ .name = "new_global_snapshot_test.test.snapshot agent: parseJsonInNewGlobal parses in a new global, not the page's", .reason = snapshot_first_reason },
     .{ .name = "new_global_snapshot_test.test.snapshot agent: parseJsonInNewGlobal, again and again, each in a global of its own", .reason = snapshot_first_reason },
     .{ .name = "new_global_snapshot_test.test.snapshot agent: v8_Context_New and v8_Context_NewWithMicrotaskQueue make a plain global", .reason = snapshot_first_reason },
@@ -1238,10 +1239,15 @@ const receiver_creation_reason = "the subject is that the path makes no Global f
 /// testfix2, with the integrator's ruling).
 const weak_record_reason = "the process-wide weak-record ledger is the subject: v8_Debug_LiveWeakCallbackData returning to its baseline is the assertion, and the busy Browser's wrappers arm and free records too";
 
+/// cpp_heap_test: the subject is cppgc's process-wide registry of live C++
+/// heaps, the one measure of an agent's end freeing its heap (lane wr2).
+const cpp_heap_registry_reason = "the subject is cppgc's process-wide registry of live C++ heaps - an agent's end must give its count back - which the busy Browser's agents move too";
+
 /// The tests of lane tsanfix1's whole-file entries (2026-11-02) whose
 /// subject is a count the whole process shares; their files' other tests
 /// read their own isolate's global handle bytes (lane testfix2).
 const process_count_subjects = [_]DeclaredTest{
+    .{ .name = "cpp_heap_test.test.an agent's end frees its C++ heap: cppgc's heap registry is back where it was", .reason = cpp_heap_registry_reason },
     .{ .name = "context_counter_test.test.binding getter and method calls leave live_context_globals unchanged", .reason = context_count_reason },
     .{ .name = "context_counter_test.test.a context made with a global constructor and disposed leaves live_context_globals unchanged", .reason = context_count_reason },
     .{ .name = "indexed_property_semantics_test.test.an indexed read and an `in` check make no handle for the list", .reason = receiver_creation_reason },

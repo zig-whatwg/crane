@@ -3249,6 +3249,35 @@ size_t v8_test_CppgcMemberSize() {
     return sizeof(cppgc::Member<ProbeLeaf>);
 }
 
+}  // extern "C" - the cppgc registry's declaration below is C++
+
+// cppgc's own registry of the process's live C++ heaps: every heap registers
+// in its constructor and unregisters in its destructor (13.1.203
+// src/heap/cppgc/process-heap.h and process-heap.cc, HeapRegistry::Subscription).
+// Exported by the archive, internal to V8 (V8_EXPORT_PRIVATE, not in
+// include/): declared here with the one member the probe calls. Its size is
+// the only measure of whether an agent's end FREED its heap - leaks --atExit
+// cannot tell, because a heap nobody deleted stays reachable from this
+// registry (lane wr2, P3: the CreateParams-only build reported 0 leaks).
+namespace cppgc::internal {
+class HeapBase;
+class HeapRegistry final {
+ public:
+    using Storage = std::vector<HeapBase*>;
+    // "Does not take the registry mutex and is thus only useful for testing."
+    static const Storage& GetRegisteredHeapsForTesting();
+};
+}  // namespace cppgc::internal
+
+extern "C" {
+
+/// How many C++ heaps the process has alive (cppgc's heap registry), for
+/// tests/v8/cpp_heap_test.zig. Unlocked: only for a test that has its process
+/// to itself (build.zig v8_alone).
+size_t v8_test_CppgcLiveHeaps() {
+    return cppgc::internal::HeapRegistry::GetRegisteredHeapsForTesting().size();
+}
+
 /// The probe on `isolate`'s C++ heap, made on the agent's thread with the
 /// isolate entered; null when the isolate has no heap. OWNED:
 /// v8_test_CppHeapProbe_Delete, before the agent ends.
