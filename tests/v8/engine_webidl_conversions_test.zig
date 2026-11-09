@@ -1487,7 +1487,7 @@ test "protocol: a platform object converts to its wrapper in its relevant realm,
     const ours = ffi.v8_Global_Clone(@ptrCast(wrapper)) orelse return error.CloneFailed;
     defer ffi.v8_Global_Dispose(ours);
     const cache: *v8.WrapperCache = @ptrCast(@alignCast(other.getV8WrapperCacheStorage().?));
-    try cache.set(instance, wrapper, test_isolate.?);
+    _ = try cache.set(instance, wrapper, test_isolate.?);
     const expected = asValue(ours);
     const platform_object: runtime.JSValue = .{ .instance = instance };
 

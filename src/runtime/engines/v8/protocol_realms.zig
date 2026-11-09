@@ -675,7 +675,7 @@ fn bindWindowToGlobal(
     const adopted = blk: {
         const storage = realm.getV8WrapperCacheStorage() orelse break :blk false;
         const cache: *WrapperCache = @ptrCast(@alignCast(storage));
-        cache.set(window, global, isolate) catch break :blk false;
+        _ = cache.set(window, global, isolate) catch break :blk false;
         break :blk true;
     };
     defer if (!adopted) ffi.v8_Object_Dispose(global);

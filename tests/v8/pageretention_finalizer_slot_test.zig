@@ -115,8 +115,14 @@ const Page = struct {
     fn wrapIn(self: *Page, cache: *v8.WrapperCache, instance: *runtime.Instance) !*ffi.Object {
         runtime.instance_lifecycle.markWrapped(instance);
         const wrapper = ffi.v8_Object_New(self.isolate) orelse return error.ObjectFailed;
-        try cache.set(instance, @ptrCast(wrapper), self.isolate);
-        return wrapper;
+        // A node's wrapper moves into its slot: the handle `set` answers.
+        return try cache.set(instance, @ptrCast(wrapper), self.isolate);
+    }
+
+    /// The agent's deferred teardown queue drained: what its counts left
+    /// garbage is freed (a slice runs it all).
+    fn drain(self: *Page) void {
+        if (engine.deferredTeardownOf(self.agent)) |queue| queue.drainAll();
     }
 
     /// A full collection: every first and second pass runs before it returns.
@@ -176,13 +182,15 @@ test "a detached wrapped tree collected during a teardown gives its nodes' slots
 
     var teardown: Teardown = undefined;
     teardown.begin();
-    // The collector takes the tree's wrappers: the root's finalizer frees the
-    // tree, the child's either finds it torn down (and hands its slot over)
-    // or comes first (and records the release, so the root's teardown hands
-    // the slot over). Its slot is the teardown's either way - never back yet.
+    // The collector takes the tree's wrappers and lets their references go
+    // (the wrapper redesign's P2: it frees no node); the counts queue the
+    // tree, and its slice - here, inside the teardown - frees it. Its slots
+    // are the teardown's - never back yet.
     page.collect();
     try testing.expect(page.cache.get(tree.child) == null);
     try testing.expect(page.cache.get(tree.root) == null);
+    try testing.expect(child.alive());
+    page.drain();
     try testing.expect(runtime.instance_lifecycle.isCleanedUp(tree.child));
     try expectImpostorElsewhere(page.realm, child);
 
@@ -213,10 +221,10 @@ test "a node its tree tore down before its wrapper was collected gives its slot 
     try testing.expect(!child.alive());
 }
 
-test "a node wrapped in two realms is released only when its last wrapper goes" {
+test "a node has one wrapper per agent, whichever realm asks, and is released when it goes" {
     // A template's contents: kept by their live template whatever becomes of
-    // their wrappers (wrapper_cache.templateOwns), with no tree edge between
-    // their wrappers in two realms - so each realm's wrapper can die alone.
+    // their wrapper. Since the wrapper redesign's P2 a node's wrapper is its
+    // agent's, in its own slot: another realm's wrap answers the same one.
     var page = try Page.open();
     defer page.close();
     const other = try openRealm(page.agent);
@@ -230,28 +238,26 @@ test "a node wrapped in two realms is released only when its last wrapper goes" 
     const template = try interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("template"), .notPassed());
     var template_live = true;
     defer if (template_live) dom.node_creation.destroyUninserted(template);
-    // Establishing the contents wraps them here, held for the template until
-    // it is wrapped; the template lets that hold go, so only the cache's
-    // weak wrapper is left here.
+    // Establishing the contents wraps them, held for the template until it
+    // is wrapped; the template lets that hold go, so only the weak wrapper
+    // is left.
     const content = try interfaces.HTMLTemplateElement.get_content(template);
-    try testing.expect(page.cache.get(content) != null);
+    const wrapper = page.cache.get(content) orelse return error.NotWrapped;
     engine.forgetTracedChild(template, .{ .name = "content" });
-    // The other realm's wrapper, kept by script there.
-    const kept_there = try page.wrapIn(other_cache, content);
-    const held = ffi.v8_Global_Clone(@ptrCast(kept_there)) orelse return error.HoldFailed;
+    // The other realm asks: the same wrapper, no second one.
+    try testing.expect(other_cache.get(content) == wrapper);
+    // Script there keeps it.
+    const held = ffi.v8_Global_Clone(@ptrCast(wrapper)) orelse return error.HoldFailed;
     var held_live = true;
     defer if (held_live) ffi.v8_Global_Dispose(held);
     const made = Made.of(content);
 
-    // This realm's wrapper is collected: the other realm's still reaches the
-    // contents, so they are not released.
     page.collect();
-    try testing.expect(page.cache.get(content) == null);
-    try testing.expect(other_cache.get(content) != null);
+    try testing.expect(page.cache.get(content) != null);
     try testing.expect(made.alive());
     try testing.expect(!runtime.instance_lifecycle.provablyUnwrapped(true, content));
 
-    // The other realm lets its wrapper go: now nothing reaches them.
+    // Script lets it go: now nothing reaches them.
     ffi.v8_Global_Dispose(held);
     held_live = false;
     page.collect();
@@ -271,27 +277,26 @@ test "a node wrapped in two realms is released only when its last wrapper goes" 
     try testing.expect(!made.alive());
 }
 
-test "a node one realm still wraps keeps its slot through another realm's teardown" {
+test "a node torn down under a wrapper script still holds: the wrapper is severed, and the slot goes back after the teardown" {
     var page = try Page.open();
     defer page.close();
-    const other = try openRealm(page.agent);
-    defer engine.destroyWindowRealm(other, .global_detached);
-    const other_cache = try cacheOf(other);
-
     const tree = try Tree.make(page.realm);
-    _ = try page.wrapIn(page.cache, tree.child);
-    const kept_there = try page.wrapIn(other_cache, tree.child);
-    const held = ffi.v8_Global_Clone(@ptrCast(kept_there)) orelse return error.HoldFailed;
+    const wrapper = try page.wrapIn(page.cache, tree.child);
+    const held = ffi.v8_Global_Clone(@ptrCast(wrapper)) orelse return error.HoldFailed;
     defer ffi.v8_Global_Dispose(held);
     const child = Made.of(tree.child);
 
-    // Collected here during a teardown, wrapped there: no release, and the
-    // tree's teardown leaves the slot to the wrapper that still reaches it.
+    // A forced teardown (a realm's end frees its tree whatever the counts
+    // say) under the wrapper script holds: the wrapper is severed - script
+    // reaches no node through it - and the slot emptied, so nothing in
+    // script can read the node, and its slot is the teardown's.
     var teardown: Teardown = undefined;
     teardown.begin();
     page.collect();
-    try testing.expect(!runtime.instance_lifecycle.provablyUnwrapped(true, tree.child));
+    try testing.expect(page.cache.get(tree.child) != null);
     dom.node_creation.destroyUninserted(tree.root);
+    try testing.expect(runtime.instance_lifecycle.isCleanedUp(tree.child));
+    try expectImpostorElsewhere(page.realm, child);
     teardown.end();
-    try testing.expect(child.alive());
+    try testing.expect(!child.alive());
 }

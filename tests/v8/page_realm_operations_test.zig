@@ -1733,6 +1733,16 @@ fn collectTwice() void {
     ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
 }
 
+/// The agent's deferred teardown queue drained: the trees its counts left
+/// garbage are freed (engine.requestGarbageCollection drains by contract).
+/// Since the wrapper redesign's P2 the adapter frees no node from a
+/// collection, and this file's agent (made without a queue of the host's)
+/// has the adapter's own queue, which only a requested collection, a realm's
+/// end and the agent's end drain.
+fn drainGarbage() void {
+    protocol.requestGarbageCollection(test_agent.agent());
+}
+
 test "protocol: a traced child lives as long as its owner's wrapper, and goes with it" {
     defer test_agent.close();
     var host: WindowHost = .{};
@@ -2405,6 +2415,7 @@ test "protocol: a node script holds keeps its detached tree's root, and the tree
     try expectEval(w, "delete globalThis.held", "true");
     collectTwice();
     collectTwice();
+    drainGarbage();
     try std.testing.expect(!root.alive());
     try std.testing.expect(!kept.alive());
     try expectEval(w, "delete globalThis.doc", "true");
@@ -2459,6 +2470,7 @@ test "protocol: a node's wrapper in a live tree keeps its expandos without being
     const removed = Watched.of(try platformObjectIn(w, "root.removeChild(root.firstChild)"));
     collectTwice();
     collectTwice();
+    drainGarbage();
     try std.testing.expect(!removed.alive());
     try expectEval(w, "root.firstChild.n === 1 && root.lastChild.n === 49", "true");
     try expectEval(w, "delete globalThis.root && delete globalThis.doc", "true");

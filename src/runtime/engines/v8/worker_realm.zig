@@ -355,7 +355,7 @@ pub fn bindGlobalScope(comptime Interface: type, isolate: *ffi.Isolate, context:
         return EngineError.OperationFailed;
     };
     const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-    cache.set(instance, global, isolate) catch return EngineError.OutOfMemory;
+    _ = cache.set(instance, global, isolate) catch return EngineError.OutOfMemory;
 
     const global_obj = ffi.v8_Context_Global(context) orelse return EngineError.OperationFailed;
     defer ffi.v8_Object_Dispose(global_obj);

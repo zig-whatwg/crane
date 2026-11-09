@@ -204,16 +204,16 @@ test "a node wrap adds no wrapper cache entry and no weak callback record: its w
     const entries = try counter("wrapper_cache_entries");
     const weak_records = try counter("live_weak_callback_data");
     const node_wrappers = try counter("node_wrappers");
-    try page.run("for (let i = 0; i < 100; i++) xs.push(d.createElement('div')); xs.push(new Text('t'));");
+    try page.run("for (let i = 0; i < 100; i++) xs.push(d.createElement('div')); xs.push(d.createTextNode('t'));");
     queue.drainAll();
-    // 100 elements made by a factory, 1 Text by its constructor: 101 node
-    // wrappers, every one in its node's slot and its agent's registry.
+    // 100 elements and a Text, made by factories: 101 node wrappers, every
+    // one in its node's slot and its agent's registry.
     try testing.expectEqual(entries, try counter("wrapper_cache_entries"));
     try testing.expectEqual(weak_records, try counter("live_weak_callback_data"));
     try testing.expectEqual(node_wrappers + 101, try counter("node_wrappers"));
     // Identity: the wrapper the binding hands back again is the one script
     // has.
-    try testing.expect(try page.holds("const f = d.createDocumentFragment(); f.append(xs[0], xs[1]); f.firstChild === xs[0] && xs[0].nextSibling === xs[1]"));
+    try testing.expect(try page.holds("(() => { const f = d.createDocumentFragment(); f.appendChild(xs[0]); f.appendChild(xs[1]); return f.firstChild === xs[0] && xs[0].nextSibling === xs[1]; })()"));
 
     // Their collection empties the registry again.
     try page.run("globalThis.xs = null;");
@@ -341,4 +341,54 @@ test "a pending-activity keep taken before the wrap holds the wrapper the bindin
     engine.releasePlatformObject(span);
     page.collect();
     try testing.expect(runtime.lifetime.slotOf(span_node).isEmpty());
+}
+
+test "a node torn down under its live wrapper: the wrapper is severed and its slot emptied, its reference released" {
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    const made = try detachedDiv(page);
+    const before = try counter("node_wrappers");
+    // A teardown the counts did not decide - a forced realm end's
+    // coordinated teardown frees a tree whatever its counts say (refcount
+    // 7a's net) - reached here through the root's own teardown.
+    dom.node_creation.destroyRoot(made.div.instance);
+    try testing.expect(!made.div.alive());
+    try testing.expectEqual(before - 1, try counter("node_wrappers"));
+    // Script still holds the wrapper: it reaches no node through it - a
+    // TypeError at the binding's unwrap, never the freed node.
+    try testing.expect(try page.holds("(() => { try { globalThis.x.localName; return false; } catch (e) { return e instanceof TypeError; } })()"));
+    try page.run("globalThis.x = null;");
+    page.collect();
+    queue.drainAll();
+}
+
+test "releaseNodeWrappers: every node wrapper ends and lets its reference go; the host's drain frees what only wrappers held" {
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    const made = try detachedDiv(page);
+    // One kept as well: its keep goes with the agent's end too.
+    const kept = try page.instance("globalThis.k = d.createElement('span'); k");
+    const kept_watched = Watched.of(kept);
+    engine.keepPlatformObjectAlive(kept);
+    queue.drainAll();
+    try testing.expect(try counter("node_wrappers") >= 3);
+
+    engine.releaseNodeWrappers(page.agent);
+    try testing.expectEqual(@as(i64, 0), try counter("node_wrappers"));
+    try testing.expect(runtime.lifetime.slotOf(made.node).isEmpty());
+    try testing.expect(!engine.hasWrapper(kept));
+    try testing.expect(made.div.alive());
+    try testing.expectEqual(@as(u32, 0), dom.refcount.count(made.node));
+    // Idempotent.
+    engine.releaseNodeWrappers(page.agent);
+    try testing.expectEqual(@as(i64, 0), try counter("node_wrappers"));
+    // The host's last drain: the trees only wrappers held go.
+    try testing.expect(!queue.isEmpty());
+    queue.drainAll();
+    try testing.expect(!made.div.alive());
+    try testing.expect(!kept_watched.alive());
 }

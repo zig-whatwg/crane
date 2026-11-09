@@ -64,9 +64,11 @@ const Probe = struct {
         /// result, drop the wrapper - an upgrade constructor whose `this`
         /// nobody keeps - and force a full collection (TestUtils.gc()). V8
         /// runs the weak callbacks' second pass synchronously for a forced
-        /// collection (GlobalHandles::PostGarbageCollectionProcessing), and
-        /// the wrapper cache's finalizer frees a detached element no tree
-        /// holds.
+        /// collection (GlobalHandles::PostGarbageCollectionProcessing). The
+        /// wrapper cache's finalizer used to free a detached element no tree
+        /// holds there; since the wrapper redesign's P2 a collection frees
+        /// no node - it lets the wrapper's reference go, and the counts
+        /// queue the tree for a slice after the call (refcount D8).
         collect_unheld_wrapper,
     };
 
@@ -200,13 +202,20 @@ test "a result the reactions left alone is returned and wrapped" {
     try std.testing.expect(protocol.hasWrapper(Probe.made.?));
 }
 
-test "a forced collection at end frees a result whose wrapper nobody holds: InvalidStateError" {
+test "a forced collection at end frees no result: the binding returns it" {
     const page = try Page.open();
     defer page.close();
     Probe.at_end = .collect_unheld_wrapper;
     defer Probe.at_end = .nothing;
+    // The collection took the wrapper the reaction made and dropped, and let
+    // its reference go; the counts queued the element (no other hold) and
+    // nothing freed it mid-call - the binding converts it as it is: a new
+    // wrapper, a second reference (the wrapper redesign's P2: the adapter
+    // frees no node; it was an InvalidStateError while the second pass freed
+    // a collected root).
     try page.expect(
-        \\try { BceCEReactionsResultProbe.make(); "returned" }
+        \\try { String(BceCEReactionsResultProbe.make() instanceof HTMLElement) }
         \\catch (e) { e instanceof DOMException && e.name === "InvalidStateError" ? "InvalidStateError" : String(e) }
-    , "InvalidStateError");
+    , "true");
+    try std.testing.expect(protocol.hasWrapper(Probe.made.?));
 }

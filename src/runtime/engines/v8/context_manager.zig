@@ -213,10 +213,12 @@ pub fn useAllocator(isolate: *v8.Isolate, allocator: std.mem.Allocator) !void {
 /// race conditions between context teardown and GC-driven cleanup.
 pub fn endAgentRealms(isolate: *v8.Isolate) void {
     const state = protocol_agents.realmsOf(isolate) orelse return;
-    endRealms(state);
+    endRealms(state, protocol_agents.deferredTeardownOf(isolate));
 }
 
-fn endRealms(state: *Realms) void {
+/// `queue`: the agent's deferred teardown queue, drained before the realms'
+/// records are freed (below).
+fn endRealms(state: *Realms, queue: ?*runtime.gc.DeferredTeardown) void {
     // An agent that never hosted a realm has nothing to end.
     if (state.contexts.capacity() == 0 and state.retired.capacity == 0) return;
     log.debug("[context_manager.endRealms] {} live, {} retired", .{ state.contexts.count(), state.retired.items.len });
@@ -268,6 +270,14 @@ fn endRealms(state: *Realms) void {
         // have let it go: the entry's Window is found without it.
         removeContextByKey(kv.key_ptr.*, if (entry.owns_v8_ctx) entry.v8_ctx else null);
     }
+
+    // What the realms' ends left garbage - a node a platform object their
+    // wrapper caches freed held counted (an event's target), whose tree that
+    // release left with no hold - goes now, while every realm record its
+    // nodes name is still here: since the wrapper redesign's P2 no realm end
+    // frees a node whatever its count, so the counts' queue is the only way
+    // these trees go (protocol_agents.endAgent closes it after this).
+    if (queue) |q| q.drainAll();
 
     // Free the entries retired by each realm's end, the ones above
     // included. Held until the agent's end because Instances created in
@@ -990,7 +1000,7 @@ fn createWindowBoundToGlobal(
     // This is for consistency with the wrapper cache system
     if (ctx.getV8WrapperCacheStorage()) |cache_storage| {
         const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-        try cache.set(window_instance, global, isolate);
+        _ = try cache.set(window_instance, global, isolate);
     }
 
     // 7. Set up Window-specific global properties (window, self, globalThis)
@@ -1671,6 +1681,9 @@ pub fn getDocumentUrl(v8_ctx: *v8.Context) ?[]const u8 {
 ///
 /// On the agent's own thread (the current isolate's realms).
 pub fn markInstanceCleanedUp(instance: *runtime.Instance) void {
+    // A node's wrapper is its agent's, in its own slot: severed and ended
+    // now, its reference with it (node_wrappers.nodeDestroyed).
+    if (instance.vtable.counted != null) return @import("node_wrappers.zig").nodeDestroyed(instance);
     // Get the context from the instance
     const ctx_data = instance.ctx;
 
@@ -1862,7 +1875,7 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
     // 12. Register Window in wrapper cache
     if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
         const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-        try cache.set(window_instance, global, isolate);
+        _ = try cache.set(window_instance, global, isolate);
     }
 
     // 13. Register Window with context manager (for getWindowForContext)

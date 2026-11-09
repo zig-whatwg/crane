@@ -198,8 +198,17 @@ const AgentRecord = struct {
     repl: ?*protocol_repl.Session = null,
     /// AgentOptions.deferred_teardown: the host's queue a garbage tree's
     /// teardown goes to (dom.refcount_teardown, refcount step 7), BORROWED;
-    /// the agent's end drains and closes it.
+    /// the agent's end drains and closes it. For an agent made without one,
+    /// `own_deferred_teardown`.
     deferred_teardown: ?*runtime.gc.DeferredTeardown = null,
+    /// The agent's own queue, OWNED, when the host gave none (only a test's
+    /// own agent): the adapter frees no node since the wrapper redesign's P2,
+    /// so every agent needs a queue for what its counts leave garbage. It
+    /// drains as a host's does - at a requested collection, each realm's
+    /// end, the agent's end - but no event loop slices it; `endAgent` frees
+    /// it, before the isolate is disposed (lane wr1 batch 2, the integrator's
+    /// decision (A)).
+    own_deferred_teardown: ?*runtime.gc.DeferredTeardown = null,
     /// The WindowProperties named properties object's template
     /// (window_properties.zig): this isolate's, made by its first window
     /// realm and reused by every later one, as Blink keeps its templates in
@@ -482,12 +491,24 @@ pub fn agentHost(agent: *Agent) ?*anyopaque {
     return record.host;
 }
 
-/// The deferred teardown queue the host gave the agent whose isolate this is
-/// (AgentOptions.deferred_teardown); null when it gave none, or for an
-/// isolate createAgent did not make - whose collected nodes are then torn
-/// down in the second pass, as before.
+/// The deferred teardown queue of the agent whose isolate this is: the one
+/// the host gave it (AgentOptions.deferred_teardown), else the agent's own
+/// (AgentRecord.own_deferred_teardown); null for an isolate createAgent did
+/// not make, once its record went (removeAgent), and - a host's queue - once
+/// its agent's end began.
 pub fn deferredTeardownOf(isolate: *ffi.Isolate) ?*runtime.gc.DeferredTeardown {
-    const record = recordOf(isolate) orelse return null;
+    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
+    defer std.Io.Threaded.mutexUnlock(&agents_lock);
+    const record = agents.get(isolate) orelse return null;
+    // A host's queue is not answered once the agent's end began: the host
+    // drained it, and freed what was left of its DOM (a Browser's sweeps,
+    // Browser.deinit), before ending the agent. The agent's OWN queue (a test
+    // agent, which nothing sweeps) is answered through its end, until its
+    // record goes: the realms that end inside it (isolate_lifecycle.
+    // cleanupAll) release what their caches held - an event's target - and a
+    // tree that leaves garbage is queued and drained there (context_manager.
+    // endRealms), the queue closed only after.
+    if (record.ending and record.own_deferred_teardown == null) return null;
     return record.deferred_teardown;
 }
 
@@ -581,9 +602,18 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     // realm's WindowProxy or Location - throws a SecurityError.
     @import("cross_origin.zig").installOnIsolate(isolate);
 
+    // The queue the agent's garbage trees go to: the host's, else the
+    // agent's own (AgentRecord.own_deferred_teardown).
+    const own_queue: ?*runtime.gc.DeferredTeardown = if (options.deferred_teardown != null) null else blk: {
+        const queue = options.allocator.create(runtime.gc.DeferredTeardown) catch return error.OutOfMemory;
+        queue.* = runtime.gc.DeferredTeardown.init(options.allocator);
+        break :blk queue;
+    };
+    errdefer if (own_queue) |queue| options.allocator.destroy(queue);
+    const deferred_teardown = options.deferred_teardown orelse own_queue;
     const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.destroy(record);
-    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = options.deferred_teardown, .webassembly_compilations = .{ .allocator = options.allocator } };
+    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = deferred_teardown, .own_deferred_teardown = own_queue, .webassembly_compilations = .{ .allocator = options.allocator } };
     {
         std.Io.Threaded.mutexLockUncancelable(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
@@ -591,10 +621,10 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     }
     // The queue the "DOM algorithm active" depth is counted on, one load
     // from the isolate (dom_algorithm.zig; refcount design 9, risk 4).
-    @import("dom_algorithm.zig").install(isolate, options.deferred_teardown);
+    @import("dom_algorithm.zig").install(isolate, deferred_teardown);
     // [external_memory]: the host's native memory the agent's objects keep
     // alive, reported to V8 at the same safe points (external_memory.zig).
-    @import("external_memory.zig").install(isolate, options.external_memory, options.deferred_teardown);
+    @import("external_memory.zig").install(isolate, options.external_memory, deferred_teardown);
 
     // The hooks the host supplied, and only those: a hook left null is the
     // host's choice to have no such behaviour.
@@ -675,6 +705,7 @@ pub fn endAgent(agent: *Agent) void {
     const pattern_matcher = if (record) |r| r.pattern_matcher else null;
     const window_properties = if (record) |r| r.window_properties_template else null;
     const deferred_teardown = if (record) |r| r.deferred_teardown else null;
+    const own_deferred_teardown = if (record) |r| r.own_deferred_teardown else null;
     const intl_objects = if (record) |r| r.intl_objects else null;
     const observable_arrays = if (record) |r| r.observable_arrays else null;
     const repl = if (record) |r| r.repl else null;
@@ -695,6 +726,16 @@ pub fn endAgent(agent: *Agent) void {
     //    thenCallback reads v8::debug::GetInspector). Answers that arrive in
     //    between find no evaluation and are released.
     if (repl) |session| session.end();
+    // Its node wrappers end, every one's reference let go (engine.
+    // releaseNodeWrappers, idempotent: a host that called it before its last
+    // drain left nothing here) - before the agent is forgotten, while the
+    // counts still find its queue, which the drain below empties (the
+    // wrapper redesign's P2, design 4.9 step 2).
+    {
+        const entered_for_wrappers = EnteredIsolate.of(agent);
+        defer entered_for_wrappers.leave();
+        @import("node_wrappers.zig").releaseNodeWrappers(isolate);
+    }
     forgetAgent(agent);
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
@@ -713,12 +754,10 @@ pub fn endAgent(agent: *Agent) void {
     // The deferred teardown queue: each realm's end drained its own (they end
     // before their agent), and what the counts queued after - a holder a
     // realm's coordinated teardown released (refcount step 7) - goes now, so
-    // it is empty. Closed from here on - what the collections below find is
-    // torn down in the second pass, as before.
+    // it is empty. It closes after the agent's remaining realms end (below).
     if (deferred_teardown) |queue| {
         queue.drainAll();
         std.debug.assert(queue.isEmpty());
-        queue.close();
         // No binding entry counts on it from here on.
         @import("dom_algorithm.zig").install(entered.isolate, null);
     }
@@ -733,6 +772,14 @@ pub fn endAgent(agent: *Agent) void {
     // ones freed - while the record is still found for them (`realmsOf`),
     // then its templates and its allocator. Then the record goes.
     isolate_lifecycle.cleanupAll(isolate, allocator);
+    // The realms' ends drained what they left garbage (context_manager.
+    // endRealms): the queue is empty, and closed from here on - what the
+    // collections below find is torn down in the second pass, as before.
+    if (deferred_teardown) |queue| {
+        queue.drainAll();
+        std.debug.assert(queue.isEmpty());
+        queue.close();
+    }
     removeAgent(isolate);
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     ffi.v8_Isolate_PerformMicrotaskCheckpoint(isolate);
@@ -741,6 +788,15 @@ pub fn endAgent(agent: *Agent) void {
     // [repl_mode] Step 2 of the console session's end (above): the
     // inspector goes, with the isolate still entered and not yet disposed.
     if (repl) |session| session.destroy();
+    // The agent's own queue (a host gave none): drained and closed above,
+    // freed now - after the last collections, before the isolate is
+    // disposed and its C++ heap freed (worker_realm.destroyAgent). What
+    // those collections queued, if anything, goes first.
+    if (own_deferred_teardown) |queue| {
+        queue.drainAll();
+        queue.deinit();
+        allocator.destroy(queue);
+    }
 }
 
 // ============================================================================

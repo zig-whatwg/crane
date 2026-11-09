@@ -6,14 +6,14 @@
 //! realm's life since step 7 (lane refcount9's 7a, tmp/plans/refcount9-
 //! design.md B1-B2; dom.refcount_teardown): a tree is freed only once its
 //! total is zero, in every agent made with a deferred teardown queue - every
-//! production agent (Browser.zig, html/worker_host.zig). Two frees are still
-//! made whatever the counts say, and the holders' nets (generation checks,
-//! `node_holds.nodeReleased`) stay for them: a FORCED realm end's coordinated
-//! teardown (7a keeps it as the net: a page's end, a removed iframe, a
-//! back/forward cache eviction, the Browser's end), and the second pass of an
-//! agent made WITHOUT a queue (a test's own: wrapper_cache.finalizeEntry
-//! keeps the pre-step-7 model there; the wrapper redesign's P2 removes it for
-//! nodes). Lane wr1 batch 2: tests/v8/wr1_counted_hold_test.zig.
+//! production agent (Browser.zig, html/worker_host.zig), and since the
+//! wrapper redesign's P2 in every agent: the V8 adapter frees no node, and
+//! gives an agent made without a queue (a test's own) one of its own. One
+//! free is still made whatever the counts say, and the holders' nets
+//! (generation checks, `node_holds.nodeReleased`) stay for it: a FORCED realm
+//! end's coordinated teardown (7a keeps it as the net: a page's end, a
+//! removed iframe, a back/forward cache eviction, the Browser's end). Lane wr1
+//! batch 2: tests/v8/wr1_counted_hold_test.zig, node_wrapper_inline_test.zig.
 //!
 //! What a node count is, from WebKit (Source/WebCore/dom/Node.h, NodeInlines.h):
 //! `NodeBase.rc` holds the count of `Ref`s in units of `NodeBase.rc_one` with
@@ -676,7 +676,7 @@ pub fn wrapperDeref(node: *NodeBase) void {
 // one, as the wrapper's are. They decide frees since step 7: a node a holder
 // counts outlives its wrapper's collection (tests/v8/wr1_counted_hold_test.zig).
 // A holder still keeps its old net - a node freed under it is FORGOTTEN,
-// never released (dom.node_holds) - for the frees made whatever the counts say
+// never released (dom.node_holds) - for the free made whatever the counts say
 // (a forced realm end's coordinated teardown; see the file's header).
 // ============================================================================
 

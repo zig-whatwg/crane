@@ -148,8 +148,7 @@ pub fn slotOf(target: *anyopaque) *engine.NodeWrapperSlot {
 /// target is gone: the collector freed the node while the wrapper waited for
 /// its finalizer, or the realm's objects go with a batch free. Since step 7 a
 /// node with a wrapper is held, so only a free made whatever the counts say
-/// gets here: a forced realm end's coordinated teardown, or the second pass
-/// of an agent made without a deferred teardown queue (a test's own).
+/// gets here: a forced realm end's coordinated teardown.
 pub fn wrapperForgotten() void {
     const forget = hooks.read().forget orelse return;
     forget();

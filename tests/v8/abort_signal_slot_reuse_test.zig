@@ -115,7 +115,7 @@ const Page = struct {
     /// object script has seen; nothing else holds it.
     fn wrap(self: *Page, instance: *runtime.Instance) !void {
         const wrapper = ffi.v8_Object_New(self.isolate) orelse return error.ObjectFailed;
-        try self.cache.set(instance, @ptrCast(wrapper), self.isolate);
+        _ = try self.cache.set(instance, @ptrCast(wrapper), self.isolate);
     }
 
     /// A full collection: every first pass runs before it returns (and

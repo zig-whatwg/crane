@@ -219,17 +219,10 @@ pub fn wrapInstanceAsV8Object(
     // (e.g., MutationObserver callback sees element created in parent context),
     // we need to return the SAME wrapper to ensure JavaScript === identity works.
     // The node's wrapper slot (engine.NodeWrapperSlot), reached through
-    // runtime.lifetime.slotOf: the adapter never names NodeBase's field.
-    if (instance_bridge.getNodeBase(@ptrCast(instance))) |nodebase| {
-        if (runtime.lifetime.slotOf(nodebase).handle) |bound_wrapper| {
-            std.log.debug("[wrapInstanceAsV8Object] RETURNING the node's wrapper for {s} Instance={*} NodeBase={*} wrapper={*}", .{ interface_name, instance, nodebase, bound_wrapper });
-            return @ptrCast(bound_wrapper);
-        } else {
-            std.log.debug("[wrapInstanceAsV8Object] NodeBase found but its wrapper slot is empty for {s} Instance={*} NodeBase={*}", .{ interface_name, instance, nodebase });
-        }
-    } else {
-        std.log.debug("[wrapInstanceAsV8Object] NO NodeBase found for {s} Instance={*}", .{ interface_name, instance });
-    }
+    // runtime.lifetime.slotOf: the adapter never names NodeBase's field. The
+    // slot holds the wrapper itself - a Global constructed in place - and its
+    // address is the handle (node_wrappers, the wrapper redesign's P2).
+    if (@import("node_wrappers.zig").wrapperOfInstance(instance)) |bound_wrapper| return bound_wrapper;
 
     // ========================================
     // CACHE LOOKUP: Check if we already have a wrapper for this instance
@@ -420,7 +413,9 @@ pub fn wrapInstanceAsV8Object(
             // and an AbortController). The wrapper made here goes, its
             // fields cleared first so nothing can reach the instance
             // through it.
-            cache.set(instance, final_object, isolate) catch |err| {
+            // A node's wrapper moves into its own slot (`final_object`'s
+            // box goes): the handle `set` answers is the one to hand back.
+            const held = cache.set(instance, final_object, isolate) catch |err| {
                 if (err == error.AlreadyWrapped) {
                     // Wrapped while this one was being made: that wrapper is
                     // the instance's one wrapper.
@@ -429,13 +424,16 @@ pub fn wrapInstanceAsV8Object(
                         return existing;
                     }
                 }
-                log.warn("the wrapper of a {s} was not cached: {s}", .{ interface_name, @errorName(err) });
+                // A node of an agent that runs no more script
+                // (engine.releaseNodeWrappers) is wrapped no more: expected.
+                if (err != error.AgentEnded) log.warn("the wrapper of a {s} was not cached: {s}", .{ interface_name, @errorName(err) });
                 discardUncachedWrapper(final_object);
                 return err;
             };
             if (is_iframe) {
                 log.debug("[wrapInstanceAsV8Object] Cached iframe instance={*} in cache={*}", .{ instance, cache });
             }
+            return held;
         } else {
             if (is_iframe) {
                 log.debug("[wrapInstanceAsV8Object] NO cache storage for iframe instance={*}", .{instance});
@@ -444,21 +442,6 @@ pub fn wrapInstanceAsV8Object(
     } else {
         if (is_iframe) {
             log.debug("[wrapInstanceAsV8Object] ctx_mgr.get returned null for iframe instance={*}", .{instance});
-        }
-    }
-
-    // ========================================
-    // BIND THE WRAPPER: Store on NodeBase for cross-context identity
-    // ========================================
-    // For DOM nodes, store the wrapper directly on the NodeBase so that
-    // future lookups from ANY context return the same wrapper.
-    // This ensures JavaScript === identity works across contexts
-    // (e.g., MutationObserver callbacks seeing elements from parent context).
-    if (instance_bridge.getNodeBase(@ptrCast(instance))) |nodebase| {
-        const slot = runtime.lifetime.slotOf(nodebase);
-        if (slot.isEmpty()) {
-            slot.handle = @ptrCast(final_object);
-            std.log.debug("[wrapInstanceAsV8Object] SET the node's wrapper for {s} Instance={*} NodeBase={*} wrapper={*}", .{ interface_name, instance, nodebase, final_object });
         }
     }
 

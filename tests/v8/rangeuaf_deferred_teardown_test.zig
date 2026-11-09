@@ -158,7 +158,7 @@ const Page = struct {
         instance.state = @ptrCast(&mock_state);
         instance.ctx = self.realm;
         const wrapper = ffi.v8_Object_New(self.isolate) orelse return error.ObjectFailed;
-        try self.cache.set(instance, @ptrCast(wrapper), self.isolate);
+        _ = try self.cache.set(instance, @ptrCast(wrapper), self.isolate);
         return .{ .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
     }
 

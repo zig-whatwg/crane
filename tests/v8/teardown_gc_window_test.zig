@@ -76,7 +76,7 @@ fn endCache(cache: ?*anyopaque) void {
 /// dropped: a real V8 object, held by the cache alone.
 fn wrap(instance: *runtime.Instance) !void {
     const wrapper = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
-    try test_cache.?.set(instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
+    _ = try test_cache.?.set(instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
 }
 
 /// How often `collectingDeinit` ran, and whether its collection took the

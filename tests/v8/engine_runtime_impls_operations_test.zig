@@ -831,6 +831,7 @@ test "protocol: the diagnostics tier reports the agent's heap and the adapter's 
     // Counts that only rise, or count what is held: never negative.
     for ([_][]const u8{
         "wrapper_cache_entries",
+        "node_wrappers",
         "globals_created",
         "object_globals_from.FunctionCallbackInfo_This",
         "object_globals_from.PropertyCallbackInfo_This",

@@ -255,7 +255,9 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
         // dispose above (a set that fails stored nothing); the
         // instance, which nothing else ever wrapped, is freed, and the
         // error is thrown.
-        cache.set(instance, this_obj, isolate) catch |err| {
+        // A node's receiver moves into its slot (its box goes): nothing
+        // below reads `this_obj` but a DOMException's, which is no node.
+        _ = cache.set(instance, this_obj, isolate) catch |err| {
             unbindReceiver(this_obj);
             instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
             const function_ctx_owned = info.getFunctionCreationContext();
@@ -484,7 +486,9 @@ fn bindConstructedElement(self: *const Constructor, receiver: *v8.Object, elemen
         install(isolate, context, receiver);
     }
     const cache = elementWrapperCache(element) orelse return false;
-    cache.set(element, receiver, isolate) catch |err| {
+    // The element's receiver moves into its slot (its box goes): the
+    // caller reads `receiver` no more.
+    _ = cache.set(element, receiver, isolate) catch |err| {
         // Not cached (OutOfMemory): the receiver must not reach the
         // element, which nothing owns through it (Codex row 15 Q22).
         log.warn("a constructed {s}'s wrapper was not cached: {s}", .{ self.interface_name, @errorName(err) });

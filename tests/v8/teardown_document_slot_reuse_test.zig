@@ -15,6 +15,14 @@
 //! The impostor announces itself (docs/lessons/debugging-give-the-objects-
 //! that-reissue-a-freed-slot-a-voice.md): a Document whose referencing-node
 //! count would move if a root's teardown released its count on it.
+//!
+//! (2026-11-09, lane wr1 batch 2, the wrapper redesign's P2: a node's wrapper
+//! is in its own slot, never in a wrapper cache, so the sweep meets no node
+//! and the hash-order case - a wrapped root swept after its Document's entry -
+//! is gone with it; tests/v8/pageretention_sweep_slot_test.zig pins that the
+//! sweep tears down no node. The Document torn down under its live wrapper
+//! below has the wrapper severed and its slot handed to the coordinator by
+//! its own teardown.)
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -85,7 +93,7 @@ const Realm = struct {
     fn wrap(self: Realm, instance: *runtime.Instance) !void {
         runtime.instance_lifecycle.markWrapped(instance);
         const wrapper = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
-        try self.cache.set(instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
+        _ = try self.cache.set(instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
     }
 };
 
@@ -147,90 +155,4 @@ test "a torn-down Document's slot survives the sweep: an allocation after it nev
     coordinator.releaseDeferredStorage();
     try testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(document));
     try testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(root));
-}
-
-// The same inside the sweep: wrapped detached roots whose own teardown first
-// allocates an impostor and records what it found, so whichever of them the
-// hash order puts after the Document's entry checks the window.
-
-var sweep_document: ?*runtime.Instance = null;
-var sweep_document_generation: u64 = 0;
-var sweep_coordinator: ?*runtime.CleanupCoordinator = null;
-var impostors: [32]*runtime.Instance = undefined;
-var impostor_count: usize = 0;
-var roots_after_document: usize = 0;
-var document_slot_reused: bool = false;
-var document_slot_returned: bool = false;
-
-fn impostorDeinit(instance: *runtime.Instance) void {
-    const document = sweep_document.?;
-    for (sweep_coordinator.?.deferred_storage.items) |deferred| {
-        if (deferred.instance == document) roots_after_document += 1;
-    }
-    if (runtime.SlabAllocator.generationOf(document) != sweep_document_generation) document_slot_returned = true;
-    if (interfaces.Document.init(testing.allocator, instance.ctx)) |impostor| {
-        if (impostor == document) document_slot_reused = true;
-        impostors[impostor_count] = impostor;
-        impostor_count += 1;
-    } else |_| {}
-    interfaces.HTMLElement.deinit(instance);
-}
-
-const impostor_vtable = blk: {
-    var vtable = interfaces.HTMLElement.vtable;
-    vtable.deinit = &impostorDeinit;
-    break :blk vtable;
-};
-
-/// One teardown of a realm holding a wrapped Document and `roots.len`
-/// wrapped detached roots of it. Whether the hash order put a root after the
-/// Document's entry.
-fn sweepOnce() !bool {
-    const realm = try Realm.open();
-    defer realm.close();
-    var coordinator = runtime.CleanupCoordinator.init(testing.allocator);
-    defer coordinator.deinit();
-    runtime.cleanup_coordinator.setActiveCoordinator(&coordinator);
-    defer runtime.cleanup_coordinator.setActiveCoordinator(null);
-    impostor_count = 0;
-    roots_after_document = 0;
-    document_slot_reused = false;
-    document_slot_returned = false;
-
-    const document = try interfaces.Document.init(testing.allocator, realm.data);
-    sweep_document = document;
-    sweep_document_generation = runtime.SlabAllocator.generationOf(document);
-    sweep_coordinator = &coordinator;
-    try realm.wrap(document);
-    var roots: [24]*runtime.Instance = undefined;
-    for (&roots) |*root| {
-        root.* = try detachedRoot(realm.data, document, &impostor_vtable);
-        try realm.wrap(root.*);
-    }
-
-    coordinator.beginContextCleanup();
-    dom.node_creation.destroyUninserted(document);
-    realm.sweep();
-    defer for (impostors[0..impostor_count]) |impostor| runtime.Instance.deinit(impostor);
-
-    try testing.expectEqual(roots.len, impostor_count);
-    try testing.expect(!document_slot_returned);
-    try testing.expect(!document_slot_reused);
-    for (impostors[0..impostor_count]) |impostor| try testing.expectEqual(@as(u32, 0), referencingNodes(impostor));
-
-    coordinator.endContextCleanup();
-    coordinator.releaseDeferredStorage();
-    try testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(document));
-    return roots_after_document > 0;
-}
-
-test "inside the sweep, a root after its Document's entry finds the slot still the Document's" {
-    defer test_agent.close();
-    // Each teardown's hash order is its own; a run where every root came
-    // before the Document's entry did not exercise the window, so teardowns
-    // repeat until one did (each misses with odds 1 in 25).
-    var exercised = false;
-    var attempt: usize = 0;
-    while (!exercised and attempt < 8) : (attempt += 1) exercised = try sweepOnce();
-    try testing.expect(exercised);
 }

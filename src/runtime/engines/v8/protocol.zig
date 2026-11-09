@@ -215,6 +215,18 @@ pub fn destroyAgent(agent: *Agent) void {
     worker_realm.destroyAgent(agent);
 }
 
+/// engine.releaseNodeWrappers: the agent's node wrappers end - every one's
+/// slot severed and emptied, its counted reference let go - and no node is
+/// wrapped from here on (node_wrappers.releaseNodeWrappers; the wrapper
+/// redesign, design 4.9). The isolate is entered for the call.
+pub fn releaseNodeWrappers(agent: *Agent) void {
+    const isolate = isolateOf(agent);
+    const entering = ffi.v8_Isolate_GetCurrent() != isolate;
+    if (entering) ffi.v8_Isolate_Enter(isolate);
+    defer if (entering) ffi.v8_Isolate_Exit(isolate);
+    @import("node_wrappers.zig").releaseNodeWrappers(isolate);
+}
+
 pub fn agentRestoredFromSnapshot(agent: *Agent) bool {
     return protocol_agents.restoredFromSnapshot(agent);
 }
@@ -1006,6 +1018,8 @@ pub const abortWebAssemblyResponse = protocol_webassembly.abortWebAssemblyRespon
 /// created in.
 pub fn hasWrapper(instance: *Instance) bool {
     const cache = instance.ctx.getV8WrapperCacheStorage() orelse return false;
+    // A node's wrapper is its agent's, in its own slot (node_wrappers).
+    if (instance.vtable.counted != null) return @import("node_wrappers.zig").hasWrapper(instance);
     return v8_engine.v8GetWrapperForInstance(cache, cache, instance) != null;
 }
 
@@ -1071,6 +1085,10 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   isolate (0 with none), which counts every Global whoever made it;
 /// - `wrapper_cache_entries`: the wrappers every realm's wrapper cache on this
 ///   thread holds, each keeping its instance alive until the wrapper dies;
+/// - `node_wrappers`: the current isolate's agent's node wrappers alive, each
+///   in its node's own slot and holding one counted reference on the node
+///   (node_wrappers.zig; never in a wrapper cache since the wrapper
+///   redesign's P2);
 /// - `full_gc_count`, `full_gc_pause_max_us`, `full_gc_pause_p95_us`: the
 ///   current isolate's (its agent's) full collections since it was made, the
 ///   longest pause and the 95th percentile of the last 1,024, in
@@ -1112,6 +1130,7 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         // counters above.
         .{ .name = "global_handle_bytes", .value = if (ffi.v8_Isolate_GetCurrent()) |isolate| @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate)) else 0 },
         .{ .name = "wrapper_cache_entries", .value = @intCast(@import("wrapper_cache.zig").liveEntryCount()) },
+        .{ .name = "node_wrappers", .value = @intCast(@import("node_wrappers.zig").liveCount()) },
         .{ .name = "full_gc_count", .value = @intCast(full_gcs) },
         .{ .name = "full_gc_pause_max_us", .value = @intCast(full_gc_max_us) },
         .{ .name = "full_gc_pause_p95_us", .value = @intCast(full_gc_p95_us) },

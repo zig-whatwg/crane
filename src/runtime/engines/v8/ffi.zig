@@ -2744,6 +2744,41 @@ pub extern fn v8_Global_SetWeakFinalizer(
 /// that a finalizer runs after the collection, never inside it.
 pub extern fn v8_Debug_InFirstPassWeakCallback() bool;
 
+// ---- Node wrappers in the node's own slot (the wrapper redesign's P2;
+// node_wrappers.zig, v8_wrapper.cpp "Node wrappers in the node's own slot") ----
+
+/// The isolate's node wrapper registry (node_wrappers.Registry), or null
+/// before its first node wrap and for an isolate v8_wrapper.cpp did not make.
+pub extern fn v8_Isolate_NodeWrappers(isolate: *Isolate) ?*anyopaque;
+
+/// The isolate's record takes `registry` over: `collected` is a node
+/// wrapper's first pass (answers the node's slot, which the C++ side
+/// Resets), `drain` its second, `end` the registry's end at the start of
+/// v8_Isolate_Dispose. False for an isolate with no record.
+pub extern fn v8_Isolate_SetNodeWrappers(
+    isolate: *Isolate,
+    registry: *anyopaque,
+    collected: *const fn (registry: ?*anyopaque, cell: ?*anyopaque) callconv(.c) ?*anyopaque,
+    drain: *const fn (registry: ?*anyopaque) callconv(.c) void,
+    end: *const fn (registry: ?*anyopaque) callconv(.c) void,
+) bool;
+
+/// Move the fresh, unarmed `Global<Object>` `box` holds into the empty node
+/// slot `slot` (constructed in place) and delete the box: from here the
+/// slot's address is the wrapper's handle.
+pub extern fn v8_NodeWrapper_Adopt(box: *Object, slot: *anyopaque) void;
+
+/// Arm the slot's wrapper weak, `cell` its parameter.
+pub extern fn v8_NodeWrapper_SetWeak(slot: *anyopaque, cell: *anyopaque) void;
+
+/// Hold the slot's wrapper strongly (no weak arm). Answers the arm's
+/// parameter (the node's registry cell), or null when it was not weak.
+pub extern fn v8_NodeWrapper_ClearWeak(slot: *anyopaque) ?*anyopaque;
+
+/// End the slot's wrapper outside a collection - with `sever`, its internal
+/// fields cleared first - and leave the slot empty.
+pub extern fn v8_NodeWrapper_Reset(isolate: ?*Isolate, slot: *anyopaque, sever: bool) void;
+
 /// Clear weak reference and restore strong reference
 ///
 /// Arguments:

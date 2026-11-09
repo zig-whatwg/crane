@@ -108,7 +108,7 @@ fn unwrapped() !Made {
 
 fn wrap(made: Made) !void {
     const wrapper = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
-    try test_cache.?.set(made.instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
+    _ = try test_cache.?.set(made.instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
 }
 
 fn collect() void {

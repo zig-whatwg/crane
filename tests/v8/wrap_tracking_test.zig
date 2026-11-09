@@ -146,7 +146,7 @@ test "a node made natively is unmarked until a wrap binds it (wrapInstanceAsV8Ob
     try testing.expect(!lifecycle.provablyUnwrapped(true, div));
 }
 
-test "a wrap whose cache insert fails still marks the instance: the mark precedes the cache step" {
+test "a wrap that fails after the object is made still marks the instance: the mark precedes the step that keeps it" {
     const page = try Page.open();
     defer page.close();
     const div = try nativeDiv(page);
@@ -154,16 +154,16 @@ test "a wrap whose cache insert fails still marks the instance: the mark precede
     // the test, which knows the discarded wrapper was the only one, frees the
     // element it made (its slot stayed in the process's standalone slab).
     defer dom.node_creation.destroyUninserted(div);
-    const cache: *v8.wrapper_cache_mod.WrapperCache = @ptrCast(@alignCast(page.realm.getV8WrapperCacheStorage().?));
 
-    var failing = std.testing.FailingAllocator.init(cache.allocator, .{ .fail_index = 0 });
-    const saved = cache.allocator;
-    cache.allocator = failing.allocator();
+    // Since the wrapper redesign's P2 a node's wrapper goes into its own slot,
+    // not a cache: the step that can fail after the object is made is the
+    // agent's node registry, which refuses once the agent's node wrappers
+    // have ended (engine.releaseNodeWrappers).
+    protocol.releaseNodeWrappers(page.agent);
     var attempt: Attempt = .{ .instance = div, .realm = page.realm };
     try protocol.runInRealm(page.realm, Attempt.steps, &attempt);
-    cache.allocator = saved;
 
-    try testing.expectEqual(@as(?anyerror, error.OutOfMemory), attempt.result);
+    try testing.expectEqual(@as(?anyerror, error.AgentEnded), attempt.result);
     try testing.expect(!protocol.hasWrapper(div));
     // An object reached the instance, if only until it was discarded: the
     // conservative answer keeps the storage.

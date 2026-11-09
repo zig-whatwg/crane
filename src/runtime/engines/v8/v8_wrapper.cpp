@@ -2711,6 +2711,22 @@ struct IsolateData {
     /// returned (v8_Isolate_Dispose) - detached and terminated by then, so
     /// its end touches no isolate - or when no isolate was made with it.
     std::unique_ptr<CppHeap> cpp_heap;
+    /// The agent's node wrapper registry (node_wrappers.zig `Registry`, the
+    /// wrapper redesign's P2), OWNED: made by the adapter's Zig side on the
+    /// isolate's first node wrap (v8_Isolate_SetNodeWrappers) with the three
+    /// functions below, and ended by `node_wrappers_end` at the start of
+    /// v8_Isolate_Dispose, while the isolate lives - every node wrapper's
+    /// slot reset and its reference released first, so no weak callback is
+    /// left to find the record gone. Read on the isolate's thread only.
+    void* node_wrappers = nullptr;
+    /// The first pass of a node wrapper's weak callback: `cell` is its weak
+    /// parameter. Zig bookkeeping only (the cell freed, the release
+    /// recorded); answers the node's slot, which the caller Resets.
+    void* (*node_wrapper_collected)(void* registry, void* cell) = nullptr;
+    /// The second pass: the agent's released references go (its drain).
+    void (*node_wrappers_drain)(void* registry) = nullptr;
+    /// The registry's end, and its memory.
+    void (*node_wrappers_end)(void* registry) = nullptr;
 
 
     /// Take out the entry whose module is `module`, if any.
@@ -2777,6 +2793,146 @@ extern "C" void v8_Debug_FullGCPauses(Isolate* isolate, uint64_t* count, uint64_
     *count = record->gc_pauses.count;
     *max_us = record->gc_pauses.max_us;
     *p95_us = record->gc_pauses.p95();
+}
+
+// ============================================================================
+// Node wrappers in the node's own slot (the wrapper redesign's P2)
+// ============================================================================
+//
+// tmp/redesign/wrapper-redesign-design.md section 7, P2. A node's one wrapper
+// per agent is a weak `Global<Object>` CONSTRUCTED IN PLACE in the node's
+// engine.NodeWrapperSlot (8 bytes of its NodeBase; node_wrappers.zig): the
+// slot's word is the Global's own slot pointer, so the slot's address IS the
+// `Global<Object>*` every borrower of the node's wrapper gets. Pre-Oilpan
+// Blink's design (Chromium 45, bindings/core/v8/ScriptWrappable.h: a
+// `ScopedPersistent<v8::Object> m_wrapper` inside the object, made weak with
+// the object as its parameter; `firstWeakCallback` reset it and
+// `secondWeakCallback` dropped the object's reference).
+//
+// No `new Global` box survives the wrap, and no WeakCallbackData or entry in
+// armedWeakData() is made: the weak parameter is the node's 8-byte cell in
+// its agent's registry, and the first pass touches no handle but the slot it
+// resets - so the hazard armedWeakData() exists for (a callback disposing a
+// SECOND armed handle whose callback is still queued, releaseWeakArm's note)
+// cannot arise. The node is never freed here: the second pass only releases
+// the wrapper's counted reference, and the counts decide.
+
+static_assert(sizeof(Global<Object>) == sizeof(void*), "a node's wrapper slot holds exactly one Global<Object>");
+
+static void nodeWrapperSecondPass(const WeakCallbackInfo<void>& info) {
+    IsolateData* record = isolateData(info.GetIsolate());
+    // The parameter is the cell the first pass freed: not read.
+    if (record && record->node_wrappers && record->node_wrappers_drain) record->node_wrappers_drain(record->node_wrappers);
+}
+
+/// V8's first pass for a collected node wrapper. "When first called, the
+/// embedder MUST Reset() the Global which triggered the callback"
+/// (v8-weak-callback-info.h): the node's slot, which the registry answers for
+/// the cell. No other V8 call; the release waits for the second pass.
+static void nodeWrapperFirstPass(const WeakCallbackInfo<void>& info) {
+    IsolateData* record = isolateData(info.GetIsolate());
+    // A cell exists only while its registry does, and the registry outlives
+    // every weak arm (it ends at the start of v8_Isolate_Dispose, after
+    // resetting every slot).
+    if (!record || !record->node_wrappers || !record->node_wrapper_collected) {
+        fprintf(stderr, "v8_wrapper: a node wrapper's weak callback found no registry\n");
+        abort();
+    }
+    ++g_first_pass_depth;
+    void* slot = record->node_wrapper_collected(record->node_wrappers, info.GetParameter());
+    --g_first_pass_depth;
+    Global<Object>* wrapper = static_cast<Global<Object>*>(slot);
+    forgetCountedHandle(wrapper);
+    wrapper->Reset();
+    info.SetSecondPassCallback(nodeWrapperSecondPass);
+}
+
+/// The isolate's node wrapper registry (IsolateData::node_wrappers), or null
+/// before the first node wrap and for an isolate this file did not make.
+extern "C" void* v8_Isolate_NodeWrappers(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    return record ? record->node_wrappers : nullptr;
+}
+
+/// The isolate takes `registry` over (IsolateData::node_wrappers), with its
+/// first pass, its drain and its end. False for an isolate with no record.
+extern "C" bool v8_Isolate_SetNodeWrappers(Isolate* isolate, void* registry, void* (*collected)(void*, void*),
+                                           void (*drain)(void*), void (*end)(void*)) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return false;
+    record->node_wrappers = registry;
+    record->node_wrapper_collected = collected;
+    record->node_wrappers_drain = drain;
+    record->node_wrappers_end = end;
+    return true;
+}
+
+/// Move the wrapper `box` holds - a fresh `new Global<Object>` the wrap made
+/// (v8_ObjectTemplate_NewInstance, a constructor's receiver), unarmed - into
+/// the node's empty `slot`, constructing the slot's Global in place, and
+/// delete the box. The V8 node and its class id (the live-object count) move
+/// with it. The caller holds the wrapper through the slot from here.
+extern "C" void v8_NodeWrapper_Adopt(Global<Object>* box, void* slot) {
+    if (g_snapshot_mode) {
+        // The generator's list must not keep the box it frees here.
+        for (size_t i = 0; i < g_snapshot_handles.size(); i++) {
+            if (g_snapshot_handles[i].handle != box) continue;
+            g_snapshot_handles.erase(g_snapshot_handles.begin() + static_cast<std::ptrdiff_t>(i));
+            break;
+        }
+    }
+    new (slot) Global<Object>(std::move(*box));
+    delete box;
+}
+
+/// Arm the slot's wrapper weak with `cell` (its registry cell) as the
+/// parameter; replaces an earlier arm of the same slot.
+extern "C" void v8_NodeWrapper_SetWeak(void* slot, void* cell) {
+    static_cast<Global<Object>*>(slot)->SetWeak(cell, nodeWrapperFirstPass, WeakCallbackType::kParameter);
+}
+
+/// Hold the slot's wrapper strongly (a pending-activity keep, or its end
+/// outside a collection): the weak arm goes. Answers the arm's parameter -
+/// the node's registry cell - or null for a wrapper that was not weak.
+extern "C" void* v8_NodeWrapper_ClearWeak(void* slot) {
+    Global<Object>* wrapper = static_cast<Global<Object>*>(slot);
+    if (wrapper->IsEmpty() || !wrapper->IsWeak()) return nullptr;
+    return wrapper->ClearWeak<void>();
+}
+
+static void clearInternalFields(Local<Object> object) {
+    const int count = object->InternalFieldCount();
+    if (count >= 1) object->SetAlignedPointerInInternalField(0, nullptr);
+    if (count >= 2) object->SetAlignedPointerInInternalField(1, nullptr);
+}
+
+/// The node's wrapper ends outside a collection: its node's teardown began
+/// under it, or its agent ends. With `sever`, its internal fields are cleared
+/// first (a legacy platform object's on its proxy's target), so script that
+/// still holds the object finds no instance through it - a TypeError at the
+/// binding's unwrap, never the freed node (wrapper_cache severWrapper; Blink's
+/// V8DOMWrapper::ClearNativeInfo). Then the slot is Reset: empty from here.
+/// On the isolate's thread; it is entered for the call if it is not current.
+extern "C" void v8_NodeWrapper_Reset(Isolate* isolate, void* slot, bool sever) {
+    Global<Object>* wrapper = static_cast<Global<Object>*>(slot);
+    if (wrapper->IsEmpty()) return;
+    if (sever && isolate) {
+        const bool enter = Isolate::TryGetCurrent() != isolate;
+        if (enter) isolate->Enter();
+        {
+            HandleScope scope(isolate);
+            Local<Object> object = wrapper->Get(isolate);
+            if (object->IsProxy()) {
+                Local<Value> target = object.As<Proxy>()->GetTarget();
+                if (target->IsObject()) clearInternalFields(target.As<Object>());
+            } else {
+                clearInternalFields(object);
+            }
+        }
+        if (enter) isolate->Exit();
+    }
+    forgetCountedHandle(wrapper);
+    wrapper->Reset();
 }
 
 /// The host's wall clock of the isolate current on this thread (ns since the
@@ -3161,6 +3317,12 @@ void v8_Isolate_Dispose(Isolate* isolate) {
         // Isolate::Dispose, below: it holds the StartupData V8 points at.
         IsolateData* record = isolateData(isolate);
         if (record) {
+            // The node wrapper registry ends first, while the isolate and its
+            // record live: every node wrapper's slot reset and its reference
+            // released (an agent's end did it already; a test's own isolate
+            // may not have), so no weak callback can find the record gone.
+            if (record->node_wrappers && record->node_wrappers_end) record->node_wrappers_end(record->node_wrappers);
+            record->node_wrappers = nullptr;
             record->foreground_tasks->close();
             isolate->SetData(kIsolateDataSlot, nullptr);
             for (SyntheticJsonExport* entry : record->synthetic_json_exports) deleteSyntheticExport(entry);
@@ -6880,17 +7042,11 @@ void v8_FunctionCallbackInfo_SetReturnValueGlobal(const FunctionCallbackInfo<Val
         return;
     }
 
-    // Additional check: Detect code/static addresses vs heap addresses
-    // On macOS, heap is typically in ranges like 0x6xxxxx, 0x9xxxxx, etc.
-    // Code/static is typically 0x100xxxxxx to 0x10Fxxxxxx
-    // This is a heuristic - rejects pointers that look like code addresses
-    if (ptr_val >= 0x100000000 && ptr_val < 0x110000000) {
-        // This looks like a code/static pointer, not a heap Global handle
-        // Reject it to prevent crash - return undefined instead
-        fprintf(stderr, "[SetReturnValueGlobal] REJECTED: Pointer 0x%lx looks like code/static address, not heap Global handle. Returning undefined.\n", ptr_val);
-        info->GetReturnValue().SetUndefined();
-        return;
-    }
+    // (No address-range test: a node's wrapper is a Global constructed in
+    // place in its NodeBase - the wrapper redesign's P2 - which lives in the
+    // Browser's arena, wherever the system maps it; a guess that addresses
+    // in [0x100000000, 0x110000000) are code turned every node wrapper there
+    // into undefined.)
 
     Global<Value>* global = reinterpret_cast<Global<Value>*>(global_ptr);
 

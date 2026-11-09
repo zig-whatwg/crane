@@ -316,7 +316,7 @@ pub const RefHold = struct {
 /// address to keep stable and nothing for `nodeReleased` to walk. Counted
 /// only: since step 7 the count keeps the node (tests/v8/
 /// wr1_counted_hold_test.zig), and the guards in `release` answer for the
-/// frees made whatever the counts say (dom.refcount's header).
+/// free made whatever the counts say (dom.refcount's header).
 pub const CountedRef = struct {
     /// The node held, or null for none.
     base: ?*NodeBase = null,

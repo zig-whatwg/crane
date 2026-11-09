@@ -1,10 +1,12 @@
 //! The wrapper link, V8 side (refcount design 2.1, section 7 step 4): a node's
-//! wrapper owns one reference. The wrapper cache takes it in `set` (through
-//! runtime.lifetime, which reaches dom.refcount) and lets it go exactly once:
-//! in the second pass, at removal or replacement, at its realm's end - or when
-//! the node's own teardown begins under a live wrapper (shadow mode: the
-//! collector still frees, so a released node may be freed right after; a node
-//! freed some other way is forgotten, never read).
+//! wrapper owns one reference. The wrap takes it (through runtime.lifetime,
+//! which reaches dom.refcount) and lets it go exactly once: at the drain after
+//! the collection that took the wrapper, at its agent's end
+//! (engine.releaseNodeWrappers) - or when the node's own teardown begins under
+//! a live wrapper. Since the wrapper redesign's P2 a node's wrapper is in its
+//! own slot, never in a wrapper cache, and its realm's end lets it go no more;
+//! the counts decide every free, so a node the test keeps is let go by the
+//! test (`releaseChain`).
 //!
 //! Wrappers are made the way the binding makes them (script, retainValue) and
 //! collected by the engine.
@@ -110,7 +112,8 @@ fn nodeBase(node: *runtime.Instance) *dom.NodeBase {
 /// A detached root > middle > leaf chain of divs made natively in a Document
 /// script holds: born with one reference each, which the test keeps (it
 /// claims each, as a creator that keeps its nodes does - refcount7), none
-/// wrapped.
+/// wrapped. The test lets them go (`releaseChain`): the counts decide, and
+/// nothing frees a tree its creator still holds.
 fn chain(page: Page) ![3]*runtime.Instance {
     const document = try page.instance("globalThis.d = new Document(); d");
     var nodes: [3]*runtime.Instance = undefined;
@@ -121,6 +124,13 @@ fn chain(page: Page) ![3]*runtime.Instance {
     _ = try interfaces.Node.call_appendChild(nodes[0], nodes[1]);
     _ = try interfaces.Node.call_appendChild(nodes[1], nodes[2]);
     return nodes;
+}
+
+/// The creator's references `chain` claimed, let go: the tree is its
+/// wrappers' alone from here, and goes with them (the agent's end at the
+/// latest, through its queue).
+fn releaseChain(nodes: [3]*runtime.Instance) void {
+    for (nodes) |node| dom.refcount.holderDeref(nodeBase(node));
 }
 
 /// runtime.lifetime's hooks, counted: dom.refcount's own, with a tally of
@@ -164,6 +174,7 @@ test "a node's wrapper holds one reference, made with the wrapper" {
     const page = try Page.open();
     defer page.close();
     const nodes = try chain(page);
+    defer releaseChain(nodes);
     for (nodes) |node| try testing.expectEqual(@as(u32, 1), dom.refcount.count(nodeBase(node)));
 
     // Wrapping the leaf wraps its ancestors (node tracing): each wrapper takes
@@ -189,16 +200,19 @@ test "a node's first wrapper adopts the reference its creator offers, and takes 
     try testing.expect(node.rc_flags.creator);
     try testing.expectEqual(@as(u32, 1), dom.refcount.count(node));
     const first = try protocol.retainValue(page.realm, .{ .instance = div });
-    defer first.release();
     try testing.expect(!node.rc_flags.creator);
     try testing.expectEqual(@as(u32, 1), dom.refcount.count(node));
-    // Removed from the cache: the wrapper's (the adopted) reference goes.
-    try testing.expect(page.cache().remove(div));
-    try testing.expectEqual(@as(u32, 0), dom.refcount.count(node));
+    // A holder keeps the node while the first wrapper is collected: the
+    // wrapper's (the adopted) reference goes with it.
+    dom.refcount.holderRef(node);
+    defer dom.refcount.holderDeref(node);
+    first.release();
+    try page.collect();
+    try testing.expectEqual(@as(u32, 1), dom.refcount.count(node));
     // A wrapper made again takes a reference of its own.
     const second = try protocol.retainValue(page.realm, .{ .instance = div });
     defer second.release();
-    try testing.expectEqual(@as(u32, 1), dom.refcount.count(node));
+    try testing.expectEqual(@as(u32, 2), dom.refcount.count(node));
 }
 
 test "a node whose teardown begins under its live wrapper lets the wrapper's reference go once" {
@@ -207,6 +221,7 @@ test "a node whose teardown begins under its live wrapper lets the wrapper's ref
     const page = try Page.open();
     defer page.close();
     const nodes = try chain(page);
+    defer releaseChain(nodes);
     // The chain's document is wrapped (script made it); its nodes are not.
     const before = Tally.acquired;
     // The middle node's wrapper, and its root's (node tracing).
@@ -225,26 +240,19 @@ test "a node whose teardown begins under its live wrapper lets the wrapper's ref
     try testing.expectEqual(@as(usize, 0), Tally.forgotten);
 }
 
-test "removing a wrapper from the cache lets its reference go" {
+test "a node's wrapper is in no wrapper cache: there is no entry to remove, and the reference stays the wrapper's" {
     const page = try Page.open();
-    var page_open = true;
-    defer if (page_open) page.close();
+    defer page.close();
     const nodes = try chain(page);
+    defer releaseChain(nodes);
     const leaf = try protocol.retainValue(page.realm, .{ .instance = nodes[2] });
     leaf.release();
     try testing.expectEqual(@as(u32, 2), dom.refcount.count(nodeBase(nodes[2])));
-    try testing.expect(page.cache().remove(nodes[2]));
-    try testing.expectEqual(@as(u32, 1), dom.refcount.count(nodeBase(nodes[2])));
-    // The test took the leaf's wrapper out of the cache itself (production
-    // removes only a Window's), and a node a wrapper reached keeps its slot
-    // for that wrapper's end: when the realm's end tears the tree down, the
-    // leaf's storage has no one left to return it. The test returns it, so
-    // the process's standalone slab is as the test found it.
-    const leaf_generation = runtime.SlabAllocator.generationOf(nodes[2]);
-    page_open = false;
-    page.close();
-    try testing.expect(runtime.instance_lifecycle.isCleanedUp(nodes[2]));
-    if (runtime.SlabAllocator.generationOf(nodes[2]) == leaf_generation) runtime.gc.releaseStorage(nodes[2]);
+    // The wrapper redesign's P2: a node's wrapper lives in its own slot, its
+    // agent's - the realm's cache has no entry for it.
+    try testing.expect(!page.cache().remove(nodes[2]));
+    try testing.expectEqual(@as(u32, 2), dom.refcount.count(nodeBase(nodes[2])));
+    try testing.expect(protocol.hasWrapper(nodes[2]));
 }
 
 test "every reference a wrapper takes is let go: collections, the realm's end" {
@@ -272,7 +280,8 @@ test "every reference a wrapper takes is let go: collections, the realm's end" {
         try testing.expect(Tally.released > 0);
         try testing.expect(Tally.released < Tally.acquired);
     }
-    // Each one released, or - shadow mode - forgotten with a node the
-    // collector freed under its waiting wrapper.
+    // Each one released - at a collection's drain or at the agent's end - or
+    // forgotten with a node a forced teardown freed under its waiting
+    // release.
     try testing.expectEqual(Tally.acquired, Tally.released + Tally.forgotten);
 }
