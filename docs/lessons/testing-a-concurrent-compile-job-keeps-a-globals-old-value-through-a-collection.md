@@ -1,0 +1,15 @@
+# Testing: A concurrent compile job keeps a global's old value through a collection
+
+**Date**: 2026-11-09
+**Lesson**: A test that fills a global in a hot loop, clears the global and then asks for collections can see the old value survive. The loop's concurrent optimizing compile job holds what it read in its own persistent handles, and V8 does not wait for a running job before it collects.
+
+**Why**: A loop that runs long enough (here `xs.push(...)` 1,000 times at top level) gets compiled concurrently: on-stack replacement, Maglev or TurboFan. The compiler's broker canonicalizes the objects it reads into the job's PersistentHandles, and that includes a const-tracked global property's value. Those handles are GC roots until the job is disposed on the main thread. `Heap::CollectAllAvailableGarbage`, which LowMemoryNotification runs, calls `AbortConcurrentOptimization(BlockingBehavior::kDontBlock)`. That flushes the queued and finished jobs, but a job still running on a worker keeps its handles through every collection that starts before it finishes (13.1 src/execution/isolate.cc, src/compiler-dispatcher/optimizing-compile-dispatcher.cc).
+
+**What Happened**: tests/v8/node_anchor_test.zig's "a node anchor is 16 bytes ..." case filled `globalThis.xs` with 1,000 wrapped divs, set `xs = null` and asked for two collections (four mark-compacts). It then found 1,001 node wrappers where 1 was expected, in about 1 batched run in 60 of the verify set. The ways it was narrowed down:
+- Counters outside the test body showed the collections did run: the registry's weak processing ran in every one and found no anchor dead, `xs === null` was true, and the next collections freed all 1,000.
+- A test function with extra diagnostic code inside it never reproduced in about 300 runs, so the failure was timing-sensitive, not deterministic.
+- A repro taking a heap snapshot right after `xs = null` caught the moment at round 8. The path was `(GC roots) -> (Handle scope) -> Array -> Element`, and that root held the job's FeedbackVector, BytecodeArray, LoadHandlers, PropertyCells and Maps. V8's `PersistentHandles::Iterate` reports under `Root::kHandleScope`. No frame of Crane holds such objects.
+
+**Fix**: The test builds the array in a function, as a local, and stores it once. The global is then assigned twice and stops being const-tracked, so no compiled loop embeds it: `globalThis.xs = (() => { const a = []; for (...) a.push(...); return a; })();`. The result was 0 failures in 25 verify runs (250 batched, 125 alone). Production is unaffected beyond a delay: the wrappers go at the next collection after the job ends.
+
+**Takeaway**: **In a GC test, do not make what you will drop reachable from a global a hot loop reads. A running compile job keeps its own roots through any number of requested collections. When a dropped object survives, read the snapshot's retainer path before blaming your own handles: "(Handle scope)" holding FeedbackVectors and LoadHandlers is the compiler, not your code.**

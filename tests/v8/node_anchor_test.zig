@@ -421,7 +421,23 @@ test "a node anchor is 16 bytes of its agent's C++ heap, and a node wrapper keep
     const globals_before = try counter("live_object_globals");
     const wrappers_before = try counter("node_wrappers");
     const count = 1000;
-    try page.run("for (let i = 0; i < 1000; i++) xs.push(d.createElement('div'));");
+    // Made and kept through a LOCAL array, then stored: a hot loop over a
+    // global (`xs.push` 1,000 times: on-stack replacement) makes V8 compile
+    // it concurrently, and the compile job's canonical persistent handles
+    // hold what it read - the global's value, the array and its 1,000
+    // wrappers - until the job is disposed; a collection does not wait for a
+    // running job (13.1 Heap::CollectAllAvailableGarbage:
+    // AbortConcurrentOptimization(kDontBlock)). `xs = null` then left the
+    // wrappers reachable through both requested collections, 1 batched run in
+    // about 60: weak processing ran in each and found no anchor dead, a later
+    // collection found all 1,000, and a heap snapshot taken at such a moment
+    // shows the path (GC roots) -> (Handle scope) -> Array -> Element, the
+    // handle-scope root holding the job's FeedbackVector, BytecodeArray,
+    // LoadHandlers, PropertyCells and Maps (V8 reports PersistentHandles
+    // there). V8-internal and test-only: the wrappers go at the next
+    // collection after the job ends. With the array local, 0 failures in 25
+    // verify runs (250 batched, 125 alone).
+    try page.run("globalThis.xs = (() => { const a = []; for (let i = 0; i < 1000; i++) a.push(d.createElement('div')); return a; })();");
     page.collect();
     queue.drainAll();
     try testing.expectEqual(wrappers_before + count, try counter("node_wrappers"));
