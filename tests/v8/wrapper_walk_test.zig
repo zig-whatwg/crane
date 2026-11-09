@@ -633,6 +633,17 @@ test "wrapper walk P5: a kept node keeps its tree's wrappers even unwrapped (rul
 /// with marking in progress, then the collection finishes; whether every
 /// check holds.
 fn midCycle(mode: Mode, setup: []const u8, mutation: []const u8, checks: []const []const u8) !bool {
+    // A cycle the mutation's own allocations finished first proves nothing:
+    // tried again, a few times, before the case fails as inconclusive.
+    for (0..4) |_| return midCycleOnce(mode, setup, mutation, checks) catch |err| switch (err) {
+        error.Inconclusive => continue,
+        else => return err,
+    };
+    std.debug.print("mid-cycle case inconclusive four times: the collection finished during the mutation\n", .{});
+    return error.Inconclusive;
+}
+
+fn midCycleOnce(mode: Mode, setup: []const u8, mutation: []const u8, checks: []const []const u8) !bool {
     test_process.start();
     const override = overrideFor(mode);
     defer override.restore();
@@ -641,6 +652,8 @@ fn midCycle(mode: Mode, setup: []const u8, mutation: []const u8, checks: []const
     const page = try Page.open(&queue);
     defer page.close();
     try page.run(setup);
+    // Live ballast, so V8's marking has work left when the mutation runs.
+    try page.run("globalThis.ballast = Array.from({ length: 200000 }, (_, i) => ({ i }));");
     page.settle();
     {
         const entered = page.enter();
@@ -655,10 +668,7 @@ fn midCycle(mode: Mode, setup: []const u8, mutation: []const u8, checks: []const
         defer page.leave(entered);
         // Still marking: the change landed mid-cycle (else the case proves
         // nothing).
-        if (!ffi.v8_test_Isolate_CppHeapIsMarking(page.isolate())) {
-            std.debug.print("mid-cycle case inconclusive: the collection finished during the mutation\n", .{});
-            return error.Inconclusive;
-        }
+        if (!ffi.v8_test_Isolate_CppHeapIsMarking(page.isolate())) return error.Inconclusive;
     }
     page.settle();
     var all = true;
@@ -713,4 +723,45 @@ test "wrapper walk P5 (b): a subtree moved between trees while incremental marki
     try testing.expect(try midCycle(.walk_only, moved_setup, moved_mutation, &moved_checks));
     try testing.expect(try midCycle(.edges_and_walk, moved_setup, moved_mutation, &moved_checks));
     try testing.expect(!try midCycle(.neither, moved_setup, moved_mutation, &moved_checks));
+}
+
+test "wrapper walk P5: two agents on one thread - each collection walks its own agent's trees through its own record" {
+    test_process.start();
+    var queue_a = DeferredTeardown.init(testing.allocator);
+    defer queue_a.deinit();
+    var queue_b = DeferredTeardown.init(testing.allocator);
+    defer queue_b.deinit();
+    const a = try Page.open(&queue_a);
+    defer a.close();
+    const b = try Page.open(&queue_b);
+    defer b.close();
+    const make = html_document ++
+        \\globalThis.root = d.createElement('div');
+        \\(() => { const p = root.appendChild(d.createElement('p')); p.wr = 'kept'; p.appendChild(d.createElement('b')).wr = 'deep'; })();
+    ;
+    try a.run(make);
+    try b.run(make);
+    const pages = [_]Page{ a, b };
+    for (pages, 0..) |collecting, k| {
+        const other = pages[1 - k];
+        const walks_collecting = try collecting.counter("node_wrapper_walks");
+        const walks_other = try other.counter("node_wrapper_walks");
+        {
+            // The OTHER agent's isolate is the current one when this one
+            // collects: the collection enters its own (CollectingScope), and
+            // its anchors find its record (collectingRecord) - never the
+            // other's.
+            const entered = other.enter();
+            defer other.leave(entered);
+            ffi.v8_Isolate_RequestGarbageCollection(collecting.isolate());
+            ffi.v8_Isolate_RequestGarbageCollection(collecting.isolate());
+        }
+        try testing.expect(try collecting.counter("node_wrapper_walks") > walks_collecting);
+        try testing.expectEqual(walks_other, try other.counter("node_wrapper_walks"));
+    }
+    for (pages) |page| {
+        page.settle();
+        try testing.expect(try page.holds("root.firstChild.wr === 'kept' && root.firstChild.firstChild.wr === 'deep'"));
+        try testing.expectEqual(@as(i64, 0), try page.counter("wrapper_trace_check_failures"));
+    }
 }

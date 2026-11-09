@@ -21,10 +21,12 @@
 //!   MutationRecord keeps its `===`. V8's rule answered by V8 itself on the
 //!   binding's wrapper shape (v8_test_NodeTemplateWrapperDroppable), and the
 //!   same uses on script's own wrappers.
-//! - The negative control (red until node tracing leaves JS properties: P4's
-//!   tree edges are private properties, a map transition at every wrap): an
-//!   UNMODIFIED dropped wrapper is freed in a scavenge, its node released,
-//!   and the next access makes a fresh wrapper script cannot tell apart.
+//! - The negative control, with node tracing's JS edges off (P7's state; the
+//!   wrapper redesign's P5 walk keeps trees): an UNMODIFIED dropped wrapper
+//!   is freed in a scavenge, its node released, and the next access makes a
+//!   fresh wrapper script cannot tell apart. With the edges on (until P7)
+//!   none is dropped - P4's tree edges are private properties, a map
+//!   transition at every wrap - pinned as a known red that flips at P7.
 //! - Kept nodes are never dropped: a keep's root makes the slot
 //!   non-droppable.
 //!
@@ -380,7 +382,18 @@ test "wr8 R3: a wrapper reached only through another wrapper's tree edge, and on
     });
 }
 
-test "wr8 (red until node tracing leaves JS properties): an unmodified dropped wrapper is freed in a scavenge, its node released, and the next access gets a fresh wrapper script cannot tell apart" {
+/// node tracing's JS edges off (runtime.lifetime's test-only `tree_edges`):
+/// the state the wrapper redesign's P7 makes, the walk (P5) keeping trees.
+fn edgesOff() runtime.lifetime.HooksOverride {
+    test_process.start();
+    var hooks = runtime.lifetime.installedHooks();
+    hooks.tree_edges = false;
+    return runtime.lifetime.overrideHooksForTest(hooks);
+}
+
+test "wr8 (the edges off - P7's state - with the walk): an unmodified dropped wrapper is freed in a scavenge, its node released, and the next access gets a fresh wrapper script cannot tell apart" {
+    const edges_off = edgesOff();
+    defer edges_off.restore();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const page = try Page.open(&queue);
@@ -408,20 +421,39 @@ test "wr8 (red until node tracing leaves JS properties): an unmodified dropped w
     try testing.expect(runtime.lifetime.slotOf(node).isEmpty());
     try testing.expect(dom.refcount.count(node) < count_wrapped);
     try testing.expectEqual(watched, SlabAllocator.generationOf(b));
-    try page.expectHolds("root.firstChild.localName === 'b' && Object.getPrototypeOf(root.firstChild) === HTMLElement.prototype && root.firstChild === root.lastChild && Object.keys(root.firstChild).length === 0");
+    // `d` is an XML document (new Document()): its 'b' is an Element in no
+    // namespace, so its prototype is Element.prototype.
+    try page.expectHolds("root.firstChild.localName === 'b' && Object.getPrototypeOf(root.firstChild) === Element.prototype && root.firstChild === root.lastChild && Object.keys(root.firstChild).length === 0");
+}
+
+test "wr8 known red until P7: with node tracing's JS edges on, no lone dropped div is dropped in a scavenge" {
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    try page.run("globalThis.d = new Document();");
+    page.fullGC();
+    const dropped_before = page.dropped();
+    // Each wrap draws a private upward edge (wrapper_cache drawDocumentEdge):
+    // a map transition, so V8's unmodified-API-object rule never holds. P7
+    // deletes the edges, and this flips (the test above is its state).
+    try page.run("{ const make = (n) => { for (let i = 0; i < n; i++) d.createElement('div'); }; make(2000); }");
+    try page.minorGC(4);
+    try testing.expectEqual(@as(u64, 0), page.dropped() - dropped_before);
 }
 
 test "wr8: a kept node's wrapper is never dropped in a scavenge - its keep makes the slot non-droppable" {
+    const edges_off = edgesOff();
+    defer edges_off.restore();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const page = try Page.open(&queue);
     defer page.close();
     try page.run("globalThis.d = new Document();");
     // A detached element whose wrapper script drops at once: only its keep
-    // (pending activity, a window's document) holds it. While P4's tree
-    // edges make every element wrapper modified this passes whatever the
-    // slot's kind; it proves the keep once they go (the negative control
-    // above is then green).
+    // (pending activity, a window's document) holds it. With the tree edges
+    // off (P7's state) its wrapper is unmodified, so only the keep's
+    // non-droppable slot holds it through the scavenges.
     const kept = try page.instance("d.createElement('span')");
     const kept_node = dom.instance_bridge.getNodeBase(kept) orelse return error.NotANode;
     const generation = SlabAllocator.generationOf(kept);

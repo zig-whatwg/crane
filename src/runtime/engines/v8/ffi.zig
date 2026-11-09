@@ -2858,8 +2858,10 @@ pub extern fn v8_test_NodeWrappers_ObserveDrainTasks(isolate: *Isolate, runs: *u
 // ---- The walk (the wrapper redesign's P5, design 4.4; node_wrappers.zig
 // "The walk") ----
 
-/// The isolate's record gets the walk's three callbacks beside the node
-/// wrappers' (v8_Isolate_SetNodeWrappers first): `trace_keeps(registry,
+/// The walk's callbacks, beside the node wrappers' (v8_Isolate_SetNodeWrappers
+/// first), in the isolate's record: `trace_anchor(registry, slot, visitor)`
+/// from a node anchor's Trace in a collection's atomic pause (the record
+/// found as the current isolate's, checked); `trace_keeps(registry,
 /// visitor)` from the anchors' registry's Trace in a collection's atomic
 /// pause - the kept nodes' trees; `marked(registry)` at the end of each
 /// marking, from its weak processing - the per-collection sets end;
@@ -2868,6 +2870,7 @@ pub extern fn v8_test_NodeWrappers_ObserveDrainTasks(isolate: *Isolate, runs: *u
 /// anchors. False for an isolate with no record.
 pub extern fn v8_Isolate_SetNodeWrapperTracing(
     isolate: *Isolate,
+    trace_anchor: *const fn (registry: ?*anyopaque, slot: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void,
     trace_keeps: *const fn (registry: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void,
     marked: *const fn (registry: ?*anyopaque) callconv(.c) void,
     check: ?*const fn (registry: ?*anyopaque, live: ?[*]const ?*anyopaque, live_len: usize, dead: ?[*]const ?*anyopaque, dead_len: usize) callconv(.c) void,

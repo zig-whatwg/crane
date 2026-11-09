@@ -125,6 +125,15 @@ fn expectSlot(page: Page, node: *runtime.Instance, expected: *runtime.Instance) 
 }
 
 test "a wrapped node inserted under a parent joins its opaque root: the parent's wrapper keeps it" {
+    // The edges alone: the walk (the wrapper redesign's P5) keeps a node of
+    // a reached tree whatever its edges say - the browsers' rule - and this
+    // test leaves an edge while the node stays in its tree, a state only the
+    // edges can tell apart. P7 deletes the edges and this case with them.
+    test_process.start();
+    var edges_alone = runtime.lifetime.installedHooks();
+    edges_alone.trace_tree = null;
+    const walk_off = runtime.lifetime.overrideHooksForTest(edges_alone);
+    defer walk_off.restore();
     const page = try Page.open();
     defer page.close();
     try page.eval(

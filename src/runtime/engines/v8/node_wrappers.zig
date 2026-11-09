@@ -362,7 +362,7 @@ fn ensureRegistry(isolate: *ffi.Isolate) error{ OutOfMemory, NoIsolateRecord }!*
     errdefer std.heap.c_allocator.destroy(registry);
     registry.* = .{ .isolate = isolate, .holds = @import("protocol_agents.zig").teardownHoldsOf(isolate) };
     if (!ffi.v8_Isolate_SetNodeWrappers(isolate, registry, &collected, &drainCallback, &endCallback, &instanceOfSlotC)) return error.NoIsolateRecord;
-    _ = ffi.v8_Isolate_SetNodeWrapperTracing(isolate, &traceKeeps, &markedCallback, if (wrapper_trace_check) &checkWalk else null);
+    _ = ffi.v8_Isolate_SetNodeWrapperTracing(isolate, &traceAnchor, &traceKeeps, &markedCallback, if (wrapper_trace_check) &checkWalk else null);
     return registry;
 }
 
@@ -673,19 +673,16 @@ pub fn traceVisitOnce(tracer: *Tracer, key: *const anyopaque) bool {
 /// NodeAnchor::Trace's step 2 (v8_wrapper.cpp; design 4.4): the anchor of
 /// the node slot `raw_slot` was reached in a collection's atomic pause, and
 /// its own slot traced; every wrapper its node keeps is traced through
-/// `visitor` - the walk (runtime.lifetime.traceTree). The agent's registry
-/// is found from the node (its instance's realm's agent): an anchor holds
-/// only its slot (16 bytes, design 4.1). A link-time C entry, not a
-/// callback in the isolate's record, for the same reason: the anchor cannot
-/// reach the record (the integrator, 2026-11-09 16:20).
-export fn crane_v8_node_anchor_trace(raw_slot: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void {
+/// `visitor` - the walk (runtime.lifetime.traceTree). The registry is the
+/// collecting isolate's: the anchor holds only its slot (16 bytes, design
+/// 4.1), so the C++ side finds the record as the current isolate's, which
+/// it checks is the one collecting (collectingRecord; the integrator,
+/// 2026-11-09 16:45).
+fn traceAnchor(raw_registry: ?*anyopaque, raw_slot: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void {
+    const registry: *Registry = @ptrCast(@alignCast(raw_registry orelse return));
     const slot: *NodeWrapperSlot = @ptrCast(@alignCast(raw_slot orelse return));
-    const target = runtime.lifetime.targetOfSlot(slot);
-    const instance = instanceOfTarget(target) orelse return;
-    const isolate = isolateOfInstance(instance) orelse return;
-    const registry = registryOf(isolate) orelse return;
     var tracer: Tracer = .{ .visitor = visitor orelse return, .registry = registry };
-    walk(registry, target, &tracer);
+    walk(registry, runtime.lifetime.targetOfSlot(slot), &tracer);
 }
 
 /// One walk from `target`, the registry's diagnostics around it.

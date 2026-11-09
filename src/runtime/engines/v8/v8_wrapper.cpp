@@ -102,6 +102,24 @@ struct PlatformStart {
 // process-wide: V8's platform - V8::InitializePlatform once per process, never again after V8::Dispose; its start, flags and end are ordered by its own mutex, and `started` is read with acquire.
 static PlatformStart g_platform;
 
+/// Enter `isolate` for a collection started outside script, if it is not
+/// the current one already (the node wrapper walk finds its agent
+/// through the current isolate: collectingRecord); leave it after.
+class CollectingScope {
+ public:
+    explicit CollectingScope(Isolate* isolate) : isolate_(Isolate::TryGetCurrent() != isolate ? isolate : nullptr) {
+        if (isolate_) isolate_->Enter();
+    }
+    ~CollectingScope() {
+        if (isolate_) isolate_->Exit();
+    }
+    CollectingScope(const CollectingScope&) = delete;
+    CollectingScope& operator=(const CollectingScope&) = delete;
+
+ private:
+    Isolate* isolate_;
+};
+
 // ============================================================================
 // Snapshot Mode Global Handle Tracking
 // ============================================================================
@@ -2517,6 +2535,9 @@ bool v8_Debug_WriteHeapSnapshot(Isolate* isolate, const char* path) {
      private:
         FILE* f_;
     };
+    // TakeHeapSnapshot collects first: the collecting isolate is the current
+    // one (collectingRecord).
+    CollectingScope collecting(isolate);
     HandleScope scope(isolate);
     const HeapSnapshot* snapshot = isolate->GetHeapProfiler()->TakeHeapSnapshot();
     FileStream stream(file);
@@ -2546,6 +2567,10 @@ bool v8_Isolate_HasPendingBackgroundTasks(Isolate* isolate) {
 
 bool v8_Platform_PumpMessageLoop(Isolate* isolate) {
     if (!g_platform.started.load(std::memory_order_acquire) || !isolate) return false;
+    // V8's tasks may finish a collection (IncrementalMarkingJob::Task ->
+    // AdvanceAndFinalizeIfComplete): the collecting isolate is the current
+    // one (collectingRecord).
+    CollectingScope collecting(isolate);
     return platform::PumpMessageLoop(defaultPlatform(), isolate,
                                      platform::MessageLoopBehavior::kDoNotWait);
 }
@@ -2659,50 +2684,64 @@ struct GCPauses {
 
 struct IsolateData;
 
-/// The walk's entry (node_wrappers.zig `crane_v8_node_anchor_trace`, an
-/// `export fn`): the anchor of node slot `slot` was reached in a
-/// collection's atomic pause; every wrapper its node keeps is traced through
-/// `visitor` (the wrapper redesign's P5, design 4.4). A link-time entry, not
-/// a callback in the isolate's record: an anchor holds only its slot, and
-/// the Zig side finds the agent from the node.
-extern "C" void crane_v8_node_anchor_trace(void* slot, cppgc::Visitor* visitor);
 
-/// Whether a Trace now runs in a marking collection's atomic pause, the only
-/// place the walk may run (design 4.4, R6). Crane's agents' C++ heaps are
-/// made with CppHeapCreateParams.marking_support = kAtomic
-/// (agentCppHeapParams), so in V8 13.1.203 C++ Trace methods run only there:
-/// src/heap/cppgc-js/cpp-heap.cc - UpdateGCCapabilitiesFromFlags only lowers
-/// marking_support_ (std::min; 13.1's DEFINE_WEAK_IMPLICATION(
-/// incremental_marking, cppheap_incremental_marking) turns the flag on by
-/// default, so the explicit kAtomic is what holds it), SelectMarkingType never
-/// returns more than marking_support(), and AdvanceTracing - the only caller
-/// of MarkerBase::AdvanceMarkingWithLimits, which pops the worklists and
-/// calls Trace - is reached outside the pause only from IncrementalMarking::
-/// EmbedderStep (src/heap/incremental-marking.cc), which returns at once when
-/// !incremental_marking_supported(); src/heap/cppgc/marker.cc
-/// MarkerBase::StartMarking starts no incremental task and no concurrent
-/// marker for kAtomic (EnterIncrementalMarkingIfNeeded). V8's own markers -
-/// incremental steps, concurrent threads (concurrent-marking.cc
-/// CreateCppMarkingState) and the Object::Wrap write barrier
-/// (CppHeap::WriteBarrier) - only mark an anchor's header and push it
-/// (CppMarkingState::MarkAndPush), so every anchor marked in a cycle is
-/// traced once, in the pause, after every tree change of the cycle: Crane's
-/// trees have no write barrier, and a walk done earlier would miss nodes
-/// appended after it (the integrator, 2026-11-09 16:22). A heap snapshot's
-/// graph builder calls Trace while nothing is marking: no walk then.
-static bool inMarkingAtomicPause(const void* object) {
+static IsolateData* isolateData(Isolate* isolate);
+static void traceAnchorTree(IsolateData* record, void* slot, cppgc::Visitor* visitor);
+
+/// The record of the isolate whose collection's atomic pause runs a Trace
+/// of `object` (a node anchor or the anchors' registry, on that isolate's
+/// C++ heap) - the only place the walk may run (design 4.4, R6) - or null
+/// when nothing is marking: a heap snapshot's graph builder calls Trace
+/// too, and walks nothing.
+///
+/// Why only the pause: Crane's agents' C++ heaps are made with
+/// CppHeapCreateParams.marking_support = kAtomic (agentCppHeapParams), so in
+/// V8 13.1.203 C++ Trace methods run only there: src/heap/cppgc-js/
+/// cpp-heap.cc - UpdateGCCapabilitiesFromFlags only lowers marking_support_
+/// (std::min; 13.1's DEFINE_WEAK_IMPLICATION(incremental_marking,
+/// cppheap_incremental_marking) turns the flag on by default, so the explicit
+/// kAtomic is what holds it), SelectMarkingType never returns more than
+/// marking_support(), and AdvanceTracing - the only caller of MarkerBase::
+/// AdvanceMarkingWithLimits, which pops the worklists and calls Trace - is
+/// reached outside the pause only from IncrementalMarking::EmbedderStep
+/// (src/heap/incremental-marking.cc), which returns at once when
+/// !incremental_marking_supported(); src/heap/cppgc/marker.cc MarkerBase::
+/// StartMarking starts no incremental task and no concurrent marker for
+/// kAtomic (EnterIncrementalMarkingIfNeeded). V8's own markers - incremental
+/// steps, concurrent threads (concurrent-marking.cc CreateCppMarkingState)
+/// and the Object::Wrap write barrier (CppHeap::WriteBarrier) - only mark an
+/// anchor's header and push it (CppMarkingState::MarkAndPush), so every
+/// anchor marked in a cycle is traced once, in the pause, after every tree
+/// change of the cycle: Crane's trees have no write barrier, and a walk done
+/// earlier would miss nodes appended after it (the integrator, 2026-11-09
+/// 16:22). A V8 upgrade that changes any of this fails the check below.
+///
+/// Why the current isolate: the pause runs on the collecting isolate's
+/// thread with that isolate entered, as Blink's Trace reaches
+/// ThreadState::Current() - an anchor holds only its slot (16 bytes, design
+/// 4.1), so it cannot hold its record, and no Crane global may (the
+/// integrator, 2026-11-09 16:45). Every entry that can start a full
+/// collection outside script enters the isolate first (CollectingScope).
+/// Checked: a mismatch is a loud failure, never a walk of the wrong agent.
+static IsolateData* collectingRecord(const void* object) {
     const cppgc::HeapHandle& heap = cppgc::internal::BasePageHandle::FromPayload(object)->heap_handle();
-    if (!cppgc::subtle::HeapState::IsMarking(heap)) return false;
+    if (!cppgc::subtle::HeapState::IsMarking(heap)) return nullptr;
     if (!cppgc::subtle::HeapState::IsInAtomicPause(heap)) {
-        // A V8 upgrade or a lowered marking type made C++ marking incremental
-        // or concurrent: the walk would miss what the mutator changes after
-        // it, and lose wrappers. Fail here, never silently.
         fprintf(stderr, "v8_wrapper: a node anchor was traced outside the atomic pause - the agents' C++ heap must keep "
                         "CppHeapCreateParams.marking_support = kAtomic (the wrapper redesign's walk, design 4.4)\n");
         abort();
     }
-    return true;
+    Isolate* isolate = Isolate::TryGetCurrent();
+    CppHeap* current = isolate ? isolate->GetCppHeap() : nullptr;
+    if (!current || &current->GetHeapHandle() != &heap) {
+        fprintf(stderr, "v8_wrapper: a collection's atomic pause traced a node anchor while %s - the walk reaches its "
+                        "agent through the current isolate (enter it before a collection: CollectingScope)\n",
+                isolate ? "another isolate was current" : "no isolate was current");
+        abort();
+    }
+    return isolateData(isolate);
 }
+
 
 /// The CppHeapPointerTag every node wrapper's anchor is wrapped with
 /// (Object::Wrap) and unwrapped under (Object::Unwrap). One tag for every
@@ -2749,7 +2788,8 @@ class NodeAnchor final : public cppgc::GarbageCollected<NodeAnchor> {
     void Trace(cppgc::Visitor* visitor) const {
         if (!slot_) return;
         visitor->Trace(*static_cast<const TracedReference<Object>*>(slot_));
-        if (inMarkingAtomicPause(this)) crane_v8_node_anchor_trace(slot_, visitor);
+        IsolateData* record = collectingRecord(this);
+        if (record) traceAnchorTree(record, slot_, visitor);
     }
 
     void* slot_;
@@ -2917,10 +2957,13 @@ struct IsolateData {
     uint32_t* test_drain_task_runs = nullptr;
     uint32_t* test_drain_task_drops = nullptr;
     /// The walk (the wrapper redesign's P5; v8_Isolate_SetNodeWrapperTracing):
-    /// the kept nodes' trees, from the anchors' registry's Trace in the
+    /// a reached anchor's node's trees, from its Trace in the atomic pause
+    /// (the record found as the current isolate's: collectingRecord); the
+    /// kept nodes' trees, from the anchors' registry's Trace in the
     /// atomic pause; the end of each marking (the walk's per-collection sets
     /// go); and the oracle (-Dwrapper-trace-check, else null), in the weak
     /// processing before any slot is emptied.
+    void (*node_wrapper_trace_anchor)(void* registry, void* slot, cppgc::Visitor* visitor) = nullptr;
     void (*node_wrapper_trace_keeps)(void* registry, cppgc::Visitor* visitor) = nullptr;
     void (*node_wrappers_marked)(void* registry) = nullptr;
     void (*node_wrapper_trace_check)(void* registry, void* const* live, size_t live_len, void* const* dead, size_t dead_len) = nullptr;
@@ -3106,11 +3149,23 @@ static void* nodeInstanceOf(Isolate* isolate, Local<Object> object) {
     return record->node_wrapper_instance(anchor->slot_);
 }
 
+/// NodeAnchor::Trace's step 2: the walk from the anchor's node, through the
+/// record's callback (node_wrappers.zig `traceAnchor`).
+static void traceAnchorTree(IsolateData* record, void* slot, cppgc::Visitor* visitor) {
+    if (record->node_wrappers && record->node_wrapper_trace_anchor) record->node_wrapper_trace_anchor(record->node_wrappers, slot, visitor);
+}
+
 void NodeWrapperRegistry::Trace(cppgc::Visitor* visitor) const {
     visitor->RegisterWeakCallbackMethod<NodeWrapperRegistry, &NodeWrapperRegistry::ProcessWeak>(this);
     IsolateData* record = record_;
     if (!record->node_wrappers || !record->node_wrapper_trace_keeps) return;
-    if (inMarkingAtomicPause(this)) record->node_wrapper_trace_keeps(record->node_wrappers, visitor);
+    IsolateData* collecting = collectingRecord(this);
+    if (!collecting) return;
+    if (collecting != record) {
+        fprintf(stderr, "v8_wrapper: an agent's node anchor registry was traced in another agent's collection\n");
+        abort();
+    }
+    record->node_wrapper_trace_keeps(record->node_wrappers, visitor);
 }
 
 void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
@@ -3348,13 +3403,16 @@ extern "C" bool v8_Isolate_SetNodeWrappers(Isolate* isolate, void* registry, voi
     return true;
 }
 
-/// The walk's three callbacks (node_wrappers.zig "The walk"), after
-/// v8_Isolate_SetNodeWrappers. False for an isolate with no record.
-extern "C" bool v8_Isolate_SetNodeWrapperTracing(Isolate* isolate, void (*trace_keeps)(void*, cppgc::Visitor*),
+/// The walk's four callbacks (node_wrappers.zig "The walk") into the
+/// isolate's record, after v8_Isolate_SetNodeWrappers. False for an isolate
+/// with no record.
+extern "C" bool v8_Isolate_SetNodeWrapperTracing(Isolate* isolate, void (*trace_anchor)(void*, void*, cppgc::Visitor*),
+                                                 void (*trace_keeps)(void*, cppgc::Visitor*),
                                                  void (*marked)(void*),
                                                  void (*check)(void*, void* const*, size_t, void* const*, size_t)) {
     IsolateData* record = isolateData(isolate);
     if (!record) return false;
+    record->node_wrapper_trace_anchor = trace_anchor;
     record->node_wrapper_trace_keeps = trace_keeps;
     record->node_wrappers_marked = marked;
     record->node_wrapper_trace_check = check;
@@ -3592,6 +3650,7 @@ extern "C" void v8_test_FullGCEpilogueProbe_Delete(CraneFullGCEpilogueProbe* pro
 /// and, unlike v8_Isolate_RequestGarbageCollection, no drain at its end: what
 /// it collected waits for the posted drain task.
 extern "C" void v8_test_Isolate_CollectWithoutDrain(Isolate* isolate) {
+    CollectingScope collecting(isolate);
     CppHeap* heap = isolate->GetCppHeap();
     if (!heap) {
         isolate->LowMemoryNotification();
@@ -4049,7 +4108,7 @@ size_t v8_Process_LiveIsolates() {
 /// (cppgc::InitializeProcess, v8_Platform_Start).
 static void agentCppHeapParams(CppHeapCreateParams& params) {
     // kAtomic keeps every C++ Trace - the node anchors' walk (design 4.4) -
-    // inside the atomic pause (inMarkingAtomicPause says why, from the 13.1
+    // inside the atomic pause (collectingRecord says why, from the 13.1
     // source); tests/v8/wrapper_walk_test.zig pins it.
     params.marking_support = cppgc::Heap::MarkingType::kAtomic;
     params.sweeping_support = cppgc::Heap::SweepingType::kIncrementalAndConcurrent;
@@ -4074,6 +4133,7 @@ extern "C" uint8_t v8_test_AgentCppHeapMarkingSupport() {
 /// Heap::CheckMemoryPressure: StartIncrementalMarking when incremental
 /// marking is on and stopped); whether its C++ heap is marking now.
 extern "C" bool v8_test_Isolate_StartIncrementalMarking(Isolate* isolate) {
+    CollectingScope collecting(isolate);
     isolate->MemoryPressureNotification(MemoryPressureLevel::kModerate);
     CppHeap* heap = isolate->GetCppHeap();
     return heap && cppgc::subtle::HeapState::IsMarking(heap->GetHeapHandle());
@@ -4426,6 +4486,7 @@ CppHeapProbe* v8_test_CppHeapProbe_New(Isolate* isolate) {
 /// test's objects (cppgc::testing::OverrideEmbedderStackStateScope; the
 /// probe's objects are reached only through its persistents).
 void v8_test_CppHeapProbe_Collect(CppHeapProbe* probe) {
+    CollectingScope collecting(probe->isolate);
     cppgc::testing::OverrideEmbedderStackStateScope no_stack_scan(probe->heap->GetHeapHandle(),
                                                                   cppgc::EmbedderStackState::kNoHeapPointers);
     probe->isolate->LowMemoryNotification();
@@ -4543,6 +4604,9 @@ void v8_Isolate_GetHeapUsage(Isolate* isolate, size_t* used, size_t* total,
 // Heap::HandleExternalMemoryInterrupt), as Blink's V8GCController::
 // reportDOMMemoryUsageToV8 told it about the DOM partition (Chromium 45).
 int64_t v8_Isolate_AdjustAmountOfExternalAllocatedMemory(Isolate* isolate, int64_t change_in_bytes) {
+    // V8 may collect here (HandleExternalMemoryInterrupt): the collecting
+    // isolate is the current one (collectingRecord).
+    CollectingScope collecting(isolate);
     return isolate->AdjustAmountOfExternalAllocatedMemory(change_in_bytes);
 }
 
@@ -10829,6 +10893,8 @@ static void AsyncIteratorSelfCallback(const FunctionCallbackInfo<Value>& info) {
 /// This function is synchronous - LowMemoryNotification triggers immediate GC.
 void v8_Isolate_RequestGarbageCollection(Isolate* isolate) {
     if (!isolate) return;
+    // The collecting isolate is the current one (collectingRecord).
+    CollectingScope collecting(isolate);
     
     // LowMemoryNotification triggers V8 to perform garbage collection
     // as aggressively as possible. Per V8 docs, this is a synchronous
