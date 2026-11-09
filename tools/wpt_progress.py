@@ -3136,6 +3136,104 @@ def _check_exemptions():
         EXEMPTIONS = saved
 
 
+_TEST_BUG_FIXTURE = """[html/x/posts-a-report.https.html]
+kind = test-bug
+why = the test posts a platform object, which structured clone rejects in every engine
+upstream = https://github.com/web-platform-tests/wpt/issues/99999
+chrome.result = wpt.fyi run 5070179567140864: 3/9 TIMEOUT
+firefox.result = wpt.fyi run 5140459022974976: 3/9 TIMEOUT
+safari.result = wpt.fyi run 5107094106406912: 3/9 TIMEOUT
+revisit = when https://github.com/web-platform-tests/wpt/issues/99999 is resolved
+"""
+
+
+def _check_exemption_kinds():
+    """The second exemption kind (the user, 2026-11-08), pinned by the same rules
+    tools/wpt_site/model.zig tests: kind = test-bug needs why, the upstream
+    web-platform-tests issue or PR, every browser's wpt.fyi result - the same in all
+    three - and revisit = when <upstream> is resolved; an entry with no kind is
+    intentional, exactly as before; mixing the kinds' keys is an error. A test-bug
+    file that would block is EXEMPT, and the page counts it on its own."""
+    global EXEMPTIONS
+    wl = ['css/x/declined.html', 'html/x/posts-a-report.https.html', 'css/x/other.html']
+    e = parse_exemptions(_TEST_BUG_FIXTURE, wl)['html/x/posts-a-report.https.html']
+    assert e['kind'] == 'test-bug', e
+    assert e['upstream'] == 'https://github.com/web-platform-tests/wpt/issues/99999'
+    assert e['revisit'] == 'when https://github.com/web-platform-tests/wpt/issues/99999 is resolved'
+    assert e['firefox.result'] == 'wpt.fyi run 5140459022974976: 3/9 TIMEOUT'
+    assert 'spec' not in e and 'chrome.intent' not in e
+    pr = parse_exemptions(_TEST_BUG_FIXTURE.replace('issues/99999', 'pull/12345'), wl)
+    assert pr['html/x/posts-a-report.https.html']['upstream'].endswith('/pull/12345')
+    # No kind: intentional, as every entry was before kinds; kind = intentional is the same entry.
+    legacy = parse_exemptions(_EXEMPTION_FIXTURE, wl)['css/x/declined.html']
+    assert legacy['kind'] == 'intentional', legacy
+    explicit = parse_exemptions(_EXEMPTION_FIXTURE.replace('why = ', 'kind = intentional\nwhy = '), wl)['css/x/declined.html']
+    assert explicit == legacy, (explicit, legacy)
+    both = parse_exemptions(_EXEMPTION_FIXTURE + _TEST_BUG_FIXTURE, wl)
+    assert [x['kind'] for x in both.values()] == ['intentional', 'test-bug']
+
+    def invalid(text, needle, worklist=wl):
+        try:
+            parse_exemptions(text, worklist)
+        except ExemptionError as err:
+            assert needle in str(err), (needle, str(err))
+            return
+        raise AssertionError('accepted an invalid exemption: ' + needle)
+
+    for key in ('kind', 'why', 'upstream', 'chrome.result', 'firefox.result', 'safari.result', 'revisit'):
+        text = '\n'.join(l for l in _TEST_BUG_FIXTURE.split('\n') if not l.startswith(key + ' '))
+        invalid(text, 'not a key of an intentional exemption' if key == 'kind' else 'missing')
+    up = 'upstream = https://github.com/web-platform-tests/wpt/issues/99999'
+    rv = 'revisit = when https://github.com/web-platform-tests/wpt/issues/99999 is resolved'
+    for frm, to, needle in (
+            ('kind = test-bug', 'kind = testbug', 'kind must be intentional or test-bug'),
+            (up, 'upstream = https://bugs.webkit.org/show_bug.cgi?id=1', 'web-platform-tests issue or pull request'),
+            (up, 'upstream = https://github.com/web-platform-tests/wpt/issues/', 'web-platform-tests issue or pull request'),
+            (up, 'upstream = https://github.com/web-platform-tests/wpt.fyi/issues/99999', 'web-platform-tests issue or pull request'),
+            (up, 'upstream = wpt#99999', 'web-platform-tests issue or pull request'),
+            (rv, 'revisit = later', 'revisit must read'),
+            (rv, 'revisit = when https://github.com/web-platform-tests/wpt/issues/1 is resolved', 'revisit must read'),
+            ('wpt.fyi run 5070179567140864: 3/9 TIMEOUT', 'TIMEOUT', 'wpt.fyi run'),
+            ('wpt.fyi run 5107094106406912: 3/9 TIMEOUT', 'wpt.fyi run 5107094106406912: 9/9', 'the same result in all three browsers'),
+            ('wpt.fyi run 5140459022974976: 3/9 TIMEOUT', 'wpt.fyi run 5140459022974976: 3/10 TIMEOUT', 'the same result in all three browsers'),
+            ('why = ', 'spec = https://example.org/spec#step\nwhy = ', '"spec" is not a key of a test-bug exemption'),
+            ('why = ', 'chrome.intent = https://issues.chromium.org/issues/1\nwhy = ', '"chrome.intent" is not a key of a test-bug exemption'),
+            ('kind = test-bug', 'kind = test-bug\nkind = test-bug', 'twice')):
+        assert frm in _TEST_BUG_FIXTURE, frm
+        invalid(_TEST_BUG_FIXTURE.replace(frm, to), needle)
+    invalid(_EXEMPTION_FIXTURE.replace('why = ', up + '\nwhy = '), '"upstream" is not a key of an intentional exemption')
+    invalid(_TEST_BUG_FIXTURE, 'not in the worklist', ['css/x/other.html'])
+
+    saved = EXEMPTIONS
+    try:
+        EXEMPTIONS = parse_exemptions(_EXEMPTION_FIXTURE + _TEST_BUG_FIXTURE, wl)
+        none_passed = {'status': 'OK', 'passed': 0, 'failed': 4}
+        timeout = {'status': 'TIMEOUT', 'passed': 3, 'timed_out': 1, 'notrun': 5}
+        assert gate_status(timeout, 'html/x/posts-a-report.https.html') == EXEMPT
+        recs = {'css/x/declined.html': none_passed, 'html/x/posts-a-report.https.html': timeout,
+                'css/x/other.html': none_passed}
+        areas, _, _ = build(wl, recs)
+        tot = collections.Counter()
+        for c in areas.values():
+            tot.update(c)
+        # Both are exempt, neither blocks; the test-bug one is also its own count.
+        assert tot['gating'] == 1 and tot['exempt'] == 2 and tot['exempt_test_bug'] == 1, dict(tot)
+        html_out = render_exempt(recs, wl)
+        assert 'Exempt (all three browsers intentionally deviate)' in html_out
+        assert 'Exempt until an upstream test bug is fixed' in html_out
+        intentional, bug = html_out.split('Exempt until an upstream test bug is fixed', 1)
+        assert 'css/x/declined.html' in intentional and 'posts-a-report' not in intentional
+        assert 'html/x/posts-a-report.https.html' in bug and 'css/x/declined.html' not in bug
+        assert '<a href="https://github.com/web-platform-tests/wpt/issues/99999">' in bug
+        assert 'wpt.fyi run 5107094106406912: 3/9 TIMEOUT' in bug
+        assert 'when https://github.com/web-platform-tests/wpt/issues/99999 is resolved' in bug
+        # Intentional entries alone render exactly as before kinds.
+        EXEMPTIONS = parse_exemptions(_EXEMPTION_FIXTURE, wl)
+        assert 'upstream test bug' not in render_exempt(recs, wl)
+    finally:
+        EXEMPTIONS = saved
+
+
 def _check_revision_high_water():
     """A WPT snapshot owns its floors; crashes preserve them, older snapshots do not."""
     import tempfile
@@ -4045,6 +4143,7 @@ if __name__ == '__main__':
         _check_history_subs()
         _check_history_sources()
         _check_exemptions()
+        _check_exemption_kinds()
         _check_revision_high_water()
         _check_subtest_losses()
         _check_loss_dispositions()

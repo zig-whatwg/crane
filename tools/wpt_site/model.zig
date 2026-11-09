@@ -279,17 +279,46 @@ pub const Browser = enum {
     }
 };
 
+/// Why a file is exempt from the gate: the entry's `kind` key.
+pub const ExemptionKind = enum {
+    /// All three browsers intentionally deviate from the spec the file
+    /// tests, each with evidence of intent (the user, 2026-10-17). An entry
+    /// with no `kind` key is this kind, as every entry was before kinds.
+    intentional,
+    /// The file fails identically in Chrome, Firefox and Safari because of
+    /// a bug in the test filed upstream (the user, 2026-11-08); exempt until
+    /// that bug is resolved, then revisited.
+    test_bug,
+
+    /// The word the file spells the kind with.
+    pub fn word(k: ExemptionKind) []const u8 {
+        return switch (k) {
+            .intentional => "intentional",
+            .test_bug => "test-bug",
+        };
+    }
+};
+
 /// One entry of tools/wpt_gate_exemptions.txt: a worklist file omitted from
-/// the blocking count because all three browsers intentionally deviate from
-/// the spec it tests. Every field is required; slices point into the text.
+/// the blocking count - because all three browsers intentionally deviate from
+/// the spec it tests (`intentional`), or because it fails identically in all
+/// three through a test bug filed upstream (`test_bug`). Every key of the
+/// entry's kind is required; slices point into the text.
 pub const Exemption = struct {
     path: []const u8,
+    kind: ExemptionKind = .intentional,
     why: []const u8,
-    spec: []const u8,
+    /// `intentional` only: the spec text (and change) the browsers decline.
+    spec: []const u8 = "",
     /// Per `Browser`: "wpt.fyi run <id>: <passes>/<total>".
     result: [3][]const u8,
-    /// Per `Browser`: the standards position, WontFix bug or objection URL.
-    intent: [3][]const u8,
+    /// `intentional` only, per `Browser`: the standards position, WontFix
+    /// bug or objection URL.
+    intent: [3][]const u8 = .{ "", "", "" },
+    /// `test_bug` only: the web-platform-tests issue or pull request.
+    upstream: []const u8 = "",
+    /// `test_bug` only: "when <upstream> is resolved".
+    revisit: []const u8 = "",
 };
 
 /// Where and why the exemptions are invalid. The message lives in `buf`, so
@@ -409,6 +438,36 @@ pub fn parseExemptions(arena: std.mem.Allocator, text: []const u8, diag: *Exempt
     }
     if (cur) |p| try out.append(arena, try finishExemption(p, diag));
     return out.items;
+}
+
+// ============================================================================
+// Where each generation was swept
+// ============================================================================
+
+/// One line of tools/wpt_generation_hosts.txt: the host a results run (a
+/// sweep, by its label in wpt-results/) ran on, that host's OS and
+/// architecture, and how many runners the run used. Slices point into the text.
+pub const SweepHost = struct {
+    label: []const u8,
+    host: []const u8,
+    /// "<os>-<arch>": "linux-x86_64", "macos-arm64".
+    os: []const u8,
+    runners: u32,
+};
+
+/// Parses tools/wpt_generation_hosts.txt (its header documents the format).
+/// Any invalid line fails the whole parse with `diag` set.
+pub fn parseSweepHosts(arena: std.mem.Allocator, text: []const u8, diag: *ExemptionDiag) error{ InvalidHosts, OutOfMemory }![]const SweepHost {
+    _ = arena;
+    _ = text;
+    _ = diag;
+    return &.{};
+}
+
+/// "linux-x86_64" as the site says it: "Linux x86-64".
+pub fn osLabel(w: *std.Io.Writer, os: []const u8) std.Io.Writer.Error!void {
+    _ = w;
+    _ = os;
 }
 
 /// Every exemption names a worklist file: an exemption for a file the gate
@@ -707,4 +766,213 @@ test "exemptions: a path outside the worklist is invalid" {
     try testing.expectEqualStrings("css/x/declined.html", diag.path);
     try known.put(testing.allocator, "css/x/declined.html", {});
     try checkExemptionPaths(list, &known, &diag);
+}
+
+// The second kind (the user, 2026-11-08): a file that fails identically in all
+// three browsers because of a test bug filed upstream, exempt until it is resolved.
+const fixture_test_bug =
+    \\[html/x/posts-a-report.https.html]
+    \\kind = test-bug
+    \\why = the test posts a platform object, which structured clone rejects in every engine
+    \\upstream = https://github.com/web-platform-tests/wpt/issues/99999
+    \\chrome.result = wpt.fyi run 5070179567140864: 3/9 TIMEOUT
+    \\firefox.result = wpt.fyi run 5140459022974976: 3/9 TIMEOUT
+    \\safari.result = wpt.fyi run 5107094106406912: 3/9 TIMEOUT
+    \\revisit = when https://github.com/web-platform-tests/wpt/issues/99999 is resolved
+    \\
+;
+
+test "exemptions: a test-bug entry parses, with its upstream issue, every browser's result and when to revisit" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    const list = try parseExemptions(arena.allocator(), fixture_test_bug, &diag);
+    try testing.expectEqual(@as(usize, 1), list.len);
+    const e = list[0];
+    try testing.expectEqual(ExemptionKind.test_bug, e.kind);
+    try testing.expectEqualStrings("test-bug", e.kind.word());
+    try testing.expectEqualStrings("html/x/posts-a-report.https.html", e.path);
+    try testing.expectEqualStrings("the test posts a platform object, which structured clone rejects in every engine", e.why);
+    try testing.expectEqualStrings("https://github.com/web-platform-tests/wpt/issues/99999", e.upstream);
+    try testing.expectEqualStrings("when https://github.com/web-platform-tests/wpt/issues/99999 is resolved", e.revisit);
+    try testing.expectEqualStrings("wpt.fyi run 5140459022974976: 3/9 TIMEOUT", e.result[@backingInt(Browser.firefox)]);
+    // It has no spec and no intent: nobody declined anything.
+    try testing.expectEqualStrings("", e.spec);
+    try testing.expectEqualStrings("", e.intent[@backingInt(Browser.chrome)]);
+    // A pull request is an upstream report too.
+    const pr = try std.mem.replaceOwned(u8, arena.allocator(), fixture_test_bug, "issues/99999", "pull/12345");
+    const via_pr = try parseExemptions(arena.allocator(), pr, &diag);
+    try testing.expectEqualStrings("https://github.com/web-platform-tests/wpt/pull/12345", via_pr[0].upstream);
+}
+
+test "exemptions: an entry without kind is intentional as before, and kind = intentional is the same entry" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    const legacy = try parseExemptions(arena.allocator(), fixture_exemption, &diag);
+    try testing.expectEqual(ExemptionKind.intentional, legacy[0].kind);
+    try testing.expectEqualStrings("intentional", legacy[0].kind.word());
+    try testing.expectEqualStrings("", legacy[0].upstream);
+    try testing.expectEqualStrings("", legacy[0].revisit);
+    const text = try std.mem.replaceOwned(u8, arena.allocator(), fixture_exemption, "why = ", "kind = intentional\nwhy = ");
+    const explicit = try parseExemptions(arena.allocator(), text, &diag);
+    try testing.expectEqual(ExemptionKind.intentional, explicit[0].kind);
+    try testing.expectEqualStrings(legacy[0].spec, explicit[0].spec);
+    for (0..3) |i| {
+        try testing.expectEqualStrings(legacy[0].result[i], explicit[0].result[i]);
+        try testing.expectEqualStrings(legacy[0].intent[i], explicit[0].intent[i]);
+    }
+    // Both kinds in one file, in the file's order.
+    const both = try std.mem.concat(arena.allocator(), u8, &.{ fixture_exemption, fixture_test_bug });
+    const list = try parseExemptions(arena.allocator(), both, &diag);
+    try testing.expectEqual(@as(usize, 2), list.len);
+    try testing.expectEqual(ExemptionKind.intentional, list[0].kind);
+    try testing.expectEqual(ExemptionKind.test_bug, list[1].kind);
+}
+
+test "exemptions: a test-bug entry missing any of its keys is invalid, never a silent exemption" {
+    const keys = [_][]const u8{ "kind =", "why =", "upstream =", "chrome.result", "firefox.result", "safari.result", "revisit =" };
+    for (keys) |k| {
+        var buf: std.ArrayList(u8) = .empty;
+        defer buf.deinit(testing.allocator);
+        var it = std.mem.splitScalar(u8, fixture_test_bug, '\n');
+        while (it.next()) |line| {
+            if (std.mem.startsWith(u8, line, k)) continue;
+            try buf.appendSlice(testing.allocator, line);
+            try buf.append(testing.allocator, '\n');
+        }
+        // Without its kind it reads as intentional, which lacks a spec and
+        // intents and has keys an intentional entry does not: still invalid.
+        try expectInvalid(buf.items, if (std.mem.eql(u8, k, "kind =")) "not a key of an intentional exemption" else "missing");
+    }
+}
+
+test "exemptions: a malformed test-bug entry, or one mixing the kinds' keys, is invalid" {
+    const swap = struct {
+        fn f(a: std.mem.Allocator, from: []const u8, to: []const u8) ![]u8 {
+            return std.mem.replaceOwned(u8, a, fixture_test_bug, from, to);
+        }
+    }.f;
+    const a = testing.allocator;
+    const cases = [_]struct { []const u8, []const u8, []const u8 }{
+        // An unknown kind.
+        .{ "kind = test-bug", "kind = testbug", "kind must be intentional or test-bug" },
+        // Upstream is a web-platform-tests issue or pull request, nothing else.
+        .{ "upstream = https://github.com/web-platform-tests/wpt/issues/99999", "upstream = https://bugs.webkit.org/show_bug.cgi?id=1", "web-platform-tests issue or pull request" },
+        .{ "upstream = https://github.com/web-platform-tests/wpt/issues/99999", "upstream = https://github.com/web-platform-tests/wpt/issues/", "web-platform-tests issue or pull request" },
+        .{ "upstream = https://github.com/web-platform-tests/wpt/issues/99999", "upstream = https://github.com/web-platform-tests/wpt.fyi/issues/99999", "web-platform-tests issue or pull request" },
+        .{ "upstream = https://github.com/web-platform-tests/wpt/issues/99999", "upstream = wpt#99999", "web-platform-tests issue or pull request" },
+        // Revisit names the upstream report, in the one form.
+        .{ "revisit = when https://github.com/web-platform-tests/wpt/issues/99999 is resolved", "revisit = later", "revisit must read" },
+        .{ "revisit = when https://github.com/web-platform-tests/wpt/issues/99999 is resolved", "revisit = when https://github.com/web-platform-tests/wpt/issues/1 is resolved", "revisit must read" },
+        // The same wpt.fyi run form as an intentional entry's.
+        .{ "wpt.fyi run 5070179567140864: 3/9 TIMEOUT", "TIMEOUT", "wpt.fyi run" },
+        // Identical in all three browsers, or it is not this kind.
+        .{ "wpt.fyi run 5107094106406912: 3/9 TIMEOUT", "wpt.fyi run 5107094106406912: 9/9", "the same result in all three browsers" },
+        .{ "wpt.fyi run 5140459022974976: 3/9 TIMEOUT", "wpt.fyi run 5140459022974976: 3/10 TIMEOUT", "the same result in all three browsers" },
+        // An intentional entry's keys do not belong in a test-bug entry.
+        .{ "why = ", "spec = https://example.org/spec#step\nwhy = ", "\"spec\" is not a key of a test-bug exemption" },
+        .{ "why = ", "chrome.intent = https://issues.chromium.org/issues/1\nwhy = ", "\"chrome.intent\" is not a key of a test-bug exemption" },
+        // A kind given twice.
+        .{ "kind = test-bug", "kind = test-bug\nkind = test-bug", "twice" },
+    };
+    for (cases) |c| {
+        const text = try swap(a, c[0], c[1]);
+        defer a.free(text);
+        try expectInvalid(text, c[2]);
+    }
+    // A test-bug entry's keys do not belong in an intentional one.
+    {
+        const text = try std.mem.replaceOwned(u8, a, fixture_exemption, "why = ", "upstream = https://github.com/web-platform-tests/wpt/issues/99999\nwhy = ");
+        defer a.free(text);
+        try expectInvalid(text, "\"upstream\" is not a key of an intentional exemption");
+    }
+}
+
+test "exemptions: a test-bug exempt file counts as exempt, never as blocking" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    const list = try parseExemptions(arena.allocator(), fixture_test_bug, &diag);
+    var known: std.StringHashMapUnmanaged(void) = .empty;
+    defer known.deinit(testing.allocator);
+    try known.put(testing.allocator, "css/x/other.html", {});
+    // Its path is checked against the worklist like any other entry's.
+    try testing.expectError(error.InvalidExemption, checkExemptionPaths(list, &known, &diag));
+    try known.put(testing.allocator, "html/x/posts-a-report.https.html", {});
+    try checkExemptionPaths(list, &known, &diag);
+    try testing.expectEqual(Gate.exempt, gateOf("TIMEOUT", .{ .passed = 3, .timed_out = 1, .notrun = 5 }).exempted());
+}
+
+// ============================================================================
+// Where each generation was swept (tests)
+// ============================================================================
+
+const fixture_hosts =
+    \\# label host os-arch runners
+    \\
+    \\sweep-f7853e77e9  chat.local  macos-arm64   8
+    \\sweep-9053db756e  server1     linux-x86_64  32
+    \\
+;
+
+test "hosts: each line names a run's host, OS and runner count" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    const list = try parseSweepHosts(arena.allocator(), fixture_hosts, &diag);
+    try testing.expectEqual(@as(usize, 2), list.len);
+    try testing.expectEqualStrings("sweep-f7853e77e9", list[0].label);
+    try testing.expectEqualStrings("chat.local", list[0].host);
+    try testing.expectEqualStrings("macos-arm64", list[0].os);
+    try testing.expectEqual(@as(u32, 8), list[0].runners);
+    try testing.expectEqualStrings("sweep-9053db756e", list[1].label);
+    try testing.expectEqualStrings("server1", list[1].host);
+    try testing.expectEqualStrings("linux-x86_64", list[1].os);
+    try testing.expectEqual(@as(u32, 32), list[1].runners);
+    // Nothing listed: no host is known, which is not an error.
+    try testing.expectEqual(@as(usize, 0), (try parseSweepHosts(arena.allocator(), "", &diag)).len);
+    try testing.expectEqual(@as(usize, 0), (try parseSweepHosts(arena.allocator(), "# only a comment\n", &diag)).len);
+}
+
+fn expectInvalidHosts(text: []const u8, needle: []const u8) !void {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    try testing.expectError(error.InvalidHosts, parseSweepHosts(arena.allocator(), text, &diag));
+    if (std.mem.indexOf(u8, diag.message, needle) == null) {
+        std.debug.print("diag {d}: \"{s}\" lacks \"{s}\"\n", .{ diag.line, diag.message, needle });
+        return error.TestUnexpectedDiagnostic;
+    }
+}
+
+test "hosts: a malformed or repeated line is invalid" {
+    try expectInvalidHosts("sweep-a server1 linux-x86_64\n", "expected <label> <host> <os>-<arch> <runners>");
+    try expectInvalidHosts("sweep-a server1 linux-x86_64 32 extra\n", "expected <label> <host> <os>-<arch> <runners>");
+    try expectInvalidHosts("sweep-a server1 Linux 32\n", "<os>-<arch>");
+    try expectInvalidHosts("sweep-a server1 freebsd-x86_64 32\n", "<os>-<arch>");
+    try expectInvalidHosts("sweep-a server1 linux- 32\n", "<os>-<arch>");
+    try expectInvalidHosts("sweep-a server1 linux-x86_64 0\n", "runners");
+    try expectInvalidHosts("sweep-a server1 linux-x86_64 many\n", "runners");
+    try expectInvalidHosts("sweep-a server1 linux-x86_64 32\nsweep-a chat.local macos-arm64 8\n", "listed twice");
+    // The line number is the offending line's.
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    try testing.expectError(error.InvalidHosts, parseSweepHosts(arena.allocator(), "# c\nsweep-a server1 linux-x86_64 32\nsweep-b x\n", &diag));
+    try testing.expectEqual(@as(usize, 3), diag.line);
+}
+
+test "hosts: an OS as the site says it" {
+    const cases = [_]struct { []const u8, []const u8 }{
+        .{ "linux-x86_64", "Linux x86-64" },
+        .{ "macos-arm64", "macOS arm64" },
+        .{ "linux-arm64", "Linux arm64" },
+    };
+    for (cases) |c| {
+        var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+        defer aw.deinit();
+        try osLabel(&aw.writer, c[0]);
+        try testing.expectEqualStrings(c[1], aw.written());
+    }
 }

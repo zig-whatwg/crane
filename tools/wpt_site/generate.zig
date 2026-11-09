@@ -58,6 +58,12 @@ pub const Inputs = struct {
     /// Set when the exemptions are invalid (generate then fails with
     /// error.InvalidExemption): where, and why.
     exemption_diag: ?*model.ExemptionDiag = null,
+    /// tools/wpt_generation_hosts.txt (model.parseSweepHosts): where each run
+    /// ran; "" names no host.
+    hosts_text: []const u8 = "",
+    /// Set when the hosts file is invalid (generate then fails with
+    /// error.InvalidHosts): where, and why.
+    hosts_diag: ?*model.ExemptionDiag = null,
     /// A reference run's reference.json: another engine's results on the same
     /// worklist (reference.zig), shown beside Crane's and never counted as
     /// Crane's. Null: no comparison.
@@ -102,7 +108,8 @@ pub fn rangePairs(arena: Allocator, history_json: []const u8) ![]const RangePair
 
 /// The branch a merge commit's subject names: "Merge lane/x (sha): ..." and
 /// git's own "Merge branch 'x'" / "Merge remote-tracking branch 'x'".
-pub fn mergeName(subject: []const u8) ?[]const u8 {
+pub fn mergeName(arena: Allocator, subject: []const u8) Allocator.Error!?[]const u8 {
+    _ = arena;
     const prefix = "Merge ";
     if (!std.mem.startsWith(u8, subject, prefix)) return null;
     var rest = subject[prefix.len..];
@@ -134,7 +141,7 @@ pub fn parseRange(arena: Allocator, since: []const u8, head: []const u8, log: []
         const parents = fields.next() orelse continue;
         const subject = fields.rest();
         if (std.mem.indexOfScalar(u8, std.mem.trim(u8, parents, " "), ' ') == null) continue;
-        try landed.append(arena, mergeName(subject) orelse hash[0..@min(hash.len, 10)]);
+        try landed.append(arena, (try mergeName(arena, subject)) orelse hash[0..@min(hash.len, 10)]);
     }
     std.mem.reverse([]const u8, landed.items);
     return .{ .since = since, .head = head, .commits = commits, .landed = landed.items };
@@ -1797,13 +1804,57 @@ test "site: index.html opens its body with the direction contract" {
 }
 
 test "range: a merge's subject names the branch it merged" {
-    try testing.expectEqualStrings("lane/serializable", mergeName("Merge lane/serializable (d6a770df64): [Serializable] platform objects").?);
-    try testing.expectEqualStrings("infra/test-aggregation", mergeName("Merge infra/test-aggregation (f476a8c834): one test executable").?);
-    try testing.expectEqualStrings("lane/x", mergeName("Merge branch 'lane/x' into main").?);
-    try testing.expectEqualStrings("origin/main", mergeName("Merge remote-tracking branch 'origin/main' into crane-upstream").?);
-    try testing.expectEqualStrings("fix/retire-oom", mergeName("Merge fix/retire-oom").?);
-    try testing.expect(mergeName("chore: codex-indexeddb's Crane tests (gitlink)") == null);
-    try testing.expect(mergeName("Merge ") == null);
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    try testing.expectEqualStrings("lane/serializable", (try mergeName(a, "Merge lane/serializable (d6a770df64): [Serializable] platform objects")).?);
+    try testing.expectEqualStrings("infra/test-aggregation", (try mergeName(a, "Merge infra/test-aggregation (f476a8c834): one test executable")).?);
+    try testing.expectEqualStrings("lane/x", (try mergeName(a, "Merge branch 'lane/x' into main")).?);
+    try testing.expectEqualStrings("origin/main", (try mergeName(a, "Merge remote-tracking branch 'origin/main' into crane-upstream")).?);
+    try testing.expectEqualStrings("fix/retire-oom", (try mergeName(a, "Merge fix/retire-oom")).?);
+    try testing.expect((try mergeName(a, "chore: codex-indexeddb's Crane tests (gitlink)")) == null);
+    try testing.expect((try mergeName(a, "Merge ")) == null);
+}
+
+test "range: the integrator's merge subjects name the lane, and a merge of main is main" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    // Every form in `git log --first-parent --merges -30 main` (2026-11-09, at
+    // afa8760139d), each subject as the integrator wrote it, cut after its sha.
+    const cases = [_]struct { []const u8, []const u8 }{
+        // "Merge lane <name> batch <n> (<sha>; ...): ..."
+        .{ "lane/flaky7", "Merge lane flaky7 batch 1 (372282a168f; A/B runner tip-81be8a6d70a): the recurring flakes" },
+        .{ "lane/perf2", "Merge lane perf2 batch 8 (1cadff0885e; A/B tip ec96867fc8b): the byte-by-byte breakdown" },
+        // A batch with its plan's item first in the parentheses.
+        .{ "lane/perf3", "Merge lane perf3 batch 5 (E1, 1fc9dbe49af; A/B tip 23fbd4a2df4): the custom element registry" },
+        // A batch named with its item after an equals sign.
+        .{ "lane/perf3", "Merge lane perf3 batch 3 = D1 (562964dd0c5; code fb6591d926a): an element's attributes out of line" },
+        // "Merge lane <name> (<sha>): ..." - a lane's only batch.
+        .{ "lane/site1", "Merge lane site1 (ecf3940136e): the WPT results site without per-test-file pages" },
+        .{ "lane/perfpage", "Merge lane perfpage (8f4ea1752e4): /performance/'s Progress section" },
+        // git's own subject for main merged into the integration branch.
+        .{ "main", "Merge branch 'main' into lane/integrate" },
+        // The integrator's subjects for the same: main at a commit, with or without a target.
+        .{ "main", "Merge main dc6eeeaecef (generation 207's flake disposition) into lane/integrate" },
+        .{ "main", "Merge main cc3ae79cf6a (generation 196's dispositions)" },
+        .{ "main", "Merge main (lesson: a worklist change is a code change)" },
+    };
+    for (cases) |c| {
+        const got = (try mergeName(a, c[1])) orelse {
+            std.debug.print("no name for \"{s}\"\n", .{c[1]});
+            return error.TestUnexpectedNull;
+        };
+        testing.expectEqualStrings(c[0], got) catch |e| {
+            std.debug.print("subject: {s}\n", .{c[1]});
+            return e;
+        };
+    }
+    // A bare "Merge lane" names no lane: the word itself, as before.
+    try testing.expectEqualStrings("lane", (try mergeName(a, "Merge lane")).?);
+    // A merged name never holds a space: the history row's data-landed is a
+    // space-separated list (site.js splits it).
+    for (cases) |c| try testing.expect(std.mem.indexOfScalar(u8, (try mergeName(a, c[1])).?, ' ') == null);
 }
 
 test "range: a first-parent log gives the commits and the merges among them" {
@@ -2004,6 +2055,193 @@ test "site: no exemptions write the same bytes as before; an invalid one stops t
     diag = .{};
     try testing.expectError(error.InvalidExemption, runFixtureExempt(gpa, &f, "bad2", fixtureExemption("dom/typo.html"), &diag));
     try testing.expectEqualStrings("dom/typo.html", diag.path);
+}
+
+fn fixtureTestBug(comptime path: []const u8) []const u8 {
+    return "[" ++ path ++ "]\n" ++
+        \\kind = test-bug
+        \\why = the test posts a platform object, which structured clone rejects in every engine
+        \\upstream = https://github.com/web-platform-tests/wpt/issues/99999
+        \\chrome.result = wpt.fyi run 5070179567140864: 0/2
+        \\firefox.result = wpt.fyi run 5140459022974976: 0/2
+        \\safari.result = wpt.fyi run 5107094106406912: 0/2
+        \\revisit = when https://github.com/web-platform-tests/wpt/issues/99999 is resolved
+        \\
+    ;
+}
+
+test "site: a test-bug exemption is its own group, with its upstream issue, never blocking" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    // b.html (TIMEOUT) intentional, c.any.js (NONE-PASSED) a test bug: neither blocks.
+    const text = comptime fixtureExemption("dom/b.html") ++ fixtureTestBug("dom/nodes/c.any.js");
+    _ = try runFixtureExempt(gpa, &f, "kinds", text, &diag);
+
+    const index = try readOut(gpa, &f, "kinds/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<div class=\"blk\"><dt>Blocking files</dt><dd>0</dd>");
+    // The conformance box counts both as exempt.
+    try expectHas(index, "<dt><span class=\"key key-exempt\"></span>Exempt</dt><dd>2</dd>");
+    // Two groups, each under its own heading, after the status and before the contents.
+    try expectBefore(index, "id=\"status\"", "id=\"exempt\"");
+    try expectBefore(index, "id=\"exempt\"", "id=\"exempt-test-bug\"");
+    try expectBefore(index, "id=\"exempt-test-bug\"", "id=\"contents\"");
+    try expectHas(index, "<h2 id=\"exempt-h\">Exempt from the gate</h2>");
+    try expectHas(index, "<h2 id=\"exempt-test-bug-h\">Exempt until an upstream test bug is fixed</h2>");
+    // The intentional group holds b.html only; the test-bug group c.any.js, with
+    // the upstream link, every browser's result and when to revisit.
+    const bug_at = std.mem.indexOf(u8, index, "id=\"exempt-test-bug\"").?;
+    const intentional = index[std.mem.indexOf(u8, index, "id=\"exempt\"").?..bug_at];
+    try expectHas(intentional, "<a href=\"dom/#b.html\"><code>dom/b.html</code></a> <span class=\"gate gate-exempt\">Exempt</span>");
+    try testing.expect(std.mem.indexOf(u8, intentional, "c.any.js") == null);
+    const bug = index[bug_at..std.mem.indexOf(u8, index, "id=\"contents\"").?];
+    try expectHas(bug, "<a href=\"dom/nodes/#c.any.js\"><code>dom/nodes/c.any.js</code></a> <span class=\"gate gate-exempt\">Exempt</span>");
+    try expectHas(bug, "the test posts a platform object, which structured clone rejects in every engine");
+    try expectHas(bug, "<dt>Upstream</dt><dd><a href=\"https://github.com/web-platform-tests/wpt/issues/99999\">https://github.com/web-platform-tests/wpt/issues/99999</a></dd>");
+    try expectHas(bug, "<dt>Chrome</dt><dd>wpt.fyi run 5070179567140864: 0/2</dd>");
+    try expectHas(bug, "<dt>Firefox</dt><dd>wpt.fyi run 5140459022974976: 0/2</dd>");
+    try expectHas(bug, "<dt>Safari</dt><dd>wpt.fyi run 5107094106406912: 0/2</dd>");
+    try expectHas(bug, "<dt>Revisit</dt><dd>when https://github.com/web-platform-tests/wpt/issues/99999 is resolved</dd>");
+    try testing.expect(std.mem.indexOf(u8, bug, "intent:") == null);
+    try testing.expect(std.mem.indexOf(u8, bug, "dom/b.html") == null);
+    // The status counts each group on its own, and links each.
+    try expectHas(index, "Not counted among them: 1 file that would block is <a href=\"#exempt\">exempt</a>, because all three of Chrome, Firefox and Safari intentionally deviate from the spec they test.");
+    try expectHas(index, " Nor is 1 file that would block, <a href=\"#exempt-test-bug\">exempt until an upstream test bug is fixed</a>: Chrome, Firefox and Safari fail it identically because of a bug in the test, filed with web-platform-tests.");
+    try expectHas(index, "<dd>would block, but all three browsers intentionally deviate from the spec it tests, or fail it identically because of a test bug filed upstream</dd>");
+
+    // The file's own section says which kind, with its evidence.
+    const dir = try readOut(gpa, &f, "kinds/dom/nodes/index.html");
+    defer gpa.free(dir);
+    try expectHas(dir, "<p class=\"note-label\">Exempt from the 0.1 gate until an upstream test bug is fixed</p>");
+    try expectHas(dir, "<dt>Upstream</dt><dd><a href=\"https://github.com/web-platform-tests/wpt/issues/99999\">");
+    try expectHas(dir, "<details class=\"tf\" id=\"c.any.js\" data-gate=\"exempt\"");
+    const dom = try readOut(gpa, &f, "kinds/dom/index.html");
+    defer gpa.free(dom);
+    try expectHas(dom, "<p class=\"note-label\">Exempt from the 0.1 gate</p>");
+}
+
+test "site: test-bug exemptions alone write only their own group" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    _ = try runFixtureExempt(gpa, &f, "bugonly", fixtureTestBug("dom/nodes/c.any.js"), &diag);
+    const index = try readOut(gpa, &f, "bugonly/index.html");
+    defer gpa.free(index);
+    try testing.expect(std.mem.indexOf(u8, index, "id=\"exempt\"") == null);
+    try expectHas(index, "id=\"exempt-test-bug\"");
+    try expectHas(index, "Not counted among them: 1 file that would block is <a href=\"#exempt-test-bug\">exempt until an upstream test bug is fixed</a>: Chrome, Firefox and Safari fail it identically because of a bug in the test, filed with web-platform-tests.");
+    try expectHas(index, "<dd>would block, but all three browsers fail it identically because of a test bug filed upstream</dd>");
+    try testing.expect(std.mem.indexOf(u8, index, "intentionally deviate") == null);
+}
+
+test "site: an invalid test-bug exemption stops the site" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    // Not identical in all three browsers.
+    const uneven = comptime blk: {
+        const full = fixtureTestBug("dom/nodes/c.any.js");
+        const at = std.mem.indexOf(u8, full, "5107094106406912: 0/2").?;
+        break :blk full[0..at] ++ "5107094106406912: 2/2" ++ full[at + "5107094106406912: 0/2".len ..];
+    };
+    try testing.expectError(error.InvalidExemption, runFixtureExempt(gpa, &f, "bad-bug", uneven, &diag));
+    try testing.expect(std.mem.indexOf(u8, diag.message, "the same result in all three browsers") != null);
+}
+
+// Generations whose results came from runs named in the history: generation 3's
+// largest run is its sweep, beside a smaller targeted run.
+const fixture_history_hosts =
+    \\{"gate_rule":2,"generations":[
+    \\{"n":1,"at":"2026-09-19T19:55:00","head":"?","reconstructed":true,"total":5,"run":2,"unrun":3,"blocking":1,"crash":0,"timeout":1,"error":0,"clean":1,"partial":0,"sub_pass":3,"sub_fail":0,"sub_passing":3,"sub_targeted":6},
+    \\{"n":2,"at":"2026-09-30T11:21:23","head":"5c8dd64da","gate_rule":2,"total":5,"run":4,"unrun":1,"blocking":2,"crash":0,"timeout":1,"error":0,"none_passed":1,"clean":1,"partial":1,"sub_pass":5,"sub_fail":3,"sub_passing":5,"sub_targeted":8,"subs":{"passed":5,"failed":3,"timed_out":0,"notrun":0},"sources":[{"label":"sweep-5c8dd64da","journal":"journal.jsonl","commit":"5c8dd64da","files":4,"moved":2}]},
+    \\{"n":3,"at":"2026-10-01T09:00:00","head":"6d9ee75eb","gate_rule":2,"total":5,"run":4,"unrun":1,"blocking":2,"crash":0,"timeout":1,"error":0,"none_passed":1,"clean":1,"partial":1,"sub_pass":5,"sub_fail":3,"sub_passing":5,"sub_targeted":8,"subs":{"passed":5,"failed":3,"timed_out":0,"notrun":0},"sources":[{"label":"main-6d9ee75eb-dom","journal":"journal.jsonl","commit":null,"files":1,"moved":1},{"label":"sweep-6d9ee75eb","journal":"journal.jsonl","commit":"6d9ee75eb","files":4,"moved":0}]}
+    \\],"last_statuses":{}}
+;
+
+fn runFixtureHosts(gpa: Allocator, f: *Fixture, out_name: []const u8, history: []const u8, hosts: []const u8, diag: *model.ExemptionDiag) !Summary {
+    const st = try f.state(gpa);
+    defer gpa.free(st);
+    var out = try f.tmp.dir.createDirPathOpen(testing.io, out_name, .{ .open_options = .{ .iterate = true } });
+    defer out.close(testing.io);
+    return generate(gpa, testing.io, .{
+        .state_json = st,
+        .history_json = history,
+        .worklist_text = fixture_worklist,
+        .results = f.results,
+        .assets = null,
+        .wpt = fixture_wpt,
+        .hosts_text = hosts,
+        .hosts_diag = diag,
+    }, out);
+}
+
+test "site: each generation says where it was swept: host, OS and runners" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    const hosts =
+        \\# label host os-arch runners
+        \\sweep-5c8dd64da chat.local macos-arm64 8
+        \\sweep-6d9ee75eb server1 linux-x86_64 32
+        \\main-6d9ee75eb-dom chat2.local macos-arm64 4
+        \\
+    ;
+    _ = try runFixtureHosts(gpa, &f, "hosts", fixture_history_hosts, hosts, &diag);
+    const index = try readOut(gpa, &f, "hosts/index.html");
+    defer gpa.free(index);
+    // The generation entry: the latest generation's largest run, its sweep.
+    try expectHas(index, "<div><dt>Swept on</dt><dd><code>server1</code>, Linux x86-64, 32 runners</dd></div>");
+    try expectBefore(index, "<dt>Runs</dt>", "<dt>Swept on</dt>");
+    // Each history row: a column, and the words for the chart's readout.
+    try expectHas(index, "<th scope=\"col\">Flaky files</th><th scope=\"col\">Swept on</th>");
+    try expectHas(index, "data-swept=\"server1 (Linux x86-64, 32 runners)\"");
+    try expectHas(index, "data-swept=\"chat.local (macOS arm64, 8 runners)\"");
+    try expectHas(index, "<td class=\"host\"><code>server1</code> <small class=\"dim\">Linux x86-64, 32 runners</small></td></tr>");
+    try expectHas(index, "<td class=\"host\"><code>chat.local</code> <small class=\"dim\">macOS arm64, 8 runners</small></td></tr>");
+    // A generation with no run named (reconstructed): not known.
+    try expectHas(index, "<td class=\"host\">&mdash;</td></tr>");
+    // The smaller targeted run of generation 3 is not where it was swept.
+    try testing.expect(std.mem.indexOf(u8, index, "chat2.local") == null);
+}
+
+test "site: no hosts write the same bytes as before; a latest generation not listed says so" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    _ = try runFixtureHosts(gpa, &f, "nohosts", fixture_history, "", &diag);
+    _ = try runFixtureHosts(gpa, &f, "commented", fixture_history, "# no lines yet\n", &diag);
+    _ = try runFixture(gpa, &f, "before", fixture_worklist);
+    const a = try readOut(gpa, &f, "before/index.html");
+    defer gpa.free(a);
+    const b = try readOut(gpa, &f, "nohosts/index.html");
+    defer gpa.free(b);
+    const c = try readOut(gpa, &f, "commented/index.html");
+    defer gpa.free(c);
+    try testing.expectEqualStrings(a, b);
+    try testing.expectEqualStrings(a, c);
+    try testing.expect(std.mem.indexOf(u8, a, "Swept on") == null);
+
+    // Hosts are listed, but not the latest generation's run.
+    _ = try runFixtureHosts(gpa, &f, "unlisted", fixture_history_hosts, "sweep-5c8dd64da chat.local macos-arm64 8\n", &diag);
+    const d = try readOut(gpa, &f, "unlisted/index.html");
+    defer gpa.free(d);
+    try expectHas(d, "<div><dt>Swept on</dt><dd>not recorded for this generation</dd></div>");
+    try expectHas(d, "<td class=\"host\"><code>chat.local</code> <small class=\"dim\">macOS arm64, 8 runners</small></td></tr>");
+}
+
+test "site: an invalid hosts line stops the site" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    try testing.expectError(error.InvalidHosts, runFixtureHosts(gpa, &f, "badhosts", fixture_history_hosts, "sweep-6d9ee75eb server1 linux 32\n", &diag));
+    try testing.expectEqual(@as(usize, 1), diag.line);
 }
 
 // ============================================================================
