@@ -44,9 +44,15 @@ pub const report_marker = "crane-wpt-runner-report";
 
 /// The config `wpt serve` is started with: the WPT root's own config.json
 /// (`base`, null when it has none), its other aliases kept, with the
-/// runner's report mounted at `report_url_path` from `report_file` (an
-/// absolute path). OWNED.
-pub fn serveConfig(allocator: Allocator, base: ?[]const u8, report_file: []const u8) ![]u8 {
+/// runner's report mounted at `report_url_path` from `report_dir` (an
+/// absolute path): the DIRECTORY that holds a file named
+/// testharnessreport.js. wptserve's file mount point (tools/serve/serve.py
+/// `add_file_mount_point`, wptserve handlers.py `filesystem_path`) joins its
+/// "local-dir" with the URL's last segment, so "local-dir" names the
+/// directory, never the file. The pool hosts' persistent servers take the
+/// same alias in their own config.json, at the runner's resources directory
+/// in main's tree. OWNED.
+pub fn serveConfig(allocator: Allocator, base: ?[]const u8, report_dir: []const u8) ![]u8 {
     var arena_state: std.heap.ArenaAllocator = .init(allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
@@ -71,7 +77,7 @@ pub fn serveConfig(allocator: Allocator, base: ?[]const u8, report_file: []const
     };
     var ours: std.json.ObjectMap = .empty;
     try ours.put(arena, "url-path", .{ .string = report_url_path });
-    try ours.put(arena, "local-dir", .{ .string = report_file });
+    try ours.put(arena, "local-dir", .{ .string = report_dir });
     try aliases.append(.{ .object = ours });
     try root.put(arena, "aliases", .{ .array = aliases });
     return std.json.Stringify.valueAlloc(allocator, std.json.Value{ .object = root }, .{});
@@ -403,9 +409,9 @@ pub const WptServer = struct {
     }
 
     /// The files `wpt serve` is started with, in the WPT root beside its
-    /// lockfile: the runner's report, `.crane-testharnessreport-<stem>.js`,
-    /// and the config that aliases it, `.crane-serve-<stem>.json`
-    /// (`serveConfig`). Written once per content (`serveFileStem`): a server
+    /// lockfile: the runner's report, `.crane-wpt-serve-<stem>/
+    /// testharnessreport.js`, and the config that aliases it,
+    /// `.crane-wpt-serve-<stem>.json` (`serveConfig`). Written once per content (`serveFileStem`): a server
     /// another runner started from them may still be reading them. The
     /// config's name, relative to the root (OWNED).
     fn writeServeFiles(self: *WptServer) ![]u8 {
@@ -420,14 +426,20 @@ pub const WptServer = struct {
         const stem = serveFileStem(base orelse "");
         const root_abs = try host.cwd().realPathFileAlloc(io, self.wpt_root, self.allocator);
         defer self.allocator.free(root_abs);
-        const report_name = try std.fmt.allocPrint(self.allocator, ".crane-testharnessreport-{s}.js", .{&stem});
-        defer self.allocator.free(report_name);
-        const report_abs = try std.fs.path.join(self.allocator, &.{ root_abs, report_name });
+        const dir_name = try std.fmt.allocPrint(self.allocator, ".crane-wpt-serve-{s}", .{&stem});
+        defer self.allocator.free(dir_name);
+        const report_dir = try std.fs.path.join(self.allocator, &.{ root_abs, dir_name });
+        defer self.allocator.free(report_dir);
+        host.cwd().createDirPath(io, report_dir) catch |err| switch (err) {
+            error.PathAlreadyExists => {},
+            else => return err,
+        };
+        const report_abs = try std.fs.path.join(self.allocator, &.{ report_dir, "testharnessreport.js" });
         defer self.allocator.free(report_abs);
         try writeFileAll(report_abs, report_js);
-        const config_text = try serveConfig(self.allocator, base, report_abs);
+        const config_text = try serveConfig(self.allocator, base, report_dir);
         defer self.allocator.free(config_text);
-        const config_name = try std.fmt.allocPrint(self.allocator, ".crane-serve-{s}.json", .{&stem});
+        const config_name = try std.fmt.allocPrint(self.allocator, ".crane-wpt-serve-{s}.json", .{&stem});
         errdefer self.allocator.free(config_name);
         const config_abs = try std.fs.path.join(self.allocator, &.{ root_abs, config_name });
         defer self.allocator.free(config_abs);
@@ -1507,7 +1519,7 @@ test "the server's config is the WPT root's own with the runner's report aliased
         \\{"ports": {"http": [8000, 8001], "https": [8443, 8444]}, "check_subdomains": false,
         \\ "aliases": [{"url-path": "/resources/testharnessreport.js", "local-dir": "/old"}, {"url-path": "/x/", "local-dir": "/y"}]}
     ;
-    const text = try serveConfig(allocator, base, "/wpt/.crane-testharnessreport-0.js");
+    const text = try serveConfig(allocator, base, "/wpt/.crane-wpt-serve-0");
     defer allocator.free(text);
     const parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
     defer parsed.deinit();
@@ -1520,18 +1532,20 @@ test "the server's config is the WPT root's own with the runner's report aliased
     try std.testing.expectEqual(@as(usize, 2), aliases.len);
     try std.testing.expectEqualStrings("/x/", aliases[0].object.get("url-path").?.string);
     try std.testing.expectEqualStrings(report_url_path, aliases[1].object.get("url-path").?.string);
-    try std.testing.expectEqualStrings("/wpt/.crane-testharnessreport-0.js", aliases[1].object.get("local-dir").?.string);
+    // wptserve's file mount point joins "local-dir" with the URL's last
+    // segment: the directory that holds testharnessreport.js.
+    try std.testing.expectEqualStrings("/wpt/.crane-wpt-serve-0", aliases[1].object.get("local-dir").?.string);
 }
 
 test "a WPT root with no config.json gets a config of the alias alone" {
     const allocator = std.testing.allocator;
-    const text = try serveConfig(allocator, null, "/r.js");
+    const text = try serveConfig(allocator, null, "/r");
     defer allocator.free(text);
     const parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
     defer parsed.deinit();
     const aliases = parsed.value.object.get("aliases").?.array.items;
     try std.testing.expectEqual(@as(usize, 1), aliases.len);
-    try std.testing.expectEqualStrings("/r.js", aliases[0].object.get("local-dir").?.string);
+    try std.testing.expectEqualStrings("/r", aliases[0].object.get("local-dir").?.string);
 }
 
 test "the served report carries the marker the runner checks a server for" {
