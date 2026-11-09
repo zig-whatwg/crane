@@ -2830,6 +2830,13 @@ struct IsolateData {
     bool node_wrappers_drain_due = false;
     /// A drain task is posted and has not run.
     bool node_wrappers_drain_posted = false;
+#ifndef NDEBUG
+    /// Debug: the v8_wrapper.cpp frames holding a NodeAnchor* now
+    /// (NODE_ANCHOR_IN_FRAME) - none may be live across a requested
+    /// collection, which is precise for the C++ heap
+    /// (v8_Isolate_RequestGarbageCollection asserts it).
+    int anchors_in_frames = 0;
+#endif
     /// tests/v8 only (v8_test_NodeWrappers_ObserveDrainTasks): counters a
     /// posted drain task bumps when it runs, or when it is destroyed without
     /// running - the test's own, which outlive the agent.
@@ -2953,6 +2960,29 @@ static_assert(std::is_base_of_v<api_internal::IndirectHandleBase, TracedReferenc
                   sizeof(TracedReference<Object>) == sizeof(Global<Object>),
               "a node wrapper's slot is read through the Global<Object>* every borrower holds");
 
+/// Debug: a frame that holds a NodeAnchor* says so for its extent
+/// (IsolateData::anchors_in_frames). The precise requested collection's
+/// invariant, checked there: Crane's frames hold nodes (an Instance, a
+/// NodeBase - counted while anything needs them), never a NodeAnchor*
+/// across a collection; an anchor is kept by its wrapper, which a frame
+/// that uses the node keeps (a receiver, an argument: V8's own handles).
+#ifndef NDEBUG
+struct NodeAnchorInFrame {
+    explicit NodeAnchorInFrame(Isolate* isolate) : record_(isolateData(isolate)) {
+        if (record_) ++record_->anchors_in_frames;
+    }
+    ~NodeAnchorInFrame() {
+        if (record_) --record_->anchors_in_frames;
+    }
+    NodeAnchorInFrame(const NodeAnchorInFrame&) = delete;
+    NodeAnchorInFrame& operator=(const NodeAnchorInFrame&) = delete;
+    IsolateData* record_;
+};
+#define NODE_ANCHOR_IN_FRAME(isolate) NodeAnchorInFrame node_anchor_in_frame_(isolate)
+#else
+#define NODE_ANCHOR_IN_FRAME(isolate) ((void)0)
+#endif
+
 /// The node anchor `object` - a wrapper, or a legacy platform object's proxy
 /// around one - points at, or null: not an API wrapper (Object::Unwrap reads
 /// the CppHeap pointer field only API wrappers have), never wrapped, or
@@ -2971,6 +3001,7 @@ static NodeAnchor* nodeAnchorOf(Isolate* isolate, Local<Object> object) {
 /// anchor, its slot, the node, its instance), or null: no node wrapper, or
 /// one whose node's teardown or agent's end severed it.
 static void* nodeInstanceOf(Isolate* isolate, Local<Object> object) {
+    NODE_ANCHOR_IN_FRAME(isolate);
     NodeAnchor* anchor = nodeAnchorOf(isolate, object);
     if (!anchor || !anchor->slot_) return nullptr;
     IsolateData* record = isolateData(isolate);
@@ -3155,6 +3186,7 @@ extern "C" void v8_NodeWrapper_Attach(Isolate* isolate, Global<Object>* box, voi
     // 3. The anchor. A collection this allocation starts runs before it
     //    exists.
     NodeAnchor* anchor = cppgc::MakeGarbageCollected<NodeAnchor>(heap->GetAllocationHandle(), slot);
+    NODE_ANCHOR_IN_FRAME(isolate);
     // 4. The wrapper points at it (WriteBarrier::ForCppHeapPointer marks it
     //    if the wrapper is already marked).
     Object::Wrap<kNodeAnchorTag>(isolate, wrappable, anchor);
@@ -3173,6 +3205,7 @@ extern "C" void* v8_NodeWrapper_Root(Isolate* isolate, void* slot) {
     TracedReference<Object>* traced = static_cast<TracedReference<Object>*>(slot);
     if (traced->IsEmpty()) return nullptr;
     HandleScope scope(isolate);
+    NODE_ANCHOR_IN_FRAME(isolate);
     NodeAnchor* anchor = nodeAnchorOf(isolate, traced->Get(isolate));
     if (!anchor) return nullptr;
     return new cppgc::Persistent<NodeAnchor>(anchor);
@@ -3199,6 +3232,7 @@ extern "C" void v8_NodeWrapper_End(Isolate* isolate, void* slot) {
         if (enter) isolate->Enter();
         {
             HandleScope scope(isolate);
+            NODE_ANCHOR_IN_FRAME(isolate);
             if (NodeAnchor* anchor = nodeAnchorOf(isolate, traced->Get(isolate))) {
                 if (anchor->slot_ == slot) anchor->slot_ = nullptr;
             }
@@ -3217,6 +3251,7 @@ extern "C" void v8_NodeWrappers_EndAll(Isolate* isolate, void* registry_data, vo
     IsolateData* record = isolateData(isolate);
     NodeWrapperRegistry* registry = record ? record->node_anchors.Get() : nullptr;
     if (!registry) return;
+    NODE_ANCHOR_IN_FRAME(isolate);
     // By index: `ended` only counts (no V8 call, no wrap), but the vector is
     // read afresh at each step all the same.
     for (size_t i = 0; i < registry->anchors.size(); i++) {
@@ -3266,6 +3301,7 @@ extern "C" void v8_test_NodeWrapper_Probe(Isolate* isolate, void* slot, CraneNod
     Local<Object> object = handle->Get(isolate);
     out->api_wrapper = object->IsApiWrapper();
     out->internal_fields = object->InternalFieldCount();
+    NODE_ANCHOR_IN_FRAME(isolate);
     NodeAnchor* anchor = nodeAnchorOf(isolate, object);
     out->anchor = anchor;
     out->anchor_slot = anchor ? anchor->slot_ : nullptr;
@@ -7200,6 +7236,7 @@ void v8_FunctionCallbackInfo_ThisInstanceFields(const FunctionCallbackInfo<Value
 void* v8_FunctionCallbackInfo_ThisNodeSlot(const FunctionCallbackInfo<Value>* info) {
     Local<Value> receiver = info->This();
     if (!receiver->IsObject()) return nullptr;
+    NODE_ANCHOR_IN_FRAME(info->GetIsolate());
     NodeAnchor* anchor = nodeAnchorOf(info->GetIsolate(), receiver.As<Object>());
     return anchor ? anchor->slot_ : nullptr;
 }
@@ -10379,6 +10416,13 @@ void v8_Isolate_RequestGarbageCollection(Isolate* isolate) {
     // gc_controller.cc AsyncCollectAllWithEmptyStack: kNoHeapPointers).
     // The node wrappers it collected let their references go at its end
     // (nodeWrappersEpilogue: a forced collection drains synchronously).
+#ifndef NDEBUG
+    if (IsolateData* record = isolateData(isolate); record && record->anchors_in_frames != 0) {
+        fprintf(stderr, "v8_wrapper: a requested collection with %d frame(s) holding a NodeAnchor*: it is precise for the C++ heap, and would free what they hold\n",
+                record->anchors_in_frames);
+        abort();
+    }
+#endif
     if (CppHeap* heap = isolate->GetCppHeap()) {
         cppgc::testing::OverrideEmbedderStackStateScope precise(heap->GetHeapHandle(), cppgc::EmbedderStackState::kNoHeapPointers);
         isolate->LowMemoryNotification();
@@ -12689,6 +12733,7 @@ class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
     bool HasCustomHostObject(Isolate*) override { return true; }
 
     Maybe<bool> IsHostObject(Isolate* isolate, Local<Object> object) override {
+        NODE_ANCHOR_IN_FRAME(isolate);
         return Just(object->InternalFieldCount() > 0 || nodeAnchorOf(isolate, object) != nullptr);
     }
 
