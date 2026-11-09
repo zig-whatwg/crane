@@ -659,6 +659,13 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
 /// agents had made (tests/v8/agent_realms_isolation_test.zig). The realms are
 /// the agent's own now (`AgentRecord.realms`), as Blink keeps an isolate's
 /// state on its V8PerIsolateData and WebKit on its VM's client data.
+///
+/// The agent's C++ heap (cppgc: every agent has one, made with its isolate -
+/// v8_wrapper.cpp IsolateData::cpp_heap) ends last, with the isolate: V8
+/// detaches and terminates it inside Isolate::Dispose, and the isolate's
+/// record frees it after (worker_realm.destroyAgent). Nothing is allocated on
+/// it yet, so nothing of the agent's state below depends on it (the wrapper
+/// redesign, tmp/redesign/wrapper-redesign-design.md 4.9).
 pub fn endAgent(agent: *Agent) void {
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
     ffi.v8_Isolate_CloseForegroundTasks(isolate);
