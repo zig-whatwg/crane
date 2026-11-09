@@ -127,7 +127,7 @@ sufficient — see the regression protocol above.
 
 ## WPT and the 0.1 gate
 
-- **The 0.1 gate: no file in the worklist blocks.** A file blocks when it times out, errors or crashes, or finishes OK with none of its subtests passing; a file only ALL THREE browsers intentionally deviate on is exempt, and so is a file that fails identically in all three because of a test bug filed upstream, until that bug is resolved (the user, 2026-11-08); each is listed with its evidence in `tools/wpt_gate_exemptions.txt`.
+- **The 0.1 gate: no file in the worklist blocks.** A file blocks when it times out, errors or crashes, or finishes OK with none of its subtests passing; a file only ALL THREE browsers intentionally deviate on is exempt, and so is a file that fails identically in all three because of a test bug filed upstream, until that bug is resolved (the user, 2026-11-08), and a file whose every failure is geometry no renderer answers yet (`needs-renderer`, the user, 2026-11-09: it still runs and shows on the site, and stops being exempt when a renderer exists); each is listed with its evidence in `tools/wpt_gate_exemptions.txt`.
 - Fixing a file: isolate the one failing test, fix it, then uncomment everything and re-run the whole file; commit the fix and its test together (.claude/rules/wpt-workflow.md).
 - Only main's runs go where the report reads them (`wpt-results/<label>/`, one directory deep), a lane's to `wpt-results/lanes/<label>/`.
 - After a feature commit, regenerate (`zig build wpt-progress`; push `gh-pages` with main) and keep `docs/roadmap.toml` current; once per working session, a full worklist sweep at HEAD from a frozen runner, with its `journal.wptreport.jsonl`.

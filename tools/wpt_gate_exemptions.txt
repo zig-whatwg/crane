@@ -1,5 +1,5 @@
 # The 0.1 gate's exemptions: worklist files omitted from the blocking count
-# (AGENTS.md "The 0.1 gate", in full in .claude/rules/wpt-workflow.md). Two kinds:
+# (AGENTS.md "The 0.1 gate", in full in .claude/rules/wpt-workflow.md). Three kinds:
 #
 #   intentional  ALL THREE of Chrome, Firefox and Safari intentionally deviate
 #                from the spec the file tests (the user, 2026-10-17; golden rule
@@ -10,12 +10,21 @@
 #                until that bug is resolved: when the issue closes, the entry is
 #                removed and the file revisited. Filing the issue still needs the
 #                user's OK.
+#   needs-renderer  the file fails ONLY because no renderer answers geometry -
+#                a layout box's size or position, which Crane, drawing nothing,
+#                answers with CSSOM View's no-box values (the user, 2026-11-09,
+#                choice (b)). It still runs and shows on the site, but does not
+#                block 0.1 until a renderer exists; then the entry is removed
+#                and the file revisited. Every failure of the file must be one a
+#                renderer would answer: a file that also fails for any other
+#                reason is not this kind.
 #
 # Read by tools/wpt_progress.py (the progress page) and tools/wpt_site/
 # (the public results site). A listed file that would block is counted in its
-# kind's own group - "exempt (all three browsers intentionally deviate)" or
-# "exempt until an upstream test bug is fixed" - never as blocking; a listed file
-# that does not block keeps its own standing. Both tools stop with an error on an
+# kind's own group - "exempt (all three browsers intentionally deviate)",
+# "exempt until an upstream test bug is fixed" or "exempt until a renderer
+# answers geometry" - never as blocking; a listed file that does not block keeps
+# its own standing. Both tools stop with an error on an
 # invalid entry - never a silent exemption.
 #
 # NOT exempt: a file every browser merely fails, a file only some browsers
@@ -54,13 +63,24 @@
 #   safari.result   = wpt.fyi run <run id>: <passes>/<total>
 #   revisit         = when <the upstream URL above> is resolved
 #
+# A needs-renderer entry (the user, 2026-11-09):
+#
+#   [html/example/file.html]
+#   kind            = needs-renderer
+#   why             = one line: why the failing assertion needs a layout box - what reads geometry,
+#                     and what Crane's no-box answer makes it do
+#   assertion       = the failing assertion as the run reports it, e.g.
+#                     promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+#
+# (Each value is one line; the examples above wrap only here.)
+#
 # Rules the tools check: the path is in tests/wpt_0_1_worklist.txt and is
-# listed once; kind is intentional or test-bug; spec and every *.intent value is
+# listed once; kind is intentional, test-bug or needs-renderer; spec and every *.intent value is
 # an http(s) URL; every *.result value names a wpt.fyi run ("wpt.fyi run <id>:
 # <passes>/<total>", a note may follow); upstream is a web-platform-tests issue
 # or pull request URL; revisit reads "when <upstream> is resolved" with the
 # entry's own upstream URL; a test-bug entry's three results have the same
-# <passes>/<total>; no key of the other kind, and no unknown key, appears.
+# <passes>/<total>; no key of another kind, and no unknown key, appears.
 # The tools cannot see whether an upstream issue is still open: check it before
 # adding an entry, and whenever the entry is reviewed.
 #
@@ -81,3 +101,659 @@
 #   (bug 330301). The forms1 test-driver cases (select-pick-option-dirtiness,
 #   select-picker-hover-after-picking) have no upstream issue, and Firefox 159
 #   fails them earlier than Chrome and Safari do.
+
+# needs-renderer (the user, 2026-11-09, choice (b); lane wptcfg batch 1): the 130 files whose every failure in
+# the production run (validation 2026-11-09 21:57 UTC, server1) is common/security-features' read-back of an
+# image through img.clientWidth; checked by hand on the 9 referrer-policy/generic sources and the img-tag path.
+# referrer-policy/generic/multiple-headers-one-invalid.html is NOT here: it failed in generation 213 for another
+# reason (the referrer it sends), so a renderer would not make it pass.
+
+[referrer-policy/4K+1/gen/top.http-rp/no-referrer-when-downgrade/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K+1/gen/top.http-rp/origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K+1/gen/top.http-rp/same-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K+1/gen/top.http-rp/strict-origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K+1/gen/top.http-rp/unsafe-url/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K+1/gen/top.http-rp/unset/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K+1/gen/top.meta/no-referrer-when-downgrade/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K+1/gen/top.meta/origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K+1/gen/top.meta/same-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K+1/gen/top.meta/strict-origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K+1/gen/top.meta/unsafe-url/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K+1/gen/top.meta/unset/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K-1/gen/top.http-rp/no-referrer-when-downgrade/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K-1/gen/top.http-rp/origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K-1/gen/top.http-rp/same-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K-1/gen/top.http-rp/strict-origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K-1/gen/top.http-rp/unsafe-url/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K-1/gen/top.http-rp/unset/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K-1/gen/top.meta/no-referrer-when-downgrade/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K-1/gen/top.meta/origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K-1/gen/top.meta/same-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K-1/gen/top.meta/strict-origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K-1/gen/top.meta/unsafe-url/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K-1/gen/top.meta/unset/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K/gen/top.http-rp/no-referrer-when-downgrade/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K/gen/top.http-rp/origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K/gen/top.http-rp/same-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K/gen/top.http-rp/strict-origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K/gen/top.http-rp/unsafe-url/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K/gen/top.http-rp/unset/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K/gen/top.meta/no-referrer-when-downgrade/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K/gen/top.meta/origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K/gen/top.meta/same-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K/gen/top.meta/strict-origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K/gen/top.meta/unsafe-url/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/4K/gen/top.meta/unset/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/iframe.http-rp/no-referrer-when-downgrade/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.http-rp/no-referrer/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.http-rp/origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.http-rp/origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.http-rp/same-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.http-rp/strict-origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.http-rp/strict-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.http-rp/unsafe-url/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.http-rp/unset/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.meta/always/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.meta/default/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.meta/never/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.meta/no-referrer-when-downgrade/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.meta/no-referrer/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.meta/origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.meta/origin-when-crossorigin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.meta/origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.meta/same-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.meta/strict-origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.meta/strict-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.meta/unsafe-url/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/iframe.meta/unset/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/req.attr/no-referrer-when-downgrade/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/req.attr/no-referrer/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/req.attr/origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/req.attr/origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/req.attr/same-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/req.attr/strict-origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/req.attr/strict-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/req.attr/unsafe-url/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/no-referrer-when-downgrade/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/no-referrer/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/same-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/strict-origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/strict-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/unsafe-url/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/unset/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.meta/always/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.meta/default/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.meta/never/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.meta/no-referrer-when-downgrade/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.meta/no-referrer/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.meta/origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.meta/origin-when-crossorigin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.meta/origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.meta/same-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.meta/strict-origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.meta/strict-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.meta/unsafe-url/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc-inherit.meta/unset/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc.meta/always/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc.meta/default/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc.meta/never/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc.meta/no-referrer-when-downgrade/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc.meta/no-referrer/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc.meta/origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc.meta/origin-when-crossorigin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc.meta/origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc.meta/same-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc.meta/strict-origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc.meta/strict-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/srcdoc.meta/unsafe-url/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: "IndexSizeError"
+
+[referrer-policy/gen/top.http-rp/no-referrer-when-downgrade/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.http-rp/no-referrer/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.http-rp/origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.http-rp/origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.http-rp/same-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.http-rp/strict-origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.http-rp/strict-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.http-rp/unsafe-url/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.http-rp/unset/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.meta/always/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.meta/default/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.meta/never/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.meta/no-referrer-when-downgrade/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.meta/no-referrer/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.meta/origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.meta/origin-when-crossorigin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.meta/origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.meta/same-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.meta/strict-origin-when-cross-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.meta/strict-origin/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.meta/unsafe-url/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/gen/top.meta/unset/img-tag.http.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/generic/link-rel-prefetch.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/generic/meta-tag-in-svg-image.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = Unhandled rejection: IndexSizeError
+
+[referrer-policy/generic/multiple-headers-and-values.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/generic/multiple-headers-combined.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/generic/multiple-headers-one-unknown-token.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/generic/multiple-headers.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/generic/subresource-test/image-decoding.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+[referrer-policy/generic/unsupported-csp-referrer-directive.html]
+kind      = needs-renderer
+why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"

@@ -55,6 +55,16 @@ issue or PR) is omitted from the blocking count until that bug is resolved; it i
 listed with the upstream issue and each browser's wpt.fyi result, and revisited
 when the issue closes (the exemption ends then). Filing the upstream issue still
 needs the user's OK.
+A third exception (the user, 2026-11-09, choice (b)): a file whose EVERY failing
+subtest fails only because no renderer answers geometry - Crane computes no box
+itself; geometry is a read on the rendering engine the compiled-in platform plugs
+in (docs/platform-protocol.md 6.9), and the default platform has none - still
+runs and shows on the site, but does not block 0.1 until a renderer exists
+(`needs-renderer`, its own group on the page). Its evidence is the failing
+assertion and why it needs a layout box (e.g. getImageData(0, 0,
+img.clientWidth, img.clientHeight) throws IndexSizeError when clientWidth is 0),
+derived from a production run's messages and checked by hand. A file that also
+fails for any other reason is NOT exempt.
 When a generation sweep lands in `wpt-results/<label>/`, append its line to
 `tools/wpt_generation_hosts.txt` (`<label> <host> <os>-<arch> <runners>`) before
 regenerating the site; an unlisted run shows "not recorded for this generation".

@@ -257,7 +257,7 @@ fn markClass(status: []const u8) []const u8 {
     return "s-other";
 }
 
-const reserved_ids = [_][]const u8{ "status", "exempt", "exempt-test-bug", "versus", "contents", "history", "main", "toc", "gens", "chart", "hl-label", "toc-title" };
+const reserved_ids = [_][]const u8{ "status", "exempt", "exempt-test-bug", "exempt-needs-renderer", "versus", "contents", "history", "main", "toc", "gens", "chart", "hl-label", "toc-title" };
 
 /// The index section id of a suite ("dom/" -> "dom"), `suite-` prefixed
 /// when it would collide with one of the page's own ids.
@@ -851,6 +851,7 @@ pub fn writeIndex(w: W, site: *const Site) Error!void {
     try writeStatus(w, site, tot);
     try writeExempt(w, site, .intentional);
     try writeExempt(w, site, .test_bug);
+    try writeExempt(w, site, .needs_renderer);
     try writeVersus(w, site);
     try writeContents(w, site);
     for (site.suites, 1..) |s, i| try writeSuite(w, site, s, i);
@@ -1009,6 +1010,20 @@ fn writeStatus(w: W, site: *const Site, tot: model.Totals) Error!void {
         }
         try w.print(" <a href=\"#exempt-test-bug\">exempt until an upstream test bug is fixed</a>: Chrome, Firefox and Safari fail {s} identically because of a bug in the test, filed with web-platform-tests.", .{if (n == 1) "it" else "each"});
     }
+    if (listed.needs_renderer) {
+        // The user's 2026-11-09 ruling: a file that fails only because no
+        // renderer answers geometry runs and shows, but does not block 0.1
+        // until a renderer exists.
+        const n = exemptCount(site, .needs_renderer);
+        if (listed.intentional or listed.test_bug) {
+            try w.writeAll(if (n == 1) " Nor is " else " Nor are ");
+            try html.plural(w, n, "file that would block,", "files that would block,");
+        } else {
+            try w.writeAll(" Not counted among them: ");
+            try html.plural(w, n, "file that would block is", "files that would block are");
+        }
+        try w.print(" <a href=\"#exempt-needs-renderer\">exempt until a renderer answers geometry</a>: {s} only because Crane has no renderer to answer geometry (a layout box&rsquo;s size or position).", .{if (n == 1) "it fails" else "each fails"});
+    }
     try w.writeAll(" Per-subtest detail comes from the runner&rsquo;s result streams: ");
     if (site.detail_files > 0) {
         try html.num(w, site.detail_files);
@@ -1019,17 +1034,22 @@ fn writeStatus(w: W, site: *const Site, tot: model.Totals) Error!void {
         try w.writeAll("no file has it in this generation yet, so each file&rsquo;s section gives its counts.");
     }
     try w.writeAll("</p>\n</div>\n<div class=\"note\" role=\"note\">\n<p class=\"note-label\">How to read a section</p>\n<p>Each suite is a numbered section that opens with its own subtest numbers. Its <em>Conformance</em> box counts files by standing; its <em>Tests</em> tables link to a page for every directory, where each test file opens in place to its subtests. Everything has a permanent link, <span class=\"self-demo\" aria-hidden=\"true\">&para;</span>.</p>\n<dl class=\"legend\" aria-label=\"File standings\">\n<div><dt><span class=\"key key-clean\"></span>Clean</dt><dd>every reported subtest passed</dd></div>\n<div><dt><span class=\"key key-partial\"></span>With failures</dt><dd>some subtests passed, some did not</dd></div>\n<div><dt><span class=\"key key-blocking\"></span>Blocking</dt><dd>NONE-PASSED, TIMEOUT, ERROR, CRASH</dd></div>\n<div><dt><span class=\"key key-empty\"></span>No subtests</dt><dd>the file ran and reported none</dd></div>\n<div><dt><span class=\"key key-unrun\"></span>Not run</dt><dd>no result yet</dd></div>\n");
-    if (listed.intentional or listed.test_bug) {
-        try w.writeAll("<div><dt><span class=\"key key-exempt\"></span>Exempt</dt><dd>would block, but all three browsers ");
-        if (listed.intentional) try w.writeAll("intentionally deviate from the spec it tests");
-        if (listed.intentional and listed.test_bug) try w.writeAll(", or ");
-        if (listed.test_bug) try w.writeAll("fail it identically because of a test bug filed upstream");
+    if (listed.intentional or listed.test_bug or listed.needs_renderer) {
+        try w.writeAll("<div><dt><span class=\"key key-exempt\"></span>Exempt</dt><dd>would block, but ");
+        if (listed.intentional or listed.test_bug) {
+            try w.writeAll("all three browsers ");
+            if (listed.intentional) try w.writeAll("intentionally deviate from the spec it tests");
+            if (listed.intentional and listed.test_bug) try w.writeAll(", or ");
+            if (listed.test_bug) try w.writeAll("fail it identically because of a test bug filed upstream");
+            if (listed.needs_renderer) try w.writeAll(", or ");
+        }
+        if (listed.needs_renderer) try w.writeAll("it fails only because no renderer answers geometry");
         try w.writeAll("</dd></div>\n");
     }
     try w.writeAll("</dl>\n</div>\n</section>\n");
 }
 
-const ExemptKinds = struct { intentional: bool = false, test_bug: bool = false };
+const ExemptKinds = struct { intentional: bool = false, test_bug: bool = false, needs_renderer: bool = false };
 
 /// Which kinds tools/wpt_gate_exemptions.txt lists.
 fn exemptKinds(site: *const Site) ExemptKinds {
@@ -1037,6 +1057,7 @@ fn exemptKinds(site: *const Site) ExemptKinds {
     for (site.exemptions) |e| switch (e.kind) {
         .intentional => k.intentional = true,
         .test_bug => k.test_bug = true,
+        .needs_renderer => k.needs_renderer = true,
     };
     return k;
 }
@@ -1054,7 +1075,8 @@ fn exemptCount(site: *const Site, kind: model.ExemptionKind) u64 {
 /// One exemption's evidence. Intentional: what the browsers do instead, the
 /// spec, and each browser's wpt.fyi result and evidence of intent. A test
 /// bug: what is wrong with the test, the upstream report, each browser's
-/// wpt.fyi result, and when the entry is revisited.
+/// wpt.fyi result, and when the entry is revisited. Needs a renderer: why the
+/// failing assertion needs a layout box, and the assertion.
 fn writeEvidence(w: W, e: *const model.Exemption) Error!void {
     try w.writeAll("<p>");
     try html.text(w, e.why);
@@ -1092,6 +1114,11 @@ fn writeEvidence(w: W, e: *const model.Exemption) Error!void {
             try html.text(w, e.revisit);
             try w.writeAll("</dd></div>");
         },
+        .needs_renderer => {
+            try w.writeAll("<div><dt>Failing assertion</dt><dd>");
+            try html.text(w, e.assertion);
+            try w.writeAll("</dd></div>");
+        },
     }
     try w.writeAll("</dl>\n");
 }
@@ -1109,6 +1136,10 @@ fn writeExempt(w: W, site: *const Site, kind: model.ExemptionKind) Error!void {
         .test_bug => {
             if (!listed.test_bug) return;
             try w.writeAll("<section class=\"front\" id=\"exempt-test-bug\" aria-labelledby=\"exempt-test-bug-h\">\n<h2 id=\"exempt-test-bug-h\">Exempt until an upstream test bug is fixed</h2>\n<div class=\"front-prose\">\n<p>These files are omitted from the blocking count until a bug in the test itself is resolved: Chrome, Firefox and Safari all fail each one identically because of it, and the bug is filed with web-platform-tests. When the upstream issue is resolved the exemption ends and the file is revisited. A listed file that does not block keeps its own standing.</p>\n<ol class=\"exempt-list\">\n");
+        },
+        .needs_renderer => {
+            if (!listed.needs_renderer) return;
+            try w.writeAll("<section class=\"front\" id=\"exempt-needs-renderer\" aria-labelledby=\"exempt-needs-renderer-h\">\n<h2 id=\"exempt-needs-renderer-h\">Exempt until a renderer answers geometry</h2>\n<div class=\"front-prose\">\n<p>These files still run and show here, but are omitted from the blocking count until Crane has a renderer: each fails only because no renderer answers geometry &mdash; a layout box&rsquo;s size or position, which Crane, drawing nothing, does not compute. Each lists its failing assertion and why that assertion needs a layout box. When a renderer answers geometry the exemption ends and the file is revisited. A listed file that does not block keeps its own standing.</p>\n<ol class=\"exempt-list\">\n");
         },
     }
     for (site.exemptions) |*e| {
@@ -1574,6 +1605,7 @@ pub fn writeFileSection(w: W, gpa: std.mem.Allocator, site: *const Site, f: *con
         try w.writeAll(switch (e.kind) {
             .intentional => "<div class=\"note\" role=\"note\"><p class=\"note-label\">Exempt from the 0.1 gate</p>\n",
             .test_bug => "<div class=\"note\" role=\"note\"><p class=\"note-label\">Exempt from the 0.1 gate until an upstream test bug is fixed</p>\n",
+            .needs_renderer => "<div class=\"note\" role=\"note\"><p class=\"note-label\">Exempt from the 0.1 gate until a renderer answers geometry</p>\n",
         });
         try writeEvidence(w, e);
         try w.writeAll("</div>\n");
