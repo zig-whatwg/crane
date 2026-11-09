@@ -1876,6 +1876,10 @@ pub const WrapperCache = struct {
         }
 
         log.debug("[wrapper_cache.deinit] Summary: processed={}, skipped_cleaned={}, skipped_started={}", .{ processed, skipped_cleaned, skipped_started });
+        // The realm's detached wrapped trees: their wrappers are the agent's
+        // (node_wrappers), and the net this sweep made for them while they
+        // were its entries is theirs now (refcount step 7a).
+        node_wrappers.endRealm(@ptrCast(self));
         self.unregister();
         self.cache.deinit();
         self.pending_before_wrap.deinit(self.allocator);

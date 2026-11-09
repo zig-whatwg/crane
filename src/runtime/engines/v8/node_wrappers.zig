@@ -27,8 +27,11 @@
 //!   The SECOND pass (`drainCallback`) releases the recorded references -
 //!   unless a walk holds the agent's teardowns (engine.deferTeardowns), whose
 //!   last resume drains instead. A release only counts: a tree it leaves
-//!   with no hold is queued by the counts (dom.refcount_teardown), and THE
-//!   ADAPTER NEVER FREES A NODE.
+//!   with no hold is queued by the counts (dom.refcount_teardown) - A
+//!   COLLECTION NEVER FREES A NODE.
+//! - **A realm's end** keeps refcount step 7a's net for the realm's detached
+//!   trees, as the wrapper cache's sweep made it while node wrappers were its
+//!   entries (`endRealm`): their roots are freed whatever their counts.
 //! - **A wrap between the two passes** makes a new wrapper with its own
 //!   reference; the drain releases the collected one's only (refcount design
 //!   2.1, "wrapped again between the passes").
@@ -503,6 +506,70 @@ pub fn nodeDestroyed(instance: *runtime.Instance) void {
         if (cell) |c| r.freeCell(c) else log.err("a node wrapper ended with no cell to free", .{});
     }
     endReference(target);
+}
+
+/// A realm's end (WrapperCache.deinit, inside its coordinated teardown):
+/// refcount step 7a's NET for the realm's detached trees, as the wrapper
+/// cache's sweep made it while node wrappers were its entries - every
+/// detached root (parentless, unhosted) a wrapper of this realm reaches is
+/// freed whatever its counts say, its subtree with it (the wrapped part of a
+/// tree is upward-closed, so its root is wrapped). A holder that counts a node
+/// there forgets it (its generation net), as before: what only a forced
+/// teardown let go of - an element whose own pending work counts it - is not
+/// left until the Browser's end. Refcount step 7b removes the net. The
+/// realm's node wrappers are not let go otherwise: a node another realm's
+/// tree holds, or a wrapper that outlives its realm, is its agent's.
+pub fn endRealm(cache_storage: *anyopaque) void {
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse return;
+    const registry = registryOf(isolate) orelse return;
+    const Root = struct { instance: *runtime.Instance, generation: u64 };
+    var roots: std.ArrayListUnmanaged(Root) = .empty;
+    defer roots.deinit(std.heap.c_allocator);
+    // The realm's wrappers already collected whose release waits for the
+    // drain (V8's second pass is a posted task for an ordinary collection):
+    // released now, and a detached root among them is the net's too - the
+    // sweep finalized such an entry itself ("wrappers already collected
+    // whose finalizer has not run"), freeing a collected root nothing in a
+    // tree held, whatever its counts.
+    var at: usize = 0;
+    while (at < registry.released.items.len) {
+        const released = registry.released.items[at];
+        const live = runtime.SlabAllocator.generationOf(released.instance) == released.generation and
+            !runtime.instance_lifecycle.isCleanupStarted(released.instance);
+        if (!live or released.instance.ctx.getV8WrapperCacheStorage() != cache_storage) {
+            at += 1;
+            continue;
+        }
+        _ = registry.released.swapRemove(at);
+        const node: *@import("dom").NodeBase = @ptrCast(@alignCast(released.target));
+        const root = node.parent_node == null and !node.rc_flags.hosted;
+        releaseOne(released);
+        if (root and runtime.SlabAllocator.generationOf(released.instance) == released.generation)
+            roots.append(std.heap.c_allocator, .{ .instance = released.instance, .generation = released.generation }) catch return;
+    }
+    for (registry.chunks.items) |chunk| {
+        for (chunk) |*cell| {
+            if (!cellIsLive(cell)) continue;
+            const node: *@import("dom").NodeBase = @ptrFromInt(cell.word);
+            if (node.parent_node != null or node.rc_flags.hosted) continue;
+            const instance = instanceOfTarget(node) orelse continue;
+            if (instance.ctx.getV8WrapperCacheStorage() != cache_storage) continue;
+            if (isRealmWindowNode(instance)) continue;
+            roots.append(std.heap.c_allocator, .{ .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) }) catch return;
+        }
+    }
+    // Collected first: each teardown frees cells and may wrap.
+    for (roots.items) |root| {
+        if (runtime.SlabAllocator.generationOf(root.instance) != root.generation) continue;
+        if (runtime.instance_lifecycle.isCleanupStarted(root.instance)) continue;
+        runtime.gc.onObjectFreed(root.instance);
+    }
+}
+
+/// A node no realm end frees: none today (a realm's Window is not a node);
+/// kept as the sweep's own rule read (wrapper_cache isRealmWindow).
+fn isRealmWindowNode(instance: *runtime.Instance) bool {
+    return std.mem.eql(u8, instance.vtable.name, "Window");
 }
 
 /// engine.releaseNodeWrappers: `isolate`'s agent will run no more script.

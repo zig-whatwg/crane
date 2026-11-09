@@ -62,6 +62,11 @@ fn reset() void {
     test_isolate = null;
     test_data = null;
     test_cache = null;
+    // Each test's agent has a standalone scope of its own, whose slab may
+    // issue the same address at the same generation again: a record left
+    // from an earlier test (verify mode runs them 10 times in one process)
+    // would answer `wasFreed` for a live instance of a later one.
+    freed.clearAndFree(std.heap.page_allocator);
 }
 
 fn setup() !void {

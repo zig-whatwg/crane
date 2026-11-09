@@ -21,12 +21,18 @@
 //!   the Browser ended. Now the entry waits for the walk's end, and a child
 //!   its root freed by then gives its slot to the teardown, severed.
 //!
+//! The roots here speak (docs/lessons/debugging-give-the-objects-that-
+//! reissue-a-freed-slot-a-voice.md): each root's own teardown first makes an
+//! impostor element and records whether it landed in a slot a child had.
+//!
 //! (2026-11-09, lane wr1 batch 2, the wrapper redesign's P2: a node's wrapper
-//! is in its own slot, its agent's, never in a wrapper cache - so the sweep
-//! meets no node, and the two orders above are gone with it. What is pinned
-//! now is that rule: the sweep tears down no node, and the agent's end -
-//! engine.releaseNodeWrappers, then the drain of its queue - frees the trees
-//! only their wrappers held.)
+//! is in its own slot, the agent's, never a cache entry - so there is no hash
+//! order of node entries left, and the two orders above are gone with it.
+//! The realm's end still frees its detached wrapped trees whatever their
+//! counts (refcount step 7a's net, node_wrappers.endRealm), each root's
+//! teardown freeing its children - which have their wrappers severed and
+//! give their slots to the teardown, returned after its last phase. That is
+//! what this file pins now.)
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -36,7 +42,6 @@ const v8 = @import("v8");
 const ffi = v8.ffi;
 const interfaces = @import("interfaces");
 const dom = @import("dom");
-const engine_mod = @import("engine");
 
 const WrapperCache = v8.WrapperCache;
 
@@ -103,42 +108,131 @@ const Realm = struct {
 
 const tree_count = 24;
 
-test "a realm's cache sweep tears down no node: its wrapped detached trees are their wrappers', and the agent's end frees them" {
-    defer test_agent.close();
+/// What the sweep's root teardowns saw. tests/v8 is one process whose tests
+/// run in turn on its main thread.
+const Seen = struct {
+    realm: ?Realm = null,
+    children: [tree_count]*runtime.Instance = undefined,
+    child_generations: [tree_count]u64 = undefined,
+    impostors: [tree_count]*runtime.Instance = undefined,
+    impostor_count: usize = 0,
+    /// An impostor took a slot a child of an earlier root had.
+    child_slot_reused: bool = false,
+    /// Roots torn down after a child of an earlier root had been handled:
+    /// the window an inline release would open.
+    roots_after_handled_child: usize = 0,
+};
+
+var seen: Seen = .{};
+
+fn childIndex(instance: *runtime.Instance) ?usize {
+    for (seen.children, 0..) |child, k| if (child == instance) return k;
+    return null;
+}
+
+fn speakingRootDeinit(instance: *runtime.Instance) void {
+    const realm = seen.realm.?;
+    // A child of an earlier root already handled: its teardown completed
+    // (the flags outlive a freed slot until the slab issues it again).
+    for (seen.children) |child| {
+        if (runtime.instance_lifecycle.isCleanedUp(child)) {
+            seen.roots_after_handled_child += 1;
+            break;
+        }
+    }
+    // What a later teardown allocates: never a slot a child still names.
+    if (interfaces.HTMLDivElement.init(testing.allocator, realm.data)) |impostor| {
+        if (childIndex(impostor)) |_| seen.child_slot_reused = true;
+        seen.impostors[seen.impostor_count] = impostor;
+        seen.impostor_count += 1;
+    } else |_| {}
+    interfaces.HTMLElement.deinit(instance);
+}
+
+const speaking_root_vtable = blk: {
+    var vtable = interfaces.HTMLElement.vtable;
+    vtable.deinit = &speakingRootDeinit;
+    break :blk vtable;
+};
+
+/// One realm teardown holding `tree_count` detached wrapped trees (a wrapped
+/// speaking root with one wrapped child). Returns whether a root was torn
+/// down after another root's child was handled - the window an inline
+/// release would open.
+fn sweepOnce(coordinator_allocator: std.mem.Allocator, expect_returned: bool) !bool {
     const realm = try Realm.open();
     defer realm.close();
+    var coordinator = runtime.CleanupCoordinator.init(coordinator_allocator);
+    defer coordinator.deinit();
+    runtime.cleanup_coordinator.setActiveCoordinator(&coordinator);
+    defer runtime.cleanup_coordinator.setActiveCoordinator(null);
+    seen = .{ .realm = realm };
+
     var roots: [tree_count]*runtime.Instance = undefined;
-    var children: [tree_count]*runtime.Instance = undefined;
     var root_generations: [tree_count]u64 = undefined;
-    var child_generations: [tree_count]u64 = undefined;
-    for (&roots, &children, &root_generations, &child_generations) |*root, *child, *root_generation, *child_generation| {
-        root.* = try interfaces.HTMLDivElement.init(testing.allocator, realm.data);
-        child.* = try interfaces.HTMLSpanElement.init(testing.allocator, realm.data);
-        _ = try interfaces.Node.call_appendChild(root.*, child.*);
+    for (&roots, &root_generations, 0..) |*root, *generation, k| {
+        root.* = try interfaces.HTMLElement.initWithState(testing.allocator, interfaces.HTMLElement.State, &speaking_root_vtable, realm.data);
+        generation.* = runtime.SlabAllocator.generationOf(root.*);
+        const child = try interfaces.HTMLDivElement.init(testing.allocator, realm.data);
+        _ = try interfaces.Node.call_appendChild(root.*, child);
+        seen.children[k] = child;
+        seen.child_generations[k] = runtime.SlabAllocator.generationOf(child);
         try realm.wrap(root.*);
-        try realm.wrap(child.*);
-        root_generation.* = runtime.SlabAllocator.generationOf(root.*);
-        child_generation.* = runtime.SlabAllocator.generationOf(child.*);
+        try realm.wrap(child);
     }
 
-    // The realm's end (its wrapper_cache phase): the nodes' wrappers are
-    // their agent's, in their own slots - the cache's sweep meets none.
+    coordinator.beginContextCleanup();
     realm.sweep();
-    for (roots, children, root_generations, child_generations) |root, child, root_generation, child_generation| {
-        try testing.expectEqual(root_generation, runtime.SlabAllocator.generationOf(root));
-        try testing.expectEqual(child_generation, runtime.SlabAllocator.generationOf(child));
-        try testing.expect(!runtime.instance_lifecycle.isCleanupStarted(child));
-        try testing.expect(!runtime.lifetime.slotOf(dom.instance_bridge.getNodeBase(child).?).isEmpty());
+    defer for (seen.impostors[0..seen.impostor_count]) |impostor| runtime.Instance.deinit(impostor);
+    try testing.expectEqual(@as(usize, tree_count), seen.impostor_count);
+
+    // No allocation the sweep made took a child's slot, and no child's slot
+    // went back before the teardown's last phase.
+    try testing.expect(!seen.child_slot_reused);
+    for (seen.children, seen.child_generations) |child, generation| {
+        try testing.expect(runtime.instance_lifecycle.isCleanedUp(child));
+        try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(child));
     }
 
-    // The agent's end (engine.releaseNodeWrappers, before the host's last
-    // drain): every wrapper lets its reference go, the trees are garbage,
-    // and the agent's queue frees them - each slot back once.
-    engine_mod.releaseNodeWrappers(test_agent.agent());
-    const queue = engine_mod.deferredTeardownOf(test_agent.agent()) orelse return error.TestExpectedQueue;
-    queue.drainAll();
-    for (roots, children) |root, child| {
-        try testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(root));
-        try testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(child));
+    coordinator.endContextCleanup();
+    coordinator.releaseDeferredStorage();
+    // Then each goes back - once - or, when the teardown could not record
+    // it, stays with the Browser as before.
+    for (seen.children, seen.child_generations) |child, generation| {
+        if (expect_returned)
+            try testing.expectEqual(runtime.SlabAllocator.dead_generation, runtime.SlabAllocator.generationOf(child))
+        else
+            try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(child));
     }
+    for (roots, root_generations) |root, generation| try testing.expect(runtime.SlabAllocator.generationOf(root) != generation);
+    // A slot kept stays with its Browser until the Browser ends; the process's
+    // standalone runtime never does, so the test gives back what it kept -
+    // each child torn down, its slot still its own - and leaves the slab as it
+    // found it.
+    if (!expect_returned) {
+        for (seen.children, seen.child_generations) |child, generation| {
+            if (runtime.SlabAllocator.generationOf(child) == generation and runtime.instance_lifecycle.isCleanedUp(child))
+                runtime.gc.releaseStorage(child);
+        }
+    }
+    return seen.roots_after_handled_child > 0;
+}
+
+test "a detached wrapped tree's nodes give their slots to the teardown" {
+    defer test_agent.close();
+    // Repeat until a root was torn down after another root's child.
+    var exercised = false;
+    var attempt: usize = 0;
+    while (!exercised and attempt < 8) : (attempt += 1) exercised = try sweepOnce(testing.allocator, true);
+    try testing.expect(exercised);
+}
+
+test "a sweep that cannot record a slot keeps it, as before" {
+    defer test_agent.close();
+    // The set-aside list allocates nothing (an entry's own link); only the
+    // teardown's record of the slot can fail - then the slot stays with its
+    // Browser, never freed twice or early.
+    var failing = std.testing.FailingAllocator.init(testing.allocator, .{ .fail_index = 0 });
+    _ = try sweepOnce(failing.allocator(), false);
+    try testing.expect(failing.has_induced_failure);
 }
