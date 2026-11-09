@@ -1806,25 +1806,20 @@ pub const Context = struct {
         self.setUrl(url) catch {};
     }
 
-    /// Script loader callback type for external script loading
-    /// Returns script content for the given URL, or null if loading failed
-    pub const ScriptLoaderFn = @import("html").parser_script_execution.ScriptLoaderFn;
-
-    /// Script loader interface for customizing how external scripts are loaded
-    pub const ScriptLoader = @import("html").scripted_parser.ScriptLoader;
-
     /// How long an embedder's load waits, in real time, for its navigation
     /// by default: as long as a page load may take in a WebDriver session
     /// (its default page load timeout, 300,000 ms).
     pub const default_load_timeout_ms: u64 = 300_000;
 
     /// Options for loadPage
+    ///
+    /// No embedder answers for the page's scripts: every script the page's
+    /// parser prepares is fetched (HTML "fetch a classic script"), as in a
+    /// browser. The embedder's script loader the WPT runner used to answer
+    /// testharnessreport.js through is gone (the user, 2026-11-09): the
+    /// runner's report is served by `wpt serve`, as wptrunner serves its own
+    /// (tools/wptrunner/wptrunner/environment.py, get_routes).
     pub const LoadPageOptions = struct {
-        /// The embedder's answer for the external classic scripts of the
-        /// document the load commits (not its frames' - html.embedder_scripts
-        /// answers for those): the WPT runner's testharnessreport.js, as
-        /// wptrunner's server answers that path.
-        script_loader: ?ScriptLoader = null,
         /// How long to wait for the navigation, in real time.
         timeout_ms: u64 = default_load_timeout_ms,
     };
@@ -1843,16 +1838,13 @@ pub const Context = struct {
         if (std.mem.eql(u8, self.url, "about:blank")) return;
         const url = try self.allocator.dupe(u8, self.url);
         defer self.allocator.free(url);
-        return self.loadByNavigating(url, null, options.script_loader, options.timeout_ms);
+        return self.loadByNavigating(url, null, options.timeout_ms);
     }
 
     /// Options for HTML loading
     pub const LoadHTMLOptions = struct {
         /// The URL of the document the markup makes.
         base_url: []const u8,
-        /// The embedder's answer for the document's external classic
-        /// scripts (LoadPageOptions.script_loader).
-        script_loader: ?ScriptLoader = null,
         /// How long to wait for the navigation, in real time.
         timeout_ms: u64 = default_load_timeout_ms,
     };
@@ -1871,7 +1863,7 @@ pub const Context = struct {
     /// const result = try ctx.evaluateScriptToString("window.found", allocator); // "Hello"
     /// ```
     pub fn loadHTML(self: *Context, html_content: []const u8, options: LoadHTMLOptions) !void {
-        return self.loadByNavigating(options.base_url, html_content, options.script_loader, options.timeout_ms);
+        return self.loadByNavigating(options.base_url, html_content, options.timeout_ms);
     }
 
     /// An embedder's load of the page: HTML "navigate" its top-level
@@ -1896,14 +1888,13 @@ pub const Context = struct {
     /// about:blank never is. A load asked for from inside a task of the
     /// page's loop - a script loader the parser called - only starts the
     /// navigation: its tasks run after the one that asked.
-    fn loadByNavigating(self: *Context, url: []const u8, markup: ?[]const u8, script_loader: ?ScriptLoader, timeout_ms: u64) !void {
+    fn loadByNavigating(self: *Context, url: []const u8, markup: ?[]const u8, timeout_ms: u64) !void {
         const record = self.traversable orelse return error.NoTraversable;
         const serialized = serializedUrlOf(self.allocator, url);
         defer if (serialized) |s| self.allocator.free(s);
         const before = self.commits;
         dom_mod.top_level_traversables.navigate(record, serialized orelse url, .{
             .markup = markup,
-            .script_loader = if (script_loader) |loader| dom_mod.top_level_traversables.ScriptLoader{ .context = loader.context, .load = loader.loadScript, .retain = loader.retain, .release = loader.release } else null,
         });
         const realm = self.realm orelse return error.NotInitialized;
         const loop = EventLoop.of(realm) orelse return;

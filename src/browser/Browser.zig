@@ -493,9 +493,6 @@ pub const Browser = struct {
         /// Leave the new traversable on its initial about:blank document:
         /// the caller loads it (Context.loadPage, Context.loadHTML).
         skip_load: bool = false,
-        /// The embedder's answer for the external classic scripts of the
-        /// document the load commits (Context.LoadPageOptions).
-        script_loader: ?Context.ScriptLoader = null,
     };
 
     /// Open `url` in a FRESH top-level traversable - a new tab, the page
@@ -575,11 +572,7 @@ pub const Browser = struct {
         // navigation's error page, as a browser's tab does, and the error
         // says so (CDP's Page.navigate errorText).
         self.current_context = ctx;
-        if (!options.skip_load) {
-            try ctx.loadPageWithOptions(.{
-                .script_loader = options.script_loader,
-            });
-        }
+        if (!options.skip_load) try ctx.loadPage();
     }
 
     /// HTML "navigate" the page this Browser shows to `url`, in place: the

@@ -467,7 +467,7 @@ fn parseHtmlForIframe(
             .parser_canceled = &parser_canceled,
             .window = window_instance,
             .document = document_instance,
-            .script_loader = navigationScriptLoader(browsing_ctx_ptr) orelse html_module.embedder_scripts.forRealm(runtime_ctx),
+            .script_loader = html_module.embedder_scripts.forRealm(runtime_ctx),
             .byte_stream = if (byte_stream) |stream| .{
                 .content_type = stream.content_type,
                 .parent_encoding = parent_encoding,
@@ -487,17 +487,6 @@ fn parseHtmlForIframe(
     // runs "the end" only after actual EOF, including srcdoc and popups.
 
     return document_instance;
-}
-
-/// The script loader the embedder gave the navigation committing a document
-/// in `browsing_context` (the host page's: dom.top_level_traversables
-/// NavigateOptions), as the parser's ScriptLoader; null for every other
-/// navigation, whose parser asks the Browser's registration
-/// (html.embedder_scripts) for frames and popups.
-fn navigationScriptLoader(browsing_context: *html_core.BrowsingContext) ?html_module.scripted_parser.ScriptLoader {
-    const integration = integrationOfBrowsingContext(browsing_context) orelse return null;
-    const loader = integration.next_script_loader orelse return null;
-    return .{ .context = loader.context, .loadScript = loader.load, .retain = loader.retain, .release = loader.release };
 }
 
 /// HTML "create and initialize a Document object" for a navigation of
@@ -617,7 +606,7 @@ fn parseXmlForIframe(
     };
     defer allocator.free(decoded.text);
     document_internals.setEncoding(document, sniffing.canonicalName(decoded.encoding)) catch {};
-    const loader: ?html_module.script_execution.ParserScriptLoader = if (navigationScriptLoader(browsing_ctx_ptr) orelse html_module.embedder_scripts.forRealm(runtime_ctx)) |embedder| .{
+    const loader: ?html_module.script_execution.ParserScriptLoader = if (html_module.embedder_scripts.forRealm(runtime_ctx)) |embedder| .{
         .context = embedder.context,
         .load = embedder.loadScript,
         .allocator = allocator,
@@ -841,10 +830,6 @@ pub const NavigateOptions = struct {
     /// traversal to an entry such a navigation made, the markup its document
     /// state kept, from which the document is re-created.
     markup: ?[]const u8 = null,
-    /// The embedder's answer for the external classic scripts of the
-    /// document this navigation commits (the host page's only). BORROWED:
-    /// the navigation takes a reference of its own.
-    script_loader: ?dom_module.top_level_traversables.ScriptLoader = null,
     initial_insertion: bool = false,
     /// A history traversal's navigation: the session history entry, by id,
     /// that the new document populates - no entry is added.
@@ -912,9 +897,6 @@ const Navigation = struct {
     srcdoc: ?[]u8 = null,
     /// NavigateOptions.markup, owned.
     markup: ?[]u8 = null,
-    /// NavigateOptions.script_loader, one reference held (retained in
-    /// `navigate`, released in `destroy`).
-    script_loader: ?dom_module.top_level_traversables.ScriptLoader = null,
     history_handling: navigate_steps.HistoryHandling,
     initial_insertion: bool,
     traversal_entry: u64 = 0,
@@ -1105,7 +1087,6 @@ const Navigation = struct {
         if (self.response) |*r| r.deinit();
         if (self.srcdoc) |s| self.allocator.free(s);
         if (self.markup) |m| self.allocator.free(m);
-        if (self.script_loader) |loader| loader.release(loader.context);
         if (self.javascript_result) |r| self.allocator.free(r);
         if (self.javascript_url) |u| self.allocator.free(u);
         if (self.initiator_base_url) |u| self.allocator.free(u);
@@ -1719,10 +1700,6 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
             record.destroy();
             return;
         };
-    }
-    if (options.script_loader) |loader| {
-        loader.retain(loader.context);
-        record.script_loader = loader;
     }
     if (options.post_resource) |post| {
         record.post_body = allocator.dupe(u8, post.body) catch {
@@ -3330,10 +3307,6 @@ fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, wai
     defer integration.setNextRefresh(null);
     integration.next_last_modified = response.last_modified;
     defer integration.next_last_modified = null;
-    // The embedder's script loader for the document this commit parses (the
-    // host page's navigations only): its parser takes its own reference.
-    integration.next_script_loader = record.script_loader;
-    defer integration.next_script_loader = null;
     commitNavigation(integration, record, response);
 }
 
@@ -7499,7 +7472,7 @@ fn realmForHostDocument(integration: *IFrameIntegration, new_origin: html_core.O
 /// navigation) - with the response the embedder supplies, if any.
 fn navigateHostTraversable(record: *anyopaque, url: []const u8, options: dom_module.top_level_traversables.NavigateOptions) void {
     const integration: *IFrameIntegration = @ptrCast(@alignCast(record));
-    navigate(integration, url, .{ .user_involvement = .browser_ui, .markup = options.markup, .script_loader = options.script_loader });
+    navigate(integration, url, .{ .user_involvement = .browser_ui, .markup = options.markup });
 }
 
 /// dom.top_level_traversables: whether the host page's traversable has a

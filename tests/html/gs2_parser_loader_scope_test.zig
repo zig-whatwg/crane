@@ -7,27 +7,30 @@
 //! from the inserted scripts by an element check; it is prepare's parameter
 //! now (docs/lessons/architecture-state-set-around-a-call-is-seen-by-
 //! everything-it-runs.md).
+//! The loader is the Browser's registration (html.embedder_scripts), which
+//! answers for every document the Browser parses (lane wptcfg: the
+//! navigation's own loader is gone, the user, 2026-11-09).
 const std = @import("std");
 const browser_mod = @import("browser");
+const html = @import("html");
+const runtime = @import("runtime");
 const helpers = @import("edges_node_holders_helpers.zig");
 
 const Loader = struct {
     calls: usize = 0,
     nested_calls: usize = 0,
 
-    fn load(context: ?*anyopaque, url: []const u8) ?[]const u8 {
-        const self: *Loader = @ptrCast(@alignCast(context.?));
+    /// The loader in use: the test's (it runs on the test's own thread,
+    /// helpers.onFreshThread), set for the test's length.
+    var current: ?*Loader = null;
+
+    fn load(realm: runtime.Context, url: []const u8) ?[]const u8 {
+        const self = current orelse return null;
         if (std.mem.indexOf(u8, url, "gs2-nested") != null) self.nested_calls += 1;
         if (!std.mem.startsWith(u8, url, "https://gs2.invalid/")) return null;
         self.calls += 1;
-        return std.testing.allocator.dupe(u8, "globalThis.gs2Loaded = (globalThis.gs2Loaded || 0) + 1;") catch null;
-    }
-
-    fn retain(_: ?*anyopaque) void {}
-    fn release(_: ?*anyopaque) void {}
-
-    fn descriptor(self: *Loader) browser_mod.Context.ScriptLoader {
-        return .{ .context = self, .loadScript = load, .retain = retain, .release = release };
+        // embedder_scripts.Loader: allocated with the realm's allocator.
+        return realm.allocator.dupe(u8, "globalThis.gs2Loaded = (globalThis.gs2Loaded || 0) + 1;") catch null;
     }
 };
 
@@ -38,13 +41,18 @@ fn loadMarkup(browser: *browser_mod.Browser, loader: *Loader, source: []const u8
     _ = encoder.encode(encoded, source);
     const url = try std.fmt.allocPrint(std.testing.allocator, "data:text/html;base64,{s}", .{encoded});
     defer std.testing.allocator.free(url);
-    try browser.navigateWithOptions(url, .window, .{ .script_loader = loader.descriptor() });
+    _ = loader;
+    try browser.navigate(url, .window);
 }
 
 fn parserLoaderServesOnlyItsScript() !void {
     const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
     defer browser.deinit();
     var loader: Loader = .{};
+    Loader.current = &loader;
+    defer Loader.current = null;
+    try html.embedder_scripts.register(browser.scope, &Loader.load);
+    defer html.embedder_scripts.unregister(browser.scope);
     try loadMarkup(browser, &loader,
         \\<!doctype html><script src="https://gs2.invalid/parsed.js"></script>
         \\<script>

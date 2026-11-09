@@ -1814,6 +1814,9 @@ fn run(init: std.process.Init) !u8 {
     const server = try wpt_server.WptServer.init(allocator, options.wpt_root);
     defer server.deinit();
     try server.start();
+    // The page fetches the runner's testharnessreport.js from it
+    // (wpt_server.zig `report_js`): refuse one that serves the stock file.
+    try server.requireRunnerReport();
     const base_url = try server.getBaseUrl(allocator);
     defer allocator.free(base_url);
     print("\nwpt serve {s} at {s} (TLS on :{d})\n", .{
@@ -2330,6 +2333,9 @@ fn supervise(
     const server = try wpt_server.WptServer.init(allocator, options.wpt_root);
     defer server.deinit();
     try server.start();
+    // The page fetches the runner's testharnessreport.js from it
+    // (wpt_server.zig `report_js`): refuse one that serves the stock file.
+    try server.requireRunnerReport();
     const base_url = try server.getBaseUrl(allocator);
     defer allocator.free(base_url);
     print("\nwpt serve {s} at {s} (TLS on :{d})\n", .{
@@ -2561,6 +2567,9 @@ fn superviseRepeat(
     const server = try wpt_server.WptServer.init(allocator, options.wpt_root);
     defer server.deinit();
     try server.start();
+    // The page fetches the runner's testharnessreport.js from it
+    // (wpt_server.zig `report_js`): refuse one that serves the stock file.
+    try server.requireRunnerReport();
 
     const alternating = options.repeat_with != null;
     const runs = repeat.totalRuns(options.repeat, alternating);

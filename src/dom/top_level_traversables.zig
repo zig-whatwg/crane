@@ -51,10 +51,6 @@ pub const Host = struct {
     committed: ?*const fn (context: *anyopaque, document: *anyopaque, error_page: bool) void = null,
 };
 
-/// An embedder's answer for the external classic scripts of the document a
-/// navigation commits (html_core's EmbedderScriptLoader).
-pub const ScriptLoader = @import("html_core").window.iframe_integration.EmbedderScriptLoader;
-
 /// What the embedder's "browser UI" navigation carries besides its URL.
 pub const NavigateOptions = struct {
     /// HTML navigate's `response` argument: the document's markup, supplied
@@ -64,10 +60,6 @@ pub const NavigateOptions = struct {
     /// history entry keeps it, so a traversal back re-creates the document
     /// from it. BORROWED for the call.
     markup: ?[]const u8 = null,
-    /// The embedder's answer for the external classic scripts the committed
-    /// document's parser prepares (not its frames'). The navigation holds a
-    /// reference until it ends.
-    script_loader: ?ScriptLoader = null,
 };
 
 /// What HTMLIFrameElement supplies.

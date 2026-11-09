@@ -12,6 +12,7 @@ const browser_mod = @import("browser");
 const dom = @import("dom");
 const engine = @import("engine");
 const runtime = @import("runtime");
+const html = @import("html");
 
 /// Run `body` on a thread of its own: each test starts its own Browser, and a
 /// test directory is one process (AGENTS.md "A test directory is one
@@ -80,17 +81,24 @@ const Reloader = struct {
     destroyed_under_parser: bool = false,
     failure: ?anyerror = null,
 
-    fn load(context: ?*anyopaque, url: []const u8) ?[]const u8 {
-        const self: *Reloader = @ptrCast(@alignCast(context.?));
+    /// The reloader in use: the test's (it runs on the test's own thread),
+    /// set for the test's length. The loader is the Browser's registration
+    /// (html.embedder_scripts), which answers for every document the Browser
+    /// parses (lane wptcfg: the navigation's own loader is gone).
+    var current: ?*Reloader = null;
+
+    fn load(realm: runtime.Context, url: []const u8) ?[]const u8 {
+        const self = current orelse return null;
         // The loader is given the src as written.
         if (!std.mem.endsWith(u8, url, "reload.js")) return null;
-        // What a loader returns is the caller's to free (FetchedSource).
-        if (self.reloaded) return testing.allocator.dupe(u8, "") catch null;
+        // What a loader returns is allocated with the realm's allocator, which
+        // the parser frees it with (html.embedder_scripts.Loader).
+        if (self.reloaded) return realm.allocator.dupe(u8, "") catch null;
         self.reloaded = true;
         self.reenter() catch |err| {
             self.failure = err;
         };
-        return testing.allocator.dupe(u8, "globalThis.firstParserRanReload = true;") catch null;
+        return realm.allocator.dupe(u8, "globalThis.firstParserRanReload = true;") catch null;
     }
 
     fn reenter(self: *Reloader) !void {
@@ -105,13 +113,6 @@ const Reloader = struct {
         _ = try self.browser.runEventLoopBlocking(20);
         try self.page.runScript("TestUtils.gc();");
         self.destroyed_under_parser = dom.document_internals.getInternal(first).?.destroyed;
-    }
-
-    fn retain(_: ?*anyopaque) void {}
-    fn release(_: ?*anyopaque) void {}
-
-    fn descriptor(self: *Reloader) browser_mod.Context.ScriptLoader {
-        return .{ .context = self, .loadScript = &load, .retain = &retain, .release = &release };
     }
 };
 
@@ -149,7 +150,11 @@ fn reentrantLoad(holds: ScriptHolds) !void {
         .first_page => first_page_held,
         .nothing => first_page_unheld,
     };
-    try page.loadHTML(first_page, .{ .base_url = "http://example.test/first", .script_loader = reloader.descriptor() });
+    Reloader.current = &reloader;
+    defer Reloader.current = null;
+    try html.embedder_scripts.register(browser.scope, &Reloader.load);
+    defer html.embedder_scripts.unregister(browser.scope);
+    try page.loadHTML(first_page, .{ .base_url = "http://example.test/first" });
     if (reloader.failure) |err| return err;
     try testing.expect(reloader.reloaded);
     const first = reloader.first_document orelse return error.TestUnexpectedResult;
