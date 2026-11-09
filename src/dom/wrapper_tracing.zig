@@ -96,8 +96,8 @@ const refcount = @import("refcount.zig");
 pub fn traceTree(target: *anyopaque, tracer: *engine.Tracer) void {
     const node: *NodeBase = @ptrCast(@alignCast(target));
     const roots = treeRoots(node);
-    walkTree(roots[0], node, tracer);
-    if (roots[1]) |document| walkTree(document, node, tracer);
+    walkTree(roots[0], node, node, tracer);
+    if (roots[1]) |document| walkTree(document, node, null, tracer);
 }
 
 /// A node a holder holds for script (design 3.2 (d)): its own wrapper, and
@@ -106,10 +106,10 @@ pub fn traceTree(target: *anyopaque, tracer: *engine.Tracer) void {
 /// Called from a holder's `trace_held_nodes`, in the collection's atomic
 /// pause; reads only.
 pub fn traceHeld(node: *NodeBase, tracer: *engine.Tracer) void {
-    if (connectedDocument(node)) |document| return walkTree(document, null, tracer);
+    if (connectedDocument(node)) |document| return walkTree(document, null, node, tracer);
     const roots = treeRoots(node);
-    walkTree(roots[0], null, tracer);
-    if (roots[1]) |document| walkTree(document, null, tracer);
+    walkTree(roots[0], null, node, tracer);
+    if (roots[1]) |document| walkTree(document, null, null, tracer);
 }
 
 /// The Document a connected `node` is in - its host-including root and its
@@ -144,8 +144,10 @@ pub fn treeRoots(node: *NodeBase) [2]?*NodeBase {
 
 /// The held part of `tree_root`'s tree, once per collection: each wrapper in
 /// it named to the engine (`target`'s own excepted when it is a lone root),
-/// and each node holder in it asked for what it holds.
-fn walkTree(maybe_root: ?*NodeBase, target: ?*NodeBase, tracer: *engine.Tracer) void {
+/// and each node holder in it asked for what it holds. `path_to` - a node of
+/// the tree whose wrapper or hold brought the walk here, or null - lets the
+/// walk enter the children on its path without scanning for them.
+fn walkTree(maybe_root: ?*NodeBase, target: ?*NodeBase, path_to: ?*NodeBase, tracer: *engine.Tracer) void {
     const tree_root = maybe_root orelse return;
     // A garbage tree holds nothing (its total is 0, so no node of it is
     // wrapped), and its teardown may be under way: never walked (design R2).
@@ -162,7 +164,180 @@ fn walkTree(maybe_root: ?*NodeBase, target: ?*NodeBase, tracer: *engine.Tracer) 
         return;
     }
     if (!engine.traceVisitOnce(tracer, tree_root)) return;
-    walkDown(tree_root, Pruned{ .tracer = tracer });
+    var path: Path = .{};
+    if (path_to) |node| path.climb(node, tree_root);
+    _ = walkHeld(tree_root, &path, Pruned{ .tracer = tracer });
+}
+
+// ---- The pruned walk (decision 7's remedy, at the wrapper redesign's P7) -----
+//
+// The walk runs in the collector's atomic pause, so its cost is pause time
+// (design 4.4 "Cost per major GC", risk R4c). P5's walk tested EVERY child of
+// each node on a held path - a flat body of 50,000 children with one held
+// cost 50,000 tests a major collection (gc_bench `wide`: p95 1.79x P2's at
+// P6, against decision 7's 1.5x). Two exact cuts remove only tests that
+// cannot find a wrapper:
+// - a node's children are tested only until the ones found hold all of the
+//   node's remaining holds: `subtree_holds` is the node's own hold plus its
+//   hosted roots' and its children's totals (refcount's invariant, checked
+//   by refcount.verifyTree; a collection starts only at an allocation, and
+//   no tree mutation allocates between its link writes and its count
+//   updates - this module's header). A total that does not add up (found
+//   more than the parent says) turns the cut off for that node: the scan
+//   then runs to the end, as before;
+// - the path from the tree's root to the node whose wrapper (or hold)
+//   brought the walk to the tree is known from that node's own climb to its
+//   root, so the walk enters each node's child on it directly - Blink's
+//   marking reaches a parent's last child as directly as its first
+//   (ContainerNode::Trace visits first_child_ and last_child_, Chromium
+//   131.0.6778.0, core/dom/container_node.cc) - and counts its holds as
+//   found before scanning for the others.
+// With both, `wide`'s held last child costs no test at all. The frames live
+// on a bounded stack in this function's frame (allocation-free, as the walk
+// must be); a subtree deeper than the stack is walked by the stackless walk
+// below, which tests every child - exact, only slower.
+
+/// The deepest path the walk remembers (`Path`): deeper nodes are found by
+/// the scan.
+const max_path = 64;
+/// The walk's frames (`walkHeld`): a deeper subtree goes to `walkDown`.
+const max_frames = 64;
+
+/// The path from a tree's root down to the node whose wrapper (or hold)
+/// brought the walk to the tree: nodes[0] is that node, nodes[len - 1] the
+/// root. Empty when the node is deeper than `max_path` below the root.
+const Path = struct {
+    nodes: [max_path]*NodeBase = undefined,
+    len: usize = 0,
+
+    /// Climb from `node` to `tree_root`, as refcount.root does.
+    fn climb(self: *Path, node: *NodeBase, tree_root: *NodeBase) void {
+        var at = node;
+        while (true) {
+            if (self.len == max_path) return self.forget();
+            self.nodes[self.len] = at;
+            self.len += 1;
+            if (at == tree_root) return;
+            at = refcount.hostIncludingParent(at) orelse return self.forget();
+        }
+    }
+
+    fn forget(self: *Path) void {
+        self.len = 0;
+    }
+
+    /// The index of `node` in the path if it is the next node down from
+    /// the node at `above` (an index), else `none`.
+    fn below(self: *const Path, above: usize, node: *NodeBase) usize {
+        if (above == none or above == 0) return none;
+        return if (self.nodes[above - 1] == node) above - 1 else none;
+    }
+
+    const none = std.math.maxInt(usize);
+};
+
+/// One node of the walk, and where its search for held children stands.
+const Frame = struct {
+    node: *NodeBase,
+    /// Its shadow root and template contents, tested before its children.
+    hosted: [2]?*NodeBase,
+    hosted_next: u8 = 0,
+    /// Its child on the path, entered before the scan and skipped by it.
+    path_child: ?*NodeBase = null,
+    skip: ?*NodeBase = null,
+    /// Its index in the path, or Path.none.
+    path_index: usize,
+    /// The next child the scan tests.
+    cursor: ?*NodeBase,
+    /// Holds of its children not found yet; `unknown` runs the scan to the
+    /// end.
+    remaining: u64,
+
+    const unknown = std.math.maxInt(u64);
+
+    fn enter(node: *NodeBase, path: *const Path, path_index: usize) Frame {
+        var frame: Frame = .{ .node = node, .hosted = .{ null, null }, .path_index = path_index, .cursor = node.first_child, .remaining = undefined };
+        var left: i64 = @as(i64, node.subtree_holds) - @intFromBool(refcount.isHeld(node));
+        if (node.node_type == NodeBase.ELEMENT_NODE) {
+            var hosted: [2]?*NodeBase = undefined;
+            const roots = refcount.hostedRoots(node, &hosted);
+            if (roots.len == 2) {
+                frame.hosted = .{ roots[0], roots[1] };
+                for (frame.hosted) |maybe| if (maybe) |root| {
+                    left -= root.subtree_holds;
+                };
+            }
+        }
+        if (path_index != Path.none and path_index > 0) {
+            const on_path = path.nodes[path_index - 1];
+            if (on_path.parent_node == node and on_path.subtree_holds != 0) {
+                frame.path_child = on_path;
+                frame.skip = on_path;
+                left -= on_path.subtree_holds;
+            }
+        }
+        frame.remaining = if (left < 0) unknown else @intCast(left);
+        return frame;
+    }
+
+    /// Its next host-including child holding a held node, or null.
+    fn next(self: *Frame, stats: ?*WalkStats) ?*NodeBase {
+        while (self.hosted_next < 2) {
+            const hosted = self.hosted[self.hosted_next];
+            self.hosted_next += 1;
+            if (hosted) |root| {
+                if (stats) |s| s.tested += 1;
+                if (root.subtree_holds != 0) return root;
+            }
+        }
+        if (self.path_child) |child| {
+            self.path_child = null;
+            return child;
+        }
+        while (self.remaining != 0) {
+            const child = self.cursor orelse return null;
+            self.cursor = child.next_sibling;
+            if (child == self.skip) continue;
+            if (stats) |s| s.tested += 1;
+            const holds = child.subtree_holds;
+            if (holds == 0) continue;
+            if (self.remaining != unknown) self.remaining = if (holds > self.remaining) unknown else self.remaining - holds;
+            return child;
+        }
+        return null;
+    }
+};
+
+/// The held part of `top`'s host-including subtree, each node `walker.visit`ed
+/// - depth first on a bounded stack of frames, the path entered directly and
+/// each child scan cut once its node's holds are found (see above). What it
+/// tested, when `stats` counts.
+fn walkHeld(top: *NodeBase, path: *const Path, walker: anytype) void {
+    walkHeldCounting(top, path, walker, null);
+}
+
+fn walkHeldCounting(top: *NodeBase, path: *const Path, walker: anytype, stats: ?*WalkStats) void {
+    var frames: [max_frames]Frame = undefined;
+    const top_index = if (path.len > 0 and path.nodes[path.len - 1] == top) path.len - 1 else Path.none;
+    walker.visit(top);
+    frames[0] = Frame.enter(top, path, top_index);
+    var depth: usize = 1;
+    while (depth > 0) {
+        const frame = &frames[depth - 1];
+        const child = frame.next(stats) orelse {
+            depth -= 1;
+            continue;
+        };
+        if (depth == max_frames) {
+            // Deeper than the frames go: the stackless walk, every child
+            // tested (exact).
+            walkDown(child, walker);
+            continue;
+        }
+        walker.visit(child);
+        frames[depth] = Frame.enter(child, path, path.below(frame.path_index, child));
+        depth += 1;
+    }
 }
 
 /// Whether no node below `tree_root` is held: its own hold, if any, is its
@@ -227,7 +402,6 @@ pub const WalkStats = struct {
 /// what it visits and how many children it tests. Read-only, no engine call
 /// (tests/dom/wr7_walk_early_exit_test.zig; decision 7's remedy).
 pub fn measureWalk(tree_root: *NodeBase, path_to: ?*NodeBase) WalkStats {
-    _ = path_to;
     var stats: WalkStats = .{};
     const Count = struct {
         stats: *WalkStats,
@@ -242,7 +416,9 @@ pub fn measureWalk(tree_root: *NodeBase, path_to: ?*NodeBase) WalkStats {
             if (refcount.isHeld(node)) self.stats.held += 1;
         }
     };
-    walkDown(tree_root, Count{ .stats = &stats });
+    var path: Path = .{};
+    if (path_to) |node| path.climb(node, tree_root);
+    walkHeldCounting(tree_root, &path, Count{ .stats = &stats }, &stats);
     return stats;
 }
 

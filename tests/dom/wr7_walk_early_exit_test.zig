@@ -132,8 +132,9 @@ test "wr7 decision 7: exact - every held node of a tree is visited whichever pat
         try std.testing.expectEqual(@as(usize, 6), stats.visited);
         try std.testing.expectEqual(@as(usize, held.len + 1), stats.held);
     }
-    // From child 63's path the scan still finds the other three, and stops
-    // at the last of them (child 40): 41 tests, not 64.
+    // From child 63's path the root's scan still finds the other three and
+    // stops at the last of them (child 40): 41 tests, not 64 - plus child
+    // 10's one test of its child: 42 (the old walk: 65).
     const from_last = dom.wrapper_tracing.measureWalk(base(root), held[2]);
-    try std.testing.expectEqual(@as(usize, 41), from_last.tested);
+    try std.testing.expectEqual(@as(usize, 42), from_last.tested);
 }
