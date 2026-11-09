@@ -117,6 +117,7 @@
         fail: num(d, "fail"), timeout: num(d, "timeout"), notrun: num(d, "notrun"), est: d.est === "1",
         blocking: num(d, "blocking"), files: num(d, "files"), flaky: num(d, "flaky"), recon: d.recon === "1", event: d.event || null,
         since: d.since || null, commits: num(d, "commits"), landed: d.landed ? d.landed.split(" ") : [],
+        swept: d.swept || null,
       };
     }).filter((g) => Number.isFinite(g.pass) && Number.isFinite(g.total));
     if (all.length < 2) return;
@@ -169,7 +170,9 @@
           // alone: link the range, and name what merged in it (detail, below).
           g.head && g.since
             ? el("a", { href: `https://github.com/zig-whatwg/crane/compare/${g.since}...${g.head}` }, el("code", { text: g.since }), "…", el("code", { text: g.head }))
-            : g.head ? el("a", { href: `https://github.com/zig-whatwg/crane/commit/${g.head}` }, el("code", { text: g.head })) : null),
+            : g.head ? el("a", { href: `https://github.com/zig-whatwg/crane/commit/${g.head}` }, el("code", { text: g.head })) : null,
+          // Where it was swept (tools/wpt_generation_hosts.txt), when recorded.
+          g.swept ? ` · swept on ${g.swept}` : null),
         el("p", { class: "ro-detail" }, ...detail(g, prev)));
       plot.setAttribute("aria-valuenow", String(g.n));
       plot.setAttribute("aria-valuetext", `Generation ${g.n}, ${when(g.at)}: ${fmt(g.pass)} of ${g.est ? "about " : ""}${fmt(g.total)} WPT subtests passing`);

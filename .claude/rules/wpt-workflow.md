@@ -55,6 +55,10 @@ issue or PR) is omitted from the blocking count until that bug is resolved; it i
 listed with the upstream issue and each browser's wpt.fyi result, and revisited
 when the issue closes (the exemption ends then). Filing the upstream issue still
 needs the user's OK.
+When a generation sweep lands in `wpt-results/<label>/`, append its line to
+`tools/wpt_generation_hosts.txt` (`<label> <host> <os>-<arch> <runners>`) before
+regenerating the site; an unlisted run shows "not recorded for this generation".
+
 
 `wpt-results/progress.html` is how the 0.1 gate is watched. It is regenerated
 from journals, and only from `wpt-results/*.jsonl` and
