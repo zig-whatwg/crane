@@ -76,3 +76,28 @@ race:v8::internal::PointersUpdatingJob::~PointersUpdatingJob
 # teardown is never suppressed by this entry's reasoning: it is a bug. Proved by
 # wr1 b2, 2026-11-09.
 race:v8::internal::PageEvacuationJob::~PageEvacuationJob
+#
+# --- 5. V8's trace category registry: an append-only array read without its lock ---
+# Report (tests-v8 engine_runtime_impls_operations_test "a simple exception is the
+# realm's own TypeError, RangeError or ReferenceError, and owned", ALONE in a fresh
+# process under -Dsanitize-thread on server1, Linux x86-64: 4 of 10 runs, four
+# identical reports; the file batched x10 passed; first seen in lane wr1 b6's TSAN
+# verify): a read by a 'V8 DefaultWorker' thread - strcmp in
+# v8::platform::tracing::TracingController::GetCategoryGroupEnabled - against a
+# previous write by the main thread - malloc in strdup in GetCategoryGroupEnabled,
+# with V8's mutexes held - inside the full collection the agent's end requests on its
+# LIVE isolate (protocol_agents.endAgent:784, v8_Isolate_RequestGarbageCollection,
+# before the isolate is disposed): a fresh process's first collection registers a new
+# trace category while a GC worker looks categories up.
+# The mechanism (jsengines/v8/v8/src/libplatform/tracing/tracing-controller.cc
+# 305-348): g_category_groups is append-only. The slow path, under mutex_, strdup()s
+# the new name (339), stores the pointer (340) and publishes the slot with
+# base::Release_Store(&g_category_index, category_index + 1) (348); the fast path reads
+# base::Acquire_Load(&g_category_index) (311) before its strcmp (315). That release/
+# acquire pair is in the uninstrumented V8 prebuilt, which TSAN cannot see. Both racing
+# stacks are V8's own: the endAgent frame only calls into a collection of the live
+# isolate - entry 4's shape - and the written block is a fresh allocation, nothing
+# freed. A report whose other stack is in Isolate::Dispose, the CppHeap's free or the
+# adapter's teardown is never suppressed by this entry's reasoning: it is a bug.
+# Proved by wr1 b6 (lane-max), 2026-11-09.
+race:v8::platform::tracing::TracingController::GetCategoryGroupEnabled
