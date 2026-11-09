@@ -1,8 +1,14 @@
-//! The testing platform's image decoding (decisions 19, 19a and 19c): the
-//! decoders are compiled into the platform, so the WPT runner's results
-//! do not depend on the machine's image libraries. The MIME type Crane
-//! determined picks the decoder (MIME Sniffing's image rules run above the
-//! protocol); each decoder writes the protocol's DecodedImage.
+//! kit/image_decoding: the built-in image decoders (decisions 19, 19a and
+//! 19c), which every built-in platform - darwin, linux and testing - answers
+//! the `image_decoding` capability with (D1, the user 2026-11-09). The
+//! decoders are compiled into the platform, so Crane's results do not depend
+//! on the machine's image libraries; linking out to the OS's decoders instead
+//! is an adapter's own choice (the user, 2026-11-09 21:09 UTC: "The platform
+//! itself that is compiled in will decide if these features are built within
+//! the platform or dynamically link out to existing capabilities on the
+//! platform"). The MIME type Crane determined picks the decoder (MIME
+//! Sniffing's image rules run above the protocol); each decoder writes the
+//! protocol's DecodedImage.
 //!
 //! | MIME type | Decoder |
 //! |---|---|

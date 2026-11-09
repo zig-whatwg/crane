@@ -130,6 +130,14 @@ const file_lock = @import("file_lock.zig");
 const work_queue = @import("work_queue.zig");
 const runner_allocator = @import("runner_allocator.zig");
 const wpt_options = @import("wpt_options");
+/// Which of the WPT runner's two builds this binary is (build_mode.zig
+/// `RunnerBuild`; the user, 2026-11-09): `wpt_runner`, the PRODUCTION run -
+/// Crane exactly as its own browser, the release console, runs it, which
+/// alone is published and timed - or `wpt_runner_bug_finding`, the same
+/// product with detection added, which never is.
+const runner_build: build_mode.RunnerBuild = if (wpt_options.production) .production else .bug_finding;
+/// The build every journal record this process writes names (journal.Build).
+const journal_build: journal.Build = if (wpt_options.production) .production else .bug_finding;
 const clock = @import("clock");
 const host = @import("host");
 /// The JavaScript engine, for its diagnostics tier only: the runner prints what
@@ -782,7 +790,18 @@ pub fn executeTests(
 
     // The process first (crane.Process): the engine and every hook, once,
     // before any Browser. It ends after the browser (defers run in reverse).
-    var process = try @import("browser").Process.init(.{});
+    // Its snapshot is the one beside this binary, as Crane's own browser
+    // starts from (tools/repl.zig, main) - zig-out/bin/whatwg_snapshot.bin
+    // for a built or frozen runner - else the process's own search.
+    const exe_dir = std.process.executableDirPathAlloc(host.io(), allocator) catch null;
+    defer if (exe_dir) |dir| allocator.free(dir);
+    const snapshot = if (exe_dir) |dir| try std.fs.path.join(allocator, &.{ dir, "whatwg_snapshot.bin" }) else null;
+    defer if (snapshot) |path| allocator.free(path);
+    const has_snapshot = if (snapshot) |path| blk: {
+        host.cwd().access(host.io(), path, .{}) catch break :blk false;
+        break :blk true;
+    } else false;
+    var process = try @import("browser").Process.init(.{ .snapshot_path = if (has_snapshot) snapshot else null });
     defer process.deinit();
 
     // Create BrowserAdapter for tests. Following Chromium's approach:
@@ -810,6 +829,7 @@ pub fn executeTests(
     else
         null;
     defer if (run_journal) |*j| j.deinit();
+    if (run_journal) |*j| j.build = journal_build;
 
     // A supervised child beats once per run (stall_watchdog.Heartbeat) into the
     // file its supervisor names: a file is `globals x variants` runs, each
@@ -1162,6 +1182,7 @@ const SelfStall = struct {
             .path = w.currentLabel(),
             .status = .timeout,
             .message = message,
+            .build = journal_build,
         }) catch return;
         const path: [*:0]const u8 = @ptrCast(self.journal_buf[0..self.journal_len :0].ptr);
         const fd = std.c.open(path, .{ .ACCMODE = .WRONLY, .APPEND = true, .CREAT = true }, @as(c_uint, 0o644));
@@ -1561,26 +1582,36 @@ fn run(init: std.process.Init) !u8 {
     // 0.16 removed std.process.argsAlloc - arguments are no longer process-global.
     // std.process.Init carries them and a process-lifetime arena. Its gpa is not
     // used: see `gpa_fast` above for why the runner owns its allocator.
-    const want_traces = runner_allocator.wantsTraces(init.minimal.environ.getPosix("CRANE_LEAK_TRACES"));
-    // `CRANE_REFCOUNT_CHECK=1`: every DOM mutation checks the reference
-    // counts' invariants (src/dom/refcount.zig, shadow mode), as unit tests
-    // always do; a violation is an error line in the output
-    // ("refcount: ..."). Changes no behaviour.
-    if (runner_allocator.wantsTraces(init.minimal.environ.getPosix("CRANE_REFCOUNT_CHECK"))) @import("dom").refcount.enableTreeChecks();
-    // `CRANE_REFCOUNT_AUDIT=1`: refcount step 6's zombie audit - trees the
-    // counts call garbage are marked zombie at their agent's next teardown
-    // slice, and later reads of them reported (src/dom/refcount_audit.zig).
-    // Frees nothing differently.
-    if (runner_allocator.wantsTraces(init.minimal.environ.getPosix("CRANE_REFCOUNT_AUDIT"))) @import("dom").refcount_audit.enable();
-    // The release runner (-Dwpt-runner-release, build_mode.zig `release_runner`)
-    // allocates as a release build of Crane does: libc's malloc, what
-    // src/lib_exports.zig's createBrowser gives a host, and thread-safe for the
-    // worker and service-worker threads. Nothing is detected: it is for timing.
-    const production = comptime wpt_options.production_allocator;
+    //
+    // The PRODUCTION run (wpt_runner) allocates exactly as Crane's own
+    // browser does: libc's malloc, what tools/repl.zig passes to Browser.init
+    // and src/lib_exports.zig's createBrowser gives a host - with no
+    // poisoning, no leak or double-free detection and none of the diagnostic
+    // switches below, which exist only in the BUG-FINDING run (the user,
+    // 2026-11-09: "the exact same configuration and memory setup that Crane
+    // would have running in a production environment. We should never
+    // special case something"). Thread-safe for the worker and
+    // service-worker threads.
+    const production = comptime wpt_options.production;
+    comptime std.debug.assert(production == wpt_options.production_allocator);
+    const environ = init.minimal.environ;
+    const want_traces = !production and runner_allocator.wantsTraces(environ.getPosix("CRANE_LEAK_TRACES"));
+    if (!production) {
+        // `CRANE_REFCOUNT_CHECK=1`: every DOM mutation checks the reference
+        // counts' invariants (src/dom/refcount.zig, shadow mode), as unit tests
+        // always do; a violation is an error line in the output
+        // ("refcount: ..."). Changes no behaviour.
+        if (runner_allocator.wantsTraces(environ.getPosix("CRANE_REFCOUNT_CHECK"))) @import("dom").refcount.enableTreeChecks();
+        // `CRANE_REFCOUNT_AUDIT=1`: refcount step 6's zombie audit - trees the
+        // counts call garbage are marked zombie at their agent's next teardown
+        // slice, and later reads of them reported (src/dom/refcount_audit.zig).
+        // Frees nothing differently.
+        if (runner_allocator.wantsTraces(environ.getPosix("CRANE_REFCOUNT_AUDIT"))) @import("dom").refcount_audit.enable();
+    }
     const debug_allocator = if (want_traces) gpa_traced.allocator() else gpa_fast.allocator();
-    if (!production and runner_allocator.wantsPoison(init.minimal.environ.getPosix("CRANE_POISON_FREES"))) poisoning = .{ .child = debug_allocator };
+    if (!production and runner_allocator.wantsPoison(environ.getPosix("CRANE_POISON_FREES"))) poisoning = .{ .child = debug_allocator };
     const tracked = if (production) std.heap.c_allocator else if (poisoning) |*p| p.allocator() else debug_allocator;
-    if (!production and runner_allocator.wantsAttribution(init.minimal.environ.getPosix("CRANE_LEAK_FILES"))) attribution = runner_allocator.Attributing.init(tracked);
+    if (!production and runner_allocator.wantsAttribution(environ.getPosix("CRANE_LEAK_FILES"))) attribution = runner_allocator.Attributing.init(tracked);
     const allocator = if (attribution) |*a| a.allocator() else tracked;
     defer {
         // What is still live now is what the DebugAllocator reports below,
@@ -1590,7 +1621,7 @@ fn run(init: std.process.Init) !u8 {
             a.deinit();
         }
         // Leak detection still runs; only the traces are gone in the fast case.
-        // The release runner's allocator has none to run.
+        // The production run's allocator has none to run.
         if (production) {} else if (want_traces) {
             _ = gpa_traced.deinit();
         } else {
@@ -1603,16 +1634,27 @@ fn run(init: std.process.Init) !u8 {
     var diag: options_mod.Diagnostic = .{};
     var options = options_mod.parseArgsDiagnosed(allocator, args[1..], &diag) catch |err| switch (err) {
         error.UnknownOption => {
-            print("wpt_runner: unknown option {s}\n", .{diag.unknown_option});
+            print("{s}: unknown option {s}\n", .{ runner_build.binaryName(), diag.unknown_option });
             return 2;
         },
         error.VerifyWithoutRepeat => {
-            print("wpt_runner: --verify needs --repeat=N: it checks that the N runs agree\n", .{});
+            print("{s}: --verify needs --repeat=N: it checks that the N runs agree\n", .{runner_build.binaryName()});
             return 2;
         },
         else => return err,
     };
     defer options.deinit();
+
+    // The bug-finding run's children start with libc's poison-on-free on
+    // (runner_allocator.addLibcScribble); the production run's with this
+    // process's environment, unchanged.
+    var child_environ: ?std.process.Environ.Map = null;
+    defer if (child_environ) |*env| env.deinit();
+    if (!production) {
+        child_environ = try init.environ_map.clone(allocator);
+        try runner_allocator.addLibcScribble(&child_environ.?, builtin.os.tag);
+        options.child_environ = &child_environ.?;
+    }
 
     // What a sweep script asks before it relies on the shared queue: a frozen
     // runner from before it rejects the option (exit 2) and is run the old way.
@@ -1621,25 +1663,35 @@ fn run(init: std.process.Init) !u8 {
         return 0;
     }
 
-    // Which build produced this run, once per run (not per supervised child):
-    // the runner is ReleaseSafe by default and Debug on request
+    // Which build produced this run, once per run (not per supervised child).
+    // The production run is the release console's build; the bug-finding
+    // run's root is ReleaseSafe by default and Debug on request
     // (`-Dwpt-runner-optimize=Debug`), timeouts differ between the two, and a
     // log must say which one it came from. The root's mode is the LLVM
     // pipeline; Crane's modules keep their own `builtin.mode`
     // (tests/wpt_runner/build_mode.zig).
-    if (!options.isChild() or options.wantsSupervisor()) print("wpt_runner: {s} build (Crane modules {s}, C libraries {s})\n", .{
-        build_mode.displayName(builtin.mode),
-        build_mode.displayName(wpt_options.crane_modules_mode),
-        build_mode.displayName(wpt_options.c_libraries_mode),
-    });
     if (!options.isChild() or options.wantsSupervisor()) {
-        if (production) {
-            print("wpt_runner: the release runner: libc's malloc, no leak or double-free detection, no Debug-only checks - for timing beside a browser's release build, never for sweeps or gates\n", .{});
-        } else if (runner_allocator.tracesNote(builtin.mode, want_traces)) |note| print("wpt_runner: {s}\n", .{note});
+        print("{s}: {s} build (Crane modules {s}, C libraries {s})\n", .{
+            runner_build.binaryName(),
+            build_mode.displayName(builtin.mode),
+            build_mode.displayName(wpt_options.crane_modules_mode),
+            build_mode.displayName(wpt_options.c_libraries_mode),
+        });
+        switch (runner_build) {
+            .production => print("{s}: the PRODUCTION run - Crane's production configuration, the release console's ({s}; the console's platform graph): published and timed\n", .{ runner_build.binaryName(), wpt_options.modes }),
+            .bug_finding => {
+                print("{s}: the BUG-FINDING run ({s}; the console's platform graph, poison-on-free{s}): never published or timed\n", .{
+                    runner_build.binaryName(),
+                    wpt_options.modes,
+                    if (poisoning != null) "" else " OFF (CRANE_POISON_FREES=0)",
+                });
+                if (runner_allocator.tracesNote(builtin.mode, want_traces)) |note| print("{s}: {s}\n", .{ runner_build.binaryName(), note });
+            },
+        }
     }
 
     if (options.allocator_self_check and production) {
-        print("allocator self-check ({s}): the release runner's allocator detects nothing - it is for timing, never for sweeps or gates\n", .{build_mode.displayName(builtin.mode)});
+        print("allocator self-check ({s}): the production run allocates as Crane's own browser does (libc's malloc) and detects nothing - run the self-check on wpt_runner_bug_finding\n", .{build_mode.displayName(builtin.mode)});
         return 1;
     }
     if (options.allocator_self_check) {
@@ -1762,6 +1814,9 @@ fn run(init: std.process.Init) !u8 {
     const server = try wpt_server.WptServer.init(allocator, options.wpt_root);
     defer server.deinit();
     try server.start();
+    // The page fetches the runner's testharnessreport.js from it
+    // (wpt_server.zig `report_js`): refuse one that serves the stock file.
+    try server.requireRunnerReport();
     const base_url = try server.getBaseUrl(allocator);
     defer allocator.free(base_url);
     print("\nwpt serve {s} at {s} (TLS on :{d})\n", .{
@@ -2007,6 +2062,7 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
         var child = try std.process.spawn(shard.io, .{
             .argv = argv,
             .cwd = if (shard.cwd) |dir| .{ .path = dir } else .inherit,
+            .environ_map = options.child_environ,
         });
 
         // The per-file ceiling only bounds the wait for `__wpt_complete`. The
@@ -2045,6 +2101,7 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
 
             var j = try journal.Journal.append(allocator, shard.journal_path);
             defer j.deinit();
+            j.build = journal_build;
             const message = try std.fmt.allocPrint(
                 allocator,
                 "supervisor killed a child that made no progress for {d}ms",
@@ -2091,6 +2148,7 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
 
         var j = try journal.Journal.append(allocator, shard.journal_path);
         defer j.deinit();
+        j.build = journal_build;
         const message = try std.fmt.allocPrint(allocator, "process terminated: {any}", .{term});
         defer allocator.free(message);
         try j.record(.{
@@ -2146,7 +2204,7 @@ const QueueLauncher = struct {
         // output and misreport the order of the run.
         flushOutput();
 
-        var proc = try std.process.spawn(self.io, .{ .argv = argv });
+        var proc = try std.process.spawn(self.io, .{ .argv = argv, .environ_map = options.child_environ });
 
         // The per-file ceiling only bounds the wait for `__wpt_complete`. The
         // navigation, the parse and every script the parser runs are unbounded,
@@ -2206,8 +2264,9 @@ fn runQueue(
         .stall_limit_ms = options.stall_limit_ms,
         .launcher = .{ .context = &launcher, .run = QueueLauncher.run },
         .reporter = .{ .write = printText },
+        .build = journal_build,
     });
-    const counts = try work_queue.writeMerged(allocator, options.output_dir, paths.len, journal_path);
+    const counts = try work_queue.writeMerged(allocator, options.output_dir, paths.len, journal_path, journal_build);
     if (counts.duplicates > 0) print("\nSupervisor: WARNING: {d} record(s) of files already journalled; the first record of each file stands\n", .{counts.duplicates});
     if (outcome == .finished and counts.missing > 0) print("\nSupervisor: WARNING: {d} file(s) of the worklist have no record\n", .{counts.missing});
     return outcome;
@@ -2274,6 +2333,9 @@ fn supervise(
     const server = try wpt_server.WptServer.init(allocator, options.wpt_root);
     defer server.deinit();
     try server.start();
+    // The page fetches the runner's testharnessreport.js from it
+    // (wpt_server.zig `report_js`): refuse one that serves the stock file.
+    try server.requireRunnerReport();
     const base_url = try server.getBaseUrl(allocator);
     defer allocator.free(base_url);
     print("\nwpt serve {s} at {s} (TLS on :{d})\n", .{
@@ -2456,6 +2518,7 @@ fn rewriteJournal(allocator: std.mem.Allocator, journal_path: []const u8, record
     {
         var out = try journal.Journal.create(allocator, tmp_path);
         defer out.deinit();
+        out.build = journal_build;
         for (records) |rec| try out.record(rec);
     }
     try host.cwd().rename(tmp_path, host.cwd(), journal_path, host.io());
@@ -2504,6 +2567,9 @@ fn superviseRepeat(
     const server = try wpt_server.WptServer.init(allocator, options.wpt_root);
     defer server.deinit();
     try server.start();
+    // The page fetches the runner's testharnessreport.js from it
+    // (wpt_server.zig `report_js`): refuse one that serves the stock file.
+    try server.requireRunnerReport();
 
     const alternating = options.repeat_with != null;
     const runs = repeat.totalRuns(options.repeat, alternating);

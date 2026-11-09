@@ -3,10 +3,25 @@
 //! Step 0 of the platform protocol: a composition of kit parts implementing
 //! today's behaviour - kit/posix for clocks, randomness, threads, files and
 //! identity, kit/memory_store for the storage engine, kit/curl's event-loop
-//! port, kit/crypto, and kit/headless for every capability offered to pages.
-//! Fonts are native: kit/sfnt, and fontconfig loaded at run time (fonts.zig,
-//! decision 20). The rest of the link plan of contract 10.2 (system SQLite, OpenSSL 3, the distro CA
-//! bundle, the X11/Wayland clipboard) arrives with its recipes steps.
+//! port, kit/crypto, and kit/headless for every capability offered to pages
+//! but these: fonts are native - kit/sfnt, and fontconfig loaded at run time
+//! (fonts.zig, decision 20); images decode through kit/image_decoding (D1,
+//! the user 2026-11-09); the clipboard is kit/memory_clipboard per Browser
+//! (D2, the user 2026-11-09), as headless Chrome's. The rest of the link plan
+//! of contract 10.2 (system SQLite, OpenSSL 3, the distro CA bundle, the
+//! X11/Wayland clipboard where a display is present) arrives with its
+//! recipes steps.
+//!
+//! The adapter chooses, per capability, between built-in kit code and
+//! linking out to the OS (the user, 2026-11-09 21:09 UTC: "The platform
+//! itself that is compiled in will decide if these features are built within
+//! the platform or dynamically link out to existing capabilities on the
+//! platform. For example, the clipboard too."). This is Crane's default
+//! platform - what Crane's own browser, the release console, and the
+//! production WPT runner compile in - so the capabilities every browser
+//! ships are built in here today: image decoding (kit/image_decoding, D1),
+//! media decoding (kit/media_decoding: WAV linear PCM, D4) and the
+//! clipboard (kit/memory_clipboard per Browser, D2).
 
 const std = @import("std");
 const platform = @import("platform");
@@ -18,6 +33,7 @@ const memory_store = @import("kit_memory_store");
 const curl = @import("kit_curl");
 const crypto = @import("kit_crypto");
 const browser_state = @import("kit_browser_state");
+const memory_clipboard = @import("kit_memory_clipboard");
 
 /// kit/sfnt and fontconfig (fonts.zig, decision 20), unless font_decoding
 /// is compiled out.
@@ -26,8 +42,58 @@ const font_decoding = for (platform_options.platform_without) |capability| {
 } else true;
 const fonts = if (font_decoding) @import("fonts.zig") else headless;
 
-/// This platform keeps no per-Browser state beyond kit/browser_state's.
-const State = browser_state.BrowserState(struct {});
+/// kit/image_decoding's built-in decoders - PNG, BMP and GIF in Zig, JPEG and
+/// SVG through kit/image_codecs (D1, the user 2026-11-09) - unless
+/// image_decoding is compiled out: then kit/headless's answers, every image
+/// broken, as the testing platform does.
+const image_decoding_built_in = for (platform_options.platform_without) |capability| {
+    if (std.mem.eql(u8, capability, "image_decoding")) break false;
+} else true;
+const image_decoding = if (image_decoding_built_in) @import("kit_image_decoding") else headless;
+
+/// kit/media_decoding's built-in decoders - WAV linear PCM (D4, the user
+/// 2026-11-09) - unless media_decoding is compiled out: then kit/headless's
+/// answers, canPlayType "" for every type.
+const media_decoding_built_in = for (platform_options.platform_without) |capability| {
+    if (std.mem.eql(u8, capability, "media_decoding")) break false;
+} else true;
+const media_decoding = if (media_decoding_built_in) @import("kit_media_decoding") else headless;
+
+/// Per-Browser state beyond kit/browser_state's, fresh for every Browser:
+/// the in-memory clipboard (kit/memory_clipboard; the user's ruling D2,
+/// 2026-11-09), as headless Chrome keeps one - components/headless/
+/// clipboard/headless_clipboard.cc, a ui::ClipboardNonBacked that
+/// headless/lib/browser/headless_browser_main_parts.cc installs.
+const Extra = struct {
+    clipboard: memory_clipboard.Clipboard,
+
+    pub fn init(allocator: std.mem.Allocator, options: *const platform.BrowserOptions) error{OutOfMemory}!Extra {
+        _ = options;
+        return .{ .clipboard = .init(allocator) };
+    }
+
+    pub fn deinit(self: *Extra) void {
+        self.clipboard.deinit();
+    }
+};
+
+const State = browser_state.BrowserState(Extra);
+
+/// openMediaDecoder: kit/media_decoding's, with the Browser's allocator.
+fn openMedia(browser: *platform.BrowserPlatform, mime: platform.Str) platform.Error!*platform.MediaDecoder {
+    if (!media_decoding_built_in) return headless.openMediaDecoder(browser, mime);
+    return media_decoding.openMediaDecoder(State.of(browser).allocator, mime);
+}
+
+fn clipboardRead(browser: *platform.BrowserPlatform, requester: *const platform.Requester, types: []const platform.Str, reply: platform.Reply(platform.ClipboardItems)) void {
+    _ = requester;
+    State.of(browser).extra.clipboard.read(types, reply);
+}
+
+fn clipboardWrite(browser: *platform.BrowserPlatform, requester: *const platform.Requester, items: *const platform.ClipboardItems, reply: platform.Reply(platform.Unit)) void {
+    _ = requester;
+    State.of(browser).extra.clipboard.write(items, reply);
+}
 
 pub const protocol = struct {
     pub const name = "linux";
@@ -39,7 +105,8 @@ pub const protocol = struct {
     pub const identity: platform.Identity = posix.identity;
 
     /// Today's behaviour, declared. Everything a page asks of a host is
-    /// unsupported (kit/headless) until its recipes step builds it.
+    /// unsupported (kit/headless) until its recipes step builds it, but the
+    /// fonts, image decoding and the in-memory clipboard.
     pub const capabilities: platform.Capabilities = blk: {
         var c = headless.capabilities;
         c.brotli = .native; // Pinned RFC 7932 codec; identical on every OS.
@@ -51,6 +118,16 @@ pub const protocol = struct {
         c.http2 = if (platform_options.http2) .native else .unsupported;
         // src/platform/memory.zig reads task_info / /proc/self/statm.
         c.resident_memory = .native;
+        // kit/memory_clipboard per Browser (D2, the user 2026-11-09), as
+        // headless Chrome's. Deviation: nothing leaves the Browser and nothing
+        // another application copies arrives.
+        c.clipboard = .emulated;
+        // kit/image_decoding, built in (D1, the user 2026-11-09): PNG, BMP,
+        // GIF, JPEG and SVG, the testing platform's decoders.
+        if (image_decoding_built_in) c.image_decoding = .native;
+        // kit/media_decoding, built in (D4, the user 2026-11-09): WAV linear
+        // PCM; WebM, Ogg and MP4 answer "" until a decoder for them exists.
+        if (media_decoding_built_in) c.media_decoding = .native;
         // kit/sfnt, with fontconfig loaded at run time for installed faces
         // (fonts.zig). Without fontconfig there are none; web fonts load.
         if (font_decoding) c.font_decoding = .native;
@@ -143,7 +220,6 @@ pub const protocol = struct {
     pub const rsaEncrypt = crypto.rsaEncrypt;
     pub const rsaDecrypt = crypto.rsaDecrypt;
     pub const layoutBox = headless.layoutBox;
-    pub const replacedElementBox = headless.replacedElementBox;
     pub const clientRects = headless.clientRects;
     pub const scrollPosition = headless.scrollPosition;
     pub const setScrollPosition = headless.setScrollPosition;
@@ -174,13 +250,13 @@ pub const protocol = struct {
     pub const systemVisibility = headless.systemVisibility;
     pub const displayRefreshInterval = headless.displayRefreshInterval;
     pub const screenDetails = headless.screenDetails;
-    pub const mediaCanPlayType = headless.mediaCanPlayType;
-    pub const openMediaDecoder = headless.openMediaDecoder;
-    pub const pushMediaData = headless.pushMediaData;
-    pub const mediaVideoSize = headless.mediaVideoSize;
-    pub const closeMediaDecoder = headless.closeMediaDecoder;
-    pub const imageMimeTypeSupported = headless.imageMimeTypeSupported;
-    pub const decodeImage = headless.decodeImage;
+    pub const mediaCanPlayType = media_decoding.mediaCanPlayType;
+    pub const openMediaDecoder = openMedia;
+    pub const pushMediaData = media_decoding.pushMediaData;
+    pub const mediaVideoSize = media_decoding.mediaVideoSize;
+    pub const closeMediaDecoder = media_decoding.closeMediaDecoder;
+    pub const imageMimeTypeSupported = image_decoding.imageMimeTypeSupported;
+    pub const decodeImage = image_decoding.decodeImage;
     pub const decodeFont = fonts.decodeFont;
     pub const genericFontFace = fonts.genericFontFace;
     pub const installedFontFace = fonts.installedFontFace;
@@ -221,8 +297,8 @@ pub const protocol = struct {
     pub const exitPictureInPicture = headless.exitPictureInPicture;
     pub const startPresentation = headless.startPresentation;
     pub const watchRemotePlaybackAvailability = headless.watchRemotePlaybackAvailability;
-    pub const readClipboard = headless.readClipboard;
-    pub const writeClipboard = headless.writeClipboard;
+    pub const readClipboard = clipboardRead;
+    pub const writeClipboard = clipboardWrite;
     pub const showNotification = headless.showNotification;
     pub const closeNotification = headless.closeNotification;
     pub const maxNotificationActions = headless.maxNotificationActions;

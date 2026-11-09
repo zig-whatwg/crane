@@ -2019,9 +2019,10 @@ pub fn get_width(instance: *runtime.Instance) anyerror!u32 {
 
 fn imageDimension(instance: *runtime.Instance, name: []const u8) u32 {
     if (typeOf(instance) != .image) return 0;
-    // TODO (decision 19b): query the host's rendered content box once input
-    // supplies replaced-element facts. The existing image_sources hook only
-    // has img facts. Input also has no image request/natural dimensions yet.
+    // TODO: when the platform's renderer gives this input a box (layoutBox,
+    // docs/platform-protocol.md 6.9 - Crane never computes one, D3), being
+    // rendered returns that box's size, as HTMLImageElement's renderedSize.
+    // Input also has no image request/natural dimensions yet.
     // The non-rendered path follows "determine the dimensions", steps 2–4,
     // using the same attribute parser and unsigned clamp as HTMLImageElement.
     const data = dom.element_data.of(instance) orelse return 0;

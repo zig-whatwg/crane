@@ -8,9 +8,8 @@
 //! includes them - read and write them through this module: each owner
 //! installs its steps at process start, and the mixins never name an impl.
 //!
-//! It also carries an img's facts for the platform's layout STOPGAP
-//! (decision 19b, platform.replacedElementBox): Element's clientWidth and
-//! clientHeight ask it for any element, and only an img answers.
+//! It also names the node ids Crane's geometry reads pass the platform's
+//! layout operations (`layoutNode`).
 //!
 //! lint-impls: hook for HTMLImageElement, HTMLCanvasElement, CanvasRenderingContext2D
 
@@ -83,9 +82,6 @@ pub const OutputBitmap = struct {
 pub const Implementation = struct {
     /// HTMLImageElement: its usability as an image source.
     image_usability: ?*const fn (image: *runtime.Instance) Usability = null,
-    /// HTMLImageElement: an element's replaced-element facts - null for an
-    /// element that is no img. STOPGAP (decision 19b).
-    replaced_facts: ?*const fn (element: *runtime.Instance) ?platform.ReplacedElementFacts = null,
     /// HTMLImageElement: run the image update for a relevant mutation.
     update_image_data: ?*const fn (image: *runtime.Instance) void = null,
     /// HTMLCanvasElement: its usability as an image source - its bitmap.
@@ -107,11 +103,9 @@ var implementation: Hook(Implementation) = .init(.{});
 
 pub fn installImageElement(
     usability: *const fn (*runtime.Instance) Usability,
-    replaced_facts: *const fn (*runtime.Instance) ?platform.ReplacedElementFacts,
     update_image_data: *const fn (*runtime.Instance) void,
 ) void {
     implementation.installField("image_usability", usability);
-    implementation.installField("replaced_facts", replaced_facts);
     implementation.installField("update_image_data", update_image_data);
 }
 
@@ -122,15 +116,10 @@ pub fn updateImageData(image: *runtime.Instance) void {
     steps(image);
 }
 
-/// `element`'s facts as a replaced element, when it is one (an img).
-pub fn replacedFacts(element: *runtime.Instance) ?platform.ReplacedElementFacts {
-    const steps = implementation.read().replaced_facts orelse return null;
-    return steps(element);
-}
-
-/// The layout node id of `node` for the layout STOPGAP (decision 19b): its
-/// address, opaque to the platform - an id for the queried element only,
-/// with no table behind it. 0 is none.
+/// The layout node id of `node` that a geometry read passes the platform's
+/// layout operations (docs/platform-protocol.md 6.9): its address, opaque to
+/// the platform - an id for the queried element only, with no table behind
+/// it, until OQ4's DOM-to-renderer design names nodes. 0 is none.
 pub fn layoutNode(node: ?*runtime.Instance) platform.LayoutNode {
     return .{ .id = if (node) |n| @intFromPtr(n) else 0 };
 }

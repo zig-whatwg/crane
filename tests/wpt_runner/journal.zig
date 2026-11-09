@@ -31,6 +31,29 @@ pub const Leftovers = struct {
     service_worker_registrations: usize = 0,
 };
 
+/// Which WPT runner build wrote a record (tests/wpt_runner/build_mode.zig
+/// `RunnerBuild`; the user, 2026-11-09). Only the production run's records
+/// are published (tools/wpt_progress.py refuses the others); a record with
+/// none is older than the split - the hybrid runner of generation 213 and
+/// before.
+pub const Build = enum {
+    production,
+    bug_finding,
+
+    pub fn toString(self: Build) []const u8 {
+        return switch (self) {
+            .production => "production",
+            .bug_finding => "bug-finding",
+        };
+    }
+
+    pub fn fromString(s: []const u8) ?Build {
+        if (std.mem.eql(u8, s, "production")) return .production;
+        if (std.mem.eql(u8, s, "bug-finding")) return .bug_finding;
+        return null;
+    }
+};
+
 /// Outcome of running one test file in one global context.
 ///
 /// The first three mirror WPT's harness statuses; `crash` is ours, written by
@@ -200,6 +223,11 @@ pub const Record = struct {
     /// agreed" (which has `retry`). Journalled as `"retry_skipped":"matches baseline"`.
     retry_skipped: bool = false,
 
+    /// The runner build that wrote the record (`Build`); null in journals
+    /// written before the split. `Journal.record` stamps its own build on a
+    /// record that names none.
+    build: ?Build = null,
+
     /// The two runs disagree: the file is flaky in this run. A retried file
     /// whose second run matches its first failed the same way twice.
     pub fn isFlaky(self: Record) bool {
@@ -366,6 +394,7 @@ pub fn writeRecord(w: *std.Io.Writer, rec: Record) !void {
         try w.writeAll(",\"message\":");
         try writeJsonString(w, msg);
     }
+    if (rec.build) |b| try w.print(",\"build\":\"{s}\"", .{b.toString()});
     if (rec.retry_skipped) try w.print(",\"retry_skipped\":\"{s}\"", .{retry_skipped_marker});
     if (rec.retry) |r| {
         try w.print(",\"flaky\":{s},\"retry\":{{\"status\":", .{if (rec.isFlaky()) "true" else "false"});
@@ -385,6 +414,9 @@ pub const Journal = struct {
     allocator: Allocator,
     file: std.Io.File,
     line: std.Io.Writer.Allocating,
+    /// The build this process is (`Build`), stamped on every record that
+    /// names none - the supervisor's CRASH and TIMEOUT records included.
+    build: ?Build = null,
 
     /// Start a fresh journal, discarding any previous run at this path.
     pub fn create(allocator: Allocator, path: []const u8) !Journal {
@@ -440,7 +472,9 @@ pub const Journal = struct {
     /// is what loses the identity of the crashing test.
     pub fn record(self: *Journal, rec: Record) !void {
         self.line.clearRetainingCapacity();
-        try writeRecord(&self.line.writer, rec);
+        var stamped = rec;
+        if (stamped.build == null) stamped.build = self.build;
+        try writeRecord(&self.line.writer, stamped);
         try self.file.writeStreamingAll(host.io(), self.line.written());
     }
 };
@@ -628,6 +662,10 @@ pub fn parseLines(allocator: Allocator, bytes: []const u8) !Log {
             .retry_skipped = switch (obj.get("retry_skipped") orelse .null) {
                 .string => |m| std.mem.eql(u8, m, retry_skipped_marker),
                 else => false,
+            },
+            .build = switch (obj.get("build") orelse .null) {
+                .string => |b| Build.fromString(b),
+                else => null,
             },
         });
     }
@@ -1307,4 +1345,59 @@ test "a skipped retry is journalled with its marker, and counted apart from retr
     try std.testing.expectEqual(@as(usize, 1), s.retry_skipped);
     try std.testing.expectEqual(@as(usize, 1), s.retried);
     try std.testing.expectEqual(@as(usize, 0), s.flaky);
+}
+
+test "a record names the build that ran it, on the wire and back" {
+    // The WPT runner's two builds (build_mode.zig RunnerBuild; the user,
+    // 2026-11-09): only the production run's records are published, so each
+    // record says which build wrote it, and the progress report refuses a
+    // bug-finding one (tools/wpt_progress.py).
+    const allocator = std.testing.allocator;
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+    try writeRecord(&out.writer, .{ .index = 0, .path = "a.html", .status = .ok, .build = .production });
+    try writeRecord(&out.writer, .{ .index = 1, .path = "b.html", .status = .crash, .build = .bug_finding });
+    try writeRecord(&out.writer, .{ .index = 2, .path = "c.html", .status = .ok });
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"build\":\"production\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"build\":\"bug-finding\"") != null);
+
+    var log = try parseLines(allocator, out.written());
+    defer log.deinit();
+    try std.testing.expectEqual(@as(?Build, .production), log.records[0].build);
+    try std.testing.expectEqual(@as(?Build, .bug_finding), log.records[1].build);
+    // A record written before the field existed - today's hybrid runner,
+    // generation 213 and before - names none.
+    try std.testing.expectEqual(@as(?Build, null), log.records[2].build);
+}
+
+test "a journal stamps its build on every record it writes, the supervisor's CRASH records too" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(dir_path);
+    const path = try std.fs.path.join(allocator, &.{ dir_path, "run.jsonl" });
+    defer allocator.free(path);
+    {
+        var j = try Journal.create(allocator, path);
+        defer j.deinit();
+        j.build = .bug_finding;
+        try j.record(.{ .index = 0, .path = "a.html", .status = .ok });
+    }
+    {
+        var j = try Journal.append(allocator, path);
+        defer j.deinit();
+        j.build = .bug_finding;
+        try j.record(.{ .index = 1, .path = "b.html", .status = .crash, .message = "the child died" });
+    }
+    var log = try read(allocator, path);
+    defer log.deinit();
+    for (log.records) |rec| try std.testing.expectEqual(@as(?Build, .bug_finding), rec.build);
+}
+
+test "a build's wire name is the one build_mode.zig gives it" {
+    try std.testing.expectEqualStrings("production", Build.production.toString());
+    try std.testing.expectEqualStrings("bug-finding", Build.bug_finding.toString());
+    try std.testing.expectEqual(@as(?Build, .bug_finding), Build.fromString("bug-finding"));
+    try std.testing.expectEqual(@as(?Build, null), Build.fromString("release"));
 }

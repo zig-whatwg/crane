@@ -116,6 +116,38 @@ def is_crane(rec):
     return rec.get('engine') in (None, 'crane')
 
 
+# The WPT runner's two builds (tests/wpt_runner/build_mode.zig RunnerBuild; the user, 2026-11-09:
+# WPT runs Crane only "with the exact same configuration and memory setup that Crane would have
+# running in a production environment"). Each journal record names the build that wrote it; only
+# the PRODUCTION run is published. A record naming none predates the split (the hybrid runner of
+# generation 213 and before).
+BUG_FINDING = 'bug-finding'
+CONFIGURATION_CHANGE_PRODUCTION = 'configuration change: production build'
+
+
+def is_bug_finding(rec):
+    """Whether a record is the bug-finding run's: never published, never timed."""
+    return rec.get('build') == BUG_FINDING
+
+
+def generation_build(worklist, records):
+    """'production' when every worklist file with a record has the production run's, else None
+    (the hybrid runner's records, or a mix while a production sweep has not covered the worklist)."""
+    recs = [records[p] for p in worklist if p in records]
+    if recs and all(r.get('build') == 'production' for r in recs):
+        return 'production'
+    return None
+
+
+def configuration_change(previous_generation, build):
+    """The marker the first production generation carries (the site draws it on the history), or None."""
+    if build != 'production':
+        return None
+    if previous_generation is not None and previous_generation.get('build') == 'production':
+        return None
+    return CONFIGURATION_CHANGE_PRODUCTION
+
+
 def engine_label(engine):
     return {'chrome': 'Chrome', 'firefox': 'Firefox', 'safari': 'Safari'}.get(engine, engine)
 
@@ -124,12 +156,14 @@ def engine_label(engine):
 # gate", in full in .claude/rules/wpt-workflow.md): worklist files omitted from the
 # blocking count, each listed with its evidence in tools/wpt_gate_exemptions.txt
 # (its header is the format; the public site, tools/wpt_site/model.zig, reads it by
-# the same rules). Two kinds: `intentional` - ALL THREE of Chrome, Firefox and
+# the same rules). Three kinds: `intentional` - ALL THREE of Chrome, Firefox and
 # Safari intentionally deviate from the spec the file tests (an entry with no kind
-# is this one, as every entry was before kinds) - and `test-bug` - the file fails
+# is this one, as every entry was before kinds) - `test-bug` - the file fails
 # identically in all three because of a test bug filed upstream, exempt until that
-# bug is resolved. A listed file that would block is EXEMPT: counted in its own
-# group, never as blocking. One that does not block keeps its standing. An invalid
+# bug is resolved - and `needs-renderer` - the file fails ONLY because no renderer
+# answers geometry (the user, 2026-11-09): it still runs and shows, but does not
+# block 0.1 until a renderer exists. A listed file that would block is EXEMPT:
+# counted in its kind's own group, never as blocking. One that does not block keeps its standing. An invalid
 # entry stops the report - an exemption is never applied, or dropped, silently.
 EXEMPTIONS_FILE = os.path.join(REPO, 'tools', 'wpt_gate_exemptions.txt')
 EXEMPT = 'EXEMPT'
@@ -138,8 +172,18 @@ EXEMPTION_KEYS = ('why', 'spec', 'chrome.result', 'chrome.intent', 'firefox.resu
 # The keys of each kind: every one required, no other allowed (`kind` itself is
 # optional for an intentional entry, which predates kinds).
 TEST_BUG_KEYS = ('kind', 'why', 'upstream', 'chrome.result', 'firefox.result', 'safari.result', 'revisit')
-KIND_KEYS = {'intentional': ('kind',) + EXEMPTION_KEYS, 'test-bug': TEST_BUG_KEYS}
-ALL_EXEMPTION_KEYS = set(EXEMPTION_KEYS) | set(TEST_BUG_KEYS)
+# `why`: why the failing assertion needs a layout box; `assertion`: that assertion,
+# as the run reports it.
+NEEDS_RENDERER_KEYS = ('kind', 'why', 'assertion')
+KIND_KEYS = {'intentional': ('kind',) + EXEMPTION_KEYS, 'test-bug': TEST_BUG_KEYS,
+             'needs-renderer': NEEDS_RENDERER_KEYS}
+# What an entry of each kind is missing without one of its keys.
+KIND_NEEDS = {
+    'intentional': "an exemption needs the spec and every browser's evidence",
+    'test-bug': "a test-bug exemption needs the upstream issue, every browser's result and when to revisit",
+    'needs-renderer': 'a needs-renderer exemption needs the failing assertion and why it needs a layout box',
+}
+ALL_EXEMPTION_KEYS = set(EXEMPTION_KEYS) | set(TEST_BUG_KEYS) | set(NEEDS_RENDERER_KEYS)
 _WPT_ISSUE = re.compile(r'https://github\.com/web-platform-tests/wpt/(issues|pull)/\d+$')
 _REVISIT = re.compile(r'when (\S+) is resolved$')
 _COUNTS = re.compile(r'wpt\.fyi run \d+: *(\d+/\d+)')
@@ -172,9 +216,7 @@ def parse_exemptions(text, worklist):
                 raise ExemptionError(f'line {lines[k]}: [{entry["path"]}]: "{k}" is not a key of {article} {kind} exemption')
         for k in keys:
             if k != 'kind' and k not in vals:
-                need = ("an exemption needs the spec and every browser's evidence" if kind == 'intentional' else
-                        "a test-bug exemption needs the upstream issue, every browser's result and when to revisit")
-                raise ExemptionError(f"line {entry['line']}: [{entry['path']}]: missing \"{k}\" - {need}")
+                raise ExemptionError(f"line {entry['line']}: [{entry['path']}]: missing \"{k}\" - {KIND_NEEDS[kind]}")
         if kind == 'test-bug':
             if _REVISIT.match(vals['revisit']).group(1) != vals['upstream']:
                 raise ExemptionError(f'line {lines["revisit"]}: [{entry["path"]}]: revisit must read '
@@ -216,7 +258,7 @@ def parse_exemptions(text, worklist):
         if (key == 'spec' or key.endswith('.intent')) and not _URL.match(value):
             raise ExemptionError(f'line {n}: [{cur["path"]}]: {key} must be an http(s) URL')
         if key == 'kind' and value not in KIND_KEYS:
-            raise ExemptionError(f'line {n}: [{cur["path"]}]: kind must be intentional or test-bug, not "{value}"')
+            raise ExemptionError(f'line {n}: [{cur["path"]}]: kind must be intentional, test-bug or needs-renderer, not "{value}"')
         if key == 'upstream' and not _WPT_ISSUE.match(value):
             raise ExemptionError(f'line {n}: [{cur["path"]}]: upstream must be a web-platform-tests issue or pull '
                                  'request (https://github.com/web-platform-tests/wpt/issues/<n> or /pull/<n>)')
@@ -253,6 +295,7 @@ def render_exempt(records, worklist):
     out = ''
     intentional = [(p, e) for p, e in EXEMPTIONS.items() if e['kind'] == 'intentional']
     test_bug = [(p, e) for p, e in EXEMPTIONS.items() if e['kind'] == 'test-bug']
+    needs_renderer = [(p, e) for p, e in EXEMPTIONS.items() if e['kind'] == 'needs-renderer']
     if intentional:
         items = []
         for path, e in intentional:
@@ -293,6 +336,24 @@ def render_exempt(records, worklist):
     test is resolved: Chrome, Firefox and Safari fail each identically because of it, and it is filed with
     web-platform-tests (<code>tools/wpt_gate_exemptions.txt</code>). When the upstream issue is resolved the
     exemption ends and the file is revisited. A listed file that does not block keeps its standing.</div>
+  <ol>{''.join(items)}</ol>
+</div>"""
+    if needs_renderer:
+        items = []
+        for path, e in needs_renderer:
+            st = status_of(records.get(path), path)
+            items.append(
+                f'<li><code>{html.escape(path)}</code> <span class="dim">{html.escape(st)}</span>'
+                f'<div>{html.escape(e["why"])}</div>'
+                f'<ul class="samples"><li>failing assertion: <code>{html.escape(e["assertion"])}</code></li></ul></li>')
+        n = sum(1 for p, _ in needs_renderer if status_of(records.get(p), p) == EXEMPT)
+        out += f"""
+<div class="panel">
+  <h2 class="panelh">Exempt until a renderer answers geometry</h2>
+  <div class="dim sub2"><b>{n:,}</b> files that would block are not counted as blocking until Crane has a renderer:
+    each fails only because no renderer answers geometry - a layout box's size or position - with the failing
+    assertion and why it needs a layout box below (<code>tools/wpt_gate_exemptions.txt</code>; the user,
+    2026-11-09). They still run and show. A listed file that does not block keeps its standing.</div>
   <ol>{''.join(items)}</ol>
 </div>"""
     return out
@@ -861,12 +922,20 @@ def load_results():
     if dropped:
         print(f"wpt_progress: dropped {len(dropped)} record{'s' if len(dropped) != 1 else ''} "
               f"of another engine from {STATE}: a reference run is never Crane's")
+    # Nor is a bug-finding run's record ever published (lane wptcfg).
+    dropped_bug = [p for p, r in records.items() if is_bug_finding(r)]
+    for p in dropped_bug:
+        del records[p]
+    if dropped_bug:
+        print(f"wpt_progress: dropped {len(dropped_bug)} bug-finding record{'s' if len(dropped_bug) != 1 else ''} "
+              f"from {STATE}: only the production run is published")
     # A reference.json is read only from wpt-results/reference/<run>/, and never as Crane's.
     for fn in sorted(glob.glob(os.path.join(RESULTS, 'reference.json')) +
                      glob.glob(os.path.join(RESULTS, '*', 'reference.json'))):
         print(f"wpt_progress: ignored {os.path.relpath(fn, RESULTS)}: a reference run is read only "
               f"from wpt-results/{REFERENCE_SUBDIR}/<run>/reference.json, never as Crane's")
     refused = collections.Counter()
+    bug_finding = collections.Counter()
     # High-water marks kept under an older rule are rebuilt from the journals
     # present, and from the record itself (`high_water` counts it).
     revisions = {}
@@ -898,6 +967,9 @@ def load_results():
             if 'path' in rec and not is_crane(rec):
                 refused[(os.path.relpath(fn, RESULTS), str(rec.get('engine')))] += 1
                 continue
+            if 'path' in rec and is_bug_finding(rec):
+                bug_finding[os.path.relpath(fn, RESULTS)] += 1
+                continue
             if 'path' in rec:
                 rec['_journal'] = journal
                 # The run's label: the directory under wpt-results/ ('' for a
@@ -913,6 +985,11 @@ def load_results():
                 # a floor only when it measured the same WPT snapshot.
                 records[rec['path']] = merge_result(rec, prev)
 
+    if bug_finding:
+        named = ', '.join(f'{rel} ({n} record{"s" if n != 1 else ""})' for rel, n in sorted(bug_finding.items()))
+        sys.exit(f"wpt_progress: refused a bug-finding run given as a generation: {named}. Only the "
+                 "production run (wpt_runner) is published; the bug-finding run's (wpt_runner_bug_finding) "
+                 "summary goes to the held-files report, never under wpt-results/ (lane wptcfg).")
     for (rel, engine), n in sorted(refused.items()):
         print(f"wpt_progress: refused {n} record{'s' if n != 1 else ''} of engine {engine} in {rel}: "
               f"a reference run is never Crane's; it belongs in wpt-results/{REFERENCE_SUBDIR}/<run>/ "
@@ -1171,6 +1248,8 @@ def build(worklist, records, shape=None):
             areas[a]['exempt'] += 1
             if EXEMPTIONS[path]['kind'] == 'test-bug':
                 areas[a]['exempt_test_bug'] += 1
+            elif EXEMPTIONS[path]['kind'] == 'needs-renderer':
+                areas[a]['exempt_needs_renderer'] += 1
             areas[a]['sub_pass'] += rec.get('passed', 0)
             areas[a]['sub_fail'] += rec.get('failed', 0)
         elif status in GATING:
@@ -1635,6 +1714,8 @@ def record_generation(worklist, records, areas, previous_records=None):
     for c in areas.values():
         tot.update(c)
     subs = subtest_sums(worklist, records)
+    build = generation_build(worklist, records)
+    change = configuration_change(history['generations'][-1] if history['generations'] else None, build)
     snap = {
         'n': history['generations'][-1]['n'] + 1 if history['generations'] else 1,
         'at': datetime.datetime.now().isoformat(timespec='seconds'),
@@ -1647,6 +1728,7 @@ def record_generation(worklist, records, areas, previous_records=None):
         'none_passed': tot['none-passed'],
         'exempt': tot['exempt'],
         'exempt_test_bug': tot['exempt_test_bug'],
+        'exempt_needs_renderer': tot['exempt_needs_renderer'],
         # Files the sweep re-ran because they did not fully pass, whose second run
         # disagreed with the first (the runner's --retry-failures: "flaky" in the
         # journal record). The first result is the one counted everywhere else.
@@ -1663,6 +1745,8 @@ def record_generation(worklist, records, areas, previous_records=None):
         'areas': {a: {'run': c['run'], 'blocking': c['gating'], 'clean': c['clean']}
                   for a, c in areas.items()},
         'regenerations': 0,
+        # The runner build whose results these are ('production', or None: the hybrid runner's).
+        'build': build,
         'losses': losses,
         'loss_baseline_missing': sorted(p for p in worklist if prev is not None and
                                        p in prev and p not in (prev_passes or {})),
@@ -1721,6 +1805,8 @@ def record_generation(worklist, records, areas, previous_records=None):
         snap['samples'] = dict(samples)
 
     snap['gate_rule'] = GATE_RULE
+    if change:
+        snap['configuration_change'] = change
     history['generations'].append(snap)
     history['last_statuses'] = cur
     history['last_sources'] = idents
@@ -2637,10 +2723,13 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     exempt_html = render_exempt(records, worklist)
     # Each kind's own count (the user, 2026-11-08: a test bug filed upstream is
     # the second kind, counted apart from the browsers' intentional deviations).
-    exempt_intentional = tot['exempt'] - tot['exempt_test_bug']
+    # And the third (the user, 2026-11-09): a file that fails only because no
+    # renderer answers geometry.
+    exempt_intentional = tot['exempt'] - tot['exempt_test_bug'] - tot['exempt_needs_renderer']
     exempt_note = ''.join((
         f' Not counted: {exempt_intentional:,} exempt (all three browsers intentionally deviate).' if exempt_intentional else '',
-        f' Not counted: {tot["exempt_test_bug"]:,} exempt until an upstream test bug is fixed.' if tot['exempt_test_bug'] else ''))
+        f' Not counted: {tot["exempt_test_bug"]:,} exempt until an upstream test bug is fixed.' if tot['exempt_test_bug'] else '',
+        f' Not counted: {tot["exempt_needs_renderer"]:,} exempt until a renderer answers geometry.' if tot['exempt_needs_renderer'] else ''))
     reference_html = render_reference(worklist, records, reference)
     doc = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
@@ -2806,6 +2895,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
   <div class="card"><div class="k">OK, none passed</div><div class="v" style="color:var(--bad)">{tot['none-passed']:,}</div></div>
   {f'<div class="card"><div class="k">Exempt</div><div class="v">{exempt_intentional:,}</div></div>' if any(e['kind'] == 'intentional' for e in EXEMPTIONS.values()) else ''}
   {f'<div class="card"><div class="k">Exempt: upstream test bug</div><div class="v">{tot["exempt_test_bug"]:,}</div></div>' if any(e['kind'] == 'test-bug' for e in EXEMPTIONS.values()) else ''}
+  {f'<div class="card"><div class="k">Exempt: needs a renderer</div><div class="v">{tot["exempt_needs_renderer"]:,}</div></div>' if any(e['kind'] == 'needs-renderer' for e in EXEMPTIONS.values()) else ''}
   <div class="card"><div class="k">Clean files</div><div class="v" style="color:var(--ok)">{clean:,}</div></div>
   <div class="card"><div class="k">Subtests passing</div><div class="v">{sub_passing:,}<span class="dim" style="font-size:14px"> / {sub_targeted:,}</span></div></div>
   <div class="card"><div class="k">Pass rate outside encoding/</div><div class="v">{non_enc_pct:.1f}%</div></div>
@@ -2916,10 +3006,14 @@ def main():
           f"files clean {clean / total * 100 if total else 0:.2f}%")
     non_enc_pct, file_mean_pct = alt_rates(worklist, records)
     listed_bug = sum(1 for e in EXEMPTIONS.values() if e['kind'] == 'test-bug')
-    print(f"  exempt (all three browsers intentionally deviate; not blocking): {tot['exempt'] - tot['exempt_test_bug']:,} "
-          f"of {len(EXEMPTIONS) - listed_bug:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
+    listed_renderer = sum(1 for e in EXEMPTIONS.values() if e['kind'] == 'needs-renderer')
+    print(f"  exempt (all three browsers intentionally deviate; not blocking): "
+          f"{tot['exempt'] - tot['exempt_test_bug'] - tot['exempt_needs_renderer']:,} "
+          f"of {len(EXEMPTIONS) - listed_bug - listed_renderer:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
     print(f"  exempt until an upstream test bug is fixed (not blocking): {tot['exempt_test_bug']:,} "
           f"of {listed_bug:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
+    print(f"  exempt until a renderer answers geometry (not blocking): {tot['exempt_needs_renderer']:,} "
+          f"of {listed_renderer:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
     print(f"  of which OK with none passed: {tot['none-passed']:,}  |  pass rate outside encoding/ "
           f"{non_enc_pct:.1f}%  |  mean per-file pass rate {file_mean_pct:.1f}%")
     print('  composition: ' + '  '.join(
@@ -3261,7 +3355,7 @@ def _check_exemption_kinds():
     up = 'upstream = https://github.com/web-platform-tests/wpt/issues/99999'
     rv = 'revisit = when https://github.com/web-platform-tests/wpt/issues/99999 is resolved'
     for frm, to, needle in (
-            ('kind = test-bug', 'kind = testbug', 'kind must be intentional or test-bug'),
+            ('kind = test-bug', 'kind = testbug', 'kind must be intentional, test-bug or needs-renderer'),
             (up, 'upstream = https://bugs.webkit.org/show_bug.cgi?id=1', 'web-platform-tests issue or pull request'),
             (up, 'upstream = https://github.com/web-platform-tests/wpt/issues/', 'web-platform-tests issue or pull request'),
             (up, 'upstream = https://github.com/web-platform-tests/wpt.fyi/issues/99999', 'web-platform-tests issue or pull request'),
@@ -3305,6 +3399,97 @@ def _check_exemption_kinds():
         # Intentional entries alone render exactly as before kinds.
         EXEMPTIONS = parse_exemptions(_EXEMPTION_FIXTURE, wl)
         assert 'upstream test bug' not in render_exempt(recs, wl)
+    finally:
+        EXEMPTIONS = saved
+
+
+_NEEDS_RENDERER_FIXTURE = """[html/x/decodes-image-data.html]
+kind = needs-renderer
+why = common/security-features decodeImageData reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight); with no renderer clientWidth is 0 (CSSOM View's no-box answer), so getImageData throws IndexSizeError
+assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+"""
+
+
+def _check_needs_renderer_kind():
+    """The third exemption kind (the user, 2026-11-09): a file that fails ONLY
+    because no renderer answers geometry still runs and shows, but does not block
+    0.1 until a renderer exists. kind = needs-renderer needs `why` (why the
+    assertion needs a layout box) and `assertion` (the failing assertion as the
+    run reports it), and no other key; the same rules tools/wpt_site/model.zig
+    tests. A needs-renderer file that would block is EXEMPT, in its own group and
+    its own count."""
+    global EXEMPTIONS
+    wl = ['css/x/declined.html', 'html/x/posts-a-report.https.html', 'html/x/decodes-image-data.html', 'css/x/other.html']
+    e = parse_exemptions(_NEEDS_RENDERER_FIXTURE, wl)['html/x/decodes-image-data.html']
+    assert e['kind'] == 'needs-renderer', e
+    assert e['assertion'] == 'promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"', e
+    assert e['why'].startswith('common/security-features decodeImageData reads the image back'), e
+    assert set(e) == {'kind', 'why', 'assertion'}, e
+    every = parse_exemptions(_EXEMPTION_FIXTURE + _TEST_BUG_FIXTURE + _NEEDS_RENDERER_FIXTURE, wl)
+    assert [x['kind'] for x in every.values()] == ['intentional', 'test-bug', 'needs-renderer']
+
+    def invalid(text, needle, worklist=wl):
+        try:
+            parse_exemptions(text, worklist)
+        except ExemptionError as err:
+            assert needle in str(err), (needle, str(err))
+            return
+        raise AssertionError('accepted an invalid exemption: ' + needle)
+
+    # Every key is required: without its kind it reads as intentional, whose
+    # keys it lacks and whose entry has no `assertion`.
+    for key, needle in (('kind', '"assertion" is not a key of an intentional exemption'),
+                        ('why', 'missing "why" - a needs-renderer exemption needs the failing assertion and why it needs a layout box'),
+                        ('assertion', 'missing "assertion" - a needs-renderer exemption needs the failing assertion and why it needs a layout box')):
+        text = '\n'.join(l for l in _NEEDS_RENDERER_FIXTURE.split('\n') if not l.startswith(key + ' '))
+        invalid(text, needle)
+    asrt = 'assertion = promise_test'
+    for frm, to, needle in (
+            # No other key: not another kind's, and not an unknown one.
+            ('why = ', 'spec = https://example.org/spec#step\nwhy = ', '"spec" is not a key of a needs-renderer exemption'),
+            ('why = ', 'upstream = https://github.com/web-platform-tests/wpt/issues/99999\nwhy = ', '"upstream" is not a key of a needs-renderer exemption'),
+            ('why = ', 'chrome.result = wpt.fyi run 5070179567140864: 0/2\nwhy = ', '"chrome.result" is not a key of a needs-renderer exemption'),
+            ('why = ', 'renderer = none\nwhy = ', 'unknown key "renderer"'),
+            ('kind = needs-renderer', 'kind = needs-a-renderer', 'kind must be intentional, test-bug or needs-renderer'),
+            ('kind = needs-renderer', 'kind = needs-renderer\nkind = needs-renderer', 'twice'),
+            (asrt, 'assertion = \nassertion_ = promise_test', '"assertion" is empty')):
+        assert frm in _NEEDS_RENDERER_FIXTURE, frm
+        invalid(_NEEDS_RENDERER_FIXTURE.replace(frm, to), needle)
+    # Its `assertion` belongs to no other kind.
+    a_line = 'assertion = promise_test: x\n'
+    invalid(_EXEMPTION_FIXTURE.replace('why = ', a_line + 'why = '), '"assertion" is not a key of an intentional exemption')
+    invalid(_TEST_BUG_FIXTURE.replace('why = ', a_line + 'why = '), '"assertion" is not a key of a test-bug exemption')
+    invalid(_NEEDS_RENDERER_FIXTURE, 'not in the worklist', ['css/x/other.html'])
+
+    saved = EXEMPTIONS
+    try:
+        EXEMPTIONS = parse_exemptions(_EXEMPTION_FIXTURE + _TEST_BUG_FIXTURE + _NEEDS_RENDERER_FIXTURE, wl)
+        none_passed = {'status': 'OK', 'passed': 0, 'failed': 4}
+        timeout = {'status': 'TIMEOUT', 'passed': 3, 'timed_out': 1, 'notrun': 5}
+        assert gate_status(none_passed, 'html/x/decodes-image-data.html') == EXEMPT
+        recs = {'css/x/declined.html': none_passed, 'html/x/posts-a-report.https.html': timeout,
+                'html/x/decodes-image-data.html': none_passed, 'css/x/other.html': none_passed}
+        areas, _, _ = build(wl, recs)
+        tot = collections.Counter()
+        for c in areas.values():
+            tot.update(c)
+        # All three are exempt, none blocks; each kind has its own count.
+        assert tot['gating'] == 1 and tot['exempt'] == 3, dict(tot)
+        assert tot['exempt_test_bug'] == 1 and tot['exempt_needs_renderer'] == 1, dict(tot)
+        html_out = render_exempt(recs, wl)
+        head = 'Exempt until a renderer answers geometry'
+        assert head in html_out, html_out
+        before, group = html_out.split(head, 1)
+        assert 'html/x/decodes-image-data.html' in group and 'html/x/decodes-image-data.html' not in before
+        assert 'css/x/declined.html' not in group and 'posts-a-report' not in group
+        assert html.escape('promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"') in group
+        assert 'getImageData(0, 0, img.clientWidth, img.clientHeight)' in group
+        # A listed file that does not block keeps its standing.
+        clean = {'status': 'OK', 'passed': 4, 'failed': 0}
+        assert gate_status(clean, 'html/x/decodes-image-data.html') == 'OK'
+        # Without the kind, the other groups render exactly as before.
+        EXEMPTIONS = parse_exemptions(_EXEMPTION_FIXTURE + _TEST_BUG_FIXTURE, wl)
+        assert 'renderer' not in render_exempt(recs, wl)
     finally:
         EXEMPTIONS = saved
 
@@ -4210,8 +4395,88 @@ def _check_reference_render():
     assert 'Crane and Chrome' not in plain and 'Chrome&nbsp;pass' not in plain
 
 
+def _check_production_journal_only():
+    """Only the production run is published (the user, 2026-11-09: WPT runs Crane only "with the
+    exact same configuration and memory setup that Crane would have running in a production
+    environment"; lane wptcfg): a production record is read, a bug-finding journal given as a
+    generation is refused - the report stops, naming it - and a bug-finding record already in the
+    state is dropped."""
+    import tempfile, io, contextlib
+    global RESULTS, STATE
+    saved = RESULTS, STATE
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            RESULTS, STATE = d, os.path.join(d, 'state.json')
+
+            def journal(rel, recs, mtime):
+                fn = os.path.join(d, rel)
+                os.makedirs(os.path.dirname(fn), exist_ok=True)
+                with open(fn, 'w') as f:
+                    for r in recs:
+                        f.write(json.dumps(r) + '\n')
+                os.utime(fn, (mtime, mtime))
+
+            mt = QUERY_REACHES_PAGE + 100
+            journal('sweep-abc1234/journal.jsonl', [
+                {'path': 'dom/a.html', 'status': 'OK', 'passed': 3, 'failed': 0, 'build': 'production'},
+                # Records from before the split name no build: today's hybrid runner's.
+                {'path': 'dom/b.html', 'status': 'OK', 'passed': 2, 'failed': 1}], mt)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                records, _ = load_results()
+            assert records['dom/a.html']['passed'] == 3 and records['dom/a.html']['build'] == 'production'
+            assert records['dom/b.html']['passed'] == 2
+
+            # A bug-finding run's journal copied where the generations are read.
+            journal('sweep-def5678/journal.jsonl', [
+                {'path': 'dom/a.html', 'status': 'CRASH', 'passed': 0, 'build': 'bug-finding'}], mt + 1)
+            out = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(out):
+                    load_results()
+            except SystemExit as err:
+                assert 'bug-finding' in str(err) and 'sweep-def5678/journal.jsonl' in str(err), str(err)
+            else:
+                raise AssertionError('a bug-finding journal was read as a generation')
+
+            # A bug-finding record in the state (put there by hand, or by an older report) is dropped.
+            os.remove(os.path.join(d, 'sweep-def5678', 'journal.jsonl'))
+            with open(STATE) as f:
+                state = json.load(f)
+            state['dom/c.html'] = {'path': 'dom/c.html', 'status': 'OK', 'passed': 1, 'build': 'bug-finding'}
+            with open(STATE, 'w') as f:
+                json.dump(state, f)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                records, _ = load_results()
+            assert 'dom/c.html' not in records, records.keys()
+            assert 'bug-finding' in out.getvalue()
+    finally:
+        RESULTS, STATE = saved
+
+
+def _check_configuration_marker():
+    """The generation whose results are the production run's, after hybrid ones, records the
+    configuration change - once - and names its build; the site marks it on the history chart,
+    as it marks a new snapshot (lane wptcfg)."""
+    hybrid = {'a.html': {'path': 'a.html', 'status': 'OK', 'passed': 1}, 'b.html': {'path': 'b.html', 'status': 'OK', 'passed': 1}}
+    production = {p: dict(r, build='production') for p, r in hybrid.items()}
+    assert generation_build(['a.html', 'b.html'], hybrid) is None
+    assert generation_build(['a.html', 'b.html'], production) == 'production'
+    # A targeted production run over part of a hybrid generation's files does not yet make it production.
+    mixed = dict(hybrid, **{'a.html': production['a.html']})
+    assert generation_build(['a.html', 'b.html'], mixed) is None
+    assert configuration_change(None, 'production') == CONFIGURATION_CHANGE_PRODUCTION
+    assert configuration_change({'n': 213}, 'production') == CONFIGURATION_CHANGE_PRODUCTION
+    assert configuration_change({'n': 214, 'build': 'production'}, 'production') is None
+    assert configuration_change({'n': 213}, None) is None
+    assert CONFIGURATION_CHANGE_PRODUCTION == 'configuration change: production build'
+
+
 if __name__ == '__main__':
     if sys.argv[1:] == ['--self-test']:
+        _check_production_journal_only()
+        _check_configuration_marker()
         _check_declared_variants()
         _check_history_chart()
         _check_gate_rule()
@@ -4219,6 +4484,7 @@ if __name__ == '__main__':
         _check_history_sources()
         _check_exemptions()
         _check_exemption_kinds()
+        _check_needs_renderer_kind()
         _check_revision_high_water()
         _check_subtest_losses()
         _check_loss_dispositions()

@@ -1,4 +1,4 @@
-//! The testing platform's GIF decoder (decision 19c): GIF87a and GIF89a to
+//! kit/image_decoding's GIF decoder (decision 19c): GIF87a and GIF89a to
 //! RGBA8, in Zig. specs/w3c/gif89a.txt is the format; what a browser does
 //! where it is silent or where files break it is the browsers' choice
 //! (golden rule 2). Read 2026-10-12, their design and not their code:
@@ -31,8 +31,8 @@
 //!   table, are opaque white; Safari: the pixel is left transparent). The
 //!   GIF spec is silent, so the integrator settled it (2026-10-12) by
 //!   analogy with PNG 13.1's rule for an out-of-range palette index, which
-//!   png.zig follows - also Chrome's. This is the testing decoder only: a
-//!   host's decoder may differ.
+//!   png.zig follows - also Chrome's. This is the built-in decoder only: a
+//!   platform that links out to the OS's decoder may differ.
 //! - The Graphic Control Extension (23) before the frame sets its
 //!   transparent index: those pixels are transparent black. The last one
 //!   before the frame applies; a block size under 4 still reads 4 bytes

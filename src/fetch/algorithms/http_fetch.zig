@@ -291,9 +291,7 @@ pub fn serviceWorkerResponse(allocator: Allocator, params: *FetchParams, respons
     // variants.https.html "Connection info...", wpt.fyi df642c4142); Blink's
     // PerformanceResourceTiming::connectStart returns fetchStart when no
     // network request was made. The spec leaves it null.
-    var connection = @import("../internal/fetch_timing.zig").ConnectionTimingInfo.forReusedConnection(params.timing_info.post_redirect_start_time);
-    connection.secure_connection_start_time = 0;
-    params.timing_info.final_connection_timing_info = connection;
+    params.timing_info.final_connection_timing_info = @import("../internal/fetch_timing.zig").ConnectionTimingInfo.noConnection(params.timing_info.post_redirect_start_time);
     // 3.5.4. A request body goes no further: a byte body is borrowed and
     // needs no cancel; a stream body was never handed to the service worker
     // (its route sends such a request to the network).
@@ -771,6 +769,27 @@ pub fn httpNetworkOrCacheFetchStart(
         .response => |stored| {
             // 26.2.2.3: no request is sent.
             for (added.items) |header| allocator.free(header.value);
+            // Stated: no connection was made, so the final connection timing
+            // info is one at the fetch's post-redirect start with no TLS
+            // time, as Chrome, Firefox and Safari report a cache hit (Fetch
+            // leaves it null; ConnectionTimingInfo.noConnection says why).
+            // Before, it stayed null and Resource Timing read 0, below
+            // fetchStart (resource-timing-level1.sub.html, which checks every
+            // entry - the harness among them, once it was fetched as in a
+            // browser; lane wptcfg).
+            params.timing_info.final_connection_timing_info = @import("../internal/fetch_timing.zig").ConnectionTimingInfo.noConnection(params.timing_info.post_redirect_start_time);
+            // Stated, likewise: no network request was sent, so the final
+            // network-request and network-response start times (which only
+            // HTTP-network fetch sets) are the moment the cache answered -
+            // as Gecko reports a cache hit's requestStart and responseStart
+            // (its cacheReadStart) and Blink a cache hit's load timing - so
+            // connectEnd <= requestStart <= responseStart <= responseEnd
+            // holds (resource-timing-level1.sub.html, 21/21 in Edge 159,
+            // wpt.fyi run 4884359317028864). Left 0, both read below
+            // fetchStart.
+            const answered = getCurrentTimeMs();
+            params.timing_info.final_network_request_start_time = answered;
+            params.timing_info.final_network_response_start_time = answered;
             return .{ .response = stored };
         },
         // 11.1: "If httpRequest's cache mode is "only-if-cached", then

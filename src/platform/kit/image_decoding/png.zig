@@ -1,4 +1,4 @@
-//! The testing platform's PNG decoder (decision 19): PNG datastreams to
+//! kit/image_decoding's PNG decoder (decision 19): PNG datastreams to
 //! RGBA8, in Zig - its zlib data through kit/inflate, which stops exactly
 //! where truncated data does - so the WPT runner's results do not depend on
 //! the machine's image libraries. W3C PNG (Third Edition),

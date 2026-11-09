@@ -1,16 +1,30 @@
-//! The WPT runner's media backend: a host decoder that really decodes
-//! RIFF/WAVE linear PCM, and nothing else.
+//! kit/media_decoding: the media decoders Crane's default platforms build in
+//! - darwin, linux and testing compose it behind `media_decoding` (6.10.5
+//! of the protocol: mediaCanPlayType, openMediaDecoder, pushMediaData,
+//! mediaVideoSize, closeMediaDecoder). The user, 2026-11-09 (lane wptcfg, D4):
+//! "our default platform for running wpt should get its own implementation of
+//! these things ... The platform itself that is compiled in will decide if
+//! these features are built within the platform or dynamically link out to
+//! existing capabilities on the platform." So Crane's own browser - the
+//! console - plays what WPT plays, through the same path: HTML's media
+//! element asks the platform, never a decoder a host passes in. An adapter
+//! that links out to the OS's decoders later (AVFoundation, GStreamer)
+//! answers the same operations instead.
 //!
-//! Crane builds in no decoder (the user, 2026-10-08: "Host decoders only");
-//! a host supplies what it can decode through BrowserConfig.media_backend
-//! (src/platform/media_backend.zig). The runner is a host, and WPT's media
-//! tests that a headless engine can honestly pass need WAV: every audio
-//! request common/security-features/resources/common.sub.js makes is a
+//! One format today: RIFF/WAVE linear PCM, which a headless engine decodes
+//! for real - the samples are the data. WPT's media tests need it: every
+//! audio request common/security-features/resources/common.sub.js makes is a
 //! `<source type="audio/wav">` serving webaudio/resources/sin_440Hz_-6dBFS_1s.wav.
+//! WebM, Ogg and MP4 are not decoded, so canPlayType answers "" for them and
+//! their bytes are unsupported; real VP8/VP9/Vorbis/Opus decoding is its own
+//! item (the header-only WebM code is set aside, never claimed).
 //!
 //! What it really does, and so what it may answer for:
 //! - canPlayType: the WAV MIME spellings the browsers accept, with no codecs
 //!   ("maybe") or with codecs="1" (PCM, "probably"); everything else "".
+//!   The type is parsed with MIME Sniffing's own parser (module `mimesniff`,
+//!   this part's one import beyond the facade): one parser in Crane, not a
+//!   second copy to keep in step with it.
 //! - the decoder parses the RIFF header - the `fmt ` chunk (PCM, or
 //!   WAVE_FORMAT_EXTENSIBLE with the PCM subformat), skipping every unknown
 //!   chunk with its pad byte, then the `data` chunk - and reports metadata
@@ -18,17 +32,84 @@
 //!   current_data only once the sample frame at the playback position (the
 //!   start: Crane opens a decoder per resource fetch, before playback) has
 //!   arrived. A float, A-law or mu-law file is unsupported: it is WAV, but
-//!   this host does not decode it.
-//! It plays nothing out loud: playback runs on Crane's media clock.
-//!
-//! Built only into wpt_runner (tests/wpt_runner/main.zig installs it for
-//! every Browser it makes); its std.testing tests run in `zig build test`.
+//!   this decoder does not decode it. What it decodes is decided by the
+//!   bytes, whatever the resource's Content-Type, as the media element sniffs
+//!   a resource.
+//! It plays nothing out loud (audio_output is unsupported): playback runs on
+//! Crane's media clock.
 const std = @import("std");
-const media = @import("platform").media_backend;
+const platform = @import("platform");
 const mimesniff = @import("mimesniff");
 
-/// Stateless: one backend serves every Browser and thread.
-pub const backend: media.MediaBackend = .{ .ptr = null, .vtable = &.{ .can_play_type = canPlayType, .open = open } };
+// ============================================================================
+// The protocol's media operations (6.10.5), for an adapter to compose
+// ============================================================================
+
+/// mediaCanPlayType: HTML canPlayType for `mime`. Stateless: the answer is
+/// the same for every Browser.
+pub fn mediaCanPlayType(browser: *platform.BrowserPlatform, mime: platform.Str) platform.MediaSupport {
+    _ = browser;
+    return canPlayType(mime.slice());
+}
+
+/// openMediaDecoder, with the Browser's allocator - the adapter passes its
+/// per-Browser state's (kit/browser_state), which outlives every decoder of
+/// its Browser. `mime` is not read: the bytes decide. OWNED until
+/// `closeMediaDecoder`.
+pub fn openMediaDecoder(allocator: std.mem.Allocator, mime: platform.Str) platform.Error!*platform.MediaDecoder {
+    _ = mime;
+    const decoder = try allocator.create(Decoder);
+    decoder.* = .{ .allocator = allocator };
+    return @ptrCast(decoder);
+}
+
+/// pushMediaData: on `metadata` and `current_data` it has written `metadata`
+/// (the duration; no frame size - WAV has no video).
+pub fn pushMediaData(decoder: *platform.MediaDecoder, bytes: platform.Bytes, end_of_stream: bool, metadata: *platform.MediaMetadata) platform.MediaResult {
+    const self: *Decoder = @ptrCast(@alignCast(decoder));
+    return switch (self.feed(bytes.slice(), end_of_stream)) {
+        .need_more => .need_more,
+        .unsupported => .unsupported,
+        .decode_error => .decode_error,
+        .metadata => |known| blk: {
+            metadata.* = .{ .duration = known.duration };
+            break :blk .metadata;
+        },
+        .current_data => |known| blk: {
+            metadata.* = .{ .duration = known.duration };
+            break :blk .current_data;
+        },
+    };
+}
+
+/// mediaVideoSize: audio only, so the decoder never has a frame size.
+pub fn mediaVideoSize(decoder: *platform.MediaDecoder, seconds: f64, size: *platform.VideoSize) bool {
+    _ = .{ decoder, seconds, size };
+    return false;
+}
+
+pub fn closeMediaDecoder(decoder: *platform.MediaDecoder) void {
+    const self: *Decoder = @ptrCast(@alignCast(decoder));
+    self.allocator.destroy(self);
+}
+
+// ============================================================================
+// WAV
+// ============================================================================
+
+/// What the decoder holds after a push: the protocol's MediaResult, with the
+/// metadata it writes.
+pub const Result = union(enum) {
+    need_more,
+    unsupported,
+    decode_error,
+    metadata: Metadata,
+    /// The decoder really has data at the current playback position: the
+    /// sample frame there has arrived. A header alone never produces this.
+    current_data: Metadata,
+};
+
+pub const Metadata = struct { duration: f64 };
 
 /// The MIME spellings of WAV the browsers recognise.
 /// - audio/wav, audio/x-wav: Chromium media/base/mime_util_internal.cc
@@ -38,7 +119,7 @@ pub const backend: media.MediaBackend = .{ .ptr = null, .vtable = &.{ .can_play_
 /// - audio/wave: Gecko's WaveDecoder::IsSupportedType (Chromium does not list
 ///   it); it is also the type MIME Sniffing's audio/video pattern table
 ///   computes for a RIFF....WAVE signature, so a sniffed WAV resource reaches
-///   open() with it.
+///   openMediaDecoder with it.
 /// Gecko's fourth spelling, audio/x-pn-wav, is Gecko-only and left out.
 const subtypes = [_][]const u8{ "wav", "wave", "x-wav" };
 
@@ -50,13 +131,13 @@ const subtypes = [_][]const u8{ "wav", "wave", "x-wav" };
 /// - codecs="1" (WAVE_FORMAT_PCM, Chromium's kStringToCodecMap {"1", PCM}, and
 ///   Gecko's "1"): "probably". A list is PCM only if every entry is "1".
 /// - any other codec: "" - Gecko also accepts "3" (IEEE float), "6" (A-law)
-///   and "7" (mu-law), but this backend does not decode them.
+///   and "7" (mu-law), but this decoder does not decode them.
 /// WPT html/semantics/embedded-content/media-elements/mime-types/canPlayType.html
 /// pins these answers for audio/wav; Chrome, Firefox and Safari pass all four
 /// of its audio/wav subtests (wpt.fyi, 2026-10-09).
-fn canPlayType(_: ?*anyopaque, mime: []const u8) media.Support {
-    // The vtable has no allocator: a MIME type longer than this buffer holds
-    // is no type this backend plays.
+pub fn canPlayType(mime: []const u8) platform.MediaSupport {
+    // The operation takes no allocator: a MIME type longer than this buffer
+    // holds is no type this decoder plays.
     var buffer: [16 * 1024]u8 = undefined;
     var fixed = std.heap.FixedBufferAllocator.init(&buffer);
     var parsed = (mimesniff.parseMimeType(fixed.allocator(), mime) catch return .unsupported) orelse return .unsupported;
@@ -83,15 +164,6 @@ fn utf16Eql(units: []const u16, ascii: []const u8) bool {
     return true;
 }
 
-/// A decoder for one resource, whatever its Content-Type says: what it
-/// decodes is decided by the bytes (a RIFF/WAVE header), the way the media
-/// element decides a resource's format by sniffing it.
-fn open(_: ?*anyopaque, allocator: std.mem.Allocator, _: []const u8) anyerror!media.Decoder {
-    const decoder = try allocator.create(Decoder);
-    decoder.* = .{ .allocator = allocator };
-    return .{ .ptr = decoder, .vtable = &.{ .push = Decoder.push, .deinit = Decoder.deinit } };
-}
-
 /// WAVE_FORMAT_PCM and WAVE_FORMAT_EXTENSIBLE (mmreg.h).
 const format_pcm: u16 = 0x0001;
 const format_extensible: u16 = 0xFFFE;
@@ -110,7 +182,11 @@ pub const Format = struct {
     bits_per_sample: u16,
 };
 
+/// A decoder for one resource, whatever its Content-Type says: what it
+/// decodes is decided by the bytes (a RIFF/WAVE header), the way the media
+/// element decides a resource's format by sniffing it.
 pub const Decoder = struct {
+    /// The Browser's, from openMediaDecoder; closeMediaDecoder frees with it.
     allocator: std.mem.Allocator,
     state: State = .riff,
     /// The bytes of the structure being read: the RIFF header, a chunk
@@ -127,21 +203,11 @@ pub const Decoder = struct {
     data_size: u64 = 0,
     data_received: u64 = 0,
     /// A sticky outcome: once a resource is unsupported or broken, it stays so.
-    failed: ?media.Result = null,
+    failed: ?Result = null,
 
     const State = enum { riff, chunk_header, fmt, skip, data };
 
-    fn push(raw: ?*anyopaque, bytes: []const u8, end_of_stream: bool) media.Result {
-        const self: *Decoder = @ptrCast(@alignCast(raw.?));
-        return self.feed(bytes, end_of_stream);
-    }
-
-    fn deinit(raw: ?*anyopaque) void {
-        const self: *Decoder = @ptrCast(@alignCast(raw.?));
-        self.allocator.destroy(self);
-    }
-
-    pub fn feed(self: *Decoder, bytes: []const u8, end_of_stream: bool) media.Result {
+    pub fn feed(self: *Decoder, bytes: []const u8, end_of_stream: bool) Result {
         if (self.failed) |outcome| return outcome;
         var rest = bytes;
         while (rest.len != 0) {
@@ -219,7 +285,7 @@ pub const Decoder = struct {
     }
 
     /// The fmt chunk: null when it is linear PCM this decoder can play.
-    fn parseFormat(self: *Decoder, body: []const u8) ?media.Result {
+    fn parseFormat(self: *Decoder, body: []const u8) ?Result {
         const tag = std.mem.readInt(u16, body[0..2], .little);
         const format: Format = .{
             .channels = std.mem.readInt(u16, body[2..4], .little),
@@ -247,13 +313,13 @@ pub const Decoder = struct {
         return null;
     }
 
-    fn fail(self: *Decoder, outcome: media.Result) media.Result {
+    fn fail(self: *Decoder, outcome: Result) Result {
         self.failed = outcome;
         return outcome;
     }
 
     /// What the decoder holds now.
-    fn result(self: *Decoder, end_of_stream: bool) media.Result {
+    fn result(self: *Decoder, end_of_stream: bool) Result {
         if (self.state != .data) {
             // The resource ended inside its header: never a RIFF/WAVE file,
             // or a truncated one.
@@ -266,7 +332,7 @@ pub const Decoder = struct {
             // Truncated in its data: what arrived is all there is to play.
             duration_bytes = self.data_received - self.data_received % format.block_align;
         }
-        const metadata: media.Metadata = .{ .duration = @as(f64, @floatFromInt(duration_bytes)) / @as(f64, @floatFromInt(format.byte_rate)) };
+        const metadata: Metadata = .{ .duration = @as(f64, @floatFromInt(duration_bytes)) / @as(f64, @floatFromInt(format.byte_rate)) };
         // The sample frame at the playback position - the first - has arrived.
         if (self.data_received >= format.block_align) return .{ .current_data = metadata };
         // The resource ended with no complete sample frame: nothing to play.
@@ -309,15 +375,30 @@ fn appendInt(allocator: std.mem.Allocator, list: *std.ArrayList(u8), comptime T:
     try list.appendSlice(allocator, &bytes);
 }
 
-fn openDecoder() !media.Decoder {
-    return backend.open(testing.allocator, "audio/wav");
+/// A decoder opened and closed through the protocol's operations, fed
+/// through `feed` so a test reads each push's Result whole.
+const TestDecoder = struct {
+    handle: *platform.MediaDecoder,
+
+    fn push(self: TestDecoder, bytes: []const u8, end_of_stream: bool) Result {
+        const decoder: *Decoder = @ptrCast(@alignCast(self.handle));
+        return decoder.feed(bytes, end_of_stream);
+    }
+
+    fn deinit(self: *TestDecoder) void {
+        closeMediaDecoder(self.handle);
+    }
+};
+
+fn openDecoder() !TestDecoder {
+    return .{ .handle = try openMediaDecoder(testing.allocator, .from("audio/wav")) };
 }
 
 test "canPlayType answers for the WAV spellings the browsers accept, and only PCM" {
     const maybe = [_][]const u8{ "audio/wav", "audio/wave", "audio/x-wav", "AUDIO/WAV", "audio/wav;", "audio/wav;codecs", "audio/wav;codecs=", " audio/wav ; foo=bar" };
-    for (maybe) |mime| try testing.expectEqual(media.Support.maybe, backend.canPlayType(mime));
+    for (maybe) |mime| try testing.expectEqual(platform.MediaSupport.maybe, canPlayType(mime));
     const probably = [_][]const u8{ "audio/wav; codecs=\"1\"", "audio/wav; codecs=1", "audio/x-wav;codecs=\"1\"", "audio/wave; codecs=\"1, 1\"" };
-    for (probably) |mime| try testing.expectEqual(media.Support.probably, backend.canPlayType(mime));
+    for (probably) |mime| try testing.expectEqual(platform.MediaSupport.probably, canPlayType(mime));
     const unsupported = [_][]const u8{
         "",
         "audio/wav; codecs=\"bogus\"",
@@ -336,7 +417,7 @@ test "canPlayType answers for the WAV spellings the browsers accept, and only PC
         "audio/",
         "wav",
     };
-    for (unsupported) |mime| try testing.expectEqual(media.Support.unsupported, backend.canPlayType(mime));
+    for (unsupported) |mime| try testing.expectEqual(platform.MediaSupport.unsupported, canPlayType(mime));
 }
 
 test "the header split across pushes reports need_more, then metadata, then current data" {
@@ -345,7 +426,7 @@ test "the header split across pushes reports need_more, then metadata, then curr
     var decoder = try openDecoder();
     defer decoder.deinit();
     // One byte at a time through the 44-byte header.
-    for (file[0..43]) |byte| try testing.expectEqual(media.Result.need_more, decoder.push(&.{byte}, false));
+    for (file[0..43]) |byte| try testing.expectEqual(Result.need_more, decoder.push(&.{byte}, false));
     const header = decoder.push(file[43..44], false);
     try testing.expect(header == .metadata);
     try testing.expectEqual(@as(f64, 1), header.metadata.duration);
@@ -401,7 +482,7 @@ test "WAVE_FORMAT_EXTENSIBLE with the PCM subformat plays; another subformat doe
             try testing.expect(outcome == .current_data);
             try testing.expectApproxEqAbs(@as(f64, 12.0 / 288000.0), outcome.current_data.duration, 1e-15);
         } else {
-            try testing.expectEqual(media.Result.unsupported, outcome);
+            try testing.expectEqual(Result.unsupported, outcome);
         }
     }
 }
@@ -412,10 +493,10 @@ test "a truncated file: inside the header is a decode error, inside the data pla
     {
         var decoder = try openDecoder();
         defer decoder.deinit();
-        try testing.expectEqual(media.Result.need_more, decoder.push(file[0..30], false));
-        try testing.expectEqual(media.Result.decode_error, decoder.push("", true));
+        try testing.expectEqual(Result.need_more, decoder.push(file[0..30], false));
+        try testing.expectEqual(Result.decode_error, decoder.push("", true));
         // Sticky: nothing after a failure changes it.
-        try testing.expectEqual(media.Result.decode_error, decoder.push(file[30..], true));
+        try testing.expectEqual(Result.decode_error, decoder.push(file[30..], true));
     }
     {
         var decoder = try openDecoder();
@@ -430,13 +511,13 @@ test "a truncated file: inside the header is a decode error, inside the data pla
         var decoder = try openDecoder();
         defer decoder.deinit();
         try testing.expect(decoder.push(file[0..45], false) == .metadata);
-        try testing.expectEqual(media.Result.decode_error, decoder.push("", true));
+        try testing.expectEqual(Result.decode_error, decoder.push("", true));
     }
     {
         // Not even a RIFF header: never recognized, so unsupported.
         var decoder = try openDecoder();
         defer decoder.deinit();
-        try testing.expectEqual(media.Result.unsupported, decoder.push("RIF", true));
+        try testing.expectEqual(Result.unsupported, decoder.push("RIF", true));
     }
 }
 
@@ -448,13 +529,13 @@ test "a non-PCM format is unsupported, and so is a file that is not RIFF/WAVE" {
         std.mem.writeInt(u16, file[20..22], tag, .little);
         var decoder = try openDecoder();
         defer decoder.deinit();
-        try testing.expectEqual(media.Result.unsupported, decoder.push(file, false));
+        try testing.expectEqual(Result.unsupported, decoder.push(file, false));
     }
     const others = [_][]const u8{ "ID3\x04\x00\x00\x00\x00\x00\x00 an mp3", "OggS\x00\x02 an ogg file", "\x1a\x45\xdf\xa3 webm", "RIFF\x10\x00\x00\x00AVI LIST" };
     for (others) |bytes| {
         var decoder = try openDecoder();
         defer decoder.deinit();
-        try testing.expectEqual(media.Result.unsupported, decoder.push(bytes, false));
+        try testing.expectEqual(Result.unsupported, decoder.push(bytes, false));
     }
 }
 
@@ -498,7 +579,7 @@ test "a data chunk before its fmt chunk, or an inconsistent fmt, is a decode err
     {
         var decoder = try openDecoder();
         defer decoder.deinit();
-        try testing.expectEqual(media.Result.decode_error, decoder.push("RIFF\x00\x00\x00\x00WAVEdata\x04\x00\x00\x00abcd", true));
+        try testing.expectEqual(Result.decode_error, decoder.push("RIFF\x00\x00\x00\x00WAVEdata\x04\x00\x00\x00abcd", true));
     }
     {
         const file = try wavFile(testing.allocator, 2, 8000, 16, 100);
@@ -506,16 +587,41 @@ test "a data chunk before its fmt chunk, or an inconsistent fmt, is a decode err
         std.mem.writeInt(u16, file[32..34], 3, .little); // block align should be 4
         var decoder = try openDecoder();
         defer decoder.deinit();
-        try testing.expectEqual(media.Result.decode_error, decoder.push(file, true));
+        try testing.expectEqual(Result.decode_error, decoder.push(file, true));
     }
 }
 
-test "a WAV decoder has no video: videoSizeAt is null" {
+test "a WAV decoder has no video: mediaVideoSize never answers" {
     const file = try wavFile(testing.allocator, 1, 8000, 16, 1600);
     defer testing.allocator.free(file);
     var decoder = try openDecoder();
     defer decoder.deinit();
     try testing.expect(decoder.push(file, true) == .current_data);
-    try testing.expectEqual(@as(?media.VideoSize, null), decoder.videoSizeAt(0));
-    try testing.expectEqual(@as(?media.VideoSize, null), decoder.videoSizeAt(0.1));
+    var size: platform.VideoSize = .{ .width = 7, .height = 7 };
+    try testing.expect(!mediaVideoSize(decoder.handle, 0, &size));
+    try testing.expect(!mediaVideoSize(decoder.handle, 0.1, &size));
+    try testing.expectEqual(platform.VideoSize{ .width = 7, .height = 7 }, size);
+}
+
+test "pushMediaData writes the metadata on metadata and current_data, and nothing else" {
+    const file = try wavFile(testing.allocator, 1, 8000, 16, 16000);
+    defer testing.allocator.free(file);
+    const decoder = try openMediaDecoder(testing.allocator, .from(""));
+    defer closeMediaDecoder(decoder);
+    var metadata: platform.MediaMetadata = .{ .duration = -1, .width = 9, .height = 9 };
+    try testing.expectEqual(platform.MediaResult.need_more, pushMediaData(decoder, .from(file[0..20]), false, &metadata));
+    try testing.expectEqual(@as(f64, -1), metadata.duration);
+    try testing.expectEqual(platform.MediaResult.metadata, pushMediaData(decoder, .from(file[20..44]), false, &metadata));
+    try testing.expectEqual(platform.MediaMetadata{ .duration = 1 }, metadata);
+    metadata = .{ .duration = -1 };
+    try testing.expectEqual(platform.MediaResult.current_data, pushMediaData(decoder, .from(file[44..]), true, &metadata));
+    try testing.expectEqual(platform.MediaMetadata{ .duration = 1 }, metadata);
+}
+
+test "mediaCanPlayType is canPlayType, for every Browser alike" {
+    var dummy: u8 = 0;
+    const browser: *platform.BrowserPlatform = @ptrCast(&dummy);
+    try testing.expectEqual(platform.MediaSupport.maybe, mediaCanPlayType(browser, .from("audio/wav")));
+    try testing.expectEqual(platform.MediaSupport.probably, mediaCanPlayType(browser, .from("audio/wav; codecs=1")));
+    try testing.expectEqual(platform.MediaSupport.unsupported, mediaCanPlayType(browser, .from("video/webm")));
 }

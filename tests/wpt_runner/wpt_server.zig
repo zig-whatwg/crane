@@ -23,6 +23,105 @@ const clock = @import("clock");
 /// Lockfile name stored in WPT root
 const LOCKFILE_NAME = ".wpt_serve.lock";
 
+// ============================================================================
+// The runner's testharnessreport.js, served by `wpt serve`
+// ============================================================================
+
+/// The runner's report (resources/testharnessreport.js). `wpt serve` serves
+/// it at `report_url_path` in place of the stock file, through a config alias
+/// (`serveConfig`) - the page fetches it like any script, as a browser under
+/// wptrunner fetches wptrunner's own report (tools/wptrunner/wptrunner/
+/// environment.py, get_routes). It used to reach the page through an engine
+/// hook only the runner installed (the user, 2026-11-09: no special cases).
+pub const report_js = @embedFile("resources/testharnessreport.js");
+/// The URL every testharness page includes the report at.
+pub const report_url_path = "/resources/testharnessreport.js";
+/// The report's headers (resources/testharnessreport.js.headers), which
+/// wptserve sends with it (handlers.load_headers reads `<file>.headers`):
+/// the stock report's own, so the page decodes it as UTF-8 whatever its own
+/// encoding, as wptrunner's route serves its report "text/javascript;
+/// charset=utf8".
+pub const report_headers = @embedFile("resources/testharnessreport.js.headers");
+/// What the runner's report carries and the stock file does not: a server
+/// that answers the report URL without it was started without the runner's
+/// alias (by an older runner, or by hand), and would give every page the
+/// stock report - no results at all.
+pub const report_marker = "crane-wpt-runner-report";
+
+/// The config `wpt serve` is started with: the WPT root's own config.json
+/// (`base`, null when it has none), its other aliases kept, with the
+/// runner's report mounted at `report_url_path` from `report_dir` (an
+/// absolute path): the DIRECTORY that holds a file named
+/// testharnessreport.js. wptserve's file mount point (tools/serve/serve.py
+/// `add_file_mount_point`, wptserve handlers.py `filesystem_path`) joins its
+/// "local-dir" with the URL's last segment, so "local-dir" names the
+/// directory, never the file. The pool hosts' persistent servers take the
+/// same alias in their own config.json, at the runner's resources directory
+/// in main's tree. OWNED.
+pub fn serveConfig(allocator: Allocator, base: ?[]const u8, report_dir: []const u8) ![]u8 {
+    var arena_state: std.heap.ArenaAllocator = .init(allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var root: std.json.ObjectMap = if (base) |text| switch (try std.json.parseFromSliceLeaky(std.json.Value, arena, text, .{})) {
+        .object => |o| o,
+        else => return error.InvalidServeConfig,
+    } else .empty;
+    var aliases: std.json.Array = .init(arena);
+    if (root.get("aliases")) |existing| switch (existing) {
+        .array => |list| for (list.items) |alias| {
+            const url = switch (alias) {
+                .object => |o| if (o.get("url-path")) |u| switch (u) {
+                    .string => |str| str,
+                    else => "",
+                } else "",
+                else => "",
+            };
+            if (std.mem.eql(u8, url, report_url_path)) continue;
+            try aliases.append(alias);
+        },
+        else => {},
+    };
+    var ours: std.json.ObjectMap = .empty;
+    try ours.put(arena, "url-path", .{ .string = report_url_path });
+    try ours.put(arena, "local-dir", .{ .string = report_dir });
+    try aliases.append(.{ .object = ours });
+    try root.put(arena, "aliases", .{ .array = aliases });
+    return std.json.Stringify.valueAlloc(allocator, std.json.Value{ .object = root }, .{});
+}
+
+/// The stem of the alias files' names: a hash of the report and of the
+/// root's config, so two runner versions sharing one WPT root never
+/// overwrite each other's files under a server that still serves them.
+pub fn serveFileStem(base: []const u8) [16]u8 {
+    var h = std.hash.Wyhash.init(0);
+    h.update(report_js);
+    h.update(report_headers);
+    h.update(base);
+    var out: [16]u8 = undefined;
+    _ = std.fmt.bufPrint(&out, "{x:0>16}", .{h.final()}) catch unreachable;
+    return out;
+}
+
+/// Whether an HTTP response (status line, headers, body) is the runner's
+/// report: a 200, served as UTF-8 (`report_headers`), whose body carries
+/// `report_marker`.
+pub fn servesRunnerReport(response: []const u8) bool {
+    const line_end = std.mem.indexOf(u8, response, "\r\n") orelse return false;
+    const status_line = response[0..line_end];
+    if (std.mem.indexOf(u8, status_line, " 200") == null) return false;
+    const body_start = std.mem.indexOf(u8, response, "\r\n\r\n") orelse return false;
+    var utf8 = false;
+    // A response with no headers ends its status line at the blank line.
+    const headers = if (body_start > line_end) response[line_end + 2 .. body_start] else "";
+    var lines = std.mem.splitSequence(u8, headers, "\r\n");
+    while (lines.next()) |line| {
+        const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
+        if (!std.ascii.eqlIgnoreCase(std.mem.trim(u8, line[0..colon], " "), "content-type")) continue;
+        if (std.ascii.findIgnoreCase(line[colon + 1 ..], "charset=utf-8") != null) utf8 = true;
+    }
+    return utf8 and std.mem.indexOf(u8, response[body_start..], report_marker) != null;
+}
+
 /// The host every test URL is built from.
 ///
 /// Not `localhost`. WPT generates its own certificate authority under
@@ -298,15 +397,19 @@ pub const WptServer = struct {
         return error.ServerStartTimeout;
     }
 
-    /// `Launcher.wpt_serve`'s spawn: `python3 wpt.py serve` in the WPT root.
+    /// `Launcher.wpt_serve`'s spawn: `python3 wpt.py serve` in the WPT root,
+    /// with the root's config.json and the runner's report aliased over the
+    /// stock one (`writeServeFiles`).
     fn spawnWptServe(context: ?*anyopaque, self: *WptServer) anyerror!posix.pid_t {
         _ = context;
+        const config_name = try self.writeServeFiles();
+        defer self.allocator.free(config_name);
         const argv = [_][]const u8{
             "python3",
             "wpt.py",
             "serve",
             "--config",
-            "config.json",
+            config_name,
         };
 
         // 0.16 replaced Child.init + child.spawn() with std.process.spawn(io, options):
@@ -320,6 +423,99 @@ pub const WptServer = struct {
             .stderr = .ignore,
         });
         return child.id orelse error.ServerSpawnFailed;
+    }
+
+    /// The files `wpt serve` is started with, in the WPT root beside its
+    /// lockfile: the runner's report, `.crane-wpt-serve-<stem>/
+    /// testharnessreport.js`, and the config that aliases it,
+    /// `.crane-wpt-serve-<stem>.json` (`serveConfig`). Written once per content (`serveFileStem`): a server
+    /// another runner started from them may still be reading them. The
+    /// config's name, relative to the root (OWNED).
+    fn writeServeFiles(self: *WptServer) ![]u8 {
+        const io = host.io();
+        const base_path = try std.fs.path.join(self.allocator, &.{ self.wpt_root, "config.json" });
+        defer self.allocator.free(base_path);
+        const base: ?[]u8 = host.cwd().readFileAlloc(io, base_path, self.allocator, .limited(1024 * 1024)) catch |err| switch (err) {
+            error.FileNotFound => null,
+            else => return err,
+        };
+        defer if (base) |b| self.allocator.free(b);
+        const stem = serveFileStem(base orelse "");
+        const root_abs = try host.cwd().realPathFileAlloc(io, self.wpt_root, self.allocator);
+        defer self.allocator.free(root_abs);
+        const dir_name = try std.fmt.allocPrint(self.allocator, ".crane-wpt-serve-{s}", .{&stem});
+        defer self.allocator.free(dir_name);
+        const report_dir = try std.fs.path.join(self.allocator, &.{ root_abs, dir_name });
+        defer self.allocator.free(report_dir);
+        host.cwd().createDirPath(io, report_dir) catch |err| switch (err) {
+            error.PathAlreadyExists => {},
+            else => return err,
+        };
+        const report_abs = try std.fs.path.join(self.allocator, &.{ report_dir, "testharnessreport.js" });
+        defer self.allocator.free(report_abs);
+        try writeFileAll(report_abs, report_js);
+        const headers_abs = try std.fs.path.join(self.allocator, &.{ report_dir, "testharnessreport.js.headers" });
+        defer self.allocator.free(headers_abs);
+        try writeFileAll(headers_abs, report_headers);
+        const config_text = try serveConfig(self.allocator, base, report_dir);
+        defer self.allocator.free(config_text);
+        const config_name = try std.fmt.allocPrint(self.allocator, ".crane-wpt-serve-{s}.json", .{&stem});
+        errdefer self.allocator.free(config_name);
+        const config_abs = try std.fs.path.join(self.allocator, &.{ root_abs, config_name });
+        defer self.allocator.free(config_abs);
+        try writeFileAll(config_abs, config_text);
+        return config_name;
+    }
+
+    fn writeFileAll(path: []const u8, bytes: []const u8) !void {
+        const io = host.io();
+        const file = try host.cwd().createFile(io, path, .{ .truncate = true });
+        defer file.close(io);
+        try file.writeStreamingAll(io, bytes);
+    }
+
+    /// Refuse a server that does not serve the runner's report (`report_marker`):
+    /// every page would get the stock testharnessreport.js and no runner hook,
+    /// so every file would time out with no result. Such a server was started
+    /// by an older runner - one that answered the report itself, through an
+    /// engine hook - or by hand; it serves those runners as before, and this
+    /// one after it is restarted (any runner that finds the port free starts
+    /// one with the alias).
+    pub fn requireRunnerReport(self: *WptServer) !void {
+        var buf: [64 * 1024]u8 = undefined;
+        const response = self.fetchReport(&buf) catch |err| {
+            std.log.err("wpt serve on :{d}: could not fetch {s} ({}): is it a WPT server?", .{ self.port, report_url_path, err });
+            return error.ServerWithoutRunnerReport;
+        };
+        if (servesRunnerReport(response)) return;
+        std.log.err(
+            "wpt serve on :{d}{s} serves the STOCK {s}, or the runner's without its UTF-8 headers (no \"{s}\" as charset=utf-8): it was started by an older runner or by hand, or its alias directory lacks testharnessreport.js.headers. " ++
+                "Stop it once no run uses it (its lockfile is {s}/{s}); the next runner starts one that serves the runner's report.",
+            .{ self.port, if (self.pid) |pid| blk: {
+                var pid_buf: [32]u8 = undefined;
+                break :blk std.fmt.bufPrint(&pid_buf, " (pid {d})", .{pid}) catch "";
+            } else "", report_url_path, report_marker, self.wpt_root, LOCKFILE_NAME },
+        );
+        return error.ServerWithoutRunnerReport;
+    }
+
+    /// GET `report_url_path` from the server, as a browser would ask
+    /// web-platform.test for it: the raw HTTP response, in `buf`.
+    fn fetchReport(self: *WptServer, buf: []u8) ![]const u8 {
+        const io = host.io();
+        const address = try std.Io.net.IpAddress.parseIp4("127.0.0.1", self.port);
+        const stream = try address.connect(io, .{ .mode = .stream });
+        defer stream.close(io);
+        var request_buf: [256]u8 = undefined;
+        const request = try std.fmt.bufPrint(&request_buf, "GET {s} HTTP/1.0\r\nHost: {s}:{d}\r\nConnection: close\r\n\r\n", .{ report_url_path, WPT_HOST, self.port });
+        var write_buf: [256]u8 = undefined;
+        var writer = stream.writer(io, &write_buf);
+        try writer.interface.writeAll(request);
+        try writer.interface.flush();
+        var read_buf: [4096]u8 = undefined;
+        var reader = stream.reader(io, &read_buf);
+        const n = try reader.interface.readSliceShort(buf);
+        return buf[0..n];
     }
 
     /// `Launcher.wpt_serve`'s exited: a non-blocking `waitpid`, which also
@@ -1332,4 +1528,71 @@ test "the origin of a built test URL is the origin the test will report" {
     const tls_origin = try server.originFor(allocator, "fetch/api/basic/x.https.html");
     defer allocator.free(tls_origin);
     try std.testing.expectEqualStrings(tls_origin, originOfUrl(tls).?);
+}
+
+test "the server's config is the WPT root's own with the runner's report aliased over the stock one" {
+    // wptrunner serves its own testharnessreport.js through its server's
+    // routes (environment.py, get_routes); `wpt serve` takes the same as a
+    // config alias: a file mount point at the stock file's URL.
+    const allocator = std.testing.allocator;
+    const base =
+        \\{"ports": {"http": [8000, 8001], "https": [8443, 8444]}, "check_subdomains": false,
+        \\ "aliases": [{"url-path": "/resources/testharnessreport.js", "local-dir": "/old"}, {"url-path": "/x/", "local-dir": "/y"}]}
+    ;
+    const text = try serveConfig(allocator, base, "/wpt/.crane-wpt-serve-0");
+    defer allocator.free(text);
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
+    defer parsed.deinit();
+    const root = parsed.value.object;
+    // The root's settings stay.
+    try std.testing.expectEqual(@as(i64, 8000), root.get("ports").?.object.get("http").?.array.items[0].integer);
+    try std.testing.expectEqual(false, root.get("check_subdomains").?.bool);
+    // Another alias stays; one at the report's URL is replaced by ours.
+    const aliases = root.get("aliases").?.array.items;
+    try std.testing.expectEqual(@as(usize, 2), aliases.len);
+    try std.testing.expectEqualStrings("/x/", aliases[0].object.get("url-path").?.string);
+    try std.testing.expectEqualStrings(report_url_path, aliases[1].object.get("url-path").?.string);
+    // wptserve's file mount point joins "local-dir" with the URL's last
+    // segment: the directory that holds testharnessreport.js.
+    try std.testing.expectEqualStrings("/wpt/.crane-wpt-serve-0", aliases[1].object.get("local-dir").?.string);
+}
+
+test "a WPT root with no config.json gets a config of the alias alone" {
+    const allocator = std.testing.allocator;
+    const text = try serveConfig(allocator, null, "/r");
+    defer allocator.free(text);
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
+    defer parsed.deinit();
+    const aliases = parsed.value.object.get("aliases").?.array.items;
+    try std.testing.expectEqual(@as(usize, 1), aliases.len);
+    try std.testing.expectEqualStrings("/r", aliases[0].object.get("local-dir").?.string);
+}
+
+test "the served report has the stock report's headers: UTF-8, cached as the harness is" {
+    // A classic script with no charset decodes in its document's encoding
+    // (HTML "fetch a classic script": the fallback encoding): a UTF-16 page
+    // (html/syntax/charset/without-inheritance.html) decoded the report as
+    // UTF-16 and never got its completion hook - TIMEOUT. wptserve reads a
+    // served file's `<file>.headers` (handlers.load_headers); the stock
+    // resources/testharnessreport.js.headers says this, as wptrunner's route
+    // serves its own report "text/javascript;charset=utf8" (environment.py).
+    try std.testing.expect(std.mem.indexOf(u8, report_headers, "Content-Type: text/javascript; charset=utf-8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, report_headers, "Cache-Control: max-age=3600") != null);
+}
+
+test "the served report carries the marker the runner checks a server for" {
+    try std.testing.expect(std.mem.indexOf(u8, report_js, report_marker) != null);
+    // An HTTP answer that carries it, as UTF-8, is the runner's report; the stock file's is not.
+    try std.testing.expect(servesRunnerReport("HTTP/1.1 200 OK\r\nContent-Type: text/javascript; charset=utf-8\r\n\r\n// " ++ report_marker ++ "\n(function(){})();"));
+    // One served without its charset - a server missing the .headers file - is refused.
+    try std.testing.expect(!servesRunnerReport("HTTP/1.1 200 OK\r\nContent-Type: text/javascript\r\n\r\n// " ++ report_marker ++ "\n(function(){})();"));
+    try std.testing.expect(!servesRunnerReport("HTTP/1.1 200 OK\r\n\r\n/* This file is intentionally empty; see \"Writing your own testharness report\" */"));
+    try std.testing.expect(!servesRunnerReport("HTTP/1.1 404 Not Found\r\n\r\n" ++ report_marker));
+}
+
+test "the alias files are named by what they hold, so runners of two versions never overwrite each other's" {
+    const a = serveFileStem("{}");
+    const b = serveFileStem("{\"ports\":{}}");
+    try std.testing.expect(!std.mem.eql(u8, &a, &b));
+    try std.testing.expectEqualSlices(u8, &a, &serveFileStem("{}"));
 }

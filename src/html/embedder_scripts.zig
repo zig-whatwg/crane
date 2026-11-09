@@ -1,23 +1,25 @@
-//! The embedder's answer for the external classic scripts that frame and
-//! popup documents prepare.
+//! The embedder's answer for the external classic scripts that the
+//! documents of a Browser prepare - every document its parser makes, the
+//! top-level page's, its iframes' and its window.open popups'.
 //!
-//! A top-level page's embedder hands the navigation that loads it a script
-//! loader (`Context.loadPageWithOptions`, dom.top_level_traversables
-//! NavigateOptions) for that page's document only, but the documents of the
-//! page's iframes and window.open popups are parsed with no embedder to ask
-//! (`HTMLIFrameElement.parseHtmlForIframe`).
-//! An embedder that must answer for those documents too registers a
-//! `Loader` on its Browser, once, before any page loads; the frame parse
-//! path asks `forRealm` for a script loader bound to the frame's realm,
-//! which finds the loader of the realm's Browser.
+//! An embedder that must answer for some of those scripts registers a
+//! `Loader` on its Browser, once, before any page loads; the parse path asks
+//! `forRealm` for a script loader bound to the document's realm, which finds
+//! the loader of the realm's Browser.
 //!
-//! Test-only today: the WPT runner registers one, answering
-//! /resources/testdriver-vendor.js in every document the tests drive (the
-//! role wptrunner's server-side testdriver injection plays for a browser).
+//! Test-only, and the LAST such path (lane wptcfg, 2026-11-09): the WPT
+//! runner registers one, answering /resources/testdriver-vendor.js - with
+//! test_driver's natives defined on the realm first - in every document the
+//! tests drive. It goes when test_driver's commands move into src/webdriver,
+//! Crane's shipped WebDriver remote end, and the runner becomes an
+//! in-process WebDriver client, as wptrunner drives a browser (lane wptcfg
+//! batch 2). The navigation's own embedder loader, which answered the
+//! harness for the top-level page, is gone: the runner's
+//! testharnessreport.js is served by `wpt serve`, as wptrunner serves its
+//! own (the user, 2026-11-09: "We should never special case something").
 //!
 //! Unregistered - every build but the runner's: the browser, iOS, the unit
-//! tests - `forRealm` is null and a frame document's parser has no loader,
-//! exactly as before this module existed.
+//! tests - `forRealm` is null and a document's parser has no loader.
 //!
 //! What a loader answers is used as the script's source; null leaves the
 //! fetch to "fetch a classic script" (script_execution.fetchClassicScriptSource),

@@ -1324,13 +1324,14 @@ fn parseAction(realm: runtime.Context, object: JSValue, source_type: SourceType,
 }
 
 // ============================================================================
-// The vendor file for frame and popup documents
+// The vendor file, for every document the tests drive
 // ============================================================================
 
 /// The driver whose natives the frame loader defines.
 threadlocal var frame_driver: ?*TestDriver = null;
 
-/// Register `driver` as the answer for the frame and popup documents of the
+/// Register `driver` as the answer for every document - the page's, its
+/// frames' and its popups' - of the
 /// Browser whose scope is `scope` (src/html/embedder_scripts.zig): called
 /// once, at startup.
 pub fn registerForFrames(driver: *TestDriver, scope: *runtime.BrowserScope) !void {

@@ -6,7 +6,6 @@
 src/browser/Browser.zig clock.@import 1
 src/browser/Browser.zig clock.monotonicMillis 2
 src/browser/Browser.zig host.@import 1
-src/browser/Browser.zig platform.media_backend 3
 src/browser/process.zig host.@import 1
 src/browser/process.zig host.cwd 1
 src/browser/process.zig host.io 1
@@ -397,7 +396,6 @@ src/html/event_loop/timers.zig platform.timer_backend 4
 src/html/external_script_loader.zig host.@import 1
 src/html/external_script_loader.zig host.cwd 1
 src/html/external_script_loader.zig host.io 1
-src/html/media/runtime.zig platform.media_backend 6
 src/html/navigation/fetch_integration.zig host.@import 1
 src/html/navigation/fetch_integration.zig host.cwd 1
 src/html/navigation/fetch_integration.zig host.io 1
@@ -729,7 +727,6 @@ src/webidl/impls/HTMLIFrameElement.zig clock.@import 1
 src/webidl/impls/HTMLIFrameElement.zig clock.monotonicNanos 3
 src/webidl/impls/HTMLMediaElement.zig clock.@import 1
 src/webidl/impls/HTMLMediaElement.zig clock.monotonicNanos 2
-src/webidl/impls/HTMLMediaElement.zig platform.media_backend 9
 src/webidl/impls/HashChangeEvent.zig clock.@import 1
 src/webidl/impls/HashChangeEvent.zig clock.monotonicMillis 1
 src/webidl/impls/IntersectionObserver.zig clock.@import 1
@@ -760,12 +757,7 @@ src/xhr/algorithms/timeout.zig clock.@import 1
 src/xhr/algorithms/timeout.zig clock.monotonicMillis 4
 src/xhr/internal/progress_tracker.zig clock.@import 1
 src/xhr/internal/progress_tracker.zig clock.monotonicMillis 2
-tests/html/media/backend_test.zig platform.media_backend 1
-tests/html/media/host_backend_test.zig platform.media_backend 4
 tests/platform/platform_backend_test.zig platform.exports 1
 tests/platform/platform_backend_test.zig platform.platform_backend 4
 tests/platform/platform_backend_test.zig platform.stub_platform_backend 2
 tests/platform/platform_backend_test.zig platform.vtables 3
-tests/wpt_runner/host_media.zig platform.media_backend 9
-tests/wpt_runner/wav_backend.zig platform.media_backend 13
-tests/wpt_runner/webm_backend.zig platform.media_backend 19

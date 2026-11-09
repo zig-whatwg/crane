@@ -1,4 +1,4 @@
-# Testing image codecs
+# Image codecs
 
 These dependencies follow Crane's nghttp2 source-package pattern: exact URLs
 and content hashes in build.zig.zon, C sources compiled by build.zig. No tools
@@ -38,6 +38,7 @@ return; the returned RGBA8 storage uses the platform caller's allocator. Tests
 check size limits before pixel allocation and cleanup when that allocation
 fails. Native allocations additionally require `leaks --atExit` verification.
 
-Only the testing adapter selects these decoders. Darwin and Linux retain their
-existing image-decoding choices. `zig build platform-image-codecs -j2` builds
+kit/image_decoding selects these decoders for every built-in platform -
+darwin, linux and testing (D1, the user 2026-11-09); an adapter may link out to
+the OS's decoders instead, its own choice. `zig build platform-image-codecs -j2` builds
 the static dependencies alone; add `-Dtarget=aarch64-ios` to cross-compile them.

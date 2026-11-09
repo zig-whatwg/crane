@@ -99,6 +99,67 @@ pub fn wantsPoison(value: ?[]const u8) bool {
     return poisoning.enabled(value);
 }
 
+/// libc's own poison-on-free, for the bug-finding run's children (the user,
+/// 2026-11-09: a separate build "to catch crashes, use-after-free reads,
+/// leaks"): what v8_wrapper.cpp's new and delete and every `c_allocator`
+/// block go through, which the Zig allocator's `Poisoning` never sees. Read
+/// by libc when the process starts, so the supervisor puts it in each
+/// child's environment.
+///
+/// - macOS: `MallocScribble=1` (malloc(3)): 0x55 over a freed block, 0xaa
+///   over a new one. On macOS 27 a freed block under 16 KiB is zeroed by the
+///   allocator whatever the scribble says (docs/lessons/debugging-macos-27s-
+///   malloc-zeroes-small-blocks-on-free-mallocscribble-covers-the-large-
+///   ones.md), so a small block's use-after-free reads zeros there.
+/// - Linux (glibc): `MALLOC_PERTURB_=85` (mallopt(3) M_PERTURB): 0x55 over
+///   a freed block, its complement 0xaa over a new one - the bytes macOS's
+///   scribble writes, and the Crane test launcher's own setting
+///   (tools/test_launcher/child.zig, tests/AGENTS.md), so a fault reads the
+///   same on every host.
+///
+/// A value the caller's environment already sets is kept: a diagnosis may
+/// turn the scribble off (`MallocScribble=0`) or pick its own byte. Never
+/// for the production run, which allocates as Crane's own browser does.
+pub fn addLibcScribble(env: *std.process.Environ.Map, os: std.Target.Os.Tag) error{OutOfMemory}!void {
+    const name: []const u8, const value: []const u8 = switch (os) {
+        .macos, .ios => .{ "MallocScribble", "1" },
+        .linux => .{ "MALLOC_PERTURB_", "85" },
+        else => return,
+    };
+    if (env.contains(name)) return;
+    try env.put(name, value);
+}
+
+test "a bug-finding child's environment turns on libc's poison-on-free, the host's own way" {
+    var env: std.process.Environ.Map = .init(std.testing.allocator);
+    defer env.deinit();
+    try env.put("PATH", "/usr/bin");
+    try addLibcScribble(&env, .macos);
+    try std.testing.expectEqualStrings("1", env.get("MallocScribble").?);
+    try std.testing.expect(env.get("MALLOC_PERTURB_") == null);
+    try std.testing.expectEqualStrings("/usr/bin", env.get("PATH").?);
+
+    var linux: std.process.Environ.Map = .init(std.testing.allocator);
+    defer linux.deinit();
+    try addLibcScribble(&linux, .linux);
+    // 0x55 over a freed block, as macOS's scribble and the test launcher.
+    try std.testing.expectEqualStrings("85", linux.get("MALLOC_PERTURB_").?);
+    try std.testing.expectEqual(@as(u8, 0x55), try std.fmt.parseInt(u8, linux.get("MALLOC_PERTURB_").?, 10));
+    try std.testing.expect(linux.get("MallocScribble") == null);
+}
+
+test "a scribble setting the caller's environment already has is kept" {
+    var env: std.process.Environ.Map = .init(std.testing.allocator);
+    defer env.deinit();
+    try env.put("MallocScribble", "0");
+    try addLibcScribble(&env, .macos);
+    try std.testing.expectEqualStrings("0", env.get("MallocScribble").?);
+    var other: std.process.Environ.Map = .init(std.testing.allocator);
+    defer other.deinit();
+    try addLibcScribble(&other, .windows);
+    try std.testing.expectEqual(@as(usize, 0), other.count());
+}
+
 /// What a `CRANE_LEAK_TRACES=1` run in an optimized runner must say first, or
 /// null. DebugAllocator starts a trace at the allocator's caller
 /// (`@returnAddress()` in std.mem.Allocator's alloc/dupe), and in an

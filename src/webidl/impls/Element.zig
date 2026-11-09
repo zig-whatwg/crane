@@ -907,9 +907,9 @@ pub fn get_clientLeft(instance: *runtime.Instance) anyerror!i32 {
 /// Getter for clientWidth
 /// CSSOM View §3.1 - Returns inner width of element
 /// "1. If the element has no associated CSS layout box ..., return zero." -
-/// with no layout capability, nothing has one. With one, the platform's
-/// box: a replaced element's from its facts (decision 19b's STOPGAP,
-/// dom.image_sources.replacedFacts), any other element's from layoutBox.
+/// with no layout capability, nothing has one. With one, the box the
+/// platform's renderer gives (layoutBox): Crane never computes a box itself
+/// (D3, the user 2026-11-09 22:21 UTC).
 /// Not modelled, stated: step 2's root and body elements (the viewport).
 pub fn get_clientWidth(instance: *runtime.Instance) anyerror!i32 {
     // CSSOM View: update style first, as browsers do (dom.style.engine.updateStyleForRead).
@@ -937,9 +937,6 @@ fn clientBox(instance: *runtime.Instance) ?@import("platform").BoxMetrics {
         const document = interfaces.Node.get_ownerDocument(instance) catch null;
         const document_node = dom.image_sources.layoutNode(document);
         const node = dom.image_sources.layoutNode(instance);
-        // STOPGAP (decision 19b): a replaced element's box is sized from the
-        // facts given with the query, until OQ4's DOM-to-renderer design.
-        if (dom.image_sources.replacedFacts(instance)) |facts| return platform.replacedElementBox(browser, document_node, node, &facts);
         return platform.layoutBox(browser, document_node, node);
     }
 }

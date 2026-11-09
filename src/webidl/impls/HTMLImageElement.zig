@@ -550,7 +550,7 @@ pub fn installHooks() void {
     @import("dom").adopting_steps.install(&adoptingSteps);
     @import("dom").document_fetches.install(.{ .discard = discardRealm, .prepare_abort = prepareDocumentAbort, .abort = abortDocument });
     // HTML 4.12.5.1.9: an img is an image source for a 2D context.
-    dom.image_sources.installImageElement(imageUsability, replacedFacts, updateTheImageData);
+    dom.image_sources.installImageElement(imageUsability, updateTheImageData);
     // The img/source steps that count as relevant image mutations. One
     // dispatcher for both names avoids two generic-DOM callback lookups.
     dom.mutation.registerInsertionStepsCallback(&pictureInsertionSteps) catch |err| {
@@ -574,36 +574,6 @@ fn sweepRemaining(scope: *runtime.BrowserScope) void {
     Registry.deinitAllAndClear(scope);
 }
 
-/// The img's facts for the platform's layout STOPGAP (decision 19b): null
-/// for an element that is no img.
-fn replacedFacts(instance: *runtime.Instance) ?platform.ReplacedElementFacts {
-    _ = getInternal(instance) orelse return null;
-    var facts: platform.ReplacedElementFacts = .{
-        .connected = interfaces.Node.get_isConnected(instance) catch false,
-        .has_natural_size = false,
-        .natural_width = 0,
-        .natural_height = 0,
-        .has_width_attribute = false,
-        .width_attribute = 0,
-        .has_height_attribute = false,
-        .height_attribute = 0,
-    };
-    if (availableImage(instance)) |image| {
-        facts.has_natural_size = true;
-        facts.natural_width = densityCorrected(instance, image.width);
-        facts.natural_height = densityCorrected(instance, image.height);
-    }
-    if (dimensionAttribute(instance, "width")) |width| {
-        facts.has_width_attribute = true;
-        facts.width_attribute = width;
-    }
-    if (dimensionAttribute(instance, "height")) |height| {
-        facts.has_height_attribute = true;
-        facts.height_attribute = height;
-    }
-    return facts;
-}
-
 /// A dimension attribute's value, parsed as a non-negative integer; null
 /// when absent or an error.
 fn dimensionAttribute(instance: *runtime.Instance, name: []const u8) ?u32 {
@@ -612,17 +582,18 @@ fn dimensionAttribute(instance: *runtime.Instance, name: []const u8) ?u32 {
     return @intCast(@min(parsed, std.math.maxInt(u32)));
 }
 
-/// The img's content box, when it is being rendered: the layout
-/// capability's box (decision 19b's STOPGAP). Null when not rendered - or
-/// with no layout at all.
+/// The img's box, when it is being rendered: the box the platform's
+/// renderer gives (layoutBox, docs/platform-protocol.md 6.9) - Crane never
+/// computes one itself (D3, the user 2026-11-09 22:21 UTC). HTML's width and
+/// height return the rendered size only when the image is being rendered;
+/// null when it is not - or with no layout at all.
 fn renderedSize(instance: *runtime.Instance) ?struct { u32, u32 } {
     if (platform.capabilities.layout == .unsupported) {
         return null;
     } else {
         const browser = @import("html").platform_state.of(instance.ctx) orelse return null;
-        const facts = replacedFacts(instance) orelse return null;
         const document = interfaces.Node.get_ownerDocument(instance) catch null;
-        const box = platform.replacedElementBox(browser, dom.image_sources.layoutNode(document), dom.image_sources.layoutNode(instance), &facts) orelse return null;
+        const box = platform.layoutBox(browser, dom.image_sources.layoutNode(document), dom.image_sources.layoutNode(instance)) orelse return null;
         return .{ roundedCss(box.client.width), roundedCss(box.client.height) };
     }
 }

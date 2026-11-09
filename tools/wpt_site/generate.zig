@@ -2186,6 +2186,82 @@ test "site: an invalid test-bug exemption stops the site" {
     try testing.expect(std.mem.indexOf(u8, diag.message, "the same result in all three browsers") != null);
 }
 
+fn fixtureNeedsRenderer(comptime path: []const u8) []const u8 {
+    return "[" ++ path ++ "]\n" ++
+        \\kind = needs-renderer
+        \\why = decodeImageData reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight); with no renderer clientWidth is 0, so getImageData throws IndexSizeError
+        \\assertion = promise_test: Unhandled rejection with value: object IndexSizeError
+        \\
+    ;
+}
+
+test "site: a needs-renderer exemption is its own group, with its failing assertion, never blocking" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    // b.html (TIMEOUT) a test bug, c.any.js (NONE-PASSED) needs a renderer: neither blocks.
+    const text = comptime fixtureTestBug("dom/b.html") ++ fixtureNeedsRenderer("dom/nodes/c.any.js");
+    _ = try runFixtureExempt(gpa, &f, "renderer", text, &diag);
+
+    const index = try readOut(gpa, &f, "renderer/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<div><dt>Blocking files</dt><dd>0</dd>");
+    try expectHas(index, "<dt><span class=\"key key-exempt\"></span>Exempt</dt><dd>2</dd>");
+    // Its own group, after the test-bug group and before the contents.
+    try expectBefore(index, "id=\"exempt-test-bug\"", "id=\"exempt-needs-renderer\"");
+    try expectBefore(index, "id=\"exempt-needs-renderer\"", "id=\"contents\"");
+    try expectHas(index, "<h2 id=\"exempt-needs-renderer-h\">Exempt until a renderer answers geometry</h2>");
+    const at = std.mem.indexOf(u8, index, "id=\"exempt-needs-renderer\"").?;
+    const bug = index[std.mem.indexOf(u8, index, "id=\"exempt-test-bug\"").?..at];
+    try testing.expect(std.mem.indexOf(u8, bug, "c.any.js") == null);
+    const group = index[at..std.mem.indexOf(u8, index, "id=\"contents\"").?];
+    try expectHas(group, "<a href=\"dom/nodes/#c.any.js\"><code>dom/nodes/c.any.js</code></a> <span class=\"gate gate-exempt\">Exempt</span>");
+    try expectHas(group, "decodeImageData reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight)");
+    try expectHas(group, "<dt>Failing assertion</dt><dd>promise_test: Unhandled rejection with value: object IndexSizeError</dd>");
+    try testing.expect(std.mem.indexOf(u8, group, "dom/b.html") == null);
+    try testing.expect(std.mem.indexOf(u8, group, "<dt>Upstream</dt>") == null);
+    // The status counts it on its own, and links its group; the legend names it.
+    try expectHas(index, " Nor is 1 file that would block, <a href=\"#exempt-needs-renderer\">exempt until a renderer answers geometry</a>: it fails only because Crane has no renderer to answer geometry (a layout box&rsquo;s size or position).");
+    try expectHas(index, "<dd>would block, but all three browsers fail it identically because of a test bug filed upstream, or it fails only because no renderer answers geometry</dd>");
+
+    // The file's own section says which kind, with its assertion.
+    const dir = try readOut(gpa, &f, "renderer/dom/nodes/index.html");
+    defer gpa.free(dir);
+    try expectHas(dir, "<p class=\"note-label\">Exempt from the 0.1 gate until a renderer answers geometry</p>");
+    try expectHas(dir, "<dt>Failing assertion</dt><dd>promise_test: Unhandled rejection with value: object IndexSizeError</dd>");
+    try expectHas(dir, "<details class=\"tf\" id=\"c.any.js\" data-gate=\"exempt\"");
+}
+
+test "site: needs-renderer exemptions alone write only their own group" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    _ = try runFixtureExempt(gpa, &f, "rendereronly", fixtureNeedsRenderer("dom/nodes/c.any.js"), &diag);
+    const index = try readOut(gpa, &f, "rendereronly/index.html");
+    defer gpa.free(index);
+    try testing.expect(std.mem.indexOf(u8, index, "id=\"exempt\"") == null);
+    try testing.expect(std.mem.indexOf(u8, index, "id=\"exempt-test-bug\"") == null);
+    try expectHas(index, "id=\"exempt-needs-renderer\"");
+    try expectHas(index, "Not counted among them: 1 file that would block is <a href=\"#exempt-needs-renderer\">exempt until a renderer answers geometry</a>: it fails only because Crane has no renderer to answer geometry (a layout box&rsquo;s size or position).");
+    try expectHas(index, "<dd>would block, but it fails only because no renderer answers geometry</dd>");
+    try testing.expect(std.mem.indexOf(u8, index, "all three browsers") == null);
+}
+
+test "site: an invalid needs-renderer exemption stops the site" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    const no_assertion = comptime blk: {
+        const full = fixtureNeedsRenderer("dom/nodes/c.any.js");
+        break :blk full[0..std.mem.indexOf(u8, full, "assertion =").?];
+    };
+    try testing.expectError(error.InvalidExemption, runFixtureExempt(gpa, &f, "bad-renderer", no_assertion, &diag));
+    try testing.expect(std.mem.indexOf(u8, diag.message, "missing \"assertion\"") != null);
+}
+
 // Generations whose results came from runs named in the history: generation 3's
 // largest run is its sweep, beside a smaller targeted run.
 const fixture_history_hosts =

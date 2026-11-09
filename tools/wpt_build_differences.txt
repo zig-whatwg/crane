@@ -1,0 +1,25 @@
+# Known differences between Crane's two WPT runs - the browsers' per-build expectations
+# (Firefox metadata's `if debug:` / `if asan:`, Chromium's `[ Debug ]`), for Crane.
+#
+# The PRODUCTION run (wpt_runner: Crane exactly as its own browser, the release console, runs) is
+# published and timed; the BUG-FINDING run (wpt_runner_bug_finding: the same product with a debug
+# allocator, poison-on-free, Debug checks and the full C sanitizer) never is. They differ only in
+# detection, so a test or subtest whose result differs between them is a bug to investigate - never
+# accepted silently (the user, 2026-11-09). `zig build wpt-build-compare` (tests/wpt_runner/
+# build_compare.zig) fails on any difference this file does not name, and on any line here that no
+# longer occurs: remove it. This list only goes down.
+#
+# One difference per line, six TAB-separated fields (\t, \n and \\ escaped inside a field):
+#   <test>  <subtest>  <production status>  <bug-finding status>  <owner>  <evidence>
+# <test>: the journal path (e.g. dom/nodes/x.html) for a file's own status, with <subtest> `*`;
+#         the result stream's test URL (e.g. /dom/nodes/x.html) for a subtest.
+# <owner>: the lane or person fixing it. <evidence>: what it is and where that is shown (a log, a
+#         lesson, a handoff). wpt_build_compare prints a NEW difference ready to paste, with
+#         <owner> and <evidence> to fill in - only after it has both, and the integrator's OK.
+#
+# A status may be a |-separated list (Firefox metadata's `expected: [PASS, FAIL]`): a subtest that
+# hinges on a sub-tick gap passes or fails in either build. Such a line is never stale - it has
+# simply landed the same way in both runs - and its owner is `timing-bound`, citing its entry in
+# tools/wpt_loss_dispositions.txt and each build's x10 count.
+/service-workers/service-worker/navigation-timing-extended.https.html	Service worker controlled navigation timing	PASS|FAIL	PASS|FAIL	timing-bound	tools/wpt_loss_dispositions.txt kind = timing-bound (generation 211: "fetchStart should be marked before the Fetch event handler is called" compares coarse marks the specs put back to back, 125 us tick); x10 on server1 2026-11-09 22:3x UTC (lane wptcfg tip2): production PASS 3 / FAIL 7, bug-finding PASS 4 / FAIL 6 - the same race in both builds
+/navigation-timing/nav2-test-redirect-server.html	Navigation Timing 2 WPT	PASS|FAIL	PASS|FAIL	timing-bound	tools/wpt_loss_dispositions.txt kind = timing-bound (generation 210: startTime vs redirectStart, a 32-58 us gap on the 125 us tick); x10 on server1 2026-11-09 22:4x UTC (lane wptcfg tip2): production PASS 5 / FAIL 5, bug-finding PASS 6 / FAIL 4 - the same race in both builds
