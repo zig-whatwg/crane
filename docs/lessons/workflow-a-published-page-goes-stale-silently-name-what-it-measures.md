@@ -1,0 +1,7 @@
+# A published page goes stale silently: when one is published, name what the other measures
+
+**Context:** 2026-11-09 02:15 UTC. The integrator published generation 212's progress page (Crane 7ef471b464) and said the results pages were up to date. /performance/ still showed round 3, which measured 9053db756ef, from before perf2 b8 and the wrapper redesign's P0, P1 and P3 (a CppHeap per agent). The user asked why the performance report had not been updated too. Perf rounds had been run only at perf-lane milestones, so nothing prompted a round when the merges after round 3 landed.
+
+**Lesson:** Two pages about the same engine drift apart without anyone deciding it. One gets regenerated on a schedule (every generation), and the other only when someone remembers a trigger (a perf milestone). Report on one and the reader assumes both are current.
+
+**How to apply:** when publishing a generation, read /performance/'s Crane commit (its round's `version=`). List the merges since that commit that touch memory or time: node layout, the wrapper or lifetime machinery, allocators, the engine adapter. If there are any, say so in the same report and either run a Crane-only round (round 4 took about 1 h: about 17 min of builds plus a 35 min window) or ask. Never call "the pages" current while one measures an older main. Related: perf-html-reports (memory), workflow-decide-a-notices-exceptions-before-posting-it.md.
