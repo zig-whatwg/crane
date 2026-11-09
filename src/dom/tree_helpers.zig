@@ -703,21 +703,77 @@ pub fn getShadowIncludingInclusiveDescendants(allocator: Allocator, root: *NodeB
     return result;
 }
 
-/// Helper: Recursively collect shadow-including descendants in tree order
+/// Helper: collect `node`'s shadow-including descendants in shadow-including
+/// tree order (ShadowIncludingWalk). Closed roots are part of this internal
+/// traversal, as are the ShadowRoot nodes themselves.
 fn collectShadowIncludingDescendants(result: *infra.List(*NodeBase), node: *const NodeBase) !void {
-    // Enter the current host's root immediately after encountering the host,
-    // including when the traversal's root itself is a host. Closed roots are
-    // part of this internal traversal, as are the ShadowRoot nodes themselves.
-    if (shadowRootForHost(node)) |shadow| {
-        try result.append(shadow);
-        try collectShadowIncludingDescendants(result, shadow);
+    var walk = ShadowIncludingWalk.init(@constCast(node));
+    _ = walk.next(); // `node` itself
+    while (walk.next()) |descendant| try result.append(descendant);
+}
+
+/// `root`'s shadow-including inclusive descendants in shadow-including tree
+/// order - "shadow-including preorder, depth-first traversal of a node tree
+/// ... with for each shadow host encountered in tree, shadow-including
+/// preorder, depth-first traversal of that element's shadow root's node tree
+/// just after it is encountered" (DOM 4.2.2) - over the links, keeping no
+/// native frame per level: the next node is a host's shadow root, else the
+/// first child, else the next sibling of the nearest inclusive ancestor that
+/// has one, where leaving a shadow root resumes at its host's light children
+/// (found through the root's host). The recursion it replaced, one set of
+/// frames a level, overflowed the native stack when a deep enough tree was
+/// moved into or out of a document (lane crash1 batch 3; the zero-crashes
+/// rule) - Blink's ContainerNode::NotifyNodeInsertedInternal walks
+/// NodeTraversal::InclusiveDescendantsOf in the same loop.
+///
+/// The walk reads each next node when it hands out the current one: a caller
+/// whose steps can change the tree collects the nodes first, as
+/// getShadowIncludingInclusiveDescendants does.
+pub const ShadowIncludingWalk = struct {
+    root: *NodeBase,
+    upcoming: ?*NodeBase,
+
+    pub fn init(root: *NodeBase) ShadowIncludingWalk {
+        return .{ .root = root, .upcoming = root };
     }
-    // Visit each child in order along its links
-    var children = node.children();
-    while (children.next()) |child| {
-        try result.append(child);
-        try collectShadowIncludingDescendants(result, child);
+
+    pub fn next(self: *ShadowIncludingWalk) ?*NodeBase {
+        const node = self.upcoming orelse return null;
+        self.upcoming = self.after(node);
+        return node;
     }
+
+    fn after(self: *const ShadowIncludingWalk, node: *NodeBase) ?*NodeBase {
+        // A host's shadow tree comes just after it, before its children.
+        if (node.is_shadow_host) {
+            if (shadowRootForHost(node)) |shadow| return shadow;
+        }
+        if (node.first_child) |child| return child;
+        var at = node;
+        while (at != self.root) {
+            if (at.next_sibling) |sibling| return sibling;
+            if (at.parent_node) |parent| {
+                at = parent;
+                continue;
+            }
+            // `at` is a shadow root the walk entered from its host: the
+            // host's light children follow its shadow tree.
+            const host = hostOfShadowRoot(at) orelse return null;
+            if (host.first_child) |child| return child;
+            at = host;
+        }
+        return null;
+    }
+};
+
+/// The host of the shadow root `node`, or null for any other node.
+fn hostOfShadowRoot(node: *const NodeBase) ?*NodeBase {
+    if (node.node_type != NodeBase.DOCUMENT_FRAGMENT_NODE) return null;
+    const object = instance_bridge.getInstance(@constCast(node)) orelse return null;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(object));
+    if (instance.stateAs(interfaces.ShadowRoot.State) == null) return null;
+    const host = interfaces.ShadowRoot.get_host(instance) catch return null;
+    return instance_bridge.getNodeBase(host);
 }
 
 /// Internal shadow edge of an element, including a closed root. The bridge

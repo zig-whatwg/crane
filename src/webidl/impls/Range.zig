@@ -358,19 +358,12 @@ pub fn get_commonAncestorContainer(instance: *runtime.Instance) anyerror!*runtim
     const start = internal.start_container orelse return error.InvalidStateError;
     const end = internal.end_container orelse return error.InvalidStateError;
 
-    // Let container be start node
-    var container = start;
-
-    // While container is not an inclusive ancestor of end node,
-    // let container be container's parent
-    while (!isInclusiveAncestor(container, end)) {
-        container = (interfaces.Node.get_parentNode(container) catch null) orelse {
-            // If we reach root without finding common ancestor, return start container
-            return start;
-        };
-    }
-
-    return container;
+    // "Let container be start node. While container is not an inclusive
+    // ancestor of end node, let container be container's parent. Return
+    // container." The same node in O(depth) (Meeting.of); a range's two
+    // nodes share a root, so it is found.
+    const meeting = Meeting.of(start, end) orelse return start;
+    return meeting.ancestor;
 }
 
 // =============================================================================
@@ -428,11 +421,6 @@ fn getChildIndex(parent: *runtime.Instance, child: *runtime.Instance) ?u32 {
     }
 
     return null;
-}
-
-/// Helper: Check if nodeA is an inclusive ancestor of nodeB
-fn isInclusiveAncestor(nodeA: *runtime.Instance, nodeB: *runtime.Instance) bool {
-    return nodeA == nodeB or boundary_points.isAncestor(DomTree, nodeA, nodeB);
 }
 
 /// "A boundary point is after another boundary point, if its position
@@ -729,8 +717,8 @@ pub fn call_compareBoundaryPoints(instance: *runtime.Instance, how: u16, sourceR
 // =============================================================================
 
 /// A range's boundary points, read once: the algorithms below take their
-/// "original" start and end before they mutate anything, and recurse over
-/// sub-ranges that need no Range object of their own.
+/// "original" start and end before they mutate anything, and walk subranges
+/// that need no Range object of their own.
 const Bounds = struct {
     start_node: *runtime.Instance,
     start_offset: u32,
@@ -751,30 +739,85 @@ const Bounds = struct {
     fn collapsed(self: Bounds) bool {
         return self.start_node == self.end_node and self.start_offset == self.end_offset;
     }
+};
 
-    /// "A node node is contained in a live range range if node's root is
-    /// range's root, and (node, 0) is after range's start, and (node, node's
-    /// length) is before range's end."
-    fn contains(self: Bounds, node: *runtime.Instance) bool {
-        if (getRoot(node) != getRoot(self.start_node)) return false;
-        if (compareBoundaryPoints(node, 0, self.start_node, self.start_offset) != .after) return false;
-        return compareBoundaryPoints(node, getNodeLength(node), self.end_node, self.end_offset) == .before;
+/// Where a range's start node and end node meet (DOM 5.5 "get the common
+/// ancestor"): `ancestor` is the deepest inclusive ancestor of the start
+/// node that is an inclusive ancestor of the end node; `start_child` is the
+/// child of `ancestor` that is an inclusive ancestor of the start node (null
+/// when the start node is `ancestor`), and `end_child` the same for the end
+/// node.
+///
+/// Every question the contents algorithms ask of the tree follows from it in
+/// O(1) - "is originalStartNode an inclusive ancestor of originalEndNode"
+/// is `ancestor == start node`, the partially contained children of the
+/// common ancestor are `start_child` and `end_child`, and a child of the
+/// common ancestor is contained exactly when it lies strictly between them
+/// (or past the start offset / before the end offset where a boundary node
+/// is the common ancestor itself) - where the steps as written ask an
+/// O(depth) ancestor question at each of up to depth parents, per child, per
+/// level. Blink walks the same two paths (Range::ProcessContents:
+/// HighestAncestorUnderCommonRoot, ChildOfCommonRootBeforeOffset).
+const Meeting = struct {
+    ancestor: *runtime.Instance,
+    start_child: ?*runtime.Instance,
+    end_child: ?*runtime.Instance,
+
+    /// Both nodes' depths, then a climb in step: O(depth). Null for nodes in
+    /// different trees.
+    fn of(start: *runtime.Instance, end: *runtime.Instance) ?Meeting {
+        var a = start;
+        var b = end;
+        var below_a: ?*runtime.Instance = null;
+        var below_b: ?*runtime.Instance = null;
+        var depth_a = depthOf(start);
+        var depth_b = depthOf(end);
+        while (depth_a > depth_b) : (depth_a -= 1) {
+            below_a = a;
+            a = DomTree.parent(a) orelse return null;
+        }
+        while (depth_b > depth_a) : (depth_b -= 1) {
+            below_b = b;
+            b = DomTree.parent(b) orelse return null;
+        }
+        while (a != b) {
+            below_a = a;
+            below_b = b;
+            a = DomTree.parent(a) orelse return null;
+            b = DomTree.parent(b) orelse return null;
+        }
+        return .{ .ancestor = a, .start_child = below_a, .end_child = below_b };
     }
 
-    /// "A node is partially contained in a live range if it's an inclusive
-    /// ancestor of the live range's start node but not its end node, or vice
-    /// versa."
-    fn partiallyContains(self: Bounds, node: *runtime.Instance) bool {
-        const of_start = isInclusiveAncestor(node, self.start_node);
-        const of_end = isInclusiveAncestor(node, self.end_node);
-        return of_start != of_end;
+    /// A subrange of a partially contained child: one of its boundary nodes
+    /// (`outer`) is that child, an inclusive ancestor of the other - it was
+    /// when the level above chose it. Found by climbing from the other node
+    /// to it: O(the levels between), so a chain of subranges costs its
+    /// depth once per level, not a depth walk per parent. Null when `outer`
+    /// is no longer an inclusive ancestor of the other node: script ran
+    /// between the levels (an iframe's unload as a node moved, a custom
+    /// element reaction) and moved a node off the path.
+    fn nested(bounds: Bounds, comptime outer: enum { start, end }) ?Meeting {
+        const top = if (outer == .start) bounds.start_node else bounds.end_node;
+        var at = if (outer == .start) bounds.end_node else bounds.start_node;
+        var below: ?*runtime.Instance = null;
+        while (at != top) {
+            below = at;
+            at = DomTree.parent(at) orelse return null;
+        }
+        return if (outer == .start)
+            .{ .ancestor = top, .start_child = null, .end_child = below }
+        else
+            .{ .ancestor = top, .start_child = below, .end_child = null };
     }
 };
 
-/// Helper: Check if a node is contained in this range
-fn isNodeContained(internal: *InternalState, node: *runtime.Instance) bool {
-    const bounds = Bounds.of(internal) orelse return false;
-    return bounds.contains(node);
+/// The number of ancestors `node` has.
+fn depthOf(node: *runtime.Instance) usize {
+    var depth: usize = 0;
+    var current = DomTree.parent(node);
+    while (current) |c| : (current = DomTree.parent(c)) depth += 1;
+    return depth;
 }
 
 /// A new DocumentFragment "whose node document is range's start node's node
@@ -803,62 +846,59 @@ fn cloneWithSubstring(node: *runtime.Instance, offset: u32, count: u32) !*runtim
     return clone;
 }
 
+/// Append to `list` the children of `parent` from `first` (null: none) up to,
+/// not including, `stop` (null: to its last child). An error when `stop` is
+/// not among them - only possible were the range's start after its end.
+fn appendChildrenBetween(allocator: std.mem.Allocator, list: *std.ArrayListUnmanaged(*runtime.Instance), first: ?*runtime.Instance, stop: ?*runtime.Instance) !void {
+    var child = first;
+    while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
+        if (c == stop) return;
+        try list.append(allocator, c);
+    }
+    if (stop != null) return error.InvalidStateError;
+}
+
 /// Steps shared by "extract" and "clone the contents" (5-11): the common
 /// ancestor, the first and last partially contained children, and the
 /// contained children.
 const Split = struct {
-    common_ancestor: *runtime.Instance,
     first_partially_contained: ?*runtime.Instance,
     last_partially_contained: ?*runtime.Instance,
     contained_children: std.ArrayListUnmanaged(*runtime.Instance),
 
-    fn of(allocator: std.mem.Allocator, bounds: Bounds) !Split {
-        // Steps 5-6: "Let commonAncestor be originalStartNode. While
-        // commonAncestor is not an inclusive ancestor of originalEndNode:
-        // set commonAncestor to its own parent."
-        var common = bounds.start_node;
-        while (!isInclusiveAncestor(common, bounds.end_node)) {
-            common = DomTree.parent(common) orelse return error.InvalidStateError;
-        }
+    fn of(allocator: std.mem.Allocator, bounds: Bounds, meeting: Meeting) !Split {
+        // Step 5: "Let commonAncestor be the result of getting the common
+        // ancestor of range" - meeting.ancestor.
+        const common = meeting.ancestor;
 
-        // Steps 7-8: "If originalStartNode is not an inclusive ancestor of
+        // Steps 6-7: "If originalStartNode is not an inclusive ancestor of
         // originalEndNode, then set firstPartiallyContainedChild to the first
-        // child of commonAncestor that is partially contained in range."
-        var first: ?*runtime.Instance = null;
-        if (!isInclusiveAncestor(bounds.start_node, bounds.end_node)) {
-            var child = interfaces.Node.get_firstChild(common) catch null;
-            while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
-                if (bounds.partiallyContains(c)) {
-                    first = c;
-                    break;
-                }
-            }
-        }
+        // child of commonAncestor that is partially contained in range." A
+        // child of commonAncestor is partially contained exactly when it is
+        // an inclusive ancestor of one boundary node and not the other:
+        // start_child or end_child, the start's first, as a range's start is
+        // not after its end.
+        const first: ?*runtime.Instance = if (common != bounds.start_node) meeting.start_child else null;
 
-        // Steps 9-10: "If originalEndNode is not an inclusive ancestor of
+        // Steps 8-9: "If originalEndNode is not an inclusive ancestor of
         // originalStartNode, then set lastPartiallyContainedChild to the last
         // child of commonAncestor that is partially contained in range."
-        var last: ?*runtime.Instance = null;
-        if (!isInclusiveAncestor(bounds.end_node, bounds.start_node)) {
-            var child = interfaces.Node.get_lastChild(common) catch null;
-            while (child) |c| : (child = interfaces.Node.get_previousSibling(c) catch null) {
-                if (bounds.partiallyContains(c)) {
-                    last = c;
-                    break;
-                }
-            }
-        }
+        const last: ?*runtime.Instance = if (common != bounds.end_node) meeting.end_child else null;
 
-        // Step 11: "Let containedChildren be a list of all children of
-        // commonAncestor that are contained in range, in tree order."
+        // Step 10: "Let containedChildren be a list of all children of
+        // commonAncestor that are contained in range, in tree order." A child
+        // c is contained when (c, 0) is after the start - c follows
+        // start_child, or, when the start node is commonAncestor, c's index
+        // is at least the start offset - and (c, c's length) is before the
+        // end: c precedes end_child, or its index is less than the end
+        // offset. That is one run of children.
         var contained: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
         errdefer contained.deinit(allocator);
-        var child = interfaces.Node.get_firstChild(common) catch null;
-        while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
-            if (bounds.contains(c)) try contained.append(allocator, c);
-        }
+        const from = if (first) |f| interfaces.Node.get_nextSibling(f) catch null else childAt(common, bounds.start_offset);
+        const stop = last orelse childAt(common, bounds.end_offset);
+        try appendChildrenBetween(allocator, &contained, from, stop);
 
-        // Step 12: "If any member of containedChildren is a doctype, then
+        // Step 11: "If any member of containedChildren is a doctype, then
         // throw a "HierarchyRequestError" DOMException."
         for (contained.items) |c| {
             if ((interfaces.Node.get_nodeType(c) catch 0) == interfaces.Node.get_DOCUMENT_TYPE_NODE()) {
@@ -867,7 +907,6 @@ const Split = struct {
         }
 
         return .{
-            .common_ancestor = common,
             .first_partially_contained = first,
             .last_partially_contained = last,
             .contained_children = contained,
@@ -879,28 +918,74 @@ const Split = struct {
     }
 };
 
-/// Where "deleteContents" (steps 5-7) and "extract" (steps 13-15) collapse
-/// the range afterwards: originalStart itself when it is an inclusive
-/// ancestor of originalEndNode, else just after its ancestor that is a child
-/// of the common ancestor.
-fn collapsePoint(bounds: Bounds) struct { node: *runtime.Instance, offset: u32 } {
+/// Where "deleteContents" (steps 5-7) and "extract" (steps 12-14) collapse
+/// the range: originalStartNode itself when it is an inclusive ancestor of
+/// originalEndNode, else just after its ancestor that is a child of the
+/// common ancestor.
+fn collapsePoint(bounds: Bounds, meeting: Meeting) struct { node: *runtime.Instance, offset: u32 } {
     // "If originalStartNode is an inclusive ancestor of originalEndNode, then
     // set newNode to originalStartNode and newOffset to originalStartOffset."
-    if (isInclusiveAncestor(bounds.start_node, bounds.end_node)) {
-        return .{ .node = bounds.start_node, .offset = bounds.start_offset };
-    }
+    const reference = meeting.start_child orelse return .{ .node = bounds.start_node, .offset = bounds.start_offset };
     // "Otherwise: let referenceNode be originalStartNode. While
     // referenceNode's parent is non-null and is not an inclusive ancestor of
     // originalEndNode: set referenceNode to its parent. Set newNode to the
     // parent of referenceNode, and newOffset to referenceNode's index + 1."
-    var reference = bounds.start_node;
-    while (DomTree.parent(reference)) |parent| {
-        if (isInclusiveAncestor(parent, bounds.end_node)) break;
-        reference = parent;
+    // The first inclusive ancestor of originalStartNode whose parent is an
+    // inclusive ancestor of originalEndNode is the common ancestor's child
+    // on its path: start_child.
+    return .{ .node = meeting.ancestor, .offset = DomTree.index(reference) + 1 };
+}
+
+/// "The nodes that are contained in" the range, "in tree order, omitting any
+/// node whose parent is also contained" (deleteContents step 4; the roots of
+/// what toString's step 4 reads). A contained node's descendants are all
+/// contained, and the nodes partially contained are the ancestors of the
+/// boundary nodes below the common ancestor, so the contained nodes whose
+/// parent is not contained are children of a partially contained node or of
+/// the common ancestor: on the start's side the children after the path to
+/// the start (the start node's own from its offset), deepest level first; the
+/// common ancestor's contained children (Split's run); on the end's side the
+/// children before the path to the end (the end node's own up to its
+/// offset), top level first. O(depth + the nodes listed), where a walk
+/// asking "contained?" and "partially contained?" of each node pays a depth
+/// walk per node.
+fn containedRoots(allocator: std.mem.Allocator, bounds: Bounds, meeting: Meeting) !std.ArrayListUnmanaged(*runtime.Instance) {
+    var list: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    errdefer list.deinit(allocator);
+
+    // The start's side, when the start node is below the common ancestor.
+    if (meeting.start_child) |top| {
+        try appendChildrenBetween(allocator, &list, childAt(bounds.start_node, bounds.start_offset), null);
+        var at = bounds.start_node;
+        while (at != top) : (at = DomTree.parent(at) orelse return error.InvalidStateError) {
+            try appendChildrenBetween(allocator, &list, interfaces.Node.get_nextSibling(at) catch null, null);
+        }
     }
-    // referenceNode's parent is not null: were it, referenceNode would be the
-    // range's root, an inclusive ancestor of originalEndNode.
-    return .{ .node = DomTree.parent(reference) orelse reference, .offset = DomTree.index(reference) + 1 };
+
+    // The common ancestor's children.
+    const from = if (meeting.start_child) |f| interfaces.Node.get_nextSibling(f) catch null else childAt(meeting.ancestor, bounds.start_offset);
+    const stop = meeting.end_child orelse childAt(meeting.ancestor, bounds.end_offset);
+    try appendChildrenBetween(allocator, &list, from, stop);
+
+    // The end's side, top level first: the path from end_child down to the
+    // end node, read bottom-up into `path`.
+    if (meeting.end_child) |top| {
+        var path: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+        defer path.deinit(allocator);
+        var at = bounds.end_node;
+        while (true) : (at = DomTree.parent(at) orelse return error.InvalidStateError) {
+            try path.append(allocator, at);
+            if (at == top) break;
+        }
+        var level = path.items.len;
+        while (level > 1) {
+            level -= 1;
+            const parent = path.items[level];
+            try appendChildrenBetween(allocator, &list, interfaces.Node.get_firstChild(parent) catch null, path.items[level - 1]);
+        }
+        try appendChildrenBetween(allocator, &list, interfaces.Node.get_firstChild(bounds.end_node) catch null, childAt(bounds.end_node, bounds.end_offset));
+    }
+    return list;
 }
 
 /// DOM 5.5 "The deleteContents() method steps".
@@ -927,58 +1012,43 @@ pub fn call_deleteContents(instance: *runtime.Instance) anyerror!void {
 
     // Step 4: "Let nodesToRemove be a list of all the nodes that are
     // contained in this, in tree order, omitting any node whose parent is
-    // also contained in this." Every contained node is a descendant of the
-    // common ancestor of the start and end nodes, and a contained node's
-    // descendants are all contained: the walk takes a contained node and
-    // skips its subtree, and descends only into partially contained ones.
+    // also contained in this."
     const allocator = instance.ctx.allocator;
-    var nodes_to_remove: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    const meeting = Meeting.of(bounds.start_node, bounds.end_node) orelse return error.InvalidStateError;
+    var nodes_to_remove = try containedRoots(allocator, bounds, meeting);
     defer nodes_to_remove.deinit(allocator);
-    {
-        var root = bounds.start_node;
-        while (!isInclusiveAncestor(root, bounds.end_node)) {
-            root = DomTree.parent(root) orelse return error.InvalidStateError;
-        }
-        var node: ?*runtime.Instance = interfaces.Node.get_firstChild(root) catch null;
-        while (node) |n| {
-            if (bounds.contains(n)) {
-                try nodes_to_remove.append(allocator, n);
-                node = nextSkippingChildren(n, root);
-            } else if (bounds.partiallyContains(n)) {
-                node = (interfaces.Node.get_firstChild(n) catch null) orelse nextSkippingChildren(n, root);
-            } else {
-                node = nextSkippingChildren(n, root);
-            }
-        }
-    }
 
     // Steps 5-7: newNode and newOffset.
-    const collapse_to = collapsePoint(bounds);
+    const collapse_to = collapsePoint(bounds, meeting);
 
-    // Step 8: "If originalStartNode is a CharacterData node, then replace data
+    // Step 8: "Set this's start and end to (newNode, newOffset)." Before the
+    // removals, as the steps order it: the removals that follow never move
+    // that point (it is the common ancestor, past every boundary path, or
+    // the start node with every removed child at or after its offset), but
+    // script they run (an iframe's unload) sees the range already collapsed.
+    internal.start_container = collapse_to.node;
+    internal.start_offset = collapse_to.offset;
+    internal.end_container = collapse_to.node;
+    internal.end_offset = collapse_to.offset;
+
+    // Step 9: "If originalStartNode is a CharacterData node, then replace data
     // of originalStartNode with originalStartOffset, originalStartNode's
     // length - originalStartOffset, and the empty string."
     if (isCharacterData(bounds.start_node)) {
         try deleteData(bounds.start_node, bounds.start_offset, getNodeLength(bounds.start_node) - bounds.start_offset);
     }
 
-    // Step 9: "For each node of nodesToRemove, in tree order: remove node."
+    // Step 10: "For each node of nodesToRemove, in tree order: remove node."
     for (nodes_to_remove.items) |node| {
         const parent = DomTree.parent(node) orelse continue;
         _ = try interfaces.Node.call_removeChild(parent, node);
     }
 
-    // Step 10: "If originalEndNode is a CharacterData node, then replace data
+    // Step 11: "If originalEndNode is a CharacterData node, then replace data
     // of originalEndNode with 0, originalEndOffset, and the empty string."
     if (isCharacterData(bounds.end_node)) {
         try deleteData(bounds.end_node, 0, bounds.end_offset);
     }
-
-    // Step 11: "Set start and end to (newNode, newOffset)."
-    internal.start_container = collapse_to.node;
-    internal.start_offset = collapse_to.offset;
-    internal.end_container = collapse_to.node;
-    internal.end_offset = collapse_to.offset;
 }
 
 /// The node after `node` in tree order, below `root`, that is not one of its
@@ -992,23 +1062,174 @@ fn nextSkippingChildren(node: *runtime.Instance, root: *runtime.Instance) ?*runt
     return null;
 }
 
-/// What "extract" hands back: the fragment, and - except when it returned
-/// early - the point step 21 sets the range's start and end to.
-const Extracted = struct {
+/// What a contents algorithm does with the nodes it reaches: DOM 5.5
+/// "extract" (move them out, cutting the boundary data) or "clone the
+/// contents" (copy them) - Blink's Range::ActionType.
+const ContentsAction = enum { extract, clone };
+
+/// How a level finds its common ancestor: the range itself from both
+/// boundary nodes; a subrange from the partially contained child that is
+/// one of its boundary nodes.
+const Nesting = enum { range, first_child, last_child };
+
+/// One level of "extract" or "clone the contents": the range itself, or the
+/// subrange of a partially contained child, whose own subrange is the next
+/// level. The spec's algorithms recurse here (extract steps 17.3-17.4 and
+/// 20.3-20.4; clone the contents steps 14.3-14.4 and 17.3-17.4), once per
+/// level between a boundary node and the common ancestor, so they hand the
+/// page the native stack's depth; the levels live on the heap instead
+/// (`processContents`), each doing its steps in the order the recursion
+/// does.
+const ContentsLevel = struct {
+    bounds: Bounds,
+    /// Step 1's fragment: what the level hands back.
     fragment: *runtime.Instance,
-    collapse_to: ?struct { node: *runtime.Instance, offset: u32 } = null,
+    split: Split,
+    /// The clone of the partially contained child whose subrange the level
+    /// below is processing: that level's fragment is appended to it (steps
+    /// 17.5 / 20.5; 14.4 / 17.4) when it returns.
+    clone: ?*runtime.Instance = null,
+    /// Where the level resumes: its first partially contained child (steps
+    /// 16-17 / 12-14), its contained children and last partially contained
+    /// child (18-20 / 15-17), or the return (21 / 18).
+    step: enum { first_child, contained, done } = .first_child,
 };
 
-/// DOM 5.5 "extract" a live range, given by its boundary points. The caller
-/// performs step 21 ("set range's start and end to (newNode, newOffset)")
-/// with what comes back; a sub-range's is dropped with the sub-range.
-fn extract(allocator: std.mem.Allocator, bounds: Bounds) anyerror!Extracted {
-    // Step 1: "Let fragment be a new DocumentFragment node whose node
-    // document is range's start node's node document."
+/// DOM 5.5 "extract" a live range (`action` .extract) or "clone the
+/// contents" of one (.clone), given by its boundary points. `range` is the
+/// live range itself, whose start and end extract's step 15 sets; null for
+/// a clone.
+///
+/// The spec's recursion over subranges, run over a heap stack of levels:
+/// a partially contained child's subrange is a level pushed where the steps
+/// recurse, and the level below it resumes, with that subrange's fragment,
+/// where the recursive call returns. Every DOM operation happens in the
+/// order the recursion performs it, and each level reads the tree where the
+/// recursion does, so the result is the steps' result. Blink's
+/// Range::ProcessContents keeps the ancestors of each boundary node in a
+/// vector instead of recursing (ProcessAncestorsAndTheirSiblings), and
+/// Gecko's nsRange::CutContents / CloneContents walk a RangeSubtreeIterator,
+/// rebuilding the clone ancestors from an explicit parent stack
+/// (CloneParentsBetween); both visit the levels bottom-up, while these are
+/// the spec's own steps.
+fn processContents(comptime action: ContentsAction, allocator: std.mem.Allocator, bounds: Bounds, range: ?*InternalState) anyerror!*runtime.Instance {
+    var levels: std.ArrayListUnmanaged(ContentsLevel) = .empty;
+    defer {
+        for (levels.items) |*level| level.split.deinit(allocator);
+        levels.deinit(allocator);
+    }
+    if (try enterContentsLevel(action, allocator, &levels, bounds, .range, range)) |fragment| return fragment;
+
+    while (true) {
+        const level = &levels.items[levels.items.len - 1];
+        switch (level.step) {
+            .first_child => {
+                level.step = .contained;
+                const first = level.split.first_partially_contained orelse continue;
+                const start_node = level.bounds.start_node;
+                const start_offset = level.bounds.start_offset;
+                if (isCharacterData(first)) {
+                    // Extract step 16 / clone step 12: firstPartiallyContainedChild
+                    // is originalStartNode. "Let clone be a clone of
+                    // originalStartNode", holding its data from
+                    // originalStartOffset to its end; append it to fragment
+                    // (and, extracting, replace that data with the empty
+                    // string).
+                    // Saturating: script an earlier level ran (a reaction
+                    // to a clone) may have shortened the data; replace data
+                    // then throws IndexSizeError, as the steps would.
+                    const count = getNodeLength(start_node) -| start_offset;
+                    const clone = try cloneWithSubstring(start_node, start_offset, count);
+                    _ = try interfaces.Node.call_appendChild(level.fragment, clone);
+                    if (action == .extract) try deleteData(start_node, start_offset, count);
+                    continue;
+                }
+                // Steps 17.1-17.2 / 14.1-14.2: "Let clone be a clone of
+                // firstPartiallyContainedChild. Append clone to fragment."
+                const clone = try interfaces.Node.call_cloneNode(first, webidl.Opt(bool).passed(false));
+                _ = try interfaces.Node.call_appendChild(level.fragment, clone);
+                level.clone = clone;
+                // Steps 17.3-17.4 / 14.3: the subrange from
+                // (originalStartNode, originalStartOffset) to
+                // (firstPartiallyContainedChild, its length), processed into
+                // a subfragment.
+                const sub: Bounds = .{ .start_node = start_node, .start_offset = start_offset, .end_node = first, .end_offset = getNodeLength(first) };
+                if (try enterContentsLevel(action, allocator, &levels, sub, .first_child, null)) |subfragment| {
+                    // Step 17.5 / 14.4: "Append subfragment to clone."
+                    _ = try interfaces.Node.call_appendChild(clone, subfragment);
+                }
+            },
+            .contained => {
+                level.step = .done;
+                const fragment = level.fragment;
+                // Extract step 18: "For each contained child of
+                // containedChildren: append contained child to fragment."
+                // Clone step 15: "let clone be a clone of contained child
+                // with subtree set to true; append clone to fragment."
+                for (level.split.contained_children.items) |child| {
+                    const node = if (action == .extract) child else try interfaces.Node.call_cloneNode(child, webidl.Opt(bool).passed(true));
+                    _ = try interfaces.Node.call_appendChild(fragment, node);
+                }
+                const last = level.split.last_partially_contained orelse continue;
+                const end_node = level.bounds.end_node;
+                const end_offset = level.bounds.end_offset;
+                if (isCharacterData(last)) {
+                    // Extract step 19 / clone step 16: lastPartiallyContainedChild
+                    // is originalEndNode. A clone holding its data up to
+                    // originalEndOffset, appended to fragment (and, extracting,
+                    // that data replaced with the empty string).
+                    const clone = try cloneWithSubstring(end_node, 0, end_offset);
+                    _ = try interfaces.Node.call_appendChild(fragment, clone);
+                    if (action == .extract) try deleteData(end_node, 0, end_offset);
+                    continue;
+                }
+                // Steps 20.1-20.2 / 17.1-17.2.
+                const clone = try interfaces.Node.call_cloneNode(last, webidl.Opt(bool).passed(false));
+                _ = try interfaces.Node.call_appendChild(fragment, clone);
+                level.clone = clone;
+                // Steps 20.3-20.4 / 17.3: the subrange from
+                // (lastPartiallyContainedChild, 0) to (originalEndNode,
+                // originalEndOffset).
+                const sub: Bounds = .{ .start_node = last, .start_offset = 0, .end_node = end_node, .end_offset = end_offset };
+                if (try enterContentsLevel(action, allocator, &levels, sub, .last_child, null)) |subfragment| {
+                    // Step 20.5 / 17.4.
+                    _ = try interfaces.Node.call_appendChild(clone, subfragment);
+                }
+            },
+            .done => {
+                // Step 21 / 18: "Return fragment" - to the level above, whose
+                // clone takes it (17.5 / 20.5; 14.4 / 17.4).
+                const fragment = level.fragment;
+                level.split.deinit(allocator);
+                levels.items.len -= 1;
+                if (levels.items.len == 0) return fragment;
+                const parent = &levels.items[levels.items.len - 1];
+                const clone = parent.clone orelse return error.InvalidStateError;
+                parent.clone = null;
+                _ = try interfaces.Node.call_appendChild(clone, fragment);
+            },
+        }
+    }
+}
+
+/// Steps 1-15 of "extract" (1-11 of "clone the contents") for one level.
+/// Answers the fragment when the steps return it early (steps 2 and 4);
+/// otherwise pushes the level onto `levels`, to resume at its first
+/// partially contained child.
+fn enterContentsLevel(
+    comptime action: ContentsAction,
+    allocator: std.mem.Allocator,
+    levels: *std.ArrayListUnmanaged(ContentsLevel),
+    bounds: Bounds,
+    comptime nesting: Nesting,
+    range: ?*InternalState,
+) anyerror!?*runtime.Instance {
+    // Step 1: "Let fragment be the result of creating a document fragment
+    // given range's start node's node document."
     const fragment = try fragmentFor(bounds.start_node);
 
     // Step 2: "If range is collapsed, then return fragment."
-    if (bounds.collapsed()) return .{ .fragment = fragment };
+    if (bounds.collapsed()) return fragment;
 
     // Step 3: originalStartNode, originalStartOffset, originalEndNode and
     // originalEndOffset are `bounds`.
@@ -1020,99 +1241,54 @@ fn extract(allocator: std.mem.Allocator, bounds: Bounds) anyerror!Extracted {
         // Steps 4.1-4.3: a clone holding the substring, appended to fragment.
         const clone = try cloneWithSubstring(bounds.start_node, bounds.start_offset, count);
         _ = try interfaces.Node.call_appendChild(fragment, clone);
-        // Step 4.4: "Replace data of originalStartNode with
+        // Extract step 4.4: "Replace data of originalStartNode with
         // originalStartOffset, originalEndOffset - originalStartOffset, and
         // the empty string." Its live-range steps collapse range.
-        try deleteData(bounds.start_node, bounds.start_offset, count);
-        // Step 4.5
-        return .{ .fragment = fragment };
+        if (action == .extract) try deleteData(bounds.start_node, bounds.start_offset, count);
+        // Step 4.5 / 4.4: "Return fragment."
+        return fragment;
     }
 
-    // Steps 5-12.
-    var split = try Split.of(allocator, bounds);
-    defer split.deinit(allocator);
+    // Step 5: the common ancestor. A subrange's is the partially contained
+    // child it was made for, unless script has moved the path since; then
+    // there is no such subrange to process, and the steps' "get the common
+    // ancestor" would walk off a root (Gecko's CutContents throws when a
+    // mutation invalidates its iterator, ValidateCurrentNode).
+    const meeting = switch (nesting) {
+        .range => Meeting.of(bounds.start_node, bounds.end_node),
+        .first_child => Meeting.nested(bounds, .end),
+        .last_child => Meeting.nested(bounds, .start),
+    } orelse return error.InvalidStateError;
 
-    // Steps 13-15: newNode and newOffset.
-    const collapse_to = collapsePoint(bounds);
+    // Steps 6-11.
+    var split = try Split.of(allocator, bounds, meeting);
+    errdefer split.deinit(allocator);
 
-    if (split.first_partially_contained) |first| {
-        if (isCharacterData(first)) {
-            // Step 16: firstPartiallyContainedChild is originalStartNode.
-            // "Let clone be a clone of originalStartNode", holding the data
-            // from originalStartOffset to its end; append it to fragment,
-            // then replace that data with the empty string.
-            const count = getNodeLength(bounds.start_node) - bounds.start_offset;
-            const clone = try cloneWithSubstring(bounds.start_node, bounds.start_offset, count);
-            _ = try interfaces.Node.call_appendChild(fragment, clone);
-            try deleteData(bounds.start_node, bounds.start_offset, count);
-        } else {
-            // Step 17.1-17.2: "Let clone be a clone of
-            // firstPartiallyContainedChild. Append clone to fragment."
-            const clone = try interfaces.Node.call_cloneNode(first, webidl.Opt(bool).passed(false));
-            _ = try interfaces.Node.call_appendChild(fragment, clone);
-            // Steps 17.3-17.5: extract the subrange from (originalStartNode,
-            // originalStartOffset) to (firstPartiallyContainedChild, its
-            // length), and append that subfragment to clone.
-            const sub = try extract(allocator, .{
-                .start_node = bounds.start_node,
-                .start_offset = bounds.start_offset,
-                .end_node = first,
-                .end_offset = getNodeLength(first),
-            });
-            _ = try interfaces.Node.call_appendChild(clone, sub.fragment);
+    // Extract steps 12-15: "Set range's start and end to (newNode,
+    // newOffset)", before anything moves. Only the range itself: a
+    // subrange is a range nothing else can reach, and its own steps read its
+    // boundary points (step 3) before they set them.
+    if (action == .extract) {
+        if (range) |internal| {
+            const point = collapsePoint(bounds, meeting);
+            internal.start_container = point.node;
+            internal.start_offset = point.offset;
+            internal.end_container = point.node;
+            internal.end_offset = point.offset;
         }
     }
 
-    // Step 18: "For each contained child of containedChildren: append
-    // contained child to fragment."
-    for (split.contained_children.items) |child| {
-        _ = try interfaces.Node.call_appendChild(fragment, child);
-    }
-
-    if (split.last_partially_contained) |last| {
-        if (isCharacterData(last)) {
-            // Step 19: lastPartiallyContainedChild is originalEndNode. A clone
-            // holding its data up to originalEndOffset, appended to fragment;
-            // then that data replaced with the empty string.
-            const clone = try cloneWithSubstring(bounds.end_node, 0, bounds.end_offset);
-            _ = try interfaces.Node.call_appendChild(fragment, clone);
-            try deleteData(bounds.end_node, 0, bounds.end_offset);
-        } else {
-            // Steps 20.1-20.2
-            const clone = try interfaces.Node.call_cloneNode(last, webidl.Opt(bool).passed(false));
-            _ = try interfaces.Node.call_appendChild(fragment, clone);
-            // Steps 20.3-20.5: the subrange from (lastPartiallyContainedChild,
-            // 0) to (originalEndNode, originalEndOffset), extracted into
-            // clone.
-            const sub = try extract(allocator, .{
-                .start_node = last,
-                .start_offset = 0,
-                .end_node = bounds.end_node,
-                .end_offset = bounds.end_offset,
-            });
-            _ = try interfaces.Node.call_appendChild(clone, sub.fragment);
-        }
-    }
-
-    // Steps 21-22: the caller sets range's start and end; return fragment.
-    return .{ .fragment = fragment, .collapse_to = .{ .node = collapse_to.node, .offset = collapse_to.offset } };
+    try levels.append(allocator, .{ .bounds = bounds, .fragment = fragment, .split = split });
+    return null;
 }
 
-/// Extract `instance` and perform extract's step 21 on it.
+/// Extract `instance`: DOM 5.5 "extract" a live range.
 fn extractThis(instance: *runtime.Instance, internal: *InternalState) anyerror!*runtime.Instance {
     const before = selectedBoundaries(internal);
     defer notifySelection(instance, internal, before);
     defer keepContainers(instance, internal);
     const bounds = Bounds.of(internal) orelse return error.InvalidStateError;
-    const extracted = try extract(instance.ctx.allocator, bounds);
-    // Step 21: "Set range's start and end to (newNode, newOffset)."
-    if (extracted.collapse_to) |point| {
-        internal.start_container = point.node;
-        internal.start_offset = point.offset;
-        internal.end_container = point.node;
-        internal.end_offset = point.offset;
-    }
-    return extracted.fragment;
+    return processContents(.extract, instance.ctx.allocator, bounds, internal);
 }
 
 /// DOM 5.5: "The extractContents() method steps are to return the result of
@@ -1122,89 +1298,12 @@ pub fn call_extractContents(instance: *runtime.Instance) anyerror!*runtime.Insta
     return extractThis(instance, internal);
 }
 
-/// DOM 5.5 "clone the contents" of a live range, given by its boundary
-/// points.
-fn cloneTheContents(allocator: std.mem.Allocator, bounds: Bounds) anyerror!*runtime.Instance {
-    // Step 1: "Let fragment be a new DocumentFragment node whose node
-    // document is range's start node's node document."
-    const fragment = try fragmentFor(bounds.start_node);
-
-    // Step 2: "If range is collapsed, then return fragment."
-    if (bounds.collapsed()) return fragment;
-
-    // Step 4: "If originalStartNode is originalEndNode and it is a
-    // CharacterData node": a clone holding the substring between the offsets,
-    // appended to fragment.
-    if (bounds.start_node == bounds.end_node and isCharacterData(bounds.start_node)) {
-        const clone = try cloneWithSubstring(bounds.start_node, bounds.start_offset, bounds.end_offset - bounds.start_offset);
-        _ = try interfaces.Node.call_appendChild(fragment, clone);
-        return fragment;
-    }
-
-    // Steps 5-12.
-    var split = try Split.of(allocator, bounds);
-    defer split.deinit(allocator);
-
-    if (split.first_partially_contained) |first| {
-        if (isCharacterData(first)) {
-            // Step 13: a clone of originalStartNode holding its data from
-            // originalStartOffset to its end.
-            const clone = try cloneWithSubstring(bounds.start_node, bounds.start_offset, getNodeLength(bounds.start_node) - bounds.start_offset);
-            _ = try interfaces.Node.call_appendChild(fragment, clone);
-        } else {
-            // Step 14: a clone of firstPartiallyContainedChild, holding the
-            // cloned contents of the subrange from the start to its end.
-            const clone = try interfaces.Node.call_cloneNode(first, webidl.Opt(bool).passed(false));
-            _ = try interfaces.Node.call_appendChild(fragment, clone);
-            const sub = try cloneTheContents(allocator, .{
-                .start_node = bounds.start_node,
-                .start_offset = bounds.start_offset,
-                .end_node = first,
-                .end_offset = getNodeLength(first),
-            });
-            _ = try interfaces.Node.call_appendChild(clone, sub);
-        }
-    }
-
-    // Step 15: "For each contained child of containedChildren: let clone be a
-    // clone of contained child with subtree set to true; append clone to
-    // fragment."
-    for (split.contained_children.items) |child| {
-        const clone = try interfaces.Node.call_cloneNode(child, webidl.Opt(bool).passed(true));
-        _ = try interfaces.Node.call_appendChild(fragment, clone);
-    }
-
-    if (split.last_partially_contained) |last| {
-        if (isCharacterData(last)) {
-            // Step 16: a clone of originalEndNode holding its data up to
-            // originalEndOffset.
-            const clone = try cloneWithSubstring(bounds.end_node, 0, bounds.end_offset);
-            _ = try interfaces.Node.call_appendChild(fragment, clone);
-        } else {
-            // Step 17: a clone of lastPartiallyContainedChild, holding the
-            // cloned contents of the subrange from its start to the end.
-            const clone = try interfaces.Node.call_cloneNode(last, webidl.Opt(bool).passed(false));
-            _ = try interfaces.Node.call_appendChild(fragment, clone);
-            const sub = try cloneTheContents(allocator, .{
-                .start_node = last,
-                .start_offset = 0,
-                .end_node = bounds.end_node,
-                .end_offset = bounds.end_offset,
-            });
-            _ = try interfaces.Node.call_appendChild(clone, sub);
-        }
-    }
-
-    // Step 18: "Return fragment."
-    return fragment;
-}
-
 /// DOM 5.5: "The cloneContents() method steps are to return the result of
 /// cloning the contents of this."
 pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const bounds = Bounds.of(internal) orelse return error.InvalidStateError;
-    return cloneTheContents(instance.ctx.allocator, bounds);
+    return processContents(.clone, instance.ctx.allocator, bounds, null);
 }
 
 /// DOM 5.5 "insert" a node into a live range; insertNode(node)'s steps.
@@ -1297,14 +1396,16 @@ pub fn call_surroundContents(instance: *runtime.Instance, newParent: *runtime.In
     // Step 1: "If a non-Text node is partially contained in this, then throw
     // an "InvalidStateError" DOMException." The partially contained nodes
     // are the inclusive ancestors of either boundary node that are not
-    // inclusive ancestors of the other.
-    for ([_][2]*runtime.Instance{ .{ bounds.start_node, bounds.end_node }, .{ bounds.end_node, bounds.start_node } }) |pair| {
-        var node: ?*runtime.Instance = pair[0];
-        while (node) |n| : (node = DomTree.parent(n)) {
-            if (isInclusiveAncestor(n, pair[1])) break;
+    // inclusive ancestors of the other: each boundary node's path up to, and
+    // including, the common ancestor's child on it.
+    const meeting = Meeting.of(bounds.start_node, bounds.end_node) orelse return error.InvalidStateError;
+    for ([_]struct { *runtime.Instance, ?*runtime.Instance }{ .{ bounds.start_node, meeting.start_child }, .{ bounds.end_node, meeting.end_child } }) |side| {
+        const top = side[1] orelse continue;
+        var node = side[0];
+        while (true) : (node = DomTree.parent(node) orelse return error.InvalidStateError) {
             // CDATASection implements Text too (the interface, not just type 3).
-            const node_type = try interfaces.Node.get_nodeType(n);
-            if (node_type != interfaces.Node.get_TEXT_NODE() and node_type != interfaces.Node.get_CDATA_SECTION_NODE()) return error.InvalidStateError;
+            if (!isText(node)) return error.InvalidStateError;
+            if (node == top) break;
         }
     }
 
@@ -1615,17 +1716,21 @@ fn unwrapContextualFragment(fragment: *runtime.Instance) !void {
     }
 }
 
-/// DOM §5.7 - Range stringifier (toString)
-/// Returns the text content of the range.
+/// DOM 5.5 - the stringifier steps (Range.toString())
+/// Returns the data of the range's Text nodes.
 ///
 /// Offsets are code units (DOM 4.10): the boundary pieces are CharacterData's
 /// substring data, and every piece is concatenated as code units - a pair
 /// split across two Text nodes is one pair in the result (infra.wtf8).
+///
+/// "A Text node" includes a CDATASection, which inherits Text - as Blink's
+/// Range::toString (kTextNode or kCdataSectionNode), Gecko's
+/// nsRange::ToString (GetAsText) and WebKit's Range::toString read it.
 pub fn toString(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]const u8 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    const start = internal.start_container orelse return error.InvalidStateError;
-    const end = internal.end_container orelse return error.InvalidStateError;
+    const bounds = Bounds.of(internal) orelse return error.InvalidStateError;
+    const start = bounds.start_node;
+    const end = bounds.end_node;
 
     // Step 1: "Let s be the empty string."
     var result: std.ArrayListUnmanaged(u8) = .empty;
@@ -1638,58 +1743,60 @@ pub fn toString(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]co
             defer piece.deinit(node.ctx.allocator);
             try @import("infra").wtf8.appendJoined(gpa, list, piece.asSlice());
         }
-    };
 
-    const start_type = interfaces.Node.get_nodeType(start) catch return error.InvalidStateError;
+        fn appendData(gpa: std.mem.Allocator, list: *std.ArrayListUnmanaged(u8), node: *runtime.Instance) !void {
+            var data = try interfaces.CharacterData.get_data(node);
+            defer data.deinit(node.ctx.allocator);
+            try @import("infra").wtf8.appendJoined(gpa, list, data.asSlice());
+        }
+    };
 
     // Step 2: "If this's start node is this's end node and it is a Text
     // node, then return the substring of that Text node's data beginning at
     // this's start offset and ending at this's end offset."
-    if (start == end and start_type == interfaces.Node.get_TEXT_NODE()) {
-        try Pieces.appendSubstring(allocator, &result, start, internal.start_offset, internal.end_offset -| internal.start_offset);
+    if (start == end and isText(start)) {
+        try Pieces.appendSubstring(allocator, &result, start, bounds.start_offset, bounds.end_offset -| bounds.start_offset);
         return result.toOwnedSlice(allocator);
     }
 
     // Step 3: "If this's start node is a Text node, then append the
     // substring of that node's data from this's start offset until the end
     // to s."
-    if (start_type == interfaces.Node.get_TEXT_NODE()) {
+    if (isText(start)) {
         const length = try interfaces.CharacterData.get_length(start);
-        try Pieces.appendSubstring(allocator, &result, start, internal.start_offset, length -| internal.start_offset);
+        try Pieces.appendSubstring(allocator, &result, start, bounds.start_offset, length -| bounds.start_offset);
     }
 
-    // Step 4: Append text content of all contained Text nodes
-    const commonAncestor = (try get_commonAncestorContainer(instance));
-    try appendContainedTextNodes(allocator, internal, commonAncestor, &result);
+    // Step 4: "Append the concatenation of the data of all Text nodes that
+    // are contained in this, in tree order, to s." They are the Text
+    // inclusive descendants of the contained nodes whose parent is not
+    // contained, each subtree walked in tree order on the heap's terms - a
+    // loop over parents and siblings, no native frame per level.
+    const meeting = Meeting.of(start, end) orelse return error.InvalidStateError;
+    var roots = try containedRoots(allocator, bounds, meeting);
+    defer roots.deinit(allocator);
+    for (roots.items) |root| {
+        var node: ?*runtime.Instance = root;
+        while (node) |n| {
+            if (isText(n)) try Pieces.appendData(allocator, &result, n);
+            node = (interfaces.Node.get_firstChild(n) catch null) orelse nextSkippingChildren(n, root);
+        }
+    }
 
     // Step 5: "If this's end node is a Text node, then append the substring
     // of that node's data from its start until this's end offset to s."
-    const end_type = interfaces.Node.get_nodeType(end) catch return error.InvalidStateError;
-    if (end_type == interfaces.Node.get_TEXT_NODE() and end != start) {
-        try Pieces.appendSubstring(allocator, &result, end, 0, internal.end_offset);
+    if (isText(end)) {
+        try Pieces.appendSubstring(allocator, &result, end, 0, bounds.end_offset);
     }
 
     // Step 6: "Return s."
     return result.toOwnedSlice(allocator);
 }
 
-/// Helper for toString: Recursively append contained Text node data
-fn appendContainedTextNodes(allocator: std.mem.Allocator, internal: *InternalState, node: *runtime.Instance, result: *std.ArrayListUnmanaged(u8)) !void {
-    // If this node is contained and is a Text node, append its data
-    const node_type = interfaces.Node.get_nodeType(node) catch return;
-    if (isNodeContained(internal, node) and node_type == interfaces.Node.get_TEXT_NODE()) {
-        var data = try interfaces.CharacterData.get_data(node);
-        defer data.deinit(node.ctx.allocator);
-        try @import("infra").wtf8.appendJoined(allocator, result, data.asSlice());
-        return;
-    }
-
-    // Recursively process children in tree order
-    var child = interfaces.Node.get_firstChild(node) catch null;
-    while (child) |c| {
-        try appendContainedTextNodes(allocator, internal, c, result);
-        child = interfaces.Node.get_nextSibling(c) catch null;
-    }
+/// Is `node` a Text node - an exclusive Text node or a CDATASection?
+fn isText(node: *runtime.Instance) bool {
+    const node_type = interfaces.Node.get_nodeType(node) catch return false;
+    return node_type == interfaces.Node.get_TEXT_NODE() or node_type == interfaces.Node.get_CDATA_SECTION_NODE();
 }
 
 // =============================================================================

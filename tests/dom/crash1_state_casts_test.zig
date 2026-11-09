@@ -181,3 +181,19 @@ test "dom.event_dispatch: a div is no Event - no event state, its state unread" 
         }
     }.check);
 }
+
+// webidl.utils.InternalStateAccessor.get, the accessor 23 impls read their
+// state through, is brand-checked itself (lane crash1 batch 3): Attr, one of
+// them, through its dom.attr_nodes hooks.
+test "dom.attr_nodes (InternalStateAccessor.get): a div is no Attr - naming or detaching it reads no Attr state" {
+    var page: Page = undefined;
+    try page.open();
+    defer page.close();
+    const div = try page.div();
+    try withPoisonFor(interfaces.Attr.State, div, {}, struct {
+        fn check(_: void, el: *runtime.Instance) anyerror!void {
+            try testing.expectError(error.InvalidStateError, dom.attr_nodes.detach(el, "value"));
+            try testing.expectError(error.InvalidStateError, dom.attr_nodes.name(el, null, null, "id"));
+        }
+    }.check);
+}

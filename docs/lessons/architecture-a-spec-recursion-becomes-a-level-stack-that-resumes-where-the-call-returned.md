@@ -1,0 +1,16 @@
+# Architecture: A spec recursion becomes a level stack that resumes where the call returned
+
+**Date**: 2026-11-08
+**Lesson**: When a spec algorithm recurses into a smaller instance of itself (DOM's "extract" and "clone the contents" on a partially contained child's subrange), keep each level's state on a heap stack with a resume point at every recursive call - and answer each level's tree questions from where the two boundary paths meet, so a deep chain costs O(depth) once, not a depth walk per parent per level.
+
+**Why**: The recursion hands a page the native stack's depth: a range from a 30,000-deep leaf to its root recursed 30,000 times and overflowed the stack (9,992 frames in crash1 batch 2's crash report). Rewriting the algorithm as "bottom-up like Blink" changes the order of its DOM operations (moves, character data replacements, clones), which script can observe through an iframe's unload or a custom element reaction. A level stack that resumes exactly where the call returned keeps every operation in the recursion's order.
+
+**What Happened**: Range.zig's `extract` and `cloneTheContents` recursed per level; `deleteContents` and the stringifier walked the subtree asking "contained?" and "partially contained?" of each node, each an O(depth) boundary comparison, and toString recursed per level too. Lane crash1 batch 3 replaced them:
+- `processContents(action, ...)` runs extract (action .extract) and clone the contents (.clone) over `ContentsLevel`s, each resuming at its first partially contained child, its contained children and last child, or its return; a subrange's fragment is appended to its parent level's clone when the level pops (steps 17.5 / 20.5).
+- `Meeting` finds the common ancestor and the common ancestor's child on each boundary's path in O(depth) - once for the range, and for a subrange by climbing from the deeper boundary to the partially contained child it was made for. The partially contained children are those two; the contained children are the run strictly between them (or past the start offset / before the end offset where a boundary node is the common ancestor). The subrange's own steps 12-15 (setting a range nothing can reach) are skipped.
+- deleteContents and toString take the contained nodes whose parent is not contained from the same two paths (`containedRoots`).
+- The proof is `tests/dom/crash1_range_differential_test.zig`: 600 random ranges over random trees, Range on one copy and a literal transcription of DOM 5.5 (its own boundary point comparison, recursion over subranges) on the other; documents, fragments, strings and boundary points must agree. It passes on the old recursive code too, which validates the transcription.
+
+**Fix**: Recursion over a spec's own subproblem -> a heap stack of levels with an explicit resume step per recursive call, each level reading the live tree where the recursion did; replace per-node ancestor questions with what the boundary paths' meeting point already answers; prove it against a literal transcription on random inputs.
+
+**Takeaway**: **Keep the recursion's order and drop only its frames: a level stack that resumes where each call returned is the spec's algorithm, and a randomized comparison with a literal transcription is the proof.**
