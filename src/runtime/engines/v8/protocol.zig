@@ -1096,6 +1096,10 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   mark-compact, which brackets the atomic pause (v8_wrapper.cpp
 ///   GCPauses); 0 with no isolate current. The wrapper redesign's baseline
 ///   (tmp/redesign/wrapper-redesign-design.md section 7, P0);
+/// - `minor_gc_count`: the current isolate's young-generation collections
+///   (scavenges and minor mark-sweeps) since it was made, cumulative - where
+///   V8 may drop an unmodified node wrapper (design 4.11, P8); 0 with no
+///   isolate current;
 /// - `globals_created`: Globals made through the wrapper's tracked path,
 ///   cumulative - 0 unless v8_wrapper.cpp is built with
 ///   -DCRANE_TRACK_GLOBALS=1, as gc_bench's is;
@@ -1134,6 +1138,7 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "full_gc_count", .value = @intCast(full_gcs) },
         .{ .name = "full_gc_pause_max_us", .value = @intCast(full_gc_max_us) },
         .{ .name = "full_gc_pause_p95_us", .value = @intCast(full_gc_p95_us) },
+        .{ .name = "minor_gc_count", .value = @intCast(ffi.v8_Debug_MinorGCCount(ffi.v8_Isolate_GetCurrent())) },
         .{ .name = "globals_created", .value = ffi.v8_Debug_CreatedGlobals() },
         // v8_wrapper.cpp's g_obj_src slots, in its order.
         .{ .name = "object_globals_from.FunctionCallbackInfo_This", .value = ffi.v8_Debug_ObjSrc(0) },

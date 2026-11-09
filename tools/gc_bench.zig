@@ -645,6 +645,9 @@ fn reportBench(bench: *const options.Bench, samples: []const Sample) void {
     if (last.counter("full_gc_count")) |count| {
         std.debug.print("  full collections: {d} during the run ({d} since the agent began)\n", .{ count - (first.counter("full_gc_count") orelse 0), count });
     } else std.debug.print("  full collections: not measured (the engine reports no full_gc_count)\n", .{});
+    if (last.counter("minor_gc_count")) |count| {
+        std.debug.print("  minor collections: {d} during the run ({d} since the agent began)\n", .{ count - (first.counter("minor_gc_count") orelse 0), count });
+    } else std.debug.print("  minor collections: not measured (the engine reports no minor_gc_count)\n", .{});
     if (last.counter("full_gc_pause_max_us")) |max| {
         std.debug.print("  full-collection pause, over the agent's life: max {d} us, p95 {d} us (of its last 1,024)\n", .{ max, last.counter("full_gc_pause_p95_us") orelse 0 });
     } else std.debug.print("  full-collection pause: not measured (the engine reports no full_gc_pause_max_us)\n", .{});

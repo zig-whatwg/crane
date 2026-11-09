@@ -992,6 +992,10 @@ pub extern fn v8_Isolate_GetHeapUsage(
 /// being the GC prologue to the GC epilogue (v8_wrapper.cpp GCPauses). All 0
 /// for a null isolate or one the adapter did not make. In every build.
 pub extern fn v8_Debug_FullGCPauses(isolate: ?*Isolate, count: *u64, max_us: *u64, p95_us: *u64) void;
+/// `isolate`'s young-generation collections so far - scavenges and minor
+/// mark-sweeps, counted at their prologue (v8_wrapper.cpp GCPauses::
+/// minor_count). 0 for a null isolate or one the adapter did not make.
+pub extern fn v8_Debug_MinorGCCount(isolate: ?*Isolate) u64;
 /// Bytes of V8's global handle table in use - every live `Global<T>`, counted
 /// by V8 and updated as each is created or reset. In every build: the measure
 /// for a test asserting that an operation leaves no handle behind.
@@ -2830,6 +2834,22 @@ pub extern fn v8_test_Isolate_CollectWithoutDrain(isolate: *Isolate) void;
 
 /// tests/v8: whether a node wrappers' drain task is posted and has not run.
 pub extern fn v8_test_NodeWrappers_DrainPosted(isolate: *Isolate) bool;
+
+/// tests/v8: the node wrappers V8 dropped in `isolate`'s young-generation
+/// collections so far (the EmbedderRootsHandler's ResetRoot, design 4.11).
+pub extern fn v8_test_NodeWrappers_Dropped(isolate: *Isolate) u64;
+
+/// tests/v8: at least `n` young-generation collections of `isolate`
+/// (entered), by filling its young generation with unreachable arrays.
+pub extern fn v8_test_Isolate_MinorGC(isolate: *Isolate, n: u32) void;
+
+/// tests/v8: whether V8 drops in a scavenge an unreachable object made from
+/// `tpl`'s instance template - with `prototype` set as its prototype when
+/// given, a private property when `add_private`, and script's `apply(object)`
+/// when given (then the job's end: ClearKeptObjects) - Wrapped with a
+/// C++-heap object and held by a droppable TracedReference only. 1 dropped,
+/// 0 kept, -1 inconclusive.
+pub extern fn v8_test_NodeTemplateWrapperDroppable(isolate: *Isolate, context: *Context, tpl: *FunctionTemplate, prototype: ?*Object, add_private: bool, apply: ?*Value) c_int;
 
 /// tests/v8: drain tasks posted from now on count their runs and their drops
 /// (destroyed without running) in the caller's two counters.
