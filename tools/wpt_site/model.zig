@@ -337,7 +337,31 @@ const exemption_keys = [_][]const u8{
     "chrome.result",  "chrome.intent",
     "firefox.result", "firefox.intent",
     "safari.result",  "safari.intent",
+    "kind",           "upstream",
+    "revisit",
 };
+const key_why = 0;
+const key_spec = 1;
+const key_kind = 8;
+const key_upstream = 9;
+const key_revisit = 10;
+/// The `result` key of each `Browser`, and its `intent` key (the next one).
+const key_result = [3]usize{ 2, 4, 6 };
+
+/// Which keys an entry of `kind` has: every one of them is required, and
+/// no other may appear. `kind` itself is optional for `intentional` (an
+/// entry written before kinds existed has none).
+fn keyOf(kind: ExemptionKind, ki: usize) bool {
+    return switch (kind) {
+        .intentional => ki <= 7 or ki == key_kind,
+        .test_bug => switch (ki) {
+            key_why, key_kind, key_upstream, key_revisit => true,
+            else => for (key_result) |r| {
+                if (ki == r) break true;
+            } else false,
+        },
+    };
+}
 
 fn isHttpUrl(v: []const u8) bool {
     const rest = if (std.mem.startsWith(u8, v, "https://"))
@@ -370,6 +394,37 @@ fn isWptFyiResult(v: []const u8) bool {
     return digitsAt(v, &i);
 }
 
+/// A web-platform-tests issue or pull request:
+/// "https://github.com/web-platform-tests/wpt/issues/<n>" or ".../pull/<n>".
+fn isWptIssueUrl(v: []const u8) bool {
+    const base = "https://github.com/web-platform-tests/wpt/";
+    if (!std.mem.startsWith(u8, v, base)) return false;
+    var rest = v[base.len..];
+    if (std.mem.startsWith(u8, rest, "issues/")) {
+        rest = rest["issues/".len..];
+    } else if (std.mem.startsWith(u8, rest, "pull/")) {
+        rest = rest["pull/".len..];
+    } else return false;
+    var i: usize = 0;
+    return digitsAt(rest, &i) and i == rest.len;
+}
+
+const revisit_prefix = "when ";
+const revisit_suffix = " is resolved";
+
+/// The "<passes>/<total>" of a wpt.fyi result already checked by
+/// `isWptFyiResult`.
+fn resultCounts(v: []const u8) []const u8 {
+    const colon = std.mem.indexOfScalar(u8, v, ':').?;
+    var i = colon + 1;
+    while (v[i] == ' ') i += 1;
+    const start = i;
+    _ = digitsAt(v, &i);
+    i += 1; // '/'
+    _ = digitsAt(v, &i);
+    return v[start..i];
+}
+
 fn invalid(diag: *ExemptionDiag, line: usize, comptime fmt: []const u8, args: anytype) error{InvalidExemption} {
     diag.line = line;
     diag.message = std.fmt.bufPrint(&diag.buf, fmt, args) catch diag.buf[0..];
@@ -380,20 +435,59 @@ const PendingExemption = struct {
     path: []const u8,
     line: usize,
     values: [exemption_keys.len]?[]const u8 = @splat(null),
+    lines: [exemption_keys.len]usize = @splat(0),
 };
 
 fn finishExemption(p: PendingExemption, diag: *ExemptionDiag) error{InvalidExemption}!Exemption {
-    for (p.values, exemption_keys) |v, k| {
-        if (v == null) return invalid(diag, p.line, "[{s}]: missing \"{s}\" - an exemption needs the spec and every browser's evidence", .{ p.path, k });
-    }
     const v = p.values;
-    return .{
-        .path = p.path,
-        .why = v[0].?,
-        .spec = v[1].?,
-        .result = .{ v[2].?, v[4].?, v[6].? },
-        .intent = .{ v[3].?, v[5].?, v[7].? },
-    };
+    // No kind: intentional, the one kind there was before the user's
+    // 2026-11-08 ruling added the second - every older entry keeps its meaning.
+    const kind: ExemptionKind = if (v[key_kind]) |k|
+        (if (std.mem.eql(u8, k, "test-bug")) .test_bug else .intentional)
+    else
+        .intentional;
+    const article = if (kind == .intentional) "an" else "a";
+    // A key of the other kind: the entry mixes them (or names the wrong kind).
+    for (v, exemption_keys, 0..) |value, k, ki| {
+        if (value != null and !keyOf(kind, ki))
+            return invalid(diag, p.lines[ki], "[{s}]: \"{s}\" is not a key of {s} {s} exemption", .{ p.path, k, article, kind.word() });
+    }
+    for (v, exemption_keys, 0..) |value, k, ki| {
+        if (ki == key_kind or !keyOf(kind, ki)) continue;
+        if (value == null) return switch (kind) {
+            .intentional => invalid(diag, p.line, "[{s}]: missing \"{s}\" - an exemption needs the spec and every browser's evidence", .{ p.path, k }),
+            .test_bug => invalid(diag, p.line, "[{s}]: missing \"{s}\" - a test-bug exemption needs the upstream issue, every browser's result and when to revisit", .{ p.path, k }),
+        };
+    }
+    switch (kind) {
+        .intentional => return .{
+            .path = p.path,
+            .why = v[key_why].?,
+            .spec = v[key_spec].?,
+            .result = .{ v[2].?, v[4].?, v[6].? },
+            .intent = .{ v[3].?, v[5].?, v[7].? },
+        },
+        .test_bug => {
+            const upstream = v[key_upstream].?;
+            const revisit = v[key_revisit].?;
+            const named = revisit[revisit_prefix.len .. revisit.len - revisit_suffix.len];
+            if (!std.mem.eql(u8, named, upstream))
+                return invalid(diag, p.lines[key_revisit], "[{s}]: revisit must read \"when {s} is resolved\"", .{ p.path, upstream });
+            // "Fails IDENTICALLY in Chrome, Firefox and Safari": the same
+            // passes of the same total in each browser's run.
+            const counts = [3][]const u8{ resultCounts(v[2].?), resultCounts(v[4].?), resultCounts(v[6].?) };
+            if (!std.mem.eql(u8, counts[0], counts[1]) or !std.mem.eql(u8, counts[0], counts[2]))
+                return invalid(diag, p.line, "[{s}]: a test-bug exemption needs the same result in all three browsers (Chrome {s}, Firefox {s}, Safari {s})", .{ p.path, counts[0], counts[1], counts[2] });
+            return .{
+                .path = p.path,
+                .kind = .test_bug,
+                .why = v[key_why].?,
+                .result = .{ v[2].?, v[4].?, v[6].? },
+                .upstream = upstream,
+                .revisit = revisit,
+            };
+        },
+    }
 }
 
 /// Parses tools/wpt_gate_exemptions.txt (its header documents the format;
@@ -434,7 +528,15 @@ pub fn parseExemptions(arena: std.mem.Allocator, text: []const u8, diag: *Exempt
             return invalid(diag, n, "[{s}]: {s} must read \"wpt.fyi run <id>: <passes>/<total>\"", .{ p.path, key });
         if ((std.mem.eql(u8, key, "spec") or std.mem.endsWith(u8, key, ".intent")) and !isHttpUrl(value))
             return invalid(diag, n, "[{s}]: {s} must be an http(s) URL", .{ p.path, key });
+        if (ki == key_kind and !std.mem.eql(u8, value, "intentional") and !std.mem.eql(u8, value, "test-bug"))
+            return invalid(diag, n, "[{s}]: kind must be intentional or test-bug, not \"{s}\"", .{ p.path, value });
+        if (ki == key_upstream and !isWptIssueUrl(value))
+            return invalid(diag, n, "[{s}]: upstream must be a web-platform-tests issue or pull request (https://github.com/web-platform-tests/wpt/issues/<n> or /pull/<n>)", .{p.path});
+        if (ki == key_revisit and !(value.len > revisit_prefix.len + revisit_suffix.len and
+            std.mem.startsWith(u8, value, revisit_prefix) and std.mem.endsWith(u8, value, revisit_suffix)))
+            return invalid(diag, n, "[{s}]: revisit must read \"when <upstream> is resolved\"", .{p.path});
         p.values[ki] = value;
+        p.lines[ki] = n;
     }
     if (cur) |p| try out.append(arena, try finishExemption(p, diag));
     return out.items;
@@ -455,19 +557,59 @@ pub const SweepHost = struct {
     runners: u32,
 };
 
-/// Parses tools/wpt_generation_hosts.txt (its header documents the format).
-/// Any invalid line fails the whole parse with `diag` set.
+/// Parses tools/wpt_generation_hosts.txt (its header documents the format):
+/// one `<label> <host> <os>-<arch> <runners>` line per run. Any invalid line
+/// fails the whole parse with `diag` set: a wrong host must stop the site,
+/// never print silently.
 pub fn parseSweepHosts(arena: std.mem.Allocator, text: []const u8, diag: *ExemptionDiag) error{ InvalidHosts, OutOfMemory }![]const SweepHost {
-    _ = arena;
-    _ = text;
-    _ = diag;
-    return &.{};
+    var out: std.ArrayList(SweepHost) = .empty;
+    var it = std.mem.splitScalar(u8, text, '\n');
+    var n: usize = 0;
+    while (it.next()) |raw| {
+        n += 1;
+        const line = std.mem.trim(u8, raw, " \t\r");
+        if (line.len == 0 or line[0] == '#') continue;
+        var fields: [5][]const u8 = undefined;
+        var count: usize = 0;
+        var words = std.mem.tokenizeAny(u8, line, " \t");
+        while (words.next()) |word| : (count += 1) {
+            if (count == fields.len) break;
+            fields[count] = word;
+        }
+        if (count != 4) return hostsInvalid(diag, n, "\"{s}\": expected <label> <host> <os>-<arch> <runners>", .{line});
+        const os = fields[2];
+        const dash = std.mem.indexOfScalar(u8, os, '-') orelse 0;
+        const known_os = std.mem.eql(u8, os[0..dash], "linux") or std.mem.eql(u8, os[0..dash], "macos");
+        const arch = os[@min(dash + 1, os.len)..];
+        const arch_ok = arch.len > 0 and for (arch) |c| {
+            if (!(std.ascii.isLower(c) or std.ascii.isDigit(c) or c == '_')) break false;
+        } else true;
+        if (dash == 0 or !known_os or !arch_ok)
+            return hostsInvalid(diag, n, "\"{s}\": the OS must read <os>-<arch>, <os> linux or macos (linux-x86_64, macos-arm64)", .{os});
+        const runners = std.fmt.parseInt(u32, fields[3], 10) catch 0;
+        if (runners == 0) return hostsInvalid(diag, n, "\"{s}\": runners must be a whole number above 0", .{fields[3]});
+        for (out.items) |h| if (std.mem.eql(u8, h.label, fields[0]))
+            return hostsInvalid(diag, n, "{s} is listed twice", .{fields[0]});
+        try out.append(arena, .{ .label = fields[0], .host = fields[1], .os = os, .runners = runners });
+    }
+    return out.items;
 }
 
-/// "linux-x86_64" as the site says it: "Linux x86-64".
+fn hostsInvalid(diag: *ExemptionDiag, line: usize, comptime fmt: []const u8, args: anytype) error{InvalidHosts} {
+    diag.line = line;
+    diag.message = std.fmt.bufPrint(&diag.buf, fmt, args) catch diag.buf[0..];
+    return error.InvalidHosts;
+}
+
+/// "linux-x86_64" as the site says it: "Linux x86-64"; "macos-arm64":
+/// "macOS arm64". The OS was checked by `parseSweepHosts`.
 pub fn osLabel(w: *std.Io.Writer, os: []const u8) std.Io.Writer.Error!void {
-    _ = w;
-    _ = os;
+    const dash = std.mem.indexOfScalar(u8, os, '-') orelse return w.writeAll(os);
+    const name = os[0..dash];
+    try w.writeAll(if (std.mem.eql(u8, name, "macos")) "macOS" else if (std.mem.eql(u8, name, "linux")) "Linux" else name);
+    try w.writeByte(' ');
+    const arch = os[dash + 1 ..];
+    try w.writeAll(if (std.mem.eql(u8, arch, "x86_64")) "x86-64" else arch);
 }
 
 /// Every exemption names a worklist file: an exemption for a file the gate

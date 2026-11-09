@@ -107,9 +107,12 @@ pub fn rangePairs(arena: Allocator, history_json: []const u8) ![]const RangePair
 }
 
 /// The branch a merge commit's subject names: "Merge lane/x (sha): ..." and
-/// git's own "Merge branch 'x'" / "Merge remote-tracking branch 'x'".
+/// git's own "Merge branch 'x'" / "Merge remote-tracking branch 'x'"; the
+/// integrator's "Merge lane x batch 5 (sha; ...): ..." and "Merge lane x
+/// (sha): ..." name the lane's branch, `lane/x`; "Merge main <sha> ..." is
+/// `main`. Never a name with a space in it: the history row's data-landed
+/// is a space-separated list.
 pub fn mergeName(arena: Allocator, subject: []const u8) Allocator.Error!?[]const u8 {
-    _ = arena;
     const prefix = "Merge ";
     if (!std.mem.startsWith(u8, subject, prefix)) return null;
     var rest = subject[prefix.len..];
@@ -122,6 +125,14 @@ pub fn mergeName(arena: Allocator, subject: []const u8) Allocator.Error!?[]const
     if (rest.len > 0 and rest[0] == '\'') {
         const end = std.mem.indexOfScalar(u8, rest[1..], '\'') orelse return null;
         return if (end == 0) null else rest[1 .. 1 + end];
+    }
+    // "lane <name> ...": the lane's branch is lane/<name> (the integrator's
+    // subjects since lane batches began, e.g. "Merge lane perf3 batch 5 (...)").
+    const lane = "lane ";
+    if (std.mem.startsWith(u8, rest, lane)) {
+        const name = rest[lane.len..];
+        const end = std.mem.indexOfAny(u8, name, " (:,;") orelse name.len;
+        if (end > 0) return try std.fmt.allocPrint(arena, "lane/{s}", .{name[0..end]});
     }
     const end = std.mem.indexOfAny(u8, rest, " (:") orelse rest.len;
     return if (end == 0) null else rest[0..end];
@@ -724,6 +735,17 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
             prev = g;
         }
     }
+    // Where each generation was swept: its largest run's line in
+    // tools/wpt_generation_hosts.txt. Invalid lines stop the site.
+    var local_hdiag: model.ExemptionDiag = .{};
+    const hosts = try model.parseSweepHosts(arena, in.hosts_text, in.hosts_diag orelse &local_hdiag);
+    for (generations) |*g| {
+        const src = g.mainSource() orelse continue;
+        for (hosts) |*h| if (std.mem.eql(u8, h.label, src.label)) {
+            g.swept = h;
+            break;
+        };
+    }
     const worklist = try parseWorklist(arena, in.worklist_text);
     const journals = try listJournals(arena, io, in.results);
 
@@ -876,6 +898,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         .site_url = in.site_url,
         .card_ref = card_ref,
         .exemptions = exemptions,
+        .hosts_listed = hosts.len > 0,
         .reference = ref_ptr,
         .both_crane = cmp.crane,
         .both_ref = cmp.ref,
@@ -981,14 +1004,15 @@ fn usage() noreturn {
     std.debug.print(
         \\usage: wpt_site [--state=<json>] [--history=<json>] [--worklist=<txt>] [--results=<dir>]
         \\                [--assets=<dir>] [--out=<dir>] [--wpt-root=<dir>] [--site-url=<url>]
-        \\                [--exemptions=<txt>] [--reference=<reference.json>|--no-reference] [--no-commit]
+        \\                [--exemptions=<txt>] [--hosts=<txt>] [--reference=<reference.json>|--no-reference] [--no-commit]
         \\       wpt_site import-reference --engine=<chrome|firefox|safari> --report=<wptreport.json>
         \\                --manifest=<MANIFEST.json> --worklist=<txt> --meta=<run.json> --out=<dir>
         \\
         \\Defaults are the repository's: tmp/wpt-progress-state.json, wpt-results/progress-history.json,
         \\tests/wpt_0_1_worklist.txt, wpt-results/, tools/wpt_site/assets/, wpt-results/site/, tests/wpt/,
         \\https://zig-whatwg.github.io/crane/ (the absolute URL the social tags name),
-        \\tools/wpt_gate_exemptions.txt, and the newest Chrome run under wpt-results/reference/.
+        \\tools/wpt_gate_exemptions.txt, tools/wpt_generation_hosts.txt, and the newest Chrome run under
+        \\wpt-results/reference/.
         \\When --out is a git worktree on the gh-pages branch and anything changed, the output is committed
         \\there ("results: generation <n>, Crane <sha>"). Nothing is ever pushed.
         \\import-reference joins another engine's wptreport to the worklist through the manifest and
@@ -1161,6 +1185,7 @@ pub fn main(init: std.process.Init) !void {
     var wpt_root: []const u8 = "tests/wpt";
     var site_url: []const u8 = default_site_url;
     var exemptions_path: []const u8 = "tools/wpt_gate_exemptions.txt";
+    var hosts_path: []const u8 = "tools/wpt_generation_hosts.txt";
     var reference_path: ?[]const u8 = null;
     var use_reference = true;
     var commit = true;
@@ -1183,7 +1208,7 @@ pub fn main(init: std.process.Init) !void {
         const eq = std.mem.indexOfScalar(u8, a, '=');
         const key = a[0 .. eq orelse a.len];
         const val = if (eq) |i| a[i + 1 ..] else "";
-        if (std.mem.eql(u8, key, "--no-commit")) commit = false else if (eq == null) usage() else if (std.mem.eql(u8, key, "--state")) state_path = val else if (std.mem.eql(u8, key, "--history")) history_path = val else if (std.mem.eql(u8, key, "--worklist")) worklist_path = val else if (std.mem.eql(u8, key, "--results")) results_path = val else if (std.mem.eql(u8, key, "--assets")) assets_path = val else if (std.mem.eql(u8, key, "--out")) out_path = val else if (std.mem.eql(u8, key, "--wpt-root")) wpt_root = val else if (std.mem.eql(u8, key, "--site-url")) site_url = val else if (std.mem.eql(u8, key, "--exemptions")) exemptions_path = val else usage();
+        if (std.mem.eql(u8, key, "--no-commit")) commit = false else if (eq == null) usage() else if (std.mem.eql(u8, key, "--state")) state_path = val else if (std.mem.eql(u8, key, "--history")) history_path = val else if (std.mem.eql(u8, key, "--worklist")) worklist_path = val else if (std.mem.eql(u8, key, "--results")) results_path = val else if (std.mem.eql(u8, key, "--assets")) assets_path = val else if (std.mem.eql(u8, key, "--out")) out_path = val else if (std.mem.eql(u8, key, "--wpt-root")) wpt_root = val else if (std.mem.eql(u8, key, "--site-url")) site_url = val else if (std.mem.eql(u8, key, "--exemptions")) exemptions_path = val else if (std.mem.eql(u8, key, "--hosts")) hosts_path = val else usage();
     }
 
     const cwd = Dir.cwd();
@@ -1191,6 +1216,7 @@ pub fn main(init: std.process.Init) !void {
     const history = try cwd.readFileAlloc(io, history_path, arena, .limited(1 << 31));
     const worklist = try cwd.readFileAlloc(io, worklist_path, arena, .limited(1 << 28));
     const exemptions = try cwd.readFileAlloc(io, exemptions_path, arena, .limited(1 << 24));
+    const hosts = try cwd.readFileAlloc(io, hosts_path, arena, .limited(1 << 24));
     var results = try cwd.openDir(io, results_path, .{ .iterate = true });
     defer results.close(io);
     var assets = try cwd.openDir(io, assets_path, .{ .iterate = true });
@@ -1225,8 +1251,11 @@ pub fn main(init: std.process.Init) !void {
     }
 
     var diag: model.ExemptionDiag = .{};
+    var hdiag: model.ExemptionDiag = .{};
     var rdiag: reference.Diag = .{};
     const summary = generate(init.gpa, io, .{
+        .hosts_text = hosts,
+        .hosts_diag = &hdiag,
         .reference_json = reference_json,
         .reference_diag = &rdiag,
         .exemptions_text = exemptions,
@@ -1250,6 +1279,10 @@ pub fn main(init: std.process.Init) !void {
         },
         error.InvalidReference => {
             std.debug.print("wpt-site: the reference run is invalid: {s}\n", .{rdiag.message()});
+            std.process.exit(1);
+        },
+        error.InvalidHosts => {
+            std.debug.print("wpt-site: {s}:{d}: {s}\n", .{ hosts_path, hdiag.line, hdiag.message });
             std.process.exit(1);
         },
         else => |err| return err,
@@ -2081,7 +2114,8 @@ test "site: a test-bug exemption is its own group, with its upstream issue, neve
 
     const index = try readOut(gpa, &f, "kinds/index.html");
     defer gpa.free(index);
-    try expectHas(index, "<div class=\"blk\"><dt>Blocking files</dt><dd>0</dd>");
+    // (A zero is not marked as blocking: no class.)
+    try expectHas(index, "<div><dt>Blocking files</dt><dd>0</dd>");
     // The conformance box counts both as exempt.
     try expectHas(index, "<dt><span class=\"key key-exempt\"></span>Exempt</dt><dd>2</dd>");
     // Two groups, each under its own heading, after the status and before the contents.
