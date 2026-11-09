@@ -3087,8 +3087,8 @@ void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
 // reaches it, V8 reclaims it in the scavenge and calls the isolate's
 // EmbedderRootsHandler::ResetRoot (TracedHandles::ProcessYoungObjects), on
 // the isolate's thread, inside the collection, with the C++ heap's GC and
-// allocation disallowed. Blink's design (Chromium 145.0.7608.0, 461c62b66d7c;
-// the young-generation contract unchanged since V8 13.1):
+// allocation disallowed. Blink's design, read at Chromium 131.0.6778.0 (the
+// release on V8 13.1) and 145.0.7608.0 (461c62b66d7c), the same in both:
 // - third_party/blink/renderer/platform/heap/thread_state.cc BlinkRootsHandler:
 //   ResetRoot unwraps the dying wrapper (ToAnyScriptWrappable: Object::Unwrap
 //   on the TracedReference itself) and clears the ScriptWrappable's inline
