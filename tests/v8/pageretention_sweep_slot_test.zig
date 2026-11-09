@@ -42,6 +42,7 @@ const v8 = @import("v8");
 const ffi = v8.ffi;
 const interfaces = @import("interfaces");
 const dom = @import("dom");
+const engine_mod = @import("engine");
 
 const WrapperCache = v8.WrapperCache;
 
@@ -181,8 +182,17 @@ fn sweepOnce(coordinator_allocator: std.mem.Allocator, expect_returned: bool) !b
         try realm.wrap(child);
     }
 
+    // Their wrappers are collected first, their releases waiting (a walk
+    // holds the agent's teardowns): the realm's end meets them as the
+    // cache's sweep met entries whose finalizer had not run, and frees the
+    // trees (refcount step 7a's net, node_wrappers.endRealm).
+    engine_mod.deferTeardowns(realm.data);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
     coordinator.beginContextCleanup();
     realm.sweep();
+    // The hold ends (the realm's cache, which named it, is gone).
+    v8.protocol_agents.teardownHoldsOf(test_isolate.?).?.count -= 1;
     defer for (seen.impostors[0..seen.impostor_count]) |impostor| runtime.Instance.deinit(impostor);
     try testing.expectEqual(@as(usize, tree_count), seen.impostor_count);
 
