@@ -64,11 +64,22 @@ pub fn hostDestroyed(shadow: *runtime.Instance) void {
 /// `shadow` was just attached to `host` (DOM "attach a shadow root", the
 /// step every shadow root - scripted or declarative - attaches through): its
 /// holds count in the host's chain from here on (the host-including chain of
-/// tmp/plans/refcount-design.md 1.4).
+/// tmp/plans/refcount-design.md 1.4), and it is connected exactly when its
+/// host is - "connected" is "its shadow-including root is a document".
+///
+/// The flag on the new root is the one fact the insert, remove and move
+/// steps' copy of it lacked: everything inserted into a connected shadow
+/// root, and every shadow tree of a host inserted into a document or
+/// removed from one, already took its host's (setConnectedRecursive). So
+/// `is_connected` is exact for every node, and those steps read it instead
+/// of walking to the root at each insert, as Blink and WebKit read their
+/// isConnected flag (Node::kIsConnectedFlag, which ShadowRoot::InsertedInto
+/// sets from the host; WebKit's IsConnected node flag) - lane crash1 batch 3.
 pub fn attached(host: *runtime.Instance, shadow: *runtime.Instance) void {
     const root = instance_bridge.getNodeBase(shadow) orelse return;
     const host_base = instance_bridge.getNodeBase(host) orelse return;
     refcount.hostAttached(root, host_base);
+    root.is_connected = host_base.is_connected;
 }
 
 /// An element's shadow root, including a closed root. The IDL shadowRoot

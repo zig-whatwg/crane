@@ -14,6 +14,8 @@
 //! const internal = Accessor.get(instance) orelse return error.InvalidStateError;
 //! ```
 //!
+//! `get` is brand-checked: another interface's object answers null.
+//!
 //! ### Pattern B - Optional State Access (returns null on error)
 //! ```zig
 //! const internal = Accessor.getOptional(instance);
@@ -46,20 +48,26 @@ const std = @import("std");
 /// @param InstanceT - The instance type (typically *runtime.Instance)
 pub fn InternalStateAccessor(comptime InternalT: type, comptime StateT: type, comptime InstanceT: type) type {
     return struct {
-        /// Get the internal state from an instance.
-        /// Returns null if instance state doesn't have an _internal field
-        /// or if _internal is null.
+        /// Get the internal state from an instance: its `own._internal`, or
+        /// null when the instance is not a `StateT` - another interface's
+        /// object, which the brand check (`instance.stateAs`) declines - when
+        /// `StateT`'s own level keeps no `_internal`, or when it is null.
         ///
-        /// This is the most common pattern - direct access to state.own._internal.
+        /// The brand check is the read `getState` already made first: it
+        /// fell back to a bare cast when the check failed, and so read
+        /// another type's State at this level's offset as a pointer - type
+        /// confusion, for any instance a hook can hand an impl
+        /// (docs/lessons/debugging-a-layout-change-that-crashes-a-type-it-
+        /// never-touched-look-for-an-unchecked-cast.md). Now it answers null
+        /// there; the path a real `StateT` takes is the same read (lane
+        /// crash1 batch 3). Measured, ReleaseSafe on server1: DOMTokenList's
+        /// length getter, one of this accessor's users, 168.6 ns a call with
+        /// the check and 167.6 without (medians of 5 x 5,000,000 calls) - inside
+        /// the 2% spread between rounds.
         pub fn get(instance: InstanceT) ?*InternalT {
-            const state = instance.getState(StateT);
-            const OwnType = @TypeOf(state.own);
-
-            // Check if _internal field exists
-            if (@hasField(OwnType, "_internal")) {
-                return state.own._internal;
-            }
-            return null;
+            if (!@hasField(@FieldType(StateT, "own"), "_internal")) return null;
+            const state = instance.stateAs(StateT) orelse return null;
+            return state.own._internal;
         }
 
         /// Get the internal state, returning an error if not found.
@@ -98,7 +106,8 @@ pub fn OptionalInternalStateAccessor(comptime InternalT: type, comptime Instance
         /// Get the internal state from an instance, checking field existence.
         /// Returns null if the state type doesn't have _internal or if it's null.
         pub fn get(comptime StateT: type, instance: InstanceT) ?*InternalT {
-            const state = instance.getState(StateT);
+            // Brand-checked, as InternalStateAccessor.get.
+            const state = instance.stateAs(StateT) orelse return null;
             const OwnType = @TypeOf(state.own);
 
             if (@hasField(OwnType, "_internal")) {
@@ -120,8 +129,7 @@ pub fn OptionalInternalStateAccessor(comptime InternalT: type, comptime Instance
 // Tests
 // =============================================================================
 
-test "InternalStateAccessor - basic get" {
-    // This is a compile-time test - we verify the type generates correctly
+test "InternalStateAccessor - get reads its own type's state and declines another's" {
     const TestInternal = struct {
         value: u32,
     };
@@ -135,18 +143,27 @@ test "InternalStateAccessor - basic get" {
     // Use a simple mock instance type for testing
     const MockInstance = struct {
         state: TestState,
-        pub fn getState(_: @This(), comptime _: type) TestState {
-            return TestState{
-                .own = .{ ._internal = null },
-            };
+        /// Whether this object is a TestState: what the brand check reads.
+        branded: bool,
+        pub fn getState(self: *@This(), comptime _: type) *TestState {
+            return &self.state;
+        }
+        pub fn stateAs(self: *@This(), comptime _: type) ?*TestState {
+            return if (self.branded) &self.state else null;
         }
     };
 
     const Accessor = InternalStateAccessor(TestInternal, TestState, *MockInstance);
 
-    // Verify the type has the expected functions
-    _ = Accessor.get;
-    _ = Accessor.getOrError;
+    var internal: TestInternal = .{ .value = 7 };
+    var own: MockInstance = .{ .state = .{ .own = .{ ._internal = &internal } }, .branded = true };
+    try std.testing.expectEqual(@as(?*TestInternal, &internal), Accessor.get(&own));
+    try std.testing.expectEqual(&internal, try Accessor.getOrError(&own));
+    // Another interface's object: `get` declines it through the brand check
+    // and never reads the bytes where this level's pointer would be.
+    var foreign: MockInstance = .{ .state = .{ .own = .{ ._internal = @ptrFromInt(0xaaaaaaaaaaaaaaa8) } }, .branded = false };
+    try std.testing.expectEqual(@as(?*TestInternal, null), Accessor.get(&foreign));
+    try std.testing.expectError(error.InvalidStateError, Accessor.getOrError(&foreign));
     _ = Accessor.set;
 }
 
