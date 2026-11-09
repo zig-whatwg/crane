@@ -679,9 +679,11 @@ WPT: the 17 type=file and 17 showPicker worklist files A/B.
 execCommand copy/cut/paste (src/html/editing/executor.zig:126, selection_ops.zig:302) through
 `platform.readClipboard` / `writeClipboard`, with the Async Clipboard API's permission and activation
 rules above; src/html/navigator/clipboard/root.zig's private ClipboardBackend and
-src/html/navigator/navigator.zig:69's field go. darwin: NSPasteboard (macOS) / UIPasteboard (iOS) on
-the main queue - iOS shows its own paste prompt; linux: the system clipboard when a display is present,
-kit/memory_clipboard otherwise; testing: kit/memory_clipboard per Browser.
+src/html/navigator/navigator.zig:69's field go. The platform side is built: darwin, linux and testing
+all answer with kit/memory_clipboard per Browser (darwin and linux since D2, the user 2026-11-09, as
+headless Chrome keeps an in-memory clipboard). Linking out to the OS - darwin's NSPasteboard (macOS) /
+UIPasteboard (iOS) on the main queue, where iOS shows its own paste prompt; linux's system clipboard
+when a display is present - is each adapter's later choice (the user, 2026-11-09 21:09 UTC).
 
 **Tests**: write then read round-trips through the testing platform; two Browsers' in-memory
 clipboards are separate; a read without permission or activation rejects as the spec says. WPT:

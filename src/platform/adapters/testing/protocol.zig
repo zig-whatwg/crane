@@ -5,9 +5,10 @@
 //!
 //! Step 0 of the platform protocol: the OS services are the same kit parts
 //! darwin and linux compose; of the test capabilities the in-memory
-//! clipboard (kit/memory_clipboard), the Zig image decoders
-//! (image_decoding.zig, decision 19) and the fonts (fonts.zig: kit/sfnt and
-//! fixed installed faces, decision 20) are here. The fake capture devices, the WAV
+//! clipboard (kit/memory_clipboard) and the image decoders
+//! (kit/image_decoding, decision 19) - both also darwin's and linux's since
+//! the user's rulings D1 and D2 (2026-11-09) - and the fonts (fonts.zig:
+//! kit/sfnt and fixed installed faces, decision 20) are here. The fake capture devices, the WAV
 //! and WebM decoders, the scripted permission policy (decision 9), the
 //! dialogs, the picker queue and the console sink move in with recipes step 7,
 //! with the control surface the WPT runner reaches as `platform.adapter`.
@@ -28,7 +29,7 @@ const VirtualClock = @import("virtual_clock.zig").VirtualClock;
 const SeededRandom = @import("seeded_random.zig").SeededRandom;
 const image_decoding = if (for (platform_options.platform_without) |capability| {
     if (std.mem.eql(u8, capability, "image_decoding")) break true;
-} else false) headless else @import("image_decoding.zig");
+} else false) headless else @import("kit_image_decoding");
 const layout = @import("layout.zig");
 const fonts = if (for (platform_options.platform_without) |capability| {
     if (std.mem.eql(u8, capability, "font_decoding")) break true;
@@ -111,7 +112,7 @@ pub const protocol = struct {
         // kit/memory_clipboard per Browser. Deviation: nothing leaves the
         // Browser and nothing another application copies arrives.
         c.clipboard = .emulated;
-        // Compiled-in decoders: PNG, BMP, GIF, JPEG and SVG.
+        // kit/image_decoding, compiled in: PNG, BMP, GIF, JPEG and SVG.
         c.image_decoding = .native;
         // kit/sfnt (decision 20): web fonts in Zig, and fixed default,
         // installed and system faces, so no answer depends on the machine.

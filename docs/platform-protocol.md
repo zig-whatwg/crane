@@ -35,16 +35,30 @@ src/platform/kit/                    Crane's reusable implementations, one modul
     sqlite/, leveldb/, memory_store/   storage engines
     crypto/     WebCrypto primitives: Zig std.crypto + mbedTLS
     headless/   every capability's "unsupported" answer, and the headless defaults
-    memory_clipboard/   a per-Browser in-memory clipboard
+    memory_clipboard/   a per-Browser in-memory clipboard (darwin, linux and testing; D2)
+    image_decoding/   built-in image decoders: PNG, BMP and GIF in Zig, JPEG and SVG through
+                image_codecs/ (pinned libjpeg-turbo, Expat + NanoSVG) - every built-in platform
+                runs it (D1)
     sfnt/       web fonts in Zig: Crane's sanitizer (OTS's checks) and reader for sfnt,
                 collections, WOFF and WOFF2 - every built-in platform runs it (decision 20)
-    inflate/    a zlib inflater (png.zig's image data, WOFF's tables)
+    inflate/    a zlib inflater (image_decoding/png.zig's image data, WOFF's tables)
 ```
 
 The kit is also every platform's static fallback: where a platform links a system library for a
 capability (section 10, the link plans), the kit's implementation is what it compiles instead when the
 system library is missing, does not do what Crane needs, or is not trusted - and a platform may carry
 both and choose at build time.
+
+**The adapter chooses, per capability, between built-in kit code and linking out to the OS** (the
+user, 2026-11-09 21:09 UTC: "our default platform for running wpt should get its own implementation
+of these things, similar to how we've done it for other platform specific needs for running wpt. The
+platform itself that is compiled in will decide if these features are built within the platform or
+dynamically link out to existing capabilities on the platform. For example, the clipboard too.").
+Crane's default platforms, darwin and linux - what Crane's own browser (the release console) and the
+production WPT runner compile in - therefore carry built-in implementations of the capabilities every
+browser ships: image decoding through kit/image_decoding (D1) and the clipboard through
+kit/memory_clipboard per Browser (D2), as the testing platform does. Linking one out to the OS
+(ImageIO, the system pasteboard) is that adapter's later choice, made in its link plan (section 10).
 
 - Consumers write `const platform = @import("platform");` and call `platform.op(...)`. Dispatch is
   static: each operation is a `pub inline fn` whose body calls the bound implementation's function of
@@ -187,7 +201,7 @@ the process (section 8).
 
 The network context (DNS cache, connections, TLS sessions, proxy, trust - today process-global:
 src/fetch/network/curl_backend.zig:46-55, connection_pool.zig:635, backend.zig:85), the profile's
-stores, the in-memory clipboard where the platform has no system clipboard, the testing platform's
+stores, the in-memory clipboard (every built-in platform's today: kit/memory_clipboard), the testing platform's
 per-Browser fake state, and the platform's observers (screen, network reachability, memory pressure)
 that report through the EventSink.
 
@@ -282,13 +296,13 @@ system state (defaults allowed), console output.
 | `windows` | native | native | native | every popup allowed; rects ignored |
 | `media_decoding` | unsupported until built (AVFoundation) | unsupported | native (WAV; WebM/Ogg) | canPlayType "" |
 | `font_decoding` | native (CoreText after kit/sfnt, decision 20) | native (kit/sfnt; fontconfig loaded at run time for installed faces) | native (kit/sfnt; fixed installed faces) | no web font loads (CSS Font Loading 2.2 step 5.2's failure); no face has metrics, so cap/rcap/ex/ch/ic take CSS Values 4's fallbacks; the system font keywords take CSS Fonts 4 2.7's initial values |
-| `image_decoding` | unsupported until built (ImageIO, decision 19) | unsupported until built (the system libpng, libjpeg-turbo, libwebp, libavif) | native (PNG, BMP, GIF; vendored JPEG and SVG) | every image is broken: "update the image data" fires error |
+| `image_decoding` | native: kit/image_decoding (PNG, BMP, GIF; vendored JPEG and SVG), built in (D1, the user 2026-11-09); ImageIO (decision 19) if the adapter links out later | native: kit/image_decoding, built in (D1); the system libpng, libjpeg-turbo, libwebp, libavif if the adapter links out later | native: kit/image_decoding | every image is broken: "update the image data" fires error |
 | `webcodecs`, `media_capabilities`, `encrypted_media` | unsupported | unsupported | unsupported | NotSupportedError |
 | `camera`, `microphone` | unsupported until built (AVFoundation) | unsupported | native (fake devices) | enumerateDevices() empty; getUserMedia NotFoundError |
 | `screen_capture` | unsupported | unsupported | unsupported | getDisplayMedia NotAllowedError |
 | `audio_output` | unsupported until built | unsupported | native (silent sink) | no output device |
 | `speech_synthesis`, `speech_recognition` | unsupported | unsupported | unsupported | no voices; recognition "service-not-allowed" |
-| `clipboard` | native (NSPasteboard / UIPasteboard, decision 8) | native with a display (X11/Wayland), emulated (in-memory) without | emulated (in-memory per Browser) | Clipboard API read/write reject NotAllowedError |
+| `clipboard` | emulated: kit/memory_clipboard per Browser, built in (D2, the user 2026-11-09), as headless Chrome's; native NSPasteboard / UIPasteboard (decision 8) if the adapter links out later | emulated: kit/memory_clipboard per Browser, built in (D2); native with a display (X11/Wayland) if the adapter links out later | emulated (in-memory per Browser) | Clipboard API read/write reject NotAllowedError |
 | `notifications` | unsupported until built (UserNotifications) | unsupported | native (recorded) | never shown; permission "denied" |
 | `push`, `background_sync`, `background_fetch` | unsupported | unsupported | unsupported | the API's no-service rejection |
 | `geolocation` | unsupported until built (CoreLocation) | unsupported | native (scripted) | POSITION_UNAVAILABLE |
@@ -601,8 +615,8 @@ or background use) the operation drops its Reply and Crane takes the spec's unsu
 | `pushMediaData` | media_decoding | `(decoder, bytes: Bytes, end_of_stream: bool, metadata: *MediaMetadata) MediaResult{ need_more, unsupported, decode_error, metadata, current_data }` - synchronous, as src/platform/media_backend.zig's push is today | - |
 | `mediaVideoSize` | media_decoding | `(decoder, seconds: f64, size: *VideoSize) bool` - the intrinsic size at a position, media_backend.zig's `video_size_at` (added in step 0: the contract omitted it) | false |
 | `closeMediaDecoder` | media_decoding | `(decoder) void` | - |
-| `imageMimeTypeSupported` | image_decoding | `(essence: Str) bool` - whether the adapter decodes this parsed, lowercase MIME essence. Pure, no allocation, I/O, state or cache; synchronous on any thread. HTML uses it to select a picture source before fetching. The query and decoder must agree; the testing adapter uses one table for both. | false |
-| `decodeImage` | image_decoding | `(allocator, mime: Str, bytes: Bytes, limits: ImageLimits) ImageError!DecodedImage` - one complete resource to `DecodedImage{ width, height, pixels, status, empty }`: RGBA8, straight alpha, rows top down, no colour management (decision 19), an animated image's default image; `pixels` OWNED. Once a decoder knows the dimensions, data that ends early or goes bad is not an error but a PARTIAL image (lane imgpart, as every browser treats it: load fires, the decoded part is drawn): the pixels decoded before that point, the rest transparent black, `status` `ImageDecodeStatus{ complete, truncated, corrupt }`, and `empty` true when the decode reached no pixel data at all (false when the platform cannot tell). Where the dimensions become known is the format's, as the browsers place it (the testing decoders: PNG at its first IDAT chunk, GIF at its first image descriptor, BMP after its headers, masks and colour table). `mime` is the type Crane determined (MIME Sniffing's image rules run above); the platform does not sniff. Stateless, synchronous, any thread, no BrowserPlatform (HTML decodes in parallel). `ImageLimits{ max_dimension, max_pixels }` are Crane's (decision 19): a larger header is `TooLarge` before any pixel memory. `ImageError = error{ OutOfMemory, NotSupported, UnsupportedFormat, Corrupt, TooLarge }` - `Corrupt` only when the dimensions cannot be obtained (HTML's "corrupted in some fatal way such that the image dimensions cannot be obtained") | every image broken |
+| `imageMimeTypeSupported` | image_decoding | `(essence: Str) bool` - whether the adapter decodes this parsed, lowercase MIME essence. Pure, no allocation, I/O, state or cache; synchronous on any thread. HTML uses it to select a picture source before fetching. The query and decoder must agree; kit/image_decoding uses one table for both. | false |
+| `decodeImage` | image_decoding | `(allocator, mime: Str, bytes: Bytes, limits: ImageLimits) ImageError!DecodedImage` - one complete resource to `DecodedImage{ width, height, pixels, status, empty }`: RGBA8, straight alpha, rows top down, no colour management (decision 19), an animated image's default image; `pixels` OWNED. Once a decoder knows the dimensions, data that ends early or goes bad is not an error but a PARTIAL image (lane imgpart, as every browser treats it: load fires, the decoded part is drawn): the pixels decoded before that point, the rest transparent black, `status` `ImageDecodeStatus{ complete, truncated, corrupt }`, and `empty` true when the decode reached no pixel data at all (false when the platform cannot tell). Where the dimensions become known is the format's, as the browsers place it (kit/image_decoding's decoders: PNG at its first IDAT chunk, GIF at its first image descriptor, BMP after its headers, masks and colour table). `mime` is the type Crane determined (MIME Sniffing's image rules run above); the platform does not sniff. Stateless, synchronous, any thread, no BrowserPlatform (HTML decodes in parallel). `ImageLimits{ max_dimension, max_pixels }` are Crane's (decision 19): a larger header is `TooLarge` before any pixel memory. `ImageError = error{ OutOfMemory, NotSupported, UnsupportedFormat, Corrupt, TooLarge }` - `Corrupt` only when the dimensions cannot be obtained (HTML's "corrupted in some fatal way such that the image dimensions cannot be obtained") | every image broken |
 | `decodeFont` | font_decoding | `(allocator, bytes: Bytes, postscript_name: Str, limits: FontLimits) FontError!DecodedFont` - one complete web font resource (sfnt, collection, WOFF, WOFF2), validated as the browsers' sanitizers do (kit/sfnt on every built-in platform: OTS's checks of the container and of the tables a face needs; Google woff2's decoder) and described: `DecodedFont{ family, style_name, full_name, postscript_name, weight, style, stretch, metrics, matched_name, strings }`, the names the font's own (the name table's US English record, CSS Fonts 4 4.3.3.1), `strings` OWNED (`deinit`). `FontMetrics{ units_per_em, ascent, descent, line_gap, x_height, cap_height, zero_advance, zero_vertical_advance, ideographic_advance, ideographic_vertical_advance }` in font units; each of the last six a `FontUnits{ value, present }` - absent when the font lacks the table or glyph, and the caller applies CSS's fallback (never a guess). A collection's face is the one whose PostScript name is `postscript_name` (the src URL's fragment, CSS Fonts 4 4.3.2), else the first, `matched_name` saying which - WebKit's behaviour, decided mechanism by mechanism. No partial result: data that ends early is `Corrupt`. `FontLimits{ max_bytes, max_sfnt_bytes }` are Crane's (`TooLarge` before anything is decompressed). `FontError = error{ OutOfMemory, NotSupported, UnsupportedFormat, Corrupt, TooLarge }`. Stateless, synchronous, any thread | the load fails |
 | `genericFontFace` | font_decoding | `(allocator, generic: GenericFontFamily, request: FontRequest) FontError!?DecodedFont` - the face the platform maps a CSS generic family to (CSS Fonts 4 2.1.5), null when none (the ui-* families on platforms without them). `FontRequest{ weight, style, oblique_angle, stretch, language }`; `oblique_angle` in degrees, positive clockwise, meaningful for an oblique style (14 for a plain `oblique`) - the built-in platforms match by style class | no metrics: CSS's fallbacks |
 | `installedFontFace` | font_decoding | `(allocator, family: Str, request: FontRequest) FontError!?DecodedFont` - an installed family's face nearest the request (CSS Fonts 4 5.1: names compared caselessly), null when the family is not installed | no installed family |
@@ -631,8 +645,12 @@ or background use) the operation drops its Reply and Crane takes the spec's unsu
 | `readClipboard` | `(browser, requester, types: []const Str, reply: Reply(ClipboardItems))` | Clipboard API read()/readText() and a paste; darwin reads NSPasteboard / UIPasteboard on the main queue, where iOS shows its own paste prompt. The Async Clipboard API's permission rules (clipboard-read, user activation) are Crane's, above. |
 | `writeClipboard` | `(browser, requester, items: *const ClipboardItems, reply: Reply(void))` | write()/writeText() and execCommand copy/cut (which do not wait for the reply). |
 
-Unsupported: read and write reject with NotAllowedError. The testing platform, and a platform with no
-system clipboard (a display-less server), use kit/memory_clipboard per Browser.
+Unsupported: read and write reject with NotAllowedError. Every built-in platform - darwin, linux (D2,
+the user 2026-11-09) and testing - uses kit/memory_clipboard per Browser, as headless Chrome keeps an
+in-memory clipboard (components/headless/clipboard/headless_clipboard.cc, a ui::ClipboardNonBacked that
+headless/lib/browser/headless_browser_main_parts.cc installs); so does a third-party platform with no
+system clipboard (a display-less server). Deviation, the `.emulated` constant's: nothing leaves the
+Browser and nothing another application copies arrives.
 
 #### 6.10.7 Notifications, push and background work
 
@@ -769,7 +787,9 @@ clipboard-write, geolocation, and the rest.
 (`mach_absolute_time`, `arc4random_buf`, pthreads with QoS); kit/curl with mbedTLS for the transport
 (decision 5) and SecTrust for trust (decision 6); the system SQLite for storage on both macOS and iOS
 (today's macOS LevelDB comes from Homebrew, not the system, and cannot ship); the system zlib;
-CommonCrypto and SecKey where they cover an algorithm, kit/crypto for the rest; the system clipboard;
+CommonCrypto and SecKey where they cover an algorithm, kit/crypto for the rest; the clipboard, built in
+today (kit/memory_clipboard per Browser, D2) and the system pasteboard if the adapter links out later;
+image decoding, built in today (kit/image_decoding, D1) and ImageIO if the adapter links out later;
 the OS permission system (section 8); native system alerts and pickers over the key window; screen,
 reachability, memory pressure and app lifecycle observed and reported as events. Capabilities not
 built yet alias kit/headless.
@@ -777,8 +797,9 @@ built yet alias kit/headless.
 **linux**, following its link plan (10.2): glibc's clocks, entropy and threads; kit/curl (static: the
 distros' libcurl lacks or varies in WebSockets) with the system zlib and nghttp2; the system SQLite;
 OpenSSL 3 for TLS and crypto where its link plan accepts it, mbedTLS and kit/crypto otherwise; the
-distro CA bundle; the system clipboard through X11 or Wayland when a display is present (loaded at run
-time), kit/memory_clipboard otherwise.
+distro CA bundle; the clipboard, built in today (kit/memory_clipboard per Browser, D2), and the system
+clipboard through X11 or Wayland when a display is present (loaded at run time) if the adapter links
+out later; image decoding, built in today (kit/image_decoding, D1).
 
 **testing** (decision 2, revised): the build machine's real OS services - darwin's or linux's, chosen by
 `builtin.os.tag` - plus compiled-in test capabilities, with all their state per Browser:
@@ -787,12 +808,12 @@ time), kit/memory_clipboard otherwise.
 |---|---|
 | media_decoding | WAV linear PCM (today tests/wpt_runner/wav_backend.zig) and WebM/Ogg (lane/webm), moved into the platform |
 | font_decoding | kit/sfnt for web fonts, in Zig (decision 20), and a fixed table of installed faces (src/platform/adapters/testing/fonts.zig): Times New Roman (serif), Arial (sans-serif, system-ui, cursive, fantasy, and every system font keyword at no preferred size), Courier New (monospace), read from macOS's copies, and WPT's Ahem; one regular face each; no emoji, math, fangsong or ui-* face. No font file is in Crane. Results do not depend on the machine's fonts. |
-| image_decoding | Zig decoders in src/platform/adapters/testing/ (decisions 19, 19a, 19c): PNG, BMP and GIF; kit/image_codecs adds pinned libjpeg-turbo 3.1.3 (including partial rows and EXIF orientation) and Expat 2.9.0 + NanoSVG for SVG. Returned pixels belong to the caller. SVG is a rasterizer, not a complete browser renderer: text, filters, masks, embedded resources and full CSS/layout remain unsupported; no scripts or external requests run. The README records exact pins, licences and coverage. Results do not depend on machine image libraries. |
+| image_decoding | kit/image_decoding, as darwin and linux (D1): Zig decoders in src/platform/kit/image_decoding/ (decisions 19, 19a, 19c): PNG, BMP and GIF; kit/image_codecs adds pinned libjpeg-turbo 3.1.3 (including partial rows and EXIF orientation) and Expat 2.9.0 + NanoSVG for SVG. Returned pixels belong to the caller. SVG is a rasterizer, not a complete browser renderer: text, filters, masks, embedded resources and full CSS/layout remain unsupported; no scripts or external requests run. The README records exact pins, licences and coverage. Results do not depend on machine image libraries. |
 | camera, microphone | one fake camera "fake_video_0" (640x480, 30 fps) and one fake microphone "fake_audio_0" (48 kHz mono); precedent Chrome's FakeVideoCaptureDeviceFactory, Gecko's MediaEngineFake, WebKit's MockRealtimeMediaSourceCenter |
 | os_permissions | governs no descriptor: Crane's store answers, and a request in the prompt state grants camera and microphone (the fake devices) and denies everything else (decision 9); tests script anything else with `test_driver.set_permission`, which writes the store |
 | simple_dialogs | dismissed at once (alert OK, confirm false, prompt null), logged to the test's output |
 | file_picker | answers from a per-Browser queue testdriver fills (`test_driver.file_upload`); canceled when empty |
-| clipboard | kit/memory_clipboard per Browser |
+| clipboard | kit/memory_clipboard per Browser, as darwin and linux (D2) |
 | notifications, geolocation | recorded; positions scripted per Browser |
 | console | the per-Browser sink in its options (the runner's per-test log) |
 | layout | emulated, a STOPGAP (decision 19b): `replacedElementBox` sizes a connected img from Crane's facts (src/platform/adapters/testing/layout.zig); every other layout operation answers as headless |
@@ -862,11 +883,11 @@ not verified is marked UNVERIFIED.
 | EC key generation | SecKey `SecKeyCreateRandomKey`, `kSecAttrKeyTypeECSECPrimeRandom` | both | yes | kit/crypto | dynamic |
 | Ed25519, X25519 | - (no 25519 in SecKey.h; CryptoKit has them but is Swift-only, with no C or Objective-C API) | no | no callable API | kit/crypto | static |
 | Intl, collation, IDNA | libicucore.tbd, ICU 78.1 - but only 23 public headers in both SDKs (uchar, uidna, uregex, ustring, utext, ...; no collation, date or number formatting) | both | no - incomplete for Intl, V8 needs its own pinned ICU, and Unicode-version-dependent answers (IDNA, case mapping) would differ by OS version, breaking identical behaviour | V8's ICU, src/intl's CLDR data, src/url's IDNA | static |
-| image decoding | ImageIO (CGImageSource; the formats it covers per OS version UNVERIFIED) | both | yes (decision 19) | none | dynamic (next batch) |
+| image decoding | ImageIO (CGImageSource; the formats it covers per OS version UNVERIFIED) | both | yes (decision 19) | kit/image_decoding | static: kit/image_decoding, built in (D1, the user 2026-11-09); ImageIO is the adapter's later choice |
 | fonts | CoreText (CTFontManagerCreateFontDescriptorFromData, CTFont metrics, CTFontCreateUIFontForLanguage, font descriptor matching) and CoreFoundation | both | yes (decision 20), after kit/sfnt's sanitizing, which every platform runs | kit/sfnt (web fonts; it also gives their names) | dynamic |
 | media decoding | AVFoundation, AudioToolbox, VideoToolbox | both | yes for the formats Apple decodes (H.264, HEVC, AAC, MP3, ...); WebM/VP9/Opus support UNVERIFIED | none - Crane builds in no decoder ("host decoders only", the user, 2026-10-08) | dynamic |
 | camera, microphone; audio output | AVFoundation; AVFAudio, AudioToolbox | both | yes | none | dynamic |
-| clipboard | AppKit NSPasteboard; UIKit UIPasteboard | macOS; iOS | yes | kit/memory_clipboard | dynamic |
+| clipboard | AppKit NSPasteboard; UIKit UIPasteboard | macOS; iOS | yes | kit/memory_clipboard | static: kit/memory_clipboard per Browser, built in (D2, the user 2026-11-09); the pasteboard is the adapter's later choice |
 | dialogs, pickers | AppKit NSAlert, NSOpenPanel, NSSavePanel; UIKit UIAlertController, UIDocumentPickerViewController, PhotosUI PHPickerViewController | macOS; iOS | yes | none (the spec's unsupported path) | dynamic |
 | notifications; geolocation; sensors | UserNotifications; CoreLocation; CoreMotion | both (CoreMotion's sensors on macOS UNVERIFIED) | yes | none | dynamic |
 | gamepad; Bluetooth; MIDI | GameController; CoreBluetooth; CoreMIDI | both | yes | none | dynamic |
@@ -899,8 +920,8 @@ RHEL and Arch are UNVERIFIED.
 | storage engine | libsqlite3-0 3.40.1 (bookworm), 3.46.1 (trixie) | all | yes | kit/sqlite; kit/leveldb (libleveldb1d 1.23 exists in Debian but is not installed by default) | dynamic SQLite (replacing today's desktop LevelDB default) |
 | WebCrypto primitives | OpenSSL 3 libcrypto (above) | Debian, Ubuntu | yes - covers every algorithm, OAEP labels, any PSS salt, any RSA exponent, HKDF, AES-KW; AES-CTR's counter-wrap rule is chosen per call as on darwin | kit/crypto | dynamic once the vectors pass |
 | Intl | libicu (a versioned soname per release) | all | no - the soname changes per release, V8 needs its pinned ICU, and Unicode-dependent answers would vary by distro | V8's ICU, src/intl | static |
-| clipboard | libxcb / libX11 (X11), libwayland-client (Wayland), loaded at run time | desktops only | yes when a display is present | kit/memory_clipboard | run-time load |
-| image decoding | libpng, libjpeg-turbo, libwebp, libavif (decision 19) | all (versions UNVERIFIED) | yes (decision 19); BMP, which none of them decodes, is the linux batch's question (decision 19a) | none | dynamic (next batch) |
+| clipboard | libxcb / libX11 (X11), libwayland-client (Wayland), loaded at run time | desktops only | yes when a display is present | kit/memory_clipboard | static: kit/memory_clipboard per Browser, built in (D2, the user 2026-11-09); a run-time load with a display is the adapter's later choice |
+| image decoding | libpng, libjpeg-turbo, libwebp, libavif (decision 19) | all (versions UNVERIFIED) | yes (decision 19); BMP, which none of them decodes, is the linux batch's question (decision 19a) | kit/image_decoding | static: kit/image_decoding, built in (D1, the user 2026-11-09); the system libraries are the adapter's later choice |
 | fonts | fontconfig (libfontconfig.so.1) for finding installed faces; FreeType not used - Crane renders nothing, and the metric rules Blink and Gecko apply over FreeType's raw values are kit/sfnt's over the same tables (decision 20) | desktops; often absent from minimal server images | yes | kit/sfnt (web fonts, and reading the files fontconfig finds) | run-time load (dlopen, RTLD_NODELETE); without it, no installed faces |
 | media decoding, audio output | GStreamer or FFmpeg (libavcodec); PipeWire / PulseAudio / ALSA - loaded at run time | desktops (UNVERIFIED per distro) | to be decided when the capability is built | none | - |
 | notifications, geolocation, wake lock, file pickers | D-Bus services (org.freedesktop.Notifications, GeoClue2, xdg-desktop-portal), loaded at run time | desktops (UNVERIFIED per distro) | to be decided when built | none | - |

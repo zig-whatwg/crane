@@ -1,6 +1,6 @@
 //! BMP through the platform protocol (decision 19a): the testing platform
 //! decodes image/bmp in Zig, as Blink's BMPImageReader reads it (the rules
-//! are listed in src/platform/adapters/testing/bmp.zig).
+//! are listed in src/platform/kit/image_decoding/bmp.zig).
 //!
 //! fixtures/image-py-{28,29}.bmp are WPT's own output: tests/wpt/common/
 //! security-features/subresource/image.py's encode_string_as_bmp_image,
