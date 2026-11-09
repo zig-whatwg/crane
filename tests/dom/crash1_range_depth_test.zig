@@ -15,14 +15,16 @@
 //! Gecko's nsRange::CutContents / CloneContents walk a RangeSubtreeIterator
 //! with CloneParentsBetween's explicit parent stack.
 //!
-//! Each test builds its chains natively, 10,000 divs deep, and runs the
-//! method on a thread with a pinned native stack under std.testing.allocator:
-//! 8 MiB, a main thread's, for extract and clone (a Debug build's recursion
-//! took more than 800 bytes a level, so 10,000 levels overflowed it); 1 MiB
-//! for toString and deleteContents, whose per-level frames were smaller.
-//! The fixed walks use the same stack at any depth. The trees are not
-//! deeper because building one costs O(nodes x depth) in a Debug build
-//! today (each insert walks to the root: the deep-construction item).
+//! Each test builds its chains natively and runs the method on a thread
+//! with a pinned 1 MiB native stack under std.testing.allocator. A Debug
+//! build's recursion took more than 1 KiB a level, so the recursive steps
+//! overflowed that stack long before these depths; the walks that replaced
+//! them use the same stack at any depth. Extract and clone run at 3,000
+//! levels, deleteContents and the stringifier at 10,000: extract and clone
+//! re-insert each subrange's fragment into its clone, O(depth^2) moved
+//! nodes (as in Blink), and a test build checks the reference counts around
+//! every mutation, so 10,000 levels took minutes on a loaded host. Building
+//! a chain costs O(nodes x depth) in a test build (the same checks).
 
 const std = @import("std");
 const testing = std.testing;
@@ -31,6 +33,8 @@ const interfaces = @import("interfaces");
 const dom = @import("dom");
 
 const depth = 10_000;
+/// Extract and clone the contents: O(depth^2) moved nodes (header).
+const contents_depth = 3_000;
 
 fn str(text: []const u8) runtime.DOMString {
     return runtime.DOMString.initInterned(text);
@@ -163,10 +167,10 @@ fn expectCollapsedAt(r: *runtime.Instance, node: *runtime.Instance, offset: u32)
     try testing.expectEqual(offset, try interfaces.AbstractRange.get_startOffset(r));
 }
 
-test "extractContents: a start 10,000 levels below the common ancestor comes out as one clone chain" {
-    try onStack(8 * 1024 * 1024, struct {
+test "extractContents: a start 3,000 levels below the common ancestor comes out as one clone chain" {
+    try onStack(1024 * 1024, struct {
         fn body(page: *Page) !void {
-            const start = try page.chain(page.body, depth, "abcd");
+            const start = try page.chain(page.body, contents_depth, "abcd");
             const mid = try page.shallow("MID");
             const mid_div = (try interfaces.Node.get_parentNode(mid)).?;
             const end = try page.shallow("wxyz");
@@ -180,7 +184,7 @@ test "extractContents: a start 10,000 levels below the common ancestor comes out
             // start, holding the start's data from its offset on.
             try testing.expectEqual(@as(usize, 3), try childCount(fragment));
             const left = try firstChildChain(try childAt(fragment, 0));
-            try testing.expectEqual(@as(usize, depth), left.levels);
+            try testing.expectEqual(@as(usize, contents_depth), left.levels);
             try expectData(left.leaf, "cd");
             try expectData(start, "ab");
             // Step 18: the contained child moved; step 20: the end's side.
@@ -194,13 +198,13 @@ test "extractContents: a start 10,000 levels below the common ancestor comes out
     }.body);
 }
 
-test "extractContents: an end 10,000 levels below the common ancestor comes out as one clone chain" {
-    try onStack(8 * 1024 * 1024, struct {
+test "extractContents: an end 3,000 levels below the common ancestor comes out as one clone chain" {
+    try onStack(1024 * 1024, struct {
         fn body(page: *Page) !void {
             const start = try page.shallow("abcd");
             const mid = try page.shallow("MID");
             const mid_div = (try interfaces.Node.get_parentNode(mid)).?;
-            const end = try page.chain(page.body, depth, "wxyz");
+            const end = try page.chain(page.body, contents_depth, "wxyz");
             const r = try page.range(start, 2, end, 2);
             defer interfaces.Range.deinit(r);
 
@@ -214,7 +218,7 @@ test "extractContents: an end 10,000 levels below the common ancestor comes out 
             // Step 20: a clone of every level from the body's child down to the
             // end, holding the end's data up to its offset.
             const right = try firstChildChain(try childAt(fragment, 2));
-            try testing.expectEqual(@as(usize, depth), right.levels);
+            try testing.expectEqual(@as(usize, contents_depth), right.levels);
             try expectData(right.leaf, "wx");
             try expectData(end, "yz");
             try expectCollapsedAt(r, page.body, 1);
@@ -222,12 +226,12 @@ test "extractContents: an end 10,000 levels below the common ancestor comes out 
     }.body);
 }
 
-test "cloneContents: a start and an end 10,000 levels deep clone as two chains, the tree untouched" {
-    try onStack(8 * 1024 * 1024, struct {
+test "cloneContents: a start and an end 3,000 levels deep clone as two chains, the tree untouched" {
+    try onStack(1024 * 1024, struct {
         fn body(page: *Page) !void {
-            const start = try page.chain(page.body, depth, "abcd");
+            const start = try page.chain(page.body, contents_depth, "abcd");
             _ = try page.shallow("MID");
-            const end = try page.chain(page.body, depth, "wxyz");
+            const end = try page.chain(page.body, contents_depth, "wxyz");
             const r = try page.range(start, 2, end, 2);
             defer interfaces.Range.deinit(r);
 
@@ -236,12 +240,12 @@ test "cloneContents: a start and an end 10,000 levels deep clone as two chains, 
 
             try testing.expectEqual(@as(usize, 3), try childCount(fragment));
             const left = try firstChildChain(try childAt(fragment, 0));
-            try testing.expectEqual(@as(usize, depth), left.levels);
+            try testing.expectEqual(@as(usize, contents_depth), left.levels);
             try expectData(left.leaf, "cd");
             // Step 15: a deep clone of the contained child.
             try expectData(try interfaces.Node.get_firstChild(try childAt(fragment, 1)) orelse return error.NoText, "MID");
             const right = try firstChildChain(try childAt(fragment, 2));
-            try testing.expectEqual(@as(usize, depth), right.levels);
+            try testing.expectEqual(@as(usize, contents_depth), right.levels);
             try expectData(right.leaf, "wx");
             // Nothing moved or changed.
             try expectData(start, "abcd");
