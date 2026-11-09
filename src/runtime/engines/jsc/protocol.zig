@@ -133,6 +133,8 @@ pub fn createAgent(_: engine.AgentOptions) Error!*Agent {
     return error.NotSupported;
 }
 pub fn destroyAgent(_: *Agent) void {}
+/// engine.releaseNodeWrappers: this adapter keeps no node wrapper in an agent.
+pub fn releaseNodeWrappers(_: *Agent) void {}
 /// No agent is made here (createAgent is NotSupported), and JavaScriptCore
 /// restores nothing from a snapshot (`restores_snapshots` unsupported).
 pub fn agentRestoredFromSnapshot(_: *Agent) bool {

@@ -24,6 +24,15 @@
 //! The roots here speak (docs/lessons/debugging-give-the-objects-that-
 //! reissue-a-freed-slot-a-voice.md): each root's own teardown first makes an
 //! impostor element and records whether it landed in a slot a child had.
+//!
+//! (2026-11-09, lane wr1 batch 2, the wrapper redesign's P2: a node's wrapper
+//! is in its own slot, the agent's, never a cache entry - so there is no hash
+//! order of node entries left, and the two orders above are gone with it.
+//! The realm's end still frees its detached wrapped trees whatever their
+//! counts (refcount step 7a's net, node_wrappers.endRealm), each root's
+//! teardown freeing its children - which have their wrappers severed and
+//! give their slots to the teardown, returned after its last phase. That is
+//! what this file pins now.)
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -33,6 +42,7 @@ const v8 = @import("v8");
 const ffi = v8.ffi;
 const interfaces = @import("interfaces");
 const dom = @import("dom");
+const engine_mod = @import("engine");
 
 const WrapperCache = v8.WrapperCache;
 
@@ -93,7 +103,7 @@ const Realm = struct {
     fn wrap(self: Realm, instance: *runtime.Instance) !void {
         runtime.instance_lifecycle.markWrapped(instance);
         const wrapper = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
-        try self.cache.set(instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
+        _ = try self.cache.set(instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
     }
 };
 
@@ -112,8 +122,6 @@ const Seen = struct {
     /// Roots torn down after a child of an earlier root had been handled:
     /// the window an inline release would open.
     roots_after_handled_child: usize = 0,
-    /// Roots whose child's entry the walk had already reached.
-    child_first: usize = 0,
 };
 
 var seen: Seen = .{};
@@ -133,11 +141,6 @@ fn speakingRootDeinit(instance: *runtime.Instance) void {
             break;
         }
     }
-    // Its own child's entry gone from the map: the walk reached it first.
-    if (dom.instance_bridge.getNodeBase(instance)) |base| if (base.first_child) |child_base| {
-        const child: *runtime.Instance = @ptrCast(@alignCast(child_base.ownerInstance().?));
-        if (realm.cache.cache.get(child) == null) seen.child_first += 1;
-    };
     // What a later teardown allocates: never a slot a child still names.
     if (interfaces.HTMLDivElement.init(testing.allocator, realm.data)) |impostor| {
         if (childIndex(impostor)) |_| seen.child_slot_reused = true;
@@ -154,7 +157,9 @@ const speaking_root_vtable = blk: {
 };
 
 /// One realm teardown holding `tree_count` detached wrapped trees (a wrapped
-/// speaking root with one wrapped child). Returns whether both orders came.
+/// speaking root with one wrapped child). Returns whether a root was torn
+/// down after another root's child was handled - the window an inline
+/// release would open.
 fn sweepOnce(coordinator_allocator: std.mem.Allocator, expect_returned: bool) !bool {
     const realm = try Realm.open();
     defer realm.close();
@@ -177,8 +182,17 @@ fn sweepOnce(coordinator_allocator: std.mem.Allocator, expect_returned: bool) !b
         try realm.wrap(child);
     }
 
+    // Their wrappers are collected first, their releases waiting (a walk
+    // holds the agent's teardowns): the realm's end meets them as the
+    // cache's sweep met entries whose finalizer had not run, and frees the
+    // trees (refcount step 7a's net, node_wrappers.endRealm).
+    engine_mod.deferTeardowns(realm.data);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
     coordinator.beginContextCleanup();
     realm.sweep();
+    // The hold ends (the realm's cache, which named it, is gone).
+    v8.protocol_agents.teardownHoldsOf(test_isolate.?).?.count -= 1;
     defer for (seen.impostors[0..seen.impostor_count]) |impostor| runtime.Instance.deinit(impostor);
     try testing.expectEqual(@as(usize, tree_count), seen.impostor_count);
 
@@ -211,13 +225,12 @@ fn sweepOnce(coordinator_allocator: std.mem.Allocator, expect_returned: bool) !b
                 runtime.gc.releaseStorage(child);
         }
     }
-    return seen.child_first > 0 and seen.child_first < tree_count and seen.roots_after_handled_child > 0;
+    return seen.roots_after_handled_child > 0;
 }
 
-test "a detached wrapped tree's nodes give their slots to the teardown, in either sweep order" {
+test "a detached wrapped tree's nodes give their slots to the teardown" {
     defer test_agent.close();
-    // Each sweep's hash order is its own; repeat until one put some children
-    // before their roots and some roots after a handled child.
+    // Repeat until a root was torn down after another root's child.
     var exercised = false;
     var attempt: usize = 0;
     while (!exercised and attempt < 8) : (attempt += 1) exercised = try sweepOnce(testing.allocator, true);

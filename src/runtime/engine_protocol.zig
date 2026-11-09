@@ -543,8 +543,12 @@ pub const AgentOptions = struct {
     /// zero, and what is owed meanwhile runs when the outermost binding exit
     /// brings it back to zero - never at a callback's return
     /// (docs/engine-protocol.md, "Deferred teardown"). The agent's end closes
-    /// it. Null - or an adapter that does not count yet (JavaScriptCore,
-    /// QuickJS) - frees at the event loop's slices only.
+    /// it. Null (only a test's own agent): an adapter that frees no node from
+    /// a collection makes the agent's OWN queue, drained at a requested
+    /// collection, at each realm's end and at the agent's end - no event loop
+    /// slices it - and freed with the agent (V8 since the wrapper redesign's
+    /// P2); an adapter that does not count yet (JavaScriptCore, QuickJS)
+    /// frees at the event loop's slices only.
     deferred_teardown: ?*runtime.gc.DeferredTeardown = null,
     /// The agent's clock: the time ECMAScript's Date reads - Date.now(),
     /// `new Date()`, `Date()` - honoured where `host_clock`. A host gives one
@@ -1114,6 +1118,22 @@ pub inline fn destroyAgent(agent: *Agent) void {
     impl.destroyAgent(agent);
 }
 
+/// The host's agent will run no more script: its node wrappers end now -
+/// every node wrapper's counted reference (the wrapper owns one: refcount
+/// design 2.1) is let go and the node's NodeWrapperSlot emptied, its wrapper
+/// severed - so that the host's last drain of the agent's deferred teardown
+/// queue frees the trees only wrappers held, and no node the host frees
+/// after is still pointed at by the engine. No node is wrapped from here on.
+/// Called after the agent's last realm ended and before that drain
+/// (Browser.deinit); idempotent, and `destroyAgent` does the same for an
+/// agent whose host did not. The wrapper redesign
+/// (tmp/redesign/wrapper-redesign-design.md 4.9, P2). An engine that keeps
+/// no node wrapper in an agent (JavaScriptCore, QuickJS, the test adapter)
+/// does nothing.
+pub inline fn releaseNodeWrappers(agent: *Agent) void {
+    impl.releaseNodeWrappers(agent);
+}
+
 /// Whether `agent` was restored from the engine's snapshot (createAgent with
 /// `from_snapshot`, and the restore succeeded) - only then can its Window
 /// realms be restored from it (WindowRealmOptions.from_snapshot). False on an
@@ -1138,11 +1158,12 @@ pub inline fn agentHost(agent: *Agent) ?*anyopaque {
 /// (AgentOptions.deferred_teardown): the host's own queue handed back, no
 /// engine handle, BORROWED - valid while the agent lives (the host owns it
 /// and outlives the agent). It is where the DOM queues a tree whose counts
-/// reached zero (refcount step 7, dom.refcount_teardown). Null when none was
-/// given, once the agent is destroyed, or for an agent the adapter did not
-/// make - whose garbage the counts then leave to its realm's end; for such an
-/// agent the adapter keeps the old free: a collected wrapper's second pass
-/// frees a root node nothing owns. The sibling of `agentHost`: a host pointer
+/// reached zero (refcount step 7, dom.refcount_teardown). For an agent made
+/// without one, the adapter's own queue for it, OWNED by the adapter
+/// (AgentOptions.deferred_teardown says when it drains) - never the host
+/// pointer. Null once the agent is destroyed, for an agent the adapter did
+/// not make, and from an adapter that frees nothing from a collection
+/// (JavaScriptCore, QuickJS, the test adapter). The sibling of `agentHost`: a host pointer
 /// an agent was given is only its creator's type, so the DOM never casts
 /// `agentHost` to find the queue.
 pub inline fn deferredTeardownOf(agent: *Agent) ?*DeferredTeardown {

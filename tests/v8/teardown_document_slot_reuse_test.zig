@@ -15,6 +15,13 @@
 //! The impostor announces itself (docs/lessons/debugging-give-the-objects-
 //! that-reissue-a-freed-slot-a-voice.md): a Document whose referencing-node
 //! count would move if a root's teardown released its count on it.
+//!
+//! (2026-11-09, lane wr1 batch 2, the wrapper redesign's P2: node wrappers
+//! are no cache entries, so "the sweep" is now the realm's end freeing its
+//! detached wrapped trees (refcount step 7a's net, node_wrappers.endRealm,
+//! from WrapperCache.deinit), and a Document torn down under its live
+//! wrapper has the wrapper severed and its slot handed to the coordinator by
+//! its own teardown. The rule pinned is the same.)
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -81,11 +88,11 @@ const Realm = struct {
     }
 
     /// Wrap `instance` as the binding leaves an object script has seen: a
-    /// real V8 object, held by the cache.
-    fn wrap(self: Realm, instance: *runtime.Instance) !void {
+    /// real V8 object, held weakly. Answers its handle, BORROWED.
+    fn wrap(self: Realm, instance: *runtime.Instance) !*ffi.Object {
         runtime.instance_lifecycle.markWrapped(instance);
         const wrapper = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
-        try self.cache.set(instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
+        return try self.cache.set(instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
     }
 };
 
@@ -118,7 +125,7 @@ test "a torn-down Document's slot survives the sweep: an allocation after it nev
 
     const document = try interfaces.Document.init(testing.allocator, realm.data);
     const document_generation = runtime.SlabAllocator.generationOf(document);
-    try realm.wrap(document);
+    _ = try realm.wrap(document);
     // Torn down later in the same teardown: never wrapped, as an orphan of
     // the realm is - its teardown reads its node document.
     const root = try detachedRoot(realm.data, document, null);
@@ -201,16 +208,28 @@ fn sweepOnce() !bool {
     sweep_document = document;
     sweep_document_generation = runtime.SlabAllocator.generationOf(document);
     sweep_coordinator = &coordinator;
-    try realm.wrap(document);
+    // Script holds the Document's wrapper: its teardown below runs under it.
+    const document_wrapper = ffi.v8_Global_Clone(@ptrCast(try realm.wrap(document))) orelse return error.HoldFailed;
+    defer ffi.v8_Global_Dispose(document_wrapper);
     var roots: [24]*runtime.Instance = undefined;
     for (&roots) |*root| {
         root.* = try detachedRoot(realm.data, document, &impostor_vtable);
-        try realm.wrap(root.*);
+        _ = try realm.wrap(root.*);
     }
+    // The roots' wrappers are collected first, their releases waiting (a
+    // walk holds the agent's teardowns): the realm's end meets them as the
+    // cache's sweep met entries whose finalizer had not run, and frees them
+    // (refcount step 7a's net, node_wrappers.endRealm) - after the
+    // Document's teardown, reading it.
+    @import("engine").deferTeardowns(realm.data);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
 
     coordinator.beginContextCleanup();
     dom.node_creation.destroyUninserted(document);
     realm.sweep();
+    // The hold ends (the realm's cache, which named it, is gone).
+    v8.protocol_agents.teardownHoldsOf(test_isolate.?).?.count -= 1;
     defer for (impostors[0..impostor_count]) |impostor| runtime.Instance.deinit(impostor);
 
     try testing.expectEqual(roots.len, impostor_count);

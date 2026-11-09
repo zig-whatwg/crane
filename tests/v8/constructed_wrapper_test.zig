@@ -248,7 +248,7 @@ test "WrapperCache.set refuses to replace a live wrapper, keeping it and its edg
                 self.result = error.NoHandle;
                 return;
             };
-            cache.set(self.instance, @ptrCast(handle), @ptrCast(@alignCast(self.page.agent))) catch |err| {
+            _ = cache.set(self.instance, @ptrCast(handle), @ptrCast(@alignCast(self.page.agent))) catch |err| {
                 ffi.v8_Global_Dispose(handle);
                 self.result = err;
                 return;

@@ -1,8 +1,8 @@
 //! Lane refcount9: engine.deferredTeardownOf (refcount step 7) hands back the
 //! deferred teardown queue an agent was created with
 //! (AgentOptions.deferred_teardown) - the host's own pointer, BORROWED, as
-//! agentHost hands back AgentOptions.host - and null for an agent made
-//! without one. The DOM queues a tree whose counts reached zero there
+//! agentHost hands back AgentOptions.host - and, for an agent made without
+//! one, the adapter's own queue for it. The DOM queues a tree whose counts reached zero there
 //! (dom.refcount_teardown.queueOf): it must never find the queue by casting
 //! the agent's host pointer, which is only its creator's type (tests make
 //! agents with hosts of their own).
@@ -25,7 +25,7 @@ fn setup() !void {
 /// A host of the test's own type: not the html AgentHost.
 const ForeignHost = struct { marker: u64 = 0x7263_395f_686f_7374 };
 
-test "an agent made with a deferred teardown queue answers it; one made without answers null" {
+test "an agent made with a deferred teardown queue answers it; one made without answers its own, never the host pointer" {
     try setup();
     const no_hooks: protocol.HostHooks = .{};
     var queue = runtime.gc.DeferredTeardown.init(testing.allocator);
@@ -38,8 +38,14 @@ test "an agent made with a deferred teardown queue answers it; one made without 
     // The host is handed back as given, and is not the queue's owner.
     try testing.expectEqual(@as(?*anyopaque, @ptrCast(&host)), protocol.agentHost(with_queue));
 
+    // Made without one (a test's own agent): the adapter makes the agent's
+    // own queue (lane wr1 batch 2, the wrapper redesign's P2: the adapter
+    // frees no node, so every agent needs a queue for its counts' garbage) -
+    // never the host pointer cast, and not the other agent's.
     const without = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = &host });
     defer protocol.destroyAgent(without);
-    try testing.expect(protocol.deferredTeardownOf(without) == null);
+    const own = protocol.deferredTeardownOf(without) orelse return error.TestExpectedOwnQueue;
+    try testing.expect(@intFromPtr(own) != @intFromPtr(&host));
+    try testing.expect(own != &queue);
     try testing.expectEqual(ForeignHost{}, host);
 }

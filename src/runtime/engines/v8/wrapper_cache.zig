@@ -68,6 +68,7 @@ const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const realm_finalizers = @import("realm_finalizers.zig");
+const node_wrappers = @import("node_wrappers.zig");
 const tombstones = @import("webidl").utils.tombstones;
 /// Every map keyed by an instance hashes it under a seed of its own
 /// (infra.address_map): this cache's end frees objects by walking `cache`,
@@ -169,8 +170,8 @@ const CacheEntry = struct {
 /// its node is alive. A node whose teardown began under its wrapper had it let
 /// go then (`markAsCleanedUp`); one freed some other way - its slot reissued,
 /// or a teardown this cache did not hear because the entry was waiting for
-/// its second pass - is forgotten, never read. Shadow mode (refcount step 4):
-/// the reference decides nothing yet; the collector still frees.
+/// its second pass - is forgotten, never read. Since refcount step 7 the
+/// release decides: a tree it leaves with no hold is queued by the counts.
 fn releaseCounted(entry: *CacheEntry) void {
     const target = entry.counted orelse return;
     entry.counted = null;
@@ -518,7 +519,7 @@ const tree_children_key = "crane:tree:children";
 /// script has not seen, or whose wrapper was collected (the first pass
 /// empties the slot).
 fn nodeWrapper(node: *@import("dom").NodeBase) ?*v8.Value {
-    return @ptrCast(@alignCast(runtime.lifetime.slotOf(node).handle orelse return null));
+    return @ptrCast(node_wrappers.wrapperOf(runtime.lifetime.slotOf(node)) orelse return null);
 }
 
 /// Draw the edges between `child` - wrapped: `child_wrapper` - and its
@@ -638,7 +639,11 @@ fn instanceOfNode(node: *@import("dom").NodeBase) ?*runtime.Instance {
 /// `document` is a strong reference - so it must be held, not just kept: a
 /// document whose wrapper was collected under the window died in
 /// LookupIterator::GetRootForNonJSReceiver on the next `document` access
-/// (custom-elements/connected-callbacks.html, SIGTRAP).
+/// (custom-elements/connected-callbacks.html, SIGTRAP). No production caller
+/// since Document.setDefaultView's edge and keep replaced it, and a node's
+/// wrapper has no entry since the wrapper redesign's P2: only
+/// tests/v8/engine_pending_activity_test.zig's "another reason" case calls
+/// it, on a non-node instance (P9 deletes it with that case).
 pub fn holdStrong(instance: *runtime.Instance) void {
     const entry = entryOf(instance) orelse return;
     entry.holds.document = true;
@@ -653,6 +658,9 @@ pub fn holdStrong(instance: *runtime.Instance) void {
 /// before the binding wraps it): the keeps are then recorded against the
 /// instance and taken by its wrapper when it is made.
 pub fn holdForPendingActivity(instance: *runtime.Instance) void {
+    // A node's keep is its agent's (node_wrappers: the keep table), as its
+    // wrapper is.
+    if (instance.vtable.counted != null) return node_wrappers.keep(instance);
     const cache = cacheOf(instance) orelse return;
     if (cache.cache.get(instance)) |entry| {
         entry.pending_activity +|= 1;
@@ -674,6 +682,7 @@ pub fn holdForPendingActivity(instance: *runtime.Instance) void {
 /// and in Debug it is reported (an error log: fatal in unit tests, counted in
 /// a sweep - decision D9) and counted on the cache (`unmatched_releases`).
 pub fn releasePendingActivity(instance: *runtime.Instance) void {
+    if (instance.vtable.counted != null) return node_wrappers.release(instance);
     const cache = cacheOf(instance) orelse return;
     if (cache.cache.get(instance)) |entry| {
         if (entry.pending_activity == 0) return cache.unmatchedRelease(instance);
@@ -743,8 +752,16 @@ const retained_key = "crane:retained";
 
 /// Keep `value` by an edge from `holder`, a detached realm's global object
 /// (the hidden one, never its proxy). A no-op once the global is collected.
-fn retainOnGlobal(holder: *v8.Value, value: *v8.Value) void {
+pub fn retainOnGlobal(holder: *v8.Value, value: *v8.Value) void {
     v8.v8_Object_RetainInPrivateArray(holder, retained_key.ptr, retained_key.len, value);
+}
+
+/// The global object of `instance`'s realm once that realm is detached
+/// (`WrapperCache.detach`), BORROWED; null while it is attached, or with no
+/// cache. node_wrappers keeps a detached realm's kept nodes by it.
+pub fn detachedHolderOf(instance: *runtime.Instance) ?*v8.Value {
+    const cache = cacheOf(instance) orelse return null;
+    return cache.detached_holder;
 }
 
 /// The weak arm of `WrapperCache.detached_holder`: nothing to do when the
@@ -975,6 +992,8 @@ pub fn resumeTeardowns(realm: runtime.Context) void {
     holds.count -= 1;
     if (holds.count != 0) return;
     runDeferredTeardowns(holds);
+    // And the node wrappers' releases the hold kept waiting.
+    if (realm.agent) |agent| node_wrappers.drainOf(@ptrCast(@alignCast(agent)));
 }
 
 /// The last hold has ended: tear down every entry it kept waiting. One at a
@@ -1360,9 +1379,8 @@ pub const WrapperCache = struct {
     /// collected ones waiting for their second pass - at the realm's end,
     /// before its sweep frees anything.
     fn releaseAllCounted(self: *Self) void {
-        // A walk: in shadow mode a release only counts, but once references
-        // decide (refcount step 7) one can free a node, whose teardown can
-        // wrap.
+        // A walk: since references decide (refcount step 7) a release can
+        // leave a tree garbage, and what that starts can wrap.
         self.beginWalk();
         defer self.endWalk();
         var it = self.cache.valueIterator();
@@ -1477,6 +1495,9 @@ pub const WrapperCache = struct {
                 v8.v8_Global_SetWeak(@ptrCast(edge.child), null, deferredChildCollected);
             }
         }
+        // The realm's kept nodes: their wrappers are their agent's, held in
+        // its keep table (node_wrappers), by the same rule.
+        node_wrappers.detachRealm(@ptrCast(self), holder);
     }
 
     /// One owner's edges waiting for its wrapper.
@@ -1855,6 +1876,10 @@ pub const WrapperCache = struct {
         }
 
         log.debug("[wrapper_cache.deinit] Summary: processed={}, skipped_cleaned={}, skipped_started={}", .{ processed, skipped_cleaned, skipped_started });
+        // The realm's detached wrapped trees: their wrappers are the agent's
+        // (node_wrappers), and the net this sweep made for them while they
+        // were its entries is theirs now (refcount step 7a).
+        node_wrappers.endRealm(@ptrCast(self));
         self.unregister();
         self.cache.deinit();
         self.pending_before_wrap.deinit(self.allocator);
@@ -1980,9 +2005,7 @@ pub const WrapperCache = struct {
     /// instance was wrapped while it was made returns, instead of binding
     /// the object V8 made for NewTarget (which `set` refuses).
     pub fn existingWrapper(self: *Self, instance: *runtime.Instance) ?*v8.Object {
-        if (@import("dom").instance_bridge.getNodeBase(@ptrCast(instance))) |node| {
-            if (runtime.lifetime.slotOf(node).handle) |bound| return @ptrCast(@alignCast(bound));
-        }
+        if (instance.vtable.counted != null) return node_wrappers.wrapperOfInstance(instance);
         const entry = self.cache.get(instance) orelse return null;
         if (entry.instance_already_cleaned or slotReissued(entry)) return null;
         return @ptrCast(entry.wrapper);
@@ -1996,36 +2019,38 @@ pub const WrapperCache = struct {
     /// ## Returns
     /// V8 Object wrapper if cached, null otherwise
     pub fn get(self: *Self, instance: *runtime.Instance) ?*v8.Object {
+        // A node's wrapper is in its own slot, whatever realm asks
+        // (node_wrappers): never in a cache.
+        if (instance.vtable.counted != null) return node_wrappers.wrapperOfInstance(instance);
         if (self.cache.get(instance)) |entry| {
             return @ptrCast(entry.wrapper);
         }
         return null;
     }
 
-    /// Cache a wrapper for an instance with weak callback
-    ///
-    /// Stores the wrapper in the cache and sets up a weak callback for GC cleanup.
-    ///
-    /// ## Parameters
-    /// - instance: The Zig instance (cache key)
-    /// - wrapper: The V8 Object wrapper (Global<Object>* handle)
-    /// - isolate: V8 isolate (for setting weak callback)
-    ///
-    /// ## Errors
-    /// - OutOfMemory: If allocation fails
+    /// Take `wrapper` - a fresh `Global<Object>*` the binding made, OWNED by
+    /// the caller until this succeeds - as `instance`'s wrapper in this
+    /// realm, and answer the handle the caller holds it by from here,
+    /// BORROWED: `wrapper` itself for an instance the cache keeps (a weak
+    /// entry), and for a NODE its slot's handle - `wrapper`'s box is gone
+    /// then (node_wrappers.adopt: the wrapper redesign's P2, the node's
+    /// wrapper is its agent's, in its own slot, never in a cache). On an
+    /// error nothing was taken and `wrapper` is still the caller's.
     pub fn set(
         self: *Self,
         instance: *runtime.Instance,
         wrapper: *v8.Object,
         isolate: *v8.Isolate,
-    ) !void {
+    ) !*v8.Object {
         // A cache being torn down takes no wrapper: its sweep (`deinit`)
         // walks the map, and an entry put in now would be met or not as the
         // hash order fell - a wrapper whose instance the sweep then never
         // freed. The object stays its maker's to free (releaseIfUnwrapped
-        // finds it unwrapped).
+        // finds it unwrapped). A node of a realm being torn down is not
+        // wrapped either: the teardown under way frees it.
         if (self.is_tearing_down) return error.CacheTornDown;
         self.register(isolate);
+        if (instance.vtable.counted != null) return self.setNode(instance, wrapper, isolate);
 
         // An instance has ONE wrapper in a realm. One that is live already
         // is never replaced: every edge drawn on it - a traced child, a
@@ -2095,27 +2120,38 @@ pub const WrapperCache = struct {
         }
         // Edges traced from the instance before script saw it.
         self.drawDeferredEdges(instance, entry.original_generation, wrapper);
-        // A node: this is its one wrapper, whatever realm reads it - the
-        // alias node tracing finds it by (`nodeWrapper`), and every later
-        // wrap returns. Set here, for every wrapper the cache takes: one a
-        // constructor made used to have none, so the insertion steps drew no
-        // edges for it and `f.appendChild(new Text())` left the text's
-        // wrapper - its expandos, a custom element's class - to the next
-        // collection. Then the edges between its wrapper and its parent's,
-        // drawn while this wrapper is still held strongly - its parent's
-        // wrapper made first if script has not seen it (node tracing).
-        if (@import("dom").instance_bridge.getNodeBase(@ptrCast(instance))) |node| {
-            const slot = runtime.lifetime.slotOf(node);
-            if (slot.isEmpty()) slot.handle = @ptrCast(wrapper);
-            if (node.parent_node != null and !self.is_tearing_down) drawTreeEdges(node, @ptrCast(wrapper));
-            if (node.parent_node == null and !self.is_tearing_down) _ = drawDocumentEdge(node, @ptrCast(wrapper));
-        }
+        // (A node never gets here: its wrapper is its agent's, in its own
+        // slot - `setNode`, which draws node tracing's edges for every node
+        // wrapper, a constructor's included: one the cache used to take
+        // without them left `f.appendChild(new Text())`'s wrapper - its
+        // expandos, a custom element's class - to the next collection.)
         if (shouldBeStrong(entry) and self.detached_holder == null) {
             entry.strong = true;
         } else {
             armWeak(entry);
             if (self.detached_holder != null) syncEntry(entry);
         }
+        return wrapper;
+    }
+
+    /// `set` for a node: its wrapper moves into the node's own slot, its
+    /// agent's (node_wrappers.adopt) - then, as for every wrapper, the edges
+    /// traced from it before script saw it, and node tracing's edges between
+    /// its wrapper and its parent's (or its node document's, for a root).
+    /// Tree edges are unchanged by P2 (design 7, P2): `drawTreeEdges` finds a
+    /// parent's wrapper through the slot.
+    fn setNode(self: *Self, instance: *runtime.Instance, box: *v8.Object, isolate: *v8.Isolate) !*v8.Object {
+        const generation = runtime.SlabAllocator.generationOf(instance);
+        const adopted = try node_wrappers.adopt(isolate, instance, box);
+        // Held strongly while the edges are drawn: they may wrap ancestors,
+        // and a collection then must not take this wrapper.
+        defer node_wrappers.arm(isolate, instance, adopted);
+        // Edges traced from the node before script saw it.
+        self.drawDeferredEdges(instance, generation, adopted.handle);
+        if (@import("dom").instance_bridge.getNodeBase(@ptrCast(instance))) |node| {
+            if (node.parent_node != null) drawTreeEdges(node, @ptrCast(adopted.handle)) else _ = drawDocumentEdge(node, @ptrCast(adopted.handle));
+        }
+        return adopted.handle;
     }
 
     /// Clear the entire cache
@@ -2327,7 +2363,7 @@ test "WrapperCache - set and get basic operation" {
     // Actual integration testing requires V8 runtime.
 
     // Set wrapper in cache
-    try cache.set(&dummy_instance, wrapper, isolate);
+    _ = try cache.set(&dummy_instance, wrapper, isolate);
 
     // Get wrapper from cache
     const cached = cache.get(&dummy_instance);
@@ -2352,8 +2388,8 @@ test "WrapperCache - clear removes all entries" {
     var dummy_isolate: u32 = 99;
     const isolate: *v8.Isolate = @ptrCast(&dummy_isolate);
 
-    try cache.set(&instance1, @ptrCast(&wrapper1), isolate);
-    try cache.set(&instance2, @ptrCast(&wrapper2), isolate);
+    _ = try cache.set(&instance1, @ptrCast(&wrapper1), isolate);
+    _ = try cache.set(&instance2, @ptrCast(&wrapper2), isolate);
 
     try testing.expectEqual(@as(usize, 2), cache.size());
 
@@ -2380,7 +2416,7 @@ test "WrapperCache - no memory leaks" {
 
     for (&instances, &wrappers) |*inst, *wrap| {
         wrap.* = 0xDEADBEEF;
-        try cache.set(inst, @ptrCast(wrap), isolate);
+        _ = try cache.set(inst, @ptrCast(wrap), isolate);
     }
 
     try testing.expectEqual(@as(usize, 10), cache.size());
@@ -2405,9 +2441,9 @@ test "WrapperCache - remove specific entry" {
     var dummy_isolate: u32 = 99;
     const isolate: *v8.Isolate = @ptrCast(&dummy_isolate);
 
-    try cache.set(&instance1, @ptrCast(&wrapper1), isolate);
-    try cache.set(&instance2, @ptrCast(&wrapper2), isolate);
-    try cache.set(&instance3, @ptrCast(&wrapper3), isolate);
+    _ = try cache.set(&instance1, @ptrCast(&wrapper1), isolate);
+    _ = try cache.set(&instance2, @ptrCast(&wrapper2), isolate);
+    _ = try cache.set(&instance3, @ptrCast(&wrapper3), isolate);
 
     try testing.expectEqual(@as(usize, 3), cache.size());
 

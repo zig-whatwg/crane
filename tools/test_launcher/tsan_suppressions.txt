@@ -8,5 +8,71 @@
 # Each entry carries, above it: the report (test, both stacks' top frames), why it
 # is a false positive (the V8 code that orders the two accesses), and who proved it.
 # A race in Crane's own code is never suppressed: it is a bug with an owner.
+# An entry matches a frame in EITHER stack, so each one shows that the report's other
+# stack is V8's alone (the main thread inside a V8 collection, or another V8 worker):
+# a report whose other stack is Crane's teardown or the adapter - an isolate ended, a
+# CppHeap freed, while V8's background jobs still run - is a bug, never suppressed.
+# The JobTask destructor entries below share one mechanism, written once with the
+# DefaultJobState entry; they are added one class at a time, each with its report.
 #
-# (none yet: tests-dom and tests-html under TSAN, lane tsan1, 2026-11-02)
+# --- 1. V8's job state, destroyed by the worker that held its last reference ---
+# Report (tests-v8 page_realm_operations_test, its 94 tests in one process under
+# -Dsanitize-thread on server1, Linux x86-64, seeds 2 and 3; first seen in lane wr1
+# b2's verify): a write by thread T12 'V8 DefaultWorker' - pthread_mutex_destroy
+# (or pthread_cond_destroy) in v8::platform::DefaultJobState::~DefaultJobState -
+# against a previous atomic read by the main thread - pthread_cond_wait in
+# DefaultJobState::Join, inside the test's collectTwice (V8's full collection); the
+# job made by MarkCompactCollector::UpdatePointersAfterEvacuation. No Crane frame.
+# The mechanism (jsengines/v8/v8/src/libplatform/default-job.h:85 and 130-156,
+# default-job.cc DefaultJobState::Join): a DefaultJobWorker holds a
+# weak_ptr<DefaultJobState> and runs on `auto shared_state = state_.lock()`; the
+# joining thread waits on worker_released_condition_ under mutex_, returns once it
+# is the last active worker, and its DefaultJobHandle drops its strong reference.
+# When a worker's local shared_ptr is the last one, ~DefaultJobState runs on that
+# worker and destroys mutex_, the condition variable and job_task_ - the
+# std::unique_ptr<JobTask> that owns the job's task, so the task's destructor runs
+# there too. What orders the other threads' last use of them before that destructor
+# is libc++'s acq_rel decrement of the shared_ptr's count, inlined in the
+# uninstrumented V8 prebuilt, which TSAN cannot see; and in uninstrumented code TSAN
+# records only the interceptor and its caller, so the report's frame is whichever
+# destructor the inlined ~Mutex sits in. Proved by wr1 b2, 2026-11-09.
+race:v8::platform::DefaultJobState::~DefaultJobState
+#
+# --- 2. A JobTask's destructor: mark-compact.cc's ParallelClearingJob ---
+# Report (the same 94 tests, seed 3, with entry 1 in place): a write by T12 'V8
+# DefaultWorker' - pthread_mutex_destroy in v8::internal::(anonymous
+# namespace)::ParallelClearingJob::~ParallelClearingJob (its ready_items_mutex_) -
+# against a previous atomic read by the main thread - pthread_mutex_lock in
+# ParallelClearingJob::GetMaxConcurrency, inside collectTwice (V8's full
+# collection); the job made by MarkCompactCollector::ClearNonLiveReferences.
+# Entry 1's mechanism: the task is DefaultJobState::job_task_, destroyed in
+# ~DefaultJobState on the worker that dropped the last reference. Proved by wr1 b2,
+# 2026-11-09.
+race:v8::internal::(anonymous namespace)::ParallelClearingJob::~ParallelClearingJob
+#
+# --- 3. A JobTask's destructor: mark-compact.cc's PointersUpdatingJob ---
+# Report (the same 94 tests, seed 5, with entries 1 and 2 in place): a write by T10
+# 'V8 DefaultWorker' - pthread_mutex_destroy in
+# v8::internal::PointersUpdatingJob::~PointersUpdatingJob (its IndexGenerator's
+# mutex) - against a previous atomic read by another V8 worker, T13 -
+# pthread_mutex_lock in v8::internal::IndexGenerator::GetNext; the job made by
+# MarkCompactCollector::UpdatePointersAfterEvacuation (the test's liveContexts
+# collection). Entry 1's mechanism. Proved by wr1 b2, 2026-11-09.
+race:v8::internal::PointersUpdatingJob::~PointersUpdatingJob
+#
+# --- 4. A JobTask's destructor: mark-compact.cc's PageEvacuationJob ---
+# Report (the same 94 tests, seeds 3 and 5, with entries 1-3 in place): a write by a
+# V8 DefaultWorker (T11; T8) - pthread_mutex_destroy in
+# v8::internal::PageEvacuationJob::~PageEvacuationJob (its IndexGenerator's mutex) -
+# against a previous atomic read by the main thread - pthread_mutex_lock in
+# v8::internal::IndexGenerator::GetNext, inside the full collection the agent's end
+# requests while its isolate is live (protocol_agents.endAgent's
+# v8_Isolate_RequestGarbageCollection, before the isolate is disposed); the job made
+# by MarkCompactCollector::EvacuatePagesInParallel. The collection runs BEFORE the
+# isolate is disposed, so this has collectTwice's shape: Crane calls into V8's
+# collector, the main thread joins the job inside it, and both racing stacks are
+# V8's - entry 1's mechanism, not an isolate ended under a running job. A report
+# whose other stack is in Isolate::Dispose, the CppHeap's free or the adapter's
+# teardown is never suppressed by this entry's reasoning: it is a bug. Proved by
+# wr1 b2, 2026-11-09.
+race:v8::internal::PageEvacuationJob::~PageEvacuationJob

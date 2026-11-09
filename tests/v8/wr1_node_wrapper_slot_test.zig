@@ -4,10 +4,7 @@
 //! the wrapper cache's `Global<Object>*` typed; the adapter reaches it only
 //! through runtime.lifetime.slotOf (installed by dom.refcount), never by
 //! naming NodeBase's field. A wrap writes it. (That a collected wrapper's
-//! first pass empties it again, wrapper_cache.unbindNode, is P2's red test:
-//! a node held only by a native counted reference - refcount.holderRef - was
-//! FREED with its wrapper's collection here, count 2 before it, so this file
-//! cannot keep a node past its wrapper yet; lane wr1's handoff.)
+//! first pass empties it again is P2's: tests/v8/node_wrapper_inline_test.zig.)
 
 const std = @import("std");
 const testing = std.testing;
@@ -101,7 +98,9 @@ test "slotOf answers the node's own slot, empty until the wrap writes the wrappe
     try engine.runInRealm(page.realm, Wrap.steps, &wrap);
     const wrapper = wrap.wrapper orelse return error.TestWrapFailed;
     try testing.expect(!slot.isEmpty());
-    try testing.expect(slot.handle == @as(?*anyopaque, @ptrCast(wrapper)));
+    // Since P2 the slot holds the wrapper itself - a Global constructed in
+    // place - and its address is the handle every wrap answers.
+    try testing.expect(@as(*anyopaque, @ptrCast(slot)) == @as(*anyopaque, @ptrCast(wrapper)));
 
     // A second wrap, in any realm of the agent, answers the slot's wrapper.
     var again: Wrap = .{ .instance = div, .realm = page.realm };

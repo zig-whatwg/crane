@@ -168,7 +168,7 @@ test "WrapperCache - lifecycle with 10 entries" {
         instances[i] = try createMockInstance(testing.allocator);
         wrappers[i] = try createMockWrapper(testing.allocator);
 
-        try cache.set(instances[i], wrappers[i], isolate);
+        _ = try cache.set(instances[i], wrappers[i], isolate);
     }
 
     // Verify all cached
@@ -214,7 +214,7 @@ test "WrapperCache - manual weak callback simulation" {
     const wrapper = try createMockWrapper(testing.allocator);
 
     // Cache the wrapper
-    try cache.set(instance, wrapper, isolate);
+    _ = try cache.set(instance, wrapper, isolate);
     try testing.expectEqual(@as(usize, 1), cache.size());
 
     // Simulate weak callback by manually removing from cache
@@ -268,7 +268,7 @@ test "WrapperCache - no memory leaks with 100 cycles" {
         for (0..10) |i| {
             instances[i] = try createMockInstance(testing.allocator);
             wrappers[i] = try createMockWrapper(testing.allocator);
-            try cache.set(instances[i], wrappers[i], isolate);
+            _ = try cache.set(instances[i], wrappers[i], isolate);
         }
 
         // Cleanup
@@ -308,7 +308,7 @@ test "WrapperCache - stress test with 100 entries" {
         instances[i] = try createMockInstance(testing.allocator);
         wrappers[i] = try createMockWrapper(testing.allocator);
 
-        try cache.set(instances[i], wrappers[i], isolate);
+        _ = try cache.set(instances[i], wrappers[i], isolate);
     }
 
     // Verify cache size
@@ -354,7 +354,7 @@ test "WrapperCache - clear removes all entries without leaking" {
     for (0..count) |i| {
         instances[i] = try createMockInstance(testing.allocator);
         wrappers[i] = try createMockWrapper(testing.allocator);
-        try cache.set(instances[i], wrappers[i], isolate);
+        _ = try cache.set(instances[i], wrappers[i], isolate);
     }
 
     try testing.expectEqual(@as(usize, count), cache.size());
@@ -453,7 +453,7 @@ test "WrapperCache - integrity after removing specific entries" {
     for (0..5) |i| {
         instances[i] = try createMockInstance(testing.allocator);
         wrappers[i] = try createMockWrapper(testing.allocator);
-        try cache.set(instances[i], wrappers[i], isolate);
+        _ = try cache.set(instances[i], wrappers[i], isolate);
     }
 
     try testing.expectEqual(@as(usize, 5), cache.size());

@@ -282,6 +282,7 @@ pub fn comparedCounter(name: []const u8) bool {
         "live_weak_callback_data",
         "global_handle_bytes",
         "wrapper_cache_entries",
+        "node_wrappers",
         "live_agents",
         "flag_writes",
         "ownership_violations",

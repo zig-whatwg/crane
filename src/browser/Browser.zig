@@ -429,6 +429,13 @@ pub const Browser = struct {
         if (self.agent) |agent| {
             // Release queued handles while the agent exists; AgentHost outlives it.
             self.agent_host.custom_elements.releasePending();
+            // The agent runs no more script: its node wrappers end now, each
+            // one's reference let go, so the drain below frees the trees
+            // only wrappers held and the sweep after it finds no node a
+            // wrapper still points at (engine.releaseNodeWrappers; the
+            // wrapper redesign's P2: a node's wrapper is its agent's, and its
+            // realm's end no longer lets it go).
+            engine.releaseNodeWrappers(agent);
             // No node waits for its deferred teardown: each realm's end
             // (current_context's, above) drained its own, and what the counts
             // queued after - a holder its realm's teardown released - goes
