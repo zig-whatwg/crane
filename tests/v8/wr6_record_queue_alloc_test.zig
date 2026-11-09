@@ -215,31 +215,33 @@ test "wr6: queueing a mutation record frees nothing during the call - interested
     try page.run("mo.disconnect();");
 }
 
-test "wr6: a node with more interested observers than the stack holds gives each its record, in creation order" {
+test "wr6: a node with more interested observers than the stack holds gives each its record" {
     test_process.start();
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const page = try Page.open(&queue);
     defer page.close();
-    // 40 observers: interestedObservers grows past its stack buffer to the
-    // heap. The outer element's subtree observers come after the target's own in
-    // the inclusive-ancestor walk (step 2), and each observer is notified in
-    // creation order.
+    // 40 observers, 20 on the target and 20 with subtree on its parent
+    // (step 2's inclusive ancestors): interestedObservers grows past its
+    // stack buffer onto the call's allocator. The test agent has no host, so
+    // the records wait in each observer's queue (no notify microtask) and
+    // takeRecords() reads them.
     try page.run(html_document ++
         \\globalThis.outer = d.createElement('div');
         \\globalThis.box = outer.appendChild(d.createElement('div'));
-        \\globalThis.seen = [];
         \\globalThis.observers = [];
         \\for (let i = 0; i < 40; i++) {
-        \\  const mo = new MutationObserver((records) => { seen.push(i + ':' + records.length); });
+        \\  const mo = new MutationObserver(() => {});
         \\  mo.observe(i % 2 ? outer : box, { childList: true, subtree: true });
         \\  observers.push(mo);
         \\}
-        \\box.appendChild(d.createElement('span'));
+        \\globalThis.kid = box.appendChild(d.createElement('span'));
     );
-    // The microtask checkpoint after the script delivered them.
     try testing.expect(try page.holds(
-        \\seen.length === 40 && seen.every((s, i) => s === i + ':1')
+        \\observers.every((mo) => {
+        \\  const records = mo.takeRecords();
+        \\  return records.length === 1 && records[0].target === box && records[0].addedNodes[0] === kid;
+        \\})
     ));
     try page.run("for (const mo of observers) mo.disconnect();");
 }

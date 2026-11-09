@@ -599,11 +599,22 @@ fn queueMutationRecordInternal(
     };
 
     // Step 1: "Let interestedObservers be an empty map." An ORDERED map:
-    // the order observers enter it is the order they join the pending
-    // mutation observers, which is the order their callbacks run.
+    // the order observers enter it is the order they join the surrounding
+    // agent's pending mutation observers (step 4.3). It lives for this call
+    // only, so it is on the stack while it fits - a few observers, the
+    // common case - and on `allocator` past that: a per-record allocation
+    // and free cost a bucket's mmap and munmap under the WPT runner's
+    // DebugAllocator once nothing longer-lived shares their size class (lane
+    // wr1 b6: crane/ed-mo-parse-page.html ran 2.25x slower; docs/lessons/
+    // debugging-a-per-call-allocation-in-a-lonely-size-class-maps-a-page.md;
+    // tests/v8/wr6_record_queue_alloc_test.zig).
     const Interested = struct { observer: *runtime.Instance, mapped_old_value: ?[]const u8 };
+    const interested_on_stack = 16;
+    var interested_buffer: [interested_on_stack * @sizeOf(Interested)]u8 align(@alignOf(Interested)) = undefined;
+    var interested_memory: std.heap.BufferFirstAllocator = .init(&interested_buffer, allocator);
+    const interested_allocator = interested_memory.allocator();
     var interested_observers: std.ArrayListUnmanaged(Interested) = .empty;
-    defer interested_observers.deinit(allocator);
+    defer interested_observers.deinit(interested_allocator);
 
     // Step 2: Let nodes be the inclusive ancestors of target
     // Walk from target up to root
@@ -630,7 +641,7 @@ fn queueMutationRecordInternal(
             const slot = for (interested_observers.items) |*item| {
                 if (item.observer == mo) break item;
             } else blk: {
-                try interested_observers.append(allocator, .{ .observer = mo, .mapped_old_value = null });
+                try interested_observers.append(interested_allocator, .{ .observer = mo, .mapped_old_value = null });
                 break :blk &interested_observers.items[interested_observers.items.len - 1];
             };
 
