@@ -1,9 +1,19 @@
 //! Reference counting for DOM nodes: the types (lane rc12, step 2 of
 //! tmp/plans/refcount-design.md; decisions in tmp/plans/refcount-decisions.md).
 //!
-//! SHADOW MODE: production keeps the counts - the tree links (step 3), the
-//! wrapper's reference (step 4), the holders' references (step 5) - and
-//! checks them, and they decide nothing; step 7 lets them decide.
+//! The counts - the tree links (step 3), the wrapper's reference (step 4),
+//! the holders' references (step 5) - DECIDE every free of a node during its
+//! realm's life since step 7 (lane refcount9's 7a, tmp/plans/refcount9-
+//! design.md B1-B2; dom.refcount_teardown): a tree is freed only once its
+//! total is zero, in every agent made with a deferred teardown queue - every
+//! production agent (Browser.zig, html/worker_host.zig). Two frees are still
+//! made whatever the counts say, and the holders' nets (generation checks,
+//! `node_holds.nodeReleased`) stay for them: a FORCED realm end's coordinated
+//! teardown (7a keeps it as the net: a page's end, a removed iframe, a
+//! back/forward cache eviction, the Browser's end), and the second pass of an
+//! agent made WITHOUT a queue (a test's own: wrapper_cache.finalizeEntry
+//! keeps the pre-step-7 model there; the wrapper redesign's P2 removes it for
+//! nodes). Lane wr1 batch 2: tests/v8/wr1_counted_hold_test.zig.
 //!
 //! What a node count is, from WebKit (Source/WebCore/dom/Node.h, NodeInlines.h):
 //! `NodeBase.rc` holds the count of `Ref`s in units of `NodeBase.rc_one` with
@@ -604,8 +614,9 @@ test "installing the counts' accessors already installed writes nothing; a new o
 // The wrapper link (design 2.1, section 7 step 4): a node's wrapper owns one
 // reference. The adapter takes it when it caches the wrapper and releases it
 // when the wrapper is finalized, through runtime.lifetime, which reaches these
-// two. SHADOW MODE: no ledger and no garbage sink - the count and the holds
-// are kept and checked, and decide nothing until step 7.
+// two. No ledger is wired to the agent (the references are `ref`/`deref`
+// without one); since step 7 a release that leaves a tree with no hold queues
+// it (`lowered` -> dom.refcount_teardown.settle).
 // ============================================================================
 
 /// runtime.lifetime's acquire hook: `instance` (a node: its VTable is
@@ -648,9 +659,9 @@ pub fn wrapperRef(node: *NodeBase) void {
 }
 
 /// A wrapper's reference on `node` ends (`deref` without a ledger): the count
-/// reaching zero ends the hold along the host-including chain. Shadow mode: a
-/// root whose total reaches zero is not flagged or queued - the collector
-/// still frees (step 7 gives this a sink).
+/// reaching zero ends the hold along the host-including chain, and a root
+/// whose total reaches zero is flagged and queued on its agent's deferred
+/// teardown queue (refcount step 7) - never freed here.
 pub fn wrapperDeref(node: *NodeBase) void {
     unledgeredDeref(node, "a wrapper");
 }
@@ -661,10 +672,12 @@ pub fn wrapperDeref(node: *NodeBase) void {
 // reference on each node it holds, for as long as it holds it (WebKit's
 // ChildListRecord keeps `Ref<ContainerNode> m_target`, StaticNodeList a
 // `Vector<Ref<Node>>`, a collection `Ref<ContainerNode> m_ownerNode`).
-// SHADOW MODE: no ledger is wired to the agent yet, so these are `ref` and
-// `deref` without one, as the wrapper's are; nothing is flagged or queued, and
-// frees are still the collector's. A holder therefore keeps its old net (a
-// node freed under it is FORGOTTEN, never released: dom.node_holds).
+// No ledger is wired to the agent yet, so these are `ref` and `deref` without
+// one, as the wrapper's are. They decide frees since step 7: a node a holder
+// counts outlives its wrapper's collection (tests/v8/wr1_counted_hold_test.zig).
+// A holder still keeps its old net - a node freed under it is FORGOTTEN,
+// never released (dom.node_holds) - for the frees made whatever the counts say
+// (a forced realm end's coordinated teardown; see the file's header).
 // ============================================================================
 
 /// A holder's reference on `node` (`ref` without a ledger).

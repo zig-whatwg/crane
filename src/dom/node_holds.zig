@@ -48,10 +48,13 @@
 //! rc5): every hold is also a COUNTED reference on its node
 //! (`refcount.holderRef`), taken when the hold is linked and released when it
 //! is unlinked - WebKit's ChildListRecord and StaticNodeList hold `Ref<Node>`.
-//! SHADOW MODE: the counts decide nothing yet; frees are still the
-//! collector's, so this module's chain, its rescues and its generation net
-//! stay what keeps a held node safe until step 7, and a node freed under its
-//! hold has its reference FORGOTTEN (`nodeReleased`), never released. The
+//! The counts decide frees since step 7 (dom.refcount's header): a held node
+//! is never freed under its hold during its realm's life. This module's
+//! chain, its rescues and its generation net stay for wrapper IDENTITY (the
+//! rescue's edge keeps a held tree's wrappers) and for the frees still made
+//! whatever the counts say (a forced realm end's coordinated teardown): a node
+//! freed under its hold there has its reference FORGOTTEN (`nodeReleased`),
+//! never released. The
 //! design retires the chain and the rescues in step 9b; keepOpaqueRoot is
 //! their identity edge, and wrapping a root that has no wrapper yet is the
 //! shadow-mode net that closes keepOpaqueRoot's stated gap
@@ -147,8 +150,8 @@ pub const Hold = struct {
 /// read null from then on and skip it when they let go - a teardown net for
 /// the ways a node is freed outside the collector (its realm's coordinated
 /// teardown, the final registry sweep), where its slab generation can stay
-/// live. Shadow mode only: once counts decide (step 7) a held node is never
-/// freed under its holder.
+/// live. Those are the only frees left under a holder since step 7: the
+/// counts never free a held node.
 ///
 /// Touches only the native hold records - no engine call, no allocation - so
 /// it may run inside any teardown, including one a collector's finalizer
@@ -310,8 +313,10 @@ pub const RefHold = struct {
 /// is recognised the way the wrapper's own reference recognises one
 /// (wrapper_cache `releaseCounted`): its slot reissued, or its teardown
 /// begun - and then it is forgotten, never released. No chain link, so no
-/// address to keep stable and nothing for `nodeReleased` to walk. SHADOW
-/// MODE: counted only.
+/// address to keep stable and nothing for `nodeReleased` to walk. Counted
+/// only: since step 7 the count keeps the node (tests/v8/
+/// wr1_counted_hold_test.zig), and the guards in `release` answer for the
+/// frees made whatever the counts say (dom.refcount's header).
 pub const CountedRef = struct {
     /// The node held, or null for none.
     base: ?*NodeBase = null,

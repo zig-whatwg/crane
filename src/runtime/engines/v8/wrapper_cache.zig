@@ -169,8 +169,8 @@ const CacheEntry = struct {
 /// its node is alive. A node whose teardown began under its wrapper had it let
 /// go then (`markAsCleanedUp`); one freed some other way - its slot reissued,
 /// or a teardown this cache did not hear because the entry was waiting for
-/// its second pass - is forgotten, never read. Shadow mode (refcount step 4):
-/// the reference decides nothing yet; the collector still frees.
+/// its second pass - is forgotten, never read. Since refcount step 7 the
+/// release decides: a tree it leaves with no hold is queued by the counts.
 fn releaseCounted(entry: *CacheEntry) void {
     const target = entry.counted orelse return;
     entry.counted = null;
@@ -1360,9 +1360,8 @@ pub const WrapperCache = struct {
     /// collected ones waiting for their second pass - at the realm's end,
     /// before its sweep frees anything.
     fn releaseAllCounted(self: *Self) void {
-        // A walk: in shadow mode a release only counts, but once references
-        // decide (refcount step 7) one can free a node, whose teardown can
-        // wrap.
+        // A walk: since references decide (refcount step 7) a release can
+        // leave a tree garbage, and what that starts can wrap.
         self.beginWalk();
         defer self.endWalk();
         var it = self.cache.valueIterator();

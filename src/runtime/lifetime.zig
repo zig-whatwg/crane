@@ -14,9 +14,10 @@
 //! wrapper owns it outright and the collector frees it through
 //! `gc.onObjectFreed`.
 //!
-//! SHADOW MODE (steps 3 to 6): the references are taken and released and the
-//! counts kept and checked, but they decide nothing; frees are still the
-//! collector's. Step 7 lets them decide.
+//! Since step 7 the counts decide every free of a node during its realm's
+//! life: the wrapper's release only lets its reference go, and the owner of
+//! the counts queues a tree left with no hold (dom.refcount's header names the
+//! two frees still made whatever the counts say).
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -125,8 +126,8 @@ pub fn wrapperAcquired(instance: *Instance) ?*anyopaque {
 /// The wrapper that `wrapperAcquired` answered `target` for lets its
 /// reference go: finalized after a collection (V8's second pass), removed,
 /// replaced, or at its realm's end - or the target's own teardown began while
-/// the wrapper lived (shadow mode: the collector still frees). Never inside a
-/// collection; on the agent's thread.
+/// the wrapper lived (a forced realm end's coordinated teardown). Never inside
+/// a collection; on the agent's thread.
 pub fn wrapperReleased(target: *anyopaque) void {
     const release = hooks.read().release orelse return;
     release(target);
@@ -145,10 +146,10 @@ pub fn slotOf(target: *anyopaque) *engine.NodeWrapperSlot {
 
 /// A wrapper's reference is dropped without `wrapperReleased`, because its
 /// target is gone: the collector freed the node while the wrapper waited for
-/// its finalizer (a collected root's teardown frees its subtree, whose
-/// wrappers died in the same collection), or the realm's objects go with a
-/// batch free. SHADOW MODE only: once counts decide (step 7) a node with a
-/// wrapper is held, and is never freed under it.
+/// its finalizer, or the realm's objects go with a batch free. Since step 7 a
+/// node with a wrapper is held, so only a free made whatever the counts say
+/// gets here: a forced realm end's coordinated teardown, or the second pass
+/// of an agent made without a deferred teardown queue (a test's own).
 pub fn wrapperForgotten() void {
     const forget = hooks.read().forget orelse return;
     forget();
