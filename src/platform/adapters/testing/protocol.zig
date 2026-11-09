@@ -5,13 +5,15 @@
 //!
 //! Step 0 of the platform protocol: the OS services are the same kit parts
 //! darwin and linux compose; of the test capabilities the in-memory
-//! clipboard (kit/memory_clipboard) and the image decoders
-//! (kit/image_decoding, decision 19) - both also darwin's and linux's since
-//! the user's rulings D1 and D2 (2026-11-09) - and the fonts (fonts.zig:
-//! kit/sfnt and fixed installed faces, decision 20) are here. The fake capture devices, the WAV
-//! and WebM decoders, the scripted permission policy (decision 9), the
-//! dialogs, the picker queue and the console sink move in with recipes step 7,
-//! with the control surface the WPT runner reaches as `platform.adapter`.
+//! clipboard (kit/memory_clipboard), the image decoders
+//! (kit/image_decoding, decision 19) and the media decoders
+//! (kit/media_decoding: WAV linear PCM) - all three also darwin's and
+//! linux's since the user's rulings D1, D2 and D4 (2026-11-09) - and the
+//! fonts (fonts.zig: kit/sfnt and fixed installed faces, decision 20) are
+//! here. The fake capture devices, the scripted permission policy (decision
+//! 9), the dialogs, the picker queue and the console sink move in with
+//! recipes step 7, with the control surface the WPT runner reaches as
+//! `platform.adapter`.
 
 const std = @import("std");
 const platform = @import("platform");
@@ -30,6 +32,11 @@ const SeededRandom = @import("seeded_random.zig").SeededRandom;
 const image_decoding = if (for (platform_options.platform_without) |capability| {
     if (std.mem.eql(u8, capability, "image_decoding")) break true;
 } else false) headless else @import("kit_image_decoding");
+/// kit/media_decoding (WAV linear PCM; D4), as darwin and linux build it in.
+const media_decoding_built_in = for (platform_options.platform_without) |capability| {
+    if (std.mem.eql(u8, capability, "media_decoding")) break false;
+} else true;
+const media_decoding = if (media_decoding_built_in) @import("kit_media_decoding") else headless;
 const layout = @import("layout.zig");
 const fonts = if (for (platform_options.platform_without) |capability| {
     if (std.mem.eql(u8, capability, "font_decoding")) break true;
@@ -61,6 +68,12 @@ const Extra = struct {
 };
 
 const State = browser_state.BrowserState(Extra);
+
+/// openMediaDecoder: kit/media_decoding's, with the Browser's allocator.
+fn openMedia(browser: *platform.BrowserPlatform, mime: platform.Str) platform.Error!*platform.MediaDecoder {
+    if (!media_decoding_built_in) return headless.openMediaDecoder(browser, mime);
+    return media_decoding.openMediaDecoder(State.of(browser).allocator, mime);
+}
 
 fn clipboardRead(browser: *platform.BrowserPlatform, requester: *const platform.Requester, types: []const platform.Str, reply: platform.Reply(platform.ClipboardItems)) void {
     _ = requester;
@@ -114,6 +127,8 @@ pub const protocol = struct {
         c.clipboard = .emulated;
         // kit/image_decoding, compiled in: PNG, BMP, GIF, JPEG and SVG.
         c.image_decoding = .native;
+        // kit/media_decoding, compiled in: WAV linear PCM (D4).
+        if (media_decoding_built_in) c.media_decoding = .native;
         // kit/sfnt (decision 20): web fonts in Zig, and fixed default,
         // installed and system faces, so no answer depends on the machine.
         c.font_decoding = .native;
@@ -272,11 +287,11 @@ pub const protocol = struct {
     pub const systemVisibility = headless.systemVisibility;
     pub const displayRefreshInterval = headless.displayRefreshInterval;
     pub const screenDetails = headless.screenDetails;
-    pub const mediaCanPlayType = headless.mediaCanPlayType;
-    pub const openMediaDecoder = headless.openMediaDecoder;
-    pub const pushMediaData = headless.pushMediaData;
-    pub const mediaVideoSize = headless.mediaVideoSize;
-    pub const closeMediaDecoder = headless.closeMediaDecoder;
+    pub const mediaCanPlayType = media_decoding.mediaCanPlayType;
+    pub const openMediaDecoder = openMedia;
+    pub const pushMediaData = media_decoding.pushMediaData;
+    pub const mediaVideoSize = media_decoding.mediaVideoSize;
+    pub const closeMediaDecoder = media_decoding.closeMediaDecoder;
     pub const imageMimeTypeSupported = image_decoding.imageMimeTypeSupported;
     pub const decodeImage = image_decoding.decodeImage;
     pub const decodeFont = fonts.decodeFont;

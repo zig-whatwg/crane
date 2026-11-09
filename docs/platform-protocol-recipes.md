@@ -535,6 +535,16 @@ WPT: workers/ and html/webappapis/system-state-and-capabilities/ A/B.
 
 **Retires**: src/platform/media_backend.zig and media_adapter.zig (their callers move to the media_decoding operations).
 
+**Done for media decoding** (lane wptcfg D4, the user 2026-11-09: the platform compiled in decides
+whether a capability is built in or links out): kit/media_decoding (WAV linear PCM, the runner's
+wav_backend.zig moved with its history) is composed by darwin, linux AND testing, `media_decoding`
+native on all three, so Crane's own browser - the console - plays what WPT plays. HTMLMediaElement
+reaches it through src/html/media/decoding.zig (html.platform_state.of(realm), gated on the
+capability); `BrowserConfig.media_backend`, `MediaHost`, media_backend.zig, media_adapter.zig and
+their TRANSITIONAL re-exports are deleted. The runner's header-only WebM code (it decoded no pixels or
+samples) was deleted, not moved: WebM answers "" until a real decoder exists. The rest of this step
+(platform events, the fake devices, the control surface) is still to do.
+
 **Goal**: the WPT runner builds with `-Dplatform=testing` and stops passing backends through
 BrowserConfig; platform events reach Crane; media decoding is a capability.
 

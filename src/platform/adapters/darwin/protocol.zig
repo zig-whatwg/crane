@@ -19,8 +19,9 @@
 //! platform. For example, the clipboard too."). This is Crane's default
 //! platform - what Crane's own browser, the release console, and the
 //! production WPT runner compile in - so the capabilities every browser
-//! ships are built in here today: image decoding (kit/image_decoding, D1)
-//! and the clipboard (kit/memory_clipboard per Browser, D2).
+//! ships are built in here today: image decoding (kit/image_decoding, D1),
+//! media decoding (kit/media_decoding: WAV linear PCM, D4) and the
+//! clipboard (kit/memory_clipboard per Browser, D2).
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -52,6 +53,14 @@ const image_decoding_built_in = for (platform_options.platform_without) |capabil
 } else true;
 const image_decoding = if (image_decoding_built_in) @import("kit_image_decoding") else headless;
 
+/// kit/media_decoding's built-in decoders - WAV linear PCM (D4, the user
+/// 2026-11-09) - unless media_decoding is compiled out: then kit/headless's
+/// answers, canPlayType "" for every type.
+const media_decoding_built_in = for (platform_options.platform_without) |capability| {
+    if (std.mem.eql(u8, capability, "media_decoding")) break false;
+} else true;
+const media_decoding = if (media_decoding_built_in) @import("kit_media_decoding") else headless;
+
 /// Per-Browser state beyond kit/browser_state's, fresh for every Browser:
 /// the in-memory clipboard (kit/memory_clipboard; the user's ruling D2,
 /// 2026-11-09), as headless Chrome keeps one - components/headless/
@@ -71,6 +80,12 @@ const Extra = struct {
 };
 
 const State = browser_state.BrowserState(Extra);
+
+/// openMediaDecoder: kit/media_decoding's, with the Browser's allocator.
+fn openMedia(browser: *platform.BrowserPlatform, mime: platform.Str) platform.Error!*platform.MediaDecoder {
+    if (!media_decoding_built_in) return headless.openMediaDecoder(browser, mime);
+    return media_decoding.openMediaDecoder(State.of(browser).allocator, mime);
+}
 
 fn clipboardRead(browser: *platform.BrowserPlatform, requester: *const platform.Requester, types: []const platform.Str, reply: platform.Reply(platform.ClipboardItems)) void {
     _ = requester;
@@ -112,6 +127,9 @@ pub const protocol = struct {
         // kit/image_decoding, built in (D1, the user 2026-11-09): PNG, BMP,
         // GIF, JPEG and SVG, the testing platform's decoders.
         if (image_decoding_built_in) c.image_decoding = .native;
+        // kit/media_decoding, built in (D4, the user 2026-11-09): WAV linear
+        // PCM; WebM, Ogg and MP4 answer "" until a decoder for them exists.
+        if (media_decoding_built_in) c.media_decoding = .native;
         // CoreText, after kit/sfnt's sanitizing (fonts.zig).
         if (font_decoding) c.font_decoding = .native;
         break :blk c;
@@ -234,11 +252,11 @@ pub const protocol = struct {
     pub const systemVisibility = headless.systemVisibility;
     pub const displayRefreshInterval = headless.displayRefreshInterval;
     pub const screenDetails = headless.screenDetails;
-    pub const mediaCanPlayType = headless.mediaCanPlayType;
-    pub const openMediaDecoder = headless.openMediaDecoder;
-    pub const pushMediaData = headless.pushMediaData;
-    pub const mediaVideoSize = headless.mediaVideoSize;
-    pub const closeMediaDecoder = headless.closeMediaDecoder;
+    pub const mediaCanPlayType = media_decoding.mediaCanPlayType;
+    pub const openMediaDecoder = openMedia;
+    pub const pushMediaData = media_decoding.pushMediaData;
+    pub const mediaVideoSize = media_decoding.mediaVideoSize;
+    pub const closeMediaDecoder = media_decoding.closeMediaDecoder;
     pub const imageMimeTypeSupported = image_decoding.imageMimeTypeSupported;
     pub const decodeImage = image_decoding.decodeImage;
     pub const decodeFont = fonts.decodeFont;

@@ -2559,6 +2559,9 @@ const PlatformBinding = struct {
     /// run (decision 20).
     kit_sfnt: *std.Build.Module,
     kit_inflate: *std.Build.Module,
+    /// kit/media_decoding, the built-in media decoders (lane wptcfg D4),
+    /// whose own test blocks the platform tests run.
+    kit_media_decoding: *std.Build.Module,
     /// <time.h> translated (addCImport), which kit/posix imports as `c_time`;
     /// tests/platform takes the same module (one per header set per graph).
     c_time: *std.Build.Module,
@@ -2585,6 +2588,11 @@ const PlatformBindingOptions = struct {
     clock: *std.Build.Module,
     host: *std.Build.Module,
     memory: *std.Build.Module,
+    /// MIME Sniffing's parser, which kit/media_decoding's canPlayType parses
+    /// a type with: one parser in Crane, not a copy in the platform. Pure
+    /// Zig over `infra` (whose only import is the clock bridge), so no part
+    /// of it reaches back to the facade.
+    mimesniff: *std.Build.Module,
 };
 
 fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: PlatformBindingOptions) PlatformBinding {
@@ -2620,7 +2628,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     const font_decoding_enabled = for (options.without) |name| {
         if (std.mem.eql(u8, name, "font_decoding")) break false;
     } else true;
-    const kit_parts = [_][]const u8{ "posix", "headless", "memory_store", "curl", "crypto", "memory_clipboard", "browser_state", "brotli", "image_codecs", "inflate", "sfnt", "image_decoding" };
+    const kit_parts = [_][]const u8{ "posix", "headless", "memory_store", "curl", "crypto", "memory_clipboard", "browser_state", "brotli", "image_codecs", "inflate", "sfnt", "image_decoding", "media_decoding" };
     var kit: [kit_parts.len]*std.Build.Module = undefined;
     for (kit_parts, 0..) |part, i| {
         kit[i] = b.createModule(.{
@@ -2655,6 +2663,14 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     const kit_image_decoding = kit[image_decoding_part];
     kit_image_decoding.addImport("kit_inflate", kit[9]);
     kit_image_decoding.addImport("kit_image_codecs", kit[8]);
+    // kit/media_decoding (lane wptcfg D4, the user 2026-11-09): the media
+    // decoders darwin, linux and testing build in - WAV linear PCM - its
+    // canPlayType parsing with MIME Sniffing's parser. Found by name too.
+    const media_decoding_part = comptime for (kit_parts, 0..) |part, i| {
+        if (std.mem.eql(u8, part, "media_decoding")) break i;
+    } else unreachable;
+    const kit_media_decoding = kit[media_decoding_part];
+    kit_media_decoding.addImport("mimesniff", options.mimesniff);
     if (options.image_codecs) |codecs| {
         kit[8].linkLibrary(codecs);
         kit[8].addImport("image_codecs_c", addCImport(b, "image_codecs_c", target, .{ .includes = &.{"image_codecs.h"}, .libs = &.{codecs} }));
@@ -2711,7 +2727,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
         kit[3].linkSystemLibrary("curl", .{});
         kit[3].addImport("curl_c", addCImport(b, "curl_c", target, .{ .includes = kit_curl_includes, .system_libs = &.{"curl"} }));
     }
-    return .{ .facade = facade, .options = options_mod, .kit_curl_share = kit_curl_share, .kit_sfnt = kit[10], .kit_inflate = kit[9], .c_time = c_time };
+    return .{ .facade = facade, .options = options_mod, .kit_curl_share = kit_curl_share, .kit_sfnt = kit[10], .kit_inflate = kit[9], .kit_media_decoding = kit_media_decoding, .c_time = c_time };
 }
 
 /// A module of a graph: registered by name when the graph is public, private
@@ -4288,6 +4304,7 @@ pub fn build(b: *std.Build) void {
                 .clock = testing_graph.clock,
                 .host = testing_graph.host,
                 .memory = testing_graph.memory,
+                .mimesniff = testing_graph.mimesniff,
             });
             const conformance = b.addTest(.{
                 .name = b.fmt("platform_protocol_{s}", .{binding.name}),
@@ -4320,11 +4337,24 @@ pub fn build(b: *std.Build) void {
                 run_font_adapters.setCwd(b.path("."));
                 test_step.dependOn(&run_font_adapters.step);
                 check_target_step.dependOn(&font_adapters.step);
+                // Media decoding on darwin and linux (lane wptcfg, D4): the
+                // directory's tests/platform/media_decoding_test.zig, bound to
+                // each - the three default platforms share kit/media_decoding.
+                const media_decoding = b.addTest(.{
+                    .name = b.fmt("platform_media_{s}", .{binding.name}),
+                    .root_module = b.createModule(.{
+                        .root_source_file = b.path("tests/platform/media_decoding_test.zig"),
+                        .target = target,
+                        .imports = &.{.{ .name = "platform", .module = bound.facade }},
+                    }),
+                });
+                test_step.dependOn(&addSuiteRun(b, launch, media_decoding, media_decoding.name, null).step);
+                check_target_step.dependOn(&media_decoding.step);
             }
             // The kit parts with test blocks of their own, once (they do
             // not depend on the platform they are bound with).
             if (std.mem.eql(u8, binding.name, "darwin")) {
-                for ([_]*std.Build.Module{ bound.kit_sfnt, bound.kit_inflate }, [_][]const u8{ "kit_sfnt", "kit_inflate" }) |module, name| {
+                for ([_]*std.Build.Module{ bound.kit_sfnt, bound.kit_inflate, bound.kit_media_decoding }, [_][]const u8{ "kit_sfnt", "kit_inflate", "kit_media_decoding" }) |module, name| {
                     const kit_tests = b.addTest(.{ .name = name, .root_module = module });
                     test_step.dependOn(&addSuiteRun(b, launch, kit_tests, name, null).step);
                 }
@@ -4332,21 +4362,6 @@ pub fn build(b: *std.Build) void {
             // Built, not run: the target need not be this machine.
             check_target_step.dependOn(&conformance.step);
         }
-
-        // The WPT runner's media backends (host decoders built only into
-        // wpt_runner: WAV/PCM, WebM): their std.testing blocks, reached from
-        // host_media.zig. No V8 - only the media backend contract and MIME
-        // Sniffing's parser.
-        const wav_backend_tests = b.addTest(.{ .root_module = b.createModule(.{
-            .root_source_file = b.path("tests/wpt_runner/host_media.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "platform", .module = testing_graph.platform },
-                .{ .name = "mimesniff", .module = testing_graph.mimesniff },
-            },
-        }) });
-        test_step.dependOn(&addSuiteRun(b, launch, wav_backend_tests, "wpt_runner-host_media", null).step);
     }
 
     // Benchmark tests (requires V8 + browser)
@@ -6830,9 +6845,6 @@ fn addWptRunner(b: *std.Build, which: runner_build_mode.RunnerBuild, config: run
         .{ .name = "cookiestore", .module = graph.cookiestore },
         // Permissions, for testdriver's set_permission (test_driver.zig).
         .{ .name = "permissions", .module = graph.permissions },
-        // MIME Sniffing's parser, for the WAV test backend's canPlayType
-        // (wav_backend.zig)
-        .{ .name = "mimesniff", .module = graph.mimesniff },
     }) catch @panic("OOM");
 
     const exe = b.addExecutable(.{
@@ -8097,6 +8109,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .clock = clock_mod,
         .host = host_mod,
         .memory = memory_mod,
+        .mimesniff = mimesniff_mod,
     });
     const platform_mod = platform_binding.facade;
     compression_mod.addImport("platform", platform_mod);
@@ -8314,7 +8327,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dom", dom_mod);
     browser_mod.addImport("html", html_mod);
-    // BrowserConfig.media_backend: the host's media decoding.
+    // The platform protocol: the Browser's platform state, clock and seed.
     browser_mod.addImport("platform", platform_mod);
     // A navigation's URL string is parsed and serialized before it is fetched.
     browser_mod.addImport("basic_parser", url_basic_parser_mod);

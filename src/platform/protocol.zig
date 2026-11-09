@@ -1822,15 +1822,17 @@ pub inline fn openMediaDecoder(browser: *BrowserPlatform, mime: Str) Error!*Medi
     return impl.openMediaDecoder(browser, mime);
 }
 
-/// Synchronous, as src/platform/media_backend.zig's push is today; on
-/// `metadata` / `current_data` it has written `metadata`.
+/// Synchronous; on `metadata` / `current_data` it has written `metadata`.
+/// `current_data` only once the decoder really has data at the current
+/// playback position - a container header or metadata alone never gives it.
 pub inline fn pushMediaData(decoder: *MediaDecoder, bytes: Bytes, end_of_stream: bool, metadata: *MediaMetadata) MediaResult {
     comptime gate(.media_decoding, "pushMediaData");
     return impl.pushMediaData(decoder, bytes, end_of_stream, metadata);
 }
 
 /// The video's intrinsic size at `seconds` (a resolution change mid-stream);
-/// false if the decoder cannot say. media_backend.zig's video_size_at.
+/// false if the decoder cannot say (no video, no frame there yet), and the
+/// element keeps its last size.
 pub inline fn mediaVideoSize(decoder: *MediaDecoder, seconds: f64, size: *VideoSize) bool {
     comptime gate(.media_decoding, "mediaVideoSize");
     return impl.mediaVideoSize(decoder, seconds, size);
@@ -3327,10 +3329,6 @@ pub const EventSink = extern struct {
 // `clock` bridge - the facade's one import beyond its leaf set, until it goes.
 // ============================================================================
 
-/// Recipes step 7 (media decoding moves into the platform).
-pub const media_backend = @import("media_backend.zig");
-/// Recipes step 7.
-pub const media_adapter = @import("media_adapter.zig");
 /// Recipes step 2c (the event loop's wait; step 0 counted it dead).
 pub const timer_backend = @import("timer_backend.zig");
 /// Recipes step 11 (the clipboard).

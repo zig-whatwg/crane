@@ -1,6 +1,6 @@
 //! The browser console tests' local site: a loopback HTTP server answering a
 //! fixed set of pages - links, a form, a redirect, a 404, a page that counts
-//! its loads, JSON, cookies - so the console is driven against a real
+//! its loads, JSON, cookies, a WAV - so the console is driven against a real
 //! network stack (curl, HTTP/1.1) with no outside network. Each request is
 //! answered on a thread of its own with `Connection: close`; `requests`
 //! counts them.
@@ -199,10 +199,17 @@ fn route(method: []const u8, path: []const u8) Page {
         .{ .path = "/navc-child.html", .page = .{ .body = "<!doctype html><iframe src='/slow?first'></iframe><script>document.querySelector('iframe').onload = () => parent.postMessage('grandchild load', '*'); parent.postMessage('created', '*');</script>" } },
         .{ .path = "/slow", .page = .{ .make = &slow } },
         .{ .path = "/reload.html", .page = .{ .body = "<!doctype html><title>reload</title><script>sessionStorage.loads = (+sessionStorage.loads || 0) + 1; navigation.onnavigate = (e) => { sessionStorage.navigates = (sessionStorage.navigates || '') + e.navigationType + ','; }; document.title = 'loads ' + sessionStorage.loads + ' navigates [' + (sessionStorage.navigates || '') + ']';</script>" } },
+        // Half a second of silence as WAV linear PCM (wptcfg_media_decoding_test.zig).
+        .{ .path = "/tone.wav", .page = .{ .content_type = "audio/wav", .body = tone_wav } },
     };
     for (pages) |entry| if (std.mem.eql(u8, entry.path, path)) return entry.page;
     return .{ .status = 404, .body = "<!doctype html><title>Not Found</title>" };
 }
+
+/// A canonical 44-byte RIFF/WAVE header - PCM (format 1), mono, 8,000 Hz,
+/// 8-bit, so 8,000 bytes a second - and 4,000 bytes of silence (0x80):
+/// exactly half a second.
+const tone_wav: []const u8 = "RIFF\xc4\x0f\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x40\x1f\x00\x00\x40\x1f\x00\x00\x01\x00\x08\x00data\xa0\x0f\x00\x00" ++ &@as([4000]u8, @splat(0x80));
 
 /// The form's submission: what was posted.
 fn submitted(out: *std.Io.Writer, request: Request) std.Io.Writer.Error!void {

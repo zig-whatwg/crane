@@ -114,12 +114,15 @@ pub const WptBrowser = struct {
         // `log_performance`, which the runner used to turn on (the user,
         // 2026-11-09: "We should never special case something"). What the
         // runner adds is what WPT needs and a browser gets the same way: WPT's
-        // certificate authority (the console's --ca-bundle), the host's media
-        // decoders, and in the bug-finding run alone the poisoned frees.
-        // No media backend: Crane's own browser passes none today, so the
-        // production run passes none (the integrator, 2026-11-09 21:09 UTC:
-        // decoders are being redesigned to come from each platform, and
-        // until then media files fail honestly).
+        // certificate authority (the console's --ca-bundle) - and in the
+        // bug-finding run alone the poisoned frees.
+        // Media decoding is the compiled-in platform's capability
+        // (media_decoding: kit/media_decoding's WAV in the default
+        // platforms), as image decoding and the clipboard are - nothing a
+        // host passes (the user, 2026-11-09 21:09 UTC: "The platform itself
+        // that is compiled in will decide if these features are built within
+        // the platform or dynamically link out to existing capabilities on
+        // the platform").
         const browser_instance = try Browser.init(allocator, .{
             .ca_bundle_path = ca,
             .poison_freed_state = poison_freed_state,

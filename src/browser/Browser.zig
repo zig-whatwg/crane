@@ -65,7 +65,6 @@ const Storage = storage_mod.Storage;
 const EventLoop = @import("event_loop.zig").EventLoop;
 const Process = @import("process.zig").Process;
 const platform = @import("platform");
-const media_backend_mod = platform.media_backend;
 
 /// A similar-origin window agent's host hooks: HostPromiseRejectionTracker
 /// and "notify about rejected promises" (html/rejected_promises.zig), and
@@ -113,14 +112,6 @@ pub const BrowserConfig = struct {
     snapshot_path: ?[]const u8 = null,
     /// Whether to log performance information
     log_performance: bool = false,
-    /// The host's media decoding (src/platform/media_backend.zig). Crane
-    /// builds in no decoder: fetch, CORS, CSP, events and HTML state stay in
-    /// Crane, and the host supplies what it can decode. BORROWED for the
-    /// Browser's whole lifetime - the host keeps the backend (its `ptr` and
-    /// vtable) alive until `deinit` returns. Every realm of the Browser reaches
-    /// it through the Browser's scope (html.media_runtime.forRealm). The
-    /// default, no_decoder, makes canPlayType answer "" for every type.
-    media_backend: media_backend_mod.MediaBackend = media_backend_mod.no_decoder,
     /// A certificate authority bundle this Browser trusts besides the
     /// system's (PEM; the WPT runner's tools/certs/cacert.pem). Copied.
     ca_bundle_path: ?[]const u8 = null,
@@ -331,9 +322,6 @@ pub const Browser = struct {
         event_loop.deferred_teardown = &agent_host.deferred_teardown;
         event_loop.fetches = &agent_host.fetches;
 
-        // The host's media backend, which every realm of this Browser reads
-        // (html.media_runtime.MediaHost), set before any realm exists.
-        (try scope.of(@import("html").media_runtime.MediaHost)).backend = config.media_backend;
         // The user agent's cookie jar, and the CookieStores that hear it:
         // the listeners are its change hook from before any realm can change
         // it. (The jar first: supplements end in reverse, so the listeners

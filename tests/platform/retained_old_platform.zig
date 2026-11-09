@@ -8,7 +8,7 @@
 //!
 //! Its own executable, not part of tests/platform's directory executable, and
 //! not named *_test.zig for that reason: the facade re-exports some of the same
-//! files (media_backend.zig, timer_backend.zig, ...), and one file cannot belong
+//! files (timer_backend.zig, clipboard_backend.zig, ...), and one file cannot belong
 //! to two modules in one compile
 //! (docs/lessons/architecture-a-module-bound-twice-cannot-share-a-compile.md).
 //!
