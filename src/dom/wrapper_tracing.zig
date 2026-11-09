@@ -211,6 +211,41 @@ pub fn holdsWrapper(top: *NodeBase) bool {
     return found;
 }
 
+/// What one walk of a tree costs (`measureWalk`).
+pub const WalkStats = struct {
+    /// Nodes the walk visits (named to the engine when wrapped).
+    visited: usize = 0,
+    /// Of them, the held ones.
+    held: usize = 0,
+    /// Children it tests for a held subtree (`subtree_holds != 0`).
+    tested: usize = 0,
+};
+
+/// The walk of `tree_root`'s held part as the collector's pause runs it -
+/// arriving from `path_to`, a node of the tree whose wrapper (or hold)
+/// brought it there, or from none - with a counter in place of the engine:
+/// what it visits and how many children it tests. Read-only, no engine call
+/// (tests/dom/wr7_walk_early_exit_test.zig; decision 7's remedy).
+pub fn measureWalk(tree_root: *NodeBase, path_to: ?*NodeBase) WalkStats {
+    _ = path_to;
+    var stats: WalkStats = .{};
+    const Count = struct {
+        stats: *WalkStats,
+
+        fn enters(self: @This(), child: *NodeBase) bool {
+            self.stats.tested += 1;
+            return child.subtree_holds != 0;
+        }
+
+        fn visit(self: @This(), node: *NodeBase) void {
+            self.stats.visited += 1;
+            if (refcount.isHeld(node)) self.stats.held += 1;
+        }
+    };
+    walkDown(tree_root, Count{ .stats = &stats });
+    return stats;
+}
+
 /// The oracle's walk: EVERY node of `tree_root`'s host-including tree,
 /// unpruned, `check(context, slot)` for each wrapped one. Read-only and
 /// allocation-free like the walk; null and garbage roots visit nothing.
