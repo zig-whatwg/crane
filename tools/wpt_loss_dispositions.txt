@@ -823,3 +823,11 @@ pass_rate = 2/40
 condition = a sweep's load: the file alone in a fresh runner process with 28 busy threads beside it on server1's 32 (wpt_runner --repeat=40 --load=28, generation 211's runner); unloaded it passes 24/60, so x10 runs on a quiet host overstate a sweep's rate
 measured_at = 9053db756ef
 paths = src/service_worker/fetch_event.zig, src/service_worker/registry.zig, src/hr_time/time_origin.zig, src/hr_time/coarsen.zig, src/dom/performance_timeline.zig
+
+[xhr/xhr-timeout-longtask.any.js]
+generation = 213
+kind = flake
+why = Not a code change: 2 -> 1 in generation 213's sweep (server1, Linux x86-64, 32 runners), its first loss in 131 recorded generations. The [window] variant's only subtest, "Long tasks should not trigger load timeout", failed with "assert_unreached: [object ProgressEvent] Reached unreachable code" (ontimeout fired), and the sweep's own retry passed it ([1/1] window 252 ms, [2/1] worker 250 ms in sweep.log). The test asks resources/delay.py?ms=100 with timeout = 150, then blocks the main thread for 200 ms; it passes only if wptserve's response arrives within the 50 ms margin, which a server shared with 31 other runners can miss. The same code passed it in lane wr1 b2's FULL A/B against generation 212 (tip 05f864c5cc3, server1, 32 runners: 0 changed files). Isolated runs, the file alone, wpt_runner --repeat=10 (integrator, 2026-11-09 05:47 UTC, server1, load 0.12): BASE ~/crane-frozen/main-7ef471b464 (generation 212's runner) 10/10 runs 2/2 subtests; TIP ~/crane-frozen/main-8fc8182275 (generation 213's runner) 10/10 runs 2/2. Recorded as a FLAKE in tmp/plans/feature-queue.md: the next flip makes it a bug with an owner (an XHR/fetch lane: check that a response already received is processed before a timeout that came due during the same long task).
+pair.1 = base 2/2; tip 2/2
+pair.2 = base 2/2; tip 2/2
+pair.3 = base 2/2; tip 2/2

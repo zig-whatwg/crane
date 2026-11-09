@@ -30,3 +30,4 @@ sweep-f7853e77e9  chat.local  macos-arm64   8
 sweep-c5214d1190  chat.local  macos-arm64   8
 sweep-9053db756e  server1     linux-x86_64  32
 sweep-7ef471b464  server1     linux-x86_64  32
+sweep-8fc8182275 server1 linux-x86_64 32
