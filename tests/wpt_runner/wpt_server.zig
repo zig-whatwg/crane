@@ -36,6 +36,12 @@ const LOCKFILE_NAME = ".wpt_serve.lock";
 pub const report_js = @embedFile("resources/testharnessreport.js");
 /// The URL every testharness page includes the report at.
 pub const report_url_path = "/resources/testharnessreport.js";
+/// The report's headers (resources/testharnessreport.js.headers), which
+/// wptserve sends with it (handlers.load_headers reads `<file>.headers`):
+/// the stock report's own, so the page decodes it as UTF-8 whatever its own
+/// encoding, as wptrunner's route serves its report "text/javascript;
+/// charset=utf8".
+pub const report_headers = @embedFile("resources/testharnessreport.js.headers");
 /// What the runner's report carries and the stock file does not: a server
 /// that answers the report URL without it was started without the runner's
 /// alias (by an older runner, or by hand), and would give every page the
@@ -89,6 +95,7 @@ pub fn serveConfig(allocator: Allocator, base: ?[]const u8, report_dir: []const 
 pub fn serveFileStem(base: []const u8) [16]u8 {
     var h = std.hash.Wyhash.init(0);
     h.update(report_js);
+    h.update(report_headers);
     h.update(base);
     var out: [16]u8 = undefined;
     _ = std.fmt.bufPrint(&out, "{x:0>16}", .{h.final()}) catch unreachable;
@@ -96,13 +103,23 @@ pub fn serveFileStem(base: []const u8) [16]u8 {
 }
 
 /// Whether an HTTP response (status line, headers, body) is the runner's
-/// report: a 200 whose body carries `report_marker`.
+/// report: a 200, served as UTF-8 (`report_headers`), whose body carries
+/// `report_marker`.
 pub fn servesRunnerReport(response: []const u8) bool {
     const line_end = std.mem.indexOf(u8, response, "\r\n") orelse return false;
     const status_line = response[0..line_end];
     if (std.mem.indexOf(u8, status_line, " 200") == null) return false;
     const body_start = std.mem.indexOf(u8, response, "\r\n\r\n") orelse return false;
-    return std.mem.indexOf(u8, response[body_start..], report_marker) != null;
+    var utf8 = false;
+    // A response with no headers ends its status line at the blank line.
+    const headers = if (body_start > line_end) response[line_end + 2 .. body_start] else "";
+    var lines = std.mem.splitSequence(u8, headers, "\r\n");
+    while (lines.next()) |line| {
+        const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
+        if (!std.ascii.eqlIgnoreCase(std.mem.trim(u8, line[0..colon], " "), "content-type")) continue;
+        if (std.ascii.findIgnoreCase(line[colon + 1 ..], "charset=utf-8") != null) utf8 = true;
+    }
+    return utf8 and std.mem.indexOf(u8, response[body_start..], report_marker) != null;
 }
 
 /// The host every test URL is built from.
@@ -437,6 +454,9 @@ pub const WptServer = struct {
         const report_abs = try std.fs.path.join(self.allocator, &.{ report_dir, "testharnessreport.js" });
         defer self.allocator.free(report_abs);
         try writeFileAll(report_abs, report_js);
+        const headers_abs = try std.fs.path.join(self.allocator, &.{ report_dir, "testharnessreport.js.headers" });
+        defer self.allocator.free(headers_abs);
+        try writeFileAll(headers_abs, report_headers);
         const config_text = try serveConfig(self.allocator, base, report_dir);
         defer self.allocator.free(config_text);
         const config_name = try std.fmt.allocPrint(self.allocator, ".crane-wpt-serve-{s}.json", .{&stem});
@@ -469,7 +489,7 @@ pub const WptServer = struct {
         };
         if (servesRunnerReport(response)) return;
         std.log.err(
-            "wpt serve on :{d}{s} serves the STOCK {s}, not the runner's (no \"{s}\"): it was started by an older runner or by hand. " ++
+            "wpt serve on :{d}{s} serves the STOCK {s}, or the runner's without its UTF-8 headers (no \"{s}\" as charset=utf-8): it was started by an older runner or by hand, or its alias directory lacks testharnessreport.js.headers. " ++
                 "Stop it once no run uses it (its lockfile is {s}/{s}); the next runner starts one that serves the runner's report.",
             .{ self.port, if (self.pid) |pid| blk: {
                 var pid_buf: [32]u8 = undefined;
@@ -1548,10 +1568,24 @@ test "a WPT root with no config.json gets a config of the alias alone" {
     try std.testing.expectEqualStrings("/r", aliases[0].object.get("local-dir").?.string);
 }
 
+test "the served report has the stock report's headers: UTF-8, cached as the harness is" {
+    // A classic script with no charset decodes in its document's encoding
+    // (HTML "fetch a classic script": the fallback encoding): a UTF-16 page
+    // (html/syntax/charset/without-inheritance.html) decoded the report as
+    // UTF-16 and never got its completion hook - TIMEOUT. wptserve reads a
+    // served file's `<file>.headers` (handlers.load_headers); the stock
+    // resources/testharnessreport.js.headers says this, as wptrunner's route
+    // serves its own report "text/javascript;charset=utf8" (environment.py).
+    try std.testing.expect(std.mem.indexOf(u8, report_headers, "Content-Type: text/javascript; charset=utf-8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, report_headers, "Cache-Control: max-age=3600") != null);
+}
+
 test "the served report carries the marker the runner checks a server for" {
     try std.testing.expect(std.mem.indexOf(u8, report_js, report_marker) != null);
-    // An HTTP answer that carries it is the runner's report; the stock file's is not.
-    try std.testing.expect(servesRunnerReport("HTTP/1.1 200 OK\r\nContent-Type: text/javascript\r\n\r\n// " ++ report_marker ++ "\n(function(){})();"));
+    // An HTTP answer that carries it, as UTF-8, is the runner's report; the stock file's is not.
+    try std.testing.expect(servesRunnerReport("HTTP/1.1 200 OK\r\nContent-Type: text/javascript; charset=utf-8\r\n\r\n// " ++ report_marker ++ "\n(function(){})();"));
+    // One served without its charset - a server missing the .headers file - is refused.
+    try std.testing.expect(!servesRunnerReport("HTTP/1.1 200 OK\r\nContent-Type: text/javascript\r\n\r\n// " ++ report_marker ++ "\n(function(){})();"));
     try std.testing.expect(!servesRunnerReport("HTTP/1.1 200 OK\r\n\r\n/* This file is intentionally empty; see \"Writing your own testharness report\" */"));
     try std.testing.expect(!servesRunnerReport("HTTP/1.1 404 Not Found\r\n\r\n" ++ report_marker));
 }
