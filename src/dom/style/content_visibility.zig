@@ -9,7 +9,6 @@ const Display = css.style_values.Display;
 const ComputedStyle = css.computed_style.ComputedStyle;
 const node_creation = @import("../node_creation.zig");
 const element_data = @import("../element_data.zig");
-const image_sources = @import("../image_sources.zig");
 const document_internals = @import("../document_internals.zig");
 
 const html_namespace = "http://www.w3.org/1999/xhtml";
@@ -40,10 +39,10 @@ pub fn contentsSkipped(element: *runtime.Instance, style: *const ComputedStyle) 
 
 fn replaced(element: *runtime.Instance, local_name: []const u8, namespace: []const u8) bool {
     if (std.mem.eql(u8, namespace, html_namespace)) {
-        // HTML Rendering 15.4.1/.2. The image owner supplies its facts;
-        // there is no private-state cast or reference into an impl.
-        if (std.mem.eql(u8, local_name, "img")) return image_sources.replacedFacts(element) != null;
-        inline for (.{ "canvas", "embed", "iframe", "video" }) |name| {
+        // HTML Rendering 15.4.1/.2: img (an HTML img is always the image
+        // owner's element, so this is what asking it answered), canvas,
+        // embed, iframe and video.
+        inline for (.{ "img", "canvas", "embed", "iframe", "video" }) |name| {
             if (std.mem.eql(u8, local_name, name)) return true;
         }
         if (std.mem.eql(u8, local_name, "audio")) {

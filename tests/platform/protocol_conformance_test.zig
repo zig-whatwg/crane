@@ -72,8 +72,9 @@ test "conformance: the bound platform matches every operation" {
         count += 1;
     }
     // Every operation of the contract is declared (section 6): pin the count,
-    // so an operation removed by accident shows here.
-    try testing.expectEqual(@as(usize, 222), count);
+    // so an operation removed by accident shows here. 221 since D3 (the user,
+    // 2026-11-09 22:21 UTC) removed replacedElementBox.
+    try testing.expectEqual(@as(usize, 221), count);
 }
 
 // ---------------------------------------------------------------------------
@@ -453,4 +454,40 @@ test "image decoding: PNG, JPEG, GIF, BMP and SVG decode through the bound platf
         // A type it does not take is UnsupportedFormat: the image is broken.
         try testing.expectError(error.UnsupportedFormat, platform.decodeImage(allocator, platform.Str.from("image/x-unknown"), platform.Bytes.from("bytes"), image_limits));
     }
+}
+
+// D3 (the user, 2026-11-09 22:21 UTC): geometry is a READ on whatever
+// rendering engine the compiled-in platform plugs in (6.9: layoutBox,
+// clientRects, hitTest, isRendered, forceLayout, invalidateLayout). Crane
+// never computes a box itself, so the protocol has no operation that sizes a
+// box from facts Crane hands over - decision 19b's replacedElementBox and its
+// ReplacedElementFacts are gone - and no built-in platform plugs a renderer
+// in yet: each answers layout as kit/headless does, with no box anywhere.
+test "the protocol has no replaced-element box: geometry is only read from a renderer" {
+    try testing.expect(!@hasDecl(platform, "replacedElementBox"));
+    try testing.expect(!@hasDecl(platform, "ReplacedElementFacts"));
+    try testing.expect(!@hasDecl(platform.adapter, "replacedElementBox"));
+}
+
+test "every built-in platform answers layout as headless does: no renderer, no box" {
+    try testing.expectEqual(platform.Support.unsupported, platform.capabilities.layout);
+    // The adapter's own answers, which the facade's gate keeps Crane from
+    // asking while the capability is unsupported (CSSOM View's no-box
+    // answers above the protocol).
+    const allocator = testing.allocator;
+    const browser = try platform.createBrowserPlatform(allocator, &.{}, no_events);
+    defer platform.destroyBrowserPlatform(browser);
+    const document: platform.LayoutNode = .{ .id = 1 };
+    const node: platform.LayoutNode = .{ .id = 2 };
+    platform.adapter.invalidateLayout(browser, document, node, .attribute);
+    platform.adapter.forceLayout(browser, document);
+    try testing.expectEqual(@as(?platform.BoxMetrics, null), platform.adapter.layoutBox(browser, document, node));
+    const rects = try platform.adapter.clientRects(browser, document, node, allocator);
+    defer allocator.free(rects);
+    try testing.expectEqual(@as(usize, 0), rects.len);
+    const hits = try platform.adapter.hitTest(browser, document, .{}, allocator);
+    defer allocator.free(hits);
+    try testing.expectEqual(@as(usize, 0), hits.len);
+    try testing.expect(!platform.adapter.isRendered(browser, document, node));
+    try testing.expect((try platform.adapter.renderedText(browser, document, node, allocator)) == null);
 }

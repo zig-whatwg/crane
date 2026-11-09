@@ -3,8 +3,8 @@
 //! take, held as a supplement of the Browser's scope and read through a
 //! realm's (recipes 0.5).
 //!
-//! Minimal, for decision 19b's layout stopgap: Browser.init creates it and
-//! Browser.deinit destroys it; its EventSink posts nothing yet. Recipes
+//! Minimal: Browser.init creates it and Browser.deinit destroys it; its
+//! EventSink posts nothing yet. Recipes
 //! step 7 grows it - the requester, the event loop's port, platform events
 //! turned into tasks.
 

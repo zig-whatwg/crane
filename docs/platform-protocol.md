@@ -206,7 +206,7 @@ per-Browser fake state, and the platform's observers (screen, network reachabili
 that report through the EventSink.
 
 Crane holds the Browser's BrowserPlatform as part of the Browser (BrowserScope, docs/instances.md
-rule 2); a realm reaches it through `realm.browser_scope`. Built so far (decision 19b): Browser.init
+rule 2); a realm reaches it through `realm.browser_scope`. Built so far: Browser.init
 creates it and Browser.deinit destroys it, as a supplement of the scope that
 `html.platform_state.of(realm)` reads (src/html/platform_state.zig); its EventSink posts nothing yet. A worker realm carries its creator's scope,
 so a worker's requests use its Browser's BrowserPlatform.
@@ -288,7 +288,7 @@ system state (defaults allowed), console output.
 | `brotli` | native (vendored Google Brotli) | native (same) | native (same) | CompressionStream/DecompressionStream reject "brotli"; the static HTTP backend does not advertise or decode br |
 | `thread_qos` | native | unsupported | as its host OS | default priority |
 | `resident_memory` | native | native | native | diagnostics report nothing |
-| `layout` | unsupported (headless) | unsupported | emulated - a STOPGAP (decision 19b): only a connected img has a box, sized from the facts Crane gives (`replacedElementBox`, 6.9); every other node has none | CSSOM View with no layout box: zero boxes, no hit (6.9) |
+| `layout` | unsupported (headless) | unsupported | unsupported (headless) | CSSOM View with no layout box: zero boxes, no hit (6.9) |
 | `os_permissions` | native: the OS permission system, per app (section 8) | unsupported (no OS permission system: Crane's store and the platform's policy) | emulated (Crane's store; scripted policy, section 9) | a request in the prompt state is denied |
 | `simple_dialogs` | native: system alerts over the key window (NSAlert; UIAlertController), the unsupported path with no window | unsupported | native (dismiss) | HTML 8.9.1 "cannot show simple dialogs" |
 | `printing` | unsupported | unsupported | native (no output) | printing steps end without output |
@@ -510,10 +510,15 @@ per-Browser node id Crane assigns (no Instance pointer crosses). The operations 
 layout implementation reads the DOM and computed style is designed when the first real rendering host
 plugs in (section 13).
 
+**Crane never computes a box itself** (D3, the user 2026-11-09 22:21 UTC): geometry is a READ on
+whatever rendering engine the compiled-in platform plugs in - layoutBox, clientRects, hitTest,
+isRendered, forceLayout, invalidateLayout - and with none, every element has CSSOM View's no-box
+answers. Decision 19b's stopgap, which sized an img's box from facts Crane handed the platform
+(`replacedElementBox`), is gone; how a renderer reads the DOM stays OQ4's open question.
+
 | Operation | Signature | Thread | Notes |
 |---|---|---|---|
 | `layoutBox` | `(browser, document: LayoutNode, node: LayoutNode) ?BoxMetrics` | agent, sync | offset{Top,Left,Width,Height}, offsetParent, client{Top,Left,Width,Height}, scroll{Width,Height}; null: no layout box (CSSOM View: offsetWidth 0, offsetParent null, ...). |
-| `replacedElementBox` | `(browser, document: LayoutNode, node: LayoutNode, element: *const ReplacedElementFacts) ?BoxMetrics` | agent, sync | **STOPGAP, debt (decision 19b)**: a replaced element's (an img's) box, sized from the facts Crane gives with the query - `ReplacedElementFacts{ connected, natural size, width and height attributes }` - because the platform cannot read the DOM yet. Element's clientWidth/clientHeight and an img's rendered width/height ask it; the testing platform sizes the box as CSS 2.1 10.3.2/10.6.2 size a replaced element with no style. Its LayoutNode ids are the queried nodes' addresses, opaque, with no id table. Replaced by OQ4's DOM-to-renderer design (section 13) when that is settled. |
 | `clientRects` | `(browser, document, node, allocator) Error![]Rect` | agent | getClientRects / getBoundingClientRect (union); empty with no box. |
 | `scrollPosition`, `setScrollPosition` | `(browser, document, node) Point`, `(browser, document, node, point, behavior) void` | agent | scrollTop/Left, scrollTo; the viewport when node is the document. |
 | `hitTest` | `(browser, document, point, allocator) Error![]LayoutNode` | agent | elementFromPoint / elementsFromPoint (CSSOM View); empty with no layout. |
@@ -818,7 +823,6 @@ out later; image decoding, built in today (kit/image_decoding, D1); media decodi
 | clipboard | kit/memory_clipboard per Browser, as darwin and linux (D2) |
 | notifications, geolocation | recorded; positions scripted per Browser |
 | console | the per-Browser sink in its options (the runner's per-test log) |
-| layout | emulated, a STOPGAP (decision 19b): `replacedElementBox` sizes a connected img from Crane's facts (src/platform/adapters/testing/layout.zig); every other layout operation answers as headless |
 | clocks (`browserClock`), opt in | `PlatformBrowserOptions.virtual_clock`: a per-Browser VIRTUAL clock (src/platform/adapters/testing/virtual_clock.zig), Chromium's MOCK_TIME - it stands still while the Browser works and moves only when its event loop is idle (no runnable task, no posted task, no deferred teardown, no fetch in flight, no running worker) and a timer or an idle period is due, to exactly that wake-up, or when a test calls `platform.adapter.advanceClock(browser, ns)`. Monotonic and wall time move together; the wall clock starts at `virtual_clock_wall_start_ms` (2026-01-01T00:00:00Z by default), the monotonic one at an arbitrary origin that is not 0. Work takes no time: a page that busy-waits on performance.now() or Date.now() never sees time pass, as under MOCK_TIME. Off by default; WPT runs keep real time, as all three browsers' do. FIRST BATCH (2026-11-02): the Browser's window event loop, its timers, frame clock and idle periods, its window realms' performance.now()/timeOrigin/Event.timeStamp, IdleDeadline, and Date in its window agent (engine `host_clock`). Still on the process clock: workers' loops and realms, WebSocket and EventSource polling (their 1 ms pump timers make virtual time run ahead of their real I/O - a Blink-style virtual-time pauser is the next step), a navigation's fetch timing (so a virtual Browser's time origin stays its Window's creation, not the navigation's fetch start), and the other process-clock readers (cookie expiry, File.lastModified, XHR timeouts, IndexedDB, Reporting) |
 | randomness (`fillBrowserRandom`), opt in | `PlatformBrowserOptions.random_seed` (0, the default: none): a per-Browser SplitMix64 stream (src/platform/adapters/testing/seeded_random.zig), written out so a seed replays on every toolchain. Its first draw seeds the Browser's agent's Math.random (engine `seeded_random`); V8's process-wide --random-seed is never used, because it gives every isolate the same sequence |
 

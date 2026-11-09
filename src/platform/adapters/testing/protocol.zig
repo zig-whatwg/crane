@@ -37,7 +37,6 @@ const media_decoding_built_in = for (platform_options.platform_without) |capabil
     if (std.mem.eql(u8, capability, "media_decoding")) break false;
 } else true;
 const media_decoding = if (media_decoding_built_in) @import("kit_media_decoding") else headless;
-const layout = @import("layout.zig");
 const fonts = if (for (platform_options.platform_without) |capability| {
     if (std.mem.eql(u8, capability, "font_decoding")) break true;
 } else false) headless else @import("fonts.zig");
@@ -132,12 +131,9 @@ pub const protocol = struct {
         // kit/sfnt (decision 20): web fonts in Zig, and fixed default,
         // installed and system faces, so no answer depends on the machine.
         c.font_decoding = .native;
-        // STOPGAP (decision 19b): layout.zig. Deviation: only a connected
-        // replaced element (an img) has a box, sized from the facts Crane
-        // gives (CSS 2.1 10.3.2/10.6.2 with no style); every other node has
-        // none, as headless; every other layout operation answers as
-        // headless.
-        c.layout = .emulated;
+        // layout: headless's, unsupported - no renderer plugs in here, and
+        // Crane never computes a box itself (D3, the user 2026-11-09 22:21
+        // UTC: geometry is a read on the compiled-in platform's renderer).
         break :blk c;
     };
 
@@ -242,7 +238,6 @@ pub const protocol = struct {
     pub const rsaEncrypt = crypto.rsaEncrypt;
     pub const rsaDecrypt = crypto.rsaDecrypt;
     pub const layoutBox = headless.layoutBox;
-    pub const replacedElementBox = layout.replacedElementBox;
     pub const clientRects = headless.clientRects;
     pub const scrollPosition = headless.scrollPosition;
     pub const setScrollPosition = headless.setScrollPosition;
