@@ -218,12 +218,14 @@ pub fn wrapInstanceAsV8Object(
     // When a DOM node is wrapped in one context and accessed from another
     // (e.g., MutationObserver callback sees element created in parent context),
     // we need to return the SAME wrapper to ensure JavaScript === identity works.
+    // The node's wrapper slot (engine.NodeWrapperSlot), reached through
+    // runtime.lifetime.slotOf: the adapter never names NodeBase's field.
     if (instance_bridge.getNodeBase(@ptrCast(instance))) |nodebase| {
-        if (nodebase.bound_v8_wrapper) |bound_wrapper| {
-            std.log.debug("[wrapInstanceAsV8Object] RETURNING bound_v8_wrapper for {s} Instance={*} NodeBase={*} wrapper={*}", .{ interface_name, instance, nodebase, bound_wrapper });
+        if (runtime.lifetime.slotOf(nodebase).handle) |bound_wrapper| {
+            std.log.debug("[wrapInstanceAsV8Object] RETURNING the node's wrapper for {s} Instance={*} NodeBase={*} wrapper={*}", .{ interface_name, instance, nodebase, bound_wrapper });
             return @ptrCast(bound_wrapper);
         } else {
-            std.log.debug("[wrapInstanceAsV8Object] NodeBase found but bound_v8_wrapper is null for {s} Instance={*} NodeBase={*}", .{ interface_name, instance, nodebase });
+            std.log.debug("[wrapInstanceAsV8Object] NodeBase found but its wrapper slot is empty for {s} Instance={*} NodeBase={*}", .{ interface_name, instance, nodebase });
         }
     } else {
         std.log.debug("[wrapInstanceAsV8Object] NO NodeBase found for {s} Instance={*}", .{ interface_name, instance });
@@ -453,9 +455,10 @@ pub fn wrapInstanceAsV8Object(
     // This ensures JavaScript === identity works across contexts
     // (e.g., MutationObserver callbacks seeing elements from parent context).
     if (instance_bridge.getNodeBase(@ptrCast(instance))) |nodebase| {
-        if (nodebase.bound_v8_wrapper == null) {
-            nodebase.bound_v8_wrapper = @ptrCast(final_object);
-            std.log.debug("[wrapInstanceAsV8Object] SET bound_v8_wrapper for {s} Instance={*} NodeBase={*} wrapper={*}", .{ interface_name, instance, nodebase, final_object });
+        const slot = runtime.lifetime.slotOf(nodebase);
+        if (slot.isEmpty()) {
+            slot.handle = @ptrCast(final_object);
+            std.log.debug("[wrapInstanceAsV8Object] SET the node's wrapper for {s} Instance={*} NodeBase={*} wrapper={*}", .{ interface_name, instance, nodebase, final_object });
         }
     }
 

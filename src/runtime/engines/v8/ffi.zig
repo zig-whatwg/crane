@@ -979,6 +979,11 @@ pub extern fn v8_Isolate_GetHeapUsage(
     total: ?*usize,
     external: ?*usize,
 ) void;
+/// `isolate`'s full collections so far (mark-compacts), their longest pause
+/// and the 95th percentile of the most recent 1,024, in microseconds - a pause
+/// being the GC prologue to the GC epilogue (v8_wrapper.cpp GCPauses). All 0
+/// for a null isolate or one the adapter did not make. In every build.
+pub extern fn v8_Debug_FullGCPauses(isolate: ?*Isolate, count: *u64, max_us: *u64, p95_us: *u64) void;
 /// Bytes of V8's global handle table in use - every live `Global<T>`, counted
 /// by V8 and updated as each is created or reset. In every build: the measure
 /// for a test asserting that an operation leaves no handle behind.

@@ -129,6 +129,7 @@ pub const links_engine = true;
 
 /// HTML "prepare to run script" entered `realm`: undone by "clean up".
 pub const ScriptScope = protocol_scripts.ScriptScope;
+pub const NodeWrapperSlot = @import("node_wrappers.zig").NodeWrapperSlot;
 
 // ============================================================================
 // Helpers
@@ -1070,6 +1071,13 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   isolate (0 with none), which counts every Global whoever made it;
 /// - `wrapper_cache_entries`: the wrappers every realm's wrapper cache on this
 ///   thread holds, each keeping its instance alive until the wrapper dies;
+/// - `full_gc_count`, `full_gc_pause_max_us`, `full_gc_pause_p95_us`: the
+///   current isolate's (its agent's) full collections since it was made, the
+///   longest pause and the 95th percentile of the last 1,024, in
+///   microseconds; a pause is V8's GC prologue to its epilogue for one
+///   mark-compact, which brackets the atomic pause (v8_wrapper.cpp
+///   GCPauses); 0 with no isolate current. The wrapper redesign's baseline
+///   (tmp/redesign/wrapper-redesign-design.md section 7, P0);
 /// - `globals_created`: Globals made through the wrapper's tracked path,
 ///   cumulative - 0 unless v8_wrapper.cpp is built with
 ///   -DCRANE_TRACK_GLOBALS=1, as gc_bench's is;
@@ -1090,6 +1098,10 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 /// checks ran and how many failed (isolate_ownership.zig) - hosts read "not
 /// measured" when those are not reported.
 pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
+    var full_gcs: u64 = 0;
+    var full_gc_max_us: u64 = 0;
+    var full_gc_p95_us: u64 = 0;
+    ffi.v8_Debug_FullGCPauses(ffi.v8_Isolate_GetCurrent(), &full_gcs, &full_gc_max_us, &full_gc_p95_us);
     const handles = [_]engine.Counter{
         .{ .name = "live_string_globals", .value = ffi.v8_Debug_LiveStringGlobals() },
         .{ .name = "live_context_globals", .value = ffi.v8_Debug_LiveContextGlobals() },
@@ -1100,6 +1112,9 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         // counters above.
         .{ .name = "global_handle_bytes", .value = if (ffi.v8_Isolate_GetCurrent()) |isolate| @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate)) else 0 },
         .{ .name = "wrapper_cache_entries", .value = @intCast(@import("wrapper_cache.zig").liveEntryCount()) },
+        .{ .name = "full_gc_count", .value = @intCast(full_gcs) },
+        .{ .name = "full_gc_pause_max_us", .value = @intCast(full_gc_max_us) },
+        .{ .name = "full_gc_pause_p95_us", .value = @intCast(full_gc_p95_us) },
         .{ .name = "globals_created", .value = ffi.v8_Debug_CreatedGlobals() },
         // v8_wrapper.cpp's g_obj_src slots, in its order.
         .{ .name = "object_globals_from.FunctionCallbackInfo_This", .value = ffi.v8_Debug_ObjSrc(0) },

@@ -16,6 +16,11 @@ const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
 
+// engine.NodeWrapperSlot's contract, on this adapter too.
+test {
+    _ = @import("node_wrapper_slot_test.zig");
+}
+
 fn noSteps(_: ?*anyopaque) void {
     unreachable;
 }

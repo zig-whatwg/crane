@@ -47,12 +47,155 @@ pub const allocator_config: std.heap.DebugAllocatorConfig = .{
 /// `args` or is static.
 pub fn cycleBody(args: []const [:0]const u8) []const u8 {
     var body: ?[]const u8 = null;
+    var bench: ?*const Bench = null;
     var control = false;
     for (args[@min(1, args.len)..]) |arg| {
         if (std.mem.startsWith(u8, arg, body_flag) and arg.len > body_flag.len) body = arg[body_flag.len..];
+        if (std.mem.startsWith(u8, arg, bench_flag)) bench = benchNamed(arg[bench_flag.len..]);
         if (std.mem.eql(u8, arg, "--control")) control = true;
     }
-    return body orelse if (control) control_body else default_body;
+    if (body) |b| return b;
+    if (bench) |named| return named.body;
+    return if (control) control_body else default_body;
+}
+
+const bench_flag = "--bench=";
+
+/// A named measurement, `--bench=<name>`: a statement per cycle (gc_bench
+/// runs it in its loop of fresh scripts) with the counts it is read at,
+/// whether it collects, and what gc_bench reports for it beside its table.
+/// Named so a phase's red test and its gate read the same thing as the base
+/// it is compared with: the wrapper redesign's (tmp/redesign/
+/// wrapper-redesign-design.md section 7, P0: `wide`, `qsa-deep`,
+/// `wrapper-churn-nogc`, `pause`) and the breakdown's kept-node bodies
+/// (tmp/plans/perf2b8-breakdown.md: `div`, `text`).
+pub const Bench = struct {
+    name: []const u8,
+    /// What it measures, printed with its report.
+    what: []const u8,
+    /// The statement each cycle runs.
+    body: []const u8,
+    /// The counts when none are given (gc_bench <cycles> <every>).
+    cycles: usize,
+    every: usize,
+    gc: Gc,
+    /// Report the wrappers made per cycle: the engine's wrapper creations
+    /// (its `object_globals_from.ObjectTemplate_NewInstance` counter) between
+    /// the first and last reading, over the cycles.
+    wrappers_per_cycle: bool = false,
+
+    /// Whether a run collects before each reading (gc_bench's `--gc`).
+    pub const Gc = enum {
+        /// As `--gc` says.
+        either,
+        /// Always: the bench reads what is kept, so garbage must not count.
+        forced,
+        /// Never: the bench reads what the engine's own schedule leaves, and
+        /// `--gc` is refused.
+        never,
+    };
+
+    /// Whether the run collects before each reading, given `--gc`.
+    pub fn collects(self: *const Bench, gc_flag: bool) error{GcRefused}!bool {
+        return switch (self.gc) {
+            .either => gc_flag,
+            .forced => true,
+            .never => if (gc_flag) error.GcRefused else false,
+        };
+    }
+};
+
+/// Every named measurement.
+pub const benches = [_]Bench{
+    .{
+        .name = "wide",
+        .what = "a detached tree of 50,000 parsed (unwrapped) children, one of them wrapped and held by script; " ++
+            "the full-collection pause with it alive (the design's decision 7: a walk over a held path's children)",
+        .body = "void (globalThis.wide ??= (() => { const r = document.createElement('div'); " ++
+            "r.innerHTML = '<p></p>'.repeat(50000); return r.lastChild; })());",
+        .cycles = 100_000,
+        .every = 10_000,
+        .gc = .forced,
+    },
+    .{
+        .name = "qsa-deep",
+        .what = "a fresh parsed tree per cycle - 1,000 leaves at depth 12 under 119 ancestors - and " ++
+            "querySelectorAll of its leaves, each read once: the wrappers one query makes",
+        .body = "{ const c = document.createElement('div'); c.innerHTML = (globalThis.qsaDeepHtml ??= (() => { " ++
+            "let s = '<b></b>'.repeat(10); s = ('<i>' + s + '</i>').repeat(10); s = ('<u>' + s + '</u>').repeat(10); " ++
+            "for (let d = 0; d < 9; d++) s = '<div>' + s + '</div>'; return s; })()); " ++
+            "const l = c.querySelectorAll('b'); for (let k = 0; k < l.length; k++) void l[k]; }",
+        .cycles = 2_000,
+        .every = 500,
+        .gc = .either,
+        .wrappers_per_cycle = true,
+    },
+    .{
+        .name = "wrapper-churn-nogc",
+        .what = "100,000 wrapped elements made and dropped, never a forced collection: the footprint " ++
+            "and the full collections the engine's own schedule runs",
+        .body = "void document.createElement('div');",
+        .cycles = 100_000,
+        .every = 10_000,
+        .gc = .never,
+    },
+    .{
+        .name = "pause",
+        .what = "a detached tree of 10,100 elements, every one wrapped and kept by script through its root, " ++
+            "and one element made and dropped per cycle: the full-collection pause",
+        .body = "void (globalThis.pauseTree ??= (() => { const r = document.createElement('div'); " ++
+            "r.innerHTML = ('<section>' + '<p></p>'.repeat(100) + '</section>').repeat(100); " ++
+            "for (const e of r.querySelectorAll('*')) void e; return r; })()); void document.createElement('span');",
+        .cycles = 100_000,
+        .every = 10_000,
+        .gc = .forced,
+    },
+    .{
+        .name = "div",
+        .what = "a wrapped div kept per cycle in a script array (a root): the bytes a kept div costs",
+        .body = "(globalThis.keep ??= []).push(document.createElement('div'));",
+        .cycles = 50_000,
+        .every = 10_000,
+        .gc = .forced,
+    },
+    .{
+        .name = "text",
+        .what = "a wrapped Text kept per cycle in a script array (a root): the bytes a kept Text costs",
+        .body = "(globalThis.keep ??= []).push(document.createTextNode('x'));",
+        .cycles = 50_000,
+        .every = 10_000,
+        .gc = .forced,
+    },
+};
+
+/// The measurement named `name`, if there is one.
+pub fn benchNamed(name: []const u8) ?*const Bench {
+    for (&benches) |*bench| {
+        if (std.mem.eql(u8, bench.name, name)) return bench;
+    }
+    return null;
+}
+
+/// The measurement gc_bench's arguments name (the last `--bench=<name>`), or
+/// null for none. A name that is not one, or a `--bench=` beside a
+/// `--body=` (which statement would run?), is refused.
+pub fn benchOf(args: []const [:0]const u8) error{ UnknownBench, BenchAndBody }!?*const Bench {
+    var name: ?[]const u8 = null;
+    var body = false;
+    for (args[@min(1, args.len)..]) |arg| {
+        if (std.mem.startsWith(u8, arg, bench_flag)) name = arg[bench_flag.len..];
+        if (std.mem.startsWith(u8, arg, body_flag)) body = true;
+    }
+    const given = name orelse return null;
+    if (body) return error.BenchAndBody;
+    return benchNamed(given) orelse error.UnknownBench;
+}
+
+/// gc_bench's positional count at `index` (1: cycles, 2: every), or
+/// `default` when it is not given as a number.
+pub fn countArg(args: []const [:0]const u8, index: usize, default: usize) usize {
+    if (args.len <= index) return default;
+    return std.fmt.parseInt(usize, args[index], 10) catch default;
 }
 
 /// Whether each batch's script is followed by turns of the page's event
@@ -128,4 +271,68 @@ test "gc_bench's allocator captures no stack traces" {
     // The checks that matter for a leak hunt stay: a double free and an
     // invalid free still panic or log, and deinit still reports leaks.
     try std.testing.expect(allocator_config.safety);
+}
+
+// ---------------------------------------------------------------------------
+// Named measurements (`--bench=<name>`)
+
+test "--bench= names a measurement: its statement is the cycle's" {
+    const wide = (try benchOf(&.{ "gc_bench", "--bench=wide" })).?;
+    try std.testing.expectEqualStrings("wide", wide.name);
+    try std.testing.expectEqualStrings(wide.body, cycleBody(&.{ "gc_bench", "--bench=wide" }));
+    // Wherever it is given, after the counts as before them.
+    try std.testing.expectEqualStrings(wide.body, cycleBody(&.{ "gc_bench", "20000", "5000", "--bench=wide" }));
+    try std.testing.expect(!isControl(&.{ "gc_bench", "--bench=wide", "--control" }));
+    // None given: none, and the plain statement.
+    try std.testing.expect((try benchOf(&.{ "gc_bench", "--gc" })) == null);
+    try std.testing.expect((try benchOf(&.{"--bench=wide"})) == null);
+}
+
+test "the wrapper redesign's measurements are each named, with the breakdown's two" {
+    // tmp/redesign/wrapper-redesign-design.md section 7, P0; div and text are
+    // tmp/plans/perf2b8-breakdown.md's bodies, the "outside the block" rows.
+    for ([_][]const u8{ "wide", "qsa-deep", "wrapper-churn-nogc", "pause", "div", "text" }) |name| {
+        const bench = benchNamed(name) orelse return error.TestBenchMissing;
+        try std.testing.expectEqualStrings(name, bench.name);
+        try std.testing.expect(bench.body.len > 0 and bench.what.len > 0);
+        try std.testing.expect(bench.cycles > 0 and bench.every > 0 and bench.every <= bench.cycles);
+    }
+    try std.testing.expect(benchNamed("nope") == null);
+}
+
+test "an unknown --bench= name, or --bench= beside --body=, is refused" {
+    try std.testing.expectError(error.UnknownBench, benchOf(&.{ "gc_bench", "--bench=nope" }));
+    try std.testing.expectError(error.UnknownBench, benchOf(&.{ "gc_bench", "--bench=" }));
+    try std.testing.expectError(error.BenchAndBody, benchOf(&.{ "gc_bench", "--bench=wide", "--body=void 0;" }));
+}
+
+test "each measurement says whether it collects: wrapper-churn-nogc never, the kept-object ones always" {
+    const churn = benchNamed("wrapper-churn-nogc").?;
+    try std.testing.expectEqual(Bench.Gc.never, churn.gc);
+    try std.testing.expectError(error.GcRefused, churn.collects(true));
+    try std.testing.expectEqual(false, try churn.collects(false));
+    for ([_][]const u8{ "wide", "pause", "div", "text" }) |name| {
+        const bench = benchNamed(name).?;
+        try std.testing.expectEqual(Bench.Gc.forced, bench.gc);
+        try std.testing.expectEqual(true, try bench.collects(false));
+    }
+    const qsa = benchNamed("qsa-deep").?;
+    try std.testing.expectEqual(true, try qsa.collects(true));
+    try std.testing.expectEqual(false, try qsa.collects(false));
+}
+
+test "qsa-deep's tree is 1,000 leaves at depth 12, wrapped once per query" {
+    const qsa = benchNamed("qsa-deep").?;
+    try std.testing.expect(qsa.wrappers_per_cycle);
+    try std.testing.expect(std.mem.indexOf(u8, qsa.body, "querySelectorAll('b')") != null);
+    try std.testing.expect(!benchNamed("wide").?.wrappers_per_cycle);
+}
+
+test "the counts default to the measurement's, and a count given wins" {
+    const wide = benchNamed("wide").?;
+    try std.testing.expectEqual(wide.cycles, countArg(&.{ "gc_bench", "--bench=wide" }, 1, wide.cycles));
+    try std.testing.expectEqual(wide.every, countArg(&.{ "gc_bench", "--bench=wide" }, 2, wide.every));
+    try std.testing.expectEqual(@as(usize, 3000), countArg(&.{ "gc_bench", "3000", "1000", "--bench=wide" }, 1, wide.cycles));
+    try std.testing.expectEqual(@as(usize, 1000), countArg(&.{ "gc_bench", "3000", "1000", "--bench=wide" }, 2, wide.every));
+    try std.testing.expectEqual(@as(usize, 10_000), countArg(&.{"gc_bench"}, 1, 10_000));
 }

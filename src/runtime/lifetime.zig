@@ -22,6 +22,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const Instance = @import("instance.zig").Instance;
 const Hook = @import("process").Hook;
+const engine = @import("engine");
 
 /// What a counted type's VTable points at. One table for every counted type:
 /// the runtime dispatches through it, and the owner the hooks name decides.
@@ -50,6 +51,9 @@ pub const Hooks = struct {
     /// teardown the adapter heard (`wrapperForgotten`): diagnostics and tests
     /// only - the count went with the node.
     forget: ?*const fn () void = null,
+    /// The engine's wrapper slot of `target` - what `acquire` answers for a
+    /// counted object (a node's NodeBase): `slotOf`.
+    slot_of: ?*const fn (target: *anyopaque) *engine.NodeWrapperSlot = null,
 };
 
 // process-wide: dom.refcount's two functions, installed once while the process starts (refcount.install, from Document's and Node's installHooks) and the same for every Browser and thread; read-only after
@@ -73,6 +77,7 @@ fn merged(current: Hooks, owned: Hooks) ?Hooks {
     if (owned.acquire) |f| next.acquire = f;
     if (owned.release) |f| next.release = f;
     if (owned.forget) |f| next.forget = f;
+    if (owned.slot_of) |f| next.slot_of = f;
     return if (std.meta.eql(next, current)) null else next;
 }
 
@@ -125,6 +130,17 @@ pub fn wrapperAcquired(instance: *Instance) ?*anyopaque {
 pub fn wrapperReleased(target: *anyopaque) void {
     const release = hooks.read().release orelse return;
     release(target);
+}
+
+/// The engine's inline wrapper slot of `target` - a counted object, as
+/// `wrapperAcquired` answers it (a node's NodeBase) - for the adapter to read
+/// and write (the wrapper redesign's P1, tmp/redesign/wrapper-redesign-
+/// design.md section 3.3): the adapter never names a node's field. Installed
+/// by the owner of the counts with its other hooks, at process start; a
+/// target exists only once that owner is installed.
+pub fn slotOf(target: *anyopaque) *engine.NodeWrapperSlot {
+    const slot_of = hooks.read().slot_of orelse @panic("runtime.lifetime.slotOf: no owner of the counts installed its slot_of hook");
+    return slot_of(target);
 }
 
 /// A wrapper's reference is dropped without `wrapperReleased`, because its

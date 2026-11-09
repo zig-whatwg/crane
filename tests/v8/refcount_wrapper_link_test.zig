@@ -153,7 +153,10 @@ const Tally = struct {
         acquired = 0;
         released = 0;
         forgotten = 0;
-        return runtime.lifetime.overrideHooksForTest(.{ .acquire = acquire, .release = release, .forget = forget });
+        // The whole table is overridden: dom.refcount's slot hook goes in
+        // with the tallied pair (the adapter reaches a node's wrapper slot
+        // only through it, wrapper redesign P1).
+        return runtime.lifetime.overrideHooksForTest(.{ .acquire = acquire, .release = release, .forget = forget, .slot_of = dom.refcount.wrapperSlotOf });
     }
 };
 

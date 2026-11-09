@@ -73,16 +73,17 @@ fn slack(comptime State: type) usize {
 
 test "NodeBase keeps no child list: the sibling links are the children" {
     // 208 at d1ee79a9386: - 96 (child_nodes, an infra.List with four inline
-    // slots; the sibling links are the children). bound_v8_wrapper stays
-    // inline: every wrapper the cache takes sets it (wrapper_cache.zig,
-    // `put`), as Blink keeps the main world's wrapper on the object
+    // slots; the sibling links are the children). The wrapper slot stays
+    // inline (bound_v8_wrapper then, `wrapper: engine.NodeWrapperSlot` since
+    // the wrapper redesign's P1): every wrapper the cache takes sets it
+    // (wrapper_cache.zig, `set`), as Blink keeps the main world's wrapper on the object
     // (ScriptWrappable::wrapper_). The per-node allocator (16) is the next
     // step: an owner-less NodeBase (the test-only WithBase types) still needs
     // it, so it waits for those to carry their own (design 3.4, deferred).
     // Done in batch 6 (with last_child): 88 bytes, perf2b6_node_layout_test.zig.
     try expectSize(NodeBase, 88);
     try std.testing.expect(!@hasField(NodeBase, "child_nodes"));
-    try std.testing.expect(@hasField(NodeBase, "bound_v8_wrapper"));
+    try std.testing.expect(@hasField(NodeBase, "wrapper"));
 }
 
 test "every OwnState level keeps its InternalState by value in its own State" {

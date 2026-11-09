@@ -12,7 +12,7 @@
 //!   prototype, as for an upgrade; and `WrapperCache.set` refuses to replace
 //!   a live wrapper at all, so no edge is ever dropped that way.
 //! - A constructed NODE was never given its node's wrapper alias
-//!   (`NodeBase.bound_v8_wrapper`), so node tracing drew no tree edges for it:
+//!   (then `NodeBase.bound_v8_wrapper`, now its `wrapper` slot), so node tracing drew no tree edges for it:
 //!   `f.appendChild(new Text())` left the text's wrapper - its expandos, a
 //!   custom element's class - to the next collection.
 //!

@@ -43,6 +43,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const NodeBase = @import("node_base.zig").NodeBase;
 const interfaces = @import("interfaces");
 const instance_bridge = @import("instance_bridge.zig");
@@ -567,7 +568,7 @@ pub fn install(owned: Hooks) void {
     // Through install even when nothing changes: the slot refuses a write
     // outside the process start either way.
     hooks.install(merged(current, owned) orelse current);
-    runtime.lifetime.install(.{ .acquire = wrapperAcquire, .release = wrapperRelease });
+    runtime.lifetime.install(.{ .acquire = wrapperAcquire, .release = wrapperRelease, .slot_of = wrapperSlotOf });
 }
 
 /// `current` with `owned`'s non-null entries, or null when that changes
@@ -629,6 +630,15 @@ pub fn wrapperAcquire(instance: *runtime.Instance) ?*anyopaque {
 /// `target` (what `wrapperAcquire` answered) lets it go.
 pub fn wrapperRelease(target: *anyopaque) void {
     wrapperDeref(@ptrCast(@alignCast(target)));
+}
+
+/// runtime.lifetime's slotOf hook: the engine's wrapper slot of `target`
+/// (what `wrapperAcquire` answers: a NodeBase) - NodeBase.wrapper, which the
+/// adapter reads and writes through this and never by name (the wrapper
+/// redesign's P1, tmp/redesign/wrapper-redesign-design.md section 3.3).
+pub fn wrapperSlotOf(target: *anyopaque) *engine.NodeWrapperSlot {
+    const node: *NodeBase = @ptrCast(@alignCast(target));
+    return &node.wrapper;
 }
 
 /// A wrapper's reference on `node` (`ref` without a ledger): a count going

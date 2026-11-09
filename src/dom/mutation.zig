@@ -1640,7 +1640,7 @@ fn removeHeld(
 /// recorded.
 fn orphanRemoved(node: *NodeBase) void {
     if (engine.capabilities.wrap_tracking == .unsupported) return;
-    if (node.parent_node != null or node.bound_v8_wrapper != null) return;
+    if (node.parent_node != null or !node.wrapper.isEmpty()) return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(node.ownerInstance() orelse return));
     if (!runtime.instance_lifecycle.provablyUnwrapped(true, instance)) return;
     runtime.orphan_roots.record(instance.ctx, instance);
@@ -2459,12 +2459,12 @@ fn linkForMove(node: *NodeBase, old_parent: *NodeBase, new_parent: *NodeBase, ch
 /// Node tracing's opaque root follows the tree (refcount design 2.2, section 7
 /// step 4): `node` - the root of a subtree just linked under `parent` - joins
 /// `parent`'s opaque root, if it has a wrapper. One field test (the engine's
-/// wrapper alias on NodeBase), so a parse or an innerHTML of unwrapped nodes
+/// wrapper slot on NodeBase, `wrapper.isEmpty()`), so a parse or an innerHTML of unwrapped nodes
 /// never calls the engine; only the subtree's root changes trees, so its
 /// descendants are not visited (the adapter's insertion-steps hook visited
 /// and looked up each one).
 fn joinedTree(node: *NodeBase, parent: *NodeBase) void {
-    if (node.bound_v8_wrapper == null) return;
+    if (node.wrapper.isEmpty()) return;
     const member = instance_bridge.getInstance(node) orelse return;
     const owner = instance_bridge.getInstance(parent) orelse return;
     engine.joinOpaqueRoot(@ptrCast(@alignCast(member)), @ptrCast(@alignCast(owner)));
@@ -2473,7 +2473,7 @@ fn joinedTree(node: *NodeBase, parent: *NodeBase) void {
 /// `node` - the root of a subtree just unlinked from `old_parent` - leaves
 /// its old tree's opaque root and is a root of its own, if it has a wrapper.
 fn leftTree(node: *NodeBase, old_parent: *NodeBase) void {
-    if (node.bound_v8_wrapper == null) return;
+    if (node.wrapper.isEmpty()) return;
     const member = instance_bridge.getInstance(node) orelse return;
     const owner = instance_bridge.getInstance(old_parent) orelse return;
     engine.leaveOpaqueRoot(@ptrCast(@alignCast(member)), @ptrCast(@alignCast(owner)));
