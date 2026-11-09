@@ -119,8 +119,13 @@ const Page = struct {
         return .{ .agent = agent, .realm = realm, .queue = queue };
     }
 
+    /// The Browser's end, in its order (Browser.deinit): the realm, every
+    /// node wrapper's reference, the last drain - which frees the trees only
+    /// wrappers held - then the agent.
     fn close(self: Page) void {
         engine.destroyWindowRealm(self.realm, .global_detached);
+        engine.releaseNodeWrappers(self.agent);
+        self.queue.drainAll();
         engine.destroyAgent(self.agent);
     }
 

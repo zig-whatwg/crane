@@ -62,6 +62,7 @@ const shadow_hosts = @import("shadow_hosts.zig");
 const template_contents = @import("template_contents.zig");
 const refcount_audit = @import("refcount_audit.zig");
 const refcount_teardown = @import("refcount_teardown.zig");
+const wrapper_tracing = @import("wrapper_tracing.zig");
 
 const log = std.log.scoped(.refcount);
 
@@ -590,6 +591,9 @@ pub fn install(owned: Hooks) void {
         .release = wrapperRelease,
         .slot_of = wrapperSlotOf,
         .target_of_slot = wrapperTargetOfSlot,
+        // The wrapper redesign's P5: the walk the engine's collector runs
+        // from a reachable or kept node (dom.wrapper_tracing).
+        .trace_tree = wrapper_tracing.traceTree,
     });
 }
 
