@@ -651,6 +651,11 @@ fn reportBench(bench: *const options.Bench, samples: []const Sample) void {
     if (last.counter("full_gc_pause_max_us")) |max| {
         std.debug.print("  full-collection pause, over the agent's life: max {d} us, p95 {d} us (of its last 1,024)\n", .{ max, last.counter("full_gc_pause_p95_us") orelse 0 });
     } else std.debug.print("  full-collection pause: not measured (the engine reports no full_gc_pause_max_us)\n", .{});
+    // The wrapper redesign's P5: the walks the collector asked the host for
+    // (anchors and keeps), all in the full collections' atomic pauses.
+    if (last.counter("node_wrapper_walks")) |walks| {
+        std.debug.print("  node wrapper walks: {d} during the run ({d} since the agent began)\n", .{ walks - (first.counter("node_wrapper_walks") orelse 0), walks });
+    } else std.debug.print("  node wrapper walks: not measured (the engine reports no node_wrapper_walks)\n", .{});
     if (last.resident) |resident| std.debug.print("  footprint at the end: {d:.1} MB resident\n", .{@as(f64, @floatFromInt(resident)) / (1024.0 * 1024.0)});
     if (bench.wrappers_per_cycle) {
         const name = "object_globals_from.ObjectTemplate_NewInstance";

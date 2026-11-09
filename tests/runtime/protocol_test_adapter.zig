@@ -45,6 +45,8 @@ pub const capabilities: engine.Capabilities = .{
     .seeded_random = .unsupported,
     .repl_mode = .unsupported,
     .external_memory = .unsupported,
+    // Node wrapper reachability (the wrapper redesign's P5): the engine-less test adapter has no collector.
+    .wrapper_tracing = .unsupported,
 };
 
 /// No engine behind it.
@@ -66,6 +68,10 @@ pub const NodeWrapperSlot = extern struct {
         return self.bytes == 0;
     }
 };
+
+/// engine.Tracer: never made - nothing here calls runtime.lifetime's
+/// traceTree hook (`capabilities.wrapper_tracing` is unsupported).
+pub const Tracer = opaque {};
 
 const Context = engine.Context;
 const JSValue = engine.JSValue;
@@ -612,6 +618,13 @@ pub fn tracedValue(_: *Instance, _: engine.TracedSlot) ?Owned {
 pub fn joinOpaqueRoot(_: *Instance, _: *Instance) void {}
 pub fn leaveOpaqueRoot(_: *Instance, _: *Instance) void {}
 pub fn keepOpaqueRoot(_: *Instance, _: *Instance, _: engine.TracedSlot) void {}
+
+/// No wrapper tracing: no collector consults the host (the wrapper
+/// redesign's P5, design 3.3).
+pub fn traceNodeWrapper(_: *Tracer, _: *const NodeWrapperSlot) void {}
+pub fn traceVisitOnce(_: *Tracer, _: *const anyopaque) bool {
+    return true;
+}
 
 // 4.13 Diagnostics tier
 pub fn heapStatistics(_: *Agent) engine.HeapStatistics {

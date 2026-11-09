@@ -299,6 +299,13 @@ fn hostOf(node: *NodeBase) ?*NodeBase {
     return instance_bridge.getNodeBaseUnaudited(host);
 }
 
+/// `node`'s host-including parent - its parent, else the live host of a
+/// shadow root or a template's contents (`hosted`), else null: the climb of
+/// dom.wrapper_tracing's walk, read-only and allocation-free.
+pub fn hostIncludingParent(node: *NodeBase) ?*NodeBase {
+    return up(null, node);
+}
+
 /// The root of `node`'s host-including tree.
 pub fn root(ledger: ?*const Ledger, node: *NodeBase) *NodeBase {
     var current = node;
@@ -578,7 +585,12 @@ pub fn install(owned: Hooks) void {
     // Through install even when nothing changes: the slot refuses a write
     // outside the process start either way.
     hooks.install(merged(current, owned) orelse current);
-    runtime.lifetime.install(.{ .acquire = wrapperAcquire, .release = wrapperRelease, .slot_of = wrapperSlotOf, .target_of_slot = wrapperTargetOfSlot });
+    runtime.lifetime.install(.{
+        .acquire = wrapperAcquire,
+        .release = wrapperRelease,
+        .slot_of = wrapperSlotOf,
+        .target_of_slot = wrapperTargetOfSlot,
+    });
 }
 
 /// `current` with `owned`'s non-null entries, or null when that changes

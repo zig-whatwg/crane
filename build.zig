@@ -2878,6 +2878,14 @@ pub fn build(b: *std.Build) void {
     const refcount_audit = b.option(bool, "refcount-audit", "Compile in the refcount zombie audit (run it with CRANE_REFCOUNT_AUDIT=1); unit tests always have it") orelse false;
     const dom_options = b.addOptions();
     dom_options.addOption(bool, "refcount_audit", refcount_audit);
+    // The wrapper redesign's walk oracle (tmp/redesign/wrapper-redesign-
+    // design.md section 7, P5; node_wrappers.zig `checkWalk`): after every
+    // major collection, the trees every kept node wrapper keeps are walked
+    // unpruned and each wrapper they hold must have been kept, and each kept
+    // wrapper's node reached by the walk. Off by default: it costs a walk of
+    // every live tree per collection.
+    const wrapper_trace_check = b.option(bool, "wrapper-trace-check", "Check the node wrapper walk after every major GC (the wrapper redesign's P5 oracle; logs wrapper-trace-check errors)") orelse false;
+    build_options.addOption(bool, "wrapper_trace_check", wrapper_trace_check);
 
     // Debug options module (separate from build_options for cleaner imports)
     const debug_options = b.addOptions();

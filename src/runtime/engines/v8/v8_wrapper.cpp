@@ -25,6 +25,8 @@
 #include <cppgc/allocation.h>
 #include <cppgc/garbage-collected.h>
 #include <cppgc/heap.h>
+#include <cppgc/heap-state.h>
+#include <cppgc/internal/base-page-handle.h>
 #include <cppgc/member.h>
 #include <cppgc/persistent.h>
 #include <cppgc/platform.h>
@@ -2657,6 +2659,51 @@ struct GCPauses {
 
 struct IsolateData;
 
+/// The walk's entry (node_wrappers.zig `crane_v8_node_anchor_trace`, an
+/// `export fn`): the anchor of node slot `slot` was reached in a
+/// collection's atomic pause; every wrapper its node keeps is traced through
+/// `visitor` (the wrapper redesign's P5, design 4.4). A link-time entry, not
+/// a callback in the isolate's record: an anchor holds only its slot, and
+/// the Zig side finds the agent from the node.
+extern "C" void crane_v8_node_anchor_trace(void* slot, cppgc::Visitor* visitor);
+
+/// Whether a Trace now runs in a marking collection's atomic pause, the only
+/// place the walk may run (design 4.4, R6). Crane's agents' C++ heaps are
+/// made with CppHeapCreateParams.marking_support = kAtomic
+/// (agentCppHeapParams), so in V8 13.1.203 C++ Trace methods run only there:
+/// src/heap/cppgc-js/cpp-heap.cc - UpdateGCCapabilitiesFromFlags only lowers
+/// marking_support_ (std::min; 13.1's DEFINE_WEAK_IMPLICATION(
+/// incremental_marking, cppheap_incremental_marking) turns the flag on by
+/// default, so the explicit kAtomic is what holds it), SelectMarkingType never
+/// returns more than marking_support(), and AdvanceTracing - the only caller
+/// of MarkerBase::AdvanceMarkingWithLimits, which pops the worklists and
+/// calls Trace - is reached outside the pause only from IncrementalMarking::
+/// EmbedderStep (src/heap/incremental-marking.cc), which returns at once when
+/// !incremental_marking_supported(); src/heap/cppgc/marker.cc
+/// MarkerBase::StartMarking starts no incremental task and no concurrent
+/// marker for kAtomic (EnterIncrementalMarkingIfNeeded). V8's own markers -
+/// incremental steps, concurrent threads (concurrent-marking.cc
+/// CreateCppMarkingState) and the Object::Wrap write barrier
+/// (CppHeap::WriteBarrier) - only mark an anchor's header and push it
+/// (CppMarkingState::MarkAndPush), so every anchor marked in a cycle is
+/// traced once, in the pause, after every tree change of the cycle: Crane's
+/// trees have no write barrier, and a walk done earlier would miss nodes
+/// appended after it (the integrator, 2026-11-09 16:22). A heap snapshot's
+/// graph builder calls Trace while nothing is marking: no walk then.
+static bool inMarkingAtomicPause(const void* object) {
+    const cppgc::HeapHandle& heap = cppgc::internal::BasePageHandle::FromPayload(object)->heap_handle();
+    if (!cppgc::subtle::HeapState::IsMarking(heap)) return false;
+    if (!cppgc::subtle::HeapState::IsInAtomicPause(heap)) {
+        // A V8 upgrade or a lowered marking type made C++ marking incremental
+        // or concurrent: the walk would miss what the mutator changes after
+        // it, and lose wrappers. Fail here, never silently.
+        fprintf(stderr, "v8_wrapper: a node anchor was traced outside the atomic pause - the agents' C++ heap must keep "
+                        "CppHeapCreateParams.marking_support = kAtomic (the wrapper redesign's walk, design 4.4)\n");
+        abort();
+    }
+    return true;
+}
+
 /// The CppHeapPointerTag every node wrapper's anchor is wrapped with
 /// (Object::Wrap) and unwrapped under (Object::Unwrap). One tag for every
 /// node interface: Crane's brand check is the instance's state ancestry
@@ -2689,13 +2736,20 @@ class NodeAnchor final : public cppgc::GarbageCollected<NodeAnchor> {
  public:
     explicit NodeAnchor(void* slot) : slot_(slot) {}
 
-    /// Its own slot only (design 7, P4: "NodeAnchor::Trace traces its own
-    /// slot only"): a live anchor always marks its own TracedNode, so no
-    /// later pruning mistake can leave a non-empty slot whose TracedNode V8
-    /// freed (design 4.4, principle 3). The tree edges still carry trees.
+    /// Design 4.4, in order:
+    /// 1. its own slot: a live anchor always marks its own TracedNode, so no
+    ///    pruning mistake of the walk can leave a non-empty slot whose
+    ///    TracedNode V8 freed (principle 3) - a mistake can only lose a
+    ///    neighbour's wrapper;
+    /// 2. the walk, in the collection's atomic pause: every wrapper its node
+    ///    keeps (its host-including tree's and its node document's;
+    ///    dom.wrapper_tracing), as Blink's Node::Trace reaches its tree's
+    ///    wrappers through the tree's Member edges. Until P7 node tracing's
+    ///    JS edges keep the same trees beside it.
     void Trace(cppgc::Visitor* visitor) const {
         if (!slot_) return;
         visitor->Trace(*static_cast<const TracedReference<Object>*>(slot_));
+        if (inMarkingAtomicPause(this)) crane_v8_node_anchor_trace(slot_, visitor);
     }
 
     void* slot_;
@@ -2714,9 +2768,11 @@ class NodeWrapperRegistry final : public cppgc::GarbageCollected<NodeWrapperRegi
  public:
     explicit NodeWrapperRegistry(IsolateData* record) : record_(record) {}
 
-    void Trace(cppgc::Visitor* visitor) const {
-        visitor->RegisterWeakCallbackMethod<NodeWrapperRegistry, &NodeWrapperRegistry::ProcessWeak>(this);
-    }
+    /// The weak processing, and - the agent's NodeRoots (design 4.4, "Kept
+    /// nodes") - the walk from every kept node in the collection's atomic
+    /// pause: this registry is rooted by its record, so it is traced in
+    /// every major collection.
+    void Trace(cppgc::Visitor* visitor) const;
 
     void ProcessWeak(const cppgc::LivenessBroker& broker);
 
@@ -2860,6 +2916,14 @@ struct IsolateData {
     /// running - the test's own, which outlive the agent.
     uint32_t* test_drain_task_runs = nullptr;
     uint32_t* test_drain_task_drops = nullptr;
+    /// The walk (the wrapper redesign's P5; v8_Isolate_SetNodeWrapperTracing):
+    /// the kept nodes' trees, from the anchors' registry's Trace in the
+    /// atomic pause; the end of each marking (the walk's per-collection sets
+    /// go); and the oracle (-Dwrapper-trace-check, else null), in the weak
+    /// processing before any slot is emptied.
+    void (*node_wrapper_trace_keeps)(void* registry, cppgc::Visitor* visitor) = nullptr;
+    void (*node_wrappers_marked)(void* registry) = nullptr;
+    void (*node_wrapper_trace_check)(void* registry, void* const* live, size_t live_len, void* const* dead, size_t dead_len) = nullptr;
 
 
     /// Take out the entry whose module is `module`, if any.
@@ -3042,8 +3106,26 @@ static void* nodeInstanceOf(Isolate* isolate, Local<Object> object) {
     return record->node_wrapper_instance(anchor->slot_);
 }
 
+void NodeWrapperRegistry::Trace(cppgc::Visitor* visitor) const {
+    visitor->RegisterWeakCallbackMethod<NodeWrapperRegistry, &NodeWrapperRegistry::ProcessWeak>(this);
+    IsolateData* record = record_;
+    if (!record->node_wrappers || !record->node_wrapper_trace_keeps) return;
+    if (inMarkingAtomicPause(this)) record->node_wrapper_trace_keeps(record->node_wrappers, visitor);
+}
+
 void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
     IsolateData* record = record_;
+    // The walk's oracle (-Dwrapper-trace-check), while every slot still holds
+    // what marking saw.
+    if (record->node_wrappers && record->node_wrapper_trace_check) {
+        std::vector<void*> live;
+        std::vector<void*> dead;
+        for (NodeAnchor* anchor : anchors) {
+            if (!anchor->slot_) continue;
+            (broker.IsHeapObjectAlive(anchor) ? live : dead).push_back(anchor->slot_);
+        }
+        record->node_wrapper_trace_check(record->node_wrappers, live.data(), live.size(), dead.data(), dead.size());
+    }
     size_t kept = 0;
     bool released = false;
     for (NodeAnchor* anchor : anchors) {
@@ -3071,6 +3153,8 @@ void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
         anchors.swap(smaller);
     }
     if (released) record->node_wrappers_drain_due = true;
+    // Marking is over: the walk's per-collection sets end.
+    if (record->node_wrappers && record->node_wrappers_marked) record->node_wrappers_marked(record->node_wrappers);
 }
 
 // ---- The young generation (design 4.11, P8) ----
@@ -3262,6 +3346,27 @@ extern "C" bool v8_Isolate_SetNodeWrappers(Isolate* isolate, void* registry, voi
     record->node_wrappers_end = end;
     record->node_wrapper_instance = instance_of;
     return true;
+}
+
+/// The walk's three callbacks (node_wrappers.zig "The walk"), after
+/// v8_Isolate_SetNodeWrappers. False for an isolate with no record.
+extern "C" bool v8_Isolate_SetNodeWrapperTracing(Isolate* isolate, void (*trace_keeps)(void*, cppgc::Visitor*),
+                                                 void (*marked)(void*),
+                                                 void (*check)(void*, void* const*, size_t, void* const*, size_t)) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return false;
+    record->node_wrapper_trace_keeps = trace_keeps;
+    record->node_wrappers_marked = marked;
+    record->node_wrapper_trace_check = check;
+    return true;
+}
+
+/// engine.traceNodeWrapper on V8 (design 3.3): the walk's visitor traces the
+/// TracedReference in a non-empty node slot - Blink's ScriptWrappable::Trace
+/// of its inline `wrapper_` (platform/bindings/script_wrappable.cc). Marks
+/// the TracedNode and the wrapper, and through the wrapper its anchor.
+extern "C" void v8_NodeTracer_TraceSlot(cppgc::Visitor* visitor, void* slot) {
+    visitor->Trace(*static_cast<const TracedReference<Object>*>(slot));
 }
 
 /// Whether `box`'s object can be a node's wrapper: an API object (made from a
@@ -3942,11 +4047,42 @@ size_t v8_Process_LiveIsolates() {
 /// Blink hands its heap gin's V8Platform: cppgc's foreground tasks reach the
 /// agent's loop through its task runner. Made after V8's start
 /// (cppgc::InitializeProcess, v8_Platform_Start).
-static std::unique_ptr<CppHeap> newAgentCppHeap() {
-    CppHeapCreateParams params(std::vector<std::unique_ptr<cppgc::CustomSpaceBase>>{});
+static void agentCppHeapParams(CppHeapCreateParams& params) {
+    // kAtomic keeps every C++ Trace - the node anchors' walk (design 4.4) -
+    // inside the atomic pause (inMarkingAtomicPause says why, from the 13.1
+    // source); tests/v8/wrapper_walk_test.zig pins it.
     params.marking_support = cppgc::Heap::MarkingType::kAtomic;
     params.sweeping_support = cppgc::Heap::SweepingType::kIncrementalAndConcurrent;
+}
+
+static std::unique_ptr<CppHeap> newAgentCppHeap() {
+    CppHeapCreateParams params(std::vector<std::unique_ptr<cppgc::CustomSpaceBase>>{});
+    agentCppHeapParams(params);
     return CppHeap::Create(g_platform.platform.get(), params);
+}
+
+/// tests/v8: the MarkingType every agent's C++ heap is made with
+/// (agentCppHeapParams).
+extern "C" uint8_t v8_test_AgentCppHeapMarkingSupport() {
+    CppHeapCreateParams params(std::vector<std::unique_ptr<cppgc::CustomSpaceBase>>{});
+    agentCppHeapParams(params);
+    return static_cast<uint8_t>(params.marking_support);
+}
+
+/// tests/v8: V8's incremental marking starts on `isolate` (entered), as a
+/// moderate memory pressure notification starts it (13.1 src/heap/heap.cc
+/// Heap::CheckMemoryPressure: StartIncrementalMarking when incremental
+/// marking is on and stopped); whether its C++ heap is marking now.
+extern "C" bool v8_test_Isolate_StartIncrementalMarking(Isolate* isolate) {
+    isolate->MemoryPressureNotification(MemoryPressureLevel::kModerate);
+    CppHeap* heap = isolate->GetCppHeap();
+    return heap && cppgc::subtle::HeapState::IsMarking(heap->GetHeapHandle());
+}
+
+/// tests/v8: whether `isolate`'s C++ heap is marking now.
+extern "C" bool v8_test_Isolate_CppHeapIsMarking(Isolate* isolate) {
+    CppHeap* heap = isolate->GetCppHeap();
+    return heap && cppgc::subtle::HeapState::IsMarking(heap->GetHeapHandle());
 }
 
 Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options);

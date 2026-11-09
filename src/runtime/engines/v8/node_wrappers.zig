@@ -50,6 +50,13 @@
 //!   a tree whatever the counts say): the anchor lets go of the slot - the
 //!   wrapper reaches no node from here - and the slot is Reset, the wrapper's
 //!   reference released.
+//! - **The walk** (the redesign's P5, design 4.4): a reachable wrapper's
+//!   anchor, in the collection's atomic pause, traces its own slot and then
+//!   asks the host which wrappers its node keeps (runtime.lifetime.traceTree,
+//!   dom.wrapper_tracing: its host-including tree's and its node document's)
+//!   - `traceAnchor`, v8_wrapper.cpp NodeAnchor::Trace. The anchors'
+//!   registry walks the kept nodes' trees the same way (`traceKeeps`). Until
+//!   P7 the walk runs beside node tracing's JS edges (wrapper_cache.zig).
 //! - **The agent's end** (engine.releaseNodeWrappers, which the host calls
 //!   before its last drain and its sweeps, and destroyAgent): every live
 //!   wrapper the same way, so the host's drain frees the trees only wrappers
@@ -64,6 +71,10 @@ const tombstones = @import("webidl").utils.tombstones;
 const address_map = @import("infra").address_map;
 
 const log = std.log.scoped(.node_wrappers);
+
+/// -Dwrapper-trace-check: the walk's oracle runs in every major collection's
+/// weak processing (`checkWalk`).
+const wrapper_trace_check = @import("build_options").wrapper_trace_check;
 
 /// engine.NodeWrapperSlot on V8: one `v8::TracedReference<v8::Object>`, whose
 /// one word this is.
@@ -196,6 +207,21 @@ pub const Registry = struct {
     /// Releases a collection could not record (no memory): references kept,
     /// so those trees are freed only at the agent's end. Diagnostics.
     lost_releases: u64 = 0,
+    /// The walk's per-collection set of tree roots already walked
+    /// (engine.traceVisitOnce): filled in a collection's atomic pause, emptied
+    /// at the end of its marking (`markedCallback`), its capacity kept.
+    visited: std.AutoHashMapUnmanaged(usize, void) = .empty,
+    /// -Dwrapper-trace-check: the slots the walk named in this collection.
+    traced: std.AutoHashMapUnmanaged(usize, void) = .empty,
+    /// No walk was installed for a trace this collection (a test's override
+    /// removed it): the oracle has nothing to check then.
+    walk_absent: bool = false,
+    /// Anchors and keeps whose walk ran, cumulative (diagnostics, tests).
+    walks: u64 = 0,
+    /// The oracle's findings, cumulative (-Dwrapper-trace-check).
+    trace_check_failures: u64 = 0,
+    /// Debug: a walk is running (inside the collector): no wrap may start.
+    in_walk: bool = false,
 
     /// Release what the collections recorded - unless a walk holds the
     /// agent's teardowns: its last resume drains (`drainOf`).
@@ -234,6 +260,8 @@ pub const Registry = struct {
     fn deinit(self: *Registry) void {
         self.released.deinit(std.heap.c_allocator);
         self.keeps.deinit(std.heap.c_allocator);
+        self.visited.deinit(std.heap.c_allocator);
+        self.traced.deinit(std.heap.c_allocator);
         self.* = undefined;
     }
 
@@ -334,6 +362,7 @@ fn ensureRegistry(isolate: *ffi.Isolate) error{ OutOfMemory, NoIsolateRecord }!*
     errdefer std.heap.c_allocator.destroy(registry);
     registry.* = .{ .isolate = isolate, .holds = @import("protocol_agents.zig").teardownHoldsOf(isolate) };
     if (!ffi.v8_Isolate_SetNodeWrappers(isolate, registry, &collected, &drainCallback, &endCallback, &instanceOfSlotC)) return error.NoIsolateRecord;
+    _ = ffi.v8_Isolate_SetNodeWrapperTracing(isolate, &traceKeeps, &markedCallback, if (wrapper_trace_check) &checkWalk else null);
     return registry;
 }
 
@@ -418,6 +447,8 @@ pub const Adopted = struct {
 pub fn adopt(isolate: *ffi.Isolate, instance: *runtime.Instance, box: *ffi.Object) error{ OutOfMemory, NoIsolateRecord, AgentEnded, NotANode, AlreadyWrapped, NotAnApiObject }!Adopted {
     const registry = try ensureRegistry(isolate);
     if (registry.ended) return error.AgentEnded;
+    // The walk runs inside the collector and makes nothing (design 4.4).
+    std.debug.assert(!registry.in_walk);
     const node = targetOf(instance) orelse return error.NotANode;
     const slot = runtime.lifetime.slotOf(node);
     if (!slot.isEmpty()) return error.AlreadyWrapped;
@@ -605,6 +636,196 @@ pub fn endRealm(cache_storage: *anyopaque) void {
         if (runtime.instance_lifecycle.isCleanupStarted(root.instance)) continue;
         runtime.gc.onObjectFreed(root.instance);
     }
+}
+
+// ============================================================================
+// The walk (the wrapper redesign's P5, design 3.3 and 4.4)
+// ============================================================================
+
+/// engine.Tracer on V8: the cppgc visitor of the collection's atomic pause
+/// that reached a node anchor (or the anchors' registry, for the keeps), and
+/// the agent's registry, whose `visited` set dedupes the walk. Made on the
+/// stack of `traceAnchor` / `traceKeeps` for one walk; never stored.
+pub const Tracer = struct {
+    /// The cppgc::Visitor, BORROWED for the Trace call.
+    visitor: *anyopaque,
+    registry: *Registry,
+};
+
+/// engine.traceNodeWrapper: the slot's wrapper is kept - its TracedReference
+/// traced through the collection's visitor (v8_NodeTracer_TraceSlot), which
+/// marks the TracedNode and the wrapper and, through it, its anchor.
+pub fn traceNodeWrapper(tracer: *Tracer, slot: *const NodeWrapperSlot) void {
+    if (slot.isEmpty()) return;
+    if (wrapper_trace_check) tracer.registry.traced.put(std.heap.c_allocator, @intFromPtr(slot), {}) catch {};
+    ffi.v8_NodeTracer_TraceSlot(tracer.visitor, @ptrCast(@constCast(slot)));
+}
+
+/// engine.traceVisitOnce: true the first time `key` is offered in this
+/// collection. Malloc in the pause (never the V8 or C++ heap); with no
+/// memory, true - the tree is walked again, which costs time, never a
+/// wrapper.
+pub fn traceVisitOnce(tracer: *Tracer, key: *const anyopaque) bool {
+    const entry = tracer.registry.visited.getOrPut(std.heap.c_allocator, @intFromPtr(key)) catch return true;
+    return !entry.found_existing;
+}
+
+/// NodeAnchor::Trace's step 2 (v8_wrapper.cpp; design 4.4): the anchor of
+/// the node slot `raw_slot` was reached in a collection's atomic pause, and
+/// its own slot traced; every wrapper its node keeps is traced through
+/// `visitor` - the walk (runtime.lifetime.traceTree). The agent's registry
+/// is found from the node (its instance's realm's agent): an anchor holds
+/// only its slot (16 bytes, design 4.1). A link-time C entry, not a
+/// callback in the isolate's record, for the same reason: the anchor cannot
+/// reach the record (the integrator, 2026-11-09 16:20).
+export fn crane_v8_node_anchor_trace(raw_slot: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void {
+    const slot: *NodeWrapperSlot = @ptrCast(@alignCast(raw_slot orelse return));
+    const target = runtime.lifetime.targetOfSlot(slot);
+    const instance = instanceOfTarget(target) orelse return;
+    const isolate = isolateOfInstance(instance) orelse return;
+    const registry = registryOf(isolate) orelse return;
+    var tracer: Tracer = .{ .visitor = visitor orelse return, .registry = registry };
+    walk(registry, target, &tracer);
+}
+
+/// One walk from `target`, the registry's diagnostics around it.
+fn walk(registry: *Registry, target: *anyopaque, tracer: *Tracer) void {
+    registry.in_walk = true;
+    defer registry.in_walk = false;
+    if (runtime.lifetime.traceTree(target, tracer)) registry.walks += 1 else registry.walk_absent = true;
+}
+
+/// The kept nodes' trees (design 4.4 "Kept nodes", rule 3.2 c), from the
+/// anchors' registry's Trace in the atomic pause: every node with a live
+/// keep (pending activity) keeps its tree's wrappers, wrapped or not itself
+/// - Blink's ActiveScriptWrappableManager traces each active
+/// ScriptWrappable. A keep of a realm that is detached or ended keeps
+/// nothing (Blink: ScriptWrappableIsActive answers false once its context
+/// is destroyed, active_script_wrappable_manager.cc) - its wrapper, if any,
+/// is held by an edge from its realm's global object (`holdKept`).
+fn traceKeeps(raw_registry: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void {
+    const registry: *Registry = @ptrCast(@alignCast(raw_registry orelse return));
+    if (registry.ended) return;
+    var tracer: Tracer = .{ .visitor = visitor orelse return, .registry = registry };
+    var entries = registry.keeps.iterator();
+    while (entries.next()) |kv| {
+        const instance = kv.key_ptr.*;
+        const kept = kv.value_ptr;
+        if (kept.count == 0 or kept.retained) continue;
+        if (kept.generation != runtime.SlabAllocator.generationOf(instance)) continue;
+        if (runtime.instance_lifecycle.isCleanupStarted(instance)) continue;
+        if (!instance.ctx.hasEngine()) continue;
+        if (@import("wrapper_cache.zig").detachedHolderOf(instance) != null) continue;
+        const target = targetOf(instance) orelse continue;
+        walk(registry, target, &tracer);
+    }
+}
+
+/// The end of a collection's marking (the anchors' registry's weak
+/// processing, every major GC): the walk's sets of this collection go,
+/// their capacity kept (a quarter used or less above 4,096 entries gives the
+/// rest back).
+fn markedCallback(raw_registry: ?*anyopaque) callconv(.c) void {
+    const registry: *Registry = @ptrCast(@alignCast(raw_registry orelse return));
+    endSet(&registry.visited);
+    endSet(&registry.traced);
+    registry.walk_absent = false;
+}
+
+fn endSet(set: *std.AutoHashMapUnmanaged(usize, void)) void {
+    if (set.capacity() > 4096 and set.count() * 4 < set.capacity()) {
+        set.clearAndFree(std.heap.c_allocator);
+    } else set.clearRetainingCapacity();
+}
+
+/// The walk's oracle (-Dwrapper-trace-check; design 7 P5, R2-R3), in every
+/// major collection's weak processing before any slot is emptied: `live`
+/// are the slots of the anchors the collection kept, `dead` of those it did
+/// not. It checks, logging each finding (an error log fails a unit test):
+/// 1. every kept anchor's node was reached by the walk itself, not only by
+///    its anchor's own slot - a pruning or a dedupe mistake shows here even
+///    while the JS edges keep the wrapper;
+/// 2. walked UNPRUNED, no tree a kept anchor's node or a live keep keeps
+///    holds a wrapper the collection is dropping - what the browsers keep;
+/// 3. no dropped anchor's node is in a tree the walk visited.
+fn checkWalk(raw_registry: ?*anyopaque, raw_live: ?[*]const ?*anyopaque, live_len: usize, raw_dead: ?[*]const ?*anyopaque, dead_len: usize) callconv(.c) void {
+    const live: []const ?*anyopaque = if (raw_live) |l| l[0..live_len] else &.{};
+    const dead: []const ?*anyopaque = if (raw_dead) |d| d[0..dead_len] else &.{};
+    const registry: *Registry = @ptrCast(@alignCast(raw_registry orelse return));
+    // A test's override removed the walk: nothing it should have kept.
+    if (registry.walk_absent or runtime.lifetime.installedHooks().trace_tree == null) return;
+    const dom = @import("dom");
+    const gpa = std.heap.c_allocator;
+    var dropped: std.AutoHashMapUnmanaged(usize, void) = .empty;
+    defer dropped.deinit(gpa);
+    for (dead) |slot| if (slot) |s| dropped.put(gpa, @intFromPtr(s), {}) catch return;
+    var walked: std.AutoHashMapUnmanaged(usize, void) = .empty;
+    defer walked.deinit(gpa);
+    const Check = struct {
+        registry: *Registry,
+        dropped: *const std.AutoHashMapUnmanaged(usize, void),
+
+        fn wrapped(self: @This(), slot: *NodeWrapperSlot) void {
+            if (!self.dropped.contains(@intFromPtr(slot))) return;
+            self.registry.trace_check_failures += 1;
+            log.err("wrapper-trace-check: a wrapper in a tree a kept wrapper keeps was collected (node type {d})", .{nodeTypeOfSlot(slot)});
+        }
+    };
+    const check: Check = .{ .registry = registry, .dropped = &dropped };
+    for (live) |maybe_slot| {
+        const slot: *NodeWrapperSlot = @ptrCast(@alignCast(maybe_slot orelse continue));
+        // 1.
+        if (!registry.traced.contains(@intFromPtr(slot))) {
+            registry.trace_check_failures += 1;
+            log.err("wrapper-trace-check: a kept node wrapper's node was not reached by the walk (node type {d})", .{nodeTypeOfSlot(slot)});
+        }
+        // 2.
+        const node: *dom.NodeBase = @ptrCast(@alignCast(runtime.lifetime.targetOfSlot(slot)));
+        for (dom.wrapper_tracing.treeRoots(node)) |maybe_root| {
+            const tree_root = maybe_root orelse continue;
+            const entry = walked.getOrPut(gpa, @intFromPtr(tree_root)) catch return;
+            if (entry.found_existing) continue;
+            dom.wrapper_tracing.forEachWrapped(tree_root, check, Check.wrapped);
+        }
+    }
+    var entries = registry.keeps.iterator();
+    while (entries.next()) |kv| {
+        const instance = kv.key_ptr.*;
+        const kept = kv.value_ptr;
+        if (kept.count == 0 or kept.retained or kept.generation != runtime.SlabAllocator.generationOf(instance)) continue;
+        if (runtime.instance_lifecycle.isCleanupStarted(instance) or !instance.ctx.hasEngine()) continue;
+        if (@import("wrapper_cache.zig").detachedHolderOf(instance) != null) continue;
+        const node: *dom.NodeBase = @ptrCast(@alignCast(targetOf(instance) orelse continue));
+        for (dom.wrapper_tracing.treeRoots(node)) |maybe_root| {
+            const tree_root = maybe_root orelse continue;
+            const entry = walked.getOrPut(gpa, @intFromPtr(tree_root)) catch return;
+            if (entry.found_existing) continue;
+            dom.wrapper_tracing.forEachWrapped(tree_root, check, Check.wrapped);
+        }
+    }
+    // 3.
+    for (dead) |maybe_slot| {
+        const slot: *NodeWrapperSlot = @ptrCast(@alignCast(maybe_slot orelse continue));
+        const node: *dom.NodeBase = @ptrCast(@alignCast(runtime.lifetime.targetOfSlot(slot)));
+        const tree_root = dom.refcount.root(null, node);
+        if (!registry.visited.contains(@intFromPtr(tree_root))) continue;
+        registry.trace_check_failures += 1;
+        log.err("wrapper-trace-check: the walk visited a tree whose wrapper the collection dropped (node type {d})", .{node.node_type});
+    }
+}
+
+fn nodeTypeOfSlot(slot: *NodeWrapperSlot) u16 {
+    const node: *@import("dom").NodeBase = @ptrCast(@alignCast(runtime.lifetime.targetOfSlot(slot)));
+    return node.node_type;
+}
+
+/// The current isolate's walks so far (anchors and keeps) and the oracle's
+/// findings (diagnosticCounters' `node_wrapper_walks` and
+/// `wrapper_trace_check_failures`).
+pub fn walkCountsOfCurrent() struct { walks: u64, check_failures: u64 } {
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse return .{ .walks = 0, .check_failures = 0 };
+    const registry = registryOf(isolate) orelse return .{ .walks = 0, .check_failures = 0 };
+    return .{ .walks = registry.walks, .check_failures = registry.trace_check_failures };
 }
 
 /// engine.releaseNodeWrappers: `isolate`'s agent will run no more script.

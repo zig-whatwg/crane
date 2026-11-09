@@ -1986,6 +1986,10 @@ fn keepNodeDocument(instance: *runtime.Instance, node_type: u16, base: *NodeBase
     // A node in a tree reaches its document through its parent: the slot
     // holds the parent there (node tracing), and a root's holds its document.
     if (node_type == NodeType.DOCUMENT_NODE or base.parent_node != null) return;
+    // One of node tracing's JS edges: off only under a test's override
+    // (runtime.lifetime.treeEdges; the wrapper redesign's walk keeps the
+    // document then, and P7 deletes this redraw).
+    if (!runtime.lifetime.treeEdges()) return;
     if (base.wrapper.isEmpty() or !engine.hasWrapper(instance)) return;
     if (doc) |document| {
         engine.traceChild(instance, document, dom_module.node_document.traced_slot);

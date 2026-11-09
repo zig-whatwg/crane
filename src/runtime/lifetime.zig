@@ -58,6 +58,22 @@ pub const Hooks = struct {
     /// The counted object whose slot `slot` is - `slot_of`'s inverse
     /// (`targetOfSlot`).
     target_of_slot: ?*const fn (slot: *engine.NodeWrapperSlot) *anyopaque = null,
+    /// The walk (the wrapper redesign's P5, tmp/redesign/wrapper-redesign-
+    /// design.md 3.3 and 4.4): `target` - a counted object, as `acquire`
+    /// answers it - has a wrapper the engine's collector reached, or is
+    /// kept; name every wrapper it keeps to the engine (engine.
+    /// traceNodeWrapper), deduplicated per collection (engine.
+    /// traceVisitOnce). Runs INSIDE the collection's atomic pause: read-only,
+    /// no allocation, no other engine operation (dom.wrapper_tracing).
+    trace_tree: ?*const fn (target: *anyopaque, tracer: *engine.Tracer) void = null,
+    /// Whether the engine adapter keeps node tracing's JS edges (V8: each
+    /// wrapper's private upward edge and its parent's set of children, drawn
+    /// at the wrap and on joinOpaqueRoot / leaveOpaqueRoot, and the Node
+    /// impl's node-document edge redrawn on adopt) beside the walk. True, and
+    /// never installed: only a test's override turns it off
+    /// (tests/v8/wrapper_walk_test.zig: the walk alone keeps trees). The
+    /// redesign's P7 deletes the edges and this field with them.
+    tree_edges: bool = true,
 };
 
 // process-wide: dom.refcount's two functions, installed once while the process starts (refcount.install, from Document's and Node's installHooks) and the same for every Browser and thread; read-only after
@@ -83,6 +99,8 @@ fn merged(current: Hooks, owned: Hooks) ?Hooks {
     if (owned.forget) |f| next.forget = f;
     if (owned.slot_of) |f| next.slot_of = f;
     if (owned.target_of_slot) |f| next.target_of_slot = f;
+    if (owned.trace_tree) |f| next.trace_tree = f;
+    // `tree_edges` is no owner's to install: only an override changes it.
     return if (std.meta.eql(next, current)) null else next;
 }
 
@@ -104,6 +122,13 @@ test "installing the hooks already installed writes nothing; a new or changed on
     const changed = merged(installed, .{ .release = &T.otherRelease }) orelse return error.TestExpectedWrite;
     try std.testing.expect(changed.release == &T.otherRelease);
     try std.testing.expect(changed.acquire == &T.acquire);
+}
+
+/// The hooks as installed (or as a live override has them): a test's
+/// starting point for `overrideHooksForTest` - the process start's hooks
+/// with one field changed.
+pub fn installedHooks() Hooks {
+    return hooks.get();
 }
 
 /// A test's override of the hooks (`overrideHooksForTest`).
@@ -157,6 +182,23 @@ pub fn slotOf(target: *anyopaque) *engine.NodeWrapperSlot {
 pub fn targetOfSlot(slot: *engine.NodeWrapperSlot) *anyopaque {
     const target_of_slot = hooks.read().target_of_slot orelse @panic("runtime.lifetime.targetOfSlot: no owner of the counts installed its target_of_slot hook");
     return target_of_slot(slot);
+}
+
+/// The walk (`Hooks.trace_tree`) from `target`, a counted object with a
+/// reachable wrapper or a keep, inside the engine's collector: every wrapper
+/// it keeps is named to `tracer`. False, and nothing walked, when no owner
+/// of the counts installed the walk (or a test's override removed it): the
+/// engine then keeps only what its own edges keep.
+pub fn traceTree(target: *anyopaque, tracer: *engine.Tracer) bool {
+    const trace_tree = hooks.read().trace_tree orelse return false;
+    trace_tree(target, tracer);
+    return true;
+}
+
+/// Whether node tracing's JS edges are drawn (`Hooks.tree_edges`): true
+/// outside a test's override, until the wrapper redesign's P7 deletes them.
+pub fn treeEdges() bool {
+    return hooks.read().tree_edges;
 }
 
 /// A wrapper's reference is dropped without `wrapperReleased`, because its

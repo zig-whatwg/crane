@@ -122,6 +122,12 @@ pub const capabilities: engine.Capabilities = .{
     // full past half its old-generation limit (V8 13.1 heap.cc
     // HandleExternalMemoryInterrupt).
     .external_memory = .native,
+    // Node wrapper reachability (the wrapper redesign, design 3.3): node
+    // tracing's JS edges (wrapper_cache.zig drawTreeEdges, joinOpaqueRoot /
+    // leaveOpaqueRoot / keepOpaqueRoot) keep the rule until P7; from P5 the
+    // walk (dom.wrapper_tracing, reached from NodeAnchor::Trace) runs beside
+    // them, and P7 makes it .native when the edges go.
+    .wrapper_tracing = .emulated,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.
@@ -130,6 +136,8 @@ pub const links_engine = true;
 /// HTML "prepare to run script" entered `realm`: undone by "clean up".
 pub const ScriptScope = protocol_scripts.ScriptScope;
 pub const NodeWrapperSlot = @import("node_wrappers.zig").NodeWrapperSlot;
+/// engine.Tracer: the collection's cppgc visitor and the agent's registry.
+pub const Tracer = @import("node_wrappers.zig").Tracer;
 
 // ============================================================================
 // Helpers
@@ -1055,6 +1063,13 @@ pub const joinOpaqueRoot = @import("wrapper_cache.zig").joinOpaqueRoot;
 pub const leaveOpaqueRoot = @import("wrapper_cache.zig").leaveOpaqueRoot;
 pub const keepOpaqueRoot = @import("wrapper_cache.zig").keepOpaqueRoot;
 
+/// engine.traceNodeWrapper / traceVisitOnce (the wrapper redesign's P5,
+/// design 4.4): the walk names wrappers through the cppgc visitor of the
+/// collection's atomic pause, deduplicated per collection in the agent's
+/// registry (node_wrappers.zig "The walk").
+pub const traceNodeWrapper = @import("node_wrappers.zig").traceNodeWrapper;
+pub const traceVisitOnce = @import("node_wrappers.zig").traceVisitOnce;
+
 // ============================================================================
 // 4.13 Diagnostics tier
 // ============================================================================
@@ -1100,6 +1115,11 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   (scavenges and minor mark-sweeps) since it was made, cumulative - where
 ///   V8 may drop an unmodified node wrapper (design 4.11, P8); 0 with no
 ///   isolate current;
+/// - `node_wrapper_walks`, `wrapper_trace_check_failures`: the current
+///   isolate's walks so far - anchors and keeps whose tree the collector
+///   asked the host about (the wrapper redesign's P5, node_wrappers.zig "The
+///   walk") - and the walk oracle's findings (-Dwrapper-trace-check; 0 in
+///   every other build), cumulative; 0 with no isolate current;
 /// - `globals_created`: Globals made through the wrapper's tracked path,
 ///   cumulative - 0 unless v8_wrapper.cpp is built with
 ///   -DCRANE_TRACK_GLOBALS=1, as gc_bench's is;
@@ -1124,6 +1144,7 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
     var full_gc_max_us: u64 = 0;
     var full_gc_p95_us: u64 = 0;
     ffi.v8_Debug_FullGCPauses(ffi.v8_Isolate_GetCurrent(), &full_gcs, &full_gc_max_us, &full_gc_p95_us);
+    const walk_counts = @import("node_wrappers.zig").walkCountsOfCurrent();
     const handles = [_]engine.Counter{
         .{ .name = "live_string_globals", .value = ffi.v8_Debug_LiveStringGlobals() },
         .{ .name = "live_context_globals", .value = ffi.v8_Debug_LiveContextGlobals() },
@@ -1139,6 +1160,8 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "full_gc_pause_max_us", .value = @intCast(full_gc_max_us) },
         .{ .name = "full_gc_pause_p95_us", .value = @intCast(full_gc_p95_us) },
         .{ .name = "minor_gc_count", .value = @intCast(ffi.v8_Debug_MinorGCCount(ffi.v8_Isolate_GetCurrent())) },
+        .{ .name = "node_wrapper_walks", .value = @intCast(walk_counts.walks) },
+        .{ .name = "wrapper_trace_check_failures", .value = @intCast(walk_counts.check_failures) },
         .{ .name = "globals_created", .value = ffi.v8_Debug_CreatedGlobals() },
         // v8_wrapper.cpp's g_obj_src slots, in its order.
         .{ .name = "object_globals_from.FunctionCallbackInfo_This", .value = ffi.v8_Debug_ObjSrc(0) },

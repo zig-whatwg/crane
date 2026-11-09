@@ -2855,6 +2855,45 @@ pub extern fn v8_test_NodeTemplateWrapperDroppable(isolate: *Isolate, context: *
 /// (destroyed without running) in the caller's two counters.
 pub extern fn v8_test_NodeWrappers_ObserveDrainTasks(isolate: *Isolate, runs: *u32, drops: *u32) void;
 
+// ---- The walk (the wrapper redesign's P5, design 4.4; node_wrappers.zig
+// "The walk") ----
+
+/// The isolate's record gets the walk's three callbacks beside the node
+/// wrappers' (v8_Isolate_SetNodeWrappers first): `trace_keeps(registry,
+/// visitor)` from the anchors' registry's Trace in a collection's atomic
+/// pause - the kept nodes' trees; `marked(registry)` at the end of each
+/// marking, from its weak processing - the per-collection sets end;
+/// `check` (null unless -Dwrapper-trace-check) in the same weak processing
+/// before any slot is emptied, with the slots of the live and of the dead
+/// anchors. False for an isolate with no record.
+pub extern fn v8_Isolate_SetNodeWrapperTracing(
+    isolate: *Isolate,
+    trace_keeps: *const fn (registry: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void,
+    marked: *const fn (registry: ?*anyopaque) callconv(.c) void,
+    check: ?*const fn (registry: ?*anyopaque, live: ?[*]const ?*anyopaque, live_len: usize, dead: ?[*]const ?*anyopaque, dead_len: usize) callconv(.c) void,
+) bool;
+
+/// engine.traceNodeWrapper on V8: `visitor` (a cppgc::Visitor in a
+/// collection's atomic pause, the walk's) traces the TracedReference in the
+/// non-empty node slot `slot` - Blink's ScriptWrappable::Trace of its
+/// `wrapper_`.
+pub extern fn v8_NodeTracer_TraceSlot(visitor: *anyopaque, slot: *anyopaque) void;
+
+/// tests/v8: the MarkingType newAgentCppHeap gives every agent's C++ heap
+/// (cppgc::Heap::MarkingType: 0 kAtomic, 1 kIncremental, 2
+/// kIncrementalAndConcurrent) - kAtomic, which keeps every C++ Trace, and so
+/// the walk, inside the atomic pause.
+pub extern fn v8_test_AgentCppHeapMarkingSupport() u8;
+
+/// tests/v8: start V8's incremental marking on `isolate` (entered), as a
+/// moderate memory pressure notification does (13.1 Heap::
+/// CheckMemoryPressure), and answer whether its C++ heap is marking now
+/// (cppgc::subtle::HeapState::IsMarking).
+pub extern fn v8_test_Isolate_StartIncrementalMarking(isolate: *Isolate) bool;
+
+/// tests/v8: whether `isolate`'s C++ heap is marking now.
+pub extern fn v8_test_Isolate_CppHeapIsMarking(isolate: *Isolate) bool;
+
 /// Clear weak reference and restore strong reference
 ///
 /// Arguments:

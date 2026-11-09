@@ -466,6 +466,8 @@ fn isWindowOwned(instance: *runtime.Instance) bool {
 /// made first). Nothing for a member with no wrapper or no parent now.
 pub fn joinOpaqueRoot(member: *runtime.Instance, parent: *runtime.Instance) void {
     _ = parent; // The member's own parent pointer is the truth; the host passes it for engines that need it.
+    // The walk alone keeps trees under a test's override (runtime.lifetime.treeEdges).
+    if (!runtime.lifetime.treeEdges()) return;
     const node = @import("dom").instance_bridge.getNodeBase(@ptrCast(member)) orelse return;
     const wrapper = nodeWrapper(node) orelse return;
     if (node.parent_node == null) return;
@@ -476,6 +478,8 @@ pub fn joinOpaqueRoot(member: *runtime.Instance, parent: *runtime.Instance) void
 /// slot holds its node document now (`eraseTreeEdges`), and `old_parent`'s
 /// wrapper lets it go. Nothing for a member with no wrapper.
 pub fn leaveOpaqueRoot(member: *runtime.Instance, old_parent: *runtime.Instance) void {
+    // The walk alone keeps trees under a test's override (runtime.lifetime.treeEdges).
+    if (!runtime.lifetime.treeEdges()) return;
     const dom = @import("dom");
     const node = dom.instance_bridge.getNodeBase(@ptrCast(member)) orelse return;
     const wrapper = nodeWrapper(node) orelse return;
@@ -2151,6 +2155,9 @@ pub const WrapperCache = struct {
         defer node_wrappers.arm(isolate, instance, adopted);
         // Edges traced from the node before script saw it.
         self.drawDeferredEdges(instance, generation, adopted.handle);
+        // Node tracing's edges, beside the walk from P5 on (a test's
+        // override turns them off: runtime.lifetime.treeEdges).
+        if (!runtime.lifetime.treeEdges()) return adopted.handle;
         if (@import("dom").instance_bridge.getNodeBase(@ptrCast(instance))) |node| {
             if (node.parent_node != null) drawTreeEdges(node, @ptrCast(adopted.handle)) else _ = drawDocumentEdge(node, @ptrCast(adopted.handle));
         }
