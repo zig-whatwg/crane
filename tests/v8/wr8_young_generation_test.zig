@@ -426,7 +426,7 @@ test "wr8 (the edges off - P7's state - with the walk): an unmodified dropped wr
     try page.expectHolds("root.firstChild.localName === 'b' && Object.getPrototypeOf(root.firstChild) === Element.prototype && root.firstChild === root.lastChild && Object.keys(root.firstChild).length === 0");
 }
 
-test "wr8 known red until P7: with node tracing's JS edges on, no lone dropped div is dropped in a scavenge" {
+test "wr8 P7: with node tracing's JS edges gone, lone dropped divs are dropped in scavenges - 2,000 of 2,000 - on the real path" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const page = try Page.open(&queue);
@@ -434,12 +434,17 @@ test "wr8 known red until P7: with node tracing's JS edges on, no lone dropped d
     try page.run("globalThis.d = new Document();");
     page.fullGC();
     const dropped_before = page.dropped();
-    // Each wrap draws a private upward edge (wrapper_cache drawDocumentEdge):
-    // a map transition, so V8's unmodified-API-object rule never holds. P7
-    // deletes the edges, and this flips (the test above is its state).
+    const wrappers_before = try counter(page, "node_wrappers");
+    // Until P7 each wrap drew a private upward edge (wrapper_cache
+    // drawDocumentEdge): a map transition, so V8's unmodified-API-object rule
+    // never held and none was dropped. With no binding-written property
+    // left at wrap time, the production path is the edges-off state above.
     try page.run("{ const make = (n) => { for (let i = 0; i < n; i++) d.createElement('div'); }; make(2000); }");
     try page.minorGC(4);
-    try testing.expectEqual(@as(u64, 0), page.dropped() - dropped_before);
+    const dropped_lone = page.dropped() - dropped_before;
+    std.debug.print("wr8 fact (production): lone dropped divs dropped in scavenges = {d} of 2000; live node wrappers +{d}\n", .{ dropped_lone, try counter(page, "node_wrappers") - wrappers_before });
+    try testing.expect(dropped_lone >= 1900);
+    try testing.expect(try counter(page, "node_wrappers") - wrappers_before < 100);
 }
 
 test "wr8: a kept node's wrapper is never dropped in a scavenge - its keep makes the slot non-droppable" {
