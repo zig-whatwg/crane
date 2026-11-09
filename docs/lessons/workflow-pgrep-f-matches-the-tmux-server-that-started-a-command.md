@@ -1,0 +1,7 @@
+# pgrep -f matches the tmux server that started a command - find a server by its listening port
+
+**Context:** 2026-11-09 21:33 UTC. The integrator restarted server1's persistent `wpt serve`, which runs in the tmux session "wptserve" started by `tmux new-session -d -s wptserve "cd ... && python3 wpt.py serve --config config.json"`. It took the pid to stop from `pgrep -f "wpt.py serve --config config.json" | head -1`. The tmux SERVER's own command line contains the whole session command, and it has the lowest pid, so the first match was tmux itself. The TERM went to the tmux server, which ended every tmux session on the host. The lanes' crane-remote jobs (setsid, not tmux) survived, but a lane job that ended at the same moment had to be checked.
+
+**Lesson:** a process started through tmux, `bash -c` or `nohup sh -c` has ancestors whose argv repeats its command. `pgrep -f <command>` matches those wrappers too, and the lowest pid, which is often the wrapper, comes first. The memory "kill exact pids only" is not met by a pgrep pattern.
+
+**How to apply:** find a server by what only it does: the pid listening on its port (`ss -ltnp` on Linux, `lsof -nP -iTCP:<port> -sTCP:LISTEN` on macOS), as crane-exclusive.sh's restart_serve does. Then confirm with `ps -o args= -p <pid>` that it is the interpreter (`python3 wpt.py serve`), not tmux or a shell. Stop a tmux-started service with `tmux kill-session -t =<name>` after its own pids, never by killing the tmux server.
