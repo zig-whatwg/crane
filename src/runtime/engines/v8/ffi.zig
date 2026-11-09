@@ -983,6 +983,50 @@ pub extern fn v8_Isolate_GetHeapUsage(
 /// by V8 and updated as each is created or reset. In every build: the measure
 /// for a test asserting that an operation leaves no handle behind.
 pub extern fn v8_Isolate_GetGlobalHandleBytes(isolate: *Isolate) usize;
+/// Whether `isolate` has a C++ heap (cppgc): every isolate v8_wrapper.cpp
+/// makes has one (the wrapper redesign's P3, IsolateData::cpp_heap).
+pub extern fn v8_Isolate_HasCppHeap(isolate: *Isolate) bool;
+/// The bytes of the objects on `isolate`'s C++ heap (its allocated object
+/// size, read from counters - nothing is swept); 0 with no heap. The
+/// diagnostics tier's `cpp_heap_used_bytes`.
+pub extern fn v8_Isolate_CppHeapUsedBytes(isolate: *Isolate) usize;
+/// `sizeof(cppgc::Member<T>)` as v8_wrapper.cpp is compiled: 4 with the
+/// archive's CPPGC_POINTER_COMPRESSION. For tests/v8/cpp_heap_test.zig.
+pub extern fn v8_test_CppgcMemberSize() usize;
+/// How many C++ heaps the process has alive (cppgc's heap registry; each
+/// heap registers when made and unregisters when freed). TEST-ONLY, and a
+/// V8-INTERNAL read: cppgc::internal::HeapRegistry::GetRegisteredHeapsForTesting,
+/// exported by the archive but not in include/, declared in v8_wrapper.cpp as
+/// 13.1.203's src/heap/cppgc/process-heap.h has it - pinned to that version
+/// (IsolateData::cpp_heap's static_assert). Unlocked, for a test that has its
+/// process to itself (build.zig v8_alone).
+pub extern fn v8_test_CppgcLiveHeaps() usize;
+/// tests/v8/cpp_heap_test.zig's probe on an isolate's C++ heap: a holder
+/// rooted by a cppgc::Persistent holding a leaf through a cppgc::Member
+/// (v8_wrapper.cpp says what it answers).
+pub const CppHeapProbe = opaque {};
+/// What the probe saw; mirrors v8_wrapper.cpp's CraneCppHeapProbeState.
+pub const CppHeapProbeState = extern struct {
+    holder_alive: bool,
+    leaf_alive: bool,
+    /// The holder's Member reads back the leaf it was given.
+    member_matches: bool,
+    /// The holder's Trace calls; those on another thread than the probe's;
+    /// those outside a mark-compact's GC prologue..epilogue.
+    traces: u32,
+    traces_off_thread: u32,
+    traces_outside_pause: u32,
+};
+/// The probe, made on the agent's thread with its isolate entered; null when
+/// the isolate has no C++ heap. OWNED: v8_test_CppHeapProbe_Delete, before
+/// the agent ends.
+pub extern fn v8_test_CppHeapProbe_New(isolate: *Isolate) ?*CppHeapProbe;
+/// A full collection of the probe's isolate, with no conservative stack scan.
+pub extern fn v8_test_CppHeapProbe_Collect(probe: *CppHeapProbe) void;
+/// The holder is rooted no more.
+pub extern fn v8_test_CppHeapProbe_DropRoot(probe: *CppHeapProbe) void;
+pub extern fn v8_test_CppHeapProbe_State(probe: *CppHeapProbe, out: *CppHeapProbeState) void;
+pub extern fn v8_test_CppHeapProbe_Delete(probe: *CppHeapProbe) void;
 /// Native contexts alive in the heap, and how many of those V8 counts as
 /// detached. A page whose contexts outlive it shows here exactly.
 pub extern fn v8_Isolate_GetContextCounts(
@@ -3608,6 +3652,11 @@ pub extern fn v8_Isolate_RunningScriptLocation(isolate: *Isolate, url: *?[*]u8, 
 pub const PatternMatcher = opaque {};
 pub extern fn v8_PatternMatcher_New() *PatternMatcher;
 pub extern fn v8_PatternMatcher_Delete(matcher: ?*PatternMatcher) void;
+/// How often `matcher`'s cache missed: the regexps it compiled (a pattern
+/// attribute's two regexps are one) and the utility contexts it made - what
+/// tests/v8 pins "compiled once per agent" with, a count and not a time. 0
+/// and 0 for a null matcher.
+pub extern fn v8_PatternMatcher_Counts(matcher: ?*const PatternMatcher, compiles: *u64, contexts: *u64) void;
 /// HTML 4.10.5.3.6, the pattern attribute (engine.matchesPatternAttribute),
 /// matched with the built-in RegExp of `matcher`'s utility context (a new
 /// context for the call when `matcher` is null), as v8_wrapper.cpp says why:

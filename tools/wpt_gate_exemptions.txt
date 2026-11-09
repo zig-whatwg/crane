@@ -1,25 +1,39 @@
 # The 0.1 gate's exemptions: worklist files omitted from the blocking count
-# because ALL THREE of Chrome, Firefox and Safari intentionally deviate from the
-# spec the file tests (the user, 2026-10-17; AGENTS.md "The 0.1 gate", in full in
-# .claude/rules/wpt-workflow.md, and golden rule 2's "all three intentionally
-# declined" case).
+# (AGENTS.md "The 0.1 gate", in full in .claude/rules/wpt-workflow.md). Two kinds:
+#
+#   intentional  ALL THREE of Chrome, Firefox and Safari intentionally deviate
+#                from the spec the file tests (the user, 2026-10-17; golden rule
+#                2's "all three intentionally declined" case).
+#   test-bug     the file fails IDENTICALLY in Chrome, Firefox and Safari
+#                because of a bug in the test, filed upstream with
+#                web-platform-tests (the user, 2026-11-08). It is exempt only
+#                until that bug is resolved: when the issue closes, the entry is
+#                removed and the file revisited. Filing the issue still needs the
+#                user's OK.
 #
 # Read by tools/wpt_progress.py (the progress page) and tools/wpt_site/
 # (the public results site). A listed file that would block is counted in its
-# own group, "exempt (all three browsers intentionally deviate)", never as
-# blocking; a listed file that does not block keeps its own standing. Both tools
-# stop with an error on an invalid entry - never a silent exemption.
+# kind's own group - "exempt (all three browsers intentionally deviate)" or
+# "exempt until an upstream test bug is fixed" - never as blocking; a listed file
+# that does not block keeps its own standing. Both tools stop with an error on an
+# invalid entry - never a silent exemption.
 #
 # NOT exempt: a file every browser merely fails, a file only some browsers
-# decline, a file the browsers fail because they lag a newer spec, and a file
-# where the spec text is old and simply never implemented (golden rule 2's
-# "no newer spec" case: Crane follows the browsers there, and the file blocks).
+# decline, a file the browsers fail because they lag a newer spec, a file where
+# the spec text is old and simply never implemented (golden rule 2's "no newer
+# spec" case: Crane follows the browsers there, and the file blocks), a file the
+# browsers fail DIFFERENTLY (one fails at an earlier step, or one passes), and a
+# test bug whose upstream issue is already resolved.
 #
 # Format: one entry per worklist path, a [path] line followed by key = value
-# lines. Blank lines and lines starting with # are ignored. Every key below is
-# required, exactly once per entry:
+# lines. Blank lines and lines starting with # are ignored. Every key of the
+# entry's kind is required, exactly once; no other key may appear.
+#
+# An intentional entry (its `kind` line is optional: an entry without one is
+# intentional, as every entry was before the second kind):
 #
 #   [content-security-policy/example/file.html]
+#   kind            = intentional
 #   why             = one line: what the browsers do instead of the spec, and why it is intentional
 #   spec            = https://... the spec text (and the change) the browsers decline
 #   chrome.result   = wpt.fyi run <run id>: <passes>/<total>
@@ -29,11 +43,41 @@
 #   safari.result   = wpt.fyi run <run id>: <passes>/<total>
 #   safari.intent   = https://...
 #
-# Rules the tools check: the path is in tests/wpt_0_1_worklist.txt and is
-# listed once; spec and every *.intent value is an http(s) URL; every *.result
-# value names a wpt.fyi run ("wpt.fyi run <id>: <passes>/<total>"); no other
-# key appears.
+# A test-bug entry:
 #
-# Entries: none. The 2026-10-17 audit of every stated browser deviation (lane
-# gr2audit, 108 deviations) found none that all three browsers intentionally
-# declined with evidence. Add an entry only with that evidence for all three.
+#   [html/example/file.https.html]
+#   kind            = test-bug
+#   why             = one line: what is wrong with the test, and how every browser fails because of it
+#   upstream        = https://github.com/web-platform-tests/wpt/issues/<n> (or /pull/<n>)
+#   chrome.result   = wpt.fyi run <run id>: <passes>/<total>
+#   firefox.result  = wpt.fyi run <run id>: <passes>/<total>
+#   safari.result   = wpt.fyi run <run id>: <passes>/<total>
+#   revisit         = when <the upstream URL above> is resolved
+#
+# Rules the tools check: the path is in tests/wpt_0_1_worklist.txt and is
+# listed once; kind is intentional or test-bug; spec and every *.intent value is
+# an http(s) URL; every *.result value names a wpt.fyi run ("wpt.fyi run <id>:
+# <passes>/<total>", a note may follow); upstream is a web-platform-tests issue
+# or pull request URL; revisit reads "when <upstream> is resolved" with the
+# entry's own upstream URL; a test-bug entry's three results have the same
+# <passes>/<total>; no key of the other kind, and no unknown key, appears.
+# The tools cannot see whether an upstream issue is still open: check it before
+# adding an entry, and whenever the entry is reviewed.
+#
+# Entries: none.
+# - intentional: the 2026-10-17 audit of every stated browser deviation (lane
+#   gr2audit, 108 deviations) found none that all three browsers intentionally
+#   declined with evidence. Add an entry only with that evidence for all three.
+# - test-bug: none either (lane site1, 2026-11-09). The candidates were
+#   html/cross-origin-embedder-policy/reporting-to-worker-owner.https.html and
+#   reporting-to-frame-owner.https.html (wpt#64870, Report.toJSON body ->
+#   DataCloneError). Neither meets the rule. wpt#64870 was resolved on
+#   2026-11-07 by wpt#64806 and wpt#64807. On the copy Crane runs (pinned
+#   before 585d7b6f39d), Chrome passes both: 9/9 OK at 94f58d592d (wpt.fyi run
+#   6262831318827008), against Firefox 3/9 (6046215448559616) and Safari 3/9
+#   (6198110993514496). The identical 3/9 TIMEOUTs at fea36e49dd are on the
+#   FIXED test. That test needs Report and ReportBody as dictionaries
+#   (w3c/reporting#284), which no stable browser ships yet; WebKit trunk does
+#   (bug 330301). The forms1 test-driver cases (select-pick-option-dirtiness,
+#   select-picker-hover-after-picking) have no upstream issue, and Firefox 159
+#   fails them earlier than Chrome and Safari do.

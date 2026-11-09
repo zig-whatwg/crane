@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const html = @import("html.zig");
+const model = @import("model.zig");
 const Io = std.Io;
 const W = *Io.Writer;
 
@@ -20,6 +21,13 @@ pub const Subs = struct {
     pub fn total(s: Subs) u64 {
         return s.passed + s.failed + s.timed_out + s.notrun;
     }
+};
+
+/// One run that supplied a generation's results: its label in wpt-results/
+/// (`sweep-<sha>`) and how many worklist files it supplied.
+pub const Source = struct {
+    label: []const u8 = "",
+    files: u64 = 0,
 };
 
 /// One generation of wpt-results/progress-history.json.
@@ -66,6 +74,23 @@ pub const Generation = struct {
     since_n: u64 = 0,
     commits: u32 = 0,
     landed: []const []const u8 = &.{},
+    /// The runs whose journals supplied this generation's new results, as
+    /// the history records them (wpt_progress.py `record_generation`).
+    sources: []const Source = &.{},
+    /// Not in the history: the generator fills it from
+    /// tools/wpt_generation_hosts.txt - where the generation's largest run
+    /// (`mainSource`) ran. Null: not recorded.
+    swept: ?*const model.SweepHost = null,
+
+    /// The run that supplied most of this generation's results: its sweep,
+    /// beside any smaller targeted run. Null when the history names none.
+    pub fn mainSource(g: Generation) ?Source {
+        var best: ?Source = null;
+        for (g.sources) |src| {
+            if (best == null or src.files > best.?.files) best = src;
+        }
+        return best;
+    }
 
     /// WPT subtests passing.
     pub fn passing(g: Generation) u64 {

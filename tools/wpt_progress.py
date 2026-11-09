@@ -120,19 +120,29 @@ def engine_label(engine):
     return {'chrome': 'Chrome', 'firefox': 'Firefox', 'safari': 'Safari'}.get(engine, engine)
 
 
-# The gate's exemptions (the user, 2026-10-17; AGENTS.md "The 0.1 gate", in full in
-# .claude/rules/wpt-workflow.md): worklist
-# files omitted from the blocking count because ALL THREE of Chrome, Firefox and
-# Safari intentionally deviate from the spec they test, each listed with that
-# evidence in tools/wpt_gate_exemptions.txt (its header is the format; the public
-# site, tools/wpt_site/model.zig, reads it by the same rules). A listed file that
-# would block is EXEMPT: counted in its own group, never as blocking. One that does
-# not block keeps its standing. An invalid entry stops the report - an exemption
-# is never applied, or dropped, silently.
+# The gate's exemptions (the user, 2026-10-17 and 2026-11-08; AGENTS.md "The 0.1
+# gate", in full in .claude/rules/wpt-workflow.md): worklist files omitted from the
+# blocking count, each listed with its evidence in tools/wpt_gate_exemptions.txt
+# (its header is the format; the public site, tools/wpt_site/model.zig, reads it by
+# the same rules). Two kinds: `intentional` - ALL THREE of Chrome, Firefox and
+# Safari intentionally deviate from the spec the file tests (an entry with no kind
+# is this one, as every entry was before kinds) - and `test-bug` - the file fails
+# identically in all three because of a test bug filed upstream, exempt until that
+# bug is resolved. A listed file that would block is EXEMPT: counted in its own
+# group, never as blocking. One that does not block keeps its standing. An invalid
+# entry stops the report - an exemption is never applied, or dropped, silently.
 EXEMPTIONS_FILE = os.path.join(REPO, 'tools', 'wpt_gate_exemptions.txt')
 EXEMPT = 'EXEMPT'
 EXEMPTION_KEYS = ('why', 'spec', 'chrome.result', 'chrome.intent', 'firefox.result',
                   'firefox.intent', 'safari.result', 'safari.intent')
+# The keys of each kind: every one required, no other allowed (`kind` itself is
+# optional for an intentional entry, which predates kinds).
+TEST_BUG_KEYS = ('kind', 'why', 'upstream', 'chrome.result', 'firefox.result', 'safari.result', 'revisit')
+KIND_KEYS = {'intentional': ('kind',) + EXEMPTION_KEYS, 'test-bug': TEST_BUG_KEYS}
+ALL_EXEMPTION_KEYS = set(EXEMPTION_KEYS) | set(TEST_BUG_KEYS)
+_WPT_ISSUE = re.compile(r'https://github\.com/web-platform-tests/wpt/(issues|pull)/\d+$')
+_REVISIT = re.compile(r'when (\S+) is resolved$')
+_COUNTS = re.compile(r'wpt\.fyi run \d+: *(\d+/\d+)')
 BROWSERS = (('chrome', 'Chrome'), ('firefox', 'Firefox'), ('safari', 'Safari'))
 _URL = re.compile(r'https?://\S+$')
 _RESULT = re.compile(r'wpt\.fyi run \d+: *\d+/\d+')
@@ -145,17 +155,36 @@ class ExemptionError(Exception):
 
 
 def parse_exemptions(text, worklist):
-    """tools/wpt_gate_exemptions.txt -> {path: {key: value}}; ExemptionError on
-    any invalid entry (with its line), including a path outside `worklist`."""
+    """tools/wpt_gate_exemptions.txt -> {path: {key: value}} (with 'kind' always set);
+    ExemptionError on any invalid entry (with its line), including a path outside
+    `worklist`."""
     out = {}
     cur = None
 
     def finish(entry):
-        for k in EXEMPTION_KEYS:
-            if k not in entry['values']:
-                raise ExemptionError(f"line {entry['line']}: [{entry['path']}]: missing \"{k}\" - "
-                                     "an exemption needs the spec and every browser's evidence")
-        out[entry['path']] = dict(entry['values'])
+        vals, lines = entry['values'], entry['lines']
+        # No kind: intentional, the one kind before the user's 2026-11-08 ruling.
+        kind = vals.get('kind', 'intentional')
+        keys = KIND_KEYS[kind]
+        article = 'an' if kind == 'intentional' else 'a'
+        for k in vals:
+            if k not in keys:
+                raise ExemptionError(f'line {lines[k]}: [{entry["path"]}]: "{k}" is not a key of {article} {kind} exemption')
+        for k in keys:
+            if k != 'kind' and k not in vals:
+                need = ("an exemption needs the spec and every browser's evidence" if kind == 'intentional' else
+                        "a test-bug exemption needs the upstream issue, every browser's result and when to revisit")
+                raise ExemptionError(f"line {entry['line']}: [{entry['path']}]: missing \"{k}\" - {need}")
+        if kind == 'test-bug':
+            if _REVISIT.match(vals['revisit']).group(1) != vals['upstream']:
+                raise ExemptionError(f'line {lines["revisit"]}: [{entry["path"]}]: revisit must read '
+                                     f'"when {vals["upstream"]} is resolved"')
+            # "Fails IDENTICALLY in Chrome, Firefox and Safari": the same passes of the same total.
+            counts = [_COUNTS.match(vals[b + '.result']).group(1) for b, _ in BROWSERS]
+            if len(set(counts)) != 1:
+                raise ExemptionError(f"line {entry['line']}: [{entry['path']}]: a test-bug exemption needs the same "
+                                     f"result in all three browsers (Chrome {counts[0]}, Firefox {counts[1]}, Safari {counts[2]})")
+        out[entry['path']] = dict(vals, kind=kind)
 
     for n, raw in enumerate(text.split('\n'), 1):
         line = raw.strip()
@@ -169,14 +198,14 @@ def parse_exemptions(text, worklist):
                 finish(cur)
             if inner in out:
                 raise ExemptionError(f'line {n}: [{inner}] is listed twice')
-            cur = {'path': inner, 'line': n, 'values': {}}
+            cur = {'path': inner, 'line': n, 'values': {}, 'lines': {}}
             continue
         if '=' not in line:
             raise ExemptionError(f'line {n}: "{line}": expected key = value')
         key, value = (x.strip() for x in line.split('=', 1))
         if cur is None:
             raise ExemptionError(f'line {n}: "{key}" before any [path]')
-        if key not in EXEMPTION_KEYS:
+        if key not in ALL_EXEMPTION_KEYS:
             raise ExemptionError(f'line {n}: [{cur["path"]}]: unknown key "{key}"')
         if key in cur['values']:
             raise ExemptionError(f'line {n}: [{cur["path"]}]: "{key}" given twice')
@@ -186,7 +215,15 @@ def parse_exemptions(text, worklist):
             raise ExemptionError(f'line {n}: [{cur["path"]}]: {key} must read "wpt.fyi run <id>: <passes>/<total>"')
         if (key == 'spec' or key.endswith('.intent')) and not _URL.match(value):
             raise ExemptionError(f'line {n}: [{cur["path"]}]: {key} must be an http(s) URL')
+        if key == 'kind' and value not in KIND_KEYS:
+            raise ExemptionError(f'line {n}: [{cur["path"]}]: kind must be intentional or test-bug, not "{value}"')
+        if key == 'upstream' and not _WPT_ISSUE.match(value):
+            raise ExemptionError(f'line {n}: [{cur["path"]}]: upstream must be a web-platform-tests issue or pull '
+                                 'request (https://github.com/web-platform-tests/wpt/issues/<n> or /pull/<n>)')
+        if key == 'revisit' and not _REVISIT.match(value):
+            raise ExemptionError(f'line {n}: [{cur["path"]}]: revisit must read "when <upstream> is resolved"')
         cur['values'][key] = value
+        cur['lines'][key] = n
     if cur:
         finish(cur)
     in_worklist = set(worklist)
@@ -210,23 +247,27 @@ def load_exemptions(worklist, path=EXEMPTIONS_FILE):
 
 
 def render_exempt(records, worklist):
-    """The exempt group: each listed file, its standing, and every browser's evidence."""
+    """The exempt groups, one per kind: each listed file, its standing, and its evidence."""
     if not EXEMPTIONS:
         return ''
-    items = []
-    for path, e in EXEMPTIONS.items():
-        rec = records.get(path)
-        st = status_of(rec, path)
-        ev = ''.join(
-            f'<li>{label}: {html.escape(e[key + ".result"])}; intent: '
-            f'<a href="{html.escape(e[key + ".intent"])}">{html.escape(e[key + ".intent"])}</a></li>'
-            for key, label in BROWSERS)
-        items.append(
-            f'<li><code>{html.escape(path)}</code> <span class="dim">{html.escape(st)}</span>'
-            f'<div>{html.escape(e["why"])}</div>'
-            f'<ul class="samples"><li>spec: <a href="{html.escape(e["spec"])}">{html.escape(e["spec"])}</a></li>{ev}</ul></li>')
-    n = sum(1 for p in EXEMPTIONS if status_of(records.get(p), p) == EXEMPT)
-    return f"""
+    out = ''
+    intentional = [(p, e) for p, e in EXEMPTIONS.items() if e['kind'] == 'intentional']
+    test_bug = [(p, e) for p, e in EXEMPTIONS.items() if e['kind'] == 'test-bug']
+    if intentional:
+        items = []
+        for path, e in intentional:
+            rec = records.get(path)
+            st = status_of(rec, path)
+            ev = ''.join(
+                f'<li>{label}: {html.escape(e[key + ".result"])}; intent: '
+                f'<a href="{html.escape(e[key + ".intent"])}">{html.escape(e[key + ".intent"])}</a></li>'
+                for key, label in BROWSERS)
+            items.append(
+                f'<li><code>{html.escape(path)}</code> <span class="dim">{html.escape(st)}</span>'
+                f'<div>{html.escape(e["why"])}</div>'
+                f'<ul class="samples"><li>spec: <a href="{html.escape(e["spec"])}">{html.escape(e["spec"])}</a></li>{ev}</ul></li>')
+        n = sum(1 for p, _ in intentional if status_of(records.get(p), p) == EXEMPT)
+        out += f"""
 <div class="panel">
   <h2 class="panelh">Exempt (all three browsers intentionally deviate)</h2>
   <div class="dim sub2"><b>{n:,}</b> files that would block are not counted as blocking: all three of
@@ -234,6 +275,27 @@ def render_exempt(records, worklist):
     below (<code>tools/wpt_gate_exemptions.txt</code>). A listed file that does not block keeps its standing.</div>
   <ol>{''.join(items)}</ol>
 </div>"""
+    if test_bug:
+        items = []
+        for path, e in test_bug:
+            st = status_of(records.get(path), path)
+            ev = ''.join(f'<li>{label}: {html.escape(e[key + ".result"])}</li>' for key, label in BROWSERS)
+            items.append(
+                f'<li><code>{html.escape(path)}</code> <span class="dim">{html.escape(st)}</span>'
+                f'<div>{html.escape(e["why"])}</div>'
+                f'<ul class="samples"><li>upstream: <a href="{html.escape(e["upstream"])}">{html.escape(e["upstream"])}</a></li>'
+                f'{ev}<li>revisit: {html.escape(e["revisit"])}</li></ul></li>')
+        n = sum(1 for p, _ in test_bug if status_of(records.get(p), p) == EXEMPT)
+        out += f"""
+<div class="panel">
+  <h2 class="panelh">Exempt until an upstream test bug is fixed</h2>
+  <div class="dim sub2"><b>{n:,}</b> files that would block are not counted as blocking until the bug in the
+    test is resolved: Chrome, Firefox and Safari fail each identically because of it, and it is filed with
+    web-platform-tests (<code>tools/wpt_gate_exemptions.txt</code>). When the upstream issue is resolved the
+    exemption ends and the file is revisited. A listed file that does not block keeps its standing.</div>
+  <ol>{''.join(items)}</ol>
+</div>"""
+    return out
 
 
 LOSS_DISPOSITIONS_FILE = os.path.join(REPO, 'tools', 'wpt_loss_dispositions.txt')
@@ -1107,6 +1169,8 @@ def build(worklist, records, shape=None):
         areas[a]['run'] += 1
         if status == EXEMPT:
             areas[a]['exempt'] += 1
+            if EXEMPTIONS[path]['kind'] == 'test-bug':
+                areas[a]['exempt_test_bug'] += 1
             areas[a]['sub_pass'] += rec.get('passed', 0)
             areas[a]['sub_fail'] += rec.get('failed', 0)
         elif status in GATING:
@@ -1582,6 +1646,7 @@ def record_generation(worklist, records, areas, previous_records=None):
         'error': tot['gating'] - tot['crash'] - tot['timeout'] - tot['none-passed'],
         'none_passed': tot['none-passed'],
         'exempt': tot['exempt'],
+        'exempt_test_bug': tot['exempt_test_bug'],
         # Files the sweep re-ran because they did not fully pass, whose second run
         # disagreed with the first (the runner's --retry-failures: "flaky" in the
         # journal record). The first result is the one counted everywhere else.
@@ -2570,6 +2635,12 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     unexplained = len(unexplained_losses(history or {}, dispositions or {}))
     roadmap_html = render_roadmap(roadmap, worklist, records)
     exempt_html = render_exempt(records, worklist)
+    # Each kind's own count (the user, 2026-11-08: a test bug filed upstream is
+    # the second kind, counted apart from the browsers' intentional deviations).
+    exempt_intentional = tot['exempt'] - tot['exempt_test_bug']
+    exempt_note = ''.join((
+        f' Not counted: {exempt_intentional:,} exempt (all three browsers intentionally deviate).' if exempt_intentional else '',
+        f' Not counted: {tot["exempt_test_bug"]:,} exempt until an upstream test bug is fixed.' if tot['exempt_test_bug'] else ''))
     reference_html = render_reference(worklist, records, reference)
     doc = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
@@ -2721,7 +2792,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
   <h2>WPT 0.1 release gate</h2>
   <div class="verdict">{'MET' if gate_met else f'{gating:,} blocking'}
     <small>{'Zero crashes, timeouts, errors and files with none passing; whole subset run.' if gate_met else
-      f'0.1 ships when no file crashes, times out, errors, or passes none of its subtests. {unrun:,} of {total:,} sources not yet run.'}{f' Not counted: {tot["exempt"]:,} exempt (all three browsers intentionally deviate).' if tot['exempt'] else ''}</small>
+      f'0.1 ships when no file crashes, times out, errors, or passes none of its subtests. {unrun:,} of {total:,} sources not yet run.'}{exempt_note}</small>
   </div>
   <div class="headline">{unexplained:,} unexplained subtest losses</div>
 </div>
@@ -2733,7 +2804,8 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
   <div class="card"><div class="k">Crashes</div><div class="v" style="color:var(--bad)">{tot['crash']:,}</div></div>
   <div class="card"><div class="k">Flaky</div><div class="v" style="color:var(--bad)">{len(flaky_paths(worklist, records)):,}</div><div class="dim" style="font-size:12px">of {retry_counts(worklist, records)['retried']:,} retried, {retry_counts(worklist, records)['retry_skipped']:,} skipped as unchanged</div></div>
   <div class="card"><div class="k">OK, none passed</div><div class="v" style="color:var(--bad)">{tot['none-passed']:,}</div></div>
-  {f'<div class="card"><div class="k">Exempt</div><div class="v">{tot["exempt"]:,}</div></div>' if EXEMPTIONS else ''}
+  {f'<div class="card"><div class="k">Exempt</div><div class="v">{exempt_intentional:,}</div></div>' if any(e['kind'] == 'intentional' for e in EXEMPTIONS.values()) else ''}
+  {f'<div class="card"><div class="k">Exempt: upstream test bug</div><div class="v">{tot["exempt_test_bug"]:,}</div></div>' if any(e['kind'] == 'test-bug' for e in EXEMPTIONS.values()) else ''}
   <div class="card"><div class="k">Clean files</div><div class="v" style="color:var(--ok)">{clean:,}</div></div>
   <div class="card"><div class="k">Subtests passing</div><div class="v">{sub_passing:,}<span class="dim" style="font-size:14px"> / {sub_targeted:,}</span></div></div>
   <div class="card"><div class="k">Pass rate outside encoding/</div><div class="v">{non_enc_pct:.1f}%</div></div>
@@ -2843,8 +2915,11 @@ def main():
           f"({passing / targeted * 100 if targeted else 0:.2f}%)  |  "
           f"files clean {clean / total * 100 if total else 0:.2f}%")
     non_enc_pct, file_mean_pct = alt_rates(worklist, records)
-    print(f"  exempt (all three browsers intentionally deviate; not blocking): {tot['exempt']:,} "
-          f"of {len(EXEMPTIONS):,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
+    listed_bug = sum(1 for e in EXEMPTIONS.values() if e['kind'] == 'test-bug')
+    print(f"  exempt (all three browsers intentionally deviate; not blocking): {tot['exempt'] - tot['exempt_test_bug']:,} "
+          f"of {len(EXEMPTIONS) - listed_bug:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
+    print(f"  exempt until an upstream test bug is fixed (not blocking): {tot['exempt_test_bug']:,} "
+          f"of {listed_bug:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
     print(f"  of which OK with none passed: {tot['none-passed']:,}  |  pass rate outside encoding/ "
           f"{non_enc_pct:.1f}%  |  mean per-file pass rate {file_mean_pct:.1f}%")
     print('  composition: ' + '  '.join(
@@ -3132,6 +3207,104 @@ def _check_exemptions():
         html_out = render_exempt(recs, wl)
         assert 'css/x/declined.html' in html_out and 'https://github.com/WebKit/standards-positions/issues/3' in html_out
         assert 'wpt.fyi run 4877098740350976: 0/4' in html_out
+    finally:
+        EXEMPTIONS = saved
+
+
+_TEST_BUG_FIXTURE = """[html/x/posts-a-report.https.html]
+kind = test-bug
+why = the test posts a platform object, which structured clone rejects in every engine
+upstream = https://github.com/web-platform-tests/wpt/issues/99999
+chrome.result = wpt.fyi run 5070179567140864: 3/9 TIMEOUT
+firefox.result = wpt.fyi run 5140459022974976: 3/9 TIMEOUT
+safari.result = wpt.fyi run 5107094106406912: 3/9 TIMEOUT
+revisit = when https://github.com/web-platform-tests/wpt/issues/99999 is resolved
+"""
+
+
+def _check_exemption_kinds():
+    """The second exemption kind (the user, 2026-11-08), pinned by the same rules
+    tools/wpt_site/model.zig tests: kind = test-bug needs why, the upstream
+    web-platform-tests issue or PR, every browser's wpt.fyi result - the same in all
+    three - and revisit = when <upstream> is resolved; an entry with no kind is
+    intentional, exactly as before; mixing the kinds' keys is an error. A test-bug
+    file that would block is EXEMPT, and the page counts it on its own."""
+    global EXEMPTIONS
+    wl = ['css/x/declined.html', 'html/x/posts-a-report.https.html', 'css/x/other.html']
+    e = parse_exemptions(_TEST_BUG_FIXTURE, wl)['html/x/posts-a-report.https.html']
+    assert e['kind'] == 'test-bug', e
+    assert e['upstream'] == 'https://github.com/web-platform-tests/wpt/issues/99999'
+    assert e['revisit'] == 'when https://github.com/web-platform-tests/wpt/issues/99999 is resolved'
+    assert e['firefox.result'] == 'wpt.fyi run 5140459022974976: 3/9 TIMEOUT'
+    assert 'spec' not in e and 'chrome.intent' not in e
+    pr = parse_exemptions(_TEST_BUG_FIXTURE.replace('issues/99999', 'pull/12345'), wl)
+    assert pr['html/x/posts-a-report.https.html']['upstream'].endswith('/pull/12345')
+    # No kind: intentional, as every entry was before kinds; kind = intentional is the same entry.
+    legacy = parse_exemptions(_EXEMPTION_FIXTURE, wl)['css/x/declined.html']
+    assert legacy['kind'] == 'intentional', legacy
+    explicit = parse_exemptions(_EXEMPTION_FIXTURE.replace('why = ', 'kind = intentional\nwhy = '), wl)['css/x/declined.html']
+    assert explicit == legacy, (explicit, legacy)
+    both = parse_exemptions(_EXEMPTION_FIXTURE + _TEST_BUG_FIXTURE, wl)
+    assert [x['kind'] for x in both.values()] == ['intentional', 'test-bug']
+
+    def invalid(text, needle, worklist=wl):
+        try:
+            parse_exemptions(text, worklist)
+        except ExemptionError as err:
+            assert needle in str(err), (needle, str(err))
+            return
+        raise AssertionError('accepted an invalid exemption: ' + needle)
+
+    for key in ('kind', 'why', 'upstream', 'chrome.result', 'firefox.result', 'safari.result', 'revisit'):
+        text = '\n'.join(l for l in _TEST_BUG_FIXTURE.split('\n') if not l.startswith(key + ' '))
+        invalid(text, 'not a key of an intentional exemption' if key == 'kind' else 'missing')
+    up = 'upstream = https://github.com/web-platform-tests/wpt/issues/99999'
+    rv = 'revisit = when https://github.com/web-platform-tests/wpt/issues/99999 is resolved'
+    for frm, to, needle in (
+            ('kind = test-bug', 'kind = testbug', 'kind must be intentional or test-bug'),
+            (up, 'upstream = https://bugs.webkit.org/show_bug.cgi?id=1', 'web-platform-tests issue or pull request'),
+            (up, 'upstream = https://github.com/web-platform-tests/wpt/issues/', 'web-platform-tests issue or pull request'),
+            (up, 'upstream = https://github.com/web-platform-tests/wpt.fyi/issues/99999', 'web-platform-tests issue or pull request'),
+            (up, 'upstream = wpt#99999', 'web-platform-tests issue or pull request'),
+            (rv, 'revisit = later', 'revisit must read'),
+            (rv, 'revisit = when https://github.com/web-platform-tests/wpt/issues/1 is resolved', 'revisit must read'),
+            ('wpt.fyi run 5070179567140864: 3/9 TIMEOUT', 'TIMEOUT', 'wpt.fyi run'),
+            ('wpt.fyi run 5107094106406912: 3/9 TIMEOUT', 'wpt.fyi run 5107094106406912: 9/9', 'the same result in all three browsers'),
+            ('wpt.fyi run 5140459022974976: 3/9 TIMEOUT', 'wpt.fyi run 5140459022974976: 3/10 TIMEOUT', 'the same result in all three browsers'),
+            ('why = ', 'spec = https://example.org/spec#step\nwhy = ', '"spec" is not a key of a test-bug exemption'),
+            ('why = ', 'chrome.intent = https://issues.chromium.org/issues/1\nwhy = ', '"chrome.intent" is not a key of a test-bug exemption'),
+            ('kind = test-bug', 'kind = test-bug\nkind = test-bug', 'twice')):
+        assert frm in _TEST_BUG_FIXTURE, frm
+        invalid(_TEST_BUG_FIXTURE.replace(frm, to), needle)
+    invalid(_EXEMPTION_FIXTURE.replace('why = ', up + '\nwhy = '), '"upstream" is not a key of an intentional exemption')
+    invalid(_TEST_BUG_FIXTURE, 'not in the worklist', ['css/x/other.html'])
+
+    saved = EXEMPTIONS
+    try:
+        EXEMPTIONS = parse_exemptions(_EXEMPTION_FIXTURE + _TEST_BUG_FIXTURE, wl)
+        none_passed = {'status': 'OK', 'passed': 0, 'failed': 4}
+        timeout = {'status': 'TIMEOUT', 'passed': 3, 'timed_out': 1, 'notrun': 5}
+        assert gate_status(timeout, 'html/x/posts-a-report.https.html') == EXEMPT
+        recs = {'css/x/declined.html': none_passed, 'html/x/posts-a-report.https.html': timeout,
+                'css/x/other.html': none_passed}
+        areas, _, _ = build(wl, recs)
+        tot = collections.Counter()
+        for c in areas.values():
+            tot.update(c)
+        # Both are exempt, neither blocks; the test-bug one is also its own count.
+        assert tot['gating'] == 1 and tot['exempt'] == 2 and tot['exempt_test_bug'] == 1, dict(tot)
+        html_out = render_exempt(recs, wl)
+        assert 'Exempt (all three browsers intentionally deviate)' in html_out
+        assert 'Exempt until an upstream test bug is fixed' in html_out
+        intentional, bug = html_out.split('Exempt until an upstream test bug is fixed', 1)
+        assert 'css/x/declined.html' in intentional and 'posts-a-report' not in intentional
+        assert 'html/x/posts-a-report.https.html' in bug and 'css/x/declined.html' not in bug
+        assert '<a href="https://github.com/web-platform-tests/wpt/issues/99999">' in bug
+        assert 'wpt.fyi run 5107094106406912: 3/9 TIMEOUT' in bug
+        assert 'when https://github.com/web-platform-tests/wpt/issues/99999 is resolved' in bug
+        # Intentional entries alone render exactly as before kinds.
+        EXEMPTIONS = parse_exemptions(_EXEMPTION_FIXTURE, wl)
+        assert 'upstream test bug' not in render_exempt(recs, wl)
     finally:
         EXEMPTIONS = saved
 
@@ -4045,6 +4218,7 @@ if __name__ == '__main__':
         _check_history_subs()
         _check_history_sources()
         _check_exemptions()
+        _check_exemption_kinds()
         _check_revision_high_water()
         _check_subtest_losses()
         _check_loss_dispositions()

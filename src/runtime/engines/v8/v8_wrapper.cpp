@@ -18,6 +18,19 @@
 #include <libplatform/libplatform.h>
 #include <v8-profiler.h>
 #include <v8-inspector.h>  // engine.evaluateReplScript (lane console1)
+// Each agent's C++ heap (cppgc), the wrapper redesign's P3
+// (tmp/redesign/wrapper-redesign-design.md 4.12): build.zig compiles this file
+// with the archive's cppgc defines, so these headers agree with the library.
+#include <v8-cppgc.h>
+#include <cppgc/allocation.h>
+#include <cppgc/garbage-collected.h>
+#include <cppgc/heap.h>
+#include <cppgc/member.h>
+#include <cppgc/persistent.h>
+#include <cppgc/platform.h>
+#include <cppgc/testing.h>
+#include <cppgc/visitor.h>
+#include <thread>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -2373,6 +2386,10 @@ static Platform* defaultPlatform() {
 /// The per-isolate seed V8 asks for (defined with IsolateData, below).
 static bool craneEntropySource(unsigned char* buffer, size_t length);
 
+/// The address space cppgc's cage asks for (cppgc::InitializeProcess): 16 GB,
+/// as Chromium's on desktop (gin/cppgc.cc kCageSize).
+static constexpr size_t kCppgcCageBytes = static_cast<size_t>(16) * 1024 * 1024 * 1024;
+
 /// v8_Platform_Start's answer (ffi.zig PlatformStart).
 enum PlatformStartResult : int {
     /// v8_Platform_Dispose ran: V8 cannot start again in this process.
@@ -2424,6 +2441,20 @@ int v8_Platform_Start(const char* flags) {
             // allocator (CranePlatform::GetThreadIsolatedAllocator).
             if (!g_platform.platform) g_platform.platform = std::make_unique<CranePlatform>(false);
             V8::InitializePlatform(g_platform.platform.get());
+            // cppgc's process start, before any agent's C++ heap is made
+            // (CppHeap::Create - every isolate this file makes has one,
+            // IsolateData::cpp_heap): the GC info table and the cage every
+            // C++ heap of the process allocates in. V8 does not do it itself
+            // (13.1.203 calls cppgc::InitializeProcess nowhere in src/); an
+            // embedder does, once, with V8's platform's page allocator -
+            // Chromium in gin::InitializeCppgcFromV8Platform (gin/cppgc.cc),
+            // V8's cctest after InitializePlatform (test/cctest/cctest.cc).
+            // Without it CppHeap::Create reads a CagedHeap that does not exist.
+            // The cage is Chromium's desktop size, 16 GB of address space -
+            // reserved, not committed; out/ios-arm64's smaller cage clamps it
+            // (cppgc/platform.h: "clamped to minimum and maximum values").
+            // The state is V8's own, process-wide by design, under this lock.
+            cppgc::InitializeProcess(g_platform.platform->GetPageAllocator(), kCppgcCageBytes);
             V8::Initialize();
             g_platform.flags = flags ? flags : "";
             g_platform.started.store(true, std::memory_order_release);
@@ -2523,6 +2554,9 @@ void v8_Platform_Dispose() {
     std::lock_guard<std::mutex> guard(g_platform.mutex);
     if (g_platform.started.load(std::memory_order_relaxed)) {
         V8::Dispose();
+        // cppgc's process start's end, after every agent's C++ heap is gone
+        // (gin::MaybeShutdownCppgc's place).
+        cppgc::ShutdownProcess();
         V8::DisposePlatform();
         g_platform.started.store(false, std::memory_order_release);
         g_platform.disposed = true;
@@ -2610,6 +2644,20 @@ struct IsolateData {
     /// resolves (engine.HostHooks.importMetaResolve): the dispatcher is the
     /// process's, so whether the builtin is made is the isolate's.
     bool import_meta_resolve = false;
+    /// The agent's C++ heap (newAgentCppHeap), handed to V8 as
+    /// CreateParams::cpp_heap - attached from Isolate::Initialize on - and
+    /// OWNED here too, because V8 13.1.203 never frees it: "V8 takes
+    /// ownership of the CppHeap passed this way" (v8-isolate.h), but its
+    /// Heap::StartTearDown, inside Isolate::Dispose, releases its owning
+    /// pointer, detaches the heap and terminates it, and nothing deletes it
+    /// (src/heap/heap.cc, StartTearDown: `owning_cpp_heap_.release()`) - one
+    /// leaked heap per agent. V8 13.4.100 frees it there itself (1c079f473b1,
+    /// "[cppheap] Change order of CppHeap teardown calls":
+    /// `owning_cpp_heap_.reset()`), which the static_assert below holds to.
+    /// So the record frees it with itself: after Isolate::Dispose has
+    /// returned (v8_Isolate_Dispose) - detached and terminated by then, so
+    /// its end touches no isolate - or when no isolate was made with it.
+    std::unique_ptr<CppHeap> cpp_heap;
 
 
     /// Take out the entry whose module is `module`, if any.
@@ -2623,6 +2671,12 @@ struct IsolateData {
         return nullptr;
     }
 };
+
+// IsolateData::cpp_heap frees what 13.1.203 leaves: from 13.4 V8 frees it,
+// and the record would free it twice.
+static_assert(V8_MAJOR_VERSION == 13 && V8_MINOR_VERSION < 4,
+              "V8 13.4 frees a CppHeap given in CreateParams in Heap::StartTearDown (1c079f473b1): "
+              "IsolateData::cpp_heap must stop owning it");
 
 /// `isolate`'s record, or null for an isolate this file did not make (the
 /// snapshot creator's).
@@ -2906,6 +2960,27 @@ size_t v8_Process_LiveIsolates() {
     return g_read_only_heap.live;
 }
 
+/// A new agent's C++ heap (cppgc), for its isolate's CreateParams::cpp_heap -
+/// the wrapper redesign's P3 (tmp/redesign/wrapper-redesign-design.md 4.12):
+/// every agent has one, workers included (decision 6), as every Blink thread
+/// with V8 has its ThreadState's. Nothing allocates on it yet.
+///
+/// Marking is ATOMIC: C++ Trace methods run in the final pause, on the
+/// isolate's thread, with the mutator stopped - which the host's tree walk will
+/// rely on (design 4.4, risk R6). V8's flags can only lower it
+/// (CppHeap::UpdateGCCapabilitiesFromFlags takes the minimum), and they are
+/// atomic by default. Sweeping is incremental and concurrent: P4's anchors
+/// have no destructor. The platform is the one V8 runs on (CranePlatform), as
+/// Blink hands its heap gin's V8Platform: cppgc's foreground tasks reach the
+/// agent's loop through its task runner. Made after V8's start
+/// (cppgc::InitializeProcess, v8_Platform_Start).
+static std::unique_ptr<CppHeap> newAgentCppHeap() {
+    CppHeapCreateParams params(std::vector<std::unique_ptr<cppgc::CustomSpaceBase>>{});
+    params.marking_support = cppgc::Heap::MarkingType::kAtomic;
+    params.sweeping_support = cppgc::Heap::SweepingType::kIncrementalAndConcurrent;
+    return CppHeap::Create(g_platform.platform.get(), params);
+}
+
 Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options);
 
 Isolate* v8_Isolate_New() {
@@ -2922,6 +2997,10 @@ Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options) {
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     auto record = std::make_unique<IsolateData>();
     applyIsolateOptions(record.get(), options);
+    // The agent's C++ heap, attached from Isolate::Initialize on; the record
+    // frees it (IsolateData::cpp_heap says why).
+    record->cpp_heap = newAgentCppHeap();
+    create_params.cpp_heap = record->cpp_heap.get();
     // V8's built-in snapshot: always allowed (g_read_only_heap says why).
     (void)claimReadOnlyHeap(nullptr, 0);
     record->holds_read_only_heap = true;
@@ -3046,7 +3125,9 @@ void v8_Isolate_Dispose(Isolate* isolate) {
         // The record last: a snapshot isolate's StartupData is in it, and V8
         // held a pointer to that until Dispose returned ("The embedder owns
         // the blob", v8-isolate.h CreateParams::snapshot_blob). The bytes it
-        // points at are the caller's, freed by the caller after this.
+        // points at are the caller's, freed by the caller after this. Its C++
+        // heap goes with it: Dispose detached and terminated it
+        // (IsolateData::cpp_heap).
         delete record;
     }
 }
@@ -3057,6 +3138,198 @@ void v8_Isolate_Enter(Isolate* isolate) {
 
 void v8_Isolate_Exit(Isolate* isolate) {
     isolate->Exit();
+}
+
+// ----------------------------------------------------------------------------
+// The agent's C++ heap (the wrapper redesign's P3: used by nothing yet)
+// ----------------------------------------------------------------------------
+
+/// Whether `isolate` has a C++ heap (Isolate::GetCppHeap): every isolate this
+/// file makes has one from Isolate::Initialize on (IsolateData::cpp_heap).
+bool v8_Isolate_HasCppHeap(Isolate* isolate) {
+    return isolate && isolate->GetCppHeap() != nullptr;
+}
+
+/// The bytes of the objects on `isolate`'s C++ heap: CppHeap::CollectStatistics
+/// at the brief level, its allocated object size - counters only, it sweeps
+/// nothing (13.1.203 src/heap/cppgc/heap-base.cc, CollectStatistics). 0 with no
+/// heap. The diagnostics tier's `cpp_heap_used_bytes`.
+size_t v8_Isolate_CppHeapUsedBytes(Isolate* isolate) {
+    CppHeap* heap = isolate ? isolate->GetCppHeap() : nullptr;
+    if (!heap) return 0;
+    return heap->CollectStatistics(cppgc::HeapStatistics::DetailLevel::kBrief).used_size_bytes;
+}
+
+// ---- tests/v8/cpp_heap_test.zig's probe ----
+//
+// A holder rooted by a cppgc::Persistent holds a leaf through a cppgc::Member.
+// It answers what P3's red tests ask (design section 7, P3; risks R6, R7):
+// - whether a Member reads back the object it was given: the cppgc defines
+//   build.zig compiles this file with must be the archive's, or the headers
+//   compress Member pointers with another shift than the library decompresses
+//   them with;
+// - whether a forced collection keeps both while the holder is rooted, and
+//   frees both once it is not (weak persistents observe them without keeping
+//   them);
+// - where the holder's Trace runs: on the agent's thread, inside a major GC's
+//   pause (between the prologue and epilogue V8 calls for mark-compact), never
+//   while script runs - the atomic marking the host's tree walk will rely on
+//   (design 4.4, 4.12).
+
+/// What the probe saw; ffi.zig's CppHeapProbeState mirrors it.
+struct CraneCppHeapProbeState {
+    bool holder_alive;
+    bool leaf_alive;
+    /// The holder's Member reads back the leaf MakeGarbageCollected made.
+    bool member_matches;
+    /// The holder's Trace calls, those on another thread than the probe's,
+    /// and those outside a mark-compact's prologue..epilogue.
+    uint32_t traces;
+    uint32_t traces_off_thread;
+    uint32_t traces_outside_pause;
+};
+
+namespace {
+
+struct CppHeapProbe;
+
+class ProbeLeaf final : public cppgc::GarbageCollected<ProbeLeaf> {
+ public:
+    void Trace(cppgc::Visitor*) const {}
+};
+
+class ProbeHolder final : public cppgc::GarbageCollected<ProbeHolder> {
+ public:
+    ProbeHolder(CppHeapProbe* probe, ProbeLeaf* leaf) : probe_(probe), leaf_(leaf) {}
+    void Trace(cppgc::Visitor* visitor) const;
+    const ProbeLeaf* leaf() const { return leaf_.Get(); }
+
+ private:
+    /// The probe outlives every collection it watches (v8_test_CppHeapProbe_Delete).
+    CppHeapProbe* probe_;
+    cppgc::Member<ProbeLeaf> leaf_;
+};
+
+struct CppHeapProbe {
+    Isolate* isolate = nullptr;
+    CppHeap* heap = nullptr;
+    /// The agent's thread: the one that made the probe.
+    std::thread::id thread;
+    /// Set by the mark-compact GC prologue, cleared by its epilogue.
+    std::atomic<bool> in_major_gc{false};
+    std::atomic<uint32_t> traces{0};
+    std::atomic<uint32_t> traces_off_thread{0};
+    std::atomic<uint32_t> traces_outside_pause{0};
+    const ProbeLeaf* leaf_address = nullptr;
+    cppgc::Persistent<ProbeHolder> root;
+    cppgc::WeakPersistent<ProbeHolder> holder;
+    cppgc::WeakPersistent<ProbeLeaf> leaf;
+
+    // Members, so that they have C++ linkage inside this extern "C" block.
+    static void majorGCPrologue(Isolate*, GCType, GCCallbackFlags, void* data) {
+        static_cast<CppHeapProbe*>(data)->in_major_gc.store(true, std::memory_order_relaxed);
+    }
+    static void majorGCEpilogue(Isolate*, GCType, GCCallbackFlags, void* data) {
+        static_cast<CppHeapProbe*>(data)->in_major_gc.store(false, std::memory_order_relaxed);
+    }
+};
+
+void ProbeHolder::Trace(cppgc::Visitor* visitor) const {
+    probe_->traces.fetch_add(1, std::memory_order_relaxed);
+    if (std::this_thread::get_id() != probe_->thread) probe_->traces_off_thread.fetch_add(1, std::memory_order_relaxed);
+    if (!probe_->in_major_gc.load(std::memory_order_relaxed)) probe_->traces_outside_pause.fetch_add(1, std::memory_order_relaxed);
+    visitor->Trace(leaf_);
+}
+
+}  // namespace
+
+/// `sizeof(cppgc::Member<T>)` as this file is compiled: 4 with the archive's
+/// CPPGC_POINTER_COMPRESSION (the ABI check, design 4.12).
+size_t v8_test_CppgcMemberSize() {
+    return sizeof(cppgc::Member<ProbeLeaf>);
+}
+
+}  // extern "C" - the cppgc registry's declaration below is C++
+
+// cppgc's own registry of the process's live C++ heaps: every heap registers
+// in its constructor and unregisters in its destructor (13.1.203
+// src/heap/cppgc/process-heap.h and process-heap.cc, HeapRegistry::Subscription).
+// Exported by the archive, internal to V8 (V8_EXPORT_PRIVATE, not in
+// include/): declared here with the one member the probe calls. Its size is
+// the only measure of whether an agent's end FREED its heap - leaks --atExit
+// cannot tell, because a heap nobody deleted stays reachable from this
+// registry (lane wr2, P3: the CreateParams-only build reported 0 leaks).
+namespace cppgc::internal {
+class HeapBase;
+class HeapRegistry final {
+ public:
+    using Storage = std::vector<HeapBase*>;
+    // "Does not take the registry mutex and is thus only useful for testing."
+    static const Storage& GetRegisteredHeapsForTesting();
+};
+}  // namespace cppgc::internal
+
+extern "C" {
+
+/// How many C++ heaps the process has alive (cppgc's heap registry), for
+/// tests/v8/cpp_heap_test.zig. Unlocked: only for a test that has its process
+/// to itself (build.zig v8_alone).
+size_t v8_test_CppgcLiveHeaps() {
+    return cppgc::internal::HeapRegistry::GetRegisteredHeapsForTesting().size();
+}
+
+/// The probe on `isolate`'s C++ heap, made on the agent's thread with the
+/// isolate entered; null when the isolate has no heap. OWNED:
+/// v8_test_CppHeapProbe_Delete, before the agent ends.
+CppHeapProbe* v8_test_CppHeapProbe_New(Isolate* isolate) {
+    CppHeap* heap = isolate ? isolate->GetCppHeap() : nullptr;
+    if (!heap) return nullptr;
+    auto* probe = new CppHeapProbe();
+    probe->isolate = isolate;
+    probe->heap = heap;
+    probe->thread = std::this_thread::get_id();
+    ProbeLeaf* leaf = cppgc::MakeGarbageCollected<ProbeLeaf>(heap->GetAllocationHandle());
+    ProbeHolder* holder = cppgc::MakeGarbageCollected<ProbeHolder>(heap->GetAllocationHandle(), probe, leaf);
+    probe->leaf_address = leaf;
+    probe->root = holder;
+    probe->holder = holder;
+    probe->leaf = leaf;
+    isolate->AddGCPrologueCallback(CppHeapProbe::majorGCPrologue, probe, kGCTypeMarkSweepCompact);
+    isolate->AddGCEpilogueCallback(CppHeapProbe::majorGCEpilogue, probe, kGCTypeMarkSweepCompact);
+    return probe;
+}
+
+/// A full collection of the probe's isolate (LowMemoryNotification), with no
+/// conservative scan of the stack: a pointer left in a frame must not keep the
+/// test's objects (cppgc::testing::OverrideEmbedderStackStateScope; the
+/// probe's objects are reached only through its persistents).
+void v8_test_CppHeapProbe_Collect(CppHeapProbe* probe) {
+    cppgc::testing::OverrideEmbedderStackStateScope no_stack_scan(probe->heap->GetHeapHandle(),
+                                                                  cppgc::EmbedderStackState::kNoHeapPointers);
+    probe->isolate->LowMemoryNotification();
+}
+
+/// The holder is rooted no more.
+void v8_test_CppHeapProbe_DropRoot(CppHeapProbe* probe) {
+    probe->root.Clear();
+}
+
+void v8_test_CppHeapProbe_State(CppHeapProbe* probe, CraneCppHeapProbeState* out) {
+    const ProbeHolder* holder = probe->holder.Get();
+    out->holder_alive = holder != nullptr;
+    out->leaf_alive = probe->leaf.Get() != nullptr;
+    out->member_matches = holder && holder->leaf() == probe->leaf_address;
+    out->traces = probe->traces.load(std::memory_order_relaxed);
+    out->traces_off_thread = probe->traces_off_thread.load(std::memory_order_relaxed);
+    out->traces_outside_pause = probe->traces_outside_pause.load(std::memory_order_relaxed);
+}
+
+/// The probe's end: its GC callbacks removed, its persistents released.
+void v8_test_CppHeapProbe_Delete(CppHeapProbe* probe) {
+    if (!probe) return;
+    probe->isolate->RemoveGCPrologueCallback(CppHeapProbe::majorGCPrologue, probe);
+    probe->isolate->RemoveGCEpilogueCallback(CppHeapProbe::majorGCEpilogue, probe);
+    delete probe;
 }
 
 // Live Global<Context> handles: created minus disposed.
@@ -9818,6 +10091,9 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     create_params.snapshot_blob = &isolate_data->startup_data;
     create_params.external_references = external_references;
+    // The agent's C++ heap, as v8_Isolate_NewWithOptions gives it.
+    isolate_data->cpp_heap = newAgentCppHeap();
+    create_params.cpp_heap = isolate_data->cpp_heap.get();
     
     Isolate* isolate = Isolate::Allocate();
     if (!isolate) {
@@ -14906,6 +15182,12 @@ struct PatternMatcher {
     };
     Global<Context> context;
     std::vector<Entry> entries;
+    /// How often the cache missed, for the tests that pin "once per agent"
+    /// as a count rather than a time (v8_PatternMatcher_Counts): regexps
+    /// compiled (one per entry made: a pattern attribute's standalone and
+    /// anchored regexps are one compile) and utility contexts made.
+    uint64_t compiles = 0;
+    uint64_t contexts = 0;
 };
 
 /// The most backtracks one match of a regexp the adapter compiles for the
@@ -15003,6 +15285,7 @@ static Local<Context> RegExpContext(Isolate* isolate, PatternMatcher* matcher) {
         Local<Context> made = NewPlainGlobalContext(isolate);
         if (made.IsEmpty()) return made;
         matcher->context.Reset(isolate, made);
+        matcher->contexts += 1;
     }
     return matcher->context.Get(isolate);
 }
@@ -15033,6 +15316,7 @@ static int CachedRegExp(Isolate* isolate, PatternMatcher* matcher, Local<Context
         : CompileRegExpCreate(context, try_catch, source, kind == PatternMatcher::kRegExpCreateVI, regexp);
     if (compiled == 0) return 0;
     if (matcher) {
+        matcher->compiles += 1;
         auto& entries = matcher->entries;
         if (entries.size() >= PatternMatcher::kCapacity) {
             entries.back().regexp.Reset();
@@ -15051,6 +15335,11 @@ extern "C" {
 
 PatternMatcher* v8_PatternMatcher_New() {
     return new PatternMatcher();
+}
+
+void v8_PatternMatcher_Counts(const PatternMatcher* matcher, uint64_t* compiles, uint64_t* contexts) {
+    *compiles = matcher ? matcher->compiles : 0;
+    *contexts = matcher ? matcher->contexts : 0;
 }
 
 void v8_PatternMatcher_Delete(PatternMatcher* matcher) {
