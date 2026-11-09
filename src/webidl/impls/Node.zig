@@ -2112,8 +2112,11 @@ const DocumentCounts = enum { with_document_counts, without_document_counts };
 ///    (dom.observer_registrations.releaseList), while the bridge still names
 ///    the node;
 /// 2. the rare data that held them goes, an owned node name with it;
-/// 3. every hold on the node is emptied (dom.node_holds.nodeReleased: the
-///    slab generation can outlive the NodeBase);
+/// 3. its teardown is marked begun (instance_lifecycle.markCleanupStarted,
+///    which Node.deinit made already; the final sweep's release makes it
+///    here): the slab generation can outlive the NodeBase, and a hold on
+///    the node (dom.node_holds) reads it as gone from here and forgets its
+///    reference - the redesign's P6 deleted the per-node chain of holds;
 /// 4. the node document's counts let it go (not in the final sweep, whose
 ///    documents go in no order);
 /// 5. the bridge forgets the node - an observer's `liveNode` reads null from
@@ -2121,7 +2124,7 @@ const DocumentCounts = enum { with_document_counts, without_document_counts };
 fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, node_base: *NodeBase, counts: DocumentCounts) void {
     dom_module.observer_registrations.releaseList(instance, node_base);
     node_base.deinitRareData();
-    dom_module.node_holds.nodeReleased(node_base);
+    _ = runtime.instance_lifecycle.markCleanupStarted(instance);
     if (counts == .with_document_counts) releaseDocumentCounts(internal, node_base);
     instance_bridge.unregister(instance);
     // The NodeBase is the State block's (`InternalState.base`): released, not

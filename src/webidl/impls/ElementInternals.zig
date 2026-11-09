@@ -49,6 +49,18 @@ pub const InternalState = struct {
     labels_traced: bool = false,
     aria_active_descendant: @import("dom").node_holds.MemberHold = .{},
     aria_elements: [aria_array_members.len]AriaElements = @splat(.{}),
+
+    /// runtime.VTable.trace_held_nodes (the wrapper redesign's P6, design
+    /// 4.4 "Holders"): the ariaActiveDescendantElement it holds, in the
+    /// collector's atomic pause (Blink's ElementInternals::Trace visits its
+    /// explicitly set attr-elements, core/html/custom/element_internals.cc,
+    /// Chromium 131.0.6778.0). The target and the aria arrays are kept by
+    /// their traced edges.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *@import("engine").Tracer) void {
+        const state = instance.stateAs(State) orelse return;
+        const self = state.own._internal orelse return;
+        self.aria_active_descendant.trace(tracer);
+    }
 };
 
 /// A [SameObject] child kept beside the owner's traced edge to it: the

@@ -185,12 +185,11 @@ fn expectTransientAdapterDefaults() !void {
     try page.open(allocator);
     defer page.close();
 
-    // An adapter no scripted parser owns: no rescuer, so nothing is rooted
-    // on its behalf.
+    // An adapter no scripted parser owns: nothing is rooted on its behalf
+    // (no adapter roots anything since the wrapper redesign's P6).
     var adapter = html.parser_script_execution.DomTreeAdapter.init(allocator, page.realm, page.document);
     var adapter_live = true;
     defer if (adapter_live) adapter.deinit();
-    try std.testing.expect(adapter.rescuer == null);
 
     const TreeNode = @import("html_core").parser.TreeNode;
     var tree_nodes: [3]*TreeNode = undefined;
@@ -284,11 +283,11 @@ fn expectDocumentTracedParser() !void {
     const current = parser.tree_builder.currentNode() orelse return error.NoCurrentNode;
     const instance = parser.adapter.getDomNode(current) orelse return error.NoCurrentDOMNode;
     // The parser holds its open elements natively (parser holds design
-    // 5.1): no wrapper, no pending hold, no rescued root, and so no
-    // independent root keeping the suspended Document/parser graph.
+    // 5.1), traced from its Document (the wrapper redesign's P6): no
+    // wrapper, no pending hold, and so no independent root keeping the
+    // suspended Document/parser graph.
     try std.testing.expect(!engine.hasWrapper(instance));
     try std.testing.expectEqual(@as(usize, 0), parser.adapter.pending.items.len);
-    try std.testing.expectEqual(@as(usize, 0), parser.rescues.items.len);
 }
 
 test "a suspended DocumentParser holds its open elements with no wrapper and no root" {

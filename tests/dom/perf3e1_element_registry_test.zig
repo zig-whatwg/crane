@@ -81,9 +81,9 @@ test "Element's InternalState keeps no 40-byte registry association: a one-byte 
     try expectSize(ElementState, 136);
 }
 
-test "a div's one block is 360 bytes: 472 less perf2 b7's 8, the association (40) and the slottable state (64)" {
+test "a div's one block is 352 bytes: 472 less perf2 b7's 8, the association (40) and the slottable state (64), and the wrapper redesign P6's 8 (NodeBase.holds)" {
     const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 360);
+    try expectSize(S, 352);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
     if (held - @sizeOf(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });

@@ -1161,6 +1161,7 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "full_gc_pause_p95_us", .value = @intCast(full_gc_p95_us) },
         .{ .name = "minor_gc_count", .value = @intCast(ffi.v8_Debug_MinorGCCount(ffi.v8_Isolate_GetCurrent())) },
         .{ .name = "node_wrapper_walks", .value = @intCast(walk_counts.walks) },
+        .{ .name = "node_wrapper_holder_traces", .value = @intCast(walk_counts.holder_traces) },
         .{ .name = "wrapper_trace_check_failures", .value = @intCast(walk_counts.check_failures) },
         .{ .name = "globals_created", .value = ffi.v8_Debug_CreatedGlobals() },
         // v8_wrapper.cpp's g_obj_src slots, in its order.

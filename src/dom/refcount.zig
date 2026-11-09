@@ -10,7 +10,7 @@
 //! wrapper redesign's P2 in every agent: the V8 adapter frees no node, and
 //! gives an agent made without a queue (a test's own) one of its own. One
 //! free is still made whatever the counts say, and the holders' nets
-//! (generation checks, `node_holds.nodeReleased`) stay for it: a FORCED realm
+//! (generation and teardown-begun checks, `node_holds.Hold`) stay for it: a FORCED realm
 //! end's coordinated teardown (7a keeps it as the net: a page's end, a
 //! removed iframe, a back/forward cache eviction, the Browser's end). Lane wr1
 //! batch 2: tests/v8/wr1_counted_hold_test.zig, node_wrapper_inline_test.zig.

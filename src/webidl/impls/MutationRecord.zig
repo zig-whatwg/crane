@@ -17,6 +17,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
+const engine = @import("engine");
 const MutationRecord = interfaces.MutationRecord;
 const dom = @import("dom");
 const node_holds = dom.node_holds;
@@ -42,13 +43,11 @@ pub const TYPE_CHILD_LIST: []const u8 = "childList";
 /// holds them natively (core/dom/mutation_record.cc: ChildListRecord traces
 /// target_, added_nodes_, removed_nodes_, previous_sibling_, next_sibling_)
 /// and makes no wrapper until script reads one; so does this one
-/// (src/dom/node_holds.zig): a hold per node, and one rescued wrapper - an
-/// edge from the record's - for the root of a tree that is not a document
-/// with a window. A record is unwrapped while it waits in a record queue, so
-/// such an edge waits, holding its root strongly, in its realm's wrapper
-/// cache until the record is wrapped (delivery, takeRecords()), or until the
-/// record is freed unwrapped (disconnect(), the observer's teardown).
-/// Held as bare pointers, a removed node script let go was freed by the next
+/// (src/dom/node_holds.zig): a counted hold per node, traced while the
+/// record's wrapper is kept (`traceHeldNodes`; the wrapper redesign's P6) -
+/// or, while the record waits unwrapped in a record queue, while its
+/// observer's is (MutationObserver's own `traceHeldNodes`, as Blink's
+/// MutationObserver::Trace visits records_). Held as bare pointers, a removed node script let go was freed by the next
 /// collection and the record answered from its freed or reissued slot
 /// (crane/ed-mutation-record-nodes-gc.html).
 ///
@@ -78,11 +77,11 @@ pub const InternalState = struct {
     /// Old value (for attribute or characterData mutations, if requested)
     old_value: ?[]const u8,
 
-    pub fn init(allocator: std.mem.Allocator, record: *runtime.Instance) InternalState {
+    pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
             .mutation_type = "",
-            .held = node_holds.Holder.init(allocator, record),
+            .held = node_holds.Holder.init(allocator),
             .attribute_name = null,
             .attribute_namespace = null,
             .old_value = null,
@@ -103,13 +102,18 @@ pub const InternalState = struct {
     const previous_index = 1;
     const next_index = 2;
     const nodes_from = 3;
-};
 
-/// A record holds its nodes; the removing steps rescue a held tree. Installed
-/// once, at process start (docs/instances.md "Hooks").
-pub fn installHooks() void {
-    node_holds.installHooks();
-}
+    /// runtime.VTable.trace_held_nodes (the wrapper redesign's P6, design
+    /// 4.4 "Holders"): every node the record holds - target, siblings, added
+    /// and removed nodes - and its trees, in the collector's atomic pause.
+    /// Blink's ChildListRecord::Trace visits target_, added_nodes_,
+    /// removed_nodes_, previous_sibling_ and next_sibling_
+    /// (core/dom/mutation_record.cc, Chromium 131.0.6778.0).
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const self = Accessor.get(instance) orelse return;
+        self.held.trace(tracer);
+    }
+};
 
 /// Helper to access internal state from instance
 /// Get internal state from instance using shared accessor (pointer cast variant)
@@ -132,7 +136,7 @@ pub const construction_args = .{"record"};
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     _ = StateType;
     const internal = try allocator.create(InternalState);
-    internal.* = InternalState.init(allocator, instance);
+    internal.* = InternalState.init(allocator);
 
     // Store internal state in instance
     const state = instance.getState(State);
@@ -190,7 +194,7 @@ fn setFields(internal: *InternalState, allocator: std.mem.Allocator, record: any
     nodes[InternalState.next_index] = record.next_sibling;
     for (added_nodes, 0..) |node, i| nodes[InternalState.nodes_from + i] = node;
     for (removed_nodes, 0..) |node, i| nodes[InternalState.nodes_from + added_nodes.len + i] = node;
-    try internal.held.hold(?*runtime.Instance, nodes, null);
+    try internal.held.hold(?*runtime.Instance, nodes);
     internal.added_count = added_nodes.len;
     internal.removed_count = removed_nodes.len;
 

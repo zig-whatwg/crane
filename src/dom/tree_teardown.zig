@@ -58,8 +58,8 @@ pub fn freeDescendants(root: *NodeBase, position: *Position, budget: usize) usiz
     // deinit, its registries, its storage when no wrapper holds it - and the
     // end of its creator's reference, should it still have one (a collected
     // tree's nodes go the way an uninserted node goes:
-    // dom.node_creation.destroyUninserted). (Lane nodeholds'
-    // node_holds.nodeReleased runs inside it, in Node.deinit - at the real
+    // dom.node_creation.destroyUninserted). (Node.deinit marks the node's
+    // teardown begun, which every hold on it reads as gone - at the real
     // free, as it must.)
     const walk = freeLeavesFirst(root, resumePoint(root, position.*), budget, &node_creation.destroyUninserted);
     position.* = if (walk.at == root) .{} else positionOf(walk.at);

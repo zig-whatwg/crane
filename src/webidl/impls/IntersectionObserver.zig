@@ -55,6 +55,11 @@ pub const InternalState = struct {
     /// Queue of pending IntersectionObserverEntry instances
     queued_entries: std.ArrayListUnmanaged(*runtime.Instance),
 
+    /// Entries taken out of the queue that are being wrapped for script
+    /// (takeRecords(), the callback's queue): traced from here until the
+    /// sequence holds them (`traceHeldNodes`). Empty outside that step.
+    delivering: []const *runtime.Instance = &.{},
+
     /// Parsed threshold values (sorted)
     thresholds: std.ArrayListUnmanaged(f64),
 
@@ -115,6 +120,25 @@ pub const InternalState = struct {
 
         // Free thresholds
         self.thresholds.deinit(self.allocator);
+    }
+
+    /// runtime.VTable.trace_held_nodes (the wrapper redesign's P6, design
+    /// 4.4 "Holders"): the queued entries are unwrapped - reached only
+    /// through the observer - so their targets are traced from here, each
+    /// entry through its own VTable (no impl reaches another). Blink's
+    /// IntersectionObserver::Trace reaches its observations_, whose
+    /// IntersectionObservation::Trace visits the queued entries_
+    /// (core/intersection_observer/intersection_observation.cc, Chromium
+    /// 131.0.6778.0). In the collector's atomic pause; reads only.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const self = Accessor.get(instance) orelse return;
+        for (self.queued_entries.items) |entry| traceEntry(entry, tracer);
+        for (self.delivering) |entry| traceEntry(entry, tracer);
+    }
+
+    fn traceEntry(entry: *runtime.Instance, tracer: *engine.Tracer) void {
+        const trace = entry.vtable.trace_held_nodes orelse return;
+        trace(entry, tracer);
     }
 };
 
@@ -396,8 +420,12 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
     // 3. Return queue - a sequence<IntersectionObserverEntry>, an Array of
     // the current realm. Wrapping hands each entry to the wrapper cache,
-    // which owns them from here.
-    const array = engine.createSequenceOfPlatformObjects(engine.currentRealm() orelse instance.ctx, entries) catch |err| {
+    // which owns them from here; until the sequence holds them they are
+    // traced from the observer (the redesign's P6).
+    internal.delivering = entries;
+    const made = engine.createSequenceOfPlatformObjects(engine.currentRealm() orelse instance.ctx, entries);
+    internal.delivering = &.{};
+    const array = made catch |err| {
         for (entries) |entry| runtime.Instance.deinit(entry);
         return err;
     };
@@ -736,8 +764,12 @@ fn invokeCallback(internal: *InternalState) !void {
     };
 
     // queue as a sequence<IntersectionObserverEntry>. Wrapping hands each
-    // entry to the wrapper cache, which owns them from here.
-    const entries = engine.createSequenceOfPlatformObjects(realm, queue) catch |err| {
+    // entry to the wrapper cache, which owns them from here; until the
+    // sequence holds them they are traced from the observer (P6).
+    internal.delivering = queue;
+    const made = engine.createSequenceOfPlatformObjects(realm, queue);
+    internal.delivering = &.{};
+    const entries = made catch |err| {
         for (queue) |entry| runtime.Instance.deinit(entry);
         return err;
     };

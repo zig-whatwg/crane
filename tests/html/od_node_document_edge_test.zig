@@ -194,25 +194,32 @@ test "adopt replaces a wrapped node's document edge" {
     try onFreshThread(adoptReplacesTheEdge);
 }
 
-fn aRescuedRootKeepsItsDocument() !void {
+fn aHeldTreeKeepsItsDocument() !void {
     const page = try Page.open();
     defer page.close();
     try page.run(
-        \\globalThis.d = document.implementation.createHTMLDocument('od');
-        \\d.body.innerHTML = '<ol><li>1</li></ol>';
-        \\globalThis.list = d.body.querySelectorAll('li');
-        \\d.body.innerHTML = '';
+        \\globalThis.list = (() => {
+        \\  const d = document.implementation.createHTMLDocument('od');
+        \\  d.od = 'doc';
+        \\  d.body.innerHTML = '<ol><li>1</li></ol>';
+        \\  const list = d.body.querySelectorAll('li');
+        \\  d.body.innerHTML = '';
+        \\  return list;
+        \\})();
     );
-    // The removal left the ol a root no script reached: the list rescued it
-    // (dom.node_holds), and the rescue's wrapper carries the edge.
-    const list = try instanceOf(page, "list");
-    const li = (try interfaces.NodeList.call_item(list, 0)) orelse return error.NoItem;
-    const ol = (try interfaces.Node.get_parentNode(li)) orelse return error.NoParent;
-    try expectKeepsDocument(page, ol, try instanceOf(page, "d"));
+    // The removal left the ol a root no script reached, and script keeps
+    // only the list: the list's trace keeps the li's trees - its own and
+    // its node document's (refcount decision D6) - and wraps nothing for
+    // them (the wrapper redesign's P6; the rescue that wrapped the ol and
+    // drew its document edge is gone).
+    try collectAndTurn(page);
+    const answer = try page.evaluate("String(list[0].ownerDocument.od === 'doc' && list[0].parentNode.parentNode === null)");
+    defer testing.allocator.free(answer);
+    try testing.expectEqualStrings("true", answer);
 }
 
-test "a root a holder rescues keeps its node document" {
-    try onFreshThread(aRescuedRootKeepsItsDocument);
+test "a tree a holder holds keeps its node document" {
+    try onFreshThread(aHeldTreeKeepsItsDocument);
 }
 
 fn wrappingANodeWrapsItsDocument() !void {

@@ -352,9 +352,7 @@ pub fn domAdapterOnInserted(location: TreeBuilder.InsertionLocation, child: *Tre
     adapter.inserting = if (child.node_type == .element) child else null;
     defer adapter.inserting = outer;
     const inserted = parser_mutation.insert(adapter, location, child) catch false;
-    if (inserted) {
-        adapter.removeOrphan(child);
-    } else adapter.keepFailedInsertion(child);
+    if (inserted) adapter.removeOrphan(child);
     adapter.endPendingHold(child);
 }
 
@@ -693,14 +691,6 @@ pub const DomTreeAdapter = struct {
         owned: engine.Owned,
     };
 
-    /// The owning parser's rescue (design 5.3, trigger 2), for an element
-    /// whose insertion failed: it is parentless, or in a tree its Document
-    /// does not keep, and may be or become held.
-    pub const Rescuer = struct {
-        context: ?*anyopaque,
-        rescue: *const fn (?*anyopaque, *runtime.Instance) void,
-    };
-
     /// What a node's creation can have done before the adapter asks whether
     /// it has a wrapper.
     pub const Creation = enum {
@@ -765,7 +755,6 @@ pub const DomTreeAdapter = struct {
     /// element wrapped at its creation is held, until its first insertion
     /// attempt (usually empty).
     pending: std.ArrayListUnmanaged(PendingHold) = .empty,
-    rescuer: ?Rescuer = null,
     /// The patching templates' counted holds (`PatchHold`); usually empty.
     patch_holds: std.ArrayListUnmanaged(PatchHold) = .empty,
     /// What the node being created can have done (`mustCheckWrapper`); set by
@@ -924,7 +913,7 @@ pub const DomTreeAdapter = struct {
                 }
             }
         }
-        // Wrapped nodes belong to engine cleanup (a pending hold, a rescue,
+        // Wrapped nodes belong to engine cleanup (a pending hold,
         // or script that wrapped them); an unwrapped one is the adapter's
         // until an insertion takes it.
         if (dom_node != self.document and !(mustCheckWrapper(creation) and engine.hasWrapper(dom_node)))
@@ -940,11 +929,9 @@ pub const DomTreeAdapter = struct {
         // Hand the child over to V8 only if it really was attached: a failed
         // append leaves it orphaned and still ours to free.
         const inserted = parser_mutation.insert(self, .{ .parent = parent, .before = child.next_sibling, .move = true }, child) catch |err| {
-            self.keepFailedInsertion(child);
             self.endPendingHold(child);
             return err;
         };
-        if (!inserted) self.keepFailedInsertion(child);
         self.endPendingHold(child);
         if (!inserted) return;
         self.removeOrphan(child);
@@ -973,25 +960,12 @@ pub const DomTreeAdapter = struct {
         interfaces.CharacterData.set_data(dom_node, dom_string) catch {};
     }
 
-    /// After a failed parser insertion of an element (design 5.3, trigger 2):
-    /// rescue the root of the tree it is in, unless that is the Document -
-    /// a pre-insert error leaves it parentless, and a reaction may have put
-    /// it in a tree nothing else keeps. Rare and script-induced: one wrapper
-    /// until the parser ends.
-    pub fn keepFailedInsertion(self: *DomTreeAdapter, tree_node: *TreeNode) void {
-        if (tree_node.node_type != .element) return;
-        const rescuer = self.rescuer orelse return;
-        const node = self.getDomNode(tree_node) orelse return;
-        const base = dom.instance_bridge.getNodeBase(node) orelse return;
-        const root_base = @import("parser_holds.zig").hostIncludingRoot(base);
-        const document_base = dom.instance_bridge.getNodeBase(self.document);
-        if (document_base != null and root_base == document_base.?) return;
-        const root_opaque = dom.instance_bridge.getInstance(root_base) orelse return;
-        rescuer.rescue(rescuer.context, @ptrCast(@alignCast(root_opaque)));
-    }
-
     /// The first insertion attempt of `tree_node` has ended: its pending
-    /// hold, if it has one, goes. A failed attempt was rescued first.
+    /// hold, if it has one, goes. An element a failed attempt left outside
+    /// the Document is kept, with its tree's wrappers, by the parser's own
+    /// structures while they name it (counted; traced from the Document: the
+    /// wrapper redesign's P6), as Blink's HTMLConstructionSite::Trace keeps
+    /// it - no wrapper is rooted for it.
     pub fn endPendingHold(self: *DomTreeAdapter, tree_node: *TreeNode) void {
         if (self.pending.items.len == 0) return;
         for (self.pending.items, 0..) |held, i| {
@@ -1003,10 +977,10 @@ pub const DomTreeAdapter = struct {
     }
 
     // =========================================================================
-    // Counted references (refcount design step 5a). SHADOW MODE: the counts
-    // decide nothing yet; the parser's rescues (parser_holds) are what keeps
-    // a held node from the collector until step 7. A node freed under one
-    // of these (its realm's end) is forgotten, never released.
+    // Counted references (refcount design step 5a): the counts decide every
+    // free since step 7, and the Document traces what the structures hold
+    // (the wrapper redesign's P6). A node freed under one of these (its
+    // realm's forced end) is forgotten, never released.
     // =========================================================================
 
     /// `tree_node`'s DOM node as a live tree node, or null once it is gone

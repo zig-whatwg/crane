@@ -234,6 +234,8 @@ fn severWrapper(entry: *CacheEntry) void {
     // A wrapper the collector already took has nothing to sever.
     if (v8.v8_Global_IsEmpty(@ptrCast(entry.wrapper))) return;
     const wrapper: *v8.Object = @ptrCast(@alignCast(entry.wrapper));
+    // A holder's anchor (the redesign's P6) traces nothing from here.
+    if (entry.original_vtable.trace_held_nodes != null) node_wrappers.clearHolder(wrapper);
     // A legacy platform object's wrapper is a proxy whose target holds the
     // fields (the unwrap reads them through it): sever the target.
     if (v8.v8_Value_IsProxy(@ptrCast(wrapper))) {
@@ -2128,6 +2130,11 @@ pub const WrapperCache = struct {
         }
         // Edges traced from the instance before script saw it.
         self.drawDeferredEdges(instance, entry.original_generation, wrapper);
+        // A holder of nodes: its anchor, so a collection that keeps this
+        // wrapper keeps the wrappers of what it holds for script (the
+        // redesign's P6, design 4.4 "Holders"; Blink's holders trace their
+        // Member<Node>s). Its nodes are counted holds; nothing is wrapped.
+        if (instance.vtable.trace_held_nodes != null) node_wrappers.attachHolder(isolate, instance, wrapper);
         // (A node never gets here: its wrapper is its agent's, in its own
         // slot - `setNode`, which draws node tracing's edges for every node
         // wrapper, a constructor's included: one the cache used to take

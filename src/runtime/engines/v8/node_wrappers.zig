@@ -222,6 +222,9 @@ pub const Registry = struct {
     walk_absent: bool = false,
     /// Anchors and keeps whose walk ran, cumulative (diagnostics, tests).
     walks: u64 = 0,
+    /// Holder anchors whose holder's nodes were traced, cumulative
+    /// (diagnostics, tests; the redesign's P6).
+    holder_traces: u64 = 0,
     /// The oracle's findings, cumulative (-Dwrapper-trace-check).
     trace_check_failures: u64 = 0,
     /// Debug: a walk is running (inside the collector): no wrap may start.
@@ -366,7 +369,7 @@ fn ensureRegistry(isolate: *ffi.Isolate) error{ OutOfMemory, NoIsolateRecord }!*
     errdefer std.heap.c_allocator.destroy(registry);
     registry.* = .{ .isolate = isolate, .holds = @import("protocol_agents.zig").teardownHoldsOf(isolate) };
     if (!ffi.v8_Isolate_SetNodeWrappers(isolate, registry, &collected, &drainCallback, &endCallback, &instanceOfSlotC)) return error.NoIsolateRecord;
-    _ = ffi.v8_Isolate_SetNodeWrapperTracing(isolate, &traceAnchor, &traceKeeps, &markedCallback, if (wrapper_trace_check) &checkWalk else null);
+    _ = ffi.v8_Isolate_SetNodeWrapperTracing(isolate, &traceAnchor, &traceKeeps, &markedCallback, if (wrapper_trace_check) &checkWalk else null, &traceHolder);
     return registry;
 }
 
@@ -699,6 +702,44 @@ fn walk(registry: *Registry, target: *anyopaque, tracer: *Tracer) void {
     if (runtime.lifetime.traceTree(target, tracer)) registry.walks += 1 else registry.walk_absent = true;
 }
 
+/// HolderAnchor::Trace's work (v8_wrapper.cpp; the redesign's P6, design
+/// 4.4 "Holders", rule 3.2 (d)): a holder wrapper was reached in a
+/// collection's atomic pause; the nodes its instance holds for script are
+/// traced through `visitor` - its type's VTable.trace_held_nodes, which
+/// asks the walk for each (dom.wrapper_tracing.traceHeld). An instance
+/// whose slot was freed or reissued since its anchor was made (the anchor's
+/// generation) is not read: the anchor's wrapper outlived it.
+fn traceHolder(raw_registry: ?*anyopaque, raw_instance: ?*anyopaque, generation: u64, visitor: ?*anyopaque) callconv(.c) void {
+    const registry: *Registry = @ptrCast(@alignCast(raw_registry orelse return));
+    const instance: *runtime.Instance = @ptrCast(@alignCast(raw_instance orelse return));
+    if (runtime.SlabAllocator.generationOf(instance) != generation) return;
+    if (runtime.instance_lifecycle.isCleanupStarted(instance)) return;
+    // A test that removed the walk removed the holders' walks with it.
+    if (!runtime.lifetime.walkInstalled()) return;
+    const trace = instance.vtable.trace_held_nodes orelse return;
+    var tracer: Tracer = .{ .visitor = visitor orelse return, .registry = registry };
+    registry.in_walk = true;
+    defer registry.in_walk = false;
+    trace(instance, &tracer);
+    registry.holder_traces += 1;
+}
+
+/// A holder's wrapper `box` was made (WrapperCache.set, for a type with
+/// VTable.trace_held_nodes): its HolderAnchor, so a collection that keeps
+/// the wrapper traces what the holder holds (the redesign's P6). The agent's
+/// registry is made first if this is its first wrap: the anchor's Trace
+/// reaches the walk's per-collection set through it.
+pub fn attachHolder(isolate: *ffi.Isolate, instance: *runtime.Instance, box: *ffi.Object) void {
+    _ = ensureRegistry(isolate) catch return;
+    _ = ffi.v8_HolderAnchor_Attach(isolate, box, instance, runtime.SlabAllocator.generationOf(instance));
+}
+
+/// The holder's instance goes while its wrapper may live on (a realm's end
+/// severing it, WrapperCache's `severWrapper`): its anchor traces nothing.
+pub fn clearHolder(box: *ffi.Object) void {
+    ffi.v8_HolderAnchor_Clear(box);
+}
+
 /// The kept nodes' trees (design 4.4 "Kept nodes", rule 3.2 c), from the
 /// anchors' registry's Trace in the atomic pause: every node with a live
 /// keep (pending activity) keeps its tree's wrappers, wrapped or not itself
@@ -826,13 +867,14 @@ fn nodeTypeOfSlot(slot: *NodeWrapperSlot) u16 {
     return node.node_type;
 }
 
-/// The current isolate's walks so far (anchors and keeps) and the oracle's
-/// findings (diagnosticCounters' `node_wrapper_walks` and
+/// The current isolate's walks so far (anchors and keeps), its holder
+/// anchors' traces and the oracle's findings (diagnosticCounters'
+/// `node_wrapper_walks`, `node_wrapper_holder_traces` and
 /// `wrapper_trace_check_failures`).
-pub fn walkCountsOfCurrent() struct { walks: u64, check_failures: u64 } {
-    const isolate = ffi.v8_Isolate_GetCurrent() orelse return .{ .walks = 0, .check_failures = 0 };
-    const registry = registryOf(isolate) orelse return .{ .walks = 0, .check_failures = 0 };
-    return .{ .walks = registry.walks, .check_failures = registry.trace_check_failures };
+pub fn walkCountsOfCurrent() struct { walks: u64, holder_traces: u64, check_failures: u64 } {
+    const isolate = ffi.v8_Isolate_GetCurrent() orelse return .{ .walks = 0, .holder_traces = 0, .check_failures = 0 };
+    const registry = registryOf(isolate) orelse return .{ .walks = 0, .holder_traces = 0, .check_failures = 0 };
+    return .{ .walks = registry.walks, .holder_traces = registry.holder_traces, .check_failures = registry.trace_check_failures };
 }
 
 /// engine.releaseNodeWrappers: `isolate`'s agent will run no more script.

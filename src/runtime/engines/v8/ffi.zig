@@ -2874,7 +2874,21 @@ pub extern fn v8_Isolate_SetNodeWrapperTracing(
     trace_keeps: *const fn (registry: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void,
     marked: *const fn (registry: ?*anyopaque) callconv(.c) void,
     check: ?*const fn (registry: ?*anyopaque, live: ?[*]const ?*anyopaque, live_len: usize, dead: ?[*]const ?*anyopaque, dead_len: usize) callconv(.c) void,
+    trace_holder: *const fn (registry: ?*anyopaque, instance: ?*anyopaque, generation: u64, visitor: ?*anyopaque) callconv(.c) void,
 ) bool;
+
+/// A holder's new wrapper `box` (a type with VTable.trace_held_nodes) gets
+/// its HolderAnchor on `isolate`'s C++ heap, holding `instance` and its
+/// slab `generation` (the wrapper redesign's P6, design 4.4 "Holders"); a
+/// collection that marks the wrapper then calls the record's `trace_holder`.
+/// False, with no anchor, for an isolate with no C++ heap or tracing
+/// callbacks, or an object that is no API object.
+pub extern fn v8_HolderAnchor_Attach(isolate: *Isolate, box: *Object, instance: *anyopaque, generation: u64) bool;
+
+/// The holder's instance went while its wrapper `box` may live on (a realm's
+/// end severing it): its HolderAnchor, if any, traces nothing from here. The
+/// isolate is the current one.
+pub extern fn v8_HolderAnchor_Clear(box: *Object) void;
 
 /// engine.traceNodeWrapper on V8: `visitor` (a cppgc::Visitor in a
 /// collection's atomic pause, the walk's) traces the TracedReference in the

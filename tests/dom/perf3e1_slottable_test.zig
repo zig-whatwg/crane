@@ -70,9 +70,9 @@ test "Element's InternalState keeps no slottable state: 136 bytes" {
     try expectSize(ElementState, 136);
 }
 
-test "a div's one block is 360 bytes: 432 less the slottable state, and perf2 b7's 8 (merged after)" {
+test "a div's one block is 352 bytes: 432 less the slottable state, and perf2 b7's 8 (merged after), and the wrapper redesign P6's 8 (NodeBase.holds)" {
     const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 360);
+    try expectSize(S, 352);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
     if (held - @sizeOf(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });

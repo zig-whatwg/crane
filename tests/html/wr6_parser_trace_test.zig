@@ -65,7 +65,9 @@ fn byId(document: *runtime.Instance, id: []const u8) !*runtime.Instance {
 fn holds(page: anytype, source: []const u8) !bool {
     const answer = try page.evaluateScriptToString(source, testing.allocator);
     defer testing.allocator.free(answer);
-    return std.mem.eql(u8, answer, "true");
+    const ok = std.mem.eql(u8, answer, "true");
+    if (!ok) std.debug.print("does not hold ({s}): {s}\n", .{ answer, source });
+    return ok;
 }
 
 /// The parser's open element #a, never wrapped, is detached by script with
@@ -97,12 +99,19 @@ fn parserHeldTreeKeepsItsWrappers(edges: bool) !void {
         \\})();
     );
     try collect(browser);
-    try testing.expect(try holds(page, "String(ref.deref() !== undefined && ref.deref().wr === 'b' && ref.deref().parentNode.parentNode === null)"));
     // The trace names wrappers; it makes none. (With the edges on, #b's
     // wrap made its ancestors' wrappers - node tracing's upward closure,
-    // until P7 - so only #c is unwrapped then.)
-    if (!edges) try testing.expect(!engine.hasWrapper(a));
-    try testing.expect(!engine.hasWrapper(c));
+    // until P7 - so only #c is unwrapped then.) Asked before the check
+    // below, whose parentNode reads wrap #a.
+    if (!edges and engine.hasWrapper(a)) {
+        std.debug.print("#a was wrapped\n", .{});
+        return error.Wrapped;
+    }
+    if (engine.hasWrapper(c)) {
+        std.debug.print("#c was wrapped\n", .{});
+        return error.Wrapped;
+    }
+    try testing.expect(try holds(page, "String(ref.deref() !== undefined && ref.deref().wr === 'b' && ref.deref().parentNode.parentNode === null)"));
     // The parser keeps building into the detached tree.
     try page.runScript("document.write('still parsed</span></p></div>')");
     try testing.expect(try holds(page, "String(ref.deref().firstChild.textContent === 'still parsed')"));
@@ -127,4 +136,68 @@ test "wr6 RED: with every node edge off, a parser-held tree script detached keep
 
 test "wr6: production - a parser-held tree script detached keeps its wrappers mid-parse and lets them go when the parser ends" {
     try onFreshThread(withEdgesOn);
+}
+
+/// The integrator's (b): an OLD parser still on the native stack. A custom
+/// element's connectedCallback - a reaction the parser runs while it inserts
+/// the element, with no script nesting and no dynamic-markup counter, so
+/// document.open() is allowed (HTML "document open steps" 5-6) - takes the
+/// element out, then calls document.open(): the parser that is inserting it
+/// is aborted and replaced, and its tree (the old html element down to #e)
+/// leaves the Document, reached from now on only through that old parser's
+/// stack of open elements while its frames unwind (Blink: the old
+/// HTMLDocumentParser on the C++ stack, whose HTMLConstructionSite::Trace
+/// visits open_elements_). A collection there keeps #e's wrapper - made and
+/// marked by an earlier script, held since only by a WeakRef - and its
+/// child's.
+const reopen_markup =
+    \\<!doctype html><body>
+    \\<script>
+    \\customElements.define('x-reopen', class extends HTMLElement {
+    \\  connectedCallback() {
+    \\    if (window.reopened) return;
+    \\    window.reopened = true;
+    \\    this.remove();
+    \\    document.open();
+    \\    TestUtils.gc();
+    \\    const e = window.ref.deref();
+    \\    window.result = String(e !== undefined && e.wr === 'e' && e.firstChild.wr === 'f' && !e.isConnected);
+    \\    document.close();
+    \\  }
+    \\});
+    \\</script>
+    \\<div id=e><span id=f></span><script>
+    \\(() => { const e = document.getElementById('e'); e.wr = 'e'; e.firstChild.wr = 'f'; window.ref = new WeakRef(e); })();
+    \\</script><x-reopen></x-reopen></div>
+;
+
+fn oldParserOnTheStackKeepsItsWrappers(edges: bool) !void {
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    var hooks = runtime.lifetime.installedHooks();
+    hooks.tree_edges = edges;
+    const override = runtime.lifetime.overrideHooksForTest(hooks);
+    defer override.restore();
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML(reopen_markup, .{ .base_url = "http://example.test/reopen" });
+    _ = try browser.runEventLoopBlocking(20);
+    try testing.expect(try holds(page, "String(window.reopened === true)"));
+    try testing.expect(try holds(page, "window.result"));
+}
+
+fn oldParserEdgesOff() !void {
+    try oldParserOnTheStackKeepsItsWrappers(false);
+}
+
+fn oldParserEdgesOn() !void {
+    try oldParserOnTheStackKeepsItsWrappers(true);
+}
+
+test "wr6: with every node edge off, an old parser document.open() replaced keeps its stack's wrappers while its frames unwind" {
+    try onFreshThread(oldParserEdgesOff);
+}
+
+test "wr6: production - an old parser document.open() replaced keeps its stack's wrappers while its frames unwind" {
+    try onFreshThread(oldParserEdgesOn);
 }

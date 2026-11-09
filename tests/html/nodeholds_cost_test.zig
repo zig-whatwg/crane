@@ -144,8 +144,9 @@ test "a parse under a subtree MutationObserver makes no wrapper per inserted nod
 }
 
 /// Wrapper entries after removing, and letting go of, a subtree whose
-/// `count` paragraphs a kept static list holds: the list rescues the subtree's
-/// root - one wrapper - not each node.
+/// `count` paragraphs a kept static list holds: the list holds them counted
+/// and traces them (the wrapper redesign's P6) - no wrapper per node (and
+/// none for the subtree's root since the rescue went).
 fn removedHeldSubtreeSample(count: usize) !i64 {
     var markup: std.ArrayListUnmanaged(u8) = .empty;
     defer markup.deinit(testing.allocator);
@@ -169,12 +170,12 @@ fn oneWrapperPerRescuedTree() !void {
     const before = try removedHeldSubtreeSample(small);
     const after = try removedHeldSubtreeSample(large);
     if (after - before >= wrapper_slack) {
-        std.debug.print("rescue: {d} wrappers after {d} held nodes, {d} after {d}\n", .{ before, small, after, large });
+        std.debug.print("held subtree: {d} wrappers after {d} held nodes, {d} after {d}\n", .{ before, small, after, large });
         return error.WrapperPerRescuedNode;
     }
 }
 
-test "removing a subtree a static list holds rescues its root alone" {
+test "removing a subtree a static list holds makes no wrapper per held node" {
     try onFreshThread(oneWrapperPerRescuedTree);
 }
 
@@ -186,8 +187,7 @@ fn slabAllocated(browser: *browser_mod.Browser) usize {
 /// the record holds its nodes itself and makes its lists on first read
 /// (Blink's RecordWithEmptyNodeLists, generalized). The carrier lists every
 /// tree mutation used to build - two per record batch, never freed unless
-/// script read them - are gone, and nodes of a document with a window are
-/// held without a rescue (no wrapper).
+/// script read them - are gone, and the held nodes get no wrapper.
 fn unreadRecordsMakeNoListAndNoRescue() !void {
     const browser = try openPage("<!doctype html><body><div id=src></div><div id=dst></div><div id=dst2></div></body>");
     defer browser.deinit();
@@ -210,7 +210,7 @@ fn unreadRecordsMakeNoListAndNoRescue() !void {
         return error.NodeListPerUnreadRecord;
     }
     // A parsed subtree inserted under an observer: its record holds 200 nodes
-    // of the document - no rescue, so no wrapper - and is dropped unread.
+    // of the document - no wrapper - and is dropped unread.
     const wrappers_before = try wrapperEntries(browser);
     try page.runScript("document.getElementById('dst2').innerHTML = '<b></b>'.repeat(200); mo.disconnect();");
     const wrappers_after = try wrapperEntries(browser);
@@ -220,7 +220,7 @@ fn unreadRecordsMakeNoListAndNoRescue() !void {
     }
 }
 
-test "an observed mutation whose record script never reads makes no NodeList and takes no rescue" {
+test "an observed mutation whose record script never reads makes no NodeList and no wrapper" {
     try onFreshThread(unreadRecordsMakeNoListAndNoRescue);
 }
 

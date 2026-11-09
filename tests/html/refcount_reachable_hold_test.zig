@@ -95,21 +95,39 @@ test "a keep taken before the node has a wrapper is the wrapper's when it is mad
     try onFreshThread(keepWaitsForTheWrapper);
 }
 
-fn nodeFreedUnderTheHold() !void {
+/// The hold the realm-end case reads from a sweep the test adds after the
+/// Browser's own (`teardown_sweeps.withSweepForTest`): its realm ended and
+/// its nodes were released, its slab is still there (a hold must not
+/// outlive its node's Browser: the wrapper redesign's P6 deleted the
+/// per-node chain that used to empty it).
+const FreedProbe = struct {
     var hold: dom.node_holds.ReachableHold = .{};
+    var ran: bool = false;
+    var read_live: bool = false;
+
+    fn sweep(_: *runtime.BrowserScope) void {
+        ran = true;
+        read_live = hold.get() != null;
+        hold.release();
+        hold.release();
+    }
+};
+
+fn nodeFreedUnderTheHold() !void {
+    const probe = dom.teardown_sweeps.withSweepForTest(.documents, &FreedProbe.sweep);
+    defer probe.restore();
     {
         const page = try open();
         defer page.close();
         try page.run("globalThis.target = document.body.appendChild(document.createElement('p')); 0;");
         const base = try page.node("target");
-        hold.take(instanceOf(base), base);
+        FreedProbe.hold.take(instanceOf(base), base);
         try expectCount(2, base, "the wrapper's (the born reference, adopted) and the hold's");
     }
-    // The realm's end freed the node and emptied the hold: nothing is held,
-    // and the release makes no engine call and writes nothing.
-    try testing.expect(hold.get() == null);
-    hold.release();
-    hold.release();
+    // The realm's end freed the node: the hold read it as gone, and its
+    // release made no engine call and wrote nothing.
+    try testing.expect(FreedProbe.ran);
+    try testing.expect(!FreedProbe.read_live);
 }
 
 test "a ReachableHold whose node its realm's end freed holds nothing, and lets go of nothing" {

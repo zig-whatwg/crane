@@ -126,11 +126,11 @@ test "HTMLElement's InternalState is empty: every field it kept is rare data" {
     try expectSize(HTMLElementState, 0);
 }
 
-test "a div's one block is 360 bytes: 736 less Element's 176 and HTMLElement's 88 (D2), perf2 b7's 8, and the registry association's 40 and the slottable state's 64 (E1)" {
+test "a div's one block is 352 bytes: 736 less Element's 176 and HTMLElement's 88 (D2), perf2 b7's 8, and the registry association's 40 and the slottable state's 64 (E1), and the wrapper redesign P6's 8 (NodeBase.holds)" {
     // perf2 b7 (merged after D2): EventTarget's current event (8) is a
     // Window's, in Window's state now.
     const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 360);
+    try expectSize(S, 352);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
     if (held - @sizeOf(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });

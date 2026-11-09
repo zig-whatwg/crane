@@ -103,6 +103,16 @@ pub fn install(phase: Phase, sweep: Sweep) void {
     list.append(sweep);
 }
 
+/// Tests only: the installed sweeps plus `sweep` at the end of `phase`, until
+/// the returned guard's `restore()` - a test that reads what an earlier
+/// phase left (tests/html/nodeholds_teardown_test.zig: a hold on a node the
+/// `.nodes` sweep released reads it as gone).
+pub fn withSweepForTest(phase: Phase, sweep: Sweep) @TypeOf(sweeps).Override {
+    var table = sweeps.read().*;
+    table[@backingInt(phase)].append(sweep);
+    return sweeps.overrideForTest(table);
+}
+
 /// Run every installed sweep over `scope`, phase by phase, each phase's in
 /// installation order: `scope`'s Browser ends. Before its agent ends.
 pub fn runAll(scope: *runtime.BrowserScope) void {

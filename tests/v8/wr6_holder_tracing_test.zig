@@ -9,8 +9,7 @@
 //! `target_`, node lists and siblings (core/dom/mutation_record.cc),
 //! MutationObserver::Trace its pending `records_` (core/dom/
 //! mutation_observer.cc), XPathResult::Trace its `node_set_` and `document_`
-//! (core/xml/xpath_result.cc), IntersectionObserverEntry::Trace its `target_`
-//! (core/intersection_observer/intersection_observer_entry.cc), and a live
+//! (core/xml/xpath_result.cc), and a live
 //! collection its root (LiveNodeListBase's `owner_node_`). Crane's holders keep
 //! counted references (refcount) and are ALSO traced: a holder's wrapper
 //! carries a HolderAnchor on the agent's C++ heap whose Trace names the held
@@ -23,6 +22,8 @@
 //!   `===` through a WeakRef - through full collections; and dropping the
 //!   holder lets them go. Red until holders trace.
 //! - Production (edges on): the same.
+//! (IntersectionObserverEntry's target is pinned by the Crane test
+//! wr-holder-intersection-observer-entry.html: its constructor needs a page.)
 //! - The cost lesson (docs/lessons/architecture-tracing-a-holders-nodes-makes-
 //!   a-wrapper-per-node.md): a querySelectorAll of 1,000 nodes makes no node
 //!   wrapper, and neither does a collection while the list is held.
@@ -278,23 +279,6 @@ const scenarios = [_]Scenario{
         .drop = "globalThis.result = null;",
     },
     .{
-        .name = "wr-holder-intersection-observer-entry",
-        .setup = html_document ++
-            \\(() => {
-            \\  const t = d.createElement('div'); t.wr = 't';
-            \\  t.appendChild(d.createElement('i')).wr = 'i';
-            \\  const rect = { x: 0, y: 0, width: 0, height: 0 };
-            \\  globalThis.entry = new IntersectionObserverEntry({ time: 0, rootBounds: rect, boundingClientRect: rect, intersectionRect: rect, isIntersecting: false, intersectionRatio: 0, target: t });
-            \\  globalThis.refs = [new WeakRef(t), new WeakRef(t.firstChild)];
-            \\})();
-        ,
-        .kept = &.{
-            "entry.target.wr === 't' && entry.target.firstChild.wr === 'i'",
-            "refs[0].deref() === entry.target",
-        },
-        .drop = "globalThis.entry = null;",
-    },
-    .{
         // A live collection keeps its root (WebKit: Ref<ContainerNode>
         // m_ownerNode; Blink: LiveNodeListBase traces owner_node_).
         .name = "wr-holder-live-collection-root",
@@ -335,7 +319,7 @@ const scenarios = [_]Scenario{
         .setup = html_document ++
             \\(() => {
             \\  const a = d.createElementNS('http://www.w3.org/2000/svg', 'a'); a.wr = 'a';
-            \\  globalThis.anim = a.target;
+            \\  globalThis.anim = a.className;
             \\  globalThis.refs = [new WeakRef(a)];
             \\})();
         ,

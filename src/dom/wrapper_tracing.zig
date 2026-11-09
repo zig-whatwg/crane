@@ -58,8 +58,29 @@
 //!
 //! The Debug oracle (-Dwrapper-trace-check, the V8 adapter's node_wrappers.zig)
 //! walks the same trees unpruned (`forEachWrapped`) after each major GC.
+//!
+//! HOLDERS (the redesign's P6, design 3.2 rule (d) and 4.4 "Holders"): a
+//! holder whose wrapper is kept keeps the nodes it holds for script and
+//! their trees - a static NodeList's nodes, a MutationRecord's, a live
+//! collection's root. The holder's type names them from its VTable's
+//! `trace_held_nodes` (runtime.lifetime.heldNodesOf: a `traceHeldNodes` on
+//! its InternalState), reached from the holder's wrapper (V8: its
+//! HolderAnchor's Trace) or, for a node that holds nodes - a Document's
+//! active parser and top layer, a dialog's saved focus - from this walk
+//! where it visits the node (`NodeBase.traces_held`); each held node goes
+//! through `traceHeld`: its own wrapper, and every wrapper of its trees.
+//! Blink traces a holder's `Member<Node>`s (StaticNodeTypeList::Trace,
+//! ChildListRecord::Trace, HTMLConstructionSite::Trace; Chromium
+//! 131.0.6778.0). Nothing here makes a wrapper: a held node with none costs
+//! nothing (docs/lessons/architecture-tracing-a-holders-nodes-makes-a-
+//! wrapper-per-node.md). A node holder the pruned walk does not visit - not
+//! held itself, and nothing held below it - is not asked: Blink would trace
+//! it with its whole tree. The trees its members are in are then kept by
+//! their own wrappers only; a holder script reaches is wrapped, so held, so
+//! visited.
 
 const std = @import("std");
+const runtime = @import("runtime");
 const engine = @import("engine");
 const NodeBase = @import("node_base.zig").NodeBase;
 const refcount = @import("refcount.zig");
@@ -79,6 +100,27 @@ pub fn traceTree(target: *anyopaque, tracer: *engine.Tracer) void {
     if (roots[1]) |document| walkTree(document, node, tracer);
 }
 
+/// A node a holder holds for script (design 3.2 (d)): its own wrapper, and
+/// every wrapper of its host-including tree and of its node document's tree
+/// - what `traceTree` keeps for a reached wrapper, the node's own included.
+/// Called from a holder's `trace_held_nodes`, in the collection's atomic
+/// pause; reads only.
+pub fn traceHeld(node: *NodeBase, tracer: *engine.Tracer) void {
+    const roots = treeRoots(node);
+    walkTree(roots[0], null, tracer);
+    if (roots[1]) |document| walkTree(document, null, tracer);
+}
+
+/// `node` holds nodes for script itself (`NodeBase.traces_held`): its
+/// type's `trace_held_nodes` names them.
+fn traceHolderNode(node: *NodeBase, tracer: *engine.Tracer) void {
+    const instance: *runtime.Instance = @ptrCast(@alignCast(node.ownerInstance() orelse return));
+    // A node whose teardown began holds nothing any more.
+    if (runtime.instance_lifecycle.isCleanupStarted(instance)) return;
+    const trace = instance.vtable.trace_held_nodes orelse return;
+    trace(instance, tracer);
+}
+
 /// The roots of the trees `node` keeps: its host-including tree's, and its
 /// node document's when that is another tree (null otherwise).
 pub fn treeRoots(node: *NodeBase) [2]?*NodeBase {
@@ -88,8 +130,9 @@ pub fn treeRoots(node: *NodeBase) [2]?*NodeBase {
 }
 
 /// The held part of `tree_root`'s tree, once per collection: each wrapper in
-/// it named to the engine (`target`'s own excepted when it is a lone root).
-fn walkTree(maybe_root: ?*NodeBase, target: *NodeBase, tracer: *engine.Tracer) void {
+/// it named to the engine (`target`'s own excepted when it is a lone root),
+/// and each node holder in it asked for what it holds.
+fn walkTree(maybe_root: ?*NodeBase, target: ?*NodeBase, tracer: *engine.Tracer) void {
     const tree_root = maybe_root orelse return;
     // A garbage tree holds nothing (its total is 0, so no node of it is
     // wrapped), and its teardown may be under way: never walked (design R2).
@@ -100,6 +143,9 @@ fn walkTree(maybe_root: ?*NodeBase, target: *NodeBase, tracer: *engine.Tracer) v
     // whose wrapper the engine keeps (the per-anchor cost, design R4c).
     if (isLone(tree_root)) {
         if (tree_root != target) engine.traceNodeWrapper(tracer, &tree_root.wrapper);
+        // A lone node holder (a Document whose only held node is itself): asked
+        // once per collection.
+        if (tree_root.traces_held and engine.traceVisitOnce(tracer, tree_root)) traceHolderNode(tree_root, tracer);
         return;
     }
     if (!engine.traceVisitOnce(tracer, tree_root)) return;
@@ -122,6 +168,7 @@ const Pruned = struct {
 
     fn visit(self: Pruned, node: *NodeBase) void {
         if (!node.wrapper.isEmpty()) engine.traceNodeWrapper(self.tracer, &node.wrapper);
+        if (node.traces_held) traceHolderNode(node, self.tracer);
     }
 };
 

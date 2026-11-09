@@ -58,8 +58,9 @@ fn detachedNodeUntilEOF() !void {
     try collect(browser);
     try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(node));
     try testing.expectEqual(node, try currentNode(parser));
-    // One rescued root, and no adapter hold per node.
-    try testing.expectEqual(@as(usize, 1), parser.rescues.items.len);
+    // Kept by the parser's counted structures (the Document traces them:
+    // the wrapper redesign's P6; the rescue that rooted the root is gone),
+    // and no adapter hold per node.
     try testing.expectEqual(@as(usize, 0), parser.adapter.pending.items.len);
     try page.runScript("document.write('still parsed</div>')");
     var text = try interfaces.Node.get_textContent(node);
@@ -119,13 +120,12 @@ fn unreachableSuspendedCycle() !void {
     const node_generation = runtime.SlabAllocator.generationOf(node);
     try testing.expect(!parser.input_stream.eof_processed);
     try testing.expectEqual(@as(usize, 0), parser.adapter.pending.items.len);
-    // A rescued root lives in the graph too: its slot is the Document's.
-    // (The created document already has an html element, so the parser's
-    // own html failed to insert and was rescued as well.)
-    const rescued_before = parser.rescues.items.len;
+    // A detached held tree lives in the graph too: the parser's structures
+    // hold it counted and the Document traces it (the wrapper redesign's
+    // P6) - no wrapper is rooted for it.
     const parent = (try interfaces.Node.get_parentNode(node)) orelse return error.NoParent;
     _ = try interfaces.Node.call_removeChild(parent, node);
-    try testing.expectEqual(rescued_before + 1, parser.rescues.items.len);
+    try testing.expect(!engine.hasWrapper(node));
     parser.release();
     initiating_owner = false;
     document_owner.?.release();

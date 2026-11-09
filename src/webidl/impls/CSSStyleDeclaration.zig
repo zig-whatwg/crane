@@ -83,6 +83,15 @@ pub const InternalState = struct {
         self.own.deinit();
     }
 
+    /// runtime.VTable.trace_held_nodes (the wrapper redesign's P6, design
+    /// 4.4 "Holders"): a computed declaration's element, in the collector's
+    /// atomic pause (Blink's CSSComputedStyleDeclaration::Trace visits its
+    /// element_). Makes no wrapper.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *@import("engine").Tracer) void {
+        const self = Registry.get(instance) orelse return;
+        if (self.kind == .computed) self.computed_element.trace(tracer);
+    }
+
     fn inlineOwner(self: *const InternalState) ?*runtime.Instance {
         const owner = self.inline_owner orelse return null;
         if (runtime.SlabAllocator.generationOf(owner) != self.inline_owner_generation) return null;

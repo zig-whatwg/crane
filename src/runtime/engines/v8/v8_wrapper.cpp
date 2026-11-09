@@ -2798,6 +2798,50 @@ class NodeAnchor final : public cppgc::GarbageCollected<NodeAnchor> {
 static_assert(std::is_trivially_destructible_v<NodeAnchor>, "a node anchor needs no finalizer");
 static_assert(sizeof(TracedReference<Object>) == sizeof(void*), "a node's wrapper slot holds exactly one TracedReference<Object>");
 
+/// The CppHeapPointerTag a holder wrapper's anchor is wrapped with: the next
+/// of Blink's ScriptWrappable tags after the node anchors' (257 is a
+/// tests/v8 probe's).
+static constexpr CppHeapPointerTag kHolderAnchorTag = static_cast<CppHeapPointerTag>(258);
+static constexpr CppHeapPointerTagRange kHolderAnchorTagRange(kHolderAnchorTag, kHolderAnchorTag);
+
+static void traceHolderNodes(IsolateData* record, void* instance, uint64_t generation, cppgc::Visitor* visitor);
+
+/// What a HOLDER's wrapper points at (the wrapper redesign's P6, design 4.4
+/// "Holders"): a cppgc object behind the wrapper's CppHeap pointer, so V8's
+/// marker consults the host about what the holder holds - a static
+/// NodeList's nodes, a MutationRecord's, a live collection's root
+/// (runtime.VTable.trace_held_nodes). Blink's holders are themselves cppgc
+/// objects whose Trace visits their `Member<Node>`s (StaticNodeTypeList::
+/// Trace, ChildListRecord::Trace; Chromium 131.0.6778.0); Crane's holders
+/// are Zig instances, reached through this anchor. The wrapper keeps its
+/// internal fields (the instance): a JS API object carries both.
+///
+/// It holds the holder's instance and its slab generation - 16 bytes, 24
+/// with cppgc's header, one per holder wrapper, none per node. Its Trace runs
+/// in the collection's atomic pause, under the node anchors' rule
+/// (collectingRecord: kAtomic marking, the collecting isolate's record):
+/// the host reads its holder's state, which has no write barrier either.
+/// `instance_` is null once the instance went while the wrapper lived (its
+/// realm's end: v8_HolderAnchor_Clear from the wrapper cache's severing);
+/// the generation is the net for any other way the instance went - the
+/// Zig side compares it before it reads the instance. Trivially
+/// destructible.
+class HolderAnchor final : public cppgc::GarbageCollected<HolderAnchor> {
+ public:
+    HolderAnchor(void* instance, uint64_t generation) : instance_(instance), generation_(generation) {}
+
+    void Trace(cppgc::Visitor* visitor) const {
+        if (!instance_) return;
+        IsolateData* record = collectingRecord(this);
+        if (record) traceHolderNodes(record, instance_, generation_, visitor);
+    }
+
+    void* instance_;
+    uint64_t generation_;
+};
+
+static_assert(std::is_trivially_destructible_v<HolderAnchor>, "a holder anchor needs no finalizer");
+
 /// The agent's node anchors, for weak processing (design 4.5): a cppgc
 /// object rooted by its record (IsolateData::node_anchors), whose Trace only
 /// registers ProcessWeak - Blink's ActiveScriptWrappableManager pattern
@@ -2967,6 +3011,11 @@ struct IsolateData {
     void (*node_wrapper_trace_keeps)(void* registry, cppgc::Visitor* visitor) = nullptr;
     void (*node_wrappers_marked)(void* registry) = nullptr;
     void (*node_wrapper_trace_check)(void* registry, void* const* live, size_t live_len, void* const* dead, size_t dead_len) = nullptr;
+    /// A holder wrapper's anchor was reached in a collection's atomic pause
+    /// (HolderAnchor::Trace; the wrapper redesign's P6): the nodes its
+    /// instance holds for script are traced through `visitor`
+    /// (node_wrappers.zig `traceHolder`).
+    void (*node_wrapper_trace_holder)(void* registry, void* instance, uint64_t generation, cppgc::Visitor* visitor) = nullptr;
 
 
     /// Take out the entry whose module is `module`, if any.
@@ -3153,6 +3202,12 @@ static void* nodeInstanceOf(Isolate* isolate, Local<Object> object) {
 /// record's callback (node_wrappers.zig `traceAnchor`).
 static void traceAnchorTree(IsolateData* record, void* slot, cppgc::Visitor* visitor) {
     if (record->node_wrappers && record->node_wrapper_trace_anchor) record->node_wrapper_trace_anchor(record->node_wrappers, slot, visitor);
+}
+
+/// HolderAnchor::Trace's work: the holder's held nodes, through the record's
+/// callback (node_wrappers.zig `traceHolder`).
+static void traceHolderNodes(IsolateData* record, void* instance, uint64_t generation, cppgc::Visitor* visitor) {
+    if (record->node_wrappers && record->node_wrapper_trace_holder) record->node_wrapper_trace_holder(record->node_wrappers, instance, generation, visitor);
 }
 
 void NodeWrapperRegistry::Trace(cppgc::Visitor* visitor) const {
@@ -3409,14 +3464,64 @@ extern "C" bool v8_Isolate_SetNodeWrappers(Isolate* isolate, void* registry, voi
 extern "C" bool v8_Isolate_SetNodeWrapperTracing(Isolate* isolate, void (*trace_anchor)(void*, void*, cppgc::Visitor*),
                                                  void (*trace_keeps)(void*, cppgc::Visitor*),
                                                  void (*marked)(void*),
-                                                 void (*check)(void*, void* const*, size_t, void* const*, size_t)) {
+                                                 void (*check)(void*, void* const*, size_t, void* const*, size_t),
+                                                 void (*trace_holder)(void*, void*, uint64_t, cppgc::Visitor*)) {
     IsolateData* record = isolateData(isolate);
     if (!record) return false;
     record->node_wrapper_trace_anchor = trace_anchor;
     record->node_wrapper_trace_keeps = trace_keeps;
     record->node_wrappers_marked = marked;
     record->node_wrapper_trace_check = check;
+    record->node_wrapper_trace_holder = trace_holder;
     return true;
+}
+
+/// The API object a wrapper's anchor goes on: the wrapper itself, or - for
+/// a legacy platform object (a NodeList, an HTMLCollection), whose wrapper
+/// is a proxy - the API object behind it, which holds the internal fields
+/// (the proxy keeps its target).
+static Local<Object> anchorHolderOf(Local<Object> object) {
+    if (object->IsProxy()) {
+        Local<Value> target = object.As<Proxy>()->GetTarget();
+        if (target->IsObject()) return target.As<Object>();
+    }
+    return object;
+}
+
+/// A holder's new wrapper `box` (its type has VTable.trace_held_nodes) gets
+/// its HolderAnchor (the wrapper redesign's P6, design 4.4 "Holders"):
+/// from here a collection that marks the wrapper traces the nodes
+/// `instance` holds. False - and no anchor - for an isolate with no C++
+/// heap or record (the snapshot creator's), or an object that is no API
+/// object (Object::Wrap needs one; every binding wrapper is). Made on the
+/// isolate's thread; a collection the allocation starts runs before the
+/// anchor exists, and the Wrap's write barrier marks it if the wrapper is
+/// already marked.
+extern "C" bool v8_HolderAnchor_Attach(Isolate* isolate, Global<Object>* box, void* instance, uint64_t generation) {
+    IsolateData* record = isolateData(isolate);
+    CppHeap* heap = isolate->GetCppHeap();
+    if (!record || !heap || !record->node_wrapper_trace_holder) return false;
+    HandleScope scope(isolate);
+    Local<Object> wrappable = anchorHolderOf(box->Get(isolate));
+    if (!wrappable->IsApiWrapper()) return false;
+    HolderAnchor* anchor = cppgc::MakeGarbageCollected<HolderAnchor>(heap->GetAllocationHandle(), instance, generation);
+    Object::Wrap<kHolderAnchorTag>(isolate, wrappable, anchor);
+    return true;
+}
+
+/// The holder's instance goes while its wrapper may live on (its realm's
+/// end severs the wrapper: wrapper_cache.zig severWrapper, on the realm's
+/// thread with its isolate current, as the fields' severing reads it):
+/// its anchor traces nothing from here. Nothing for a wrapper with no
+/// holder anchor.
+extern "C" void v8_HolderAnchor_Clear(Global<Object>* box) {
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate || !isolate->GetCppHeap()) return;
+    HandleScope scope(isolate);
+    Local<Object> wrappable = anchorHolderOf(box->Get(isolate));
+    if (!wrappable->IsApiWrapper()) return;
+    HolderAnchor* anchor = Object::Unwrap<HolderAnchor>(isolate, wrappable, kHolderAnchorTagRange);
+    if (anchor) anchor->instance_ = nullptr;
 }
 
 /// engine.traceNodeWrapper on V8 (design 3.3): the walk's visitor traces the

@@ -63,6 +63,15 @@ pub const State = struct {
         return !self.processed and self.first != null;
     }
 
+    /// The candidates' elements, named to the collector from their
+    /// Document's trace (the wrapper redesign's P6, design 4.4 "Holders";
+    /// Blink's Document traces autofocus_candidates_). In the collector's
+    /// atomic pause: reads only.
+    pub fn trace(self: *const State, tracer: *engine.Tracer) void {
+        var current = self.first;
+        while (current) |entry| : (current = entry.next) entry.element.trace(tracer);
+    }
+
     /// Insertion step 7: remove an existing candidate, then append it. Moving
     /// an entry does not allocate or move its hold. New entries reuse free ids,
     /// so repeated empty/append cycles do not intern unbounded slot names.

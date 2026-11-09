@@ -102,6 +102,12 @@ pub const InternalState = struct {
     /// relevant agent's mutation observer counter when it was constructed.
     creation_index: u64 = 0,
 
+    /// Records taken out of the queue that are being wrapped for script
+    /// (takeRecords(), notify step 6.4) - unwrapped until the sequence holds
+    /// them, so traced from here meanwhile, as the queue is (`traceHeldNodes`).
+    /// Empty outside that step.
+    delivering: []const *runtime.Instance = &.{},
+
     /// Every attributeFilter this observer has registered and not yet
     /// replaced or disconnected. The registrations on the observed nodes
     /// borrow these lists; the observer owns them.
@@ -115,6 +121,26 @@ pub const InternalState = struct {
             .node_list = .empty,
             .record_queue = .{ .allocator = undefined },
         };
+    }
+
+    /// runtime.VTable.trace_held_nodes (the wrapper redesign's P6, design
+    /// 4.4 "Holders"): the records waiting in this observer's queue, or being
+    /// wrapped for delivery, are unwrapped - reached only through the
+    /// observer - so the nodes they hold are traced from here, each record
+    /// through its own VTable (no impl reaches another). Blink's
+    /// MutationObserver::Trace visits records_ (core/dom/
+    /// mutation_observer.cc, Chromium 131.0.6778.0). In the collector's
+    /// atomic pause; reads only. A record already wrapped is traced from its
+    /// own wrapper too - the walk's dedupe makes that cheap.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const self = Accessor.get(instance) orelse return;
+        for (self.record_queue.records.items) |record| traceRecord(record, tracer);
+        for (self.delivering) |record| traceRecord(record, tracer);
+    }
+
+    fn traceRecord(record: *runtime.Instance, tracer: *engine.Tracer) void {
+        const trace = record.vtable.trace_held_nodes orelse return;
+        trace(record, tracer);
     }
 
     pub fn initWithAllocator(allocator: std.mem.Allocator) InternalState {
@@ -587,6 +613,9 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
     var taken = internal.record_queue.take();
     defer taken.deinit();
     const records = taken.records.items;
+    // Traced from the observer until the sequence holds them (P6).
+    internal.delivering = records;
+    defer internal.delivering = &.{};
 
     // Step 3: Return records - as a sequence<MutationRecord>, an Array of the
     // current realm. Wrapping hands each record to the engine, exactly as
@@ -638,8 +667,13 @@ fn invokeCallback(instance: *runtime.Instance, records: []const *runtime.Instanc
     };
 
     // The records as a sequence<MutationRecord>. Wrapping hands each to the
-    // wrapper cache, which owns them from here.
-    const sequence = engine.createSequenceOfPlatformObjects(realm, records) catch |err| {
+    // wrapper cache, which owns them from here. Traced from the observer
+    // until the sequence holds them (P6): a collection the wrapping starts
+    // finds them nowhere else.
+    internal.delivering = records;
+    const made = engine.createSequenceOfPlatformObjects(realm, records);
+    internal.delivering = &.{};
+    const sequence = made catch |err| {
         freeUnwrapped(records);
         return err;
     };

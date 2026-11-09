@@ -105,7 +105,7 @@ test "every OwnState level keeps its InternalState by value in its own State" {
     try std.testing.expectEqual(@as(usize, 0), missing);
 }
 
-test "Node's embedded state is its NodeBase by value and the fields a node uses: 128 bytes" {
+test "Node's embedded state is its NodeBase by value and the fields a node uses: 120 bytes" {
     const E = Embedded(interfaces.Node.State);
     if (E == void) {
         return error.NotEmbedded;
@@ -116,8 +116,9 @@ test "Node's embedded state is its NodeBase by value and the fields a node uses:
         // no caller), prefix and node_value (no writer) and is_connected
         // (NodeBase's is the one the DOM reads). The allocator copy stays
         // until every realm's creation allocator is its scope's (the V8
-        // tests' realms are not). Batch 6: no allocator copy, NodeBase 88.
-        try expectSize(E, 128);
+        // tests' realms are not). Batch 6: no allocator copy, NodeBase 88;
+        // 80 since the wrapper redesign's P6 (no holds chain).
+        try expectSize(E, 120);
         try std.testing.expect(@FieldType(E, "base") == NodeBase);
         inline for (.{ "local_name", "namespace_uri", "prefix", "node_value", "is_connected" }) |dead| {
             if (@hasField(E, dead)) {

@@ -64,12 +64,12 @@ test "Document's state keeps none of what few Documents set: that is its rare da
     }
 }
 
-test "Document's state is 1,672 bytes in a safe build (2,168 before its rare data; 1,704 before perf2 b8 kept its [SameObject] children once)" {
+test "Document's state is 1,680 bytes in a safe build (2,168 before its rare data; 1,704 before perf2 b8 kept its [SameObject] children once; 1,672 before the wrapper redesign's P6 listed its parsers on the native stack)" {
     const T = document_state.InternalState;
     if (!std.debug.runtime_safety) return;
-    if (@sizeOf(T) != 1672) {
+    if (@sizeOf(T) != 1680) {
         printLayout(T);
-        std.debug.print("Document's state: {d} bytes, pinned 1672\n", .{@sizeOf(T)});
+        std.debug.print("Document's state: {d} bytes, pinned 1680\n", .{@sizeOf(T)});
         return error.SizePinMoved;
     }
 }

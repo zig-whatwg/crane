@@ -155,6 +155,8 @@ pub fn register(instance: *anyopaque, node_base: *NodeBase) !void {
     // An instance registered again is already counted.
     const fresh = node_base.ownerInstance() != @as(?*anyopaque, instance);
     node_base.setOwnerInstance(instance);
+    // A node holder's walk asks it for what it holds (dom.wrapper_tracing).
+    node_base.traces_held = @as(*runtime.Instance, @ptrCast(@alignCast(instance))).vtable.trace_held_nodes != null;
     if (!fresh) return;
     _ = bridge.live.fetchAdd(1, .monotonic);
     // The Browser's DOM grew by the node's storage, once per node: its window

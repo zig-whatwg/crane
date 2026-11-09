@@ -92,13 +92,14 @@ pub const NodeBase = struct {
     /// truth (dom.shadow_hosts.rootForHost).
     is_shadow_host: bool = false,
 
-    /// The holds on this node (src/dom/node_holds.zig): the head of a chain
-    /// of every holder's hold on it - a MutationRecord's, a static
-    /// NodeList's - or null when nothing holds it. The removing steps test it
-    /// for each node a removal visits, so a removal of a subtree nothing in
-    /// which is held pays one field test per node; when something is, the
-    /// chain names exactly the holders that must rescue the subtree's root.
-    holds: ?*@import("node_holds.zig").Hold = null,
+    /// Whether this node's type holds nodes for script itself - its
+    /// VTable's `trace_held_nodes` (the wrapper redesign's P6: a Document's
+    /// active parser, top layer and autofocus candidates, a dialog's saved
+    /// focus) - so the walk (dom.wrapper_tracing) asks it for them where it
+    /// visits the node, with no VTable read for every other node. Set once,
+    /// when the node is registered (dom.instance_bridge.register). It sits in
+    /// the padding beside the other flags: NodeBase stays 80 bytes.
+    traces_held: bool = false,
 
     /// The reference count word, WebKit's encoding (Source/WebCore/dom/Node.h
     /// `m_refCountAndParentBit`): bit 0 is the parent bit (this node has a

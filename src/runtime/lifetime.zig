@@ -201,6 +201,14 @@ pub fn traceTree(target: *anyopaque, tracer: *engine.Tracer) bool {
     return true;
 }
 
+/// Whether the walk is installed (`Hooks.trace_tree`): always, outside a
+/// test's override that removes it (tests/v8/wrapper_walk_test.zig's
+/// negative control). The holders' traces (VTable.trace_held_nodes) walk
+/// through it too, so the adapter skips them when it is absent.
+pub fn walkInstalled() bool {
+    return hooks.read().trace_tree != null;
+}
+
 /// Whether node tracing's JS edges are drawn (`Hooks.tree_edges`): true
 /// outside a test's override, until the wrapper redesign's P7 deletes them.
 pub fn treeEdges() bool {
@@ -239,6 +247,61 @@ pub fn countedOf(comptime State: type) ?*const Counted {
             if (Base == void) return null;
             Level = Base;
         }
+    }
+}
+
+/// The VTable's `trace_held_nodes` for an interface whose generated `State`
+/// is `State` (the wrapper redesign's P6, design 3.3 "new VTable entry"):
+/// every level of its chain whose impl's InternalState declares
+/// `pub fn traceHeldNodes(instance: *Instance, tracer: *engine.Tracer)
+/// void` is called, the most derived first; null when none does. Found
+/// through the generated State's own fields, as `countedOf` finds a node -
+/// `own._internal`'s pointee, or `_embedded` - so nothing names an impl. The
+/// function gets the INSTANCE and finds its own state however its impl
+/// keeps it; it runs in the collector's atomic pause (VTable.
+/// trace_held_nodes).
+pub fn heldNodesOf(comptime State: type) ?*const fn (*Instance, *engine.Tracer) void {
+    comptime {
+        var found: []const type = &.{};
+        var Level: type = State;
+        while (true) {
+            if (@typeInfo(Level) != .@"struct") break;
+            if (@hasField(Level, "_embedded")) {
+                if (tracerOf(@FieldType(Level, "_embedded"))) |T| found = found ++ &[_]type{T};
+            }
+            if (@hasField(Level, "own")) {
+                const Own = @FieldType(Level, "own");
+                if (@typeInfo(Own) == .@"struct" and @hasField(Own, "_internal")) {
+                    if (tracerOf(@FieldType(Own, "_internal"))) |T| {
+                        if (std.mem.indexOfScalar(type, found, T) == null) found = found ++ &[_]type{T};
+                    }
+                }
+            }
+            if (!@hasField(Level, "base")) break;
+            const Base = @FieldType(Level, "base");
+            if (Base == void) break;
+            Level = Base;
+        }
+        if (found.len == 0) return null;
+        const levels = found;
+        const Thunk = struct {
+            fn trace(instance: *Instance, tracer: *engine.Tracer) void {
+                inline for (levels) |T| T.traceHeldNodes(instance, tracer);
+            }
+        };
+        return &Thunk.trace;
+    }
+}
+
+/// The InternalState type behind `Field` - an `_internal` pointer (optional
+/// or not) or an `_embedded` value - when it declares `traceHeldNodes`.
+fn tracerOf(comptime Field: type) ?type {
+    comptime {
+        var T: type = Field;
+        if (@typeInfo(T) == .optional) T = @typeInfo(T).optional.child;
+        if (@typeInfo(T) == .pointer) T = @typeInfo(T).pointer.child;
+        if (@typeInfo(T) != .@"struct") return null;
+        return if (@hasDecl(T, "traceHeldNodes")) T else null;
     }
 }
 

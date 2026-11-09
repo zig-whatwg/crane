@@ -1,12 +1,16 @@
-//! A holder that outlives its node through a teardown the collector does not
-//! run - a realm's coordinated teardown, the browser's final registry sweep -
-//! lets it go without touching the freed node.
+//! A holder that outlives its node through a teardown the counts do not
+//! decide - a realm's coordinated teardown, the browser's final registry
+//! sweep - lets it go without touching the freed node.
 //!
 //! Those teardowns free a node's NodeBase and can leave its slab slot, and
-//! so its generation, live; `node_holds.nodeReleased` (called by Node.deinit
-//! and the sweep just before the NodeBase goes) nulls every hold on it. The
-//! holder then reads null - a teardown net, not the behaviour - and skips
-//! the hold when it lets go. Run under std.testing.allocator.
+//! so its generation, live. Since the wrapper redesign's P6 a hold has no
+//! link on the node (the per-node chain and `node_holds.nodeReleased` are
+//! gone): it reads the slot's stamp - the generation, and the teardown-begun
+//! flag that Node.deinit and the final sweep's release of the NodeBase set -
+//! and reads a node whose teardown began as gone, forgetting its reference
+//! (a teardown net, not the behaviour). The slab is the Browser's, so a hold
+//! must not outlive its node's Browser: the tests let go inside it. Run
+//! under std.testing.allocator, whose freed blocks are poisoned.
 const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
@@ -55,65 +59,94 @@ test "a static list in a parent realm outlives the nodes of a removed frame and 
 
 fn holderOutlivesItsRealmsTeardown() !void {
     const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
-    var browser_alive = true;
-    defer if (browser_alive) browser.deinit();
+    defer browser.deinit();
     try browser.navigate("about:blank", .window);
-    const context = browser.current_context orelse return error.NoPage;
-    try context.loadHTML("<!doctype html><body><p id=held>held</p></body>", .{ .base_url = "about:blank" });
-    const document = context.document_instance orelse return error.NoDocument;
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><body><iframe id=f></iframe></body>", .{ .base_url = "http://example.test/holds" });
+    _ = try browser.runEventLoopBlocking(20);
+    try page.runScript("document.getElementById('f').contentDocument.body.innerHTML = '<p id=held>held</p>'");
+    const document = page.document_instance orelse return error.NoDocument;
+    const frame = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("f"))) orelse return error.NoFrame;
+    const frame_document = (try interfaces.HTMLIFrameElement.get_contentDocument(frame)) orelse return error.NoFrameDocument;
 
-    // A node of a document with a window: held with no rescue (its root is
-    // kept) by a holder of the test's own that outlives the browser. The
-    // realm's coordinated teardown frees the document's tree through each
+    // A node of the frame's document, held by a holder of the test's own.
+    // Removing the frame ends its realm: the realm's coordinated teardown
+    // frees the frame document's tree whatever the counts say, through each
     // node's deinit, with the slab generation left live.
-    const held = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("held"))) orelse return error.NoElement;
-    var holder = dom.node_holds.Holder.init(testing.allocator, document);
+    const held = (try interfaces.Document.call_getElementById(frame_document, runtime.DOMString.initInterned("held"))) orelse return error.NoElement;
+    var holder = dom.node_holds.Holder.init(testing.allocator);
     defer holder.release();
-    try holder.hold(*runtime.Instance, &.{held}, null);
+    try holder.hold(*runtime.Instance, &.{held});
     try testing.expect(holder.get(0) == held);
-    try testing.expectEqual(@as(usize, 0), holder.rescues.entries.items.len);
 
-    browser_alive = false;
-    browser.deinit();
+    try page.runScript("document.getElementById('f').remove()");
+    _ = try browser.runEventLoopBlocking(20);
 
-    try testing.expect(holder.get(0) == null);
+    // Torn down, or still the frame's: never a freed node read back. A node
+    // whose teardown began reads as gone, and the deferred release - inside
+    // the Browser, whose slab its stamp is in - touches nothing of it.
+    if (holder.get(0)) |node| try testing.expect(node == held);
 }
 
 test "a holder that outlives its node's realm teardown lets go without touching the freed node" {
     try onFreshThread(holderOutlivesItsRealmsTeardown);
 }
 
-fn holderOutlivesTheFinalSweep() !void {
+/// The final sweep's probe: a sweep the test adds after the Document's
+/// (`teardown_sweeps.withSweepForTest`), which runs once the `.nodes` sweep
+/// released every node's NodeBase (poisoned) and before the Browser's slab
+/// goes - the window a hold could be read in.
+const SweptProbe = struct {
+    var ref_hold: dom.node_holds.RefHold = .{};
+    var counted: dom.node_holds.CountedRef = .{};
+    var holder: ?dom.node_holds.Holder = null;
+    var node: ?*runtime.Instance = null;
+    var ran: bool = false;
+    var read_live: bool = false;
+
+    fn sweep(_: *runtime.BrowserScope) void {
+        ran = true;
+        const orphan = node orelse return;
+        // Each reads the node as gone - no write to its released NodeBase.
+        read_live = ref_hold.holds(orphan) or (if (holder) |*h| h.get(0) != null else false);
+        ref_hold.release();
+        counted.release(orphan);
+        if (holder) |*h| h.release();
+        holder = null;
+    }
+};
+
+fn holdsReadANodeTheFinalSweepReleasedAsGone() !void {
     const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
     var browser_alive = true;
     defer if (browser_alive) browser.deinit();
-    // The holder keeps its node past every realm end on purpose: the final sweep is what this tests.
-    @import("dom").refcount_teardown.allowLiveNodesAtAgentEnd(&browser.agent_host.deferred_teardown, "a holder outlives the final registry sweep, which is what this tests");
+    // The holds keep their node past every realm end on purpose: the final sweep is what this tests.
+    @import("dom").refcount_teardown.allowLiveNodesAtAgentEnd(&browser.agent_host.deferred_teardown, "holds outlive the final registry sweep, which is what this tests");
     try browser.navigate("about:blank", .window);
     const context = browser.current_context orelse return error.NoPage;
     try context.loadHTML("<!doctype html><body></body>", .{ .base_url = "about:blank" });
     const document = context.document_instance orelse return error.NoDocument;
 
     // An element made natively and never inserted or wrapped: an orphan only
-    // the final registry sweep frees. Held here by a holder of the test's own
-    // - told that its root is the document, so it takes no rescue (which
-    // would wrap the orphan and hand it to the collector) - that outlives
-    // the browser.
+    // the final registry sweep frees, held by three holds of the test's own.
     const orphan = try interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("section"), .{ .was_passed = false, .value = undefined });
-    const document_base = dom.instance_bridge.getNodeBase(@ptrCast(document)) orelse return error.NoNodeBase;
-    var holder = dom.node_holds.Holder.init(testing.allocator, document);
-    defer holder.release();
-    try holder.hold(*runtime.Instance, &.{orphan}, document_base);
-    try testing.expect(holder.get(0) == orphan);
+    const base = dom.instance_bridge.getNodeBase(@ptrCast(orphan)) orelse return error.NoNodeBase;
+    SweptProbe.node = orphan;
+    SweptProbe.ref_hold.set(orphan);
+    SweptProbe.counted.take(orphan, base);
+    SweptProbe.holder = dom.node_holds.Holder.init(testing.allocator);
+    try SweptProbe.holder.?.hold(*runtime.Instance, &.{orphan});
+    try testing.expect(SweptProbe.ref_hold.holds(orphan));
 
+    const probe = dom.teardown_sweeps.withSweepForTest(.documents, &SweptProbe.sweep);
+    defer probe.restore();
     browser_alive = false;
     browser.deinit();
 
-    // The sweep freed the orphan and nulled the hold; release (deferred above)
-    // touches nothing of it.
-    try testing.expect(holder.get(0) == null);
+    try testing.expect(SweptProbe.ran);
+    try testing.expect(!SweptProbe.read_live);
 }
 
-test "a holder that outlives the browser's final registry sweep lets go without touching the freed node" {
-    try onFreshThread(holderOutlivesTheFinalSweep);
+test "a counted hold on a node the browser's final sweep released reads it as gone and lets go without touching it" {
+    try onFreshThread(holdsReadANodeTheFinalSweepReleasedAsGone);
 }
