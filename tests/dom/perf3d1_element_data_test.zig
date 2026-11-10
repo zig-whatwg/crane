@@ -147,9 +147,10 @@ test "a div's one block is 264 bytes: perf2 b5's 1,272 less D1's 432, perf2 b6's
     // current event (8, a Window's: in Window's state now); E1 the registry
     // association (40) and the slottable state (64); nd2 N2 the namespace
     // and local name, one record pointer now (48); N3 the ID and classes
-    // views (48).
+    // views (48); lis1 N5 EventTarget's lists and flag, one pointer to a
+    // listener block made with the first listener (16).
     const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 264);
+    try expectSize(S, 248);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
     if (held - @sizeOf(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });
