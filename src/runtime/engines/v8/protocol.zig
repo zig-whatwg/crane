@@ -272,6 +272,12 @@ pub fn nextEngineTaskDelay(agent: *Agent) ?u64 {
     var delay: u64 = undefined;
     return if (ffi.v8_Isolate_NextForegroundTaskDelay(isolateOf(agent), &delay)) delay else null;
 }
+pub fn hasEngineIdleTasks(agent: *Agent) bool {
+    return worker_realm.hasEngineIdleTasks(agent);
+}
+pub fn runEngineIdleTasks(agent: *Agent, time_left_ns: u64) bool {
+    return worker_realm.runEngineIdleTasks(agent, time_left_ns);
+}
 
 /// A realm's agent is its isolate (context_manager records it so).
 /// LowMemoryNotification: a full, synchronous collection.
@@ -1128,6 +1134,12 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   and that wait for their free now, those freed so far, and the frees
 ///   cppgc refused because its heap was collecting (v8_wrapper.cpp
 ///   freeDroppedAnchors);
+/// - `engine_idle_periods`, `engine_idle_given_us`, `engine_idle_used_us`,
+///   `engine_idle_tasks_run`: the current isolate's share of its host's idle
+///   periods so far - the periods that found idle work, the time they gave
+///   V8 and the time it used, and its idle tasks run (engine.
+///   runEngineIdleTasks; lane wr1 batch 10), cumulative; 0 with no isolate
+///   current or none given;
 /// - `node_anchor_weak_ns_max`, `node_anchor_weak_slots_max`: the anchors'
 ///   weak processing in one full collection at most - its walk over the
 ///   registry's slots, and the slots (v8_wrapper.cpp GCPhaseStats);
@@ -1163,6 +1175,8 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
     ffi.v8_Debug_FullGCPauses(ffi.v8_Isolate_GetCurrent(), &full_gcs, &full_gc_max_us, &full_gc_p95_us);
     var anchors: ffi.NodeAnchorStats = .{};
     ffi.v8_Debug_NodeAnchorStats(ffi.v8_Isolate_GetCurrent(), &anchors);
+    var idle: ffi.IdleStats = .{};
+    ffi.v8_Debug_IdleStats(ffi.v8_Isolate_GetCurrent(), &idle);
     const walk_counts = @import("node_wrappers.zig").walkCountsOfCurrent();
     const handles = [_]engine.Counter{
         .{ .name = "live_string_globals", .value = ffi.v8_Debug_LiveStringGlobals() },
@@ -1186,6 +1200,10 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "node_anchors_dropped_waiting", .value = @intCast(anchors.dropped_waiting) },
         .{ .name = "node_anchors_freed", .value = @intCast(anchors.freed) },
         .{ .name = "node_anchor_frees_deferred", .value = @intCast(anchors.frees_deferred) },
+        .{ .name = "engine_idle_periods", .value = @intCast(idle.periods) },
+        .{ .name = "engine_idle_given_us", .value = @intCast(idle.given_ns / std.time.ns_per_us) },
+        .{ .name = "engine_idle_used_us", .value = @intCast(idle.used_ns / std.time.ns_per_us) },
+        .{ .name = "engine_idle_tasks_run", .value = @intCast(idle.tasks_run) },
         .{ .name = "node_anchor_weak_ns_max", .value = @intCast(anchors.weak_ns_max) },
         .{ .name = "node_anchor_weak_slots_max", .value = @intCast(anchors.weak_slots_max) },
         .{ .name = "gc_atomic_us_max", .value = anchors.atomic_us_max },

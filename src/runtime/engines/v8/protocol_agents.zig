@@ -573,6 +573,9 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
         .random_seed = options.random_seed orelse 0,
         .clock_context = if (options.clock) |agent_clock| agent_clock.context else null,
         .clock_wall_now = if (options.clock) |agent_clock| agent_clock.wall_now else null,
+        // A host that gives the agent idle periods: V8 may post idle tasks
+        // for it (v8_wrapper.cpp ForegroundTasks::idle_enabled).
+        .idle_tasks = options.idle_periods,
     };
     const isolate: *ffi.Isolate = blk: {
         if (options.from_snapshot) {

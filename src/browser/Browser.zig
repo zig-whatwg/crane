@@ -287,6 +287,11 @@ pub const Browser = struct {
             .clock = if (browser_clock.wall_now) |wall_now| .{ .context = browser_clock.context, .wall_now = wall_now } else null,
             // Math.random replays from the Browser's stream when it has one.
             .random_seed = if (seeded) random_seed else null,
+            // The event loop gives the engine its idle periods (event_loop.zig
+            // step 2e), as Blink enables V8's idle tasks for the main thread's
+            // isolate (bindings/core/v8/v8_initializer.cc,
+            // V8PerIsolateData::EnableIdleTasks, Chromium 145.0.7608.0).
+            .idle_periods = true,
         }) catch return error.V8InitFailed;
 
         // What the agent really is: one asked for the snapshot is made without

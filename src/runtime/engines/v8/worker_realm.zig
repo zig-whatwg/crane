@@ -108,6 +108,25 @@ pub fn runEngineTasks(agent: *runtime.Agent) bool {
     return event_loop.pumpPlatformTasks(entered.isolate);
 }
 
+/// Engine table `hasEngineIdleTasks`: whether V8 has posted idle tasks for
+/// `agent` - made with AgentOptions.idle_periods - that have not run
+/// (cppgc's incremental sweep after a full collection, a young-generation
+/// collection after a context's disposal).
+pub fn hasEngineIdleTasks(agent: *runtime.Agent) bool {
+    return ffi.v8_Isolate_HasIdleTasks(isolateOf(agent));
+}
+
+/// Engine table `runEngineIdleTasks`: V8's idle tasks for `agent` in the
+/// `time_left_ns` the host's idle period has left - V8 decides what it does
+/// with them (v8_wrapper.cpp v8_Platform_RunIdleTasks). Whether any ran.
+pub fn runEngineIdleTasks(agent: *runtime.Agent, time_left_ns: u64) bool {
+    if (time_left_ns == 0) return false;
+    const entered = EnteredAgent.enter(agent);
+    defer entered.leave();
+    const seconds = @as(f64, @floatFromInt(time_left_ns)) / std.time.ns_per_s;
+    return ffi.v8_Platform_RunIdleTasks(entered.isolate, seconds);
+}
+
 // ============================================================================
 // Worker realms
 // ============================================================================

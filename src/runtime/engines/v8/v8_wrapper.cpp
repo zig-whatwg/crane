@@ -2212,6 +2212,21 @@ struct ForegroundTasks {
     void (*wake)(void*) = nullptr;
     void (*release)(void*) = nullptr;
     std::multiset<Clock::time_point> deadlines;
+    /// engine.AgentOptions.idle_periods: whether the isolate's runners take
+    /// idle tasks - whether its host gives it idle periods
+    /// (v8_Platform_RunIdleTasks). Set before Isolate::Initialize, never
+    /// changed after (V8 asks while it sets up its heap and from then on).
+    /// gin's per-isolate switch: V8Platform::IdleTasksEnabled asks the
+    /// isolate's own runner, which says yes once Blink called
+    /// PerIsolateData::EnableIdleTasks (gin/v8_platform.cc,
+    /// gin/v8_foreground_task_runner_base.cc, Chromium 145.0.7608.0).
+    bool idle_enabled = false;
+    /// The idle tasks posted and not yet run or dropped (ForegroundIdleTask):
+    /// what the host's loop asks before it starts an idle period for the
+    /// engine (engine.hasEngineIdleTasks).
+    std::atomic<size_t> idle_pending{0};
+    /// The idle tasks that ran, cumulative.
+    std::atomic<uint64_t> idle_runs{0};
 
     bool attach(void* target, void (*notify)(void*), void (*drop)(void*)) {
         std::lock_guard<std::mutex> guard(mutex);
@@ -2274,11 +2289,37 @@ class ForegroundTask final : public Task {
     bool registered_ = true;
 };
 
+/// An idle task V8 posted, counted while it waits (ForegroundTasks::
+/// idle_pending) and run only while the isolate's tasks are open.
+class ForegroundIdleTask final : public IdleTask {
+ public:
+    ForegroundIdleTask(std::shared_ptr<ForegroundTasks> state, std::unique_ptr<IdleTask> task)
+        : state_(std::move(state)), task_(std::move(task)) {
+        state_->idle_pending.fetch_add(1, std::memory_order_relaxed);
+    }
+    ~ForegroundIdleTask() override { state_->idle_pending.fetch_sub(1, std::memory_order_relaxed); }
+    void Run(double deadline_in_seconds) override {
+        {
+            std::lock_guard<std::mutex> guard(state_->mutex);
+            if (state_->closed) return;
+        }
+        state_->idle_runs.fetch_add(1, std::memory_order_relaxed);
+        // Run and close are both foreground-only; no close can race this call.
+        task_->Run(deadline_in_seconds);
+    }
+ private:
+    std::shared_ptr<ForegroundTasks> state_;
+    std::unique_ptr<IdleTask> task_;
+};
+
 class ForegroundTaskRunner final : public TaskRunner {
  public:
     ForegroundTaskRunner(std::shared_ptr<ForegroundTasks> state, std::shared_ptr<TaskRunner> runner)
         : state_(std::move(state)), runner_(std::move(runner)) {}
-    bool IdleTasksEnabled() override { return runner_->IdleTasksEnabled(); }
+    /// Only an isolate whose host gives it idle periods takes idle tasks
+    /// (ForegroundTasks::idle_enabled); the backend accepts them for every
+    /// isolate (CranePlatform makes it with IdleTaskSupport::kEnabled).
+    bool IdleTasksEnabled() override { return state_->idle_enabled && runner_->IdleTasksEnabled(); }
     bool NonNestableTasksEnabled() const override { return runner_->NonNestableTasksEnabled(); }
     bool NonNestableDelayedTasksEnabled() const override { return runner_->NonNestableDelayedTasksEnabled(); }
  protected:
@@ -2294,12 +2335,18 @@ class ForegroundTaskRunner final : public TaskRunner {
     void PostNonNestableDelayedTaskImpl(std::unique_ptr<Task> task, double delay, const SourceLocation& location) override {
         post(std::move(task), delay, true, true, location);
     }
+    /// V8 posts an idle task only to a runner whose IdleTasksEnabled is true
+    /// (13.1.203 sweeper.cc ScheduleIdleIncrementalSweeping, heap.cc
+    /// IdleTaskOnContextDispose::TryPostJob). It waits in the backend's idle
+    /// queue, counted, for the host's next idle period (v8_Platform_
+    /// RunIdleTasks), and wakes nothing: the host's loop asks for it when it
+    /// has nothing else to do (engine.hasEngineIdleTasks), as Blink's
+    /// scheduler runs an idle task only in an idle period (platform/
+    /// scheduler/common/idle_helper.cc, Chromium 145.0.7608.0).
     void PostIdleTaskImpl(std::unique_ptr<IdleTask> task, const SourceLocation& location) override {
-        // The DefaultPlatform was created without idle tasks. Keep its contract;
-        // an idle task cannot become a wake that makes an idle loop busy.
-        assert(!runner_->IdleTasksEnabled());
+        assert(IdleTasksEnabled());
         std::lock_guard<std::mutex> guard(state_->mutex);
-        if (!state_->closed) runner_->PostIdleTask(std::move(task), location);
+        if (!state_->closed) runner_->PostIdleTask(std::make_unique<ForegroundIdleTask>(state_, std::move(task)), location);
     }
  private:
     void post(std::unique_ptr<Task> task, double delay, bool delayed, bool nonnestable,
@@ -2329,8 +2376,18 @@ class CranePlatform final : public Platform {
  public:
     /// `made_before_threads`: made by v8_Platform_InitializeBeforeThreadCreation,
     /// on the process's main thread before it made any other thread.
+    /// The backend accepts idle tasks (IdleTaskSupport::kEnabled): V8's idle
+    /// work - cppgc's incremental sweep, a young-generation collection after
+    /// a context's disposal - waits for the host's idle periods
+    /// (v8_Platform_RunIdleTasks), as in Chrome, where gin enables it per
+    /// isolate. Which isolates post any is each isolate's own switch
+    /// (ForegroundTasks::idle_enabled, from engine.AgentOptions.idle_periods);
+    /// d8 makes its platform the same way when asked to (13.1.203
+    /// src/d8/d8.cc, --enable-idle-tasks, and RunIdleTasks with 50 ms after
+    /// each pump in ProcessMessages).
     explicit CranePlatform(bool made_before_threads)
-        : backend_(platform::NewDefaultPlatform()), made_before_threads_(made_before_threads) {}
+        : backend_(platform::NewDefaultPlatform(0, platform::IdleTaskSupport::kEnabled)),
+          made_before_threads_(made_before_threads) {}
     Platform* backend() { return backend_.get(); }
     PageAllocator* GetPageAllocator() override { return backend_->GetPageAllocator(); }
     /// V8's thread isolation (13.1.203 src/common/code-memory-access.cc
@@ -2363,7 +2420,10 @@ class CranePlatform final : public Platform {
     void OnCriticalMemoryPressure() override { backend_->OnCriticalMemoryPressure(); }
     int NumberOfWorkerThreads() override { return backend_->NumberOfWorkerThreads(); }
     std::shared_ptr<TaskRunner> GetForegroundTaskRunner(Isolate*, TaskPriority) override;
-    bool IdleTasksEnabled(Isolate* isolate) override { return backend_->IdleTasksEnabled(isolate); }
+    /// The isolate's own switch (ForegroundTasks::idle_enabled); an isolate
+    /// with no record - the snapshot creator's - gets the backend's runner,
+    /// and its answer. Defined below IsolateData.
+    bool IdleTasksEnabled(Isolate* isolate) override;
     std::unique_ptr<ScopedBlockingCall> CreateBlockingScope(BlockingType type) override { return backend_->CreateBlockingScope(type); }
     // V8's own clock (GC heuristics, compile timing): the backend's, always.
     // A host's clock (engine.AgentOptions.clock) is what a page reads - Date -
@@ -3011,6 +3071,17 @@ class NodeWrapperRegistry final : public cppgc::GarbageCollected<NodeWrapperRegi
 
 class NodeWrapperRootsHandler;
 
+/// What the host's idle periods gave an isolate's V8, cumulative
+/// (v8_Platform_RunIdleTasks; ffi.zig IdleStats mirrors it): the periods
+/// that ran idle work, their time, the time V8 used of it, and its idle tasks
+/// run.
+struct IdleStats {
+    uint64_t periods = 0;
+    uint64_t given_ns = 0;
+    uint64_t used_ns = 0;
+    uint64_t tasks_run = 0;
+};
+
 struct IsolateData {
     // Installed before Isolate::Initialize: V8 caches runners while setting up
     // its heap. Their shared state receives the host's sink after creation.
@@ -3060,6 +3131,8 @@ struct IsolateData {
     /// resolves (engine.HostHooks.importMetaResolve): the dispatcher is the
     /// process's, so whether the builtin is made is the isolate's.
     bool import_meta_resolve = false;
+    /// The host's idle periods given to V8 (v8_Platform_RunIdleTasks).
+    IdleStats idle_stats;
     /// The isolate's full-collection pauses (GCPauses): the GC callbacks
     /// installGCPauseRecorder adds after Isolate::Initialize write it, with
     /// this record as their data until the record goes after Dispose.
@@ -4144,6 +4217,15 @@ extern "C" size_t v8_test_CppHeap_LiveBytes(Isolate* isolate) {
     return heap->CollectStatistics(cppgc::HeapStatistics::DetailLevel::kDetailed).used_size_bytes;
 }
 
+/// tests/v8/wr10_idle_tasks_test.zig: whether `isolate`'s C++ heap is still
+/// sweeping - a lazy sweep not yet finalized, during which cppgc refuses an
+/// explicit free (13.1.203 explicit-management.cc InGC). Reads the state
+/// only: unlike v8_test_CppHeap_LiveBytes it finishes nothing.
+extern "C" bool v8_test_CppHeap_IsSweeping(Isolate* isolate) {
+    CppHeap* heap = isolate ? isolate->GetCppHeap() : nullptr;
+    return heap && cppgc::subtle::HeapState::IsSweeping(heap->GetHeapHandle());
+}
+
 /// A full collection of `isolate` (entered by the caller) that V8 does not
 /// force: its answer to critical memory pressure (13.1.203 heap.cc
 /// Heap::CollectGarbageOnMemoryPressure, kReduceMemoryFootprint with no
@@ -4389,6 +4471,74 @@ bool v8_Isolate_NextForegroundTaskDelay(Isolate* isolate, uint64_t* nanoseconds)
     return record && record->foreground_tasks->nextDelay(nanoseconds);
 }
 
+bool CranePlatform::IdleTasksEnabled(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return backend_->IdleTasksEnabled(isolate);
+    return record->foreground_tasks->idle_enabled;
+}
+
+/// engine.hasEngineIdleTasks: whether V8 has idle tasks posted for
+/// `isolate` that have not run.
+/// None once the isolate's tasks are closed (its agent's end): what is
+/// still queued then never runs (ForegroundIdleTask::Run), and goes with the
+/// isolate (DefaultPlatform::NotifyIsolateShutdown).
+bool v8_Isolate_HasIdleTasks(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    if (!record || !record->foreground_tasks->idle_enabled) return false;
+    ForegroundTasks& tasks = *record->foreground_tasks;
+    if (tasks.idle_pending.load(std::memory_order_relaxed) == 0) return false;
+    std::lock_guard<std::mutex> guard(tasks.mutex);
+    return !tasks.closed;
+}
+
+/// engine.runEngineIdleTasks: V8's idle tasks for `isolate` (entered) in
+/// `seconds` of the host's idle period - libplatform runs them, in the order
+/// posted, each with the deadline, until the deadline passes or none is left
+/// (13.1.203 src/libplatform/default-platform.cc DefaultPlatform::
+/// RunIdleTasks); what each does with its time is V8's (cppgc's
+/// SweepForIdleTask sweeps until the deadline, IdleTaskOnContextDispose
+/// collects the young generation if it fits). Blink runs them the same way,
+/// each with its idle period's deadline (bindings/core/v8/
+/// v8_idle_task_runner.h, Chromium 145.0.7608.0), and d8 after each pump
+/// (src/d8/d8.cc ProcessMessages). Whether any idle task ran.
+///
+/// Then the agent's drain, when it now has something to do: the anchors a
+/// scavenge dropped while the C++ heap swept were refused (freeDroppedAnchors)
+/// and wait for the sweep's end, which the idle work may just have reached -
+/// otherwise they would wait for the next collection's prologue. A drain
+/// that would only be refused again is not tried (each try counts its
+/// refusals).
+bool v8_Platform_RunIdleTasks(Isolate* isolate, double seconds) {
+    if (!g_platform.started.load(std::memory_order_acquire) || !isolate) return false;
+    IsolateData* record = isolateData(isolate);
+    if (!record || !record->foreground_tasks->idle_enabled) return false;
+    ForegroundTasks& tasks = *record->foreground_tasks;
+    if (!v8_Isolate_HasIdleTasks(isolate) || seconds <= 0) return false;
+    // An idle task may collect (IdleTaskOnContextDispose's young-generation
+    // collection): the collecting isolate is the current one (collectingRecord).
+    CollectingScope collecting(isolate);
+    const uint64_t runs_before = tasks.idle_runs.load(std::memory_order_relaxed);
+    const auto start = std::chrono::steady_clock::now();
+    platform::RunIdleTasks(defaultPlatform(), isolate, seconds);
+    const auto used = std::chrono::steady_clock::now() - start;
+    record->idle_stats.periods += 1;
+    record->idle_stats.given_ns += static_cast<uint64_t>(seconds * 1e9);
+    record->idle_stats.used_ns += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(used).count());
+    const uint64_t ran = tasks.idle_runs.load(std::memory_order_relaxed) - runs_before;
+    record->idle_stats.tasks_run += ran;
+    CppHeap* heap = isolate->GetCppHeap();
+    const bool cpp_heap_idle = !heap || !cppHeapCollecting(heap->GetHeapHandle());
+    if (record->node_wrappers_drain_due || (!record->dropped_anchors.empty() && cpp_heap_idle)) drainNodeWrappers(record);
+    return ran > 0;
+}
+
+/// The isolate's idle periods so far (v8_Platform_RunIdleTasks), for
+/// diagnosticCounters; zeros for an isolate with no record.
+void v8_Debug_IdleStats(Isolate* isolate, IdleStats* out) {
+    IsolateData* record = isolate ? isolateData(isolate) : nullptr;
+    *out = record ? record->idle_stats : IdleStats{};
+}
+
 /// Test-only owning runner reference. Require the runner V8 requested during
 /// initialization, rather than manufacturing one that could hide that path.
 std::shared_ptr<TaskRunner>* v8_test_ForegroundTaskRunner(Isolate* isolate) {
@@ -4431,6 +4581,8 @@ struct CraneIsolateOptions {
     uint64_t random_seed;
     void* clock_context;
     int64_t (*clock_wall_now)(void*);
+    /// engine.AgentOptions.idle_periods (ForegroundTasks::idle_enabled).
+    bool idle_tasks;
 };
 
 /// `options` into the record, before Isolate::Initialize.
@@ -4440,6 +4592,7 @@ static void applyIsolateOptions(IsolateData* record, const CraneIsolateOptions* 
     record->random_seed = options->random_seed;
     record->clock_wall_now = options->clock_wall_now;
     record->clock_context = options->clock_context;
+    record->foreground_tasks->idle_enabled = options->idle_tasks;
 }
 
 // ---- one read-only heap per process (lane tsanfix1, M1) ----

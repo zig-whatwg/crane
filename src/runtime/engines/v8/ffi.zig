@@ -858,6 +858,9 @@ pub const IsolateOptions = extern struct {
     /// isolate is disposed.
     clock_context: ?*anyopaque = null,
     clock_wall_now: ?*const fn (context: ?*anyopaque) callconv(.c) i64 = null,
+    /// engine.AgentOptions.idle_periods: whether the isolate's runners take
+    /// V8's idle tasks, which wait for v8_Platform_RunIdleTasks.
+    idle_tasks: bool = false,
 };
 
 /// v8_Isolate_New, with `options` applied before the isolate initializes.
@@ -2665,6 +2668,22 @@ pub extern fn v8_test_TaskRunner_Release(runner: *TestTaskRunner) void;
 pub extern fn v8_test_TaskRunner_Post(runner: *TestTaskRunner, run: *const fn (?*anyopaque) callconv(.c) void, drop: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque, delay_seconds: f64) void;
 
 pub extern fn v8_Platform_PumpMessageLoop(isolate: *Isolate) bool;
+/// engine.hasEngineIdleTasks: whether V8 has idle tasks posted for `isolate`
+/// that have not run (only an isolate made with IsolateOptions.idle_tasks).
+pub extern fn v8_Isolate_HasIdleTasks(isolate: *Isolate) bool;
+/// engine.runEngineIdleTasks: V8's idle tasks for `isolate` (entered) in
+/// `seconds` of the host's idle period (libplatform's RunIdleTasks), then the
+/// agent's drain if it has work; whether any idle task ran.
+pub extern fn v8_Platform_RunIdleTasks(isolate: *Isolate, seconds: f64) bool;
+/// What the host's idle periods gave an isolate's V8, cumulative
+/// (v8_wrapper.cpp IdleStats).
+pub const IdleStats = extern struct {
+    periods: u64 = 0,
+    given_ns: u64 = 0,
+    used_ns: u64 = 0,
+    tasks_run: u64 = 0,
+};
+pub extern fn v8_Debug_IdleStats(isolate: ?*Isolate, out: *IdleStats) void;
 /// Whether V8 has background work for `isolate` that will post a foreground
 /// task when it ends (d8's CompleteMessageLoop waits on it).
 pub extern fn v8_Isolate_HasPendingBackgroundTasks(isolate: *Isolate) bool;
@@ -2885,6 +2904,10 @@ pub extern fn v8_test_Isolate_CollectUnforced(isolate: *Isolate) bool;
 /// isolate's C++ heap, object by object (cppgc's detailed statistics; it
 /// finishes a running sweep and gives back the allocation buffers first).
 pub extern fn v8_test_CppHeap_LiveBytes(isolate: ?*Isolate) usize;
+/// tests/v8/wr10_idle_tasks_test.zig: whether `isolate`'s C++ heap is still
+/// sweeping - a lazy sweep not yet finalized, while cppgc refuses explicit
+/// frees (13.1.203 explicit-management.cc InGC).
+pub extern fn v8_test_CppHeap_IsSweeping(isolate: *Isolate) bool;
 
 /// tests/v8: whether V8 drops in a scavenge an unreachable object made from
 /// `tpl`'s instance template - with `prototype` set as its prototype when
