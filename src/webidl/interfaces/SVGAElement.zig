@@ -126,6 +126,14 @@ pub const SVGAElement = struct {
             .{ "type", "get_type", "set_type" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "target",
+            "relList",
+            "href",
+        };
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{

@@ -106,6 +106,23 @@ pub const WorkerNavigator = struct {
             .{ "ml", "get_ml", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "mediaCapabilities",
+            "permissions",
+            "serial",
+            "serviceWorker",
+            "hid",
+            "usb",
+            "crossOriginStorage",
+            "connection",
+            "storageBuckets",
+            "storage",
+            "gpu",
+            "ml",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setAppBadge", "call_setAppBadge", 0 },

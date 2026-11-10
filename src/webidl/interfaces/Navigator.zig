@@ -188,6 +188,45 @@ pub const Navigator = struct {
             .{ "ml", "get_ml", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "attribution",
+            "clipboard",
+            "contacts",
+            "credentials",
+            "devicePosture",
+            "epubReadingSystem",
+            "geolocation",
+            "userActivation",
+            "ink",
+            "keyboard",
+            "managed",
+            "mediaCapabilities",
+            "mediaDevices",
+            "preferences",
+            "mediaSession",
+            "permissions",
+            "presentation",
+            "wakeLock",
+            "serial",
+            "serviceWorker",
+            "virtualKeyboard",
+            "bluetooth",
+            "hid",
+            "usb",
+            "xr",
+            "windowControlsOverlay",
+            "crossOriginStorage",
+            "plugins",
+            "mimeTypes",
+            "connection",
+            "storageBuckets",
+            "storage",
+            "gpu",
+            "ml",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getAutoplayPolicy", "call_getAutoplayPolicy", 1 },

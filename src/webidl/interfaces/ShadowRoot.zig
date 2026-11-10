@@ -76,6 +76,12 @@ pub const ShadowRoot = struct {
             .{ "pointerLockElement", "get_pointerLockElement", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "styleSheets",
+        };
+
         /// [LegacyLenientSetter] attributes: readonly with no-op setters
         /// Setters silently do nothing (don't throw, don't modify)
         pub const lenient_setter_attributes = .{

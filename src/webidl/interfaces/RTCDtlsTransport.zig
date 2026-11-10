@@ -46,6 +46,12 @@ pub const RTCDtlsTransport = struct {
             .{ "onerror", "get_onerror", "set_onerror" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "iceTransport",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getRemoteCertificates", "call_getRemoteCertificates", 0 },

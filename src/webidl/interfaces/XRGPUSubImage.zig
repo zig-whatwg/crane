@@ -41,6 +41,14 @@ pub const XRGPUSubImage = struct {
             .{ "motionVectorTexture", "get_motionVectorTexture", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "colorTexture",
+            "depthStencilTexture",
+            "motionVectorTexture",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getViewDescriptor", "call_getViewDescriptor", 0 },

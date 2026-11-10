@@ -501,6 +501,11 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         // then answers InvalidStateError (ShadowRoot.get_host).
         rare_data.keptRelease(&internal.rare, .shadow_root, forgetHost);
         if (rare_data.get(internal.rare, .references) != null) dom.element_references.State.releaseUnwrapped(instance);
+        // The NamedNodeMap's edge (`get_attributes`), here and not in
+        // InternalState.end, which the Browser's exit sweep also runs after
+        // the engine is gone - as the generated chain ended it while it kept
+        // the map's pointer (dom.same_object_cache.end).
+        if (rare_data.keptGet(internal.rare, .named_node_map) != null) dom.same_object_cache.forget(instance, "attributes");
         internal.end(runtime.BrowserScope.ofInstance(instance), domMemoryOf(instance));
     }
     Registry.remove(instance);
@@ -684,6 +689,13 @@ pub fn get_attributes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // proves it is still this map at deinit: in place, through the holder
     // read now (the map's construction may have grown the block).
     rare_data.keptSet(&internal.rare, .named_node_map, named_node_map);
+
+    // [SameObject]: the element keeps the map's wrapper too, whoever read it
+    // first (dom.same_object_cache.made) - the edge the generated getter drew
+    // while it kept a second copy of this pointer in Element's State (lane
+    // cg1, N1: that copy is gone; Blink's ElementRareDataVector traces its
+    // kAttributeMap). Ended in `deinitOwn`.
+    dom.same_object_cache.made(instance, named_node_map, "attributes");
 
     return named_node_map;
 }

@@ -59,6 +59,14 @@ pub const Performance = struct {
             .{ "onresourcetimingbufferfull", "get_onresourcetimingbufferfull", "set_onresourcetimingbufferfull" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "eventCounts",
+            "timing",
+            "navigation",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "now", "call_now", 0 },
