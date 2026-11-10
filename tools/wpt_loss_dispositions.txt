@@ -1885,3 +1885,11 @@ pass_rate = 2/40
 condition = a sweep's load: the file alone in a fresh runner process with 28 busy threads beside it on server1's 32 (wpt_runner --repeat=40 --load=28, generation 211's runner); unloaded it passes 24/60, so x10 runs on a quiet host overstate a sweep's rate
 measured_at = 9053db756ef
 paths = src/service_worker/fetch_event.zig, src/service_worker/registry.zig, src/hr_time/time_origin.zig, src/hr_time/coarsen.zig, src/dom/performance_timeline.zig
+[html/webappapis/dynamic-markup-insertion/opening-the-input-stream/abort-refresh-immediate.window.js]
+generation = 214
+kind = fixed
+why = The third flip of this file (generations 179, 184, 214) - a bug, owned and fixed by lane docopen1: document.open() aborted nothing when only a time-0 refresh was pending (HTML's document open steps step 8 checks only an ongoing navigation id), so the page's fetch() was aborted only by the refresh's own later navigation and a response task queued first resolved it (12 of 80 fetches under load). The fix (16be8848d78) stops a time-0 refresh that has not navigated yet, as Blink and WebKit do (Firefox follows the spec text; whatwg/html#4003). The red test is the Crane test do1-open-stops-zero-refresh.html (3 of 4 cases fail 5/5 on generation 214's runner), committed to the fork with the merge; commit d92843c070a is where the fix and its test first stand together. Repro: x40 under --load=28 on server1, both fetch() subtests (<meta> 6/40 + Refresh header 8/40 failing before; 0/40 + 0/40 after; the file OK 6/6 in 40/40).
+commit = d92843c070a
+test = tests/wpt/crane/do1-open-stops-zero-refresh.html
+repro = before 14/80; after 0/80
+
