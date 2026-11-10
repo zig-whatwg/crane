@@ -27,7 +27,9 @@ const selector = @import("selector");
 const NodeBase = @import("node_base.zig").NodeBase;
 const instance_bridge = @import("instance_bridge.zig");
 const element_data = @import("element_data.zig");
-const ElementData = element_data.ElementData;
+/// A reader's view of an element's data: its attributes' ids decode with its
+/// Browser's tables (lane nd2 batch 2). Passed by value.
+const ElementData = element_data.View;
 const AttributeEntry = element_data.AttributeEntry;
 const html_pseudo_classes = @import("html_pseudo_classes.zig");
 const focus_matching = @import("focus_matching.zig");
@@ -531,7 +533,7 @@ fn rootOf(node: *NodeBase) *NodeBase {
 /// `data`, can change its answer with no tree mutation (for elements where
 /// it can matter at all, so that a universal UA rule such as `:autofill`
 /// does not make every style volatile).
-fn readsVolatileState(kind: PseudoClassKind, data: *const ElementData) bool {
+fn readsVolatileState(kind: PseudoClassKind, data: ElementData) bool {
     const local = data.localName();
     const html = namespaceIs(data, html_namespace);
     const custom = std.mem.indexOfScalar(u8, local, '-') != null or data.findAttribute(null, "is") != null;
@@ -558,7 +560,7 @@ fn readsVolatileState(kind: PseudoClassKind, data: *const ElementData) bool {
 /// is the size attribute's non-negative integer, 1 when it does not parse.
 pub const SelectKind = enum { none, drop_down, list_box };
 
-pub fn selectKindOf(data: *const ElementData) SelectKind {
+pub fn selectKindOf(data: ElementData) SelectKind {
     if (!std.mem.eql(u8, data.localName(), "select") or !namespaceIs(data, html_namespace)) return .none;
     if (data.findAttribute(null, "multiple") != null) return .list_box;
     if (data.findAttribute(null, "size")) |size| {
@@ -623,7 +625,7 @@ fn instanceOf(node: *NodeBase) ?*runtime.Instance {
     return @ptrCast(@alignCast(node.ownerInstance() orelse return null));
 }
 
-fn dataOf(node: *NodeBase) ?*const ElementData {
+fn dataOf(node: *NodeBase) ?ElementData {
     return element_data.of(instanceOf(node) orelse return null);
 }
 
@@ -656,7 +658,7 @@ fn nextElementSibling(node: *NodeBase) ?*NodeBase {
     return null;
 }
 
-fn namespaceIs(data: *const ElementData, ns: []const u8) bool {
+fn namespaceIs(data: ElementData, ns: []const u8) bool {
     const own = data.namespaceSlice() orelse return false;
     return std.mem.eql(u8, own, ns);
 }
@@ -665,7 +667,7 @@ fn namespaceIs(data: *const ElementData, ns: []const u8) bool {
 /// (Selectors 4 13.4 "same type"). Their name records' `matches` (Blink's
 /// QualifiedName::Matches): one pointer compare for two elements of a
 /// known name (lane nd2 N2).
-fn sameType(a: *const ElementData, b: *const ElementData) bool {
+fn sameType(a: ElementData, b: ElementData) bool {
     return a.name.matches(b.name);
 }
 
@@ -920,7 +922,7 @@ const Matcher = struct {
         return true;
     }
 
-    fn matchesSimple(self: *const Matcher, node: *NodeBase, data: *const ElementData, simple: *const SimpleSelector) bool {
+    fn matchesSimple(self: *const Matcher, node: *NodeBase, data: ElementData, simple: *const SimpleSelector) bool {
         return switch (simple.*) {
             // CSSOM's unresolved AST never reaches matching: stylesheet
             // build resolves it; DOM parsing lowers & to :where(:scope).
@@ -944,7 +946,7 @@ const Matcher = struct {
     /// HTML 4.16.2: an HTML element in an HTML document compares the type
     /// selector converted to ASCII lowercase; every other element its
     /// original case. Both are identical-to comparisons.
-    fn matchesType(self: *const Matcher, data: *const ElementData, name: []const u8, lower_name: []const u8, namespace: selector.NamespaceConstraint) bool {
+    fn matchesType(self: *const Matcher, data: ElementData, name: []const u8, lower_name: []const u8, namespace: selector.NamespaceConstraint) bool {
         if (namespace == .none and data.namespaceSlice() != null) return false;
         const local = data.localName();
         // A name written in lowercase is both forms: no namespace test.
@@ -955,11 +957,11 @@ const Matcher = struct {
 
     /// Selectors 4 6.6: one of the element's classes (its class attribute
     /// split on ASCII whitespace) is `name`.
-    fn hasClass(self: *const Matcher, data: *const ElementData, name: []const u8) bool {
+    fn hasClass(self: *const Matcher, data: ElementData, name: []const u8) bool {
         return classListHas(data.classValue(), name, self.quirks);
     }
 
-    fn idIs(self: *const Matcher, data: *const ElementData, id: []const u8) bool {
+    fn idIs(self: *const Matcher, data: ElementData, id: []const u8) bool {
         const own = data.idValue();
         return if (self.quirks) std.ascii.eqlIgnoreCase(own, id) else std.mem.eql(u8, own, id);
     }
@@ -976,7 +978,7 @@ const Matcher = struct {
     /// `[*|TiTlE]` matching a `title` set with setAttributeNS: PASS in all
     /// three at wpt.fyi cc74d2669f; Gecko's AttrSelectorWithOptionalNamespace
     /// picks `local_name_lower` by the element alone).
-    fn matchesAttribute(self: *const Matcher, data: *const ElementData, attribute: *const AttributeSelector) bool {
+    fn matchesAttribute(self: *const Matcher, data: ElementData, attribute: *const AttributeSelector) bool {
         // Whether the element is an HTML element in an HTML document decides
         // the name only when the selector's name has upper case, and the
         // value only for HTML's list without a modifier: read it then.
@@ -1004,7 +1006,7 @@ const Matcher = struct {
 
     /// CSS Namespaces 3 section 6: a named prefix constrains the attribute's
     /// expanded name. This path is entered only by the new resolved-URI arm.
-    fn matchesNamespacedAttribute(self: *const Matcher, data: *const ElementData, attribute: *const AttributeSelector, uri: []const u8) bool {
+    fn matchesNamespacedAttribute(self: *const Matcher, data: ElementData, attribute: *const AttributeSelector, uri: []const u8) bool {
         const name_cased = attribute.lower_name.ptr != attribute.name.ptr;
         const name_html = name_cased and self.html_document and namespaceIs(data, html_namespace);
         const wanted = if (name_html) attribute.lower_name else attribute.name;
@@ -1020,7 +1022,7 @@ const Matcher = struct {
 
     /// matchesPseudoClass, recording for the style engine whether the
     /// answer read state that can change without a tree mutation.
-    fn matchesPseudoClassRead(self: *const Matcher, node: *NodeBase, data: *const ElementData, kind: PseudoClassKind) bool {
+    fn matchesPseudoClassRead(self: *const Matcher, node: *NodeBase, data: ElementData, kind: PseudoClassKind) bool {
         if (self.state_reads) |reads| {
             if (kind == .FocusVisible) {
                 // Selectors 4 9.4: modality can change without focus or a
@@ -1036,7 +1038,7 @@ const Matcher = struct {
         return self.matchesPseudoClass(node, data, kind);
     }
 
-    fn matchesPseudoClass(self: *const Matcher, node: *NodeBase, data: *const ElementData, kind: PseudoClassKind) bool {
+    fn matchesPseudoClass(self: *const Matcher, node: *NodeBase, data: ElementData, kind: PseudoClassKind) bool {
         const element = instanceOf(node) orelse return false;
         return switch (kind) {
             // 13.1: "the root of the document".
@@ -1215,7 +1217,7 @@ const Matcher = struct {
 
     /// 13.4: the element's 1-based index among its inclusive siblings of the
     /// same type, from the first (or the last).
-    fn typeIndex(self: *const Matcher, node: *NodeBase, data: *const ElementData, from_end: bool) i64 {
+    fn typeIndex(self: *const Matcher, node: *NodeBase, data: ElementData, from_end: bool) i64 {
         if (self.cachedIndices(node)) |indices| return if (from_end) indices.last_of_type else indices.of_type;
         return countTypeIndex(node, data, from_end);
     }
@@ -1374,7 +1376,7 @@ fn isEmpty(node: *NodeBase) bool {
 
 /// The element's 1-based index among its inclusive siblings of the same
 /// type, from the first (or the last), counted.
-fn countTypeIndex(node: *NodeBase, data: *const ElementData, from_end: bool) i64 {
+fn countTypeIndex(node: *NodeBase, data: ElementData, from_end: bool) i64 {
     var index: i64 = 1;
     var sibling = if (from_end) nextElementSibling(node) else previousElementSibling(node);
     while (sibling) |s| : (sibling = if (from_end) nextElementSibling(s) else previousElementSibling(s)) {
