@@ -1893,3 +1893,13 @@ commit = d92843c070a
 test = tests/wpt/crane/do1-open-stops-zero-refresh.html
 repro = before 14/80; after 0/80
 
+[navigation-timing/nav2-test-redirect-server.html]
+generation = 215
+kind = timing-bound
+why = Not an ordering bug and not load: the file asserts startTime < redirectStart, and redirectStart is the first hop's fetch start (Fetch HTTP-redirect fetch: the redirect start time is the fetch's start time) while startTime is 0, the time origin - the navigation's start, taken at navigate() entry as Chrome (NavigationRequest navigation_start) and WebKit (DocumentLoadTiming::startTime) take it (lane flaky6, the generation 205 timing-bound entry; HTML "create and initialize a Document object" step 8 makes the origin the fetch's start itself, which fails the file every time; Firefox fails it on wpt.fyi). Nothing in Crane waits between the two marks, so redirectStart is 0 unless the gap crosses a 125 us tick. Lane flaky5, the file alone in a fresh runner process per run (wpt_runner --repeat), ReleaseSafe runners: a diagnostic build of the lane's tip 2f5fe44cf9f (one log line after both marks, in createNavigationTimingEntry) on chat.local measured navigate() entry -> first-hop fetch start min 32 / p50 41.5 / max 58 us over 60 runs, the fetch always after the navigation's start, redirectStart 0 or 0.125 and never more, passing 15/60 where the tick model (gap/125 per run) predicts 20.0/60; the same diagnostic of generation 210's source on chat2: 39 / 43 / 61 us, 23/60 (model 20.9). Without the diagnostic: generation 210's runner 23/50, the tip 20/50 (chat2); 7/10 in generation 210's process slice (shard2-s28).
+tick_us = 125
+gap_us = min 32 / p50 42 / max 58
+pass_rate = 15/60
+condition = the file alone in a fresh runner process: an iframe's same-origin server redirect whose first fetch starts 32-58 us after the navigation's start, within its 125 us tick unless that gap crosses a tick boundary
+measured_at = 2f5fe44cf9f
+paths = src/webidl/impls/HTMLIFrameElement.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/fetch/algorithms/http_fetch.zig, src/dom/performance_timeline.zig
