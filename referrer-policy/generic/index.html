@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../referrer-policy/"><code>referrer-<wbr>policy/</code></a></li><li aria-current="page"><code>generic/</code></li></ol></nav>
 <h1 class="page-title"><span class="secno">32.6</span><code>referrer-<wbr>policy/<wbr>generic/</code></h1>
 <div class="figures" role="group" aria-label="referrer-policy/generic/">
-<p class="figures-main"><span class="fg-pass">109</span><span class="fg-of"> / 111</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>42</dd></div><div class="blk"><dt>Blocking files</dt><dd>2</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">102</span><span class="fg-of"> / 111</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>9</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>42</dd></div><div class="blk"><dt>Blocking files</dt><dd>2</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>106</b> / 111 WPT subtests passing on the same files, <span class="blk">3 blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of referrer-policy/generic/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">42 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="40 clean, 0 with failures, 2 blocking, 0 with no subtests, 0 not run, of 42 files"><span class="m-clean" style="width:95.238%"></span><span class="m-blocking" style="width:4.762%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>40</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>2</dd></div><p class="kinds"><b>2</b> NONE-PASSED</p></dl>
+<div class="meter" role="img" aria-label="32 clean, 0 with failures, 2 blocking, 0 with no subtests, 0 not run, 8 exempt, of 42 files"><span class="m-clean" style="width:76.190%"></span><span class="m-exempt" style="width:19.048%"></span><span class="m-blocking" style="width:4.762%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>32</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>2</dd></div><p class="kinds"><b>2</b> NONE-PASSED</p><div><dt><span class="key key-exempt"></span>Exempt</dt><dd>8</dd></div></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -40,7 +40,7 @@
 <thead><tr><th scope="col">Directory</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Chrome</th><th scope="col" class="n">Test files</th><th scope="col">Standing</th></tr></thead>
 <tbody>
 <tr><th scope="row"><a href="../../referrer-policy/generic/inheritance/"><code>inheritance/</code></a></th><td class="n" data-v="23" data-of="24"><b>23</b> / 24</td><td class="n" data-v="20" data-of="24"><b>20</b> / 24</td><td class="n" data-v="12">12</td><td data-v="1"><span class="tally"><span class="blk">1 blocking</span><span class="mini" aria-hidden="true"><span class="m-clean" style="width:91.667%"></span><span class="m-blocking" style="width:8.333%"></span></span></span></td></tr>
-<tr><th scope="row"><a href="../../referrer-policy/generic/subresource-test/"><code>subresource-<wbr>test/</code></a></th><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="9">9</td><td data-v="0"><span class="tally"><span class="quiet">none blocking</span><span class="mini" aria-hidden="true"><span class="m-clean" style="width:100.000%"></span></span></span></td></tr>
+<tr><th scope="row"><a href="../../referrer-policy/generic/subresource-test/"><code>subresource-<wbr>test/</code></a></th><td class="n" data-v="9" data-of="10"><b>9</b> / 10</td><td class="n" data-v="10" data-of="10"><b>10</b> / 10</td><td class="n" data-v="9">9</td><td data-v="0"><span class="tally"><span class="quiet">none blocking</span><span class="mini" aria-hidden="true"><span class="m-clean" style="width:88.889%"></span><span class="m-exempt" style="width:11.111%"></span></span></span></td></tr>
 </tbody>
 </table>
 <div class="tf-list has-ref">
@@ -94,15 +94,21 @@
 </div>
 </div>
 </details>
-<details class="tf" id="link-rel-prefetch.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>link-<wbr>rel-<wbr>prefetch.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<details class="tf" id="link-rel-prefetch.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>link-<wbr>rel-<wbr>prefetch.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/referrer-policy/generic/link-rel-prefetch.html"><code>referrer-<wbr>policy/<wbr>generic/<wbr>link-<wbr>rel-<wbr>prefetch.<wbr>html</code></a></dd></div>
 </dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate until a renderer answers geometry</p>
+<p>common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError</p>
+<dl class="evidence"><div><dt>Failing assertion</dt><dd>promise_test: Unhandled rejection with value: object &quot;IndexSizeError: IndexSizeError&quot;</dd></div></dl>
+</div>
 <div class="run">
-<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Prefetched image.</li></ol></details>
+<ol class="subtests">
+<li class="sub s-fail" id="s-b7cfe3649a60"><details><summary><span class="mark">FAIL</span><span class="sub-name">Prefetched image.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;IndexSizeError: IndexSizeError&quot;</pre></details><a class="self" href="#s-b7cfe3649a60" aria-label="Link to this subtest">&para;</a></li>
+</ol>
 </div>
 </div>
 </details>
@@ -154,39 +160,58 @@
 </div>
 </div>
 </details>
-<details class="tf" id="meta-tag-in-svg-image.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>meta-<wbr>tag-<wbr>in-<wbr>svg-<wbr>image.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<details class="tf" id="meta-tag-in-svg-image.html" data-gate="exempt" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>meta-<wbr>tag-<wbr>in-<wbr>svg-<wbr>image.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>ERROR</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/referrer-policy/generic/meta-tag-in-svg-image.html"><code>referrer-<wbr>policy/<wbr>generic/<wbr>meta-<wbr>tag-<wbr>in-<wbr>svg-<wbr>image.<wbr>html</code></a></dd></div>
 </dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate until a renderer answers geometry</p>
+<p>common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError</p>
+<dl class="evidence"><div><dt>Failing assertion</dt><dd>Unhandled rejection: IndexSizeError</dd></div></dl>
+</div>
+<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">Unhandled rejection: IndexSizeError</pre></div>
 <div class="run">
+<h3 class="run-head"><code>/referrer-policy/generic/meta-tag-in-svg-image.html</code> <span class="gate g-block">ERROR</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<pre class="msg harness-msg">Unhandled rejection: IndexSizeError</pre>
 <details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Meta tag in SVG image loaded via img should be ignored</li></ol></details>
 </div>
 </div>
 </details>
-<details class="tf" id="multiple-headers-and-values.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>multiple-<wbr>headers-<wbr>and-<wbr>values.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<details class="tf" id="multiple-headers-and-values.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>multiple-<wbr>headers-<wbr>and-<wbr>values.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/referrer-policy/generic/multiple-headers-and-values.html"><code>referrer-<wbr>policy/<wbr>generic/<wbr>multiple-<wbr>headers-<wbr>and-<wbr>values.<wbr>html</code></a></dd></div>
 </dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate until a renderer answers geometry</p>
+<p>common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError</p>
+<dl class="evidence"><div><dt>Failing assertion</dt><dd>promise_test: Unhandled rejection with value: object &quot;IndexSizeError: IndexSizeError&quot;</dd></div></dl>
+</div>
 <div class="run">
-<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Image uses the last recognized Referrer-Policy header value</li></ol></details>
+<ol class="subtests">
+<li class="sub s-fail" id="s-44bcbd5055bd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Image uses the last recognized Referrer-Policy header value</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;IndexSizeError: IndexSizeError&quot;</pre></details><a class="self" href="#s-44bcbd5055bd" aria-label="Link to this subtest">&para;</a></li>
+</ol>
 </div>
 </div>
 </details>
-<details class="tf" id="multiple-headers-combined.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>multiple-<wbr>headers-<wbr>combined.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<details class="tf" id="multiple-headers-combined.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>multiple-<wbr>headers-<wbr>combined.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/referrer-policy/generic/multiple-headers-combined.html"><code>referrer-<wbr>policy/<wbr>generic/<wbr>multiple-<wbr>headers-<wbr>combined.<wbr>html</code></a></dd></div>
 </dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate until a renderer answers geometry</p>
+<p>common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError</p>
+<dl class="evidence"><div><dt>Failing assertion</dt><dd>promise_test: Unhandled rejection with value: object &quot;IndexSizeError: IndexSizeError&quot;</dd></div></dl>
+</div>
 <div class="run">
-<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Image uses the last recognized Referrer-Policy header value</li></ol></details>
+<ol class="subtests">
+<li class="sub s-fail" id="s-25fa2b8f9de5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Image uses the last recognized Referrer-Policy header value</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;IndexSizeError: IndexSizeError&quot;</pre></details><a class="self" href="#s-25fa2b8f9de5" aria-label="Link to this subtest">&para;</a></li>
+</ol>
 </div>
 </div>
 </details>
@@ -199,32 +224,44 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-f02c85dc045e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Referrer policy header parsing fails if one header is invalid</span></summary><pre class="msg">assert_equals: expected &quot;http://web-platform.test:8000/referrer-policy/generic/multiple-headers-one-invalid.html&quot; but got &quot;http://web-platform.test:8000/&quot;</pre></details><a class="self" href="#s-f02c85dc045e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-f02c85dc045e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Referrer policy header parsing fails if one header is invalid</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;IndexSizeError: IndexSizeError&quot;</pre></details><a class="self" href="#s-f02c85dc045e" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </div>
 </details>
-<details class="tf" id="multiple-headers-one-unknown-token.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>multiple-<wbr>headers-<wbr>one-<wbr>unknown-<wbr>token.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<details class="tf" id="multiple-headers-one-unknown-token.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>multiple-<wbr>headers-<wbr>one-<wbr>unknown-<wbr>token.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/referrer-policy/generic/multiple-headers-one-unknown-token.html"><code>referrer-<wbr>policy/<wbr>generic/<wbr>multiple-<wbr>headers-<wbr>one-<wbr>unknown-<wbr>token.<wbr>html</code></a></dd></div>
 </dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate until a renderer answers geometry</p>
+<p>common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError</p>
+<dl class="evidence"><div><dt>Failing assertion</dt><dd>promise_test: Unhandled rejection with value: object &quot;IndexSizeError: IndexSizeError&quot;</dd></div></dl>
+</div>
 <div class="run">
-<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Image uses last recognized referrer policy token from Referrer-Policy headers</li></ol></details>
+<ol class="subtests">
+<li class="sub s-fail" id="s-732bd18c42dd"><details><summary><span class="mark">FAIL</span><span class="sub-name">Image uses last recognized referrer policy token from Referrer-Policy headers</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;IndexSizeError: IndexSizeError&quot;</pre></details><a class="self" href="#s-732bd18c42dd" aria-label="Link to this subtest">&para;</a></li>
+</ol>
 </div>
 </div>
 </details>
-<details class="tf" id="multiple-headers.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>multiple-<wbr>headers.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<details class="tf" id="multiple-headers.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>multiple-<wbr>headers.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/referrer-policy/generic/multiple-headers.html"><code>referrer-<wbr>policy/<wbr>generic/<wbr>multiple-<wbr>headers.<wbr>html</code></a></dd></div>
 </dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate until a renderer answers geometry</p>
+<p>common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError</p>
+<dl class="evidence"><div><dt>Failing assertion</dt><dd>promise_test: Unhandled rejection with value: object &quot;IndexSizeError: IndexSizeError&quot;</dd></div></dl>
+</div>
 <div class="run">
-<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Image uses the last recognized Referrer-Policy header</li></ol></details>
+<ol class="subtests">
+<li class="sub s-fail" id="s-090a49cbe46f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Image uses the last recognized Referrer-Policy header</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;IndexSizeError: IndexSizeError&quot;</pre></details><a class="self" href="#s-090a49cbe46f" aria-label="Link to this subtest">&para;</a></li>
+</ol>
 </div>
 </div>
 </details>
@@ -288,15 +325,21 @@
 </div>
 </div>
 </details>
-<details class="tf" id="unsupported-csp-referrer-directive.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>unsupported-<wbr>csp-<wbr>referrer-<wbr>directive.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<details class="tf" id="unsupported-csp-referrer-directive.html" data-gate="exempt" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>unsupported-<wbr>csp-<wbr>referrer-<wbr>directive.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-exempt">Exempt</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-exempt">Exempt</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/referrer-policy/generic/unsupported-csp-referrer-directive.html"><code>referrer-<wbr>policy/<wbr>generic/<wbr>unsupported-<wbr>csp-<wbr>referrer-<wbr>directive.<wbr>html</code></a></dd></div>
 </dl>
+<div class="note" role="note"><p class="note-label">Exempt from the 0.1 gate until a renderer answers geometry</p>
+<p>common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError</p>
+<dl class="evidence"><div><dt>Failing assertion</dt><dd>promise_test: Unhandled rejection with value: object &quot;IndexSizeError: IndexSizeError&quot;</dd></div></dl>
+</div>
 <div class="run">
-<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Image has a referrer despite CSP &#39;referrer&#39; directive</li></ol></details>
+<ol class="subtests">
+<li class="sub s-fail" id="s-30cdcfd93790"><details><summary><span class="mark">FAIL</span><span class="sub-name">Image has a referrer despite CSP &#39;referrer&#39; directive</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;IndexSizeError: IndexSizeError&quot;</pre></details><a class="self" href="#s-30cdcfd93790" aria-label="Link to this subtest">&para;</a></li>
+</ol>
 </div>
 </div>
 </details>
