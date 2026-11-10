@@ -110,7 +110,7 @@ pub const SelectError = error{
 };
 
 /// The directory scripts/build-v8-15.7.sh installs 15.7.112.43 into.
-const v8_15_7_dir = "jsengines/v8/15.7.112.43";
+const dir_15_7 = "jsengines/v8/15.7.112.43";
 
 /// The archives `version` and `build` name for a target whose OS is `os`.
 pub fn selectVersion(version: Version, build: Build, os: std.Target.Os.Tag) SelectError!Archives {
@@ -120,17 +120,17 @@ pub fn selectVersion(version: Version, build: Build, os: std.Target.Os.Tag) Sele
         .@"15.7" => switch (build) {
             .official => error.NoOfficialBuild,
             .static => .{
-                .dir = v8_15_7_dir ++ "/out/static",
-                .monolith = v8_15_7_dir ++ "/out/static/obj/libv8_monolith.a",
-                .libplatform = v8_15_7_dir ++ "/out/static/obj/libv8_libplatform_fat.a",
-                .libbase = v8_15_7_dir ++ "/out/static/obj/libv8_libbase_fat.a",
-                .include = v8_15_7_dir ++ "/include",
+                .dir = dir_15_7 ++ "/out/static",
+                .monolith = dir_15_7 ++ "/out/static/obj/libv8_monolith.a",
+                .libplatform = dir_15_7 ++ "/out/static/obj/libv8_libplatform_fat.a",
+                .libbase = dir_15_7 ++ "/out/static/obj/libv8_libbase_fat.a",
+                .include = dir_15_7 ++ "/include",
                 .chromium = .{
-                    .libcxx = v8_15_7_dir ++ "/out/static/obj/libc++_chromium.a",
-                    .rust = v8_15_7_dir ++ "/out/static/obj/librust_v8.a",
-                    .libcxx_flags = v8_15_7_dir ++ "/libcxx/flags.txt",
-                    .libcxx_include = .{ v8_15_7_dir ++ "/libcxx/config", v8_15_7_dir ++ "/libcxx/include", v8_15_7_dir ++ "/libcxx/abi-include" },
-                    .system_libs = v8_15_7_dir ++ "/system-libs.txt",
+                    .libcxx = dir_15_7 ++ "/out/static/obj/libc++_chromium.a",
+                    .rust = dir_15_7 ++ "/out/static/obj/librust_v8.a",
+                    .libcxx_flags = dir_15_7 ++ "/libcxx/flags.txt",
+                    .libcxx_include = .{ dir_15_7 ++ "/libcxx/config", dir_15_7 ++ "/libcxx/include", dir_15_7 ++ "/libcxx/abi-include" },
+                    .system_libs = dir_15_7 ++ "/system-libs.txt",
                 },
             },
         },
