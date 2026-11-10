@@ -76,9 +76,10 @@ const Page = struct {
         try interfaces.Element.call_removeAttribute(el, str(name));
     }
 
+    /// The values an attribute (or a holder) counts now - not the parked.
     fn values(self: *Page) usize {
         const table = dom.attribute_values.tableOf(&self.scope) orelse return 0;
-        return table.count();
+        return table.liveCount();
     }
 
     fn names(self: *Page) usize {

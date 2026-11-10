@@ -717,6 +717,12 @@ const Matcher = struct {
     /// the per-element dynamic state a match read is recorded.
     pseudo_target: ?[]const u8 = null,
     state_reads: ?*StateReads = null,
+    /// The Browser of every node the query visits - the scoping root's - and
+    /// its attribute tables, found once (lane nd2 batch 2): a visit decodes
+    /// the attributes' ids with no address lookup and no table load
+    /// (`dataIn`). Null for a scope no slab issued (never in a Browser).
+    browser: ?*runtime.BrowserScope = null,
+    attribute_tables: element_data.Tables = .{},
 
     fn init(scope: *NodeBase, scope_instance: *runtime.Instance) Matcher {
         const document: ?*runtime.Instance = if (scope.node_type == DOCUMENT_NODE)
@@ -735,7 +741,16 @@ const Matcher = struct {
             matcher.shadow_root = root;
             matcher.shadow_host = hostOf(root);
         }
+        const browser = runtime.BrowserScope.ofInstance(scope_instance);
+        matcher.browser = browser;
+        matcher.attribute_tables = element_data.Tables.of(browser);
         return matcher;
+    }
+
+    /// `dataOf`, with the Browser and tables found at `init`.
+    fn dataIn(self: *const Matcher, node: *NodeBase) ?ElementData {
+        const browser = self.browser orelse return dataOf(node);
+        return element_data.ofIn(instanceOf(node) orelse return null, browser, self.attribute_tables);
     }
 
     /// querySelector's candidates are the scope's descendants. A selector of
@@ -746,10 +761,10 @@ const Matcher = struct {
             .none => self.matchesList(.{ .node = node }, list),
             .filtered => |filter| self.passesFilter(node, filter) and self.matchesList(.{ .node = node }, list),
             .all => true,
-            .tag => |tag| if (dataOf(node)) |data| self.matchesType(data, tag.name, tag.lower_name, .any) else false,
-            .class => |name| if (dataOf(node)) |data| self.hasClass(data, name) else false,
-            .id => |id| if (dataOf(node)) |data| self.idIs(data, id) else false,
-            .attribute => |attribute| if (dataOf(node)) |data| self.matchesAttribute(data, attribute) else false,
+            .tag => |tag| if (self.dataIn(node)) |data| self.matchesType(data, tag.name, tag.lower_name, .any) else false,
+            .class => |name| if (self.dataIn(node)) |data| self.hasClass(data, name) else false,
+            .id => |id| if (self.dataIn(node)) |data| self.idIs(data, id) else false,
+            .attribute => |attribute| if (self.dataIn(node)) |data| self.matchesAttribute(data, attribute) else false,
         };
     }
 
@@ -758,7 +773,7 @@ const Matcher = struct {
     /// rejected without the full matcher (WebKit's SelectorDataList does the
     /// same with the rightmost compound).
     fn passesFilter(self: *const Matcher, node: *NodeBase, filter: SubjectFilter) bool {
-        const data = dataOf(node) orelse return false;
+        const data = self.dataIn(node) orelse return false;
         return switch (filter) {
             .tag => |tag| self.matchesType(data, tag.name, tag.lower_name, .any),
             .class => |name| self.hasClass(data, name),
@@ -877,7 +892,7 @@ const Matcher = struct {
         // `*` alone matches every element, with no element data to read.
         if (compound.simple_selectors.len == 1 and compound.simple_selectors[0] == .Universal and
             compound.simple_selectors[0].Universal.namespace == .any) return true;
-        const data = dataOf(subject.node) orelse return false;
+        const data = self.dataIn(subject.node) orelse return false;
         for (compound.simple_selectors) |*simple| {
             if (!self.matchesSimple(subject.node, data, simple)) return false;
         }

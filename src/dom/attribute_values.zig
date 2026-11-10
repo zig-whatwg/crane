@@ -174,6 +174,10 @@ pub const Table = struct {
     tombstones: Tombstones = .{},
     /// The bytes of the records alive (headers included): a measurement.
     bytes_held: usize = 0,
+    /// The PARKED records: their last reference went, and they wait here,
+    /// still in the map, for a value that comes back (oldest first). See
+    /// `Parking`.
+    parked: Parking = .{},
 
     const Map = std.HashMapUnmanaged(u32, void, SlotContext, 80);
 
@@ -214,6 +218,49 @@ pub const Table = struct {
     /// Below this many slots an emptied map keeps its storage.
     const kept_capacity = 64;
 
+    /// Where a record whose count reached zero waits, bounded, before it is
+    /// freed (the integrator's ruling, 2026-11-10 21:41 UTC). A value an
+    /// attribute cycles through - `el.id = i & 1 ? 'x' : 'y'`, a classList
+    /// toggle, setAttribute over a handful of values - would otherwise go
+    /// through a free, a map removal, a malloc and a map insert on every
+    /// change (the cost pair measured +18-26% against main's dupe and free).
+    /// Gecko is the precedent: an nsDynamicAtom whose count reaches zero
+    /// stays in its table, and only past kAtomGCThreshold unused atoms (10,000;
+    /// 20 in DEBUG) are they swept (xpcom/ds/nsAtom.h:177-193,
+    /// nsAtomTable.cpp:547). Blink and WebKit free an AtomString at its last
+    /// reference, at once. Crane takes Gecko's reuse and none of its sweep:
+    /// at most `max_records` records and `max_bytes` bytes wait; a record of
+    /// more than `max_record_bytes` never waits (a page cannot park
+    /// megabytes); a full ring frees its OLDEST record - one, synchronously,
+    /// on the owning thread - and the table's end frees the rest. A record
+    /// the ring holds is never counted: an intern that finds it takes it out.
+    const Parking = struct {
+        slots: [max_records]u32 = undefined,
+        len: usize = 0,
+        /// The parked records' bytes, headers included.
+        bytes: usize = 0,
+
+        pub const max_records = 256;
+        pub const max_bytes = 16 * 1024;
+        pub const max_record_bytes = 256;
+
+        fn indexOf(self: *const Parking, slot: u32) ?usize {
+            var i = self.len;
+            while (i > 0) {
+                i -= 1;
+                if (self.slots[i] == slot) return i;
+            }
+            return null;
+        }
+
+        fn removeAt(self: *Parking, index: usize) u32 {
+            const slot = self.slots[index];
+            std.mem.copyForwards(u32, self.slots[index .. self.len - 1], self.slots[index + 1 .. self.len]);
+            self.len -= 1;
+            return slot;
+        }
+    };
+
     pub fn init(allocator: std.mem.Allocator) Table {
         return .{ .allocator = allocator };
     }
@@ -232,9 +279,23 @@ pub const Table = struct {
         self.ids.deinit(self.allocator);
     }
 
-    /// How many distinct values the table holds.
+    /// How many distinct values the table holds, the parked included.
     pub fn count(self: *const Table) usize {
         return self.records.count();
+    }
+
+    /// How many records an attribute or a holder counts now.
+    pub fn liveCount(self: *const Table) usize {
+        return self.records.count() - self.parked.len;
+    }
+
+    /// The parked records and their bytes (headers included).
+    pub fn parkedRecords(self: *const Table) usize {
+        return self.parked.len;
+    }
+
+    pub fn parkedBytes(self: *const Table) usize {
+        return self.parked.bytes;
     }
 
     /// The record `id` names, checked: a freed slot, or (Debug) a slot freed
@@ -259,6 +320,9 @@ pub const Table = struct {
         const key: BytesKey = .{ .bytes = bytes, .hash = hashOf(bytes) };
         if (self.records.getKeyAdapted(key, KeyAdapter{ .ids = &self.ids })) |slot| {
             const id = ValueId.of(slot, self.ids.generation(slot));
+            const value: *Value = @constCast(self.ids.get(slot));
+            // A parked record comes back: out of the ring, with its id.
+            if (value.references == 0) self.unpark(slot, value);
             self.retain(id);
             return id;
         }
@@ -284,19 +348,47 @@ pub const Table = struct {
         value.references += 1;
     }
 
-    /// Drop one reference to `id` (none for .empty); the last removes the
-    /// record from the table, frees it and frees its slot, now.
+    /// Drop one reference to `id` (none for .empty); the last parks the
+    /// record (`Parking`), or frees it now when it is too big to wait.
     pub fn release(self: *Table, id: ValueId) void {
         if (id == .empty) return;
         const value: *Value = @constCast(self.get(id));
         if (value.references == 0) @panic("an attribute value record released more often than it was kept");
         value.references -= 1;
         if (value.references != 0) return;
-        // The map hashes the record's bytes to find its slot: out of the map
-        // first, then the slot, then the block.
-        const removed = self.records.removeContext(id.slot(), self.context());
+        self.park(id.slot(), value);
+    }
+
+    /// A record whose count reached zero: parked, or freed now when it is
+    /// too big to wait. A full ring frees its oldest first (`Parking`).
+    fn park(self: *Table, slot: u32, value: *Value) void {
+        const size = value.blockSize();
+        if (size > Parking.max_record_bytes) return self.free(slot, value);
+        while (self.parked.len == Parking.max_records or self.parked.bytes + size > Parking.max_bytes) {
+            const oldest = self.parked.removeAt(0);
+            const evicted: *Value = @constCast(self.ids.get(oldest));
+            self.parked.bytes -= evicted.blockSize();
+            self.free(oldest, evicted);
+        }
+        self.parked.slots[self.parked.len] = slot;
+        self.parked.len += 1;
+        self.parked.bytes += size;
+    }
+
+    /// A parked record an intern found: out of the ring.
+    fn unpark(self: *Table, slot: u32, value: *const Value) void {
+        const index = self.parked.indexOf(slot) orelse @panic("an attribute value record with no reference was not parked");
+        _ = self.parked.removeAt(index);
+        self.parked.bytes -= value.blockSize();
+    }
+
+    /// Free a record with no reference: out of the map (which hashes its
+    /// bytes to find its slot) first, then the slot, then the block.
+    fn free(self: *Table, slot: u32, value: *Value) void {
+        if (debug_checks and value.references != 0) @panic("a counted attribute value record freed");
+        const removed = self.records.removeContext(slot, self.context());
         if (debug_checks and !removed) @panic("a released attribute value record was not in its Browser's table");
-        self.ids.give(id.slot());
+        self.ids.give(slot);
         self.bytes_held -= value.blockSize();
         destroy(self.allocator, value);
         self.afterRemove();
@@ -421,7 +513,21 @@ pub const Hold = struct {
 // Tests
 // ============================================================================
 
-test "a value is interned once per Browser and freed with its last reference" {
+/// Every parked record has no reference, and the ring's bytes add up
+/// (the ruling's condition: the ring never holds a counted record).
+fn expectParkingSound(table: *const Table) !void {
+    var bytes: usize = 0;
+    for (table.parked.slots[0..table.parked.len]) |slot| {
+        const value = table.ids.get(slot);
+        try std.testing.expectEqual(@as(u32, 0), value.references);
+        bytes += value.blockSize();
+    }
+    try std.testing.expectEqual(bytes, table.parkedBytes());
+    try std.testing.expect(table.parkedRecords() <= Table.Parking.max_records);
+    try std.testing.expect(table.parkedBytes() <= Table.Parking.max_bytes);
+}
+
+test "a value is interned once per Browser; its last release parks it" {
     var scope = runtime.BrowserScope.init(std.testing.allocator);
     defer scope.deinit();
 
@@ -437,21 +543,72 @@ test "a value is interned once per Browser and freed with its last reference" {
     // Case and length count.
     const b = try intern(&scope, "BTN btn-primary btn-large");
     try std.testing.expect(b != a);
-    try std.testing.expectEqual(@as(usize, 2), table.count());
+    try std.testing.expectEqual(@as(usize, 2), table.liveCount());
 
     release(&scope, a);
-    try std.testing.expectEqual(@as(usize, 2), table.count());
+    try std.testing.expectEqual(@as(usize, 2), table.liveCount());
     release(&scope, a);
-    try std.testing.expectEqual(@as(usize, 1), table.count());
-    // Its slot is the next value's.
-    const c = try intern(&scope, "x");
-    try std.testing.expectEqual(a.slot(), c.slot());
-    if (debug_checks) try std.testing.expect(c != a);
+    try std.testing.expectEqual(@as(usize, 1), table.liveCount());
+    try std.testing.expectEqual(@as(usize, 1), table.parkedRecords());
+    try expectParkingSound(table);
     release(&scope, b);
-    release(&scope, c);
-    try std.testing.expectEqual(@as(usize, 0), table.count());
-    try std.testing.expectEqual(@as(usize, 0), table.bytes_held);
+    try std.testing.expectEqual(@as(usize, 0), table.liveCount());
+    try std.testing.expectEqual(@as(usize, 2), table.parkedRecords());
     release(&scope, .empty);
+}
+
+test "a parked record comes back with its id and a count of one, and leaves the ring" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    const x = try intern(&scope, "x");
+    release(&scope, x);
+    const table = tableOf(&scope).?;
+    try std.testing.expectEqual(@as(usize, 1), table.parkedRecords());
+    const again = try intern(&scope, "x");
+    try std.testing.expectEqual(x, again);
+    try std.testing.expectEqual(@as(u32, 1), table.get(again).references);
+    try std.testing.expectEqual(@as(usize, 0), table.parkedRecords());
+    try std.testing.expectEqual(@as(usize, 0), table.parkedBytes());
+    try expectParkingSound(table);
+    release(&scope, again);
+}
+
+test "a million distinct values end at the table's size plus at most the ring" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    const keep = try intern(&scope, "kept");
+    const table = tableOf(&scope).?;
+    const start = table.count();
+    var buffer: [24]u8 = undefined;
+    for (0..1_000_000) |i| release(&scope, try intern(&scope, try std.fmt.bufPrint(&buffer, "value {d}", .{i})));
+    try std.testing.expect(table.count() <= start + Table.Parking.max_records);
+    try std.testing.expectEqual(@as(usize, 1), table.liveCount());
+    try std.testing.expect(table.ids.len() <= start + Table.Parking.max_records + 1);
+    try expectParkingSound(table);
+    release(&scope, keep);
+}
+
+test "the ring is bounded by bytes, and a record over the per-record cap is freed at once" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    var big: [Table.Parking.max_record_bytes]u8 = undefined;
+    @memset(&big, 'b');
+    const id = try intern(&scope, &big);
+    const table = tableOf(&scope).?;
+    release(&scope, id);
+    // 8 + 256 bytes > the cap: freed, never parked.
+    try std.testing.expectEqual(@as(usize, 0), table.count());
+    try std.testing.expectEqual(@as(usize, 0), table.parkedRecords());
+    // 200-byte values: the 16 KiB bound parks 78 of them, not 256.
+    var value: [200]u8 = undefined;
+    for (0..300) |i| {
+        @memset(&value, 'a' + @as(u8, @intCast(i % 26)));
+        value[0] = @intCast(i & 0xFF);
+        value[1] = @intCast(i >> 8);
+        release(&scope, try intern(&scope, &value));
+    }
+    try std.testing.expectEqual(@as(usize, Table.Parking.max_bytes / 208), table.parkedRecords());
+    try expectParkingSound(table);
 }
 
 test "a hold keeps a value's bytes across the release of its attribute's reference" {
@@ -462,7 +619,7 @@ test "a hold keeps a value's bytes across the release of its attribute's referen
     release(&scope, id);
     try std.testing.expectEqualStrings("old", held.bytes());
     held.end();
-    try std.testing.expectEqual(@as(usize, 0), tableOf(&scope).?.count());
+    try std.testing.expectEqual(@as(usize, 0), tableOf(&scope).?.liveCount());
 }
 
 test "values that come and go keep ids dense and the map small" {
@@ -479,7 +636,9 @@ test "values that come and go keep ids dense and the map small" {
         const slots = infra.tombstones.slotCounts(&table.records);
         if (slots.free * 4 < slots.capacity - slots.live) return error.TombstonesBuiltUp;
     }
-    try std.testing.expectEqual(@as(usize, 64), table.ids.len());
+    // The live values and, at most, the ring.
+    try std.testing.expect(table.ids.len() <= 64 + Table.Parking.max_records + 1);
     for (live) |id| release(&scope, id);
-    try std.testing.expectEqual(@as(usize, 0), table.count());
+    try std.testing.expectEqual(@as(usize, 0), table.liveCount());
+    try expectParkingSound(table);
 }
