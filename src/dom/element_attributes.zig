@@ -54,7 +54,7 @@ pub const Implementation = struct {
     remove: *const fn (element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) void,
     node_at: *const fn (element: *runtime.Instance, index: usize) Error!?*runtime.Instance,
     existing_node_at: *const fn (element: *runtime.Instance, index: usize) ?*runtime.Instance,
-    reserve: *const fn (element: *runtime.Instance, count: usize) void,
+    reserve: *const fn (element: *runtime.Instance, more: usize) void,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -85,7 +85,7 @@ pub fn append(element: *runtime.Instance, attribute: Attribute) Error!void {
     return impl.append(element, attribute);
 }
 
-/// Room for `count` attributes appended to `element` next: "create an
+/// Room for `more` attributes appended to `element` next: "create an
 /// element for a token" (HTML 13.2.6.1: "Append the attributes in the given
 /// token to element") and "clone a single node" (DOM 4.5 step 2.3: "For each
 /// attribute of node's attribute list... Append copyAttribute to copy") know
@@ -94,9 +94,9 @@ pub fn append(element: *runtime.Instance, attribute: Attribute) Error!void {
 /// f28a39571849 pre-sizes on parse and clone the same way, as do Gecko and
 /// Ladybird). A capacity hint: out of memory, the appends grow the list
 /// themselves. Nothing for a node that is not an element.
-pub fn reserve(element: *runtime.Instance, count: usize) void {
+pub fn reserve(element: *runtime.Instance, more: usize) void {
     const impl = implementation.get() orelse return;
-    impl.reserve(element, count);
+    impl.reserve(element, more);
 }
 
 /// DOM "change an attribute": the one with this namespace and local name,

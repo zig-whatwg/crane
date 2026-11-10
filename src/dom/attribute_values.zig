@@ -84,8 +84,8 @@ pub const ValueId = enum(u32) {
     /// The slots a table may hold (slot + 1 must fit the index bits).
     pub const limit: usize = index_mask - 1;
 
-    fn of(slot_index: u32, generation: u8) ValueId {
-        const stamp: u32 = if (debug_checks) @as(u32, generation) << generation_shift else 0;
+    fn of(slot_index: u32, slot_generation: u8) ValueId {
+        const stamp: u32 = if (debug_checks) @as(u32, slot_generation) << generation_shift else 0;
         return @fromBackingInt(@intCast(stamp | (slot_index + 1)));
     }
 

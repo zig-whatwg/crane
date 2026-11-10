@@ -126,9 +126,12 @@ pub fn holdsPointer(comptime T: type) bool {
         .pointer => true,
         .optional => |info| holdsPointer(info.child),
         .array => |info| holdsPointer(info.child),
-        .@"struct" => |info| for (info.fields) |field| {
-            if (holdsPointer(field.type)) break true;
-        } else false,
+        .@"struct" => |info| {
+            inline for (info.field_names) |name| {
+                if (holdsPointer(@FieldType(T, name))) return true;
+            }
+            return false;
+        },
         else => true,
     };
 }
@@ -614,6 +617,11 @@ pub const Hold = struct {
         attribute_names.release(self.scope, self.entry.name);
         attribute_values.release(self.scope, self.entry.value);
     }
+
+    /// The held value's bytes: valid until `end`.
+    pub fn value(self: Hold) []const u8 {
+        return attribute_values.bytesIn(attribute_values.tableOf(self.scope), self.entry.value);
+    }
 };
 
 /// A reader's view of an element's data: the data, its element's qualified
@@ -697,6 +705,15 @@ pub const View = struct {
     pub fn attributeAt(self: View, index: usize) ?AttributeEntry {
         const entry = self.data.storedAt(index) orelse return null;
         return self.tables().view(entry);
+    }
+
+    /// A count on the records of the attribute whose namespace is
+    /// `namespace_uri` and local name is `local_name` - for a holder whose
+    /// span crosses a point where script can run (`Hold`) - or null when
+    /// there is none.
+    pub fn holdAttribute(self: View, namespace_uri: ?[]const u8, local_name: []const u8) ?Hold {
+        const index = self.indexOfAttribute(namespace_uri, local_name) orelse return null;
+        return Hold.take(self.scope, self.data.stored()[index]);
     }
 
     /// The name record of the attribute at `index`, or null past the end:

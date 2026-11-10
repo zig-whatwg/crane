@@ -1381,11 +1381,11 @@ fn attributeAtHook(element: *runtime.Instance, index: usize) ?dom.element_attrib
     };
 }
 
-/// `dom.element_attributes.reserve`: room for `count` more attributes,
-/// exactly (parse and clone). Out of memory, the appends grow the list.
-fn reserveAttributesHook(element: *runtime.Instance, count: usize) void {
+/// `dom.element_attributes.reserve`: room for `more` attributes, exactly
+/// (parse and clone). Out of memory, the appends grow the list.
+fn reserveAttributesHook(element: *runtime.Instance, more: usize) void {
     const internal = getInternal(element) orelse return;
-    internal.data.reserve(runtime.allocatorOf(element), count) catch {};
+    internal.data.reserve(runtime.allocatorOf(element), more) catch {};
 }
 
 /// `dom.element_attributes.count`.

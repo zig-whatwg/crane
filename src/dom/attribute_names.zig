@@ -226,17 +226,17 @@ pub fn IdSlots(comptime Record: type) type {
 
         /// A slot for `record`: the last one freed, else a new one, below
         /// `limit` slots.
-        pub fn take(self: *Self, allocator: std.mem.Allocator, record: *Record, limit: usize) error{OutOfMemory}!u32 {
+        pub fn take(self: *Self, allocator: std.mem.Allocator, item: *Record, limit: usize) error{OutOfMemory}!u32 {
             if (self.free_head != none) {
                 const index = self.free_head;
                 self.free_head = @intCast(self.slots.items[index] >> 1);
-                self.slots.items[index] = @intFromPtr(record);
+                self.slots.items[index] = @intFromPtr(item);
                 return index;
             }
             if (self.slots.items.len >= limit) return error.OutOfMemory;
             try self.slots.ensureUnusedCapacity(allocator, 1);
             if (debug_checks) try self.generations.append(allocator, 0);
-            self.slots.appendAssumeCapacity(@intFromPtr(record));
+            self.slots.appendAssumeCapacity(@intFromPtr(item));
             return @intCast(self.slots.items.len - 1);
         }
 
@@ -351,8 +351,8 @@ pub const NameId = enum(u32) {
         return @fromBackingInt(@intCast(index));
     }
 
-    fn ofDynamic(index: u32, generation: u8) NameId {
-        const stamp: u32 = if (debug_checks) @as(u32, generation & 0x7F) << generation_shift else 0;
+    fn ofDynamic(index: u32, slot_generation: u8) NameId {
+        const stamp: u32 = if (debug_checks) @as(u32, slot_generation & 0x7F) << generation_shift else 0;
         return @fromBackingInt(@intCast(dynamic_bit | stamp | index));
     }
 
@@ -554,12 +554,12 @@ pub inline fn staticLocalId(local_name: []const u8) ?NameId {
 
 /// The static id of a name known at compile time (a reader's fixed name:
 /// `id`, `class`, `slot`): checked to exist when the build runs.
-pub fn comptimeLocalId(comptime local_name: []const u8) NameId {
-    comptime {
+pub inline fn comptimeLocalId(comptime local_name: []const u8) NameId {
+    const index = comptime blk: {
         @setEvalBranchQuota(1_000_000);
-        const index = static_index.get(local_name) orelse @compileError("not a static attribute name: " ++ local_name);
-        return NameId.ofStatic(index);
-    }
+        break :blk static_index.get(local_name) orelse @compileError("not a static attribute name: " ++ local_name);
+    };
+    return NameId.ofStatic(index);
 }
 
 /// The static id of exactly this name, or null when no table has it.

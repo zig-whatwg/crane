@@ -38,7 +38,9 @@ const element_data = dom.element_data;
 const ElementData = element_data.ElementData;
 
 /// Whether D1's out-of-line list is in this build.
-const out_of_line = @hasDecl(element_data, "Attribute");
+/// Whether the list is out of line: its entries a type of their own (lane
+/// perf3 D1's `Attribute`, lane nd2 batch 2's 8-byte `Entry`).
+const out_of_line = @hasDecl(element_data, "Attribute") or @hasDecl(element_data, "Entry");
 
 fn str(text: []const u8) runtime.DOMString {
     return runtime.DOMString.initInterned(text);
