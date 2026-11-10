@@ -133,6 +133,8 @@ pub const Data = struct {
     /// Append fails past NS_MAX_CHARACTER_DATA_BUFFER_LENGTH.
     pub const max_bytes: usize = std.math.maxInt(u31);
 
+    /// Gecko's CharacterDataBuffer::FragmentBits keeps the same word: its
+    /// `mInHeap` bit beside a 29-bit `mLength`.
     pub const Size = packed struct(u32) {
         bytes: u31,
         /// The bytes are a slice of the shared whitespace blob: never freed.
