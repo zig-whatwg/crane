@@ -276,9 +276,13 @@ step_build() {
 # the libc++/libc++abi -isystem directories, buildtools/third_party/libc++ (its __config_site),
 # and every -D_LIBCPP_*, -D_LIBCXXABI_*, -DCR_LIBCXX_REVISION.
 libcxx_consumer_flags() {
-  local cmd
-  cmd=$("$V8/third_party/ninja/ninja" -C "$V8/$OUT" -t commands v8_libbase | grep -m1 -- '-nostdinc++') \
-    || die "no v8_libbase compile command with -nostdinc++"
+  local cmd all
+  # Into a file first: `ninja ... | grep -m1` would SIGPIPE ninja, and pipefail turns that into failure.
+  all=$(mktemp)
+  "$V8/third_party/ninja/ninja" -C "$V8/$OUT" -t commands v8_libbase > "$all"
+  cmd=$(grep -m1 -- '-nostdinc++' "$all" || true)
+  rm -f "$all"
+  [ -n "$cmd" ] || die "no v8_libbase compile command with -nostdinc++"
   python3 -I - "$V8/$OUT" "$cmd" <<'PY'
 import os, shlex, sys
 cwd, cmd = sys.argv[1], sys.argv[2]
