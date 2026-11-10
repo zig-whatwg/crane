@@ -132,17 +132,8 @@ test "no embedded or empty level keeps an `_internal` pointer; a separate block'
     try std.testing.expect(@hasField(Own(interfaces.Document.State), "_internal"));
 }
 
-test "a div's State spends 72 bytes on pointers and the live word, in an exact-size block" {
-    const S = interfaces.HTMLDivElement.State;
-    // 104 at main: 5 `_internal` pointers + 8 `cached_*`. Now the 8 caches and
-    // the root's live word (4 bytes, padded to 8).
-    if (@sizeOf(S) - embeddedBytes(S) != 72) {
-        printLayout(S);
-        std.debug.print("HTMLDivElement.State: {d} bytes, {d} embedded\n", .{ @sizeOf(S), embeddedBytes(S) });
-        return error.SizePinMoved;
-    }
-    try std.testing.expect(slack(S) < 16);
-}
+// A div's generated part (72 bytes after this batch) is pinned in ONE place since lane cg1:
+// tests/dom/node_block_sizes_test.zig.
 
 test "a text node's State spends 16 bytes on pointers and the live word, in an exact-size block" {
     const S = interfaces.Text.State;

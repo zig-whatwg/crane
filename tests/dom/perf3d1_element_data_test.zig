@@ -136,27 +136,8 @@ test "Element's InternalState is 40 bytes" {
     try testing.expect(runtime.ArenaAllocator.heldBytes(@sizeOf(ElementState), @alignOf(ElementState)) <= 512);
 }
 
-test "a div's one block is 264 bytes: perf2 b5's 1,272 less D1's 432, perf2 b6's 104, D2's 264, perf2 b7's 8, E1's 104 and nd2 N2's and N3's 48 each" {
-    // perf2 b5 made a node ONE exact-size State block holding every level's
-    // InternalState (1,272 bytes for a div at a67aa1e08e5, Element's 848 of
-    // them); D1 takes ElementData's 432 out of it; perf2 b6 the allocator
-    // copies of NodeBase, Node and EventTarget (48), last_child (8),
-    // EventTarget's lazy entry record (24 less 8 of padding) and four
-    // `_internal` pointers (32); D2 Element's allocator copy and cold fields
-    // (176) and HTMLElement's whole state (88); perf2 b7 EventTarget's
-    // current event (8, a Window's: in Window's state now); E1 the registry
-    // association (40) and the slottable state (64); nd2 N2 the namespace
-    // and local name, one record pointer now (48); N3 the ID and classes
-    // views (48); lis1 N5 EventTarget's lists and flag, one pointer to a
-    // listener block made with the first listener (16).
-    const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 248);
-    const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
-    if (held - @sizeOf(S) >= 16) {
-        std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });
-        return error.NotExactSize;
-    }
-}
+// A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig
+// (lane cg1; lesson testing-a-total-pinned-in-six-files-moves-in-six-files.md).
 
 // ============================================================================
 // An engine-less page

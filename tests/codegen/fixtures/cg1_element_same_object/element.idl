@@ -1,0 +1,58 @@
+interface EventTarget {
+};
+interface Node : EventTarget {
+  [SameObject] readonly attribute NodeList childNodes;
+};
+interface NodeList {
+};
+interface DOMTokenList {
+  attribute DOMString value;
+};
+interface NamedNodeMap {
+};
+interface HTMLCollection {
+};
+interface DOMStringMap {
+};
+interface CSSStyleProperties {
+  attribute DOMString cssText;
+};
+interface StylePropertyMap {
+};
+interface SVGAnimatedString {
+};
+interface Element : Node {
+  [SameObject, PutForwards=value] readonly attribute DOMTokenList classList;
+  [SameObject] readonly attribute NamedNodeMap attributes;
+};
+partial interface Element {
+  [SameObject, PutForwards=value] readonly attribute DOMTokenList part;
+};
+interface mixin ParentNode {
+  [SameObject] readonly attribute HTMLCollection children;
+};
+Element includes ParentNode;
+interface Document : Node {
+};
+Document includes ParentNode;
+interface mixin ElementCSSInlineStyle {
+  [SameObject, PutForwards=cssText] readonly attribute CSSStyleProperties style;
+};
+partial interface mixin ElementCSSInlineStyle {
+  [SameObject] readonly attribute StylePropertyMap attributeStyleMap;
+};
+interface mixin HTMLOrSVGOrMathMLElement {
+  [SameObject] readonly attribute DOMStringMap dataset;
+};
+interface HTMLElement : Element {
+};
+HTMLElement includes ElementCSSInlineStyle;
+HTMLElement includes HTMLOrSVGOrMathMLElement;
+interface SVGElement : Element {
+  [SameObject] readonly attribute SVGAnimatedString className;
+};
+SVGElement includes ElementCSSInlineStyle;
+SVGElement includes HTMLOrSVGOrMathMLElement;
+interface HTMLAnchorElement : HTMLElement {
+  [SameObject, PutForwards=value] readonly attribute DOMTokenList relList;
+};

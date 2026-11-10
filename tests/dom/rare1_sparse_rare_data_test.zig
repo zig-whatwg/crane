@@ -96,9 +96,8 @@ test "Element's InternalState stays 40 bytes: the rare word, and click()'s flag 
     try expectSize(ElementState, 40);
 }
 
-test "this batch leaves a div's one block as it was: 248 bytes since lane lis1's N5 (264 when rare1 was measured)" {
-    try expectSize(interfaces.HTMLDivElement.State, 248);
-}
+// A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig
+// (lane cg1; lesson testing-a-total-pinned-in-six-files-moves-in-six-files.md).
 
 // ============================================================================
 // An engine-less page

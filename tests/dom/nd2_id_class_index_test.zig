@@ -100,13 +100,8 @@ test "Element's InternalState is 40 bytes" {
     try expectSize(ElementState, 40);
 }
 
-test "a div's one block is 248 bytes, in a 256-byte class" {
-    // 312 at N2 (a 320-byte class), less ElementData's 48: 264 (272); less
-    // lis1 N5's 16 (EventTarget's state one pointer to a listener block).
-    const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 248);
-    try testing.expectEqual(@as(usize, 256), runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S)));
-}
+// A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig
+// (lane cg1; lesson testing-a-total-pinned-in-six-files-moves-in-six-files.md).
 
 // ============================================================================
 // An engine-less page
