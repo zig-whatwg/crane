@@ -133,9 +133,11 @@ const setup =
     \\0
 ;
 
-fn report(what: []const u8, bytes: Bytes, limit: isize) !void {
+/// Print a case's bytes, and count it over its limit: every case prints
+/// before the test fails, so a red run records them all.
+fn report(over: *usize, what: []const u8, bytes: Bytes, limit: isize) void {
     std.debug.print("lis1: {s}: {d} B requested, {d} B rounded per element (limit {d})\n", .{ what, bytes.live, bytes.rounded, limit });
-    if (bytes.rounded > limit) return error.ListenerStorageTooLarge;
+    if (bytes.rounded > limit) over.* += 1;
 }
 
 fn costs() !void {
@@ -143,24 +145,26 @@ fn costs() !void {
     const page = try Page.open(&counting);
     defer page.close();
     try page.run(setup);
+    var over: usize = 0;
 
     // Asking about a listener, removing one there is none of, reading a
     // handler that was never set: nothing for a target that has none.
     const asked = try page.perElement(64, "for (const el of a) el.hasAttribute('x'); 0", "for (const el of a) { el.removeEventListener('click', f); el.onclick; el.onclick = null; } 0");
-    try report("no listener", asked, 0);
+    report(&over, "no listener", asked, 0);
 
     const listener = try page.perElement(64, "for (const el of b) el.hasAttribute('click'); 0", "for (const el of b) el.addEventListener('click', f); 0");
-    try report("one addEventListener listener", listener, 64);
+    report(&over, "one addEventListener listener", listener, 64);
 
     const handler = try page.perElement(64, "for (const el of c) el.hasAttribute('click'); 0", "for (const el of c) el.onclick = f; 0");
-    try report("one event handler IDL attribute", handler, 64);
+    report(&over, "one event handler IDL attribute", handler, 64);
 
     const both = try page.perElement(64, "for (const el of d) el.hasAttribute('click'); 0", "for (const el of d) { el.addEventListener('click', f); el.onclick = g; } 0");
-    try report("one listener and one event handler", both, 96);
+    report(&over, "one listener and one event handler", both, 96);
 
     // A custom type keeps a copy of its name beside the block.
     const custom = try page.perElement(64, "for (const el of e) el.hasAttribute('click'); 0", "for (const el of e) el.addEventListener('lis1-custom', f); 0");
-    try report("one listener of a custom type", custom, 96);
+    report(&over, "one listener of a custom type", custom, 96);
+    if (over != 0) return error.ListenerStorageTooLarge;
 }
 
 test "a target's listener storage: nothing without one, one block of at most 64 B for one listener or one event handler" {
