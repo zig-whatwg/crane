@@ -409,7 +409,7 @@ test "=== holds across collections while script holds the node" {
     try testing.expect(try page.holds("held.expando === 6 && d2.documentElement === held && held.ownerDocument === d2"));
 }
 
-test "a node anchor is 16 bytes of its agent's C++ heap, and a node wrapper keeps no Global" {
+test "a node anchor is 24 bytes of its agent's C++ heap, and a node wrapper keeps no Global" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const page = try Page.open(&queue);
@@ -441,10 +441,12 @@ test "a node anchor is 16 bytes of its agent's C++ heap, and a node wrapper keep
     page.collect();
     queue.drainAll();
     try testing.expectEqual(wrappers_before + count, try counter("node_wrappers"));
-    // One anchor each: cppgc's 8-byte header and the slot pointer (design
-    // 4.1). The registry holds raw pointers, off the C++ heap.
+    // One anchor each: cppgc's 8-byte header, the slot pointer (design 4.1)
+    // and its registry index with its keeps' count (4 + 4 bytes: the O(1)
+    // removal when a scavenge drops its wrapper and the anchor is freed,
+    // lane wr1 batch 8). The registry holds raw pointers, off the C++ heap.
     const per_node = @divTrunc(try counterOf(page, "cpp_heap_used_bytes") - cpp_before, count);
-    try testing.expectEqual(@as(i64, 16), per_node);
+    try testing.expectEqual(@as(i64, 24), per_node);
     // No Global<Object> per node: the binding's box went once the slot held
     // the wrapper (P2 kept its node in the slot).
     try testing.expect(try counter("live_object_globals") - globals_before < 10);
@@ -498,17 +500,22 @@ test "wrappers dropped with no requested collection are released by the drain ta
     ffi.v8_test_NodeWrappers_ObserveDrainTasks(page.isolate(), &runs, &drops);
     try page.run("globalThis.d = new Document();");
     queue.drainAll();
-    const full_gcs = try counterOf(page, "full_gc_count");
+    const collections = try counterOf(page, "full_gc_count") + try counterOf(page, "minor_gc_count");
     const queued = queue.queued_total;
     // wrapper-churn-nogc's shape: elements made and dropped at once, script
-    // allocating until V8 runs a full collection of its own.
+    // allocating until V8 runs a collection of its own. Since P8 that is a
+    // scavenge, which drops the unmodified wrappers and posts the drain;
+    // until lane wr1 batch 8 the anchors those wrappers left waited on the C++
+    // heap and grew it until V8 ran a full collection, which this loop waited
+    // for - their free after the scavenge took that growth away.
     var rounds: usize = 0;
-    while (rounds < 40 and try counterOf(page, "full_gc_count") == full_gcs) : (rounds += 1) {
+    while (rounds < 40 and try counterOf(page, "full_gc_count") + try counterOf(page, "minor_gc_count") == collections) : (rounds += 1) {
         try page.run("{ for (let i = 0; i < 20000; i++) d.createElement('div'); const junk = []; for (let i = 0; i < 20000; i++) junk.push({ i, s: 'x' + i }); }");
     }
-    try testing.expect(try counterOf(page, "full_gc_count") > full_gcs);
-    // A collection found dead anchors and posted the drain (nothing has
-    // run it unless the scripts' own turns pumped the agent's tasks).
+    try testing.expect(try counterOf(page, "full_gc_count") + try counterOf(page, "minor_gc_count") > collections);
+    // A collection dropped wrappers or found dead anchors and posted the
+    // drain (nothing has run it unless the scripts' own turns pumped the
+    // agent's tasks).
     try testing.expect(runs >= 1 or ffi.v8_test_NodeWrappers_DrainPosted(page.isolate()));
     // The event loop's pumping of the agent's platform tasks runs it: the
     // released references made the dropped elements garbage, queued.

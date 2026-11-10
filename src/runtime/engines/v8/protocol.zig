@@ -1134,8 +1134,9 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 /// - `gc_atomic_*_us_max`, `cpp_atomic_*_us_max`: one full collection's
 ///   atomic pause at most, whole and by phase (mark, weak, compact, sweep),
 ///   for the whole heap and for the C++ heap's share, as V8 reports them to
-///   the isolate's metrics recorder (GCPhaseStats) - with the two above,
-///   where a pause goes (lane wr1 batch 8); 0 with no isolate current;
+///   the isolate's metrics recorder (GCPhaseStats; gc_bench's build only,
+///   0 in every other) - with the two above, where a pause goes (lane wr1
+///   batch 8); 0 with no isolate current;
 /// - `globals_created`: Globals made through the wrapper's tracked path,
 ///   cumulative - 0 unless v8_wrapper.cpp is built with
 ///   -DCRANE_TRACK_GLOBALS=1, as gc_bench's is;

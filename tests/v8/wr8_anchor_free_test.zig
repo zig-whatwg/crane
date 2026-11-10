@@ -6,7 +6,8 @@
 //! node wrapper in a scavenge: the isolate's EmbedderRootsHandler::ResetRoot
 //! empties the node's slot - V8 frees the TracedNode - and the drain releases
 //! the wrapper's reference. The wrapper's NodeAnchor, 16 bytes of the agent's
-//! C++ heap, and its slot in the anchors' registry waited for the next FULL
+//! C++ heap then (24 with the registry index below), and its slot in the
+//! anchors' registry waited for the next FULL
 //! collection, which V8 schedules rarely: gc_bench's wrapper-churn-nogc held
 //! 15.47 B of C++ heap per element where P2 held none, and the full
 //! collection's pause grew with the anchors waiting for it (lane wr1 batch 7,
@@ -204,6 +205,13 @@ fn counter(page: Page, name: []const u8) !i64 {
     return error.CounterMissing;
 }
 
+/// The bytes alive on the page's C++ heap, object by object.
+fn liveBytes(page: Page) i64 {
+    const entered = page.enter();
+    defer page.leave(entered);
+    return @intCast(ffi.v8_test_CppHeap_LiveBytes(page.isolate()));
+}
+
 /// The anchors not yet freed: in the registry, or dropped and waiting.
 fn anchorsHeld(page: Page) !i64 {
     return try counter(page, "node_anchors_registered") + try counter(page, "node_anchors_dropped_waiting");
@@ -221,15 +229,13 @@ test "wr8 b8: a full collection's anchor weak processing and its atomic pause's 
     // The anchors' weak processing read every one of them, and took time.
     try testing.expect(try counter(page, "node_anchor_weak_slots_max") >= 1000);
     try testing.expect(try counter(page, "node_anchor_weak_ns_max") > 0);
-    // V8 reported the full cycles to the isolate's metrics recorder: an
-    // atomic pause of a live heap takes more than a microsecond, and its
-    // C++ heap's share was reported with it.
-    const atomic = try counter(page, "gc_atomic_us_max");
-    try testing.expect(atomic > 0);
-    try testing.expect(try counter(page, "gc_atomic_mark_us_max") > 0);
-    try testing.expect(try counter(page, "cpp_atomic_us_max") >= 0);
-    try testing.expect(try counter(page, "cpp_atomic_sweep_us_max") >= 0);
-    try testing.expect(try counter(page, "cpp_atomic_weak_us_max") >= 0);
+    // The atomic pause's phases are reported: by V8's metrics recorder in
+    // gc_bench's build, where gcdiag reads them; 0 in this one, whose isolates
+    // have no recorder (v8_wrapper.cpp CRANE_GC_PHASE_METRICS: V8 would keep a
+    // weak global handle per context for it).
+    for ([_][]const u8{ "gc_atomic_us_max", "gc_atomic_mark_us_max", "gc_atomic_weak_us_max", "gc_atomic_compact_us_max", "gc_atomic_sweep_us_max", "cpp_atomic_us_max", "cpp_atomic_mark_us_max", "cpp_atomic_weak_us_max", "cpp_atomic_compact_us_max", "cpp_atomic_sweep_us_max" }) |name| {
+        try testing.expect(try counter(page, name) >= 0);
+    }
     try page.run("globalThis.kept = null;");
     page.fullGC();
 }
@@ -243,7 +249,7 @@ test "wr8 b8: wrapper churn with only scavenges leaves the C++ heap and the anch
     page.fullGC();
     const full_before = try counter(page, "full_gc_count");
     const held_before = try anchorsHeld(page);
-    const cpp_before = try counter(page, "cpp_heap_used_bytes");
+    const cpp_before = liveBytes(page);
     const dropped_before = page.dropped();
 
     // wrapper-churn-nogc's shape: made and dropped at once.
@@ -252,7 +258,7 @@ test "wr8 b8: wrapper churn with only scavenges leaves the C++ heap and the anch
     try page.minorGC(4);
     const dropped = page.dropped() - dropped_before;
     const held = try anchorsHeld(page) - held_before;
-    const cpp = try counter(page, "cpp_heap_used_bytes") - cpp_before;
+    const cpp = liveBytes(page) - cpp_before;
     std.debug.print("wr8 b8 fact: {d} of {d} dropped in scavenges; anchors held +{d}; C++ heap +{d} B ({d:.2} B/elem); freed {d}, frees deferred {d}\n", .{
         dropped,                                                       count,                                   held,                                            cpp,
         @as(f64, @floatFromInt(cpp)) / @as(f64, @floatFromInt(count)), try counter(page, "node_anchors_freed"), try counter(page, "node_anchor_frees_deferred"),
@@ -262,12 +268,12 @@ test "wr8 b8: wrapper churn with only scavenges leaves the C++ heap and the anch
     try testing.expect(dropped >= count - 1000);
     // Every dropped wrapper's anchor is gone from the registry and freed.
     try testing.expect(held < 1000);
-    // ~0 B/element of C++ heap: what cppgc's used bytes count beyond the
-    // objects is its linear allocation buffers (counted whole when taken,
-    // StatsCollector::NotifyAllocation at ReplaceLinearAllocationBuffer) -
-    // two pages' worth at most here, where 50,000 anchors left waiting are
-    // 800 KB.
-    try testing.expect(cpp < 256 * 1024);
+    // ~0 B/element of C++ heap, counted object by object (cpp_heap_used_bytes
+    // counts a whole allocation buffer from the moment it is taken, and an
+    // explicit free only at the next allocation's safepoint): 50,000 anchors
+    // left waiting would be 1.2 MB. Beyond the anchors still held (24 bytes
+    // each), at most a few objects' worth.
+    try testing.expect(cpp < held * 24 + 16 * 1024);
 }
 
 test "wr8 b8: a free refused while the C++ heap is collecting is counted, and its anchor goes with the next full collection - never leaked" {

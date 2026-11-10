@@ -1015,6 +1015,8 @@ pub const NodeAnchorStats = extern struct {
     weak_slots_max: u64 = 0,
     /// The atomic pause's phases as V8 reports them (metrics::Recorder's
     /// GarbageCollectionFullCycle): the whole heap's, then the C++ heap's.
+    /// gc_bench's build only (v8_wrapper.cpp CRANE_GC_PHASE_METRICS); 0 in
+    /// every other.
     atomic_us_max: i64 = 0,
     atomic_mark_us_max: i64 = 0,
     atomic_weak_us_max: i64 = 0,
@@ -2879,6 +2881,10 @@ pub extern fn v8_test_Isolate_MinorGC(isolate: *Isolate, n: u32) void;
 /// (critical memory pressure), after which the C++ heap sweeps lazily; whether
 /// the C++ heap is still collecting when it returns.
 pub extern fn v8_test_Isolate_CollectUnforced(isolate: *Isolate) bool;
+/// tests/v8/wr8_anchor_free_test.zig: the bytes of the objects alive on the
+/// isolate's C++ heap, object by object (cppgc's detailed statistics; it
+/// finishes a running sweep and gives back the allocation buffers first).
+pub extern fn v8_test_CppHeap_LiveBytes(isolate: ?*Isolate) usize;
 
 /// tests/v8: whether V8 drops in a scavenge an unreachable object made from
 /// `tpl`'s instance template - with `prototype` set as its prototype when
