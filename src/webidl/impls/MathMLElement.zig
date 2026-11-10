@@ -80,7 +80,7 @@ pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
     // The complete HTML getter names it; other MathML elements default to -1.
     const data = dom.element_data.of(instance) orelse return -1;
     return if (std.mem.eql(u8, data.namespaceSlice() orelse "", "http://www.w3.org/1998/Math/MathML") and
-        std.mem.eql(u8, data.local_name.asSlice(), "a")) 0 else -1;
+        std.mem.eql(u8, data.localName(), "a")) 0 else -1;
 }
 
 /// Operation: focus: the focusing steps (src/html/focus.zig), as

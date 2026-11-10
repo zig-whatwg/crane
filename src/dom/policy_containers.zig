@@ -160,7 +160,7 @@ fn containerPermissions(container: *runtime.Instance, document: *runtime.Instanc
     const allocator = container.ctx.allocator;
     const data = @import("element_data.zig").of(container) orelse return permissions_policy.PermissionsPolicy.initWithOrigin(allocator, parent_origin);
     if (!std.mem.eql(u8, data.namespaceSlice() orelse "", "http://www.w3.org/1999/xhtml") or
-        !std.mem.eql(u8, data.local_name.asSlice(), "iframe"))
+        !std.mem.eql(u8, data.localName(), "iframe"))
         return permissions_policy.PermissionsPolicy.initWithOrigin(allocator, parent_origin);
     const target = try declaredOrigin(container, document, parent_origin);
     defer target.release();

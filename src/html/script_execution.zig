@@ -2750,8 +2750,8 @@ fn hasNoModuleAttribute(element: *runtime.Instance) bool {
 /// Spec: https://html.spec.whatwg.org/multipage/urls-and-fetching.html#attr-nonce
 fn getNonceAttribute(element: *runtime.Instance) []const u8 {
     const data = dom.element_data.of(element) orelse return "";
-    const namespace = data.namespace_uri orelse return "";
-    return dom.attribute_change_steps.readForAttribute(element, namespace.asSlice(), "nonce") orelse "";
+    const namespace = data.namespaceSlice() orelse return "";
+    return dom.attribute_change_steps.readForAttribute(element, namespace, "nonce") orelse "";
 }
 
 /// Check if element has event attribute (obsolete)

@@ -565,7 +565,7 @@ pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
     // current focusability (disabled and hidden inputs still default to 0).
     const data = element_data.of(instance) orelse return -1;
     const namespace = data.namespaceSlice() orelse return -1;
-    const name = data.local_name.asSlice();
+    const name = data.localName();
     const html_namespace = "http://www.w3.org/1999/xhtml";
     if (std.mem.eql(u8, namespace, html_namespace)) {
         inline for (.{ "a", "area", "button", "frame", "iframe", "input", "object", "select", "textarea" }) |tag| {
@@ -575,13 +575,13 @@ pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
             const parent = (try interfaces.Node.get_parentElement(instance)) orelse return -1;
             const parent_data = element_data.of(parent) orelse return -1;
             if (!std.mem.eql(u8, parent_data.namespaceSlice() orelse "", html_namespace) or
-                !std.mem.eql(u8, parent_data.local_name.asSlice(), "details")) return -1;
+                !std.mem.eql(u8, parent_data.localName(), "details")) return -1;
             // A summary for its parent details is its first summary child.
             var child = try interfaces.Node.get_firstChild(parent);
             while (child) |node| : (child = try interfaces.Node.get_nextSibling(node)) {
                 const child_data = element_data.of(node) orelse continue;
                 if (std.mem.eql(u8, child_data.namespaceSlice() orelse "", html_namespace) and
-                    std.mem.eql(u8, child_data.local_name.asSlice(), "summary")) return if (node == instance) 0 else -1;
+                    std.mem.eql(u8, child_data.localName(), "summary")) return if (node == instance) 0 else -1;
             }
         }
     } else if (std.mem.eql(u8, name, "a") and
@@ -823,7 +823,7 @@ fn fireSyntheticPointerEvent(target: *runtime.Instance, comptime event_type: []c
 /// only through a disabled fieldset ancestor is not recognised here.
 fn isDisabledFormControl(instance: *runtime.Instance) bool {
     const data = element_data.of(instance) orelse return false;
-    const name = data.local_name.asSlice();
+    const name = data.localName();
     const controls = [_][]const u8{ "button", "input", "select", "textarea" };
     for (controls) |control| {
         if (std.mem.eql(u8, name, control)) return element_data.hasAttribute(data, "disabled");

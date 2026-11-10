@@ -2,8 +2,9 @@
 //! every element (lane perf3 D2; tmp/plans/perf3b2-element-data-design.md
 //! section 3 D2).
 //!
-//! Over the 3.04 M elements of the perf pages none had a namespace prefix,
-//! an Attr node, a shadow root, an is value, a NamedNodeMap, a nonce or an
+//! Over the 3.04 M elements of the perf pages none had a namespace prefix
+//! (since lane nd2 N2 the element's name record's, dom.element_name), an
+//! Attr node, a shadow root, an is value, a NamedNodeMap, a nonce or an
 //! `element.style` object, yet every element carried room for all of them:
 //! 104 bytes of Element's InternalState, 40 of its ElementData and 72 of
 //! HTMLElement's. The engines keep such fields apart:
@@ -84,10 +85,9 @@ pub const HTMLElementRareData = struct {
 
 /// The rare fields of one element.
 pub const ElementRareData = struct {
-    /// DOM 4.9: the element's namespace prefix, fixed by "create an element"
-    /// (createElementNS, or a custom element's upgrade); null for none -
-    /// every element the HTML parser makes. ElementData's before D2.
-    prefix: ?runtime.DOMString = null,
+    // The element's namespace prefix, here since D2, is its name record's
+    // since lane nd2 N2 (dom.element_name: Blink's QualifiedName carries it).
+
     /// The Attr nodes script was handed, each by its attribute's name record
     /// (Blink's kAttrNodeList). ElementData's before D2.
     attr_nodes: element_data.AttrNodeList = .{},
@@ -135,12 +135,11 @@ pub const ElementRareData = struct {
         return rare;
     }
 
-    /// Free the block and what it still owns - the prefix, the is value, the
-    /// Attr node list's storage, HTMLElement's part - once Element let go of
+    /// Free the block and what it still owns - the is value, the Attr node
+    /// list's storage, HTMLElement's part - once Element let go of
     /// what its fields refer to (the Attr nodes, the NamedNodeMap, the
     /// shadow root, the definition, the references).
     pub fn destroy(self: *ElementRareData, allocator: std.mem.Allocator, memory: ?*runtime.gc.ExternalMemory) void {
-        if (self.prefix) |*p| p.deinit(allocator);
         if (self.is_value) |*v| v.deinit(allocator);
         self.attr_nodes.deinit(allocator);
         self.html.release(allocator);
@@ -172,9 +171,8 @@ test "a new block is empty, counted while it lives, and frees what it owns" {
     var memory: runtime.gc.ExternalMemory = .{};
     const rare = try ElementRareData.create(allocator, &memory);
     try std.testing.expectEqual(@as(usize, @sizeOf(ElementRareData)), memory.live);
-    try std.testing.expect(rare.prefix == null and rare.shadow_root == null and rare.html.cryptographic_nonce == null);
+    try std.testing.expect(rare.is_value == null and rare.shadow_root == null and rare.html.cryptographic_nonce == null);
 
-    rare.prefix = try runtime.DOMString.initDupe(allocator, "svg");
     rare.is_value = try runtime.DOMString.initDupe(allocator, "x-y");
     rare.html.cryptographic_nonce = try allocator.dupe(u8, "abc");
     const name: element_data.QualifiedName = .{ .local_name = "title" };

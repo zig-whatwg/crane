@@ -93,7 +93,7 @@ test "an Attribute is 24 bytes: its name record's address and its value" {
     }
 }
 
-test "ElementData is 112 bytes: the list out of line, no allocator, the prefix and Attr nodes rare data" {
+test "ElementData is 16 bytes: the list out of line, no allocator, the Attr nodes rare data, the name one record, the ID and classes indices in the list" {
     if (comptime !out_of_line) {
         printLayout(ElementData);
         return error.AttributesStillInline;
@@ -103,8 +103,12 @@ test "ElementData is 112 bytes: the list out of line, no allocator, the prefix a
         // list) + 8 (the Attr nodes) = 152 at D1; D2 moved the prefix (32)
         // and the Attr nodes (8) to the element's rare data
         // (tests/dom/perf3d2_element_rare_data_test.zig): namespace 32, local
-        // name 24, ID 24, classes 24, list 8.
-        try expectSize(ElementData, 112);
+        // name 24, ID 24, classes 24, list 8: 112. Lane nd2 N2 made the
+        // namespace and local name one record pointer (8; the prefix joined
+        // it from rare data): 64 (tests/dom/nd2_element_name_test.zig).
+        // N3 kept the ID and classes as two indices in the list's header
+        // (tests/dom/nd2_id_class_index_test.zig): 16.
+        try expectSize(ElementData, 16);
         inline for (.{ "allocator", "inline_attrs", "inline_attr_count", "heap_attrs" }) |gone| {
             if (@hasField(ElementData, gone)) {
                 std.debug.print("ElementData still has `{s}`\n", .{gone});
@@ -115,7 +119,7 @@ test "ElementData is 112 bytes: the list out of line, no allocator, the prefix a
     }
 }
 
-test "Element's InternalState is 136 bytes" {
+test "Element's InternalState is 40 bytes" {
     // 848 at 5b07812bf00: - 432 (ElementData's diet) = 416 at D1, Element
     // still keeping its 16-byte allocator copy then (in the V8 tests' realms
     // the creation allocator was not the scope's: docs/lessons/
@@ -123,14 +127,16 @@ test "Element's InternalState is 136 bytes" {
     // browser.md); D2 took the copy out and the cold fields into rare data
     // (tests/dom/perf3d2_element_rare_data_test.zig): 240; E1 its registry
     // association (tests/dom/perf3e1_element_registry_test.zig): 200, and
-    // its slottable state (tests/dom/perf3e1_slottable_test.zig): 136.
-    try expectSize(ElementState, 136);
+    // its slottable state (tests/dom/perf3e1_slottable_test.zig): 136; nd2
+    // N2 its name (tests/dom/nd2_element_name_test.zig): 88.
+    // N3 the ID and classes views: 40.
+    try expectSize(ElementState, 40);
     // Kept by value in its element's one State block (perf2 b5, Z7), or in a
     // block of its own before that: either way at most 512 bytes of arena.
     try testing.expect(runtime.ArenaAllocator.heldBytes(@sizeOf(ElementState), @alignOf(ElementState)) <= 512);
 }
 
-test "a div's one block is 360 bytes: perf2 b5's 1,272 less D1's 432, perf2 b6's 104, D2's 264, perf2 b7's 8 and E1's 104" {
+test "a div's one block is 264 bytes: perf2 b5's 1,272 less D1's 432, perf2 b6's 104, D2's 264, perf2 b7's 8, E1's 104 and nd2 N2's and N3's 48 each" {
     // perf2 b5 made a node ONE exact-size State block holding every level's
     // InternalState (1,272 bytes for a div at a67aa1e08e5, Element's 848 of
     // them); D1 takes ElementData's 432 out of it; perf2 b6 the allocator
@@ -139,9 +145,11 @@ test "a div's one block is 360 bytes: perf2 b5's 1,272 less D1's 432, perf2 b6's
     // `_internal` pointers (32); D2 Element's allocator copy and cold fields
     // (176) and HTMLElement's whole state (88); perf2 b7 EventTarget's
     // current event (8, a Window's: in Window's state now); E1 the registry
-    // association (40) and the slottable state (64).
+    // association (40) and the slottable state (64); nd2 N2 the namespace
+    // and local name, one record pointer now (48); N3 the ID and classes
+    // views (48).
     const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 360);
+    try expectSize(S, 264);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
     if (held - @sizeOf(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });
@@ -208,14 +216,14 @@ const Page = struct {
     }
 
     fn expectId(self: *Page, el: *runtime.Instance, expected: []const u8) !void {
-        try testing.expectEqualStrings(expected, (try self.data(el)).id.asSlice());
+        try testing.expectEqualStrings(expected, (try self.data(el)).idValue());
         var id = try interfaces.Element.get_id(el);
         defer id.deinit(self.ctx.allocator);
         try testing.expectEqualStrings(expected, id.asSlice());
     }
 
     fn expectClassName(self: *Page, el: *runtime.Instance, expected: []const u8) !void {
-        try testing.expectEqualStrings(expected, (try self.data(el)).class_name.asSlice());
+        try testing.expectEqualStrings(expected, (try self.data(el)).classValue());
         var class_name = try interfaces.Element.get_className(el);
         defer class_name.deinit(self.ctx.allocator);
         try testing.expectEqualStrings(expected, class_name.asSlice());
@@ -401,7 +409,7 @@ test "known names share a static record; other names have their own; a named nam
     } else {
         const data = try page.data(page.div);
         // The element's namespace is the static string, not a copy.
-        try testing.expect(data.namespace_uri.?.asSlice().ptr == infra.namespaces.HTML_NAMESPACE.ptr);
+        try testing.expect(data.namespaceSlice().?.ptr == infra.namespaces.HTML_NAMESPACE.ptr);
         try interfaces.Element.call_setAttribute(page.div, str("class"), .{ .domstring = str("a") });
         try interfaces.Element.call_setAttribute(page.div, str("onclick"), .{ .domstring = str("") });
         try interfaces.Element.call_setAttribute(page.div, str("aria-label"), .{ .domstring = str("x") });
@@ -426,7 +434,7 @@ test "known names share a static record; other names have their own; a named nam
         // A foreign element's namespace is static too.
         const svg = try interfaces.Document.call_createElementNS(page.document, str(infra.namespaces.SVG_NAMESPACE), str("svg"), .{ .was_passed = false, .value = undefined });
         _ = try interfaces.Node.call_appendChild(page.div, svg);
-        try testing.expect((try page.data(svg)).namespace_uri.?.asSlice().ptr == infra.namespaces.SVG_NAMESPACE.ptr);
+        try testing.expect((try page.data(svg)).namespaceSlice().?.ptr == infra.namespaces.SVG_NAMESPACE.ptr);
     }
 }
 

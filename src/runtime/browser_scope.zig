@@ -143,6 +143,13 @@ pub const BrowserScope = struct {
         intersection_observers,
         navigations,
         processing_instructions,
+        /// dom.element_name.Table: the Browser's interned element names -
+        /// one COUNTED record per qualified name no static table has that an
+        /// element of the Browser names now (lane nd2 N2 and batch 1-fix;
+        /// Blink's QualifiedNameCache, Gecko's nsNodeInfoManager). Weak: a
+        /// record's last element frees it, to the scope's general allocator;
+        /// the table's end frees any left.
+        element_names,
     };
     const table_count = @typeInfo(Table).@"enum".field_names.len;
 
