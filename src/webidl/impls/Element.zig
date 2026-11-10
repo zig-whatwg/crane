@@ -1764,9 +1764,9 @@ pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMS
     // namespace, localName, and this." Getting one maps "" to null.
     const ns: ?[]const u8 = if (namespace) |n| (if (n.len() == 0) null else n.asSlice()) else null;
     // Step 2: "If attr is null, return null."
-    const entry = attrsOf(instance, internal).findAttribute(ns, localName.asSlice()) orelse return null;
+    const value = attrsOf(instance, internal).findValue(ns, localName.asSlice()) orelse return null;
     // Step 3: "Return attr's value."
-    return runtime.DOMString.initInterned(entry.value);
+    return runtime.DOMString.initInterned(value);
 }
 
 /// Operation: getAttribute
@@ -1783,7 +1783,7 @@ pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
     const attributes = attrsOf(instance, internal);
     const index = attributes.indexOfQualifiedName(name.slice) orelse return null;
     // Step 3: "Return attr's value."
-    return runtime.DOMString.initInterned(attributes.attributeAt(index).?.value);
+    return runtime.DOMString.initInterned(attributes.valueAt(index).?);
 }
 
 /// Operation: hasAttribute

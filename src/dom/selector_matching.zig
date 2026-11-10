@@ -27,7 +27,6 @@ const selector = @import("selector");
 const NodeBase = @import("node_base.zig").NodeBase;
 const instance_bridge = @import("instance_bridge.zig");
 const element_data = @import("element_data.zig");
-const dom_attribute_values = @import("attribute_values.zig");
 /// A reader's view of an element's data: its attributes' ids decode with its
 /// Browser's tables (lane nd2 batch 2). Passed by value.
 const ElementData = element_data.View;
@@ -718,13 +717,6 @@ const Matcher = struct {
     /// the per-element dynamic state a match read is recorded.
     pseudo_target: ?[]const u8 = null,
     state_reads: ?*StateReads = null,
-    /// The Browser of every node the query visits - the scoping root's - and
-    /// its attribute values table, found once (lane nd2 batch 2): a visit
-    /// decodes the ID and classes with no address lookup and no table load
-    /// (`dataIn`, `hasClass`, `idIs`). A table made after `init` (none is:
-    /// matching interns nothing) is looked up afresh.
-    browser: ?*runtime.BrowserScope = null,
-    values_table: ?*const dom_attribute_values.Table = null,
 
     fn init(scope: *NodeBase, scope_instance: *runtime.Instance) Matcher {
         const document: ?*runtime.Instance = if (scope.node_type == DOCUMENT_NODE)
@@ -743,16 +735,7 @@ const Matcher = struct {
             matcher.shadow_root = root;
             matcher.shadow_host = hostOf(root);
         }
-        const browser = runtime.BrowserScope.ofInstance(scope_instance);
-        matcher.browser = browser;
-        matcher.values_table = dom_attribute_values.tableOf(browser);
         return matcher;
-    }
-
-    /// `dataOf`, with the Browser and tables found at `init`.
-    fn dataIn(self: *const Matcher, node: *NodeBase) ?ElementData {
-        const browser = self.browser orelse return dataOf(node);
-        return element_data.ofIn(instanceOf(node) orelse return null, browser);
     }
 
     /// querySelector's candidates are the scope's descendants. A selector of
@@ -763,10 +746,10 @@ const Matcher = struct {
             .none => self.matchesList(.{ .node = node }, list),
             .filtered => |filter| self.passesFilter(node, filter) and self.matchesList(.{ .node = node }, list),
             .all => true,
-            .tag => |tag| if (self.dataIn(node)) |data| self.matchesType(data, tag.name, tag.lower_name, .any) else false,
-            .class => |name| if (self.dataIn(node)) |data| self.hasClass(data, name) else false,
-            .id => |id| if (self.dataIn(node)) |data| self.idIs(data, id) else false,
-            .attribute => |attribute| if (self.dataIn(node)) |data| self.matchesAttribute(data, attribute) else false,
+            .tag => |tag| if (dataOf(node)) |data| self.matchesType(data, tag.name, tag.lower_name, .any) else false,
+            .class => |name| if (dataOf(node)) |data| self.hasClass(data, name) else false,
+            .id => |id| if (dataOf(node)) |data| self.idIs(data, id) else false,
+            .attribute => |attribute| if (dataOf(node)) |data| self.matchesAttribute(data, attribute) else false,
         };
     }
 
@@ -775,7 +758,7 @@ const Matcher = struct {
     /// rejected without the full matcher (WebKit's SelectorDataList does the
     /// same with the rightmost compound).
     fn passesFilter(self: *const Matcher, node: *NodeBase, filter: SubjectFilter) bool {
-        const data = self.dataIn(node) orelse return false;
+        const data = dataOf(node) orelse return false;
         return switch (filter) {
             .tag => |tag| self.matchesType(data, tag.name, tag.lower_name, .any),
             .class => |name| self.hasClass(data, name),
@@ -894,7 +877,7 @@ const Matcher = struct {
         // `*` alone matches every element, with no element data to read.
         if (compound.simple_selectors.len == 1 and compound.simple_selectors[0] == .Universal and
             compound.simple_selectors[0].Universal.namespace == .any) return true;
-        const data = self.dataIn(subject.node) orelse return false;
+        const data = dataOf(subject.node) orelse return false;
         for (compound.simple_selectors) |*simple| {
             if (!self.matchesSimple(subject.node, data, simple)) return false;
         }
@@ -975,11 +958,11 @@ const Matcher = struct {
     /// Selectors 4 6.6: one of the element's classes (its class attribute
     /// split on ASCII whitespace) is `name`.
     fn hasClass(self: *const Matcher, data: ElementData, name: []const u8) bool {
-        return classListHas(data.classValueIn(self.values_table), name, self.quirks);
+        return classListHas(data.classValue(), name, self.quirks);
     }
 
     fn idIs(self: *const Matcher, data: ElementData, id: []const u8) bool {
-        const own = data.idValueIn(self.values_table);
+        const own = data.idValue();
         return if (self.quirks) std.ascii.eqlIgnoreCase(own, id) else std.mem.eql(u8, own, id);
     }
 

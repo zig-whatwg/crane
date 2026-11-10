@@ -730,6 +730,20 @@ pub const View = struct {
         return self.tables().view(entry);
     }
 
+    /// The VALUE of the attribute at `index`, or null past the end: one
+    /// table read, no name decoded (getAttribute's step 3).
+    pub fn valueAt(self: View, index: usize) ?[]const u8 {
+        const entry = self.data.storedAt(index) orelse return null;
+        return attribute_values.bytesIn(self.valuesTable(), entry.value);
+    }
+
+    /// The value of the attribute whose namespace is `namespace_uri` and
+    /// local name is `local_name`, or null: `findAttribute`'s value alone.
+    pub fn findValue(self: View, namespace_uri: ?[]const u8, local_name: []const u8) ?[]const u8 {
+        const index = self.indexOfAttribute(namespace_uri, local_name) orelse return null;
+        return attribute_values.bytesIn(self.valuesTable(), self.data.stored()[index].value);
+    }
+
     /// A count on the records of the attribute whose namespace is
     /// `namespace_uri` and local name is `local_name` - for a holder whose
     /// span crosses a point where script can run (`Hold`) - or null when
@@ -793,12 +807,14 @@ pub fn getAttributeByNamespaceAndLocalName(data: View, namespace: ?[]const u8, l
 pub fn getAttributeValue(data: View, local_name: []const u8, namespace: ?[]const u8) []const u8 {
     // Step 1: "Let attr be the result of getting an attribute given
     // namespace, localName, and element."
-    const attr = getAttributeByNamespaceAndLocalName(data, namespace, local_name) orelse {
+    // (getAttributeByNamespaceAndLocalName's steps, its value alone read.)
+    const ns: ?[]const u8 = if (namespace) |n| (if (n.len == 0) null else n) else null;
+    const value = data.findValue(ns, local_name) orelse {
         // Step 2: "If attr is null, then return the empty string."
         return "";
     };
     // Step 3: "Return attr's value."
-    return attr.value;
+    return value;
 }
 
 /// Whether the element has an attribute in no namespace with this local name
