@@ -49,9 +49,14 @@ pub const BridgeContext = struct {
 /// `.node_bases`, instances B1). The Instance -> NodeBase answer is the node's
 /// own (`getNodeBase`); what is left here is counted.
 ///
-/// Read from every thread of the Browser - the wrapper cache asks
-/// `getNodeBase` about every platform object, a worker's included - so the
-/// counts are atomic.
+/// The counts are atomic. They were made so when the V8 wrapper cache asked
+/// `getNodeBase` about every platform object, a worker's included (lane
+/// tsanfix1, `dead_slot_lookups` below). Since the wrapper redesign that is
+/// no longer so: every adapter call is gated on `vtable.counted` first
+/// (node_wrappers.zig `targetOf`, wrapper_cache.zig), and a worker reaches
+/// no node through the adapter (the deep review's appendix-wr1 F10). A
+/// caller on another thread that holds a stale instance still lands in
+/// `dead_slot_lookups`, so the atomics stay.
 pub const Bridge = struct {
     /// How many nodes are registered: made and not yet torn down
     /// (`entryCount`).
