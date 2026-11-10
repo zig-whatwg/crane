@@ -403,8 +403,15 @@ step_smoke() {
   cp -R "$V8/include" "$inc"
   cp "$V8/$OUT/gen/include/v8-gn.h" "$inc/v8-gn.h"
   smoke_source > "$t/smoke.cc"
+  # Zig's form of GN's consumer flags: Zig puts its own -isystem directories (clang's builtins, the
+  # SDK's usr/include) BEFORE any the command line adds (`zig cc -###`), so libc++'s two directories
+  # given as -isystem come after the C library's and <cstdio> finds the SDK's <stdio.h> instead of
+  # libc++'s ("tried including <stdio.h> but didn't find libc++'s"). As -I they are searched before
+  # every -isystem directory, which is the order GN's driver gets from -isystem + -isysroot.
   local flags=()
-  while IFS= read -r f; do flags+=("$f"); done < "$V8/$OUT/libcxx-flags.txt"
+  while IFS= read -r f; do
+    if [ "$f" = -isystem ]; then flags+=(-I); else flags+=("$f"); fi
+  done < "$V8/$OUT/libcxx-flags.txt"
   local rc=0
   # Compile as Crane compiles v8_wrapper.cpp (C++20, no exceptions, no RTTI), but against Chromium's
   # libc++ (the consumer flags) and with the archive's own V8/cppgc defines (v8-gn.h).
