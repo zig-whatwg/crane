@@ -162,7 +162,7 @@ test "a released heap's window faults, as a stale pointer into the Browser would
     try testing.expect(try faultsReading(header));
 }
 
-test "8 heaps at once on 8 threads are disjoint, and 1,000 in sequence leave nothing reserved" {
+test "8 heaps at once on 8 threads are disjoint, and 2,200 in sequence each give their reservation back" {
     defer Heap.releaseKeptReservations();
     const Worker = struct {
         fn run(base: *usize, failed: *bool) void {
@@ -186,17 +186,17 @@ test "8 heaps at once on 8 threads are disjoint, and 1,000 in sequence leave not
     for (failed) |f| try testing.expect(!f);
     for (bases, 0..) |a, i| for (bases[i + 1 ..]) |b| try testing.expect(a != b);
 
-    const before = vmSize();
-    for (0..1000) |_| {
+    // 2,200 windows of 64 GiB are 137.5 TiB: more than a process's whole
+    // address space on either OS (macOS 127.5 TiB, Linux 128 TiB, measured in
+    // arch 4.3). If any one end kept its reservation, a later start would
+    // find no room. The process's own VA total is not compared: it is every
+    // Browser's in the process (lesson
+    // testing-a-test-that-measures-a-process-wide-counter-assumes-it-is-alone.md).
+    for (0..2200) |_| {
         var scope = BrowserScope.init(testing.allocator);
+        defer scope.deinit();
         try scope.reserveHeap(platform, null);
-        scope.deinit();
-    }
-    Heap.releaseKeptReservations();
-    if (before) |b| {
-        // Linux: every reservation went back (the graveyard emptied).
-        const after = vmSize().?;
-        try testing.expect(after < b + Heap.layout.window_bytes);
+        try testing.expectEqual(Heap.Rung.full, scope.heap.?.rung);
     }
 }
 

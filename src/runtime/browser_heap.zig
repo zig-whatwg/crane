@@ -571,23 +571,27 @@ pub const BrowserHeap = extern struct {
     /// `allocator` and nothing is reserved.
     pub fn reserve(platform: *const Platform, allocator: Allocator, browser: ?*anyopaque) Error!*BrowserHeap {
         const seed = generationSeed(platform, browser);
-        if (comptime profile == .pointer32) {
-            const heap = allocator.create(BrowserHeap) catch return error.OutOfMemory;
-            heap.* = .{
-                .platform = platform,
-                .window_base = 0,
-                .reserved = .{ .base = 0, .size = 0 },
-                .rung = .unreserved,
-                .general_pools = false,
-                .cage_lo = 0,
-                .cage_hi = 0,
-                .generation_seed = seed,
-                .committed_bytes = 0,
-            };
-            return heap;
+        switch (profile) {
+            .pointer32 => {
+                const heap = allocator.create(BrowserHeap) catch return error.OutOfMemory;
+                heap.* = .{
+                    .platform = platform,
+                    .window_base = 0,
+                    .reserved = .{ .base = 0, .size = 0 },
+                    .rung = .unreserved,
+                    .general_pools = false,
+                    .cage_lo = 0,
+                    .cage_hi = 0,
+                    .generation_seed = seed,
+                    .committed_bytes = 0,
+                };
+                return heap;
+            },
+            .full, .small => {
+                if (!platform.supported) return error.NotSupported;
+                return reserveIn(layout, platform, seed);
+            },
         }
-        if (!platform.supported) return error.NotSupported;
-        return reserveIn(layout, platform, seed);
     }
 
     /// The ladder, over a layout (tests run it over both geometries).
@@ -610,6 +614,7 @@ pub const BrowserHeap = extern struct {
     const Step = struct { rung: Rung, start: u64, end: u64, cage_lo: u64 };
 
     fn ladderOf(comptime l: Layout) []const Step {
+        if (l.geometry.profile == .pointer32) @compileError("pointer32 reserves nothing");
         var steps: []const Step = &.{};
         if (l.geometry.profile == .full) steps = steps ++ [_]Step{.{ .rung = .full, .start = 0, .end = l.window_bytes, .cage_lo = 0 }};
         steps = steps ++ [_]Step{.{ .rung = .cage_alone, .start = 0, .end = l.cage_alone_end, .cage_lo = 0 }};
@@ -664,10 +669,13 @@ pub const BrowserHeap = extern struct {
     /// address; Mozilla's aged graveyard, bug 1979830). Called last at the
     /// scope's end, after everything that names the heap.
     pub fn release(heap: *BrowserHeap, allocator: Allocator) void {
-        if (comptime profile == .pointer32) {
-            allocator.destroy(heap);
-            return;
+        switch (profile) {
+            .pointer32 => allocator.destroy(heap),
+            .full, .small => heap.releaseReservation(),
         }
+    }
+
+    fn releaseReservation(heap: *BrowserHeap) void {
         const platform = heap.platform;
         const range = heap.reserved;
         const header_in_range = @intFromPtr(heap) - range.base;

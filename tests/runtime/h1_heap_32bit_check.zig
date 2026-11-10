@@ -38,3 +38,11 @@ export fn h1_link_eql(value: u32, target: ?*const u64, holder: *const anyopaque)
 export fn h1_heap_of(ptr: *const anyopaque) *heap.BrowserHeap {
     return heap.heapOf(ptr);
 }
+
+// The reservation and release paths, analyzed for a 32-bit target (no C ABI
+// for an Allocator, so referenced rather than exported).
+comptime {
+    _ = &heap.BrowserHeap.reserve;
+    _ = &heap.BrowserHeap.release;
+    _ = &heap.BrowserHeap.commit;
+}
