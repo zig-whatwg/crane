@@ -72,10 +72,6 @@ pub const XRRigidTransform = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            position: *runtime.Instance = undefined,
-            orientation: *runtime.Instance = undefined,
-            matrix: runtime.Float32Array = undefined,
-            inverse: *runtime.Instance = undefined,
             cached_position: ?*runtime.Instance = null,
             cached_orientation: ?*runtime.Instance = null,
             cached_inverse: ?*runtime.Instance = null,

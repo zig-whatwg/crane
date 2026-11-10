@@ -78,8 +78,6 @@ pub const NDEFReadingEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            serialNumber: runtime.DOMString = undefined,
-            message: *runtime.Instance = undefined,
             cached_message: ?*runtime.Instance = null,
             _internal: ?*NDEFReadingEventImpl.InternalState = null,
         },

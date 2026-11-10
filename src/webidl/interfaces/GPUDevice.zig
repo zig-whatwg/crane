@@ -170,13 +170,6 @@ pub const GPUDevice = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            features: *runtime.Instance = undefined,
-            limits: *runtime.Instance = undefined,
-            adapterInfo: *runtime.Instance = undefined,
-            queue: *runtime.Instance = undefined,
-            lost: runtime.JSValue = undefined,
-            onuncapturederror: typedefs.EventHandler = undefined,
-            label: runtime.USVString = undefined,
             cached_features: ?*runtime.Instance = null,
             cached_limits: ?*runtime.Instance = null,
             cached_adapterInfo: ?*runtime.Instance = null,

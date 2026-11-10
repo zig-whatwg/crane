@@ -57,8 +57,6 @@ pub const SVGAnimatedInteger = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            baseVal: i32 = undefined,
-            animVal: i32 = undefined,
             _internal: ?*SVGAnimatedIntegerImpl.InternalState = null,
         },
     );

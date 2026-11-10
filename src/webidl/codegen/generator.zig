@@ -1837,7 +1837,13 @@ fn generateInterfaceFile(
         .interface_name = interface.name,
         .element = if (ir) |model| isElementInterface(model, interface.name) else false,
     };
-    try writer.writeGeneratedState(w, own_attrs.items, impl_name, type_registry, .{ .attribute_storage = attribute_storage, .owner = same_object_owner });
+    try writer.writeGeneratedState(w, own_attrs.items, impl_name, type_registry, .{
+        .attribute_storage = attribute_storage,
+        // Only the slots its impl stores attributes in (writer.stateSlotsOf;
+        // lane cg1, step 2).
+        .slots = if (ir != null) writer.stateSlotsOf(interface.name) else null,
+        .owner = same_object_owner,
+    });
 
     // Generate constant getters (static functions returning const values)
     // Only generate OWN constants - inherited constants accessed via parent vtable

@@ -105,15 +105,6 @@ pub const EditContext = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            text: runtime.DOMString = undefined,
-            selectionStart: u32 = undefined,
-            selectionEnd: u32 = undefined,
-            characterBoundsRangeStart: u32 = undefined,
-            ontextupdate: typedefs.EventHandler = undefined,
-            ontextformatupdate: typedefs.EventHandler = undefined,
-            oncharacterboundsupdate: typedefs.EventHandler = undefined,
-            oncompositionstart: typedefs.EventHandler = undefined,
-            oncompositionend: typedefs.EventHandler = undefined,
             _internal: ?*EditContextImpl.InternalState = null,
         },
     );

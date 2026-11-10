@@ -77,11 +77,6 @@ pub const ViewTransition = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            updateCallbackDone: runtime.JSValue = undefined,
-            ready: runtime.JSValue = undefined,
-            finished: runtime.JSValue = undefined,
-            types: *runtime.Instance = undefined,
-            transitionRoot: *runtime.Instance = undefined,
             cached_types: ?*runtime.Instance = null,
             _internal: ?*ViewTransitionImpl.InternalState = null,
         },

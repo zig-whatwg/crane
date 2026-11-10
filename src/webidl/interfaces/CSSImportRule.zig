@@ -82,11 +82,6 @@ pub const CSSImportRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            href: runtime.USVString = undefined,
-            media: *runtime.Instance = undefined,
-            styleSheet: ?*runtime.Instance = null,
-            layerName: ?typedefs.CSSOMString = null,
-            supportsText: ?typedefs.CSSOMString = null,
             cached_media: ?*runtime.Instance = null,
             cached_styleSheet: ?*runtime.Instance = null,
             _internal: ?*CSSImportRuleImpl.InternalState = null,

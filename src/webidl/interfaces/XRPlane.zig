@@ -74,11 +74,6 @@ pub const XRPlane = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            planeSpace: *runtime.Instance = undefined,
-            polygon: runtime.JSValue = undefined,
-            orientation: ?enums.XRPlaneOrientation = null,
-            lastChangedTime: typedefs.DOMHighResTimeStamp = undefined,
-            semanticLabel: ?runtime.DOMString = null,
             cached_planeSpace: ?*runtime.Instance = null,
             _internal: ?*XRPlaneImpl.InternalState = null,
         },

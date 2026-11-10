@@ -94,9 +94,6 @@ pub const StorageBucket = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            indexedDB: *runtime.Instance = undefined,
-            caches: *runtime.Instance = undefined,
             cached_indexedDB: ?*runtime.Instance = null,
             cached_caches: ?*runtime.Instance = null,
             _internal: ?*StorageBucketImpl.InternalState = null,

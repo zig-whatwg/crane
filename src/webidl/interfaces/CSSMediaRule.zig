@@ -79,8 +79,6 @@ pub const CSSMediaRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            media: *runtime.Instance = undefined,
-            matches: bool = undefined,
             cached_media: ?*runtime.Instance = null,
             _internal: ?*CSSMediaRuleImpl.InternalState = null,
         },

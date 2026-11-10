@@ -76,7 +76,6 @@ pub const PresentationConnectionAvailableEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            connection: *runtime.Instance = undefined,
             cached_connection: ?*runtime.Instance = null,
             _internal: ?*PresentationConnectionAvailableEventImpl.InternalState = null,
         },

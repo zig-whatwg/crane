@@ -72,11 +72,6 @@ pub const XRMesh = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            meshSpace: *runtime.Instance = undefined,
-            vertices: runtime.Float32Array = undefined,
-            indices: runtime.Uint32Array = undefined,
-            lastChangedTime: typedefs.DOMHighResTimeStamp = undefined,
-            semanticLabel: ?runtime.DOMString = null,
             cached_meshSpace: ?*runtime.Instance = null,
             _internal: ?*XRMeshImpl.InternalState = null,
         },

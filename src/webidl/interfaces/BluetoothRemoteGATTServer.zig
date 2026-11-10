@@ -77,8 +77,6 @@ pub const BluetoothRemoteGATTServer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            device: *runtime.Instance = undefined,
-            connected: bool = undefined,
             cached_device: ?*runtime.Instance = null,
             _internal: ?*BluetoothRemoteGATTServerImpl.InternalState = null,
         },

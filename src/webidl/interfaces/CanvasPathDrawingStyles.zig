@@ -66,11 +66,6 @@ pub const CanvasPathDrawingStyles = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            lineWidth: f64 = undefined,
-            lineCap: enums.CanvasLineCap = undefined,
-            lineJoin: enums.CanvasLineJoin = undefined,
-            miterLimit: f64 = undefined,
-            lineDashOffset: f64 = undefined,
             _internal: ?*CanvasPathDrawingStylesImpl.InternalState = null,
         },
     );

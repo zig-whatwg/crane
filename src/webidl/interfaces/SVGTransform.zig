@@ -92,9 +92,6 @@ pub const SVGTransform = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: u16 = undefined,
-            matrix: typedefs.SVGMatrix = undefined,
-            angle: f32 = undefined,
             cached_matrix: ?SVGMatrix = null,
             _internal: ?*SVGTransformImpl.InternalState = null,
         },

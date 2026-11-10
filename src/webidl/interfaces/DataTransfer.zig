@@ -84,11 +84,6 @@ pub const DataTransfer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dropEffect: runtime.DOMString = undefined,
-            effectAllowed: runtime.DOMString = undefined,
-            items: *runtime.Instance = undefined,
-            types: runtime.JSValue = undefined,
-            files: *runtime.Instance = undefined,
             cached_items: ?*runtime.Instance = null,
             cached_files: ?*runtime.Instance = null,
             _internal: ?*DataTransferImpl.InternalState = null,

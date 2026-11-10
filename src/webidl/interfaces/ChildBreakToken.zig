@@ -59,8 +59,6 @@ pub const ChildBreakToken = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            breakType: enums.BreakType = undefined,
-            child: *runtime.Instance = undefined,
             _internal: ?*ChildBreakTokenImpl.InternalState = null,
         },
     );

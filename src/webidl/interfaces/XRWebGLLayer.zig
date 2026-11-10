@@ -102,12 +102,6 @@ pub const XRWebGLLayer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            antialias: bool = undefined,
-            ignoreDepthValues: bool = undefined,
-            fixedFoveation: ?f32 = null,
-            framebuffer: ?*runtime.Instance = null,
-            framebufferWidth: u32 = undefined,
-            framebufferHeight: u32 = undefined,
             cached_framebuffer: ?*runtime.Instance = null,
             _internal: ?*XRWebGLLayerImpl.InternalState = null,
         },

@@ -84,7 +84,6 @@ pub const ModelContext = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ontoolchange: typedefs.EventHandler = undefined,
             _internal: ?*ModelContextImpl.InternalState = null,
         },
     );

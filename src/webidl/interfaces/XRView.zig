@@ -98,13 +98,6 @@ pub const XRView = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            eye: enums.XREye = undefined,
-            index: u32 = undefined,
-            recommendedViewportScale: ?f64 = null,
-            camera: ?*runtime.Instance = null,
-            isFirstPersonObserver: bool = undefined,
-            projectionMatrix: runtime.Float32Array = undefined,
-            transform: *runtime.Instance = undefined,
             cached_camera: ?*runtime.Instance = null,
             cached_transform: ?*runtime.Instance = null,
             _internal: ?*XRViewImpl.InternalState = null,

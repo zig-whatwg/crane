@@ -1714,6 +1714,9 @@ pub const AttributeStorage = enum {
 
 pub const StateOptions = struct {
     attribute_storage: AttributeStorage = .state,
+    /// With `.attribute_storage = .state`: the only attributes that get a
+    /// slot (`stateSlotsOf`); null gives every attribute one.
+    slots: ?[]const []const u8 = null,
     /// Whose State it is: an element's family-wide [SameObject] caches live
     /// in its rare data, not here (`sameObjectPlace`).
     owner: SameObjectOwner = .{},
@@ -1732,9 +1735,84 @@ pub const StateOptions = struct {
 /// its family; a remaining reader is a compile error.
 const attribute_storage_family_roots = [_][]const u8{"Node"};
 
-/// Whether `interface_name` is a family root above or inherits from one,
-/// along the IR's inheritance chain (the one Meta.ParentInterface encodes):
-/// its generated State keeps no attribute slots (`AttributeStorage.impl`).
+/// The attribute slots impls store attributes in (lane cg1 batch 1, step 2):
+/// a generated State keeps these and no other. The compile proof - every
+/// slot of every interface dropped, then the runners, every test binary,
+/// test-browser, gc_bench and the console compiled, again until no error was
+/// left (Zig reports one error per function body) - named 223 slots read or
+/// written, in 47 impls and one test, on these 44 interfaces' own levels. The
+/// other 3,380 of the 3,603 generated slots (829 States, mixin modules
+/// included: 44,954 bytes of own levels) were memory each object paid and
+/// nothing read - CSSStyleProperties' cssText 24 + length 4 + parentRule 8 +
+/// cssFloat 24 of its 72 bytes, Event's srcElement, currentTarget,
+/// eventPhase and isTrusted. An IDL attribute is an accessor (WebIDL 3.7.6):
+/// its getter runs the impl's steps, which compute the value or read the
+/// impl's own storage. A read of a slot not listed here is a compile error;
+/// an impl that stores a new attribute in its State adds it here. A listed
+/// slot only written (Event's cancelBubble, written by its descendants'
+/// inits) is the impl owners' to remove with its writes.
+pub const StateSlots = struct { interface: []const u8, attributes: []const []const u8 };
+const state_storage_slots = [_]StateSlots{
+    .{ .interface = "AnimationEvent", .attributes = &.{ "animationName", "elapsedTime", "pseudoElement", "animation" } },
+    .{ .interface = "AnimationPlaybackEvent", .attributes = &.{ "currentTime", "timelineTime" } },
+    .{ .interface = "BeforeUnloadEvent", .attributes = &.{"returnValue"} },
+    .{ .interface = "CloseEvent", .attributes = &.{ "wasClean", "code", "reason" } },
+    .{ .interface = "DOMMatrixReadOnly", .attributes = &.{ "m11", "m12", "m13", "m14", "m21", "m22", "m23", "m24", "m31", "m32", "m33", "m34", "m41", "m42", "m43", "m44", "is2D" } },
+    .{ .interface = "DOMPointReadOnly", .attributes = &.{ "x", "y", "z", "w" } },
+    .{ .interface = "DOMQuad", .attributes = &.{ "p1", "p2", "p3", "p4" } },
+    .{ .interface = "DOMRectList", .attributes = &.{"length"} },
+    .{ .interface = "DOMRectReadOnly", .attributes = &.{ "x", "y", "width", "height" } },
+    .{ .interface = "DOMTokenList", .attributes = &.{ "length", "value" } },
+    .{ .interface = "ElementInternals", .attributes = &.{ "role", "ariaAtomic", "ariaAutoComplete", "ariaBrailleLabel", "ariaBrailleRoleDescription", "ariaBusy", "ariaChecked", "ariaColCount", "ariaColIndex", "ariaColIndexText", "ariaColSpan", "ariaCurrent", "ariaDescription", "ariaDisabled", "ariaExpanded", "ariaHasPopup", "ariaHidden", "ariaInvalid", "ariaKeyShortcuts", "ariaLabel", "ariaLevel", "ariaLive", "ariaModal", "ariaMultiLine", "ariaMultiSelectable", "ariaOrientation", "ariaPlaceholder", "ariaPosInSet", "ariaPressed", "ariaReadOnly", "ariaRelevant", "ariaRequired", "ariaRoleDescription", "ariaRowCount", "ariaRowIndex", "ariaRowIndexText", "ariaRowSpan", "ariaSelected", "ariaSetSize", "ariaSort", "ariaValueMax", "ariaValueMin", "ariaValueNow", "ariaValueText" } },
+    .{ .interface = "Event", .attributes = &.{ "type", "cancelBubble", "bubbles", "cancelable", "returnValue", "defaultPrevented", "composed", "timeStamp" } },
+    .{ .interface = "FetchLaterResult", .attributes = &.{"activated"} },
+    .{ .interface = "HTMLCollection", .attributes = &.{"length"} },
+    .{ .interface = "HashChangeEvent", .attributes = &.{ "oldURL", "newURL" } },
+    .{ .interface = "IntersectionObserver", .attributes = &.{ "rootMargin", "scrollMargin", "delay", "trackVisibility" } },
+    .{ .interface = "IntersectionObserverEntry", .attributes = &.{ "time", "rootBounds", "boundingClientRect", "intersectionRect", "isIntersecting", "isVisible", "intersectionRatio", "target" } },
+    .{ .interface = "MediaError", .attributes = &.{ "code", "message" } },
+    .{ .interface = "MediaQueryListEvent", .attributes = &.{ "media", "matches" } },
+    .{ .interface = "MessageChannel", .attributes = &.{ "port1", "port2" } },
+    .{ .interface = "MessageEvent", .attributes = &.{ "data", "origin", "lastEventId", "source", "ports" } },
+    .{ .interface = "MouseEvent", .attributes = &.{ "screenX", "screenY", "clientX", "clientY", "layerX", "layerY", "ctrlKey", "shiftKey", "altKey", "metaKey", "button", "buttons", "pageX", "pageY", "x", "y", "offsetX", "offsetY", "movementX", "movementY" } },
+    .{ .interface = "NamedNodeMap", .attributes = &.{"length"} },
+    .{ .interface = "NavigateEvent", .attributes = &.{ "navigationType", "destination", "canIntercept", "userInitiated", "hashChange", "signal", "formData", "downloadRequest", "info", "hasUAVisualTransition", "sourceElement" } },
+    .{ .interface = "NavigationCurrentEntryChangeEvent", .attributes = &.{ "navigationType", "from" } },
+    .{ .interface = "NavigationTransition", .attributes = &.{ "navigationType", "from", "to", "committed", "finished" } },
+    .{ .interface = "NodeList", .attributes = &.{"length"} },
+    .{ .interface = "PageRevealEvent", .attributes = &.{"viewTransition"} },
+    .{ .interface = "PageSwapEvent", .attributes = &.{ "activation", "viewTransition" } },
+    .{ .interface = "PageTransitionEvent", .attributes = &.{"persisted"} },
+    .{ .interface = "PointerEvent", .attributes = &.{ "pointerId", "width", "height", "pressure", "tangentialPressure", "tiltX", "tiltY", "twist", "altitudeAngle", "azimuthAngle", "pointerType", "isPrimary", "persistentDeviceId" } },
+    .{ .interface = "PopStateEvent", .attributes = &.{ "state", "hasUAVisualTransition" } },
+    .{ .interface = "ProgressEvent", .attributes = &.{ "lengthComputable", "loaded", "total" } },
+    .{ .interface = "QuotaExceededError", .attributes = &.{ "quota", "requested" } },
+    .{ .interface = "Request", .attributes = &.{ "signal", "body" } },
+    .{ .interface = "Response", .attributes = &.{"body"} },
+    .{ .interface = "SecurityPolicyViolationEvent", .attributes = &.{ "documentURI", "referrer", "blockedURI", "effectiveDirective", "violatedDirective", "originalPolicy", "sourceFile", "sample", "disposition", "statusCode", "lineNumber", "columnNumber" } },
+    .{ .interface = "TextDecoder", .attributes = &.{ "encoding", "fatal", "ignoreBOM" } },
+    .{ .interface = "TextEncoder", .attributes = &.{"encoding"} },
+    .{ .interface = "TimeRanges", .attributes = &.{"length"} },
+    .{ .interface = "TransitionEvent", .attributes = &.{ "propertyName", "elapsedTime", "pseudoElement", "animation" } },
+    .{ .interface = "UIEvent", .attributes = &.{ "view", "detail", "sourceCapabilities", "which" } },
+    .{ .interface = "WebSocket", .attributes = &.{ "url", "readyState", "bufferedAmount", "extensions", "protocol", "binaryType" } },
+    .{ .interface = "WheelEvent", .attributes = &.{ "deltaX", "deltaY", "deltaZ", "deltaMode" } },
+};
+
+/// The slots `interface_name`'s State keeps, or null when its impl keeps
+/// every attribute's storage itself.
+pub fn stateSlotsOf(interface_name: []const u8) ?[]const []const u8 {
+    for (state_storage_slots) |entry| {
+        if (std.mem.eql(u8, entry.interface, interface_name)) return entry.attributes;
+    }
+    return null;
+}
+
+/// Whether `interface_name`'s impl keeps every attribute's storage itself,
+/// so its generated State keeps no attribute slots (`AttributeStorage.impl`):
+/// a Node-family interface (a family root above, or one inheriting from it,
+/// along the IR's inheritance chain - the one Meta.ParentInterface encodes),
+/// and every interface `state_storage_slots` does not list.
 pub fn implKeepsAttributeStorage(model: *const ir.IR, interface_name: []const u8) bool {
     var name = interface_name;
     // A chain is a handful deep; the bound only stops a malformed cycle.
@@ -1742,10 +1820,10 @@ pub fn implKeepsAttributeStorage(model: *const ir.IR, interface_name: []const u8
         for (attribute_storage_family_roots) |root| {
             if (std.mem.eql(u8, name, root)) return true;
         }
-        const iface = model.interfaces.get(name) orelse return false;
-        name = iface.inheritance orelse return false;
+        const iface = model.interfaces.get(name) orelse break;
+        name = iface.inheritance orelse break;
     }
-    return false;
+    return stateSlotsOf(interface_name) == null;
 }
 
 /// Does this interface's impl own its event handlers, rather than storing them in
@@ -1932,6 +2010,13 @@ pub fn writeGeneratedState(
 
             // The impl keeps every attribute's storage; see implKeepsAttributeStorage.
             if (options.attribute_storage == .impl) continue;
+            // Or that of every attribute but these (stateSlotsOf).
+            if (options.slots) |slots| {
+                const kept = for (slots) |name| {
+                    if (std.mem.eql(u8, name, attr.name)) break true;
+                } else false;
+                if (!kept) continue;
+            }
 
             // Skip event-handler slots the impl owns; see implOwnsEventHandlers.
             if (implOwnsEventHandlers(impl_name) and

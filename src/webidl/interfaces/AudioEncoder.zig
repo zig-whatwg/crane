@@ -101,9 +101,6 @@ pub const AudioEncoder = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            state: enums.CodecState = undefined,
-            encodeQueueSize: u32 = undefined,
-            ondequeue: typedefs.EventHandler = undefined,
             _internal: ?*AudioEncoderImpl.InternalState = null,
         },
     );

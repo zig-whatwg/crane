@@ -79,7 +79,6 @@ pub const GPUUncapturedErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"error": *runtime.Instance = undefined,
             cached_error: ?*runtime.Instance = null,
             _internal: ?*GPUUncapturedErrorEventImpl.InternalState = null,
         },

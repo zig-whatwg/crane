@@ -50,7 +50,6 @@ pub const NavigatorCookies = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cookieEnabled: bool = undefined,
             _internal: ?*NavigatorCookiesImpl.InternalState = null,
         },
     );

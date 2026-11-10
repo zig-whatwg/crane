@@ -74,18 +74,6 @@ pub const HyperlinkElementUtils = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            origin: runtime.USVString = undefined,
-            protocol: runtime.USVString = undefined,
-            username: runtime.USVString = undefined,
-            password: runtime.USVString = undefined,
-            host: runtime.USVString = undefined,
-            hostname: runtime.USVString = undefined,
-            port: runtime.USVString = undefined,
-            pathname: runtime.USVString = undefined,
-            search: runtime.USVString = undefined,
-            hash: runtime.USVString = undefined,
-            hreflang: runtime.DOMString = undefined,
-            type: runtime.DOMString = undefined,
             _internal: ?*HyperlinkElementUtilsImpl.InternalState = null,
         },
     );

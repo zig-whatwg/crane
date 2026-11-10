@@ -118,12 +118,6 @@ pub const XRFrame = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            session: *runtime.Instance = undefined,
-            predictedDisplayTime: typedefs.DOMHighResTimeStamp = undefined,
-            trackedAnchors: *runtime.Instance = undefined,
-            body: ?*runtime.Instance = null,
-            detectedMeshes: *runtime.Instance = undefined,
-            detectedPlanes: *runtime.Instance = undefined,
             cached_session: ?*runtime.Instance = null,
             cached_trackedAnchors: ?*runtime.Instance = null,
             cached_body: ?*runtime.Instance = null,

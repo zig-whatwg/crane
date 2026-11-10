@@ -92,7 +92,6 @@ pub const ShadowAnimation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sourceAnimation: *runtime.Instance = undefined,
             cached_sourceAnimation: ?*runtime.Instance = null,
             _internal: ?*ShadowAnimationImpl.InternalState = null,
         },

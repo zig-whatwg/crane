@@ -62,7 +62,6 @@ pub const XRSubImage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            viewport: *runtime.Instance = undefined,
             cached_viewport: ?*runtime.Instance = null,
             _internal: ?*XRSubImageImpl.InternalState = null,
         },

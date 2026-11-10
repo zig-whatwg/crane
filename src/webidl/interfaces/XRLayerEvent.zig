@@ -76,7 +76,6 @@ pub const XRLayerEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            layer: *runtime.Instance = undefined,
             cached_layer: ?*runtime.Instance = null,
             _internal: ?*XRLayerEventImpl.InternalState = null,
         },

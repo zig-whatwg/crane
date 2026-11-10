@@ -74,8 +74,6 @@ pub const CSSMarginRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.CSSOMString = undefined,
-            style: *runtime.Instance = undefined,
             cached_style: ?*runtime.Instance = null,
             _internal: ?*CSSMarginRuleImpl.InternalState = null,
         },

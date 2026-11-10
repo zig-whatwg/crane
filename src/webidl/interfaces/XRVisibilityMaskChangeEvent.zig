@@ -85,11 +85,6 @@ pub const XRVisibilityMaskChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            session: *runtime.Instance = undefined,
-            eye: enums.XREye = undefined,
-            index: u32 = undefined,
-            vertices: runtime.Float32Array = undefined,
-            indices: runtime.Uint32Array = undefined,
             cached_session: ?*runtime.Instance = null,
             cached_vertices: ?runtime.JSValue = null,
             cached_indices: ?runtime.JSValue = null,

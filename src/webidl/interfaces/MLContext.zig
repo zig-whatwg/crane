@@ -91,8 +91,6 @@ pub const MLContext = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            accelerated: bool = undefined,
-            lost: runtime.JSValue = undefined,
             _internal: ?*MLContextImpl.InternalState = null,
         },
     );

@@ -70,9 +70,6 @@ pub const XRWebGLDepthInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            texture: *runtime.Instance = undefined,
-            textureType: enums.XRTextureType = undefined,
-            imageIndex: ?u32 = null,
             cached_texture: ?*runtime.Instance = null,
             _internal: ?*XRWebGLDepthInformationImpl.InternalState = null,
         },

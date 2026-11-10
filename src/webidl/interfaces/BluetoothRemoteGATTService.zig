@@ -119,13 +119,6 @@ pub const BluetoothRemoteGATTService = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            device: *runtime.Instance = undefined,
-            uuid: typedefs.UUID = undefined,
-            isPrimary: bool = undefined,
-            oncharacteristicvaluechanged: typedefs.EventHandler = undefined,
-            onserviceadded: typedefs.EventHandler = undefined,
-            onservicechanged: typedefs.EventHandler = undefined,
-            onserviceremoved: typedefs.EventHandler = undefined,
             cached_device: ?*runtime.Instance = null,
             _internal: ?*BluetoothRemoteGATTServiceImpl.InternalState = null,
         },

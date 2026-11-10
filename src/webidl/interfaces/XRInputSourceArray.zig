@@ -70,7 +70,6 @@ pub const XRInputSourceArray = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
             _internal: ?*XRInputSourceArrayImpl.InternalState = null,
         },
     );

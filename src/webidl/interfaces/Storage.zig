@@ -78,7 +78,6 @@ pub const Storage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
             _internal: ?*StorageImpl.InternalState = null,
         },
     );

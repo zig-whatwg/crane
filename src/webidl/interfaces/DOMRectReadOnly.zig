@@ -88,10 +88,6 @@ pub const DOMRectReadOnly = struct {
             y: f64 = undefined,
             width: f64 = undefined,
             height: f64 = undefined,
-            top: f64 = undefined,
-            right: f64 = undefined,
-            bottom: f64 = undefined,
-            left: f64 = undefined,
             _internal: ?*DOMRectReadOnlyImpl.InternalState = null,
         },
     );

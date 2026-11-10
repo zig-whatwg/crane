@@ -82,9 +82,6 @@ pub const PushSubscription = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            endpoint: runtime.USVString = undefined,
-            expirationTime: ?typedefs.EpochTimeStamp = null,
-            options: *runtime.Instance = undefined,
             cached_options: ?*runtime.Instance = null,
             _internal: ?*PushSubscriptionImpl.InternalState = null,
         },

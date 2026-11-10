@@ -103,16 +103,6 @@ pub const TextTrack = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            kind: enums.TextTrackKind = undefined,
-            label: runtime.DOMString = undefined,
-            language: runtime.DOMString = undefined,
-            id: runtime.DOMString = undefined,
-            inBandMetadataTrackDispatchType: runtime.DOMString = undefined,
-            mode: enums.TextTrackMode = undefined,
-            cues: ?*runtime.Instance = null,
-            activeCues: ?*runtime.Instance = null,
-            oncuechange: typedefs.EventHandler = undefined,
-            sourceBuffer: ?*runtime.Instance = null,
             _internal: ?*TextTrackImpl.InternalState = null,
         },
     );

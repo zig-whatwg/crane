@@ -92,12 +92,6 @@ pub const FetchEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            request: *runtime.Instance = undefined,
-            preloadResponse: runtime.JSValue = undefined,
-            clientId: runtime.DOMString = undefined,
-            resultingClientId: runtime.DOMString = undefined,
-            replacesClientId: runtime.DOMString = undefined,
-            handled: runtime.JSValue = undefined,
             cached_request: ?*runtime.Instance = null,
             _internal: ?*FetchEventImpl.InternalState = null,
         },

@@ -79,11 +79,6 @@ pub const NodeIterator = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            root: *runtime.Instance = undefined,
-            referenceNode: *runtime.Instance = undefined,
-            pointerBeforeReferenceNode: bool = undefined,
-            whatToShow: u32 = undefined,
-            filter: ?runtime.JSValue = null,
             cached_root: ?*runtime.Instance = null,
             _internal: ?*NodeIteratorImpl.InternalState = null,
         },

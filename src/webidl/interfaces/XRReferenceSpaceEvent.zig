@@ -80,8 +80,6 @@ pub const XRReferenceSpaceEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            referenceSpace: *runtime.Instance = undefined,
-            transform: ?*runtime.Instance = null,
             cached_referenceSpace: ?*runtime.Instance = null,
             cached_transform: ?*runtime.Instance = null,
             _internal: ?*XRReferenceSpaceEventImpl.InternalState = null,

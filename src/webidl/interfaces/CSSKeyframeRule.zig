@@ -74,8 +74,6 @@ pub const CSSKeyframeRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            keyText: typedefs.CSSOMString = undefined,
-            style: *runtime.Instance = undefined,
             cached_style: ?*runtime.Instance = null,
             _internal: ?*CSSKeyframeRuleImpl.InternalState = null,
         },

@@ -128,10 +128,6 @@ pub const DedicatedWorkerGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            onrtctransform: typedefs.EventHandler = undefined,
-            onmessage: typedefs.EventHandler = undefined,
-            onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*DedicatedWorkerGlobalScopeImpl.InternalState = null,
         },
     );

@@ -80,7 +80,6 @@ pub const HIDConnectionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            device: *runtime.Instance = undefined,
             cached_device: ?*runtime.Instance = null,
             _internal: ?*HIDConnectionEventImpl.InternalState = null,
         },

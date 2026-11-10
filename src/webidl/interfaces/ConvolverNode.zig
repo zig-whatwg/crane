@@ -86,8 +86,6 @@ pub const ConvolverNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            buffer: ?*runtime.Instance = null,
-            normalize: bool = undefined,
             _internal: ?*ConvolverNodeImpl.InternalState = null,
         },
     );

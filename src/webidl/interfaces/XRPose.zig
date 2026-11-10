@@ -72,10 +72,6 @@ pub const XRPose = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            transform: *runtime.Instance = undefined,
-            linearVelocity: ?*runtime.Instance = null,
-            angularVelocity: ?*runtime.Instance = null,
-            emulatedPosition: bool = undefined,
             cached_transform: ?*runtime.Instance = null,
             cached_linearVelocity: ?*runtime.Instance = null,
             cached_angularVelocity: ?*runtime.Instance = null,

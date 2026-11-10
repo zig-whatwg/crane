@@ -71,9 +71,6 @@ pub const XRRay = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            origin: *runtime.Instance = undefined,
-            direction: *runtime.Instance = undefined,
-            matrix: runtime.Float32Array = undefined,
             cached_origin: ?*runtime.Instance = null,
             cached_direction: ?*runtime.Instance = null,
             cached_matrix: ?runtime.JSValue = null,

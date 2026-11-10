@@ -72,8 +72,6 @@ pub const AutofillEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            autofillValues: runtime.JSValue = undefined,
-            refill: ?runtime.JSValue = null,
             _internal: ?*AutofillEventImpl.InternalState = null,
         },
     );

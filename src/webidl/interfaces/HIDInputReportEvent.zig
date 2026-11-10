@@ -84,9 +84,6 @@ pub const HIDInputReportEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            device: *runtime.Instance = undefined,
-            reportId: u8 = undefined,
-            data: runtime.DataView = undefined,
             cached_device: ?*runtime.Instance = null,
             _internal: ?*HIDInputReportEventImpl.InternalState = null,
         },

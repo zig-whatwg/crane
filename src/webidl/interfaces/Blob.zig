@@ -80,8 +80,6 @@ pub const Blob = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            size: u64 = undefined,
-            type: runtime.DOMString = undefined,
             _internal: ?*BlobImpl.InternalState = null,
         },
     );

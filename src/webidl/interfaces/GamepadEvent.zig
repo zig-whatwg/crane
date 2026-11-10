@@ -75,7 +75,6 @@ pub const GamepadEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            gamepad: *runtime.Instance = undefined,
             cached_gamepad: ?*runtime.Instance = null,
             _internal: ?*GamepadEventImpl.InternalState = null,
         },

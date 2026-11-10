@@ -80,10 +80,6 @@ pub const Proofreader = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            includeCorrectionTypes: bool = undefined,
-            includeCorrectionExplanations: bool = undefined,
-            expectedInputLanguages: ?runtime.JSValue = null,
-            correctionExplanationLanguage: ?runtime.DOMString = null,
             _internal: ?*ProofreaderImpl.InternalState = null,
         },
     );

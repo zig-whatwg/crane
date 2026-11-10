@@ -62,10 +62,6 @@ pub const LanguageModelParams = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            defaultTopK: u32 = undefined,
-            maxTopK: u32 = undefined,
-            defaultTemperature: f32 = undefined,
-            maxTemperature: f32 = undefined,
             _internal: ?*LanguageModelParamsImpl.InternalState = null,
         },
     );

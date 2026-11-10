@@ -74,12 +74,6 @@ pub const PerformanceEntry = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: u64 = undefined,
-            name: runtime.DOMString = undefined,
-            entryType: runtime.DOMString = undefined,
-            startTime: typedefs.DOMHighResTimeStamp = undefined,
-            duration: typedefs.DOMHighResTimeStamp = undefined,
-            navigationId: u64 = undefined,
             _internal: ?*PerformanceEntryImpl.InternalState = null,
         },
     );

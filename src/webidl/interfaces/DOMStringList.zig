@@ -72,7 +72,6 @@ pub const DOMStringList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
             _internal: ?*DOMStringListImpl.InternalState = null,
         },
     );

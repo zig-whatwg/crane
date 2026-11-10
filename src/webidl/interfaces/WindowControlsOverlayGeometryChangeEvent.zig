@@ -77,8 +77,6 @@ pub const WindowControlsOverlayGeometryChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            titlebarAreaRect: *runtime.Instance = undefined,
-            visible: bool = undefined,
             cached_titlebarAreaRect: ?*runtime.Instance = null,
             _internal: ?*WindowControlsOverlayGeometryChangeEventImpl.InternalState = null,
         },

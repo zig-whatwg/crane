@@ -83,9 +83,6 @@ pub const CSSStyleRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            selectorText: typedefs.CSSOMString = undefined,
-            style: *runtime.Instance = undefined,
-            styleMap: *runtime.Instance = undefined,
             cached_style: ?*runtime.Instance = null,
             cached_styleMap: ?*runtime.Instance = null,
             _internal: ?*CSSStyleRuleImpl.InternalState = null,

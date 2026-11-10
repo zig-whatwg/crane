@@ -78,17 +78,6 @@ pub const CanvasTextDrawingStyles = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            lang: runtime.DOMString = undefined,
-            font: runtime.DOMString = undefined,
-            textAlign: enums.CanvasTextAlign = undefined,
-            textBaseline: enums.CanvasTextBaseline = undefined,
-            direction: enums.CanvasDirection = undefined,
-            letterSpacing: runtime.DOMString = undefined,
-            fontKerning: enums.CanvasFontKerning = undefined,
-            fontStretch: enums.CanvasFontStretch = undefined,
-            fontVariantCaps: enums.CanvasFontVariantCaps = undefined,
-            textRendering: enums.CanvasTextRendering = undefined,
-            wordSpacing: runtime.DOMString = undefined,
             _internal: ?*CanvasTextDrawingStylesImpl.InternalState = null,
         },
     );

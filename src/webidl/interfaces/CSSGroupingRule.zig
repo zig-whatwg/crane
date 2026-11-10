@@ -72,7 +72,6 @@ pub const CSSGroupingRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cssRules: *runtime.Instance = undefined,
             cached_cssRules: ?*runtime.Instance = null,
             _internal: ?*CSSGroupingRuleImpl.InternalState = null,
         },

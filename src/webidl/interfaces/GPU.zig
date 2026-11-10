@@ -75,7 +75,6 @@ pub const GPU = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            wgslLanguageFeatures: *runtime.Instance = undefined,
             cached_wgslLanguageFeatures: ?*runtime.Instance = null,
             _internal: ?*GPUImpl.InternalState = null,
         },

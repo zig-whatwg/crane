@@ -97,9 +97,6 @@ pub const OscillatorNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: enums.OscillatorType = undefined,
-            frequency: *runtime.Instance = undefined,
-            detune: *runtime.Instance = undefined,
             _internal: ?*OscillatorNodeImpl.InternalState = null,
         },
     );

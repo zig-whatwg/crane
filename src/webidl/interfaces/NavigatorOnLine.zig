@@ -50,7 +50,6 @@ pub const NavigatorOnLine = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onLine: bool = undefined,
             _internal: ?*NavigatorOnLineImpl.InternalState = null,
         },
     );

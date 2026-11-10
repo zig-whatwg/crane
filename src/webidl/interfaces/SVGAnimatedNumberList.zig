@@ -65,8 +65,6 @@ pub const SVGAnimatedNumberList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            baseVal: *runtime.Instance = undefined,
-            animVal: *runtime.Instance = undefined,
             cached_baseVal: ?*runtime.Instance = null,
             cached_animVal: ?*runtime.Instance = null,
             _internal: ?*SVGAnimatedNumberListImpl.InternalState = null,

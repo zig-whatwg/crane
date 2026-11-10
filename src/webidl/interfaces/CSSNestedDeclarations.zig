@@ -72,7 +72,6 @@ pub const CSSNestedDeclarations = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            style: *runtime.Instance = undefined,
             cached_style: ?*runtime.Instance = null,
             _internal: ?*CSSNestedDeclarationsImpl.InternalState = null,
         },

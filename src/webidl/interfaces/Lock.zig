@@ -63,8 +63,6 @@ pub const Lock = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            mode: enums.LockMode = undefined,
             _internal: ?*LockImpl.InternalState = null,
         },
     );

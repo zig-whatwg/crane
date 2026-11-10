@@ -66,7 +66,6 @@ pub const AbortController = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            signal: *runtime.Instance = undefined,
             cached_signal: ?*runtime.Instance = null,
             _internal: ?*AbortControllerImpl.InternalState = null,
         },

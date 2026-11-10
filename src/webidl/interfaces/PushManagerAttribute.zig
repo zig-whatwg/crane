@@ -53,7 +53,6 @@ pub const PushManagerAttribute = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            pushManager: *runtime.Instance = undefined,
             _internal: ?*PushManagerAttributeImpl.InternalState = null,
         },
     );

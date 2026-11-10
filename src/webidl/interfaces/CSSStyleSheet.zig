@@ -91,9 +91,6 @@ pub const CSSStyleSheet = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ownerRule: ?*runtime.Instance = null,
-            cssRules: *runtime.Instance = undefined,
-            rules: *runtime.Instance = undefined,
             cached_cssRules: ?*runtime.Instance = null,
             cached_rules: ?*runtime.Instance = null,
             _internal: ?*CSSStyleSheetImpl.InternalState = null,

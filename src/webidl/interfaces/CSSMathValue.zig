@@ -84,7 +84,6 @@ pub const CSSMathValue = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            operator: enums.CSSMathOperator = undefined,
             _internal: ?*CSSMathValueImpl.InternalState = null,
         },
     );

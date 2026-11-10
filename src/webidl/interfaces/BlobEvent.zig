@@ -77,8 +77,6 @@ pub const BlobEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: *runtime.Instance = undefined,
-            timecode: typedefs.DOMHighResTimeStamp = undefined,
             cached_data: ?*runtime.Instance = null,
             _internal: ?*BlobEventImpl.InternalState = null,
         },

@@ -91,7 +91,6 @@ pub const MediaStreamAudioSourceNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            mediaStream: *runtime.Instance = undefined,
             cached_mediaStream: ?*runtime.Instance = null,
             _internal: ?*MediaStreamAudioSourceNodeImpl.InternalState = null,
         },

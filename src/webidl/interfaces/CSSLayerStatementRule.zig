@@ -59,7 +59,6 @@ pub const CSSLayerStatementRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            nameList: runtime.JSValue = undefined,
             _internal: ?*CSSLayerStatementRuleImpl.InternalState = null,
         },
     );

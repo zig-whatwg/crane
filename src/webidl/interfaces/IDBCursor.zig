@@ -88,14 +88,6 @@ pub const IDBCursor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            source: union(enum) {
-                IDBObjectStore: IDBObjectStore,
-                IDBIndex: IDBIndex,
-            } = undefined,
-            direction: enums.IDBCursorDirection = undefined,
-            key: runtime.JSValue = undefined,
-            primaryKey: runtime.JSValue = undefined,
-            request: *runtime.Instance = undefined,
             cached_request: ?*runtime.Instance = null,
             _internal: ?*IDBCursorImpl.InternalState = null,
         },

@@ -68,7 +68,6 @@ pub const CSSApplyBlockRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.CSSOMString = undefined,
             _internal: ?*CSSApplyBlockRuleImpl.InternalState = null,
         },
     );

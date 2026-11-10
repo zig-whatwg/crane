@@ -75,9 +75,6 @@ pub const BluetoothRemoteGATTDescriptor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            characteristic: *runtime.Instance = undefined,
-            uuid: typedefs.UUID = undefined,
-            value: ?runtime.DataView = null,
             cached_characteristic: ?*runtime.Instance = null,
             _internal: ?*BluetoothRemoteGATTDescriptorImpl.InternalState = null,
         },

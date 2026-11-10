@@ -73,8 +73,6 @@ pub const PresentationAvailability = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: bool = undefined,
-            onchange: typedefs.EventHandler = undefined,
             _internal: ?*PresentationAvailabilityImpl.InternalState = null,
         },
     );

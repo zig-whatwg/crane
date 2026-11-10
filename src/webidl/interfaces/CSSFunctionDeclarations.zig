@@ -72,7 +72,6 @@ pub const CSSFunctionDeclarations = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            style: *runtime.Instance = undefined,
             cached_style: ?*runtime.Instance = null,
             _internal: ?*CSSFunctionDeclarationsImpl.InternalState = null,
         },

@@ -67,7 +67,6 @@ pub const CSSPerspective = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: typedefs.CSSPerspectiveValue = undefined,
             _internal: ?*CSSPerspectiveImpl.InternalState = null,
         },
     );

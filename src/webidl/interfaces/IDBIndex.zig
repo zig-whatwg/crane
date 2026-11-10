@@ -95,11 +95,6 @@ pub const IDBIndex = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            objectStore: *runtime.Instance = undefined,
-            keyPath: runtime.JSValue = undefined,
-            multiEntry: bool = undefined,
-            unique: bool = undefined,
             cached_objectStore: ?*runtime.Instance = null,
             _internal: ?*IDBIndexImpl.InternalState = null,
         },

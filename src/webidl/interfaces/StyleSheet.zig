@@ -86,16 +86,6 @@ pub const StyleSheet = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: typedefs.CSSOMString = undefined,
-            href: ?runtime.USVString = null,
-            ownerNode: ?union(enum) {
-                Element: Element,
-                ProcessingInstruction: ProcessingInstruction,
-            } = null,
-            parentStyleSheet: ?*runtime.Instance = null,
-            title: ?runtime.DOMString = null,
-            media: *runtime.Instance = undefined,
-            disabled: bool = undefined,
             cached_media: ?*runtime.Instance = null,
             _internal: ?*StyleSheetImpl.InternalState = null,
         },

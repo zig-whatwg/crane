@@ -79,8 +79,6 @@ pub const CSSPageRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            selectorText: typedefs.CSSOMString = undefined,
-            style: *runtime.Instance = undefined,
             cached_style: ?*runtime.Instance = null,
             _internal: ?*CSSPageRuleImpl.InternalState = null,
         },

@@ -65,8 +65,6 @@ pub const RTCIceCandidatePair = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            local: *runtime.Instance = undefined,
-            remote: *runtime.Instance = undefined,
             cached_local: ?*runtime.Instance = null,
             cached_remote: ?*runtime.Instance = null,
             _internal: ?*RTCIceCandidatePairImpl.InternalState = null,

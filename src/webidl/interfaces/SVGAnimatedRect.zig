@@ -65,8 +65,6 @@ pub const SVGAnimatedRect = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            baseVal: typedefs.SVGRect = undefined,
-            animVal: typedefs.SVGRect = undefined,
             cached_baseVal: ?SVGRect = null,
             cached_animVal: ?SVGRect = null,
             _internal: ?*SVGAnimatedRectImpl.InternalState = null,

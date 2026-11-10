@@ -71,12 +71,6 @@ pub const AudioTrack = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
-            kind: runtime.DOMString = undefined,
-            label: runtime.DOMString = undefined,
-            language: runtime.DOMString = undefined,
-            enabled: bool = undefined,
-            sourceBuffer: ?*runtime.Instance = null,
             _internal: ?*AudioTrackImpl.InternalState = null,
         },
     );

@@ -72,13 +72,6 @@ pub const GeolocationCoordinates = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            accuracy: f64 = undefined,
-            latitude: f64 = undefined,
-            longitude: f64 = undefined,
-            altitude: ?f64 = null,
-            altitudeAccuracy: ?f64 = null,
-            heading: ?f64 = null,
-            speed: ?f64 = null,
             _internal: ?*GeolocationCoordinatesImpl.InternalState = null,
         },
     );

@@ -83,7 +83,6 @@ pub const GainNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            gain: *runtime.Instance = undefined,
             _internal: ?*GainNodeImpl.InternalState = null,
         },
     );

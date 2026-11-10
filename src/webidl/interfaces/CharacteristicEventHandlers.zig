@@ -53,7 +53,6 @@ pub const CharacteristicEventHandlers = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            oncharacteristicvaluechanged: typedefs.EventHandler = undefined,
             _internal: ?*CharacteristicEventHandlersImpl.InternalState = null,
         },
     );

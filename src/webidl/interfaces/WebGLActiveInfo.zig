@@ -65,9 +65,6 @@ pub const WebGLActiveInfo = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            size: typedefs.GLint = undefined,
-            type: typedefs.GLenum = undefined,
-            name: runtime.DOMString = undefined,
             _internal: ?*WebGLActiveInfoImpl.InternalState = null,
         },
     );

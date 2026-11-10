@@ -75,8 +75,6 @@ pub const NavigationEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dir: enums.SpatialNavigationDirection = undefined,
-            relatedTarget: ?*runtime.Instance = null,
             _internal: ?*NavigationEventImpl.InternalState = null,
         },
     );

@@ -79,9 +79,6 @@ pub const XRGPUSubImage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            colorTexture: *runtime.Instance = undefined,
-            depthStencilTexture: ?*runtime.Instance = null,
-            motionVectorTexture: ?*runtime.Instance = null,
             cached_colorTexture: ?*runtime.Instance = null,
             cached_depthStencilTexture: ?*runtime.Instance = null,
             cached_motionVectorTexture: ?*runtime.Instance = null,

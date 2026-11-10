@@ -84,15 +84,6 @@ pub const URLPattern = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            protocol: runtime.USVString = undefined,
-            username: runtime.USVString = undefined,
-            password: runtime.USVString = undefined,
-            hostname: runtime.USVString = undefined,
-            port: runtime.USVString = undefined,
-            pathname: runtime.USVString = undefined,
-            search: runtime.USVString = undefined,
-            hash: runtime.USVString = undefined,
-            hasRegExpGroups: bool = undefined,
             _internal: ?*URLPatternImpl.InternalState = null,
         },
     );

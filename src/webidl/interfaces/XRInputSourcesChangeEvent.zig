@@ -81,9 +81,6 @@ pub const XRInputSourcesChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            session: *runtime.Instance = undefined,
-            added: runtime.JSValue = undefined,
-            removed: runtime.JSValue = undefined,
             cached_session: ?*runtime.Instance = null,
             cached_added: ?runtime.JSValue = null,
             cached_removed: ?runtime.JSValue = null,

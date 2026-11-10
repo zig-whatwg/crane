@@ -64,8 +64,6 @@ pub const RTCSessionDescription = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: enums.RTCSdpType = undefined,
-            sdp: runtime.DOMString = undefined,
             _internal: ?*RTCSessionDescriptionImpl.InternalState = null,
         },
     );

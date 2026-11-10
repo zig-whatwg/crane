@@ -98,13 +98,6 @@ pub const NetworkInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: enums.ConnectionType = undefined,
-            effectiveType: enums.EffectiveConnectionType = undefined,
-            downlinkMax: typedefs.Megabit = undefined,
-            downlink: typedefs.Megabit = undefined,
-            rtt: typedefs.Millisecond = undefined,
-            onchange: typedefs.EventHandler = undefined,
-            saveData: bool = undefined,
             cached_saveData: ?bool = null,
             _internal: ?*NetworkInformationImpl.InternalState = null,
         },

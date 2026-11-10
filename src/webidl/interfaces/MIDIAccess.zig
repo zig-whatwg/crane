@@ -83,10 +83,6 @@ pub const MIDIAccess = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            inputs: *runtime.Instance = undefined,
-            outputs: *runtime.Instance = undefined,
-            onstatechange: typedefs.EventHandler = undefined,
-            sysexEnabled: bool = undefined,
             _internal: ?*MIDIAccessImpl.InternalState = null,
         },
     );

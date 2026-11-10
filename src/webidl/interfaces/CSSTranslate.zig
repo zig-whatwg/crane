@@ -71,9 +71,6 @@ pub const CSSTranslate = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: *runtime.Instance = undefined,
-            y: *runtime.Instance = undefined,
-            z: *runtime.Instance = undefined,
             _internal: ?*CSSTranslateImpl.InternalState = null,
         },
     );

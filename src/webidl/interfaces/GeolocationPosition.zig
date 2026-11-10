@@ -64,8 +64,6 @@ pub const GeolocationPosition = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            coords: *runtime.Instance = undefined,
-            timestamp: typedefs.EpochTimeStamp = undefined,
             _internal: ?*GeolocationPositionImpl.InternalState = null,
         },
     );

@@ -81,8 +81,6 @@ pub const BufferedChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            addedRanges: *runtime.Instance = undefined,
-            removedRanges: *runtime.Instance = undefined,
             cached_addedRanges: ?*runtime.Instance = null,
             cached_removedRanges: ?*runtime.Instance = null,
             _internal: ?*BufferedChangeEventImpl.InternalState = null,

@@ -75,7 +75,6 @@ pub const MediaStreamTrackEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            track: *runtime.Instance = undefined,
             cached_track: ?*runtime.Instance = null,
             _internal: ?*MediaStreamTrackEventImpl.InternalState = null,
         },

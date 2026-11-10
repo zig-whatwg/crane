@@ -62,7 +62,6 @@ pub const RTCCertificate = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            expires: typedefs.EpochTimeStamp = undefined,
             _internal: ?*RTCCertificateImpl.InternalState = null,
         },
     );

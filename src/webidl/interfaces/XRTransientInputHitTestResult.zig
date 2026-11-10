@@ -66,8 +66,6 @@ pub const XRTransientInputHitTestResult = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            inputSource: *runtime.Instance = undefined,
-            results: runtime.JSValue = undefined,
             cached_inputSource: ?*runtime.Instance = null,
             _internal: ?*XRTransientInputHitTestResultImpl.InternalState = null,
         },

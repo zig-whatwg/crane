@@ -85,7 +85,6 @@ pub const CSSTransition = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            transitionProperty: typedefs.CSSOMString = undefined,
             _internal: ?*CSSTransitionImpl.InternalState = null,
         },
     );

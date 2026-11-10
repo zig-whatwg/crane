@@ -80,9 +80,6 @@ pub const GPUAdapter = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            features: *runtime.Instance = undefined,
-            limits: *runtime.Instance = undefined,
-            info: *runtime.Instance = undefined,
             cached_features: ?*runtime.Instance = null,
             cached_limits: ?*runtime.Instance = null,
             cached_info: ?*runtime.Instance = null,

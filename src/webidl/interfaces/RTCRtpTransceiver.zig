@@ -81,11 +81,6 @@ pub const RTCRtpTransceiver = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            mid: ?runtime.DOMString = null,
-            sender: *runtime.Instance = undefined,
-            receiver: *runtime.Instance = undefined,
-            direction: enums.RTCRtpTransceiverDirection = undefined,
-            currentDirection: ?enums.RTCRtpTransceiverDirection = null,
             cached_sender: ?*runtime.Instance = null,
             cached_receiver: ?*runtime.Instance = null,
             _internal: ?*RTCRtpTransceiverImpl.InternalState = null,

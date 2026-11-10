@@ -71,9 +71,6 @@ pub const COEPInheritenceViolationReportBody = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            disposition: runtime.DOMString = undefined,
-            type: runtime.DOMString = undefined,
-            blockedURL: runtime.USVString = undefined,
             _internal: ?*COEPInheritenceViolationReportBodyImpl.InternalState = null,
         },
     );

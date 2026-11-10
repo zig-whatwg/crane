@@ -170,15 +170,6 @@ pub const AudioContext = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            baseLatency: f64 = undefined,
-            outputLatency: f64 = undefined,
-            sinkId: union(enum) {
-                DOMString: runtime.DOMString,
-                AudioSinkInfo: AudioSinkInfo,
-            } = undefined,
-            onsinkchange: typedefs.EventHandler = undefined,
-            onerror: typedefs.EventHandler = undefined,
-            playbackStats: *runtime.Instance = undefined,
             cached_playbackStats: ?*runtime.Instance = null,
             _internal: ?*AudioContextImpl.InternalState = null,
         },

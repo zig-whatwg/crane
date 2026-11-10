@@ -76,7 +76,6 @@ pub const XRSessionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            session: *runtime.Instance = undefined,
             cached_session: ?*runtime.Instance = null,
             _internal: ?*XRSessionEventImpl.InternalState = null,
         },

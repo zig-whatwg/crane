@@ -119,11 +119,6 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            service: *runtime.Instance = undefined,
-            uuid: typedefs.UUID = undefined,
-            properties: *runtime.Instance = undefined,
-            value: ?runtime.DataView = null,
-            oncharacteristicvaluechanged: typedefs.EventHandler = undefined,
             cached_service: ?*runtime.Instance = null,
             _internal: ?*BluetoothRemoteGATTCharacteristicImpl.InternalState = null,
         },

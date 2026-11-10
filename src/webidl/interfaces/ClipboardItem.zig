@@ -72,8 +72,6 @@ pub const ClipboardItem = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            presentationStyle: enums.PresentationStyle = undefined,
-            types: runtime.JSValue = undefined,
             _internal: ?*ClipboardItemImpl.InternalState = null,
         },
     );

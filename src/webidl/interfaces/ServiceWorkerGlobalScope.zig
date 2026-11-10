@@ -181,10 +181,6 @@ pub const ServiceWorkerGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            clients: *runtime.Instance = undefined,
-            registration: *runtime.Instance = undefined,
-            serviceWorker: *runtime.Instance = undefined,
-            cookieStore: *runtime.Instance = undefined,
             cached_clients: ?*runtime.Instance = null,
             cached_registration: ?*runtime.Instance = null,
             cached_serviceWorker: ?*runtime.Instance = null,

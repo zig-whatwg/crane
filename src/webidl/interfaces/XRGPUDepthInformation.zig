@@ -70,7 +70,6 @@ pub const XRGPUDepthInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            texture: *runtime.Instance = undefined,
             cached_texture: ?*runtime.Instance = null,
             _internal: ?*XRGPUDepthInformationImpl.InternalState = null,
         },

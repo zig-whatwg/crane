@@ -61,9 +61,6 @@ pub const XRLightEstimate = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sphericalHarmonicsCoefficients: runtime.Float32Array = undefined,
-            primaryLightDirection: *runtime.Instance = undefined,
-            primaryLightIntensity: *runtime.Instance = undefined,
             _internal: ?*XRLightEstimateImpl.InternalState = null,
         },
     );

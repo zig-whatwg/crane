@@ -59,11 +59,6 @@ pub const ElementContentEditable = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            contentEditable: runtime.DOMString = undefined,
-            enterKeyHint: runtime.DOMString = undefined,
-            isContentEditable: bool = undefined,
-            inputMode: runtime.DOMString = undefined,
-            virtualKeyboardPolicy: runtime.DOMString = undefined,
             _internal: ?*ElementContentEditableImpl.InternalState = null,
         },
     );

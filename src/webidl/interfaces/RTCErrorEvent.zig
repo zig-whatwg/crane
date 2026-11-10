@@ -75,7 +75,6 @@ pub const RTCErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"error": *runtime.Instance = undefined,
             cached_error: ?*runtime.Instance = null,
             _internal: ?*RTCErrorEventImpl.InternalState = null,
         },

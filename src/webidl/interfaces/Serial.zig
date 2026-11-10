@@ -88,8 +88,6 @@ pub const Serial = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onconnect: typedefs.EventHandler = undefined,
-            ondisconnect: typedefs.EventHandler = undefined,
             _internal: ?*SerialImpl.InternalState = null,
         },
     );

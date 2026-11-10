@@ -68,7 +68,6 @@ pub const RTCDTMFToneChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            tone: runtime.DOMString = undefined,
             _internal: ?*RTCDTMFToneChangeEventImpl.InternalState = null,
         },
     );

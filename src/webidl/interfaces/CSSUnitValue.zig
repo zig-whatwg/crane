@@ -84,8 +84,6 @@ pub const CSSUnitValue = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: f64 = undefined,
-            unit: runtime.USVString = undefined,
             _internal: ?*CSSUnitValueImpl.InternalState = null,
         },
     );

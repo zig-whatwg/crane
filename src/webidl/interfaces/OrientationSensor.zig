@@ -79,7 +79,6 @@ pub const OrientationSensor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            quaternion: ?runtime.JSValue = null,
             _internal: ?*OrientationSensorImpl.InternalState = null,
         },
     );

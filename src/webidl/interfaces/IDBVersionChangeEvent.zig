@@ -73,8 +73,6 @@ pub const IDBVersionChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            oldVersion: u64 = undefined,
-            newVersion: ?u64 = null,
             _internal: ?*IDBVersionChangeEventImpl.InternalState = null,
         },
     );

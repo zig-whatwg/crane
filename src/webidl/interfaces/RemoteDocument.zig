@@ -64,11 +64,6 @@ pub const RemoteDocument = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            contentType: runtime.USVString = undefined,
-            contextUrl: runtime.USVString = undefined,
-            document: runtime.JSValue = undefined,
-            documentUrl: runtime.USVString = undefined,
-            profile: runtime.USVString = undefined,
             _internal: ?*RemoteDocumentImpl.InternalState = null,
         },
     );

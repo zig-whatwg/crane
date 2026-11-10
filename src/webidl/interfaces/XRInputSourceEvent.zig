@@ -80,8 +80,6 @@ pub const XRInputSourceEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            frame: *runtime.Instance = undefined,
-            inputSource: *runtime.Instance = undefined,
             cached_frame: ?*runtime.Instance = null,
             cached_inputSource: ?*runtime.Instance = null,
             _internal: ?*XRInputSourceEventImpl.InternalState = null,

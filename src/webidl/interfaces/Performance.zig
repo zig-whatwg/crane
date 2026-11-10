@@ -135,12 +135,6 @@ pub const Performance = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            timeOrigin: typedefs.DOMHighResTimeStamp = undefined,
-            eventCounts: *runtime.Instance = undefined,
-            interactionCount: u64 = undefined,
-            timing: *runtime.Instance = undefined,
-            navigation: *runtime.Instance = undefined,
-            onresourcetimingbufferfull: typedefs.EventHandler = undefined,
             cached_eventCounts: ?*runtime.Instance = null,
             cached_timing: ?*runtime.Instance = null,
             cached_navigation: ?*runtime.Instance = null,

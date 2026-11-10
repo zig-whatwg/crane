@@ -85,10 +85,6 @@ pub const TreeWalker = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            root: *runtime.Instance = undefined,
-            whatToShow: u32 = undefined,
-            filter: ?runtime.JSValue = null,
-            currentNode: *runtime.Instance = undefined,
             cached_root: ?*runtime.Instance = null,
             _internal: ?*TreeWalkerImpl.InternalState = null,
         },

@@ -112,11 +112,6 @@ pub const IDBObjectStore = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            keyPath: runtime.JSValue = undefined,
-            indexNames: *runtime.Instance = undefined,
-            transaction: *runtime.Instance = undefined,
-            autoIncrement: bool = undefined,
             cached_transaction: ?*runtime.Instance = null,
             _internal: ?*IDBObjectStoreImpl.InternalState = null,
         },

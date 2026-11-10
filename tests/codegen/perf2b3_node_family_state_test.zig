@@ -63,7 +63,7 @@ const family_idl =
     \\interface MouseEvent : Event { readonly attribute long screenX; };
 ;
 
-test "Node and its descendants keep their attribute storage in their impls; nothing else does" {
+test "Node and its descendants keep their attribute storage in their impls; the impls that store slots keep them" {
     var p = try parse(family_idl);
     defer p.deinit();
     for ([_][]const u8{ "Node", "Element", "HTMLElement", "HTMLDivElement", "CharacterData", "Text" }) |name| {
@@ -72,7 +72,10 @@ test "Node and its descendants keep their attribute storage in their impls; noth
             return error.TestUnexpectedResult;
         }
     }
-    for ([_][]const u8{ "EventTarget", "NodeList", "DOMTokenList", "Event", "MouseEvent", "NotDefined" }) |name| {
+    // Lane cg1 step 2: only the interfaces whose impls store attributes in
+    // their State keep slots (writer.stateSlotsOf; tests/codegen/
+    // cg1_state_slots_test.zig); EventTarget and an unknown name keep none.
+    for ([_][]const u8{ "NodeList", "DOMTokenList", "Event", "MouseEvent" }) |name| {
         if (writer.implKeepsAttributeStorage(&p.model, name)) {
             std.debug.print("{s} should keep its attribute slots in its State\n", .{name});
             return error.TestUnexpectedResult;

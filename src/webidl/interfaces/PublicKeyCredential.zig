@@ -107,9 +107,6 @@ pub const PublicKeyCredential = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            rawId: runtime.ArrayBuffer = undefined,
-            response: *runtime.Instance = undefined,
-            authenticatorAttachment: ?runtime.DOMString = null,
             cached_rawId: ?runtime.JSValue = null,
             cached_response: ?*runtime.Instance = null,
             _internal: ?*PublicKeyCredentialImpl.InternalState = null,

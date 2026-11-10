@@ -76,7 +76,6 @@ pub const DocumentPictureInPictureEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            window: *runtime.Instance = undefined,
             cached_window: ?*runtime.Instance = null,
             _internal: ?*DocumentPictureInPictureEventImpl.InternalState = null,
         },
