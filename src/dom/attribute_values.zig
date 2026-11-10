@@ -170,14 +170,46 @@ pub const Table = struct {
     allocator: std.mem.Allocator,
     records: Map = .empty,
     ids: attribute_names.IdSlots(Value) = .{},
-    /// Removals since the map last had no tombstones: past half the unused
-    /// slots, the next insert rehashes it in place (infra.tombstones' rule;
-    /// its guard cannot rehash a map whose context has state).
-    removals: usize = 0,
+    /// When to drop the tombstones removals leave (infra.tombstones' rule).
+    tombstones: Tombstones = .{},
     /// The bytes of the records alive (headers included): a measurement.
     bytes_held: usize = 0,
 
     const Map = std.HashMapUnmanaged(u32, void, SlotContext, 80);
+
+    /// infra.tombstones.TombstoneGuard's rule - removals counted since the
+    /// map last had no tombstones; past half its unused slots, the next
+    /// insert rehashes it in place - for a map whose context has state,
+    /// which that guard cannot rehash (it makes a stateless context).
+    const Tombstones = struct {
+        removals: usize = 0,
+        /// The capacity the count belongs to: a map that grew since has no
+        /// tombstones.
+        capacity: usize = 0,
+
+        fn noteRemoval(self: *Tombstones, map: *Map) void {
+            self.sync(map);
+            self.removals += 1;
+        }
+
+        fn beforeInsert(self: *Tombstones, map: *Map, ctx: SlotContext) void {
+            self.sync(map);
+            if (self.removals == 0) return;
+            if (self.removals * 2 < map.capacity() - map.count()) return;
+            map.rehash(ctx);
+            self.removals = 0;
+        }
+
+        fn reset(self: *Tombstones) void {
+            self.removals = 0;
+        }
+
+        fn sync(self: *Tombstones, map: *Map) void {
+            if (map.capacity() == self.capacity) return;
+            self.capacity = map.capacity();
+            self.removals = 0;
+        }
+    };
 
     /// Below this many slots an emptied map keeps its storage.
     const kept_capacity = 64;
@@ -230,7 +262,7 @@ pub const Table = struct {
             self.retain(id);
             return id;
         }
-        self.beforeInsert();
+        self.tombstones.beforeInsert(&self.records, self.context());
         try self.records.ensureUnusedCapacityContext(self.allocator, 1, self.context());
         const value = try create(self.allocator, bytes);
         errdefer destroy(self.allocator, value);
@@ -270,17 +302,6 @@ pub const Table = struct {
         self.afterRemove();
     }
 
-    /// Before an insert: drop the tombstones once they could take half the
-    /// unused slots (infra.tombstones' rule), so a churn of values never
-    /// walks them on every miss.
-    fn beforeInsert(self: *Table) void {
-        if (self.removals == 0) return;
-        const unused = self.records.capacity() - self.records.count();
-        if (self.removals * 2 < unused) return;
-        self.records.rehash(self.context());
-        self.removals = 0;
-    }
-
     /// The map after a removal (dom.element_name.Table's rule: WTF's
     /// HashTable shrinks below a sixth full).
     fn afterRemove(self: *Table) void {
@@ -288,25 +309,25 @@ pub const Table = struct {
         const live = self.records.count();
         if (live == 0) {
             if (capacity > kept_capacity) self.records.clearAndFree(self.allocator) else self.records.clearRetainingCapacity();
-            self.removals = 0;
+            self.tombstones.reset();
         } else if (capacity > kept_capacity and live * 6 < capacity) {
             self.shrink();
         } else {
-            self.removals += 1;
+            self.tombstones.noteRemoval(&self.records);
         }
     }
 
     fn shrink(self: *Table) void {
         var smaller: Map = .empty;
         smaller.ensureTotalCapacityContext(self.allocator, self.records.count(), self.context()) catch {
-            self.removals += 1;
+            self.tombstones.noteRemoval(&self.records);
             return;
         };
         var keys = self.records.keyIterator();
         while (keys.next()) |slot| smaller.putAssumeCapacityNoClobberContext(slot.*, {}, self.context());
         self.records.deinit(self.allocator);
         self.records = smaller;
-        self.removals = 0;
+        self.tombstones.reset();
     }
 };
 
