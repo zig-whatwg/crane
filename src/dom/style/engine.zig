@@ -27,7 +27,7 @@
 //! rules against the host - ordered by tree context (Cascade 5 6.1: for
 //! normal declarations the outer context wins, for important ones the
 //! inner); the document's sheets do not apply in a shadow tree. Slot
-//! assignment, which can change with no mutation, moves `slot_version`,
+//! assignment, which can change with no mutation, moves the slot version,
 //! part of every cached style's key. ::slotted() rules of a slot's tree
 //! apply to the elements assigned to the slot, after flattening, and
 //! ::part() rules of a host's tree to the elements of its shadow tree with
@@ -193,10 +193,13 @@ pub const StyleEngine = struct {
     /// DocumentRareData pattern): the engine is embedded in Document's state,
     /// which sits just under its allocation size class.
     rare: ?*Rare = null,
-    /// Moves whenever a slot's assigned nodes change (DOM "assign
-    /// slottables"): part of each cached style's key, since a slotted
-    /// element inherits from its slot.
-    slot_version: u64 = 1,
+    /// The matched-properties cache (matched_properties_cache.zig: Blink's
+    /// MatchedPropertiesCache, WebKit's MatchedDeclarationsCache), made at
+    /// the first style whose cascade wrote a group of its own: nearly every
+    /// document that resolves a style makes one, so it is no Rare state. Its
+    /// word was the slot version's, which moved to Rare: only documents with
+    /// slots move it (tests/dom/style_engine_size_test.zig).
+    matched_properties: ?*matched_properties_cache.MatchedPropertiesCache = null,
     /// Moves on every change to the set of sheets or one of their flags
     /// (owners connecting and disconnecting, media, disabled, title).
     sheets_version: u64 = 1,
@@ -269,15 +272,13 @@ pub const StyleEngine = struct {
         /// document declares any, and what its last step-16 style update saw
         /// (`AnimationGate`).
         animations: AnimationGate = .{},
-        /// The matched-properties cache (matched_properties_cache.zig: Blink's
-        /// MatchedPropertiesCache), made at the first style whose cascade
-        /// wrote a group of its own.
-        matched_properties: ?*matched_properties_cache.MatchedPropertiesCache = null,
+        /// Moves whenever a slot's assigned nodes change (DOM "assign
+        /// slottables"): part of each cached style's key, since a slotted
+        /// element inherits from its slot. 1 while the engine has no Rare
+        /// (StyleEngine.slotVersion).
+        slot_version: u64 = 1,
 
         fn deinit(self: *Rare, allocator: Allocator) void {
-            // The cache's holders first: they hold values, never anything
-            // the rest of this state owns.
-            if (self.matched_properties) |cache| cache.destroy();
             if (self.resources) |resources| resources.destroy();
             if (self.images) |images| {
                 images.deinit();
@@ -299,6 +300,10 @@ pub const StyleEngine = struct {
     }
 
     pub fn deinit(self: *StyleEngine) void {
+        // The cache's holders first: they hold values only, never the sheets
+        // or anything else this engine owns.
+        if (self.matched_properties) |cache| cache.destroy();
+        self.matched_properties = null;
         if (self.active) |*a| a.deinit(self.allocator);
         self.active = null;
         self.owners.deinit(self.allocator);
@@ -322,13 +327,30 @@ pub const StyleEngine = struct {
     /// Changes no value; running out of memory only leaves `style` as it is.
     fn shareMatched(self: *StyleEngine, matched: []const Matched, pseudo: ?[]const u8, generation: u64, style: *ComputedStyle) void {
         if (style.groupsHeldAlone() == 0) return;
-        const rare = self.ensureRare() catch return;
-        const cache = rare.matched_properties orelse blk: {
+        const cache = self.matched_properties orelse blk: {
             const made = matched_properties_cache.MatchedPropertiesCache.create(self.allocator) catch return;
-            rare.matched_properties = made;
+            self.matched_properties = made;
             break :blk made;
         };
         cache.share(matched_properties_cache.keyOf(matched, pseudo), generation, style);
+    }
+
+    /// The slot version every cached style's key carries.
+    pub fn slotVersion(self: *const StyleEngine) u64 {
+        const rare = self.rare orelse return 1;
+        return rare.slot_version;
+    }
+
+    /// A slot's assigned nodes changed: every cached style's key moves.
+    fn moveSlotVersion(self: *StyleEngine) void {
+        const rare = self.ensureRare() catch {
+            // No room for the version: the generation, in every cached
+            // style's key too, moves instead, so every style - the slotted
+            // ones included - is resolved again.
+            self.generation +%= 1;
+            return;
+        };
+        rare.slot_version +%= 1;
     }
 
     fn ensurePropertyRegistry(self: *StyleEngine) Error!*css.property_registry.Registry {
@@ -1077,7 +1099,7 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
         .document = document,
         .engine = engine,
         .active = active,
-        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slot_version, .singletons = singletonKey(document) },
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletonKey(document) },
     };
     defer res.deinit();
     // CSS Color Adjustment 1 2.1: "the page color scheme is determined by
@@ -1227,7 +1249,7 @@ pub fn authorDeclares(element: *runtime.Instance, names: []const []const u8) Err
         .document = document,
         .engine = engine,
         .active = active,
-        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slot_version, .singletons = singletonKey(document) },
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletonKey(document) },
     };
     defer res.deinit();
     var reads: selector_matching.StateReads = .{};
@@ -2194,7 +2216,7 @@ pub fn recalculateStyles(document: *runtime.Instance) void {
     if (!engine.declaresAnimations()) return;
     const rare = engine.rare orelse return;
     const inputs: AnimationGate.Inputs = .{
-        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slot_version, .singletons = singletonKey(document) },
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletonKey(document) },
         .sheets_version = engine.sheets_version,
     };
     if (rare.animations.updated) |updated| if (updated.eql(inputs) and !rare.animations.updated_volatile) return;
@@ -2476,7 +2498,7 @@ pub fn slotAssignmentChanged(slot: *NodeBase) void {
     const instance = instanceOf(slot) orelse return;
     const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;
     const engine = hooks.engineOf(document) orelse return;
-    engine.slot_version +%= 1;
+    engine.moveSlotVersion();
     if (engine.resourceState()) |resources| resources.invalidate();
 }
 
