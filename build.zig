@@ -2507,6 +2507,7 @@ const platform_capability_names = [_][]const u8{
     "device_posture",
     "virtual_keyboard",
     "protocol_handlers",
+    "address_space",
 };
 
 /// The link-plan items -Dplatform-static may name (contract section 10): a
