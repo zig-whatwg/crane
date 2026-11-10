@@ -65,11 +65,6 @@ pub fn processingInstructionDataChanged(node: *runtime.Instance) void {
     s.data_changed(node);
 }
 
-/// Maximum bytes that can be stored inline (without heap allocation).
-/// Most text nodes in typical HTML are short (whitespace, small words); 31
-/// keeps the whole state at 64 bytes beside its lengths and heap pointer.
-pub const INLINE_TEXT_CAPACITY: usize = 31;
-
 /// A CharacterData node's data, as CharacterData keeps it in its state: the
 /// type is here so that what it is - the small-string storage and the
 /// code-unit splice of "replace data" - is shared, while the state stays
@@ -84,56 +79,119 @@ pub const INLINE_TEXT_CAPACITY: usize = 31;
 /// ASCII and an offset is its own byte offset; otherwise offsets are mapped
 /// onto the bytes by infra.wtf8.
 ///
-/// Small text (up to INLINE_TEXT_CAPACITY bytes) is stored inline.
+/// 16 bytes on every Text, Comment, CDATASection and ProcessingInstruction
+/// (lane nd1 batch 1, N8 of tmp/redesign/nodedata-design.md; it was 48: a
+/// heap pointer, the two lengths and a 31-byte inline buffer that every node
+/// paid for, while 32-99.8% of a page's texts are 1-8 code units and 11-76%
+/// whitespace only - tmp/redesign/nodedata/crane-layout.md P8). The bytes
+/// live in one of three places (`Storage`):
+/// - up to `inline_capacity` (8) bytes in the Data's own `word` - the shape of
+///   Lightpanda's 16-byte German string (src/string.zig at c6d54d8f7c10: a
+///   length, then an 8-byte extern union of inline bytes and a pointer);
+/// - whitespace of the shape Gecko shares (`sharedWhitespace`) as a slice of
+///   ONE static blob - Gecko's CharacterDataBuffer points such text into its
+///   static sSpaceSharedString/sTabSharedString and tells it from the heap by
+///   its state word's `mInHeap` bit (dom/base/CharacterDataBuffer.{h,cpp} at
+///   7d1680b9a0d4, SetTo and ReleaseBuffer); Blink's parser shares the same
+///   texts as atoms (core/html/parser/html_construction_site.cc
+///   CheckWhitespaceAndConvertToString at 3ad43ecbc857);
+/// - anything else one exact-size block of the node's allocator, as long
+///   text was before.
+/// Which is told by the length and the `shared` bit, never by an address
+/// range (lesson
+/// debugging-a-heuristic-over-pointer-ranges-breaks-when-the-allocators-layout-moves),
+/// and every free goes through `freeBytes`, which frees a block only.
+///
+/// The bytes are never written in place: every change builds the new data
+/// in new storage and then lets the old go, so a node never writes into the
+/// blob or into bytes a reader borrowed (Gecko's Append copies a shared
+/// buffer out before it grows it; CharacterDataBuffer.cpp, `!mInHeap`).
 pub const Data = struct {
     /// Kept by value in CharacterData's own State (runtime.OwnState, the
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
-    // No allocator copy (lane perf2 batch 6): the heap bytes are allocated
-    // and freed with the allocator the caller passes - the node's Browser's,
-    // runtime.allocatorOf, the one the node was made with. 16 bytes on every
-    // CharacterData node.
+    // No allocator copy (lane perf2 batch 6): a block is allocated and freed
+    // with the allocator the caller passes - the node's Browser's,
+    // runtime.allocatorOf, the one the node was made with.
 
-    /// The data's bytes on the heap, or null while they are inline.
-    heap: ?[*]u8,
-
-    /// The data's length in bytes (the heap block's size when on the heap).
-    byte_len: u32,
+    /// The data's length in bytes, and whether its bytes are the shared blob's.
+    size: Size,
 
     /// The data's length in UTF-16 code units: the node's length (DOM 4.2).
     units: u32,
 
-    /// Inline storage for small text.
-    inline_text: [INLINE_TEXT_CAPACITY]u8,
+    /// The bytes themselves (`in_word`), or where they are.
+    word: Word,
+
+    /// Bytes kept in the word itself.
+    pub const inline_capacity = 8;
+
+    /// The longest data the 31 bits of `Size.bytes` hold: 2 GiB less one.
+    /// V8's longest string, 2^29 - 24 code units, is at most 3 bytes a code
+    /// unit in WTF-8 (1.5 GiB); only a splice past it fails, as Gecko's
+    /// Append fails past NS_MAX_CHARACTER_DATA_BUFFER_LENGTH.
+    pub const max_bytes: usize = std.math.maxInt(u31);
+
+    /// Gecko's CharacterDataBuffer::FragmentBits keeps the same word: its
+    /// `mInHeap` bit beside a 29-bit `mLength`.
+    pub const Size = packed struct(u32) {
+        bytes: u31,
+        /// The bytes are a slice of the shared whitespace blob: never freed.
+        /// Set only when `bytes` is over `inline_capacity`.
+        shared: bool,
+    };
+
+    /// `extern`, so it has no hidden safety tag in safe builds (lesson
+    /// testing-a-std-safety-field-moves-size-pins-in-safe-builds): 8 bytes
+    /// in every mode.
+    pub const Word = extern union {
+        bytes: [inline_capacity]u8,
+        ptr: [*]const u8,
+    };
+
+    pub const Storage = enum {
+        /// In `word.bytes`: up to `inline_capacity` bytes.
+        in_word,
+        /// A slice of the static whitespace blob (`sharedWhitespace`).
+        shared,
+        /// A block of the node's allocator, `size.bytes` long.
+        heap,
+    };
 
     /// Empty data. Every call below that can allocate or free takes the
-    /// allocator the data's heap bytes live in: the same one, every time.
+    /// allocator the data's block lives in: the same one, every time.
     pub const empty: Data = .{
-        .heap = null,
-        .byte_len = 0,
+        .size = .{ .bytes = 0, .shared = false },
         .units = 0,
-        .inline_text = undefined,
+        .word = .{ .bytes = @splat(0) },
     };
 
     pub fn deinit(self: *Data, allocator: std.mem.Allocator) void {
-        if (self.heap) |heap| {
-            allocator.free(heap[0..self.byte_len]);
-            self.heap = null;
-        }
-        self.byte_len = 0;
-        self.units = 0;
+        self.freeBytes(allocator);
+        self.* = .empty;
     }
 
-    /// Check if currently using inline storage
-    pub fn isInline(self: *const Data) bool {
-        return self.heap == null;
+    /// Where the bytes are.
+    pub fn storage(self: *const Data) Storage {
+        if (self.size.bytes <= inline_capacity) return .in_word;
+        return if (self.size.shared) .shared else .heap;
+    }
+
+    /// Let the storage of `self` - a copy of what the node held - go: the
+    /// one free path, so neither the blob nor the word is ever freed.
+    fn freeBytes(self: *const Data, allocator: std.mem.Allocator) void {
+        switch (self.storage()) {
+            .in_word, .shared => {},
+            .heap => allocator.free(self.word.ptr[0..self.size.bytes]),
+        }
     }
 
     /// The data's bytes (WTF-8), borrowed until the next change.
     pub fn getData(self: *const Data) []const u8 {
-        if (self.heap) |heap| return heap[0..self.byte_len];
-        return self.inline_text[0..self.byte_len];
+        const len = self.size.bytes;
+        if (len <= inline_capacity) return self.word.bytes[0..len];
+        return self.word.ptr[0..len];
     }
 
     /// The node's length: the data's length in UTF-16 code units.
@@ -143,35 +201,42 @@ pub const Data = struct {
 
     /// The data's length in bytes.
     pub fn byteLength(self: *const Data) u32 {
-        return self.byte_len;
+        return self.size.bytes;
     }
 
     /// Where code unit `unit` (at most the length) falls in the bytes.
     pub fn position(self: *const Data, unit: u32) infra.wtf8.Position {
+        const byte_len = self.size.bytes;
         // ASCII: every code unit is one byte.
-        if (self.units == self.byte_len) return .{ .byte = unit };
+        if (self.units == byte_len) return .{ .byte = unit };
         if (unit == 0) return .{ .byte = 0 };
-        if (unit >= self.units) return .{ .byte = self.byte_len };
+        if (unit >= self.units) return .{ .byte = byte_len };
         return infra.wtf8.positionOfCodeUnit(self.getData(), unit);
     }
 
-    /// Set data - uses inline storage for small text, heap for larger
+    /// Set data: in the word for small text, the shared blob for its
+    /// whitespace, a block for the rest.
     pub fn setData(self: *Data, allocator: std.mem.Allocator, data: []const u8) !void {
-        if (data.len > std.math.maxInt(u32)) return error.OutOfMemory;
+        if (data.len > max_bytes) return error.OutOfMemory;
         const units: u32 = @intCast(infra.wtf8.codeUnitLength(data));
-        if (data.len <= INLINE_TEXT_CAPACITY) {
-            // Copied before the heap block is freed, and forwards: `data`
-            // may be this state's own bytes.
-            std.mem.copyForwards(u8, self.inline_text[0..data.len], data);
-            if (self.heap) |heap| allocator.free(heap[0..self.byte_len]);
-            self.heap = null;
+        // The storage given up, let go once the new data is in place: `data`
+        // may be this node's own bytes.
+        const old = self.*;
+        if (data.len <= inline_capacity) {
+            var bytes: [inline_capacity]u8 = @splat(0);
+            @memcpy(bytes[0..data.len], data);
+            self.word = .{ .bytes = bytes };
+            self.size = .{ .bytes = @intCast(data.len), .shared = false };
+        } else if (sharedWhitespace(data)) |shared| {
+            self.word = .{ .ptr = shared };
+            self.size = .{ .bytes = @intCast(data.len), .shared = true };
         } else {
-            const heap = try allocator.dupe(u8, data);
-            self.deinit(allocator);
-            self.heap = heap.ptr;
+            const block = try allocator.dupe(u8, data);
+            self.word = .{ .ptr = block.ptr };
+            self.size = .{ .bytes = @intCast(data.len), .shared = false };
         }
-        self.byte_len = @intCast(data.len);
         self.units = units;
+        old.freeBytes(allocator);
     }
 
     /// Replace `count_param` code units at `offset` with `data` (DOM replace
@@ -197,22 +262,37 @@ pub const Data = struct {
         var pieces: infra.wtf8.Pieces = .{};
         pieces.splice(self.getData(), start, end, data);
         const new_len = pieces.joinedLength();
-        if (new_len > std.math.maxInt(u32)) return error.OutOfMemory;
+        if (new_len > max_bytes) return error.OutOfMemory;
 
-        if (new_len <= INLINE_TEXT_CAPACITY) {
-            // The pieces read the current data, which may be inline.
-            var new_inline: [INLINE_TEXT_CAPACITY]u8 = undefined;
-            pieces.writeJoined(new_inline[0..new_len]);
-            self.deinit(allocator);
-            @memcpy(self.inline_text[0..new_len], new_inline[0..new_len]);
+        // The pieces read the current bytes, wherever they are: the new data
+        // is written to new storage before the old is let go.
+        const old = self.*;
+        if (new_len <= inline_capacity) {
+            var bytes: [inline_capacity]u8 = @splat(0);
+            pieces.writeJoined(bytes[0..new_len]);
+            self.word = .{ .bytes = bytes };
+            self.size = .{ .bytes = @intCast(new_len), .shared = false };
+        } else if (new_len <= shared_max_bytes) {
+            // Short enough to have the shared shape: joined on the stack
+            // first, so whitespace takes no block.
+            var joined: [shared_max_bytes]u8 = undefined;
+            pieces.writeJoined(joined[0..new_len]);
+            if (sharedWhitespace(joined[0..new_len])) |shared| {
+                self.word = .{ .ptr = shared };
+                self.size = .{ .bytes = @intCast(new_len), .shared = true };
+            } else {
+                const block = try allocator.dupe(u8, joined[0..new_len]);
+                self.word = .{ .ptr = block.ptr };
+                self.size = .{ .bytes = @intCast(new_len), .shared = false };
+            }
         } else {
-            const new_data = try allocator.alloc(u8, new_len);
-            pieces.writeJoined(new_data);
-            self.deinit(allocator);
-            self.heap = new_data.ptr;
+            const block = try allocator.alloc(u8, new_len);
+            pieces.writeJoined(block);
+            self.word = .{ .ptr = block.ptr };
+            self.size = .{ .bytes = @intCast(new_len), .shared = false };
         }
-        self.byte_len = @intCast(new_len);
         self.units = length - count + data_units;
+        old.freeBytes(allocator);
     }
 
     /// The code units from `offset` to `offset + count` (count already
@@ -226,9 +306,66 @@ pub const Data = struct {
     }
 };
 
-// One per CharacterData node: the code-unit count was fitted in beside the
-// byte length without growing the state past 64 bytes, and the allocator copy
-// went (lane perf2 batch 6): 48.
+// The data is 16 bytes in every build mode: two u32 lengths and one word.
 comptime {
-    std.debug.assert(@sizeOf(Data) <= 48);
+    std.debug.assert(@sizeOf(Data) == 16);
+    std.debug.assert(@alignOf(Data) == 8);
+}
+
+// ============================================================================
+// The shared whitespace
+// ============================================================================
+
+/// Gecko's shared shape (dom/base/CharacterDataBuffer.cpp at 7d1680b9a0d4,
+/// TEXTFRAG_MAX_NEWLINES and TEXTFRAG_WHITE_AFTER_NEWLINE): an optional
+/// space, up to 7 newlines, then up to 50 spaces or up to 50 tabs. It holds
+/// Blink's NewlineThenWhitespaceStringsTable (a newline, then up to 30
+/// spaces: platform/wtf/text/wtf_string.h, kTableSize 32, at 3ad43ecbc857).
+pub const shared_max_newlines = 7;
+pub const shared_max_white = 50;
+/// The longest shared data: 58 bytes.
+pub const shared_max_bytes = 1 + shared_max_newlines + shared_max_white;
+
+/// Gecko's sSpaceSharedString and sTabSharedString as ONE `const` blob, made
+/// at compile time: row [w][n] is a space, `n` newlines, then the white
+/// character `w` (0 a space, 1 a tab) to the row's end - Gecko's row is
+/// `1 + n + 50` long; the extra whites past 50 are never handed out. In
+/// read-only memory: never written, never freed, the same for every Browser
+/// on every thread, so it is no global state (AGENTS.md "Global state").
+const shared_rows: [2][shared_max_newlines + 1][shared_max_bytes]u8 = blk: {
+    @setEvalBranchQuota(10_000);
+    var rows: [2][shared_max_newlines + 1][shared_max_bytes]u8 = undefined;
+    for (&rows, [_]u8{ ' ', '\t' }) |*kind, white| {
+        for (kind, 0..) |*row, n| {
+            row[0] = ' ';
+            for (row[1..][0..n]) |*c| c.* = '\n';
+            for (row[1 + n ..]) |*c| c.* = white;
+        }
+    }
+    break :blk rows;
+};
+
+/// Where `data` is in the shared blob, when it is over `inline_capacity`
+/// bytes and has Gecko's shared shape; null otherwise. The steps of Gecko's
+/// CharacterDataBuffer::SetTo, "Check if we can use a shared string", over
+/// WTF-8 bytes (every character of the shape is ASCII, one byte each).
+fn sharedWhitespace(data: []const u8) ?[*]const u8 {
+    if (data.len <= Data.inline_capacity or data.len > shared_max_bytes) return null;
+    // "if (firstChar == ' ') ++ucp;"
+    const lead = data[0] == ' ';
+    var i: usize = @intFromBool(lead);
+    // "while (ucp < uend && *ucp == '\n') ++ucp;"
+    const newline_start = i;
+    while (i < data.len and data[i] == '\n') i += 1;
+    const newline_count = i - newline_start;
+    // "char16_t space = ucp < uend && *ucp == '\t' ? '\t' : ' ';"
+    const white: u8 = if (i < data.len and data[i] == '\t') '\t' else ' ';
+    const white_start = i;
+    while (i < data.len and data[i] == white) i += 1;
+    // "if (ucp == uend && endNewLine - start <= TEXTFRAG_MAX_NEWLINES &&
+    //  ucp - endNewLine <= TEXTFRAG_WHITE_AFTER_NEWLINE)"
+    if (i != data.len or newline_count > shared_max_newlines or i - white_start > shared_max_white) return null;
+    const row: [*]const u8 = &shared_rows[@intFromBool(white == '\t')][newline_count];
+    // "If we didn't find a space in the beginning, skip it now."
+    return if (lead) row else row + 1;
 }
