@@ -106,14 +106,9 @@ test "official on Linux: out/official as well (the option is not macOS-only)" {
     try testing.expectEqualStrings("jsengines/v8/out/official/obj/libv8_monolith.a", a.monolith);
 }
 
-test "iOS links out/ios-arm64 by default" {
-    const a = try select(.static, .ios);
-    try testing.expectEqualStrings("jsengines/v8/out/ios-arm64", a.dir);
-    try testing.expectEqualStrings("jsengines/v8/out/ios-arm64/obj/libv8_monolith.a", a.monolith);
-    try testing.expectEqualStrings("jsengines/v8/out/ios-arm64/obj/libv8_libplatform_fat.a", a.libplatform);
-    try testing.expectEqualStrings("jsengines/v8/out/ios-arm64/obj/libv8_libbase_fat.a", a.libbase);
-}
-
-test "official for iOS is an error, never a quiet fallback" {
-    try testing.expectError(error.NoOfficialIosBuild, select(.official, .ios));
+test "an iOS target has no V8 archive, static or official: iOS is JavaScriptCore's" {
+    // The user, 2026-11-10 (ruling R4): "ios was always supposed to use javascript core" - no V8
+    // for iOS in any form; never a quiet fallback to another archive.
+    try testing.expectError(error.NoV8ForIos, select(.static, .ios));
+    try testing.expectError(error.NoV8ForIos, select(.official, .ios));
 }
