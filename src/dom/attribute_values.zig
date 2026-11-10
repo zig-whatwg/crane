@@ -31,7 +31,8 @@
 //! atom would add a hash and a table entry to a copy it otherwise skips.
 //! Crane copies every value it stores (V8's strings are not Crane's), so a
 //! long value pays the copy anyway, and interning adds only the hash (one
-//! pass over bytes just copied) and one map slot (9 bytes) - while long
+//! pass over bytes just copied), an 8-byte record header, an 8-byte id slot
+//! and one map slot (5 bytes: a u32 key and its metadata byte) - while long
 //! values repeat on the pages that matter: the class strings of
 //! framework-built pages ("btn btn-primary ...": 17-28 distinct `class`
 //! values in 2,011-3,010 on the React, Vue, Preact and jQuery pages,
@@ -98,7 +99,12 @@ pub const ValueId = enum(u32) {
     }
 };
 
-/// One value: this header, then its bytes, in one block.
+/// One value: this 8-byte header, then its bytes, in one block. Its id and
+/// hash are not kept: the map is keyed by slot and hashes a record's bytes
+/// when it grows or removes one (a long value's hash is one pass over bytes
+/// that were just copied); 8 bytes a record less matter more - most values
+/// are short (crane-layout.md: 20-54% of them 1-8 bytes), and a record of up
+/// to 8 bytes fits malloc's 16-byte class.
 pub const Value = extern struct {
     /// The attributes whose entries name it, and the holders that took one
     /// (`Hold`). Written only by its table, on its Browser's window agent's
@@ -106,11 +112,10 @@ pub const Value = extern struct {
     references: u32,
     /// Its length in bytes.
     len: u32,
-    /// Its hash (`hashOf`), kept so the map grows without hashing values
-    /// again.
-    hash: u32,
-    /// Its id's raw value.
-    id: u32,
+
+    comptime {
+        std.debug.assert(@sizeOf(Value) == 8);
+    }
 
     /// Its bytes, borrowed while it is counted.
     pub inline fn bytes(self: *const Value) []const u8 {
@@ -123,21 +128,18 @@ pub const Value = extern struct {
     }
 };
 
-fn hashOf(bytes: []const u8) u32 {
-    return @truncate(std.hash.Wyhash.hash(0, bytes));
+fn hashOf(bytes: []const u8) u64 {
+    return std.hash.Wyhash.hash(0, bytes);
 }
 
-/// A u32 hash spread over the 64 bits the map reads (its fingerprint is the
-/// top 7).
-inline fn spread(hash: u32) u64 {
-    return @as(u64, hash) *% 0x9E37_79B9_7F4A_7C15;
-}
-
-const RecordContext = struct {
-    pub fn hash(_: RecordContext, value: *const Value) u64 {
-        return spread(value.hash);
+/// The map's keys are slots (u32, 4 bytes a key); a slot's hash is its
+/// record's bytes'.
+const SlotContext = struct {
+    ids: *const attribute_names.IdSlots(Value),
+    pub fn hash(ctx: SlotContext, slot: u32) u64 {
+        return hashOf(ctx.ids.get(slot).bytes());
     }
-    pub fn eql(_: RecordContext, a: *const Value, b: *const Value) bool {
+    pub fn eql(_: SlotContext, a: u32, b: u32) bool {
         return a == b;
     }
 };
@@ -145,15 +147,17 @@ const RecordContext = struct {
 /// A lookup by bytes, with the hash computed once.
 const BytesKey = struct {
     bytes: []const u8,
-    hash: u32,
+    hash: u64,
 };
 
 const KeyAdapter = struct {
+    ids: *const attribute_names.IdSlots(Value),
     pub fn hash(_: KeyAdapter, key: BytesKey) u64 {
-        return spread(key.hash);
+        return key.hash;
     }
-    pub fn eql(_: KeyAdapter, key: BytesKey, value: *const Value) bool {
-        return value.hash == key.hash and value.len == key.bytes.len and std.mem.eql(u8, value.bytes(), key.bytes);
+    pub fn eql(adapter: KeyAdapter, key: BytesKey, slot: u32) bool {
+        const value = adapter.ids.get(slot);
+        return value.len == key.bytes.len and std.mem.eql(u8, value.bytes(), key.bytes);
     }
 };
 
@@ -166,11 +170,14 @@ pub const Table = struct {
     allocator: std.mem.Allocator,
     records: Map = .empty,
     ids: attribute_names.IdSlots(Value) = .{},
-    tombstones: infra.tombstones.TombstoneGuard = .{},
+    /// Removals since the map last had no tombstones: past half the unused
+    /// slots, the next insert rehashes it in place (infra.tombstones' rule;
+    /// its guard cannot rehash a map whose context has state).
+    removals: usize = 0,
     /// The bytes of the records alive (headers included): a measurement.
     bytes_held: usize = 0,
 
-    const Map = std.HashMapUnmanaged(*const Value, void, RecordContext, 80);
+    const Map = std.HashMapUnmanaged(u32, void, SlotContext, 80);
 
     /// Below this many slots an emptied map keeps its storage.
     const kept_capacity = 64;
@@ -179,12 +186,16 @@ pub const Table = struct {
         return .{ .allocator = allocator };
     }
 
+    fn context(self: *const Table) SlotContext {
+        return .{ .ids = &self.ids };
+    }
+
     /// The table's end, with its Browser's scope: every record still in it
     /// (an engine-less test's element no teardown reached), the map, the
     /// slots.
     pub fn deinit(self: *Table) void {
         var keys = self.records.keyIterator();
-        while (keys.next()) |value| destroy(self.allocator, value.*);
+        while (keys.next()) |slot| destroy(self.allocator, self.ids.get(slot.*));
         self.records.deinit(self.allocator);
         self.ids.deinit(self.allocator);
     }
@@ -214,21 +225,22 @@ pub const Table = struct {
     pub fn intern(self: *Table, bytes: []const u8) error{OutOfMemory}!ValueId {
         if (bytes.len == 0) return .empty;
         const key: BytesKey = .{ .bytes = bytes, .hash = hashOf(bytes) };
-        if (self.records.getKeyAdapted(key, KeyAdapter{})) |found| {
-            const id: ValueId = @fromBackingInt(@intCast(found.id));
+        if (self.records.getKeyAdapted(key, KeyAdapter{ .ids = &self.ids })) |slot| {
+            const id = ValueId.of(slot, self.ids.generation(slot));
             self.retain(id);
             return id;
         }
-        self.tombstones.beforeInsert(&self.records);
-        try self.records.ensureUnusedCapacity(self.allocator, 1);
-        const value = try create(self.allocator, bytes, key.hash);
+        self.beforeInsert();
+        try self.records.ensureUnusedCapacityContext(self.allocator, 1, self.context());
+        const value = try create(self.allocator, bytes);
         errdefer destroy(self.allocator, value);
         const slot = try self.ids.take(self.allocator, value, ValueId.limit);
-        const id = ValueId.of(slot, self.ids.generation(slot));
-        value.id = @backingInt(id);
-        self.records.putAssumeCapacityNoClobber(value, {});
+        // Placed by the hash already computed: one pass over the bytes.
+        const placed = self.records.getOrPutAssumeCapacityAdapted(key, KeyAdapter{ .ids = &self.ids });
+        if (debug_checks and placed.found_existing) @panic("an attribute value record interned twice");
+        placed.key_ptr.* = slot;
         self.bytes_held += value.blockSize();
-        return id;
+        return ValueId.of(slot, self.ids.generation(slot));
     }
 
     /// One more reference to `id` (none for .empty), checked for overflow in
@@ -248,12 +260,25 @@ pub const Table = struct {
         if (value.references == 0) @panic("an attribute value record released more often than it was kept");
         value.references -= 1;
         if (value.references != 0) return;
-        const removed = self.records.remove(value);
+        // The map hashes the record's bytes to find its slot: out of the map
+        // first, then the slot, then the block.
+        const removed = self.records.removeContext(id.slot(), self.context());
         if (debug_checks and !removed) @panic("a released attribute value record was not in its Browser's table");
         self.ids.give(id.slot());
         self.bytes_held -= value.blockSize();
         destroy(self.allocator, value);
         self.afterRemove();
+    }
+
+    /// Before an insert: drop the tombstones once they could take half the
+    /// unused slots (infra.tombstones' rule), so a churn of values never
+    /// walks them on every miss.
+    fn beforeInsert(self: *Table) void {
+        if (self.removals == 0) return;
+        const unused = self.records.capacity() - self.records.count();
+        if (self.removals * 2 < unused) return;
+        self.records.rehash(self.context());
+        self.removals = 0;
     }
 
     /// The map after a removal (dom.element_name.Table's rule: WTF's
@@ -263,37 +288,37 @@ pub const Table = struct {
         const live = self.records.count();
         if (live == 0) {
             if (capacity > kept_capacity) self.records.clearAndFree(self.allocator) else self.records.clearRetainingCapacity();
-            self.tombstones.reset();
+            self.removals = 0;
         } else if (capacity > kept_capacity and live * 6 < capacity) {
             self.shrink();
         } else {
-            self.tombstones.noteRemoval(&self.records);
+            self.removals += 1;
         }
     }
 
     fn shrink(self: *Table) void {
         var smaller: Map = .empty;
-        smaller.ensureTotalCapacity(self.allocator, self.records.count()) catch {
-            self.tombstones.noteRemoval(&self.records);
+        smaller.ensureTotalCapacityContext(self.allocator, self.records.count(), self.context()) catch {
+            self.removals += 1;
             return;
         };
         var keys = self.records.keyIterator();
-        while (keys.next()) |value| smaller.putAssumeCapacityNoClobber(value.*, {});
+        while (keys.next()) |slot| smaller.putAssumeCapacityNoClobberContext(slot.*, {}, self.context());
         self.records.deinit(self.allocator);
         self.records = smaller;
-        self.tombstones.reset();
+        self.removals = 0;
     }
 };
 
 /// One record: header and bytes in one block, through the allocator's raw
 /// entry point (written in full at once; Z5). Its one reference is the
 /// caller's.
-fn create(allocator: std.mem.Allocator, bytes: []const u8, hash: u32) error{OutOfMemory}!*Value {
+fn create(allocator: std.mem.Allocator, bytes: []const u8) error{OutOfMemory}!*Value {
     if (bytes.len > std.math.maxInt(u32) - @sizeOf(Value)) return error.OutOfMemory;
     const total = @sizeOf(Value) + bytes.len;
     const memory = allocator.rawAlloc(total, .of(Value), @returnAddress()) orelse return error.OutOfMemory;
     const value: *Value = @ptrCast(@alignCast(memory));
-    value.* = .{ .references = 1, .len = @intCast(bytes.len), .hash = hash, .id = 0 };
+    value.* = .{ .references = 1, .len = @intCast(bytes.len) };
     @memcpy(memory[@sizeOf(Value)..total], bytes);
     return value;
 }
@@ -387,7 +412,7 @@ test "a value is interned once per Browser and freed with its last reference" {
     const table = tableOf(&scope).?;
     try std.testing.expectEqual(@as(u32, 2), table.get(a).references);
     try std.testing.expectEqualStrings("btn btn-primary btn-large", bytesIn(table, a));
-    try std.testing.expectEqual(@as(usize, @sizeOf(Value) + "btn btn-primary btn-large".len), table.bytes_held);
+    try std.testing.expectEqual(@as(usize, 8 + "btn btn-primary btn-large".len), table.bytes_held);
     // Case and length count.
     const b = try intern(&scope, "BTN btn-primary btn-large");
     try std.testing.expect(b != a);
