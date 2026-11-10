@@ -2465,9 +2465,12 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // - Safari 4/6: it stops, but its XMLHttpRequest cases TIMEOUT because
     //   XMLHttpRequest::didFail fires error, not abort, for a cancellation
     //   the client did not ask for.
-    // Without this, only the refresh's reload aborted the fetch, several
-    // tasks later, and a response task queued first resolved it (the file's
-    // third flake).
+    // Without this, the fetch was aborted only by the refresh's own
+    // navigation, from its timer: the lifecycle task queued behind the load
+    // event arms the timer, and the timer fires a turn later. A response
+    // that arrived while the load task still ran had its task queued first
+    // and resolved the promise (the file's third flake: 12 of 80 fetches
+    // under load, every one this way).
     if (zeroTimeRefreshAwaitingNavigation(instance, internal)) |refresh| {
         internal.declarative_refresh = null;
         refresh.cancel();
