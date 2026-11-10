@@ -150,6 +150,15 @@ pub const BrowserScope = struct {
         /// record's last element frees it, to the scope's general allocator;
         /// the table's end frees any left.
         element_names,
+        /// dom.attribute_names.Table: the Browser's interned attribute names
+        /// outside the static tables, each a COUNTED record with a dense u32
+        /// id (lane nd2 batch 2, A2): the same rules as `element_names`.
+        attribute_names,
+        /// dom.attribute_values.Table: the Browser's attribute values, one
+        /// COUNTED record per distinct value an attribute holds now, with a
+        /// dense u32 id (lane nd2 batch 2, A1: Blink's and WebKit's
+        /// AtomString values). Weak, like `element_names`.
+        attribute_values,
     };
     const table_count = @typeInfo(Table).@"enum".field_names.len;
 

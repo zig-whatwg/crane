@@ -1159,6 +1159,7 @@ pub const DomTreeAdapter = struct {
             dom.finish_parsing_children.createdByParser(element, local_name);
         }
 
+        dom.element_attributes.reserve(element, tree_node.attributes.toSlice().len);
         for (tree_node.attributes.toSlice()) |attr| appendParsedAttribute(element, attr);
 
         // HTML 4.2.7 records the token's stylesheet relationship and enabled

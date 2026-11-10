@@ -31,7 +31,8 @@ const runtime = @import("runtime");
 
 pub const Error = error{ InvalidStateError, OutOfMemory };
 
-/// One attribute of a list. Borrowed from it: valid until the list changes.
+/// One attribute of a list. Borrowed from its name and value records: valid
+/// until that attribute next changes or goes (dom.element_data).
 pub const Attribute = struct {
     namespace: ?[]const u8,
     prefix: ?[]const u8,
@@ -53,6 +54,7 @@ pub const Implementation = struct {
     remove: *const fn (element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) void,
     node_at: *const fn (element: *runtime.Instance, index: usize) Error!?*runtime.Instance,
     existing_node_at: *const fn (element: *runtime.Instance, index: usize) ?*runtime.Instance,
+    reserve: *const fn (element: *runtime.Instance, count: usize) void,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -81,6 +83,20 @@ pub fn count(element: *runtime.Instance) usize {
 pub fn append(element: *runtime.Instance, attribute: Attribute) Error!void {
     const impl = implementation.get() orelse return error.InvalidStateError;
     return impl.append(element, attribute);
+}
+
+/// Room for `count` attributes appended to `element` next: "create an
+/// element for a token" (HTML 13.2.6.1: "Append the attributes in the given
+/// token to element") and "clone a single node" (DOM 4.5 step 2.3: "For each
+/// attribute of node's attribute list... Append copyAttribute to copy") know
+/// how many they append, so the list is sized for them exactly; script's
+/// appends grow it 1 -> 4 -> x2 (lane nd2 batch 2; oss review R16: Servo's
+/// f28a39571849 pre-sizes on parse and clone the same way, as do Gecko and
+/// Ladybird). A capacity hint: out of memory, the appends grow the list
+/// themselves. Nothing for a node that is not an element.
+pub fn reserve(element: *runtime.Instance, count: usize) void {
+    const impl = implementation.get() orelse return;
+    impl.reserve(element, count);
 }
 
 /// DOM "change an attribute": the one with this namespace and local name,
