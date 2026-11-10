@@ -527,9 +527,15 @@ step_smoke() {
     rm -rf "$t"
     die "the smoke link failed; see $V8/$OUT/smoke-link.txt"
   fi
+  # ONE C++ runtime: the linked program names Chromium's std::__Cr and no other C++ library's.
+  local nm="$LLVM/bin/llvm-nm" cr other
+  cr=$("$nm" "$t/smoke" 2>/dev/null | grep -c 'St4__Cr' || true)
+  other=$("$nm" "$t/smoke" 2>/dev/null | grep -c -E 'St3__1|_ZNSt7__cxx11|__gnu_cxx' || true)
   rc=0
   "$t/smoke" > "$V8/$OUT/smoke.txt" 2>&1 || rc=$?
+  echo "smoke binary: std::__Cr symbols $cr, std::__1/libstdc++ symbols $other" >> "$V8/$OUT/smoke.txt"
   cat "$V8/$OUT/smoke.txt"
+  [ "$other" = 0 ] && [ "$cr" -gt 0 ] || die "the smoke binary holds another C++ library than Chromium's"
   rm -rf "$t"
   [ "$rc" = 0 ] || die "the smoke test failed (rc $rc)"
   log "smoke: passed"
