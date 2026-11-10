@@ -233,3 +233,136 @@ test "wr8 b8: a full collection's anchor weak processing and its atomic pause's 
     try page.run("globalThis.kept = null;");
     page.fullGC();
 }
+
+test "wr8 b8: wrapper churn with only scavenges leaves the C++ heap and the anchors' registry where they began - no anchor waits for a full collection" {
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    try page.run("globalThis.d = new Document();");
+    page.fullGC();
+    const full_before = try counter(page, "full_gc_count");
+    const held_before = try anchorsHeld(page);
+    const cpp_before = try counter(page, "cpp_heap_used_bytes");
+    const dropped_before = page.dropped();
+
+    // wrapper-churn-nogc's shape: made and dropped at once.
+    const count = 50_000;
+    try page.run("{ const make = (n) => { for (let i = 0; i < n; i++) d.createElement('div'); }; make(50000); }");
+    try page.minorGC(4);
+    const dropped = page.dropped() - dropped_before;
+    const held = try anchorsHeld(page) - held_before;
+    const cpp = try counter(page, "cpp_heap_used_bytes") - cpp_before;
+    std.debug.print("wr8 b8 fact: {d} of {d} dropped in scavenges; anchors held +{d}; C++ heap +{d} B ({d:.2} B/elem); freed {d}, frees deferred {d}\n", .{
+        dropped,                                                       count,                                   held,                                            cpp,
+        @as(f64, @floatFromInt(cpp)) / @as(f64, @floatFromInt(count)), try counter(page, "node_anchors_freed"), try counter(page, "node_anchor_frees_deferred"),
+    });
+    // Only scavenges ran: this is the young generation's path.
+    try testing.expectEqual(full_before, try counter(page, "full_gc_count"));
+    try testing.expect(dropped >= count - 1000);
+    // Every dropped wrapper's anchor is gone from the registry and freed.
+    try testing.expect(held < 1000);
+    // ~0 B/element of C++ heap: what cppgc's used bytes count beyond the
+    // objects is its linear allocation buffers (counted whole when taken,
+    // StatsCollector::NotifyAllocation at ReplaceLinearAllocationBuffer) -
+    // two pages' worth at most here, where 50,000 anchors left waiting are
+    // 800 KB.
+    try testing.expect(cpp < 256 * 1024);
+}
+
+test "wr8 b8: a free refused while the C++ heap is collecting is counted, and its anchor goes with the next full collection - never leaked" {
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    try page.run("globalThis.d = new Document();");
+    page.fullGC();
+    const held_before = try anchorsHeld(page);
+    const cpp_before = try counter(page, "cpp_heap_used_bytes");
+    const deferred_before = try counter(page, "node_anchor_frees_deferred");
+
+    // A full collection V8 does not force - its answer to critical memory
+    // pressure - of 100,000 dead wrappers: its C++ heap sweeps on after it,
+    // concurrently and then on the agent's thread (13.1.203 cpp-heap.cc
+    // CppHeap::SelectSweepingType; sweeper.cc SweeperImpl::Start posts its
+    // first task to reschedule itself 100 ms later), so cppgc refuses every
+    // free until its pages are finalized.
+    try page.run("globalThis.keep = (() => { const a = []; for (let i = 0; i < 100000; i++) a.push(d.createElement('div')); return a; })();");
+    try page.run("globalThis.keep = null;");
+    {
+        const entered = page.enter();
+        defer page.leave(entered);
+        try testing.expect(ffi.v8_test_Isolate_CollectUnforced(page.isolate()));
+    }
+    // Wrappers dropped in a scavenge meanwhile; the drain it posts runs while
+    // the C++ heap still sweeps: each refused free is counted, and its anchor
+    // waits.
+    try page.run("{ const make = (n) => { for (let i = 0; i < n; i++) d.createElement('div'); }; make(5000); }");
+    try page.scavenge(1);
+    const waiting = try counter(page, "node_anchors_dropped_waiting");
+    page.pump();
+    const deferred = try counter(page, "node_anchor_frees_deferred") - deferred_before;
+    std.debug.print("wr8 b8 fact: {d} anchors waiting after the scavenge; {d} frees refused while the C++ heap swept; {d} still waiting\n", .{ waiting, deferred, try counter(page, "node_anchors_dropped_waiting") });
+    try testing.expect(waiting > 0);
+    try testing.expect(deferred > 0);
+    try testing.expect(try counter(page, "node_anchors_dropped_waiting") > 0);
+
+    // The next full collection: the anchors nothing reached die in it, none
+    // waits, and the C++ heap is back where it began - nothing leaked.
+    page.fullGC();
+    try testing.expectEqual(@as(i64, 0), try counter(page, "node_anchors_dropped_waiting"));
+    try testing.expect(try anchorsHeld(page) - held_before < 10);
+    try testing.expect(try counter(page, "cpp_heap_used_bytes") - cpp_before < 4096);
+}
+
+test "wr8 b8: a node whose wrapper was dropped is wrapped again with a fresh anchor, and each anchor is freed exactly once" {
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    try page.run("globalThis.d = new Document(); globalThis.root = d.createElement('section');");
+    page.fullGC();
+    const freed_before = try counter(page, "node_anchors_freed");
+    const deferred_before = try counter(page, "node_anchor_frees_deferred");
+    const dropped_before = page.dropped();
+    const registered_before = try counter(page, "node_anchors_registered");
+
+    // A node that lives on in a tree, its wrapper dropped by script at once.
+    const b = try page.instance("root.appendChild(d.createElement('b'))");
+    const node = dom.instance_bridge.getNodeBase(b) orelse return error.NotANode;
+    const generation = SlabAllocator.generationOf(b);
+    try testing.expect(page.probe(node).anchor != null);
+    const count_unwrapped = dom.refcount.count(node) - 1;
+
+    for (0..3) |round| {
+        // Dropped in a scavenge: its slot empty, its reference released, its
+        // anchor freed after the scavenge.
+        try page.minorGC(4);
+        try testing.expect(runtime.lifetime.slotOf(node).isEmpty());
+        try testing.expectEqual(count_unwrapped, dom.refcount.count(node));
+        try testing.expectEqual(@as(i64, 0), try counter(page, "node_anchors_dropped_waiting"));
+        // Every wrapper dropped so far had its anchor freed once: never twice,
+        // never refused.
+        const dropped = page.dropped() - dropped_before;
+        try testing.expectEqual(deferred_before, try counter(page, "node_anchor_frees_deferred"));
+        try testing.expectEqual(@as(i64, @intCast(dropped)), try counter(page, "node_anchors_freed") - freed_before);
+        try testing.expect(dropped >= round + 1);
+        // Wrapped again: a fresh anchor in the registry, holding the node's
+        // slot, the node the same one.
+        try page.expectHolds("root.firstChild.localName === 'b' && root.firstChild === root.lastChild && Object.getPrototypeOf(root.firstChild) === Element.prototype");
+        try testing.expectEqual(generation, SlabAllocator.generationOf(b));
+        const seen = page.probe(node);
+        try testing.expect(seen.has_wrapper);
+        try testing.expect(seen.anchor != null);
+        try testing.expectEqual(@as(?*anyopaque, @ptrCast(runtime.lifetime.slotOf(node))), seen.anchor_slot);
+        try testing.expectEqual(count_unwrapped + 1, dom.refcount.count(node));
+        try testing.expect(try counter(page, "node_anchors_registered") - registered_before <= 4);
+    }
+    // And script that holds it keeps it: its anchor stays registered.
+    try page.run("globalThis.held = root.firstChild;");
+    try page.minorGC(4);
+    try testing.expect(!runtime.lifetime.slotOf(node).isEmpty());
+    try page.expectHolds("held === root.firstChild");
+    page.fullGC();
+    try page.expectHolds("held === root.firstChild && held.localName === 'b'");
+}
