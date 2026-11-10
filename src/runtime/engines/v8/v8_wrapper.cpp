@@ -4045,6 +4045,26 @@ void v8_String_Dispose(Global<String>* str) {
     }
 }
 
+/// V8 13.1's `String::WriteUtf8(isolate, buffer, capacity)` - no options - the
+/// contract `v8_String_WriteUtf8`'s callers read (helpers.writtenUtf8,
+/// intl_binding, observable_array, conversions, protocol_values): as many
+/// whole characters as fit; then, if every character was written and a byte
+/// is left, a NUL, COUNTED in the result; a capacity of -1 is unbounded
+/// (13.1 src/api/api.cc WriteUtf8Impl: "Only null-terminate if there's
+/// space"). V8 14 gave the name WriteUtf8 to the former WriteUtf8V2
+/// (v8-primitive.h at 15.7.112.43), which writes no NUL unless asked
+/// (kNullTerminate) and, asked, writes one even where it costs the last
+/// character - so neither flag reproduces 13.1: the NUL is added here.
+/// Lone surrogates stay three-byte sequences (no kReplaceInvalidUtf8), as
+/// 13.1 wrote them without REPLACE_INVALID_UTF8.
+static int writeUtf8NulIfRoom(Isolate* isolate, const String* str, char* buffer, int capacity) {
+    const size_t cap = capacity < 0 ? str->Utf8Length(isolate) + 1 : static_cast<size_t>(capacity);
+    size_t chars = 0;
+    size_t written = str->WriteUtf8(isolate, buffer, cap, String::WriteFlags::kNone, &chars);
+    if (chars == static_cast<size_t>(str->Length()) && written < cap) buffer[written++] = '\0';
+    return static_cast<int>(written);
+}
+
 int v8_String_Utf8Length(Global<String>* str) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -4056,7 +4076,7 @@ int v8_String_WriteUtf8(Global<String>* str, char* buffer, int length) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<String> local_str = str->Get(isolate);
-    return local_str->WriteUtf8(isolate, buffer, length);
+    return writeUtf8NulIfRoom(isolate, *local_str, buffer, length);
 }
 
 Global<String>* v8_String_Empty(Isolate* isolate) {
@@ -8034,7 +8054,7 @@ int v8_String_Utf8Length_Raw(const void* str) {
 int v8_String_WriteUtf8_Raw(const void* str, char* buffer, int length) {
     Isolate* isolate = Isolate::GetCurrent();
     const String* string_ptr = reinterpret_cast<const String*>(str);
-    return string_ptr->WriteUtf8(isolate, buffer, length);
+    return writeUtf8NulIfRoom(isolate, string_ptr, buffer, length);
 }
 
 // Number value extraction for raw pointers (from callbacks/anyopaque)
