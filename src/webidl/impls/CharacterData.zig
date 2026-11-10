@@ -232,8 +232,10 @@ fn replaceDataInternal(instance: *runtime.Instance, internal: *InternalState, of
     try dom.mutation_observer_algorithms.queueCharacterDataMutationRecord(instance, internal.getData());
 
     // Steps 5-7: insert data after offset code units, then remove count
-    // code units from offset + data's length - one splice, which handles
-    // inline vs heap storage, and a pair cut or completed at either seam.
+    // code units from offset + data's length - one splice into new storage
+    // (the data's word, the shared whitespace or a block: data in the word
+    // or the shared blob is never written in place), and a pair cut or
+    // completed at either seam.
     if (data.len > std.math.maxInt(u32)) return error.OutOfMemory;
     const data_units: u32 = @intCast(infra.wtf8.codeUnitLength(data));
     try internal.replaceDataUnits(runtime.allocatorOf(instance), offset, count, data, data_units);
