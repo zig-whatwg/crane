@@ -126,22 +126,6 @@ const address_i64_checks = prelude ++
     \\})()
 ;
 
-test "flags: the i64 address type's modules are enabled where V8 runs and where the snapshot is made" {
-    // V8 13.1 has memory64 behind --experimental-wasm-memory64 (it ships in
-    // 13.3); without it a module declaring an i64 memory or table is a
-    // CompileError. The snapshot generator gets every runtime flag.
-    try std.testing.expect(std.mem.indexOf(u8, loader.RUNTIME_V8_FLAGS, "--experimental-wasm-memory64") != null);
-    try std.testing.expect(std.mem.indexOf(u8, loader.SNAPSHOT_V8_FLAGS, "--experimental-wasm-memory64") != null);
-}
-
-test "flags: WebAssembly's exnref exception handling is enabled where V8 runs and where the snapshot is made" {
-    // try_table, throw_ref and the exnref type (Wasm 3.0) are behind
-    // --experimental-wasm-exnref in V8 13.1; without it those modules are
-    // CompileErrors ("invalid value type 'exn'") - wasm/core/exceptions/.
-    try std.testing.expect(std.mem.indexOf(u8, loader.RUNTIME_V8_FLAGS, "--experimental-wasm-exnref") != null);
-    try std.testing.expect(std.mem.indexOf(u8, loader.SNAPSHOT_V8_FLAGS, "--experimental-wasm-exnref") != null);
-}
-
 test "snapshot realm: a Window realm restored from Crane's snapshot takes address i64" {
     if (!firstToStartV8()) {
         std.log.warn("skipping: V8 was started in this process before this test; run it in a process of its own (tests-v8 runs at batch 1; -Dlaunch-batch=1 or -Dtest-file=)", .{});

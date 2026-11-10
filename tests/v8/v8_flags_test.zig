@@ -87,14 +87,6 @@ test "neither set is empty or ends in a stray separator" {
     try std.testing.expect(std.mem.indexOf(u8, loader.SNAPSHOT_V8_FLAGS, "  ") == null);
 }
 
-test "Float16Array is enabled where V8 runs and where the snapshot is made" {
-    // V8 13.1 ships Float16Array behind --js-float16array (shipping from
-    // 13.5); without it the global has no Float16Array. Genesis installs it
-    // per context, so a snapshot made without it would not have it either.
-    try std.testing.expect(std.mem.indexOf(u8, loader.RUNTIME_V8_FLAGS, "--js-float16array") != null);
-    try std.testing.expect(std.mem.indexOf(u8, loader.SNAPSHOT_V8_FLAGS, "--js-float16array") != null);
-}
-
 test "no flag V8 15.7 retired is set: SetFlagsFromString stops at the first flag it does not know" {
     // V8 15.7.112.43 shipped Float16Array, Wasm memory64, exnref and JSPI and
     // deleted their flags (src/flags/feature-flags.h, wasm-feature-flags.h at
