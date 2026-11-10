@@ -185,7 +185,7 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
         if (protocol_agents.htmlConstructorHookOf(isolate)) |hook| {
             // It binds or releases the receiver itself.
             receiver_taken = true;
-            constructHTMLElement(self, info, hook, this_obj, isolate, current_context, constructor_context, ctx, constructor_v8_fn);
+            constructHTMLElement(self, info, hook, this_obj, isolate, current_context, constructor_context, ctx);
             return;
         }
     }
@@ -317,7 +317,6 @@ fn constructHTMLElement(
     current_context: *v8.Context,
     function_context: *v8.Context,
     realm: runtime.Context,
-    active_function: ?*v8.Function,
 ) void {
     var receiver_taken = false;
     defer if (!receiver_taken) v8.v8_Object_Dispose(this_obj);
@@ -326,12 +325,10 @@ fn constructHTMLElement(
     // A construct call's FunctionCallbackInfo names its target as the
     // FunctionTemplateInfo rather than the function (V8's
     // GetTargetFunctionTemplateInfo reads either), and V8 >= 14 gives no
-    // read of it; the interface object is then the template's
-    // instantiation in the current context - the callee's, which V8
-    // entered for the call.
-    const own_active: ?*v8.Function = if (active_function == null) activeInterfaceObject(self, current_context) else null;
-    defer if (own_active) |f| v8.v8_Function_Dispose(f);
-    const active = active_function orelse own_active;
+    // read of it; the interface object is the template's instantiation in
+    // the current context - the callee's, which V8 entered for the call.
+    const active: ?*v8.Function = activeInterfaceObject(self, current_context);
+    defer if (active) |f| v8.v8_Function_Dispose(f);
 
     // A construct call always has NewTarget.
     const new_target = info.getNewTarget() orelse {
