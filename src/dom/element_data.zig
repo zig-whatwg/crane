@@ -926,7 +926,7 @@ test "script's appends grow the list 1, 4, 8; a reservation is exact; order hold
     // The list goes with its last attribute, and so do the values.
     while (data.getAttributeCount() > 0) testRemoveAt(&scope, &data, 0);
     try std.testing.expect(data.attrs == null);
-    try std.testing.expectEqual(@as(usize, 0), attribute_values.tableOf(&scope).?.count());
+    try std.testing.expectEqual(@as(usize, 0), attribute_values.tableOf(&scope).?.liveCount());
 
     // Parse and clone reserve exactly: five attributes, five entries; then
     // a script append doubles.
@@ -939,7 +939,7 @@ test "script's appends grow the list 1, 4, 8; a reservation is exact; order hold
     try std.testing.expectEqual(@as(usize, 256), AttributeList.capacityOf(try AttributeList.classFor(200)));
     try std.testing.expectEqual(@as(usize, 128), AttributeList.capacityOf(try AttributeList.classFor(128)));
     // One value record serves all six attributes.
-    try std.testing.expectEqual(@as(usize, 1), attribute_values.tableOf(&scope).?.count());
+    try std.testing.expectEqual(@as(usize, 1), attribute_values.tableOf(&scope).?.liveCount());
 }
 
 test "attributes are named by namespace and local name, and found by qualified name" {
