@@ -94,3 +94,19 @@ test "Float16Array is enabled where V8 runs and where the snapshot is made" {
     try std.testing.expect(std.mem.indexOf(u8, loader.RUNTIME_V8_FLAGS, "--js-float16array") != null);
     try std.testing.expect(std.mem.indexOf(u8, loader.SNAPSHOT_V8_FLAGS, "--js-float16array") != null);
 }
+
+test "no flag V8 15.7 retired is set: SetFlagsFromString stops at the first flag it does not know" {
+    // V8 15.7.112.43 shipped Float16Array, Wasm memory64, exnref and JSPI and
+    // deleted their flags (src/flags/feature-flags.h, wasm-feature-flags.h at
+    // the tag). An unknown flag makes FlagList::SetFlagsFromCommandLine print
+    // "Error: unrecognized flag" and `break` (flags.cc:771): every flag after
+    // it is dropped without a sign (lesson debugging-v8-stops-parsing-a-flag-
+    // string-at-the-first-unknown-flag). The features themselves are on by
+    // default now; the effect tests are in v8up_flag_effects_test.zig.
+    for ([_][]const u8{ "--js-float16array", "--experimental-wasm-memory64", "--experimental-wasm-exnref", "--experimental-wasm-jspi" }) |retired| {
+        if (std.mem.indexOf(u8, loader.RUNTIME_V8_FLAGS, retired) != null) {
+            std.log.err("RUNTIME_V8_FLAGS still sets {s}, which V8 15.7 does not know", .{retired});
+            return error.RetiredFlagSet;
+        }
+    }
+}
