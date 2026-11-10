@@ -14,6 +14,10 @@
 //! All HTML5 standard elements are pre-interned in static memory.
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+
+const ElementName = dom.element_name.ElementName;
 
 /// List of all HTML5 standard element tag names.
 /// These are pre-interned at compile time for zero-allocation lookup.
@@ -135,6 +139,11 @@ pub const html_tag_names = [_][]const u8{
     "datalist",
     "optgroup",
     "option",
+    // The customizable select's (HTML 4.10.7.x, HTMLSelectedContentElement):
+    // the parser makes it, so its name is static like the rest (lane nd2
+    // batch 1-fix; review appendix-nd2.md F11 found every Browser interning
+    // it).
+    "selectedcontent",
     "textarea",
     "output",
     "progress",
@@ -196,6 +205,93 @@ pub const html_tag_names = [_][]const u8{
     "image", // Legacy alias for img
 };
 
+/// The SVG element names (SVG 2's element index, the names HTML's "adjust
+/// SVG tag names" makes, and the SVG 1.1 names browsers still create), for
+/// the static element name records. Distinct (a test checks).
+///
+/// Spec: https://svgwg.org/svg2-draft/eltindex.html
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#adjust-svg-tag-names
+pub const svg_tag_names = [_][]const u8{
+    "a",                 "altGlyph",           "altGlyphDef",         "altGlyphItem",  "animate",
+    "animateColor",      "animateMotion",      "animateTransform",    "circle",        "clipPath",
+    "cursor",            "defs",               "desc",                "discard",       "ellipse",
+    "feBlend",           "feColorMatrix",      "feComponentTransfer", "feComposite",   "feConvolveMatrix",
+    "feDiffuseLighting", "feDisplacementMap",  "feDistantLight",      "feDropShadow",  "feFlood",
+    "feFuncA",           "feFuncB",            "feFuncG",             "feFuncR",       "feGaussianBlur",
+    "feImage",           "feMerge",            "feMergeNode",         "feMorphology",  "feOffset",
+    "fePointLight",      "feSpecularLighting", "feSpotLight",         "feTile",        "feTurbulence",
+    "filter",            "font",               "font-face",           "foreignObject", "g",
+    "glyph",             "glyphRef",           "hkern",               "image",         "line",
+    "linearGradient",    "marker",             "mask",                "metadata",      "missing-glyph",
+    "mpath",             "path",               "pattern",             "polygon",       "polyline",
+    "radialGradient",    "rect",               "script",              "set",           "stop",
+    "style",             "svg",                "switch",              "symbol",        "text",
+    "textPath",          "title",              "tref",                "tspan",         "use",
+    "view",              "vkern",
+};
+
+/// The MathML element names (MathML Core's elements, and the MathML 3
+/// presentation names browsers still create), for the static element name
+/// records. Distinct (a test checks).
+///
+/// Spec: https://w3c.github.io/mathml-core/#mathml-elements-and-attributes
+pub const mathml_tag_names = [_][]const u8{
+    "math",       "maction",   "annotation",    "annotation-xml", "menclose",
+    "merror",     "mfenced",   "mfrac",         "mglyph",         "mi",
+    "mlabeledtr", "mlongdiv",  "mmultiscripts", "mn",             "mo",
+    "mover",      "mpadded",   "mphantom",      "mprescripts",    "mroot",
+    "mrow",       "ms",        "mscarries",     "mscarry",        "msgroup",
+    "msline",     "mspace",    "msqrt",         "msrow",          "mstack",
+    "mstyle",     "msub",      "msubsup",       "msup",           "mtable",
+    "mtd",        "mtext",     "mtr",           "munder",         "munderover",
+    "none",       "semantics",
+};
+
+/// The static element name records of one namespace: one per name, in
+/// `names` order, found by local name.
+fn StaticElementNames(comptime namespace: []const u8, comptime names: []const []const u8) type {
+    return struct {
+        const records: [names.len]ElementName = blk: {
+            @setEvalBranchQuota(200_000);
+            var out: [names.len]ElementName = undefined;
+            for (names, 0..) |name, i| out[i] = ElementName.initStatic(namespace, name);
+            break :blk out;
+        };
+
+        const index: std.StaticStringMap(u16) = blk: {
+            @setEvalBranchQuota(200_000);
+            var kvs: [names.len]struct { []const u8, u16 } = undefined;
+            for (names, 0..) |name, i| kvs[i] = .{ name, i };
+            break :blk std.StaticStringMap(u16).initComptime(&kvs);
+        };
+
+        fn get(local_name: []const u8) ?*const ElementName {
+            return &records[index.get(local_name) orelse return null];
+        }
+    };
+}
+
+const html_element_names = StaticElementNames(infra.namespaces.HTML_NAMESPACE, &html_tag_names);
+const svg_element_names = StaticElementNames(infra.namespaces.SVG_NAMESPACE, &svg_tag_names);
+const mathml_element_names = StaticElementNames(infra.namespaces.MATHML_NAMESPACE, &mathml_tag_names);
+
+/// The static record of exactly this element name, or null when no table
+/// has it - Element then interns it in its Browser's table
+/// (dom.element_name). A static name is in the HTML, SVG or MathML
+/// namespace, has no prefix, and is exactly one of that namespace's names
+/// (a local name is case-sensitive: createElementNS(html, "DIV") is not
+/// "div"). Blink's static html_names / svg_names / mathml_names
+/// QualifiedNames, WebKit's HTMLNames / SVGNames / MathMLNames.
+pub fn internElementName(namespace: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) ?*const ElementName {
+    if (prefix != null) return null;
+    return switch (dom.element_name.namespaceOf(namespace)) {
+        .html => html_element_names.get(local_name),
+        .svg => svg_element_names.get(local_name),
+        .mathml => mathml_element_names.get(local_name),
+        else => null,
+    };
+}
+
 /// Compile-time generated perfect hash map for tag name lookup.
 /// Maps tag name strings to their interned static pointers.
 const InternedTagMap = std.StaticStringMap([]const u8);
@@ -214,16 +310,28 @@ pub const interned_tags: InternedTagMap = blk: {
 /// HTML tag names are case-insensitive, so "DIV" should match "div".
 const LowerInternedTagMap = std.StaticStringMap([]const u8);
 
-/// Pre-computed lowercase tag name intern map.
-/// This allows O(1) lookup after lowercasing the input.
+/// Pre-computed lowercase tag name intern map: each name in ASCII
+/// lowercase, mapped to itself, for a lookup after lowercasing the input.
+/// Not every name in html_tag_names is lowercase - "foreignObject" is not -
+/// so the keys and values are lowered here: the tokenizer's "foreignobject"
+/// interns too (it missed, and tree_builder's initElement copied it;
+/// appendix-nd2.md F12).
 pub const lowercase_interned_tags: LowerInternedTagMap = blk: {
+    @setEvalBranchQuota(100_000);
     var kvs: [html_tag_names.len]struct { []const u8, []const u8 } = undefined;
     for (html_tag_names, 0..) |name, i| {
-        // All names in html_tag_names are already lowercase
-        kvs[i] = .{ name, name };
+        const lower = lowerComptime(name);
+        kvs[i] = .{ lower, lower };
     }
     break :blk LowerInternedTagMap.initComptime(&kvs);
 };
+
+fn lowerComptime(comptime name: []const u8) []const u8 {
+    var buffer: [name.len]u8 = undefined;
+    for (name, 0..) |c, i| buffer[i] = std.ascii.toLower(c);
+    const final = buffer;
+    return &final;
+}
 
 /// Attempt to intern a tag name.
 ///
@@ -350,6 +458,12 @@ test "intern is case-insensitive" {
     try std.testing.expect(lower.?.ptr == mixed.?.ptr);
 }
 
+test "intern finds a camelCase name from its lowercase, as the tokenizer gives it" {
+    try std.testing.expectEqualStrings("foreignobject", intern("foreignobject").?);
+    try std.testing.expectEqualStrings("foreignobject", intern("FOREIGNOBJECT").?);
+    try std.testing.expectEqualStrings("selectedcontent", intern("selectedcontent").?);
+}
+
 test "intern handles all HTML5 tags" {
     for (html_tag_names) |name| {
         const result = intern(name);
@@ -385,4 +499,32 @@ test "getAllTagNames returns all tag names" {
     const all = getAllTagNames();
     try std.testing.expect(all.len > 100); // Should have 100+ tags
     try std.testing.expect(all.len == html_tag_names.len);
+}
+
+test "every static element name is distinct, interns to its own record, and only exactly" {
+    const html = infra.namespaces.HTML_NAMESPACE;
+    const svg = infra.namespaces.SVG_NAMESPACE;
+    const mathml = infra.namespaces.MATHML_NAMESPACE;
+    inline for (.{ .{ html, &html_tag_names }, .{ svg, &svg_tag_names }, .{ mathml, &mathml_tag_names } }) |table| {
+        for (table[1], 0..) |name, i| {
+            const record = internElementName(table[0], null, name).?;
+            try std.testing.expectEqualStrings(name, record.local_name);
+            try std.testing.expect(record.is_static and record.prefix == null);
+            try std.testing.expect(record.namespace_uri.?.ptr == table[0].ptr);
+            // Distinct: the name's record is the one at its own index.
+            for (table[1][0..i]) |earlier| try std.testing.expect(!std.mem.eql(u8, earlier, name));
+        }
+    }
+    const div = internElementName(html, null, "div").?;
+    try std.testing.expectEqualStrings("DIV", div.qualified_name_upper);
+    try std.testing.expect(internElementName(html, null, "div") == div);
+    // Exact: case, prefix and namespace all count.
+    try std.testing.expect(internElementName(html, null, "DIV") == null);
+    try std.testing.expect(internElementName(html, "p", "div") == null);
+    try std.testing.expect(internElementName(null, null, "div") == null);
+    try std.testing.expect(internElementName("urn:x", null, "div") == null);
+    try std.testing.expect(internElementName(svg, null, "div") == null);
+    try std.testing.expect(internElementName(svg, null, "foreignobject") == null);
+    try std.testing.expectEqualStrings("FOREIGNOBJECT", internElementName(svg, null, "foreignObject").?.qualified_name_upper);
+    try std.testing.expect(internElementName(mathml, null, "mrow").?.namespace == .mathml);
 }

@@ -145,7 +145,7 @@ fn matchesDocumentFilter(element: *runtime.Instance, filter: live_collections.Do
     const data = dom.element_data.of(element) orelse return false;
     const namespace = data.namespaceSlice() orelse return false;
     if (!std.mem.eql(u8, namespace, "http://www.w3.org/1999/xhtml")) return false;
-    const local = data.local_name.asSlice();
+    const local = data.localName();
     const matched = switch (filter) {
         .images => std.mem.eql(u8, local, "img"),
         .embeds => std.mem.eql(u8, local, "embed"),
@@ -492,9 +492,9 @@ fn makeClassNames(collection: *runtime.Instance, root: *runtime.Instance, class_
 /// the comparison is made.
 ///
 /// The walk follows the tree's own links and reads each element's classes in
-/// place (dom.element_data's `class_name`: DOM's "classes" come from the
-/// class attribute in no namespace, which the attribute change steps keep
-/// there, as the class selector reads them), and the wanted classes are the
+/// place (dom.element_data's `classValue`: DOM's "classes" come from the
+/// class attribute in no namespace, read from the attribute list through the
+/// index its header keeps - lane nd2 N3 - as the class selector reads them), and the wanted classes are the
 /// set's tokens, split once per refill. Through the Node and Element
 /// interfaces, a refill of a 3,000-element document read four state-table
 /// lookups and an attribute scan per node: 97% of a getElementsByClassName
@@ -513,7 +513,7 @@ fn refillClassNames(collection: *runtime.Instance, root: *runtime.Instance) bool
         if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
         const element = instanceOfBase(node) orelse continue;
         const data = dom.element_data.of(element) orelse continue;
-        if (!wanted.allIn(data.class_name.asSlice(), quirks)) continue;
+        if (!wanted.allIn(data.classValue(), quirks)) continue;
         addElement(collection, element) catch return false;
     }
     return true;
@@ -758,7 +758,7 @@ fn namesOf(element: *runtime.Instance) ?ElementNames {
         (if (data.attributeAt(index)) |entry| entry.value else null)
     else
         null;
-    return .{ .id = data.id.asSlice(), .name = name };
+    return .{ .id = data.idValue(), .name = name };
 }
 
 /// Whether `name` is one of the collection's supported property names

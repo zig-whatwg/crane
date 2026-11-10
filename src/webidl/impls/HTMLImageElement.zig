@@ -712,7 +712,7 @@ fn pictureTarget(node: *dom.NodeBase) ?PictureTarget {
     if (node.node_type != interfaces.Node.get_ELEMENT_NODE()) return null;
     const element: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return null));
     const data = dom.element_data.of(element) orelse return null;
-    const name = data.local_name.asSlice();
+    const name = data.localName();
     const kind: @FieldType(PictureTarget, "kind") = if (std.mem.eql(u8, name, "img")) .img else if (std.mem.eql(u8, name, "source")) .source else return null;
     if (!std.mem.eql(u8, data.namespaceSlice() orelse "", "http://www.w3.org/1999/xhtml")) return null;
     return .{ .element = element, .kind = kind };
@@ -831,7 +831,7 @@ fn reuseAvailableImage(instance: *runtime.Instance) bool {
     if (attributeValue(instance, "srcset") != null) return false;
     if (interfaces.Node.get_parentNode(instance) catch null) |parent| {
         if (dom.element_data.of(parent)) |data| {
-            if (std.mem.eql(u8, data.local_name.asSlice(), "picture") and
+            if (std.mem.eql(u8, data.localName(), "picture") and
                 std.mem.eql(u8, data.namespaceSlice() orelse "", "http://www.w3.org/1999/xhtml")) return false;
         }
     }
@@ -1082,7 +1082,7 @@ fn selectImageSource(instance: *runtime.Instance) ?ImageSource {
 
 fn isHtmlElement(instance: *runtime.Instance, local_name: []const u8) bool {
     const data = dom.element_data.of(instance) orelse return false;
-    return std.mem.eql(u8, data.local_name.asSlice(), local_name) and
+    return std.mem.eql(u8, data.localName(), local_name) and
         std.mem.eql(u8, data.namespaceSlice() orelse "", "http://www.w3.org/1999/xhtml");
 }
 

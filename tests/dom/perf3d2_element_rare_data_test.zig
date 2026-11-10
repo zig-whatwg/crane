@@ -93,7 +93,7 @@ test "HTMLElement's InternalState keeps no allocator copy" {
     try expectNoFields(HTMLElementState, .{"allocator"});
 }
 
-test "Element's InternalState is 136 bytes: the cold fields are rare data, the slot name its attribute" {
+test "Element's InternalState is 40 bytes: the cold fields are rare data, the slot name its attribute" {
     // 416 at dfa8592a878: - 16 (the allocator copy) - 40 (ElementData's
     // prefix and Attr nodes) - 104 (the NamedNodeMap and its generation, the
     // shadow root and its edge, the definition, the is value, the element
@@ -110,13 +110,17 @@ test "Element's InternalState is 136 bytes: the cold fields are rare data, the s
         printLayout(ElementState);
         return error.NoRareData;
     }
-    try expectSize(ElementState, 136);
+    // Lane nd2 N2 the name to one record pointer (nd2_element_name_test):
+    // -48; N3 the ID and classes views (nd2_id_class_index_test): -48.
+    try expectSize(ElementState, 40);
 }
 
-test "ElementData is 112 bytes: its prefix and Attr nodes are rare data" {
-    // 152 at dfa8592a878 (D1): - 32 (the prefix) - 8 (the Attr node list).
+test "ElementData is 16 bytes: its Attr nodes are rare data, its name one record, its ID and classes two indices in its list" {
+    // 152 at dfa8592a878 (D1): - 32 (the prefix) - 8 (the Attr node list);
+    // lane nd2 N2: - 48 (the namespace and local name, one record pointer
+    // now, the prefix in it too); N3: - 48 (the ID and classes views).
     try expectNoFields(ElementData, .{ "prefix", "attr_nodes" });
-    try expectSize(ElementData, 112);
+    try expectSize(ElementData, 16);
 }
 
 test "HTMLElement's InternalState is empty: every field it kept is rare data" {
@@ -126,11 +130,11 @@ test "HTMLElement's InternalState is empty: every field it kept is rare data" {
     try expectSize(HTMLElementState, 0);
 }
 
-test "a div's one block is 360 bytes: 736 less Element's 176 and HTMLElement's 88 (D2), perf2 b7's 8, and the registry association's 40 and the slottable state's 64 (E1)" {
+test "a div's one block is 264 bytes: 736 less Element's 176 and HTMLElement's 88 (D2), perf2 b7's 8, the registry association's 40 and the slottable state's 64 (E1), and nd2 N2's and N3's 48 each" {
     // perf2 b7 (merged after D2): EventTarget's current event (8) is a
     // Window's, in Window's state now.
     const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 360);
+    try expectSize(S, 264);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
     if (held - @sizeOf(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });
@@ -138,14 +142,14 @@ test "a div's one block is 360 bytes: 736 less Element's 176 and HTMLElement's 8
     }
 }
 
-test "ElementRareData is 344 bytes, made only for the elements that use it" {
+test "ElementRareData is 312 bytes, made only for the elements that use it" {
     if (comptime !has_rare) return error.NoRareData;
     // prefix 32, Attr nodes 32 (a std.ArrayList: 24 and a safety field in
     // the safe builds these run in), NamedNodeMap 16, shadow root + edge 40,
     // definition 8, is value 32, references 8, HTMLElement's part 72: 240;
     // E1: + a registry that is not the node document's, 40, + the slottable
-    // state, 64.
-    try expectSize(dom.element_rare_data.ElementRareData, 344);
+    // state, 64; lane nd2 N2: - the prefix, 32 (the name record's now).
+    try expectSize(dom.element_rare_data.ElementRareData, 312);
 }
 
 // ============================================================================
@@ -268,10 +272,10 @@ test "each rare field makes the rare data once; it never moves, and every field 
     // Every field above went into the same block.
     try testing.expect(rareOf(page.div).? == rare);
 
-    // An element made with a prefix keeps it in rare data of its own.
+    // An element made with a prefix keeps it in its name record (lane nd2
+    // N2; rare data of its own before): it makes no rare data.
     const prefixed = try page.elementNS(infra.namespaces.SVG_NAMESPACE, "s:svg");
-    try testing.expect(rareOf(prefixed) != null);
-    try testing.expect(rareOf(prefixed).? != rare);
+    try testing.expect(rareOf(prefixed) == null);
     try page.expectString("s", (try interfaces.Element.get_prefix(prefixed)).?);
     try page.expectString("s:svg", try interfaces.Element.get_tagName(prefixed));
     // And one made without one has none.

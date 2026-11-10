@@ -89,7 +89,7 @@ pub fn hasBackgroundHint(local_name: []const u8) bool {
 
 fn isBackgroundHintElement(element: *runtime.Instance) bool {
     const data = element_data.of(element) orelse return false;
-    return hasBackgroundHint(data.local_name.asSlice()) and
+    return hasBackgroundHint(data.localName()) and
         std.mem.eql(u8, data.namespaceSlice() orelse "", "http://www.w3.org/1999/xhtml");
 }
 

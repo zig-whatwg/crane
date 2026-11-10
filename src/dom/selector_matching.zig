@@ -532,7 +532,7 @@ fn rootOf(node: *NodeBase) *NodeBase {
 /// it can matter at all, so that a universal UA rule such as `:autofill`
 /// does not make every style volatile).
 fn readsVolatileState(kind: PseudoClassKind, data: *const ElementData) bool {
-    const local = data.local_name.asSlice();
+    const local = data.localName();
     const html = namespaceIs(data, html_namespace);
     const custom = std.mem.indexOfScalar(u8, local, '-') != null or data.findAttribute(null, "is") != null;
     return switch (kind) {
@@ -559,7 +559,7 @@ fn readsVolatileState(kind: PseudoClassKind, data: *const ElementData) bool {
 pub const SelectKind = enum { none, drop_down, list_box };
 
 pub fn selectKindOf(data: *const ElementData) SelectKind {
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "select") or !namespaceIs(data, html_namespace)) return .none;
+    if (!std.mem.eql(u8, data.localName(), "select") or !namespaceIs(data, html_namespace)) return .none;
     if (data.findAttribute(null, "multiple") != null) return .list_box;
     if (data.findAttribute(null, "size")) |size| {
         const n = std.fmt.parseInt(u32, std.mem.trim(u8, size.value, " \t\n\r\x0c"), 10) catch 0;
@@ -662,13 +662,11 @@ fn namespaceIs(data: *const ElementData, ns: []const u8) bool {
 }
 
 /// Two elements have the same expanded name: local name and namespace
-/// (Selectors 4 13.4 "same type").
+/// (Selectors 4 13.4 "same type"). Their name records' `matches` (Blink's
+/// QualifiedName::Matches): one pointer compare for two elements of a
+/// known name (lane nd2 N2).
 fn sameType(a: *const ElementData, b: *const ElementData) bool {
-    if (!std.mem.eql(u8, a.local_name.asSlice(), b.local_name.asSlice())) return false;
-    const a_ns = a.namespaceSlice();
-    const b_ns = b.namespaceSlice();
-    if (a_ns == null or b_ns == null) return a_ns == null and b_ns == null;
-    return std.mem.eql(u8, a_ns.?, b_ns.?);
+    return a.name.matches(b.name);
 }
 
 // ============================================================================
@@ -927,7 +925,7 @@ const Matcher = struct {
             // CSSOM's unresolved AST never reaches matching: stylesheet
             // build resolves it; DOM parsing lowers & to :where(:scope).
             .Nesting => false,
-            .Universal => |universal| universal.namespace == .any or data.namespace_uri == null,
+            .Universal => |universal| universal.namespace == .any or data.namespaceSlice() == null,
             .Type => |type_selector| self.matchesType(data, type_selector.tag_name, type_selector.lower_name, type_selector.namespace),
             .Class => |class| self.hasClass(data, class.class_name),
             .Id => |id| self.idIs(data, id.id),
@@ -947,8 +945,8 @@ const Matcher = struct {
     /// selector converted to ASCII lowercase; every other element its
     /// original case. Both are identical-to comparisons.
     fn matchesType(self: *const Matcher, data: *const ElementData, name: []const u8, lower_name: []const u8, namespace: selector.NamespaceConstraint) bool {
-        if (namespace == .none and data.namespace_uri != null) return false;
-        const local = data.local_name.asSlice();
+        if (namespace == .none and data.namespaceSlice() != null) return false;
+        const local = data.localName();
         // A name written in lowercase is both forms: no namespace test.
         if (lower_name.ptr == name.ptr) return std.mem.eql(u8, local, name);
         const wanted = if (self.html_document and namespaceIs(data, html_namespace)) lower_name else name;
@@ -958,11 +956,11 @@ const Matcher = struct {
     /// Selectors 4 6.6: one of the element's classes (its class attribute
     /// split on ASCII whitespace) is `name`.
     fn hasClass(self: *const Matcher, data: *const ElementData, name: []const u8) bool {
-        return classListHas(data.class_name.asSlice(), name, self.quirks);
+        return classListHas(data.classValue(), name, self.quirks);
     }
 
     fn idIs(self: *const Matcher, data: *const ElementData, id: []const u8) bool {
-        const own = data.id.asSlice();
+        const own = data.idValue();
         return if (self.quirks) std.ascii.eqlIgnoreCase(own, id) else std.mem.eql(u8, own, id);
     }
 
@@ -1438,7 +1436,7 @@ const NthIndexCache = struct {
 
         fn of(node: *NodeBase) TypeKey {
             const data = dataOf(node) orelse return .{ .local = "", .namespace = "" };
-            return .{ .local = data.local_name.asSlice(), .namespace = data.namespaceSlice() orelse "" };
+            return .{ .local = data.localName(), .namespace = data.namespaceSlice() orelse "" };
         }
 
         const Context = struct {
