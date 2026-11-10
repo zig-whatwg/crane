@@ -264,6 +264,12 @@ pub const Browser = struct {
         const browser_clock = platform.browserClock(browser_platform);
         var random_seed: u64 = undefined;
         const seeded = platform.fillBrowserRandom(browser_platform, std.mem.asBytes(&random_seed));
+        // The Browser's heap: one reservation of address space, named as
+        // this scope's (runtime.BrowserScope.reserveHeap), its generations
+        // seeded from the Browser's stream after the agent's seed is drawn,
+        // so a seeded run replays both. A Browser that cannot reserve fails
+        // here, cleanly; the scope's end releases it, last.
+        try scope.reserveHeap(platform, browser_platform);
 
         const agent_host = try allocator.create(@import("html").agent_host.AgentHost);
         agent_host.* = @import("html").agent_host.AgentHost.init(allocator);
@@ -467,7 +473,8 @@ pub const Browser = struct {
         // GOAWAY), its own and no other Browser's - then its side tables
         // (what their entries still hold of the engine is released without
         // it), then its slab and arena - every platform object of this
-        // Browser, and none of another's. Its platform state ends first.
+        // Browser, and none of another's - and last its heap's reservation.
+        // Its platform state ends first.
         @import("html").platform_state.destroy(self.scope);
         self.scope.deinit();
         self.allocator.destroy(self.scope);
