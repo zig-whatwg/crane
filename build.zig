@@ -940,7 +940,7 @@ const TestSelection = struct {
     /// it. `checkEveryTestDirectoryIsASuite` reads it.
     suite_dirs: *std.ArrayList([]const u8) = undefined,
     /// The V8 archives every test that links V8 links (-Dv8-build).
-    v8: v8_archives.Archives,
+    v8: V8Link,
     /// -Dtest-binaries=v8: the directories `test` runs that link V8 join ONE
     /// executable (`OneBinary`) instead of one each. Null: one executable per
     /// directory.
@@ -990,7 +990,7 @@ const OneBinary = struct {
     /// (test-browser, bench, test-eventsource) keeps its own executable.
     step: *std.Build.Step,
     /// The V8 archives the executables it makes link (-Dv8-build).
-    v8: v8_archives.Archives,
+    v8: V8Link,
     members: std.ArrayList(Member) = .empty,
 
     const Member = struct {
@@ -1978,7 +1978,7 @@ fn addTestRoot(
     modules: []const std.Build.Module.Import,
     link_v8: bool,
     launch: *const TestLaunch,
-    v8: v8_archives.Archives,
+    v8: V8Link,
 ) *std.Build.Step.Compile {
     return addTestRootWith(builder, step, root_path, name, config_name, target, modules, link_v8, launch, v8, &.{});
 }
@@ -1995,7 +1995,7 @@ fn addTestRootWith(
     modules: []const std.Build.Module.Import,
     link_v8: bool,
     launch: *const TestLaunch,
-    v8: v8_archives.Archives,
+    v8: V8Link,
     groups: []const SuiteGroup,
 ) *std.Build.Step.Compile {
     const test_exe = builder.addTest(.{
@@ -2100,6 +2100,7 @@ fn addCompileCheck(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     imports: []const std.Build.Module.Import,
+    v8: V8Link,
 ) *std.Build.Step.Compile {
     const check = b.addExecutable(.{
         .name = name,
@@ -2110,12 +2111,7 @@ fn addCompileCheck(
             .imports = imports,
         }),
     });
-    check.root_module.addCSourceFile(.{
-        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = v8WrapperFlags(b, target.result.os.tag, &.{}),
-    });
-    check.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-    check.root_module.link_libcpp = true;
+    addV8Source(b, check.root_module, v8, &.{});
     addCrossLibraryStubs(b, check.root_module, target);
     return check;
 }
@@ -2153,6 +2149,13 @@ fn addCrossLibraryStubs(b: *std.Build, module: *std.Build.Module, target: std.Bu
 /// archive the artifact links - the V8 ones (pointer compression, the
 /// sandbox) and the cppgc ones, in this one place.
 ///
+/// An archive built against Chromium's libc++ (-Dv8=15.7) says all of them
+/// itself: its include/ holds the build's v8-gn.h, which v8config.h includes
+/// under -DV8_GN_HEADER (V8 BUILD.gn v8_generate_external_defines_header), and
+/// its libcxx/flags.txt the defines GN compiles every consumer of that libc++
+/// with (`V8Link.libcxx_flags`, read by `loadV8Link`). Nothing is kept by hand
+/// for it. What follows is 13.1's list:
+///
 /// The cppgc defines are the archive's ABI, not a choice (the wrapper
 /// redesign, tmp/redesign/wrapper-redesign-design.md 2.6 and 4.12; risk R7).
 /// The headers inline `cppgc::Member`'s pointer compression, the write
@@ -2175,7 +2178,11 @@ fn addCrossLibraryStubs(b: *std.Build, module: *std.Build.Module, target: std.Bu
 ///
 /// `archive_os`: the OS whose archive the artifact links (tools/v8_archives.zig
 /// selects it by the target's OS). `extra`: flags of the artifact's own.
-fn v8WrapperFlags(b: *std.Build, archive_os: std.Target.Os.Tag, extra: []const []const u8) []const []const u8 {
+fn v8WrapperFlags(b: *std.Build, v8: V8Link, archive_os: std.Target.Os.Tag, extra: []const []const u8) []const []const u8 {
+    if (v8.archives.chromium != null) {
+        const from_archive = [_][]const u8{ "-std=c++20", "-fno-exceptions", "-fno-rtti", "-DV8_GN_HEADER" };
+        return std.mem.concat(b.allocator, []const u8, &.{ &from_archive, v8.libcxx_flags, extra }) catch @panic("OOM");
+    }
     const common = [_][]const u8{
         "-std=c++20",
         "-fno-exceptions",
@@ -2191,7 +2198,90 @@ fn v8WrapperFlags(b: *std.Build, archive_os: std.Target.Os.Tag, extra: []const [
     return std.mem.concat(b.allocator, []const u8, &.{ &common, larger_cage, extra }) catch @panic("OOM");
 }
 
-/// Link the V8 C++ wrapper and the three static archives into `module`.
+/// How a build links V8: the archives -Dv8, -Dv8-build and the target's OS
+/// select (tools/v8_archives.zig) and, for an archive built against
+/// Chromium's libc++ (-Dv8=15.7), what `loadV8Link` reads from beside it at
+/// configure time: that libc++'s consumer flags and the system libraries the
+/// archive's own link names. Passed in, so every artifact links the same V8.
+const V8Link = struct {
+    archives: v8_archives.Archives,
+    /// libcxx/flags.txt's -D defines and -nostdinc++ (its directories are
+    /// added by `addV8Source`, relative and as -I).
+    libcxx_flags: []const []const u8 = &.{},
+    /// system-libs.txt's `-framework X` entries.
+    frameworks: []const []const u8 = &.{},
+    /// system-libs.txt's `-lX` entries.
+    system_libs: []const []const u8 = &.{},
+};
+
+/// The V8Link for `archives`: for an archive built against Chromium's libc++,
+/// the facts it keeps beside itself (scripts/build-v8-15.7.sh writes them from
+/// GN's own compile and d8's own link). A configure-time read the configuration
+/// cache cannot see change, so it is poisoned; a host without the archive gets
+/// the reason and how to get it, and the build stops.
+fn loadV8Link(b: *std.Build, archives: v8_archives.Archives) V8Link {
+    const chromium = archives.chromium orelse return .{ .archives = archives };
+    b.graph.poisonCache();
+    const dir = b.root.root_dir.handle;
+    const flags_text = dir.readFileAlloc(b.graph.io, chromium.libcxx_flags, b.allocator, .limited(1 << 16)) catch |err| noV8Archive(chromium.libcxx_flags, err);
+    const libs_text = dir.readFileAlloc(b.graph.io, chromium.system_libs, b.allocator, .limited(1 << 16)) catch |err| noV8Archive(chromium.system_libs, err);
+    var flags: std.ArrayList([]const u8) = .empty;
+    var lines = std.mem.tokenizeScalar(u8, flags_text, '\n');
+    while (lines.next()) |line| {
+        if (std.mem.startsWith(u8, line, "-D") or std.mem.eql(u8, line, "-nostdinc++")) flags.append(b.allocator, line) catch @panic("OOM");
+    }
+    var frameworks: std.ArrayList([]const u8) = .empty;
+    var system_libs: std.ArrayList([]const u8) = .empty;
+    lines = std.mem.tokenizeScalar(u8, libs_text, '\n');
+    while (lines.next()) |line| {
+        if (std.mem.startsWith(u8, line, "-framework ")) {
+            frameworks.append(b.allocator, std.mem.trim(u8, line["-framework ".len..], " ")) catch @panic("OOM");
+        } else if (std.mem.startsWith(u8, line, "-l")) {
+            system_libs.append(b.allocator, line[2..]) catch @panic("OOM");
+        }
+    }
+    return .{ .archives = archives, .libcxx_flags = flags.items, .frameworks = frameworks.items, .system_libs = system_libs.items };
+}
+
+fn noV8Archive(path: []const u8, err: anyerror) noreturn {
+    std.debug.print("Error: -Dv8=15.7 needs {s} ({s}) on this host: build the archive with scripts/build-v8-15.7.sh, or copy jsengines/v8/15.7.112.43 from a host of the same OS and check it with its SHA256SUMS\n", .{ path, @errorName(err) });
+    std.process.exit(1);
+}
+
+/// The V8 wrapper's source and headers on `module`: v8_wrapper.cpp with
+/// v8WrapperFlags, then the include directories. For an archive built against
+/// Chromium's libc++ that libc++'s three directories come first, as -I
+/// (addIncludePath): Zig puts its own -isystem directories (clang's builtins,
+/// the C library's) before any a module adds, so as -isystem they would follow
+/// the C library's and <cstdio> would find its <stdio.h> instead of libc++'s
+/// (scripts/build-v8-15.7.sh, step_smoke). Then V8's include/. Zig's own
+/// libc++ only for 13.1: with 15.7 the binary holds Chromium's, alone.
+fn addV8Source(builder: *std.Build, module: *std.Build.Module, v8: V8Link, extra: []const []const u8) void {
+    module.addCSourceFile(.{
+        .file = builder.path("src/runtime/engines/v8/v8_wrapper.cpp"),
+        .flags = v8WrapperFlags(builder, v8, module.resolved_target.?.result.os.tag, extra),
+    });
+    if (v8.archives.chromium) |chromium| for (chromium.libcxx_include) |dir| module.addIncludePath(.{ .cwd_relative = dir });
+    module.addIncludePath(.{ .cwd_relative = v8.archives.include });
+    if (v8.archives.chromium == null) module.link_libcpp = true else module.link_libc = true;
+}
+
+/// V8's archives on `module`, and the C++ runtime and system libraries they
+/// need: Zig's libc++ for 13.1; for 15.7 Chromium's libc++ (libc++_chromium.a),
+/// Temporal's Rust (librust_v8.a) and the archive's frameworks and libraries.
+fn addV8Archives(module: *std.Build.Module, v8: V8Link) void {
+    module.addObjectFile(.{ .cwd_relative = v8.archives.monolith });
+    module.addObjectFile(.{ .cwd_relative = v8.archives.libplatform });
+    module.addObjectFile(.{ .cwd_relative = v8.archives.libbase });
+    if (v8.archives.chromium) |chromium| {
+        module.addObjectFile(.{ .cwd_relative = chromium.libcxx });
+        module.addObjectFile(.{ .cwd_relative = chromium.rust });
+        for (v8.frameworks) |framework| module.linkFramework(framework, .{});
+        for (v8.system_libs) |library| module.linkSystemLibrary(library, .{});
+    }
+}
+
+/// Link the V8 C++ wrapper and V8's archives into `module`.
 ///
 /// `module` must be one the caller owns exclusively - a module created for a
 /// single artifact, never one shared through `addImport`. A module's link
@@ -2199,23 +2289,11 @@ fn v8WrapperFlags(b: *std.Build, archive_os: std.Target.Os.Tag, extra: []const [
 /// shared module puts a second `v8_wrapper.cpp` into each consumer that
 /// already compiles one: 844 duplicate symbol definitions, measured.
 ///
-/// `v8`: the archives `build()` selected (-Dv8-build and the target's OS,
+/// `v8`: what `build()` selected (-Dv8, -Dv8-build and the target's OS,
 /// tools/v8_archives.zig) - passed in, so every artifact links the same V8.
-fn linkV8(builder: *std.Build, module: *std.Build.Module, v8: v8_archives.Archives) void {
-    // Add V8 C++ wrapper
-    module.addCSourceFile(.{
-        .file = builder.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = v8WrapperFlags(builder, module.resolved_target.?.result.os.tag, &.{}),
-    });
-
-    // Add custom-built V8 static libraries
-    module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-    module.addObjectFile(.{ .cwd_relative = v8.monolith });
-    module.addObjectFile(.{ .cwd_relative = v8.libplatform });
-    module.addObjectFile(.{ .cwd_relative = v8.libbase });
-
-    // Add libuv
-    module.link_libcpp = true; //
+fn linkV8(builder: *std.Build, module: *std.Build.Module, v8: V8Link) void {
+    addV8Source(builder, module, v8, &.{});
+    addV8Archives(module, v8);
 }
 
 /// A `zig test` artifact for an existing module's own test tree, with V8 linked.
@@ -2233,7 +2311,7 @@ fn addModuleTestWithV8(
     builder: *std.Build,
     mod: *std.Build.Module,
     target: std.Build.ResolvedTarget,
-    v8: v8_archives.Archives,
+    v8: V8Link,
 ) *std.Build.Step.Compile {
     const test_mod = builder.createModule(.{
         .root_source_file = mod.root_source_file,
@@ -2835,7 +2913,15 @@ pub fn build(b: *std.Build) void {
         "v8-build",
         "Which V8 13.1.203 build to link on macOS: static (default; jsengines/v8/out/static) or official (opt-in: jsengines/v8/out/official, ThinLTO + PGO as Chrome's official build, scripts/build-v8-official.sh; on chat.local only - build with it there)",
     ) orelse v8_archives.Build.default;
-    const v8 = v8_archives.select(v8_build, target.result.os.tag) catch |err| switch (err) {
+    // -Dv8: the V8 version (tools/v8_archives.zig Version): 13.1 until the
+    // switch commit; 15.7 is 15.7.112.43, Chrome 157's (the user, 2026-11-10;
+    // tmp/plans/v8-update-plan.md), from jsengines/v8/15.7.112.43/.
+    const v8_version = b.option(v8_archives.Version, "v8", "The V8 to link: 13.1 (default until the switch; jsengines/v8/out/...) or 15.7 (15.7.112.43, Chrome 157's: jsengines/v8/15.7.112.43, scripts/build-v8-15.7.sh)") orelse v8_archives.Version.default;
+    const v8_selected = v8_archives.selectVersion(v8_version, v8_build, target.result.os.tag) catch |err| switch (err) {
+        error.NoOfficialBuild => {
+            std.debug.print("Error: -Dv8=15.7 has no official build: out/official is retired until roadmap item v8-pgo (the user, 2026-11-10); drop -Dv8-build\n", .{});
+            std.process.exit(1);
+        },
         error.NoV8ForIos => {
             std.debug.print("Error: an iOS target builds nothing yet: iOS uses JavaScriptCore, never V8 (the user, 2026-11-10), and iOS builds wait for the JavaScriptCore adapter (src/runtime/engines/jsc/)\n", .{});
             std.process.exit(1);
@@ -2855,9 +2941,8 @@ pub fn build(b: *std.Build) void {
     const ios_sdk_option = b.option([]const u8, "ios-sdk", "The iPhoneOS SDK root for an aarch64-ios build (default: xcrun --sdk iphoneos)");
     const ios_sdk: ?[]const u8 = if (target.result.os.tag == .ios) iosSdkPath(b) else null;
 
-    const v8_monolith_path = v8.monolith;
-    const v8_libplatform_path = v8.libplatform;
-    const v8_libbase_path = v8.libbase;
+    const v8 = loadV8Link(b, v8_selected);
+    const v8_monolith_path = v8.archives.monolith;
 
     // ========================================================================
     // BUILD OPTIONS
@@ -4630,25 +4715,11 @@ pub fn build(b: *std.Build) void {
         .root_module = lib_exports_mod,
     });
 
-    // Add V8 C++ wrapper source
-    full_static_lib.root_module.addCSourceFile(.{
-        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = v8WrapperFlags(b, target.result.os.tag, &.{}),
-    });
-
-    // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
     // Zig does not resolve the iOS SDK itself; without this the C sources below
     // fail on <stdio.h> and the link fails on libSystem.
     addIosSdkPaths(full_static_lib.root_module, ios_sdk);
-    full_static_lib.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-
-    // Link V8 libraries (custom-built static libraries)
-    full_static_lib.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
-    full_static_lib.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
-    full_static_lib.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
-
-    // Link C++ standard library
-    full_static_lib.root_module.link_libcpp = true; //
+    // The V8 wrapper, V8's archives and their C++ runtime (-Dv8).
+    linkV8(b, full_static_lib.root_module, v8);
 
     // Configure storage backends
     configureStorageBackends(lib_exports_mod, target);
@@ -4676,8 +4747,6 @@ pub fn build(b: *std.Build) void {
     // V8 is built from source in jsengines/v8/ using depot_tools.
     // First run will fetch V8 (~1.1GB) and build it (~30-60 min).
     // Subsequent builds use cached artifacts.
-
-    const v8_dir = "jsengines/v8";
 
     // Step 1: Fetch V8 source if not present (also installs depot_tools if needed)
     const fetch_v8 = b.addSystemCommand(&.{
@@ -4825,24 +4894,10 @@ pub fn build(b: *std.Build) void {
         .root_module = crane_mod,
     });
 
-    // Add V8 C++ wrapper
-    crane_lib.root_module.addCSourceFile(.{
-        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = v8WrapperFlags(b, target.result.os.tag, &.{}),
-    });
-
-    // V8 include paths - use local V8 headers
-    crane_lib.root_module.addIncludePath(b.path(v8_dir ++ "/include"));
-
-    // Link static V8 libraries
-    // Note: libv8_libplatform and libv8_libbase are converted from thin archives to fat archives
-    // using llvm-ar (the original thin archives can't be parsed by Zig's linker)
-    crane_lib.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
-    crane_lib.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
-    crane_lib.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
-
-    // Link C++ standard library
-    crane_lib.root_module.link_libcpp = true; //
+    // The V8 wrapper, V8's archives and their C++ runtime (-Dv8). The archives'
+    // libplatform and libbase are regular ("fat") archives: GN's thin ones
+    // cannot be read by Zig's linker.
+    linkV8(b, crane_lib.root_module, v8);
 
     // System frameworks (macOS)
     if (target.result.os.tag == .macos) {
@@ -4877,27 +4932,11 @@ pub fn build(b: *std.Build) void {
     };
     for (crane_exe_imports) |import| crane_exe.root_module.addImport(import.name, import.module);
 
-    // Add V8 C++ wrapper
-    crane_exe.root_module.addCSourceFile(.{
-        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = v8WrapperFlags(b, target.result.os.tag, &.{}),
-    });
-
-    // V8 include paths - use local V8 headers
-    crane_exe.root_module.addIncludePath(b.path(v8_dir ++ "/include"));
-
-    // Link static V8 libraries
-    // Note: libv8_libplatform and libv8_libbase are converted from thin archives to fat archives
-    // using llvm-ar (the original thin archives can't be parsed by Zig's linker)
-    crane_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
-    crane_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
-    crane_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
+    // The V8 wrapper, V8's archives and their C++ runtime (-Dv8).
+    linkV8(b, crane_exe.root_module, v8);
 
     // Configure storage backends for executable
     configureStorageBackends(crane_exe.root_module, target);
-
-    // Link C++ standard library
-    crane_exe.root_module.link_libcpp = true; //
 
     // System frameworks (macOS)
     if (target.result.os.tag == .macos) {
@@ -4923,7 +4962,7 @@ pub fn build(b: *std.Build) void {
     // scripts/build-v8-official.sh's, never built here.
     b.graph.poisonCache();
     const v8_prebuilt_present = if (b.root.root_dir.handle.access(b.graph.io, v8_monolith_path, .{})) true else |_| false;
-    if (!v8_prebuilt_present and v8_build == .static) {
+    if (!v8_prebuilt_present and v8_build == .static and v8_version == .@"13.1") {
         install_crane_lib.step.dependOn(&build_v8.step);
         install_crane_exe.step.dependOn(&build_v8.step);
     }
@@ -4939,7 +4978,7 @@ pub fn build(b: *std.Build) void {
     // graph analysed, v8_wrapper.cpp compiled, nothing linked. Nothing else
     // compiles either for the build machine - every test binds `testing` -
     // which is how src/webdriver sat out the Zig 0.16 migration.
-    const crane_check = addCompileCheck(b, "crane_check", "src/webdriver/main.zig", target, optimize, &crane_exe_imports);
+    const crane_check = addCompileCheck(b, "crane_check", "src/webdriver/main.zig", target, optimize, &crane_exe_imports, v8);
     b.step("crane-check", "Compile crane (src/webdriver + the target platform's graph) without linking").dependOn(&crane_check.step);
     check_target_step.dependOn(&crane_check.step);
     // Part of the whole test run (the integrator, 2026-10-23: about 78 s and
@@ -5131,22 +5170,8 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    // Add V8 C++ wrapper
-    snapshot_gen_exe.root_module.addCSourceFile(.{
-        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = v8WrapperFlags(b, target.result.os.tag, &.{}),
-    });
-
-    // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
-    snapshot_gen_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-
-    // Link V8 libraries (custom-built static libraries)
-    snapshot_gen_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
-    snapshot_gen_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
-    snapshot_gen_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
-
-    // Link C++ standard library
-    snapshot_gen_exe.root_module.link_libcpp = true; //
+    // The V8 wrapper, V8's archives and their C++ runtime (-Dv8).
+    linkV8(b, snapshot_gen_exe.root_module, v8);
 
     // A ReleaseSafe generator (-Dsnapshot-generator-optimize) over the
     // Debug-built C libraries links the full UBSan runtime they call into.
@@ -5254,22 +5279,8 @@ pub fn build(b: *std.Build) void {
     // release console's are `.trap`, so it links none.
     if (repl_c.compilesFull()) repl_exe.bundle_ubsan_rt = true;
 
-    // Add V8 C++ wrapper
-    repl_exe.root_module.addCSourceFile(.{
-        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = v8WrapperFlags(b, target.result.os.tag, &.{}),
-    });
-
-    // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
-    repl_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-
-    // Link V8 libraries (custom-built static libraries)
-    repl_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
-    repl_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
-    repl_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
-
-    // Link C++ standard library
-    repl_exe.root_module.link_libcpp = true;
+    // The V8 wrapper, V8's archives and their C++ runtime (-Dv8).
+    linkV8(b, repl_exe.root_module, v8);
 
     // The snapshot the console's Browser starts from (zig-out/bin/
     // whatwg_snapshot.bin, read beside the binary when it RUNS): its install
@@ -5425,17 +5436,10 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    gc_bench_exe.root_module.addCSourceFile(.{
-        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        // Only this binary pays for Global<T> accounting. It runs on every
-        // handle creation, so a browser should not carry it.
-        .flags = v8WrapperFlags(b, target.result.os.tag, &.{"-DCRANE_TRACK_GLOBALS=1"}),
-    });
-    gc_bench_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-    gc_bench_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
-    gc_bench_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
-    gc_bench_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
-    gc_bench_exe.root_module.link_libcpp = true;
+    // Only this binary pays for Global<T> accounting. It runs on every
+    // handle creation, so a browser should not carry it.
+    addV8Source(b, gc_bench_exe.root_module, v8, &.{"-DCRANE_TRACK_GLOBALS=1"});
+    addV8Archives(gc_bench_exe.root_module, v8);
     // As the runner's: the full C sanitizer, and its runtime bundled for the
     // C libraries a release root links when they are built with the full
     // sanitizer (the shared graph's: -Doptimize's mode; see addWptRunner).
@@ -5598,9 +5602,7 @@ pub fn build(b: *std.Build) void {
         .install_snapshot = &install_snapshot.step,
         .wpt_debug = wpt_debug,
         .check_target = check_target_step,
-        .v8_monolith = v8_monolith_path,
-        .v8_libplatform = v8_libplatform_path,
-        .v8_libbase = v8_libbase_path,
+        .v8 = v8,
     });
     const wpt_runner_check = wpt_runner_exe.check;
     // Build ONLY wpt_runner. A bare `zig build` compiles all 19 installed
@@ -5621,9 +5623,7 @@ pub fn build(b: *std.Build) void {
         .install_snapshot = &install_snapshot.step,
         .wpt_debug = wpt_debug,
         .check_target = check_target_step,
-        .v8_monolith = v8_monolith_path,
-        .v8_libplatform = v8_libplatform_path,
-        .v8_libbase = v8_libbase_path,
+        .v8 = v8,
     });
     // The two runs compared (tests/wpt_runner/build_compare.zig): the
     // bug-finding run's gate - no crash, poison read, leak, double free,
@@ -7069,10 +7069,8 @@ const WptRunnerContext = struct {
     /// -Dwpt-debug.
     wpt_debug: bool,
     check_target: *std.Build.Step,
-    /// V8's static libraries (v8.monolith, v8.libplatform, v8.libbase).
-    v8_monolith: []const u8,
-    v8_libplatform: []const u8,
-    v8_libbase: []const u8,
+    /// The V8 the runner links (-Dv8, `linkV8`).
+    v8: V8Link,
 };
 
 /// One built WPT runner (`addWptRunner`).
@@ -7140,15 +7138,7 @@ fn addWptRunner(b: *std.Build, which: runner_build_mode.RunnerBuild, config: run
             .imports = imports,
         }),
     });
-    exe.root_module.addCSourceFile(.{
-        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = v8WrapperFlags(b, ctx.target.result.os.tag, &.{}),
-    });
-    exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-    exe.root_module.addObjectFile(.{ .cwd_relative = ctx.v8_monolith });
-    exe.root_module.addObjectFile(.{ .cwd_relative = ctx.v8_libplatform });
-    exe.root_module.addObjectFile(.{ .cwd_relative = ctx.v8_libbase });
-    exe.root_module.link_libcpp = true;
+    linkV8(b, exe.root_module, ctx.v8);
     // v8_wrapper.cpp's sanitizer (build_mode.zig, RunnerModes.sanitize_c):
     // the production run's is its release mode's own (.trap), as the
     // console's; the bug-finding run's is `.full`, so a failed check names
@@ -7184,7 +7174,7 @@ fn addWptRunner(b: *std.Build, which: runner_build_mode.RunnerBuild, config: run
     options.addOption([]const u8, "modes", b.dupe(runner_build_mode.describe(&described, config.modes) catch @panic("modes")));
     exe.root_module.addOptions("wpt_options", options);
 
-    const check = addCompileCheck(b, b.fmt("{s}_check", .{which.binaryName()}), "tests/wpt_runner/main.zig", ctx.target, config.modes.root, imports);
+    const check = addCompileCheck(b, b.fmt("{s}_check", .{which.binaryName()}), "tests/wpt_runner/main.zig", ctx.target, config.modes.root, imports, ctx.v8);
     check.root_module.addOptions("wpt_options", options);
     ctx.check_target.dependOn(&check.step);
     return .{ .exe = exe, .install = install, .check = check };

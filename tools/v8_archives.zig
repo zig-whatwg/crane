@@ -1,4 +1,14 @@
-//! Which V8 archives a build links: `-Dv8-build` and the target's OS.
+//! Which V8 archives a build links: `-Dv8`, `-Dv8-build` and the target's OS.
+//!
+//! `-Dv8` picks the V8 version. 13.1 (13.1.203, Chrome 131's) is the default
+//! until the switch commit; 15.7 is 15.7.112.43, the V8 Chrome 157 ships (the
+//! user, 2026-11-10; tmp/plans/v8-update-plan.md), built by
+//! scripts/build-v8-15.7.sh into jsengines/v8/15.7.112.43/ beside 13.1's
+//! directories. 15.7's sandbox requires libc++ hardening (V8 BUILD.gn:896), so
+//! that archive is compiled against Chromium's own libc++ (std::__Cr) and
+//! comes with it (`Chromium`): libc++_chromium.a, the headers and the flags a
+//! consumer compiles with, Temporal's Rust as librust_v8.a, and the system
+//! libraries its link needs; its include/ holds the build's v8-gn.h.
 //!
 //! build.zig links three static archives from one V8 output directory under
 //! jsengines/v8/out/ (`linkV8`, and the artifacts that add them by hand). Two
@@ -42,6 +52,37 @@ pub const Build = enum {
     pub const default: Build = .static;
 };
 
+/// `-Dv8`: which V8 to link.
+pub const Version = enum {
+    @"13.1",
+    @"15.7",
+
+    /// The version a build links unless -Dv8 says otherwise: 13.1 until the
+    /// switch commit.
+    pub const default: Version = .@"13.1";
+};
+
+/// What an archive built against Chromium's libc++ (15.7) brings beside
+/// itself, relative to the build root.
+pub const Chromium = struct {
+    /// libc++_chromium.a: Chromium's libc++ and libc++abi objects - the C++
+    /// runtime the archive and v8_wrapper.cpp share; Zig's libc++ is not linked.
+    libcxx: []const u8,
+    /// librust_v8.a: Temporal's Rust (temporal_capi, temporal_rs, ICU4X) and
+    /// Rust's std, which the monolith references but does not carry.
+    rust: []const u8,
+    /// The flags GN compiles every C++ consumer of that libc++ with (its
+    /// -D_LIBCPP_*/-D_LIBCXXABI_* defines and -nostdinc++), one per line.
+    libcxx_flags: []const u8,
+    /// The libc++ header directories, in -I order: __config_site's, libc++'s,
+    /// libc++abi's. -I, not -isystem: Zig puts its own -isystem directories
+    /// first, and libc++'s <stdio.h> wrapper must come before the C library's.
+    libcxx_include: [3][]const u8,
+    /// The system libraries and frameworks the archive's link needs
+    /// (`-framework X` / `-lX`, one per line), read from d8's link.
+    system_libs: []const u8,
+};
+
 /// One V8 output directory's archives, relative to the build root.
 pub const Archives = struct {
     /// The GN output directory (jsengines/v8/out/<name>).
@@ -53,14 +94,50 @@ pub const Archives = struct {
     libplatform: []const u8,
     /// libv8_libbase_fat.a: the same for libbase.
     libbase: []const u8,
+    /// V8's public headers for this archive (15.7's include/ also holds the
+    /// build's v8-gn.h).
+    include: []const u8 = "jsengines/v8/include",
+    /// Null for 13.1 (the system's or Zig's libc++, std::__1).
+    chromium: ?Chromium = null,
 };
 
 pub const SelectError = error{
     /// An iOS target: no V8 for iOS in any form (ruling R4).
     NoV8ForIos,
+    /// -Dv8-build=official with -Dv8=15.7: there is none - out/official is
+    /// retired at the switch until roadmap item v8-pgo (ruling R3).
+    NoOfficialBuild,
 };
 
-/// The archives `build` names for a target whose OS is `os`.
+/// The directory scripts/build-v8-15.7.sh installs 15.7.112.43 into.
+const v8_15_7_dir = "jsengines/v8/15.7.112.43";
+
+/// The archives `version` and `build` name for a target whose OS is `os`.
+pub fn selectVersion(version: Version, build: Build, os: std.Target.Os.Tag) SelectError!Archives {
+    if (os == .ios) return error.NoV8ForIos;
+    return switch (version) {
+        .@"13.1" => select(build, os),
+        .@"15.7" => switch (build) {
+            .official => error.NoOfficialBuild,
+            .static => .{
+                .dir = v8_15_7_dir ++ "/out/static",
+                .monolith = v8_15_7_dir ++ "/out/static/obj/libv8_monolith.a",
+                .libplatform = v8_15_7_dir ++ "/out/static/obj/libv8_libplatform_fat.a",
+                .libbase = v8_15_7_dir ++ "/out/static/obj/libv8_libbase_fat.a",
+                .include = v8_15_7_dir ++ "/include",
+                .chromium = .{
+                    .libcxx = v8_15_7_dir ++ "/out/static/obj/libc++_chromium.a",
+                    .rust = v8_15_7_dir ++ "/out/static/obj/librust_v8.a",
+                    .libcxx_flags = v8_15_7_dir ++ "/libcxx/flags.txt",
+                    .libcxx_include = .{ v8_15_7_dir ++ "/libcxx/config", v8_15_7_dir ++ "/libcxx/include", v8_15_7_dir ++ "/libcxx/abi-include" },
+                    .system_libs = v8_15_7_dir ++ "/system-libs.txt",
+                },
+            },
+        },
+    };
+}
+
+/// The 13.1.203 archives `build` names for a target whose OS is `os`.
 pub fn select(build: Build, os: std.Target.Os.Tag) SelectError!Archives {
     if (os == .ios) return error.NoV8ForIos;
     return switch (build) {
