@@ -37,7 +37,8 @@ pub const RunnerModes = struct {
     /// (the refcount ledger, the isolate cleanup validation) while LLVM
     /// optimizes their code at the root's level.
     crane_modules: Mode,
-    /// The C libraries the runner links: libcurl, mbedTLS, zlib, nghttp2.
+    /// The C libraries the runner links: libcurl, mbedTLS, zlib, nghttp2,
+    /// Brotli, the image codecs.
     c_libraries: Mode,
     /// The C sanitizer for v8_wrapper.cpp and the C libraries (libcurl's own
     /// sources excepted: build.zig turns it off there in every mode). `.full`
@@ -48,19 +49,159 @@ pub const RunnerModes = struct {
     sanitize_c: ?std.zig.SanitizeC,
     allocator: RunnerAllocator = .debug,
 
-    /// Whether the runner needs C libraries of its own: the ones every other
-    /// artifact links are built with -Doptimize's mode.
-    pub fn ownCLibraries(self: RunnerModes) bool {
-        return self.c_libraries != self.crane_modules;
+    /// Whether the runner needs C libraries of its own. The shared graph's
+    /// are built in `optimize` (-Doptimize's mode) at Zig's default sanitizer
+    /// for it, so a runner whose C libraries differ in EITHER - their mode or
+    /// the sanitizer they compile with - needs its own: under
+    /// `-Doptimize=ReleaseSafe` the bug-finding runner's are ReleaseSafe like
+    /// the shared graph's, but `.full`, not the shared graph's `.trap`.
+    pub fn ownCLibraries(self: RunnerModes, optimize: Mode) bool {
+        return self.c_libraries != optimize or
+            effectiveSanitizeC(self.sanitize_c, self.c_libraries) != effectiveSanitizeC(null, optimize);
     }
 
     /// Whether the runner needs a module graph of its own: its C libraries
-    /// differ from its Crane modules' mode, or its Crane modules from the
-    /// shared graph's (`optimize`, -Doptimize's mode).
+    /// differ from the shared graph's (`ownCLibraries`), or its Crane modules
+    /// from the shared graph's (`optimize`, -Doptimize's mode).
     pub fn ownGraph(self: RunnerModes, optimize: Mode) bool {
-        return self.ownCLibraries() or self.crane_modules != optimize;
+        return self.ownCLibraries(optimize) or self.crane_modules != optimize;
+    }
+
+    /// Whether the build needs Zig's UBSan runtime (`needsUbsanRuntime`):
+    /// the bug-finding run's does, the production run's - as the release
+    /// console's - does not.
+    pub fn needsUbsanRuntime(self: RunnerModes) bool {
+        return needsUbsanRuntimeFor(self.root, self.sanitize_c, self.c_libraries, self.sanitize_c);
     }
 };
+
+/// Whether a binary needs Zig's UBSan runtime: some C or C++ in it is
+/// compiled with the full sanitizer, whose failed checks call
+/// `__ubsan_handle_*` - its root's own (v8_wrapper.cpp takes the root's
+/// sanitizer), or the C libraries it links. `.trap` traps in place and calls
+/// no handler, so a binary at `.trap` or off throughout needs none: the
+/// production run and the release console link none (docs/lessons/workflow-a-
+/// release-root-over-debug-c-libraries-must-link-the-full-sanitizer-
+/// runtime.md: the root's sanitizer and its C libraries' are one decision).
+/// build.zig bundles the runtime for C libraries at `.full` (a root at
+/// `.full` links it by itself), and holds every checked build to this.
+pub fn needsUbsanRuntimeFor(root: Mode, root_sanitize_c: ?std.zig.SanitizeC, c_libraries: Mode, c_sanitize_c: ?std.zig.SanitizeC) bool {
+    return effectiveSanitizeC(root_sanitize_c, root) == .full or effectiveSanitizeC(c_sanitize_c, c_libraries) == .full;
+}
+
+/// The C sanitizer a module compiles its C with: its own setting, or, when it
+/// has none (null), Zig's default for its mode - the full runtime in Debug,
+/// `.trap` in ReleaseSafe, none in the fast modes (Zig 0.17's
+/// Package.Module: `.Debug => .full, .ReleaseSafe => .trap, else => .off`).
+/// Two settings that compile the same C compare equal through this.
+pub fn effectiveSanitizeC(sanitize_c: ?std.zig.SanitizeC, mode: Mode) std.zig.SanitizeC {
+    return sanitize_c orelse switch (mode) {
+        .debug => .full,
+        .safe => .trap,
+        .fast, .small => .off,
+    };
+}
+
+/// One C library one build links - or the build's root, which compiles its
+/// own C and C++ - as build.zig finds it once every graph is configured
+/// (`checkCLibraries`).
+pub const LinkedCLibrary = struct {
+    /// The build that links it: its binary's name ("wpt_runner").
+    build: []const u8,
+    /// The library artifact's name ("mbedtls"), or "the root".
+    library: []const u8,
+    /// The artifact's identity (its address in the build graph): two builds
+    /// that link one artifact give the same value.
+    artifact: usize,
+    /// What it is compiled with: its module's mode and C sanitizer (null:
+    /// Zig's default for that mode).
+    optimize: Mode,
+    sanitize_c: ?std.zig.SanitizeC,
+    /// What the build's modes say it must be compiled with.
+    want_optimize: Mode,
+    want_sanitize_c: ?std.zig.SanitizeC,
+};
+
+/// Whether one build links Zig's UBSan runtime, as build.zig finds it
+/// (`bundle_ubsan_rt`, else Zig's default: a root at the full sanitizer links
+/// it), and whether its modes need one (`needsUbsanRuntimeFor`).
+pub const LinkedUbsanRuntime = struct {
+    build: []const u8,
+    links: bool,
+    needs: bool,
+};
+
+/// The check build.zig runs at the end of every configuration (lane
+/// buildfix1, 2026-11-10). Zig memoizes a dependency by its arguments, so the
+/// production and bug-finding graphs - both with ReleaseSafe C libraries -
+/// got ONE mbedTLS and ONE zlib artifact, and each graph wrote its own C
+/// sanitizer onto them: the bug-finding graph, configured second, won. Main's
+/// release console then failed to link (ten `___ubsan_handle_*` undefined, all
+/// from libmbedtls.a), and generation 214's production runner was not the
+/// shipped configuration: its mbedTLS and zlib carried the full sanitizer,
+/// and it linked the UBSan runtime for them. Nothing said so, because nothing
+/// compared what a build links with what its modes say.
+///
+/// So, in both directions - a production build carries no `.full` C and no
+/// UBSan runtime, a bug-finding build carries `.full` everywhere, nghttp2 and
+/// Brotli included - for every checked build:
+/// - every C library it links (`libraries`), and its root, is compiled in
+///   the mode and with the sanitizer its modes say (compared as compiled:
+///   `effectiveSanitizeC`);
+/// - it links no two artifacts of one name (a shared artifact that each
+///   graph adds its own library to, as libcurl had two nghttp2s);
+/// - no artifact is linked by two builds whose modes for it differ: a shared
+///   dependency instance, written per graph;
+/// - it links Zig's UBSan runtime exactly when its modes need one
+///   (`runtimes`).
+/// Writes one line per problem, naming the build and the artifact, and
+/// returns how many there were (0: the configuration passes).
+pub fn checkCLibraries(w: *std.Io.Writer, libraries: []const LinkedCLibrary, runtimes: []const LinkedUbsanRuntime) std.Io.Writer.Error!usize {
+    var problems: usize = 0;
+    for (runtimes) |runtime| {
+        if (runtime.links == runtime.needs) continue;
+        if (runtime.links) {
+            try w.print("{s} links Zig's UBSan runtime, but its modes compile nothing with the full C sanitizer\n", .{runtime.build});
+        } else {
+            try w.print("{s} links no UBSan runtime, but its modes compile C with the full sanitizer, which calls one\n", .{runtime.build});
+        }
+        problems += 1;
+    }
+    for (libraries, 0..) |lib, i| {
+        const has = effectiveSanitizeC(lib.sanitize_c, lib.optimize);
+        const want = effectiveSanitizeC(lib.want_sanitize_c, lib.want_optimize);
+        if (lib.optimize != lib.want_optimize or has != want) {
+            try w.print("{s}: {s} is compiled {s} with sanitize_c {s}; its modes say {s} with sanitize_c {s}\n", .{
+                lib.build,                   lib.library,    modeName(lib.optimize), @tagName(has),
+                modeName(lib.want_optimize), @tagName(want),
+            });
+            problems += 1;
+        }
+        for (libraries[0..i]) |earlier| {
+            if (std.mem.eql(u8, earlier.build, lib.build)) {
+                if (earlier.artifact != lib.artifact and std.mem.eql(u8, earlier.library, lib.library)) {
+                    try w.print("{s} links two artifacts named {s}\n", .{ lib.build, lib.library });
+                    problems += 1;
+                }
+            } else if (earlier.artifact == lib.artifact) {
+                const earlier_want = effectiveSanitizeC(earlier.want_sanitize_c, earlier.want_optimize);
+                if (earlier.want_optimize != lib.want_optimize or earlier_want != want) {
+                    try w.print("{s} is one artifact that {s} ({s}, sanitize_c {s}) and {s} ({s}, sanitize_c {s}) both link: a dependency instance shared by two graphs\n", .{
+                        lib.library,
+                        earlier.build,
+                        modeName(earlier.want_optimize),
+                        @tagName(earlier_want),
+                        lib.build,
+                        modeName(lib.want_optimize),
+                        @tagName(want),
+                    });
+                    problems += 1;
+                }
+            }
+        }
+    }
+    return problems;
+}
 
 /// Which release build of Crane: `-Dwpt-runner-release` (ReleaseSafe, the
 /// build every comparison's headline times) or `-Dwpt-runner-release-fast`
@@ -323,7 +464,7 @@ test "the default runner is ReleaseSafe, its C libraries too, and Crane's module
     try testing.expectEqual(Mode.ReleaseSafe, modes.root);
     try testing.expectEqual(Mode.ReleaseSafe, modes.c_libraries);
     try testing.expectEqual(Mode.Debug, modes.crane_modules);
-    try testing.expect(modes.ownCLibraries());
+    try testing.expect(modes.ownCLibraries(.Debug));
 }
 
 test "the safe modes keep the full C sanitizer; the fast ones leave Zig's default" {
@@ -336,25 +477,25 @@ test "-Doptimize=Debug builds a Debug runner on the shared libraries" {
     const modes = runnerModes(null, .Debug, true);
     try testing.expectEqual(Mode.Debug, modes.root);
     try testing.expectEqual(Mode.Debug, modes.c_libraries);
-    try testing.expect(!modes.ownCLibraries());
+    try testing.expect(!modes.ownCLibraries(.Debug));
 }
 
 test "-Dwpt-runner-optimize decides the runner alone, over -Doptimize" {
     const debug_runner = runnerModes(.Debug, .Debug, false);
     try testing.expectEqual(Mode.Debug, debug_runner.root);
-    try testing.expect(!debug_runner.ownCLibraries());
+    try testing.expect(!debug_runner.ownCLibraries(.Debug));
 
     const fast_runner = runnerModes(.ReleaseFast, .ReleaseSafe, true);
     try testing.expectEqual(Mode.ReleaseFast, fast_runner.root);
     try testing.expectEqual(Mode.ReleaseSafe, fast_runner.crane_modules);
-    try testing.expect(fast_runner.ownCLibraries());
+    try testing.expect(fast_runner.ownCLibraries(.ReleaseSafe));
 }
 
 test "an explicit release -Doptimize builds everything in that mode" {
     const modes = runnerModes(null, .ReleaseFast, true);
     try testing.expectEqual(Mode.ReleaseFast, modes.root);
     try testing.expectEqual(Mode.ReleaseFast, modes.crane_modules);
-    try testing.expect(!modes.ownCLibraries());
+    try testing.expect(!modes.ownCLibraries(.ReleaseFast));
 }
 
 test "the banner names each mode as -Doptimize spells it" {
@@ -650,4 +791,144 @@ test "a runner has a module graph of its own when its Crane modules or C librari
     // -Doptimize=Debug and an explicit release -Doptimize share the graph built in that mode.
     try testing.expect(!runnerModes(null, .Debug, true).ownGraph(.Debug));
     try testing.expect(!runnerModes(null, .ReleaseFast, true).ownGraph(.ReleaseFast));
+}
+
+test "a runner whose C sanitizer differs from the shared graph's has C libraries of its own" {
+    // -Doptimize=ReleaseSafe: the shared graph's C libraries are ReleaseSafe
+    // at Zig's default for it, `.trap`. The bug-finding runner's modes say
+    // ReleaseSafe at `.full`, so it builds its own; sharing would have given
+    // it `.trap` C under a banner that says `.full`.
+    const bug = runnerBuild(.bug_finding, null, null, .ReleaseSafe, true).modes;
+    try testing.expectEqual(Mode.ReleaseSafe, bug.c_libraries);
+    try testing.expectEqual(Mode.ReleaseSafe, bug.crane_modules);
+    try testing.expect(bug.ownCLibraries(.ReleaseSafe));
+    try testing.expect(bug.ownGraph(.ReleaseSafe));
+    // The production run IS the shared graph there: ReleaseSafe throughout,
+    // `.trap` being ReleaseSafe's own default.
+    const production = runnerBuild(.production, null, null, .ReleaseSafe, true).modes;
+    try testing.expect(!production.ownCLibraries(.ReleaseSafe));
+    try testing.expect(!production.ownGraph(.ReleaseSafe));
+}
+
+test "Zig's default C sanitizer per mode, and an explicit one, compare as compiled" {
+    try testing.expectEqual(std.zig.SanitizeC.full, effectiveSanitizeC(null, .Debug));
+    try testing.expectEqual(std.zig.SanitizeC.trap, effectiveSanitizeC(null, .ReleaseSafe));
+    try testing.expectEqual(std.zig.SanitizeC.off, effectiveSanitizeC(null, .ReleaseFast));
+    try testing.expectEqual(std.zig.SanitizeC.off, effectiveSanitizeC(null, .ReleaseSmall));
+    try testing.expectEqual(std.zig.SanitizeC.full, effectiveSanitizeC(.full, .ReleaseSafe));
+    try testing.expectEqual(std.zig.SanitizeC.off, effectiveSanitizeC(.off, .Debug));
+}
+
+test "only a build with C at the full sanitizer needs the UBSan runtime: production needs none, as the console" {
+    try testing.expect(!runnerBuild(.production, null, null, .Debug, false).modes.needsUbsanRuntime());
+    try testing.expect(!releaseConsole(.safe).modes.needsUbsanRuntime());
+    try testing.expect(!releaseConsole(.fast).modes.needsUbsanRuntime());
+    try testing.expect(runnerBuild(.bug_finding, null, null, .Debug, false).modes.needsUbsanRuntime());
+    // A Debug bug-finding runner's C is Debug, full by default.
+    try testing.expect(runnerBuild(.bug_finding, null, .Debug, .Debug, false).modes.needsUbsanRuntime());
+    try testing.expect(!runnerBuild(.bug_finding, null, .ReleaseFast, .Debug, false).modes.needsUbsanRuntime());
+    // A root at .full needs it for its own C++ (v8_wrapper.cpp), whatever its
+    // C libraries are: the console without -Dwpt-runner-release over the
+    // shared graph's .trap C under -Doptimize=ReleaseSafe.
+    try testing.expect(needsUbsanRuntimeFor(.ReleaseSafe, .full, .ReleaseSafe, null));
+    // C libraries at .full need it under a .trap root: the bug-finding run
+    // the production run must never be.
+    try testing.expect(needsUbsanRuntimeFor(.ReleaseSafe, .trap, .ReleaseSafe, .full));
+    try testing.expect(!needsUbsanRuntimeFor(.ReleaseSafe, .trap, .ReleaseSafe, null));
+}
+
+/// A C library `build` links, compiled with `has_*`, which its build's
+/// `modes` say must be compiled with theirs.
+fn linkedForTest(build: []const u8, library: []const u8, artifact: usize, has_optimize: Mode, has_sanitize_c: ?std.zig.SanitizeC, modes: RunnerModes) LinkedCLibrary {
+    return .{
+        .build = build,
+        .library = library,
+        .artifact = artifact,
+        .optimize = has_optimize,
+        .sanitize_c = has_sanitize_c,
+        .want_optimize = modes.c_libraries,
+        .want_sanitize_c = modes.sanitize_c,
+    };
+}
+
+test "the C-library check passes when every graph links C libraries of its own in its modes" {
+    const production = runnerBuild(.production, null, null, .Debug, false).modes;
+    const bug = runnerBuild(.bug_finding, null, null, .Debug, false).modes;
+    // The shared graph: -Doptimize's mode at Zig's default sanitizer.
+    const shared: RunnerModes = .{ .root = .Debug, .crane_modules = .Debug, .c_libraries = .Debug, .sanitize_c = null };
+    const libraries = [_]LinkedCLibrary{
+        linkedForTest("wpt_runner", "mbedtls", 1, .ReleaseSafe, .trap, production),
+        linkedForTest("wpt_runner", "z", 2, .ReleaseSafe, .trap, production),
+        linkedForTest("wpt_runner", "nghttp2", 3, .ReleaseSafe, .trap, production),
+        // The release console links the production graph: the same artifacts, the same modes.
+        linkedForTest("repl", "mbedtls", 1, .ReleaseSafe, .trap, releaseConsole(.safe).modes),
+        linkedForTest("wpt_runner_bug_finding", "mbedtls", 11, .ReleaseSafe, .full, bug),
+        linkedForTest("wpt_runner_bug_finding", "z", 12, .ReleaseSafe, .full, bug),
+        linkedForTest("wpt_runner_bug_finding", "nghttp2", 13, .ReleaseSafe, .full, bug),
+        // Null and the mode's default are one sanitizer: gc_bench on the shared graph.
+        linkedForTest("gc_bench", "mbedtls", 21, .Debug, null, shared),
+        linkedForTest("wpt_runner_bug_finding_debug", "mbedtls", 21, .Debug, null, runnerModes(.Debug, .Debug, false)),
+    };
+    const runtimes = [_]LinkedUbsanRuntime{
+        .{ .build = "wpt_runner", .links = false, .needs = production.needsUbsanRuntime() },
+        .{ .build = "wpt_runner_bug_finding", .links = true, .needs = bug.needsUbsanRuntime() },
+    };
+    var buf: [1024]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try testing.expectEqual(@as(usize, 0), try checkCLibraries(&w, &libraries, &runtimes));
+    try testing.expectEqualStrings("", w.buffered());
+}
+
+test "the C-library check names generation 214's build: one mbedTLS and zlib for both runner graphs, and two nghttp2s in one libcurl" {
+    // What main c4bec82dfe configured (lane buildfix1, 2026-11-10): the
+    // production and bug-finding graphs got one memoized mbedTLS and one zlib
+    // artifact, and the bug-finding graph's `.full` was the last written; the
+    // one libcurl both linked carried each graph's nghttp2.
+    const production = runnerBuild(.production, null, null, .Debug, false).modes;
+    const bug = runnerBuild(.bug_finding, null, null, .Debug, false).modes;
+    const libraries = [_]LinkedCLibrary{
+        linkedForTest("wpt_runner", "mbedtls", 1, .ReleaseSafe, .full, production),
+        linkedForTest("wpt_runner", "nghttp2", 3, .ReleaseSafe, .trap, production),
+        linkedForTest("wpt_runner", "nghttp2", 13, .ReleaseSafe, .full, production),
+        linkedForTest("wpt_runner_bug_finding", "mbedtls", 1, .ReleaseSafe, .full, bug),
+    };
+    // And every runner bundled the runtime: the production one too.
+    const runtimes = [_]LinkedUbsanRuntime{
+        .{ .build = "wpt_runner", .links = true, .needs = production.needsUbsanRuntime() },
+    };
+    var buf: [2048]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try testing.expectEqual(@as(usize, 5), try checkCLibraries(&w, &libraries, &runtimes));
+    try testing.expectEqualStrings(
+        "wpt_runner links Zig's UBSan runtime, but its modes compile nothing with the full C sanitizer\n" ++
+            "wpt_runner: mbedtls is compiled ReleaseSafe with sanitize_c full; its modes say ReleaseSafe with sanitize_c trap\n" ++
+            "wpt_runner: nghttp2 is compiled ReleaseSafe with sanitize_c full; its modes say ReleaseSafe with sanitize_c trap\n" ++
+            "wpt_runner links two artifacts named nghttp2\n" ++
+            "mbedtls is one artifact that wpt_runner (ReleaseSafe, sanitize_c trap) and wpt_runner_bug_finding (ReleaseSafe, sanitize_c full) both link: a dependency instance shared by two graphs\n",
+        w.buffered(),
+    );
+}
+
+test "the C-library check names a mode mismatch, and a runner that claims .full over the shared graph's .trap" {
+    // -Doptimize=ReleaseSafe had the bug-finding runner on the shared graph:
+    // ReleaseSafe C at Zig's default, `.trap`, under modes that say `.full`.
+    const bug = runnerBuild(.bug_finding, null, null, .ReleaseSafe, true).modes;
+    const release_fast = releaseConsole(.fast).modes;
+    const libraries = [_]LinkedCLibrary{
+        linkedForTest("wpt_runner_bug_finding", "brotlidec", 5, .ReleaseSafe, null, bug),
+        linkedForTest("repl", "z", 6, .ReleaseSafe, .off, release_fast),
+    };
+    // The other direction of the runtime: a bug-finding build that lost it.
+    const runtimes = [_]LinkedUbsanRuntime{
+        .{ .build = "wpt_runner_bug_finding", .links = false, .needs = bug.needsUbsanRuntime() },
+    };
+    var buf: [1024]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try testing.expectEqual(@as(usize, 3), try checkCLibraries(&w, &libraries, &runtimes));
+    try testing.expectEqualStrings(
+        "wpt_runner_bug_finding links no UBSan runtime, but its modes compile C with the full sanitizer, which calls one\n" ++
+            "wpt_runner_bug_finding: brotlidec is compiled ReleaseSafe with sanitize_c trap; its modes say ReleaseSafe with sanitize_c full\n" ++
+            "repl: z is compiled ReleaseSafe with sanitize_c off; its modes say ReleaseFast with sanitize_c off\n",
+        w.buffered(),
+    );
 }
