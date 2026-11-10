@@ -102,13 +102,15 @@ test "Node's embedded state keeps no allocator copy: 128 bytes" {
     try expectSize(E, 128);
 }
 
-test "EventTarget's embedded state keeps no allocator and no lazy entry: 24 bytes" {
+test "EventTarget's embedded state keeps no allocator and no lazy entry: 8 bytes" {
     const E = Embedded(interfaces.EventTarget.State);
     try std.testing.expect(E != void);
     try expectNoField(E, .{ "allocator", "lazy" });
     // listener list 8, handler map 8, listeners_watched 1 (padded to 8): 32
-    // at batch 6, less the current event batch 7 moved to Window's state.
-    try expectSize(E, 24);
+    // at batch 6, less the current event batch 7 moved to Window's state:
+    // 24; lane lis1 made the list, the handlers and the flag one block, made
+    // with the first listener: one pointer.
+    try expectSize(E, 8);
 }
 
 test "CharacterData's and Comment's embedded states keep no allocator copy" {
