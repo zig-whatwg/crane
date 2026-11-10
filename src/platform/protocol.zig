@@ -311,6 +311,9 @@ pub const Capabilities = struct {
     thread_qos: Support,
     /// Diagnostics report no resident memory.
     resident_memory: Support,
+    /// Reserved address space (6.11): a Browser's heap. Without it
+    /// `Browser.init` fails with NotSupported - no page sees the difference.
+    address_space: Support,
     /// CSSOM View with no layout box: zero boxes, no hit (6.9).
     layout: Support,
     /// A permission request in the prompt state is denied.
@@ -3203,6 +3206,143 @@ pub inline fn showVirtualKeyboard(browser: *BrowserPlatform, tab: TabId) void {
 pub inline fn hideVirtualKeyboard(browser: *BrowserPlatform, tab: TabId) void {
     comptime gate(.virtual_keyboard, "hideVirtualKeyboard");
     return impl.hideVirtualKeyboard(browser, tab);
+}
+
+// ============================================================================
+// 6.11 Address space [address_space]
+// ============================================================================
+//
+// Reserved address space, committed and decommitted in place: the pages a
+// Browser's own heap is made of (tmp/redesign/node-memory-architecture.md
+// 6.6, as amended by node-memory-plan-v2.md). Each Browser reserves one range
+// aligned to its size; its node cage, its general pools and its allocator
+// metadata are parts of it (runtime.BrowserScope.Heap). The model is
+// PartitionAlloc's page allocator (base/allocator/partition_allocator/src/
+// partition_alloc/page_allocator.h, page_allocator_internals_posix.h at
+// Chromium 145): reserve inaccessible, commit by changing protection, decommit
+// by discarding in place, never unmapping a part while the range lives - as
+// V8 takes its pages from the embedder's v8::PageAllocator.
+//
+// Offsets and lengths are multiples of `pageSize()`, which is a run-time value
+// on aarch64-linux (4-64 KiB): nothing here assumes a page size at compile
+// time. Every operation may be called from any thread; the ranges are the
+// caller's, and two threads never operate on one page at once.
+//
+// Gated on `address_space`, a capability no page sees: Crane's own platforms
+// (darwin, linux, testing) all have it; kit/headless answers
+// `error.NotSupported`, and a Browser on a platform without it fails
+// `Browser.init` cleanly (runtime.BrowserScope.reserveHeap).
+
+/// What a reserved range is for. The OS's tools show the range under it -
+/// darwin's VM tag (vmmap and footprint: "App-Specific Tag 1" to "4", tags 240
+/// to 243, beside Chrome's 251-255 and V8's 255), Linux's VMA name
+/// (`[anon:crane-node-cage]` in /proc/<pid>/maps, Linux 5.17 and later) - and
+/// on Linux it decides the range's transparent huge pages.
+pub const AddressLabel = enum(u8) {
+    /// A Browser's node cage: every compressed link decodes into it. Linux
+    /// also excludes it from transparent huge pages (MADV_NOHUGEPAGE: a
+    /// sparse class-stable pool costs 2 MiB per touched super page under THP
+    /// `always`, and khugepaged undoes span decommit; oss review R4).
+    node_cage = 0,
+    /// Pointer-bearing Crane structs: the objects pool.
+    objects = 1,
+    /// Page-controlled bytes: text, attribute values, bodies.
+    bytes = 2,
+    /// The heap's own metadata - header, span table, free bitmaps, the
+    /// Browser's tables - outside the cage, where no link decodes (oss R1).
+    heap_metadata = 3,
+};
+
+/// A reserved range: `base` is a multiple of the alignment it was reserved
+/// with (plus its alignment offset), `size` a multiple of `pageSize()`.
+pub const AddressRange = extern struct {
+    base: usize,
+    size: usize,
+};
+
+/// What a committed page may be used for.
+pub const PageAccess = enum(u8) { none = 0, read = 1, read_write = 2 };
+
+/// The OS page size: the unit of every offset and length in this group. Read
+/// at run time (std.heap.pageSize): 16 KiB on Apple silicon, 4 KiB on x86-64,
+/// 4 to 64 KiB on aarch64-linux. Any thread.
+pub inline fn pageSize() usize {
+    comptime gate(.address_space, "pageSize");
+    return impl.pageSize();
+}
+
+/// Reserve `size` bytes of address space, inaccessible and uncommitted, whose
+/// `base` is `alignment_offset` above a multiple of `alignment` (a power of
+/// two, at least `pageSize()`; the offset a page multiple below it). Named
+/// `label` in the OS's tools. Exact-size hints first - random aligned
+/// addresses, so consecutive reservations do not land where the last one was
+/// released (oss review R12) - then over-reserve and trim, PartitionAlloc's
+/// AllocPagesWithAlignOffset. `error.OutOfMemory` when the process's address
+/// space (or its RLIMIT_AS) has no room. The result is OWNED by the caller
+/// until `releaseAddressSpace`. Any thread.
+pub inline fn reserveAddressSpace(size: usize, alignment: usize, alignment_offset: usize, label: AddressLabel) Error!AddressRange {
+    comptime gate(.address_space, "reserveAddressSpace");
+    return impl.reserveAddressSpace(size, alignment, alignment_offset, label);
+}
+
+/// Rename `[offset, offset + length)` of `range` - a part none of whose pages
+/// is committed yet - as `label`: a Browser names its cage, metadata and pools
+/// once, at reservation, before anything lives there. darwin maps the part
+/// again in place with the new tag (MAP_FIXED over its own inaccessible
+/// reservation - never over a live page); Linux names the VMA once
+/// (PR_SET_VMA_ANON_NAME; absent before Linux 5.17, as in PartitionAlloc) and
+/// applies the label's huge-page advice. Best effort: a platform that cannot
+/// label leaves the part as it was. Any thread.
+pub inline fn labelAddressSpace(range: AddressRange, offset: usize, length: usize, label: AddressLabel) void {
+    comptime gate(.address_space, "labelAddressSpace");
+    return impl.labelAddressSpace(range, offset, length, label);
+}
+
+/// Make `[offset, offset + length)` of `range` readable and writable with its
+/// memory accounted again: a part never committed, or one `decommitPages`
+/// released (whose contents are then unspecified). Linux: one mprotect, never
+/// MAP_FIXED over a live range (oss R24). darwin: mprotect, then
+/// MADV_FREE_REUSE - without it a page decommitted with MADV_FREE_REUSABLE and
+/// written again stays out of the task's footprint (oss R3, measured: 64 of 64
+/// MiB missing), PartitionAlloc's RecommitSystemPages. `error.OutOfMemory`
+/// when the OS will not commit (strict overcommit, RLIMIT_DATA). Any thread.
+pub inline fn commitPages(range: AddressRange, offset: usize, length: usize) Error!void {
+    comptime gate(.address_space, "commitPages");
+    return impl.commitPages(range, offset, length);
+}
+
+/// Give the memory of `[offset, offset + length)` of `range` back to the OS,
+/// keeping the pages reserved and accessible: the next touch reads zero
+/// (Linux) or either zero or the old bytes (darwin - write whatever a freed
+/// block must say before decommitting it). The part must be committed and
+/// readable-and-writable throughout: darwin's MADV_FREE_REUSABLE fails with
+/// EPERM on an inaccessible page or a range with one in it and releases
+/// nothing, so a caller decommits BEFORE it protects (oss R3; PartitionAlloc
+/// discards before it changes protection, "the opposite order resulted in PMF
+/// regression on Mac"), and never across a super page it has not committed.
+/// darwin: MADV_FREE_REUSABLE, falling back to MADV_DONTNEED when it fails
+/// (PartitionAlloc: it "sometimes fails"); Linux: MADV_DONTNEED. An error when
+/// the OS refused both. Any thread.
+pub inline fn decommitPages(range: AddressRange, offset: usize, length: usize) Error!void {
+    comptime gate(.address_space, "decommitPages");
+    return impl.decommitPages(range, offset, length);
+}
+
+/// Set the access of `[offset, offset + length)` of `range`: the bug-finding
+/// build's inaccessible freed spans and released Browsers. Contents are kept;
+/// to release memory and make it inaccessible, `decommitPages` first, then
+/// this. Any thread.
+pub inline fn protectPages(range: AddressRange, offset: usize, length: usize, access: PageAccess) Error!void {
+    comptime gate(.address_space, "protectPages");
+    return impl.protectPages(range, offset, length, access);
+}
+
+/// Return the whole of `range` to the OS, once, at its owner's end. After it,
+/// a stale pointer into the range faults until the OS hands the address to a
+/// later reservation. Any thread.
+pub inline fn releaseAddressSpace(range: AddressRange) void {
+    comptime gate(.address_space, "releaseAddressSpace");
+    return impl.releaseAddressSpace(range);
 }
 
 // ============================================================================

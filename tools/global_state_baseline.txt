@@ -156,6 +156,7 @@ src/platform/host.zig cached_io 1 G P-res decl:5fde91e1f8769bc9
 src/platform/host.zig init_mutex 1 G P-res decl:ee0617868871b920
 src/platform/host.zig threaded 1 G P-res decl:46f2a8444cfc8e17
 src/process/start.zig state 1 G P-res decl:9aefe5ce61f3dbd3
+src/runtime/browser_heap.zig graveyard 1 G P-res decl:e02362a20666d9a5
 src/runtime/browser_scope.zig live_scopes 1 G P-res decl:224489c067b5c8fe
 src/runtime/browser_scope.zig standalone_scope 1 G P-res decl:900c140c0fed34c8
 src/runtime/ce_reactions.zig hooks 1 G H decl:1fe1b0ac7507f38b

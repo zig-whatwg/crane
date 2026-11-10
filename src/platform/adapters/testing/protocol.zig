@@ -121,6 +121,8 @@ pub const protocol = struct {
         c.file_urls = .native;
         c.http2 = if (platform_options.http2) .native else .unsupported;
         c.resident_memory = .native;
+        // Reserved address space for each Browser's heap (6.11): kit/posix.
+        c.address_space = .native;
         // kit/memory_clipboard per Browser. Deviation: nothing leaves the
         // Browser and nothing another application copies arrives.
         c.clipboard = .emulated;
@@ -177,6 +179,17 @@ pub const protocol = struct {
     }
     pub const spawnThread = posix.spawnThread;
     pub const joinThread = posix.joinThread;
+    // 6.11 Address space: kit/posix's, which takes this OS's own path
+    // (darwin: a VM tag per label, MADV_FREE_REUSABLE / MADV_FREE_REUSE;
+    // Linux: VMA names, MADV_NOHUGEPAGE on the node cage, mprotect-only
+    // commit), chosen by the target it is built for.
+    pub const pageSize = posix.pageSize;
+    pub const reserveAddressSpace = posix.reserveAddressSpace;
+    pub const labelAddressSpace = posix.labelAddressSpace;
+    pub const commitPages = posix.commitPages;
+    pub const decommitPages = posix.decommitPages;
+    pub const protectPages = posix.protectPages;
+    pub const releaseAddressSpace = posix.releaseAddressSpace;
     pub const makeDirectoryPath = posix.makeDirectoryPath;
     pub const readFile = posix.readFile;
     pub const writeFileAtomic = posix.writeFileAtomic;

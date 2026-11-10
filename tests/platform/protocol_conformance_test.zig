@@ -73,8 +73,28 @@ test "conformance: the bound platform matches every operation" {
     }
     // Every operation of the contract is declared (section 6): pin the count,
     // so an operation removed by accident shows here. 221 since D3 (the user,
-    // 2026-11-09 22:21 UTC) removed replacedElementBox.
-    try testing.expectEqual(@as(usize, 221), count);
+    // 2026-11-09 22:21 UTC) removed replacedElementBox; 228 since lane h1
+    // added the address-space group (6.11: pageSize, reserveAddressSpace,
+    // labelAddressSpace, commitPages, decommitPages, protectPages,
+    // releaseAddressSpace).
+    try testing.expectEqual(@as(usize, 228), count);
+}
+
+test "address space (6.11): this platform reserves, commits, decommits and releases" {
+    // Every built-in platform has it; the platform-specific behaviour is
+    // tests/platform/h1_address_space_test.zig's, on each host OS.
+    if (comptime platform.capabilities.address_space == .unsupported) return error.SkipZigTest;
+    const page = platform.pageSize();
+    const range = try platform.reserveAddressSpace(8 * page, 4 * page, 0, .objects);
+    defer platform.releaseAddressSpace(range);
+    try testing.expectEqual(@as(usize, 0), range.base % (4 * page));
+    platform.labelAddressSpace(range, 0, 4 * page, .node_cage);
+    try platform.commitPages(range, 0, 2 * page);
+    const p: *volatile u8 = @ptrFromInt(range.base + page);
+    p.* = 0xa5;
+    try testing.expectEqual(@as(u8, 0xa5), p.*);
+    try platform.decommitPages(range, 0, 2 * page);
+    try platform.protectPages(range, 0, 2 * page, .none);
 }
 
 // ---------------------------------------------------------------------------
