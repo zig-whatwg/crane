@@ -18,7 +18,7 @@
 //! and reads the tree scope's otherwise (CustomElementRegistry::
 //! registryForElement). E1: a 2-bit place in Element - none, the node
 //! document's, or rare data - and any other registry (a scoped one, or a
-//! global one that is not the node document's) in ElementRareData.
+//! global one that is not the node document's) in the element's rare data.
 //!
 //! The size pins are red until E1 lands; the behaviour tests hold before
 //! and after it, except those that read the rare data itself.
@@ -58,10 +58,8 @@ fn expectSize(comptime T: type, expected: usize) !void {
 
 /// Element's InternalState, as its generated State keeps it by value.
 const ElementState = @FieldType(interfaces.Element.State, "_embedded");
-const ElementRareData = dom.element_rare_data.ElementRareData;
-
 /// Whether E1's rare registry field is in this build.
-const has_rare_registry = @hasField(ElementRareData, "custom_element_registry");
+const has_rare_registry = @hasField(dom.element_rare_data.Field, "custom_element_registry");
 
 // ============================================================================
 // Sizes (red until E1)
@@ -92,12 +90,12 @@ test "a div's one block is 264 bytes: 472 less perf2 b7's 8, the association (40
     }
 }
 
-test "ElementRareData keeps the association for a registry that is not the node document's: 312 bytes" {
+test "the rare data keeps the association for a registry that is not the node document's, in a block of its own" {
     if (comptime !has_rare_registry) return error.NoRareRegistry;
-    try testing.expectEqual(@sizeOf(dom.custom_elements.RegistryAssociation), @sizeOf(@FieldType(ElementRareData, "custom_element_registry")));
-    // 240 after D2 + the association (40) + the slottable state (64, item 2).
-    // 344 at E1; nd2 N2 moved the prefix (32) into the name record.
-    try expectSize(ElementRareData, 312);
+    // 344 at E1 in one fixed block; since lane rare1 the rare data is one
+    // sparse block whose slot names the association's own block, so the
+    // block may move without moving it (tests/dom/rare1_sparse_rare_data_test.zig).
+    try testing.expect(dom.element_rare_data.Value(.custom_element_registry) == *dom.custom_elements.RegistryAssociation);
 }
 
 // ============================================================================
@@ -156,15 +154,16 @@ fn registryOf(element: *runtime.Instance) !?*runtime.Instance {
     return interfaces.Element.get_customElementRegistry(element);
 }
 
-fn rareOf(element: *runtime.Instance) ?*ElementRareData {
-    return dom.element_rare_data.of(element);
+/// `element`'s rare block, or null when it has none.
+fn rareOf(element: *runtime.Instance) ?*dom.element_rare_data.Block {
+    return dom.element_rare_data.of(element).block;
 }
 
 /// The registry `element`'s rare data keeps, if it has rare data.
 fn rareRegistryOf(element: *runtime.Instance) ?*runtime.Instance {
     if (comptime !has_rare_registry) return null;
-    const rare = rareOf(element) orelse return null;
-    return rare.custom_element_registry.get();
+    const association = dom.element_rare_data.get(dom.element_rare_data.of(element), .custom_element_registry) orelse return null;
+    return association.get();
 }
 
 // ============================================================================
