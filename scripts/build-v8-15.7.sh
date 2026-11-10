@@ -19,6 +19,8 @@
 #                and the generated v8-gn.h; then regular ("fat") archives of GN's thin ones
 #     verify     one C++ library only (Chromium's std::__Cr; never std::__1 or libstdc++); whether the
 #                monolith carries Temporal's Rust code and Rust's std (rust.txt)
+#     rust       link d8 (V8's shell) as Chrome would, read its recipe: Temporal's rlibs and Rust's std,
+#                repacked as librust_v8.a, and the system libraries (system-libs.txt); d8 runs a smoke
 #     smoke      Zig compiles and links a 70-line program against the archives as Crane would (the
 #                archive's v8-gn.h, Chromium's libc++ headers and objects, no Zig libc++): `1+1`, a
 #                Temporal call, a cppgc allocation that survives a full collection
@@ -232,7 +234,7 @@ libcxx_targets() {
     | sed -n 's#^\(buildtools/third_party/libc++\(abi\)\{0,1\}:libc++\(abi\)\{0,1\}\): phony$#\1#p' | LC_ALL=C sort -u
 }
 
-archives() { echo libv8_monolith.a libv8_libplatform_fat.a libv8_libbase_fat.a libc++_chromium.a; }
+archives() { echo libv8_monolith.a libv8_libplatform_fat.a libv8_libbase_fat.a libc++_chromium.a librust_v8.a; }
 
 step_build() {
   check_stop build
@@ -313,6 +315,7 @@ step_verify() {
   cd "$V8/$OUT/obj"
   local nm="$LLVM/bin/llvm-nm" a std1 cr cxx11 gnu bad=0
   for a in $(archives); do
+    [ -f "$a" ] || { echo "   $a: not built yet (step rust)"; continue; }
     std1=$("$nm" "$a" 2>/dev/null | grep -c 'St3__1' || true)
     cr=$("$nm" "$a" 2>/dev/null | grep -c 'St4__Cr' || true)
     cxx11=$("$nm" "$a" 2>/dev/null | grep -c '_ZNSt7__cxx11\|_ZNKSt7__cxx11' || true)
@@ -337,6 +340,79 @@ step_verify() {
     echo "rlibs the build made: $(find "$V8/$OUT" -name '*.rlib' | wc -l | tr -d ' ')"
   } | tee "$V8/$OUT/rust.txt"
   log "verify: one C++ library (Chromium's std::__Cr); Rust facts in $V8/$OUT/rust.txt"
+}
+
+# Temporal is Rust (temporal_capi, temporal_rs and their ICU4X crates), and GN's complete static
+# monolith carries none of it, nor Rust's std: its objects reference 258 temporal_rs_* symbols that it
+# does not define. Chrome's own answer is its final link, which lists every target rlib and the
+# system libraries; d8, V8's shell, is linked the same way. So this step links d8 with the response
+# file kept, reads Chrome's recipe from it - the rlibs, Rust's allocator shims, the -framework / -l
+# system libraries - repacks the rlibs' objects into ONE archive (librust_v8.a: objects only, no
+# rmeta members) and writes system-libs.txt; Crane's link adds both. d8 also runs V8's own smoke test.
+step_rust() {
+  check_stop rust
+  cd "$V8"
+  log "ninja d8 (kept response file: Chrome's link recipe for V8 + Temporal's Rust)"
+  run_long third_party/ninja/ninja -d keeprsp -C "$OUT" -j "$JOBS" d8 > "$OUT/ninja-d8.log.txt" 2>&1 \
+    || { tail -40 "$OUT/ninja-d8.log.txt"; die "ninja d8 failed"; }
+  third_party/ninja/ninja -C "$OUT" -t commands d8 > "$OUT/d8-commands.txt"
+  local link rsp
+  link=$(grep -F 'd8.rsp' "$OUT/d8-commands.txt" | tail -1 || true)
+  rsp=$(ls "$OUT"/d8.rsp "$OUT"/./d8.rsp 2> /dev/null | head -1 || true)
+  [ -n "$link" ] && [ -s "$rsp" ] || die "no d8 link command or response file (rsp: '$rsp')"
+  python3 -I - "$V8/$OUT" "$rsp" "$link" > "$OUT/d8-link-inputs.txt" <<'PYIN'
+import os, shlex, sys
+cwd, rsp, link = sys.argv[1], sys.argv[2], sys.argv[3]
+tokens = shlex.split(open(rsp).read()) + shlex.split(link)
+seen = set()
+def emit(kind, value):
+    if (kind, value) not in seen:
+        seen.add((kind, value))
+        print(kind, value)
+i = 0
+while i < len(tokens):
+    t = tokens[i]
+    if t == "-framework" and i + 1 < len(tokens):
+        emit("framework", tokens[i + 1]); i += 2; continue
+    if t.startswith("-Wl,-framework,"):
+        emit("framework", t.split(",")[2])
+    elif t.startswith("-l") and len(t) > 2:
+        emit("lib", t[2:])
+    elif t.endswith(".rlib"):
+        emit("rlib", os.path.realpath(os.path.join(cwd, t)))
+    elif t.endswith((".a", ".o")) and ("/rust/" in t or "rust" in os.path.basename(t)):
+        emit("rustobj", os.path.realpath(os.path.join(cwd, t)))
+    elif t.endswith((".a", ".o")):
+        emit("other", t)
+    i += 1
+PYIN
+  log "d8's link: $(grep -c '^rlib ' "$OUT/d8-link-inputs.txt") rlibs, $(grep -c '^rustobj ' "$OUT/d8-link-inputs.txt" || true) Rust objects/archives, frameworks: $(grep '^framework ' "$OUT/d8-link-inputs.txt" | cut -d' ' -f2 | tr '\n' ' '), libs: $(grep '^lib ' "$OUT/d8-link-inputs.txt" | cut -d' ' -f2 | tr '\n' ' ')"
+  grep '^other ' "$OUT/d8-link-inputs.txt" | sed 's/^/   other input: /' | head -20
+  # One archive of the rlibs' and shims' objects (an rlib is an ar archive: its objects plus lib.rmeta).
+  local w="$OUT/rust-objs" n=0 f
+  rm -rf "$w"; mkdir -p "$w"
+  while read -r kind f; do
+    case "$kind" in
+      rlib|rustobj)
+        n=$((n + 1)); mkdir -p "$w/$n"
+        case "$f" in
+          *.o) cp "$f" "$w/$n/" ;;
+          *) ( cd "$w/$n" && "$LLVM/bin/llvm-ar" x "$f" ) ;;
+        esac ;;
+    esac
+  done < "$OUT/d8-link-inputs.txt"
+  find "$w" -type f ! -name '*.o' -delete
+  rm -f "$OUT/obj/librust_v8.a"
+  ( cd "$w" && find . -name '*.o' | LC_ALL=C sort | xargs "$LLVM/bin/llvm-ar" rcs "$V8/$OUT/obj/librust_v8.a" )
+  rm -rf "$w"
+  # The system libraries and frameworks, as link flags.
+  { grep '^framework ' "$OUT/d8-link-inputs.txt" | while read -r _ f; do echo "-framework $f"; done
+    grep '^lib ' "$OUT/d8-link-inputs.txt" | while read -r _ f; do echo "-l$f"; done; } > "$OUT/system-libs.txt"
+  log "librust_v8.a: $(ls -la "$OUT/obj/librust_v8.a" | awk '{print $5}') bytes, $("$LLVM/bin/llvm-ar" t "$OUT/obj/librust_v8.a" | wc -l | tr -d ' ') objects; system libs: $(tr '\n' ' ' < "$OUT/system-libs.txt")"
+  local rc=0
+  "$OUT/d8" -e "print(1 + 1, Temporal.PlainDate.from('2026-11-10').add({ days: 1 }).toString())" > "$OUT/d8-smoke.txt" 2>&1 || rc=$?
+  log "d8: $(cat "$OUT/d8-smoke.txt") (rc $rc)"
+  [ "$rc" = 0 ] && grep -q -x '2 2026-11-11' "$OUT/d8-smoke.txt" || die "d8's smoke test failed"
 }
 
 smoke_source() {
@@ -423,11 +499,13 @@ step_smoke() {
     rm -rf "$t"
     die "the smoke compile (Zig's clang against Chromium's libc++ headers) failed; see $V8/$OUT/smoke-compile.txt"
   fi
+  # The system libraries d8's link names (step_rust: system-libs.txt), word-split on purpose.
   local extra=()
-  [ "$HOST_OS" = linux ] && extra=(-lpthread -ldl -lm)
+  # shellcheck disable=SC2207
+  extra=($(cat "$V8/$OUT/system-libs.txt"))
   # `zig cc` links no C++ library of its own: Chromium's (libc++_chromium.a) is the only one.
   ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" cc "$t/smoke.o" "$o/libv8_monolith.a" "$o/libv8_libplatform_fat.a" \
-    "$o/libv8_libbase_fat.a" "$o/libc++_chromium.a" ${extra[@]+"${extra[@]}"} -o "$t/smoke" > "$t/link.txt" 2>&1 || rc=$?
+    "$o/libv8_libbase_fat.a" "$o/libc++_chromium.a" "$o/librust_v8.a" ${extra[@]+"${extra[@]}"} -o "$t/smoke" > "$t/link.txt" 2>&1 || rc=$?
   if [ "$rc" != 0 ]; then
     {
       echo "LINK FAILED (rc $rc). Undefined symbols (Rust std/temporal ones mean Crane's link must add Rust):"
@@ -466,7 +544,7 @@ step_install() {
   ! grep -q "$V8_ROOT" "$DEST/libcxx/flags.txt" || die "libcxx/flags.txt still names the checkout"
   cp "$OUT/args.gn" "$DEST/args.gn"
   tail -40 "$OUT/ninja.log.txt" > "$DEST/ninja-tail.txt"
-  cp "$OUT/rust.txt" "$OUT/smoke.txt" "$DEST/"
+  cp "$OUT/rust.txt" "$OUT/smoke.txt" "$OUT/system-libs.txt" "$OUT/d8-link-inputs.txt" "$OUT/d8-smoke.txt" "$DEST/"
   {
     echo "V8 $V8_TAG ($(git rev-parse HEAD)) for $HOST_OS $TARGET_CPU, built $(date -u +%FT%TZ) on $(hostname) by scripts/build-v8-15.7.sh"
     echo "clang: $("$LLVM/bin/clang" --version | head -1)"
@@ -491,8 +569,8 @@ mkdir -p "$V8_ROOT"
 echo "$$ $0 $*" > "$PIDFILE"
 for step in "$@"; do
   case "$step" in
-    all) for s in deps checkout build verify smoke install; do "step_$s"; done ;;
-    deps|checkout|build|verify|smoke|install|clean) "step_$step" ;;
+    all) for s in deps checkout build rust verify smoke install; do "step_$s"; done ;;
+    deps|checkout|build|verify|rust|smoke|install|clean) "step_$step" ;;
     *) die "unknown step: $step" ;;
   esac
 done
