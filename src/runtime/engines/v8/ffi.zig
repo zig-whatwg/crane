@@ -2893,6 +2893,11 @@ pub extern fn v8_test_NodeWrappers_DrainPosted(isolate: *Isolate) bool;
 /// collections so far (the EmbedderRootsHandler's ResetRoot, design 4.11).
 pub extern fn v8_test_NodeWrappers_Dropped(isolate: *Isolate) u64;
 
+/// tests/v8: how many times V8 called `isolate`'s roots handler's
+/// TryResetRoot - from any thread - so far. It answers false and touches no
+/// node (v8_wrapper.cpp NodeWrapperRootsHandler); the linked V8 never calls it.
+pub extern fn v8_test_NodeWrappers_TryResetRootCalls(isolate: *Isolate) u64;
+
 /// tests/v8: at least `n` young-generation collections of `isolate`
 /// (entered), by filling its young generation with unreachable arrays.
 pub extern fn v8_test_Isolate_MinorGC(isolate: *Isolate, n: u32) void;

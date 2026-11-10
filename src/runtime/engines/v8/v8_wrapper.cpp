@@ -3592,21 +3592,47 @@ void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
 //   (wrapper_type_info.h: every type with a wrapper class id); nothing else is
 //   added on top of V8's unmodified rule - V8 decides what is observable.
 // Here ResetRoot clears the anchor's slot (the dead wrapper reaches no node),
-// Resets the node's slot - which V8 requires: ProcessYoungObjects CHECKs the
-// TracedNode is free after ResetRoot - and records the wrapper's release for
-// the drain, exactly as a full collection's weak processing does
-// (NodeWrapperRegistry::ProcessWeak). TryResetRoot answers false, so V8 calls
-// ResetRoot instead, on the isolate's thread. The anchor leaves the registry
-// there and is freed after the collection (freeDroppedAnchors: lane wr1
-// batch 8, the integrator's option (a), 2026-11-09 23:48 UTC) - until then
-// it waited on the C++ heap for the next full collection, which V8
+// Resets the node's slot - which V8 requires: 13.1.203's ProcessYoungObjects
+// CHECKs the TracedNode is free after ResetRoot (`CHECK(!node->is_in_use())`;
+// a DCHECK in later V8, which zaps the node itself) - and records the
+// wrapper's release for the drain, exactly as a full collection's weak
+// processing does (NodeWrapperRegistry::ProcessWeak). The anchor leaves the
+// registry there and is freed after the collection (freeDroppedAnchors: lane
+// wr1 batch 8, the integrator's option (a), 2026-11-09 23:48 UTC) - until
+// then it waited on the C++ heap for the next full collection, which V8
 // schedules rarely.
 // Kept nodes are never dropped: a keep's root makes the slot non-droppable
 // (v8_NodeWrapper_Root) - a cppgc::Persistent is not consulted in a scavenge.
-
-// 13.1.203: ProcessYoungObjects calls only ResetRoot and CHECKs the node is
-// free after it; TryResetRoot is never called there. A V8 upgrade re-reads
-// src/handles/traced-handles.cc ProcessYoungObjects and the callers of
+//
+// THE RULE: only ResetRoot touches node memory - the node's slot, the
+// anchor, the registry, the record, the Zig side's collected callback - and
+// it runs on the isolate's own thread (checked below in Debug). TryResetRoot
+// touches none of them: it answers false, and V8 then calls ResetRoot on the
+// isolate's thread for that handle. Why the rule must be written down: who
+// calls TryResetRoot depends on the V8 version.
+// - V8 13.1.203, the one Crane links: nothing does. ProcessYoungObjects
+//   (src/handles/traced-handles.cc) is a serial loop on the isolate's thread
+//   calling ResetRoot only (`git grep TryResetRoot 13.1.203 -- src` finds no
+//   caller; v8-embedder-heap.h declares it, its default calling ResetRoot).
+// - V8 from b1ea3fc1dbf (2025-02-24, "[heap] Parallelize processing of young
+//   wrapper reclamation"), e.g. 14.6 - the source checkout beside the
+//   archive, jsengines/v8/v8: ClearWeaknessProcessor runs as a platform Job
+//   with up to 3 workers when the young list has more than 8 blocks
+//   (--parallel_reclaim_unmodified_wrappers, on by default), and each worker
+//   calls TryResetRoot - "called in parallel for different handles and as
+//   such must be thread-safe" (v8-embedder-heap.h); a handle it answers false
+//   for is processed again on the main thread with ResetRoot. A TryResetRoot
+//   that touched a node there would race the agent's thread on node memory,
+//   which no other thread ever reads (the node pool's owner-thread design,
+//   tmp/redesign/node-memory-architecture.md 3.5) - so it never does,
+//   whatever an upgrade makes cheaper. Blink's TryResetRoot does the work
+//   opportunistically because its ScriptWrappables' slots tolerate it; Crane's
+//   node memory does not.
+// Pinned by tests/v8/wr10_young_drop_thread_test.zig: a scavenge that drops
+// more than 8 young blocks' worth of node wrappers empties every slot
+// through ResetRoot on the agent's thread, and the linked V8 calls
+// TryResetRoot for none (v8_test_NodeWrappers_TryResetRootCalls). A V8
+// upgrade re-reads TracedHandles::ProcessYoungObjects and every caller of
 // TryResetRoot before this compiles again.
 static_assert(V8_MAJOR_VERSION == 13 && V8_MINOR_VERSION == 1,
               "the young-generation EmbedderRootsHandler contract was read from V8 13.1.203: re-read "
@@ -3614,9 +3640,20 @@ static_assert(V8_MAJOR_VERSION == 13 && V8_MINOR_VERSION == 1,
 
 class NodeWrapperRootsHandler final : public EmbedderRootsHandler {
  public:
-    explicit NodeWrapperRootsHandler(Isolate* isolate) : isolate_(isolate) {}
+    /// Made on the isolate's own thread, right after Isolate::Initialize
+    /// (installNodeWrapperRootsHandler) - the agent's thread, the one thread
+    /// that touches its nodes.
+    explicit NodeWrapperRootsHandler(Isolate* isolate) : isolate_(isolate), owner_(std::this_thread::get_id()) {}
 
     void ResetRoot(const TracedReference<Value>& handle) final {
+#ifndef NDEBUG
+        // The rule above: node memory is touched on the agent's thread only.
+        if (std::this_thread::get_id() != owner_) {
+            fprintf(stderr, "v8_wrapper: ResetRoot called off the isolate's own thread - only TryResetRoot may run on "
+                            "V8's workers, and it touches no node\n");
+            abort();
+        }
+#endif
         const TracedReference<Object>& traced = handle.As<Object>();
         // Only node slots are droppable, and only node wrappers are Wrapped
         // under the anchors' tag. The dying wrapper's CppHeap pointer still
@@ -3663,12 +3700,22 @@ class NodeWrapperRootsHandler final : public EmbedderRootsHandler {
         }
     }
 
+    /// May run on any thread (V8 from b1ea3fc1dbf: the comment above). It
+    /// reads nothing of the handle and touches no node, anchor, registry or
+    /// record: it counts the call on the handler's own atomic and answers
+    /// false, so the handle goes to ResetRoot on the isolate's thread.
     bool TryResetRoot(const TracedReference<Value>&) final {
+        try_reset_root_calls_.fetch_add(1, std::memory_order_relaxed);
         return false;
     }
 
+    /// TryResetRoot's calls so far (v8_test_NodeWrappers_TryResetRootCalls).
+    uint64_t tryResetRootCalls() const { return try_reset_root_calls_.load(std::memory_order_relaxed); }
+
  private:
     Isolate* isolate_;
+    std::thread::id owner_;
+    std::atomic<uint64_t> try_reset_root_calls_{0};
 };
 
 /// Install `isolate`'s EmbedderRootsHandler: right after Isolate::Initialize,
@@ -4184,6 +4231,14 @@ extern "C" void v8_test_Isolate_CollectWithoutDrain(Isolate* isolate) {
 extern "C" uint64_t v8_test_NodeWrappers_Dropped(Isolate* isolate) {
     IsolateData* record = isolateData(isolate);
     return record ? record->node_wrappers_dropped : 0;
+}
+
+/// How many times V8 called `isolate`'s NodeWrapperRootsHandler::TryResetRoot
+/// - from any thread - so far; 0 for an isolate with no record. The linked
+/// V8 (13.1.203) never calls it (the rule at NodeWrapperRootsHandler).
+extern "C" uint64_t v8_test_NodeWrappers_TryResetRootCalls(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    return record && record->roots_handler ? record->roots_handler->tryResetRootCalls() : 0;
 }
 
 /// At least `n` young-generation collections of `isolate` (entered by the
