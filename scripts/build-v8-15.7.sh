@@ -270,7 +270,7 @@ step_build() {
   # Chromium's libc++ and libc++abi objects, one archive.
   rm -f libc++_chromium.a
   "$LLVM/bin/llvm-ar" rcs libc++_chromium.a $(find buildtools/third_party/libc++ buildtools/third_party/libc++abi -name '*.o' | LC_ALL=C sort)
-  ls -la $(archives)
+  ls -la libv8_monolith.a libv8_libplatform_fat.a libv8_libbase_fat.a libc++_chromium.a
 }
 
 # The flags GN gives a C++ consumer of Chromium's libc++, read from the compile command of one of
