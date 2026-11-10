@@ -2096,7 +2096,20 @@ const DocumentCounts = enum { with_document_counts, without_document_counts };
 ///    documents go in no order);
 /// 5. the bridge forgets the node - an observer's `liveNode` reads null from
 ///    here - and the NodeBase is freed.
+///
+/// Before any of it, in a Debug build: the node's wrapper slot is empty. No
+/// node is released while its engine wrapper is bound - an engine's
+/// reference to the slot (V8's node anchor, `slot_`) would outlive the bytes
+/// it names (tmp/redesign/wrapper-redesign-design.md 4.9 "Browser end": "a
+/// Debug check in the batch free asserts every slot is empty"; risk 8 of
+/// tmp/redesign/node-memory-architecture.md). A node's own teardown ends its
+/// wrapper first (engine.platformObjectDestroyed); the Browser's end ends
+/// every one (engine.releaseNodeWrappers) before its sweeps reach
+/// `sweepOne`. Debug only (`builtin.optimize`, never std.debug.assert, which
+/// ReleaseSafe keeps: the deep review's Z3).
 fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, node_base: *NodeBase, counts: DocumentCounts) void {
+    if (@import("builtin").optimize == .debug and !node_base.wrapper.isEmpty())
+        std.debug.panic("Node: a {s} was released with its wrapper slot still bound - its wrapper must end first (engine.platformObjectDestroyed; at the Browser's end engine.releaseNodeWrappers, before the teardown sweeps)", .{instance.vtable.name});
     dom_module.observer_registrations.releaseList(instance, node_base);
     node_base.deinitRareData();
     _ = runtime.instance_lifecycle.markCleanupStarted(instance);
