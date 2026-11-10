@@ -22,6 +22,7 @@
 // (tmp/redesign/wrapper-redesign-design.md 4.12): build.zig compiles this file
 // with the archive's cppgc defines, so these headers agree with the library.
 #include <v8-cppgc.h>
+#include <v8-metrics.h>  // GCPhaseRecorder (lane wr1 batch 8)
 #include <cppgc/allocation.h>
 #include <cppgc/garbage-collected.h>
 #include <cppgc/heap.h>
