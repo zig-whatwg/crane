@@ -219,13 +219,29 @@ test "protectPages makes committed pages inaccessible and accessible again" {
     touch(range, page, page, 2);
 }
 
-test "a released range faults when read (a forked child), as a stale pointer would" {
+/// Whether no page of [address, address + length) is mapped: msync answers
+/// ENOMEM for an unmapped range on both OSes, and makes no mapping itself.
+fn unmapped(address: usize, length: usize) bool {
+    if (std.c.msync(@ptrFromInt(address), length, std.c.MSF.ASYNC) == 0) return false;
+    const err: std.c.E = @fromBackingInt(@intCast(std.c._errno().*));
+    return err == .NOMEM;
+}
+
+test "a released range is unmapped, and a read of it faults (a forked child), as a stale pointer would" {
     try supported();
+    // The size of a Browser heap's window: a small released range is handed
+    // to the next small mapping at once (appendix P4) - under
+    // ThreadSanitizer the fork interceptor's own was enough to land on a
+    // 4-page one (lane h1's TSAN verify on chat2, 2026-11-10).
     const page = platform.pageSize();
-    const range = try platform.reserveAddressSpace(4 * page, page, 0, .heap_metadata);
+    const range = try platform.reserveAddressSpace(64 * GiB, 64 * GiB, 0, .heap_metadata);
     try platform.commitPages(range, 0, 4 * page);
     touch(range, 0, 4 * page, 0x7f);
+    try testing.expect(!unmapped(range.base, page));
     platform.releaseAddressSpace(range);
+    // Checked before anything else maps: the whole range is gone.
+    try testing.expect(unmapped(range.base, 4 * page));
+    try testing.expect(unmapped(range.base + range.size / 2, page));
     try testing.expect(try faultsReading(range.base));
     try testing.expect(try faultsReading(range.base + 3 * page));
 }
