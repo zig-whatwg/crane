@@ -188,6 +188,12 @@ fn same(comptime T: type, a: T, b: T) bool {
     };
 }
 
+/// Whether group `g`'s values at `a` and `b` are identical, slot by slot.
+fn groupValuesIdentical(g: usize, a: [*]const Value, b: [*]const Value) bool {
+    for (a[0..groups.lengths[g]], b[0..groups.lengths[g]]) |x, y| if (!identical(x, y)) return false;
+    return true;
+}
+
 /// Every group's initial values, in group order: what an unheld group's
 /// slots point into.
 const initial_storage: [groups.stored]Value = blk: {
@@ -280,6 +286,64 @@ pub const ComputedStyle = struct {
         if (self.custom_own) |c| c.release();
         if (self.registered) |r| r.release();
         self.allocator.destroy(self);
+    }
+
+    /// A holder of this style's groups, the caller's: one more reference on
+    /// every group this style holds and on its custom property records and
+    /// registrations, so the groups outlive this style. Blink's
+    /// MatchedPropertiesCache::Add keeps `CloneStyle()` and WebKit's
+    /// MatchedDeclarationsCache::add `ComputedStyle::clonePtr(style)` for the
+    /// same use: "the ComputedStyle in the cache is really just a holder for
+    /// the substructures and never used as-is".
+    pub fn clone(self: *const ComputedStyle, allocator: Allocator) Allocator.Error!*ComputedStyle {
+        const copy = try allocator.create(ComputedStyle);
+        copy.* = self.*;
+        copy.allocator = allocator;
+        var it = self.held.iterator(.{});
+        while (it.next()) |g| Group.of(self.slots[g]).refs += 1;
+        if (self.custom) |c| c.retain();
+        if (self.custom_own) |c| c.retain();
+        if (self.registered) |r| r.retain();
+        return copy;
+    }
+
+    /// Share `from`'s groups where they hold this style's values: each group
+    /// this style holds alone whose every value is identical to the one
+    /// `from` holds for that group is released, and `from`'s is held in its
+    /// place (one more reference). No value a reader can see changes - the
+    /// slots read the same tags, addresses and bits (`identical`) - so a
+    /// style that writes the same values as another stops paying for its own
+    /// copy (Blink's MatchedPropertiesCache hit "allows us to reuse subgroups
+    /// of ComputedStyle so that we use less RAM", core/css/resolver/
+    /// style_resolver.cc; WebKit copyNonInheritedFrom on a
+    /// MatchedDeclarationsCache hit). Returns how many groups it shared.
+    pub fn adoptIdenticalGroups(self: *ComputedStyle, from: *const ComputedStyle) usize {
+        var adopted: usize = 0;
+        var it = self.held.iterator(.{});
+        while (it.next()) |g| {
+            if (!from.held.isSet(g) or self.slots[g] == from.slots[g]) continue;
+            const mine = Group.of(self.slots[g]);
+            // A group shared already (the parent's inherited group, or one
+            // adopted before) saves nothing by moving.
+            if (mine.refs != 1) continue;
+            if (!groupValuesIdentical(g, self.slots[g], from.slots[g])) continue;
+            Group.of(from.slots[g]).refs += 1;
+            self.slots[g] = from.slots[g];
+            mine.release();
+            adopted += 1;
+        }
+        return adopted;
+    }
+
+    /// The groups this style holds that no other style holds: what it pays
+    /// for its values beyond its own header.
+    pub fn groupsHeldAlone(self: *const ComputedStyle) usize {
+        var alone: usize = 0;
+        var it = self.held.iterator(.{});
+        while (it.next()) |g| {
+            if (Group.of(self.slots[g]).refs == 1) alone += 1;
+        }
+        return alone;
     }
 
     /// The computed value of custom property `name` (case-sensitive), or

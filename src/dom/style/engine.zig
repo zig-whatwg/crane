@@ -72,6 +72,7 @@ const environment_variables = @import("environment_variables.zig");
 pub const resource_loading = @import("resource_loading.zig");
 const font_hints = @import("font_hints.zig");
 pub const available_images = @import("available_images.zig");
+const matched_properties_cache = @import("matched_properties_cache.zig");
 
 const ComputedStyle = css.computed_style.ComputedStyle;
 const MediaValues = css.media_queries.MediaValues;
@@ -268,8 +269,15 @@ pub const StyleEngine = struct {
         /// document declares any, and what its last step-16 style update saw
         /// (`AnimationGate`).
         animations: AnimationGate = .{},
+        /// The matched-properties cache (matched_properties_cache.zig: Blink's
+        /// MatchedPropertiesCache), made at the first style whose cascade
+        /// wrote a group of its own.
+        matched_properties: ?*matched_properties_cache.MatchedPropertiesCache = null,
 
         fn deinit(self: *Rare, allocator: Allocator) void {
+            // The cache's holders first: they hold values, never anything
+            // the rest of this state owns.
+            if (self.matched_properties) |cache| cache.destroy();
             if (self.resources) |resources| resources.destroy();
             if (self.images) |images| {
                 images.deinit();
@@ -307,6 +315,20 @@ pub const StyleEngine = struct {
         rare.* = .{};
         self.rare = rare;
         return rare;
+    }
+
+    /// Share the groups of values `style`'s cascade wrote with a style the
+    /// same declarations gave another element (matched_properties_cache.zig).
+    /// Changes no value; running out of memory only leaves `style` as it is.
+    fn shareMatched(self: *StyleEngine, matched: []const Matched, pseudo: ?[]const u8, generation: u64, style: *ComputedStyle) void {
+        if (style.groupsHeldAlone() == 0) return;
+        const rare = self.ensureRare() catch return;
+        const cache = rare.matched_properties orelse blk: {
+            const made = matched_properties_cache.MatchedPropertiesCache.create(self.allocator) catch return;
+            rare.matched_properties = made;
+            break :blk made;
+        };
+        cache.share(matched_properties_cache.keyOf(matched, pseudo), generation, style);
     }
 
     fn ensurePropertyRegistry(self: *StyleEngine) Error!*css.property_registry.Registry {
@@ -1360,6 +1382,10 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
     };
     const base = try css.cascade.cascade(ctx, res.matched.items);
     errdefer base.destroy();
+    // The groups this cascade wrote, shared with an element the same
+    // declarations matched when their values are identical (Blink's
+    // MatchedPropertiesCache, WebKit's MatchedDeclarationsCache).
+    res.engine.shareMatched(res.matched.items, pseudo, res.key.generation, base);
     const rendered = change.parent_rendered and base.display().box != .none;
     var transitions_changed = false;
     if (change.event) |event| {
