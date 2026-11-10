@@ -127,3 +127,84 @@ test "detached: a declaration of its own keeps its block until it goes" {
     try interfaces.CSSStyleDeclaration.call_setProperty(style, str("color"), str("green"), .notPassed());
     try page.expectString("color: green; padding: 1px 2px;", try interfaces.CSSStyleDeclaration.get_cssText(style));
 }
+
+/// A page with a Window, so getComputedStyle resolves (tests/dom/bx1_transform_alias_test.zig's shape).
+const WindowPage = struct {
+    scope: runtime.BrowserScope,
+    context: runtime.ContextData,
+    window: *runtime.Instance = undefined,
+    document: *runtime.Instance = undefined,
+    target: *runtime.Instance = undefined,
+
+    fn init(self: *WindowPage) !void {
+        interfaces.process_hooks.startHooksForTest();
+        self.* = .{ .scope = .init(testing.allocator), .context = try runtime.ContextData.init(testing.allocator, .{}) };
+        errdefer self.context.deinit();
+        errdefer self.scope.deinit();
+        self.context.browser_scope = &self.scope;
+        self.window = try interfaces.Window.init(testing.allocator, &self.context);
+        errdefer interfaces.Window.deinit(self.window);
+        const document = try interfaces.Document.init(testing.allocator, &self.context);
+        try dom.document_internals.setContentType(document, "text/html");
+        try dom.document_internals.setDocumentType(document, .html);
+        dom.window_globals.setDocument(self.window, document);
+        dom.document_browsing_context.setWindow(document, self.window);
+        self.document = document;
+        const root = try interfaces.Document.call_createElement(document, str("html"), .notPassed());
+        _ = try interfaces.Node.call_appendChild(document, root);
+        self.target = try interfaces.Document.call_createElement(document, str("div"), .notPassed());
+        _ = try interfaces.Node.call_appendChild(root, self.target);
+    }
+
+    fn deinit(self: *WindowPage) void {
+        interfaces.Window.deinit(self.window);
+        dom.teardown_sweeps.runAll(&self.scope);
+        self.scope.deinit();
+        self.context.deinit();
+    }
+};
+
+fn expectValue(style: *runtime.Instance, name: []const u8, expected: []const u8) !void {
+    var value = try interfaces.CSSStyleDeclaration.call_getPropertyValue(style, str(name));
+    defer value.deinit(style.ctx.allocator);
+    try testing.expectEqualStrings(expected, value.asSlice());
+}
+
+test "computed: getComputedStyle reads the element's resolved style, read-only, and holds its element" {
+    var page: WindowPage = undefined;
+    try page.init();
+    defer page.deinit();
+
+    const inline_style = try interfaces.HTMLElement.get_style(page.target);
+    try interfaces.CSSStyleDeclaration.call_setProperty(inline_style, str("display"), str("block"), .notPassed());
+    try interfaces.CSSStyleDeclaration.call_setProperty(inline_style, str("color"), str("rgb(1, 2, 3)"), .notPassed());
+    const computed = try interfaces.Window.call_getComputedStyle(page.window, page.target, .notPassed());
+    defer interfaces.CSSStyleProperties.deinit(computed);
+    try expectValue(computed, "color", "rgb(1, 2, 3)");
+    try expectValue(computed, "display", "block");
+    try testing.expect((try interfaces.CSSStyleDeclaration.get_length(computed)) > 100);
+    try testing.expectError(error.NoModificationAllowedError, interfaces.CSSStyleDeclaration.set_cssText(computed, str("color: red")));
+    // Live: a later change reads through.
+    try interfaces.CSSStyleDeclaration.call_setProperty(inline_style, str("color"), str("rgb(4, 5, 6)"), .notPassed());
+    try expectValue(computed, "color", "rgb(4, 5, 6)");
+}
+
+fn computedWithFailures(failing: std.mem.Allocator, page: *WindowPage) !void {
+    const style = try interfaces.CSSStyleProperties.initWith(failing, &page.context, .{
+        .computed_for = dom.style.ComputedFor{ .element = page.target, .pseudo = "::before" },
+    });
+    defer interfaces.CSSStyleProperties.deinit(style);
+    // Its serialization allocates too; the value itself is not this test's.
+    var value = try interfaces.CSSStyleDeclaration.call_getPropertyValue(style, str("display"));
+    value.deinit(style.ctx.allocator);
+}
+
+test "computed: a construction that runs out of memory leaves no state behind" {
+    // The out-of-line part and the pseudo-element's copy are allocations of
+    // their own: each failure must take the registry entry with it, or the
+    // address's next declaration inherits it.
+    var page: WindowPage = undefined;
+    try page.init();
+    defer page.deinit();
+    try testing.checkAllAllocationFailures(testing.allocator, computedWithFailures, .{&page});
+}

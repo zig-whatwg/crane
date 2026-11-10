@@ -232,7 +232,14 @@ pub fn contextOf(element: *runtime.Instance) Context {
 pub const Bytes = extern struct {
     len: usize,
 
+    /// The explicitly empty value, shared and never freed: setting one
+    /// allocates nothing, as copying an empty slice never did (HTML 2.5.6's
+    /// hidden nonce sets "" where an allocation may fail:
+    /// tests/html/cn_nonce_slot_test.zig).
+    const empty: Bytes = .{ .len = 0 };
+
     pub fn create(allocator: std.mem.Allocator, value: []const u8) error{OutOfMemory}!*Bytes {
+        if (value.len == 0) return @constCast(&empty);
         const memory = try allocator.alignedAlloc(u8, .of(Bytes), @sizeOf(Bytes) + value.len);
         const self: *Bytes = @ptrCast(memory.ptr);
         self.len = value.len;
@@ -246,6 +253,7 @@ pub const Bytes = extern struct {
     }
 
     pub fn destroy(self: *Bytes, allocator: std.mem.Allocator) void {
+        if (self == &empty) return;
         const base: [*]align(@alignOf(Bytes)) u8 = @ptrCast(self);
         allocator.free(base[0 .. @sizeOf(Bytes) + self.len]);
     }
@@ -692,4 +700,17 @@ test "fields inserted out of order land at their popcount index and survive ever
     setFlag(&holder, .internals_attached, true);
     try put(ctx, &holder, .element_internals, b);
     try std.testing.expect(flag(holder, .internals_attached));
+}
+
+test "an explicitly empty bytes value allocates nothing once its field has a bit" {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const ctx: Context = .{ .allocator = failing.allocator() };
+    var holder: Holder = .{};
+    defer destroy(ctx, &holder);
+    try putBytes(ctx, &holder, .nonce, "n");
+    failing.fail_index = failing.alloc_index;
+    try putBytes(ctx, &holder, .nonce, "");
+    try std.testing.expectEqualStrings("", getBytes(holder, .nonce).?);
+    try std.testing.expectError(error.OutOfMemory, putBytes(ctx, &holder, .nonce, "x"));
+    try std.testing.expectEqualStrings("", getBytes(holder, .nonce).?);
 }

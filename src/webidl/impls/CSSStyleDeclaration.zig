@@ -125,6 +125,16 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // arena.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = .{ .allocator = allocator };
+    // A failure below (the out-of-line part, the pseudo-element's copy)
+    // frees the instance without its deinit (the construction chain's
+    // errdefer): the state goes now, or the registry keeps an entry its
+    // address's next object would inherit ("stale ... a teardown missed
+    // it": tests/dom/bx1_transform_alias_test.zig's allocation-failure
+    // reads, once `extra` became an allocation of its own).
+    errdefer {
+        internal.deinit(instance);
+        Registry.remove(instance);
+    }
     if (@hasField(@TypeOf(args), "inline_owner")) {
         const owner: *runtime.Instance = args.inline_owner;
         internal.kind = .inline_style;
