@@ -492,9 +492,9 @@ fn makeClassNames(collection: *runtime.Instance, root: *runtime.Instance, class_
 /// the comparison is made.
 ///
 /// The walk follows the tree's own links and reads each element's classes in
-/// place (dom.element_data's `class_name`: DOM's "classes" come from the
-/// class attribute in no namespace, which the attribute change steps keep
-/// there, as the class selector reads them), and the wanted classes are the
+/// place (dom.element_data's `classValue`: DOM's "classes" come from the
+/// class attribute in no namespace, read from the attribute list through the
+/// index its header keeps - lane nd2 N3 - as the class selector reads them), and the wanted classes are the
 /// set's tokens, split once per refill. Through the Node and Element
 /// interfaces, a refill of a 3,000-element document read four state-table
 /// lookups and an attribute scan per node: 97% of a getElementsByClassName

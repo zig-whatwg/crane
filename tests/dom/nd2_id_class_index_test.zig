@@ -178,6 +178,12 @@ const Page = struct {
         defer got_class.deinit(allocator);
         try testing.expectEqualStrings(class_name, got_class.asSlice());
         if (id.len != 0) {
+            // The tree scope's maps themselves, read before any reader can
+            // rebuild them: exact, the element counted under its ID. A
+            // change step that removed the wrong key (the NEW ID, read live:
+            // `.id_was` lost) degrades them, and getElementById then walks
+            // and answers right anyway (appendix-nd2.md F7).
+            try expectMapsHold(self.document, id, 1);
             try testing.expect((try interfaces.Document.call_getElementById(self.document, str(id))) == el);
             var buffer: [64]u8 = undefined;
             try testing.expect(try interfaces.Element.call_matches(el, str(try std.fmt.bufPrint(&buffer, "#{s}", .{id}))));
@@ -196,6 +202,15 @@ const Page = struct {
             try testing.expectEqual(@as(u32, 1), try interfaces.HTMLCollection.get_length(list));
             try testing.expect((try interfaces.HTMLCollection.call_item(list, 0)) == el);
         }
+    }
+
+    /// `scope_root`'s ID map, as it stands: not degraded, and `count`
+    /// elements under `id`.
+    fn expectMapsHold(scope_root: *runtime.Instance, id: []const u8, count: u32) !void {
+        const state = dom.tree_ordered_map.inspect(scope_root, .id, id) orelse return error.NotATreeScope;
+        if (state.degraded or state.count != count) std.debug.print("ID map for \"{s}\": degraded {}, count {d} (expected {d})\n", .{ id, state.degraded, state.count, count });
+        try testing.expect(!state.degraded);
+        try testing.expectEqual(count, state.count);
     }
 
     /// The header's indices, when N3 is in.
@@ -397,4 +412,103 @@ test "the ID reads the list under a poisoning allocator across every reallocatio
     try Page.set(page.div, "id", "moved");
     try page.expectIdAndClass(page.div, "moved", "x y");
     try testing.expect((try interfaces.Document.call_getElementById(page.document, str("main"))) == null);
+}
+
+// ============================================================================
+// Batch 1-fix: the cases review appendix-nd2.md listed as untested
+// ============================================================================
+
+test "a saturated ID changed inside a shadow root keeps that root's maps exact, the old ID gone" {
+    var page: Page = undefined;
+    try page.open(testing.allocator);
+    defer page.close();
+
+    const host = try page.element("div");
+    _ = try interfaces.Node.call_appendChild(page.div, host);
+    const shadow = try interfaces.Element.call_attachShadow(host, .{ .mode = ._open_ });
+    const el = try page.element("span");
+    _ = try interfaces.Node.call_appendChild(shadow, el);
+    try Page.fill(el, 0, 260);
+    try Page.set(el, "id", "inner");
+    try Page.expectIndices(el, 0xFE, 0xFF);
+    try Page.expectMapsHold(shadow, "inner", 1);
+    try Page.set(el, "id", "renamed");
+    try Page.expectMapsHold(shadow, "renamed", 1);
+    try Page.expectMapsHold(shadow, "inner", 0);
+    try testing.expect((try interfaces.DocumentFragment.call_getElementById(shadow, str("renamed"))) == el);
+    try testing.expect((try interfaces.DocumentFragment.call_getElementById(shadow, str("inner"))) == null);
+    // The document's maps never had it: it is in the shadow tree.
+    try Page.expectMapsHold(page.document, "renamed", 0);
+}
+
+test "removing the id attribute through its Attr node or the NamedNodeMap unsets the ID" {
+    var page: Page = undefined;
+    try page.open(testing.allocator);
+    defer page.close();
+
+    const el = try page.withAttributes(3);
+    try Page.set(el, "id", "by-node");
+    try Page.set(el, "class", "c");
+    const attr = (try interfaces.Element.call_getAttributeNode(el, str("id"))).?;
+    _ = try interfaces.Element.call_removeAttributeNode(el, attr);
+    try page.expectIdAndClass(el, "", "c");
+    try Page.expectMapsHold(page.document, "by-node", 0);
+    try Page.expectIndices(el, 0xFF, 3);
+
+    try Page.set(el, "id", "by-map");
+    try Page.expectIndices(el, 4, 3);
+    const map = try interfaces.Element.get_attributes(el);
+    _ = try interfaces.NamedNodeMap.call_removeNamedItem(map, str("id"));
+    try page.expectIdAndClass(el, "", "c");
+    try Page.expectMapsHold(page.document, "by-map", 0);
+    try Page.expectIndices(el, 0xFF, 3);
+}
+
+test "a live getElementsByClassName list made before a saturated class changes follows it" {
+    var page: Page = undefined;
+    try page.open(testing.allocator);
+    defer page.close();
+
+    const el = try page.withAttributes(300);
+    try Page.set(el, "class", "before");
+    try Page.expectIndices(el, 0xFF, 0xFE);
+    const before = try interfaces.Document.call_getElementsByClassName(page.document, str("before"));
+    defer runtime.gc.onObjectFreed(before);
+    const after = try interfaces.Document.call_getElementsByClassName(page.document, str("after"));
+    defer runtime.gc.onObjectFreed(after);
+    try testing.expectEqual(@as(u32, 1), try interfaces.HTMLCollection.get_length(before));
+    try testing.expectEqual(@as(u32, 0), try interfaces.HTMLCollection.get_length(after));
+    try Page.set(el, "class", "after");
+    try testing.expectEqual(@as(u32, 0), try interfaces.HTMLCollection.get_length(before));
+    try testing.expectEqual(@as(u32, 1), try interfaces.HTMLCollection.get_length(after));
+    try testing.expect((try interfaces.HTMLCollection.call_item(after, 0)) == el);
+}
+
+test "createAttribute('ID') is the ID in an HTML document (lowercased) and not in an XML one" {
+    var page: Page = undefined;
+    try page.open(testing.allocator);
+    defer page.close();
+
+    // DOM createAttribute: "If this is an HTML document, then set localName
+    // to localName in ASCII lowercase."
+    const html_attr = try interfaces.Document.call_createAttribute(page.document, str("ID"));
+    try interfaces.Attr.set_value(html_attr, str("upper"));
+    const el = try page.withAttributes(1);
+    _ = try interfaces.Element.call_setAttributeNode(el, html_attr);
+    try page.expectIdAndClass(el, "upper", "");
+
+    const xml = try interfaces.Document.init(testing.allocator, &page.ctx);
+    defer interfaces.Document.deinit(xml);
+    try dom.document_internals.setContentType(xml, "application/xml");
+    try dom.document_internals.setDocumentType(xml, .xml);
+    const xml_attr = try interfaces.Document.call_createAttribute(xml, str("ID"));
+    try interfaces.Attr.set_value(xml_attr, str("not-the-id"));
+    const xml_el = try interfaces.Document.call_createElementNS(xml, str("http://www.w3.org/1999/xhtml"), str("div"), .{ .was_passed = false, .value = undefined });
+    _ = try interfaces.Node.call_appendChild(xml, xml_el);
+    _ = try interfaces.Element.call_setAttributeNode(xml_el, xml_attr);
+    var id = try interfaces.Element.get_id(xml_el);
+    defer id.deinit(page.ctx.allocator);
+    try testing.expectEqualStrings("", id.asSlice());
+    try testing.expect(element_data.of(xml_el).?.attrs.?.id_index == AttributeList.no_index);
+    try testing.expect((try interfaces.Document.call_getElementById(xml, str("not-the-id"))) == null);
 }
