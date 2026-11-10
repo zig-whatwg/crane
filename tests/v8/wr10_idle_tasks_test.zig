@@ -168,12 +168,36 @@ fn counter(page: Page, name: []const u8) !i64 {
     return error.CounterMissing;
 }
 
+/// One of the agent's posted tasks, run as the loop's step 2b runs each
+/// (src/runtime/engines/v8/event_loop.zig pumpPlatformTasks: the platform's
+/// message loop once, then a microtask checkpoint). Whether one ran.
+fn pumpOne(page: Page) bool {
+    const entered = page.enter();
+    defer page.leave(entered);
+    const ran = ffi.v8_Platform_PumpMessageLoop(page.isolate());
+    if (ran) ffi.v8_Isolate_PerformMicrotaskCheckpoint(page.isolate());
+    return ran;
+}
+
 /// A lazy sweep with refused anchor frees waiting on it: 100,000 wrappers
 /// made dead before a full collection V8 does not force, then 5,000 more
 /// dropped in a scavenge while the C++ heap still collects, and the agent's
 /// posted tasks run - the sweeper's first task among them, and the drain the
 /// scavenge posted, whose frees cppgc refuses. Returns how many anchors wait.
-fn sweepWithRefusedFrees(page: Page) !i64 {
+///
+/// The tasks run one at a time, and stop as soon as the drain has been
+/// refused and - for an agent with idle periods - the sweeper's first task
+/// has posted its idle task: the point where the loop's idle period comes.
+/// Running on would reach the regular task that first task also posts,
+/// 100 ms later (13.1.203 src/heap/cppgc/sweeper.cc SweepForTask,
+/// kDelayWhileIdleSweepingMakesProgress), and the drain alone can outlast
+/// those 100 ms: it releases the 100,000 wrappers the collection took
+/// (~159 ms on chat.local, macOS, 2026-11-10). With no idle progress made by
+/// then, that task finishes the sweep itself, in 5 ms slices, before any
+/// idle period - V8's own fallback, which the no-idle case below relies on,
+/// but not the path this file pins. A run of all the posted tasks at once
+/// (runEngineTasks) made the macOS run fail here and the Linux one pass.
+fn sweepWithRefusedFrees(page: Page, idle_periods: bool) !i64 {
     try page.run("globalThis.d = new Document();");
     page.fullGC();
     try page.run("globalThis.keep = (() => { const a = []; for (let i = 0; i < 100000; i++) a.push(d.createElement('div')); return a; })();");
@@ -181,11 +205,17 @@ fn sweepWithRefusedFrees(page: Page) !i64 {
     try page.collectUnforced();
     try page.run("{ const make = (n) => { for (let i = 0; i < n; i++) d.createElement('div'); }; make(5000); }");
     try page.scavenge(1);
-    // The loop's step 2b: the engine's posted tasks.
-    _ = engine.runEngineTasks(page.agent);
+    // The loop's step 2b, a task at a time.
+    const start = clock.monotonicMillis();
+    while (clock.monotonicMillis() - start < 3000) {
+        const refused = try counter(page, "node_anchor_frees_deferred");
+        if (refused > 0 and (!idle_periods or engine.hasEngineIdleTasks(page.agent))) break;
+        if (!pumpOne(page)) clock.sleep(std.time.ns_per_ms);
+    }
     const waiting = try counter(page, "node_anchors_dropped_waiting");
     try testing.expect(waiting > 0);
     try testing.expect(try counter(page, "node_anchor_frees_deferred") > 0);
+    try testing.expectEqual(idle_periods, engine.hasEngineIdleTasks(page.agent));
     try testing.expect(page.collecting());
     return waiting;
 }
@@ -222,7 +252,7 @@ test "wr10 b10: an agent made without idle periods is given none - V8 posts no i
     defer queue.deinit();
     const page = try Page.open(&queue, false);
     defer page.close();
-    _ = try sweepWithRefusedFrees(page);
+    _ = try sweepWithRefusedFrees(page, false);
     // V8 finishes its collection and sweep in its own tasks - posting
     // nothing for idle time on the way (its runner says idle tasks are
     // off), so the loop never starts an idle period for it.
@@ -248,15 +278,24 @@ test "wr10 b10: a lazy sweep posts idle work; idle periods finish it, and the an
     const page = try Page.open(&queue, true);
     defer page.close();
     const freed_before = try counter(page, "node_anchors_freed");
-    const waiting = try sweepWithRefusedFrees(page);
+    const waiting = try sweepWithRefusedFrees(page, true);
     const refused = try counter(page, "node_anchor_frees_deferred");
 
-    // The loop's turns: V8's tasks, and - once its lazy sweep's first task
-    // has posted the idle task (13.1.203 sweeper.cc SweepForTask ->
-    // ScheduleIdleIncrementalSweeping) - idle periods of 50 ms each
-    // (computeDeadline's cap with no timer due), until the C++ heap is done
-    // collecting and nothing waits.
-    const given = try turnUntil(page, 50 * std.time.ns_per_ms, 3000, sweptAndFreed);
+    // The idle period of the turn whose tasks sweepWithRefusedFrees ran (the
+    // loop's step 2d after its 2b): 50 ms, computeDeadline's cap with no
+    // timer due. V8's idle task - posted by its lazy sweep's first task,
+    // 13.1.203 sweeper.cc SweepForTask -> ScheduleIdleIncrementalSweeping -
+    // sweeps in it; once it has made progress, the sweeper's regular task
+    // only reschedules itself (SweepForTask: `saved_idle_task_count_ !=
+    // idle_task_count_`).
+    var given: u64 = 0;
+    if (engine.hasEngineIdleTasks(page.agent)) {
+        _ = engine.runEngineIdleTasks(page.agent, 50 * std.time.ns_per_ms);
+        given += 1;
+    }
+    // Then the loop's turns: V8's tasks, and idle periods while it has idle
+    // work, until the C++ heap is done collecting and nothing waits.
+    given += try turnUntil(page, 50 * std.time.ns_per_ms, 3000, sweptAndFreed);
     const freed = try counter(page, "node_anchors_freed") - freed_before;
     const idle_runs = try counter(page, "engine_idle_tasks_run");
     const given_us = try counter(page, "engine_idle_given_us");
@@ -286,22 +325,20 @@ test "wr10 b10: idle work given no time does none, and a later period still find
     defer queue.deinit();
     const page = try Page.open(&queue, true);
     defer page.close();
-    _ = try sweepWithRefusedFrees(page);
-    // V8's tasks until its sweep posts idle work.
-    const start = clock.monotonicMillis();
-    while (!engine.hasEngineIdleTasks(page.agent) and clock.monotonicMillis() - start < 3000) {
-        _ = engine.runEngineTasks(page.agent);
-        clock.sleep(std.time.ns_per_ms);
-    }
-    try testing.expect(engine.hasEngineIdleTasks(page.agent));
+    // V8's tasks until its sweep has posted idle work (sweepWithRefusedFrees
+    // stops there).
+    _ = try sweepWithRefusedFrees(page, true);
     const runs_before = try counter(page, "engine_idle_tasks_run");
     // A period already over: V8 runs nothing in it (default-platform.cc
     // RunIdleTasks pops a task only while the deadline is ahead).
-    _ = engine.runEngineIdleTasks(page.agent, 0);
+    try testing.expect(!engine.runEngineIdleTasks(page.agent, 0));
     try testing.expectEqual(runs_before, try counter(page, "engine_idle_tasks_run"));
     try testing.expect(engine.hasEngineIdleTasks(page.agent));
-    // The next period does the work.
+    // The next period - at once, before the turn's tasks - finds it and
+    // does the work; the loop's turns finish what is left.
+    try testing.expect(engine.runEngineIdleTasks(page.agent, 50 * std.time.ns_per_ms));
+    try testing.expect(try counter(page, "engine_idle_tasks_run") > runs_before);
     _ = try turnUntil(page, 50 * std.time.ns_per_ms, 3000, sweptAndFreed);
     try testing.expect(!page.collecting());
-    try testing.expect(try counter(page, "engine_idle_tasks_run") > runs_before);
+    try testing.expectEqual(@as(i64, 0), try counter(page, "node_anchors_dropped_waiting"));
 }
