@@ -111,3 +111,46 @@ test "an iOS target has no V8 archive, static or official: iOS is JavaScriptCore
     try testing.expectError(error.NoV8ForIos, select(.static, .ios));
     try testing.expectError(error.NoV8ForIos, select(.official, .ios));
 }
+
+test "a plain build links V8 13.1 until the switch" {
+    try testing.expectEqual(Version.@"13.1", Version.default);
+}
+
+test "13.1 static: today's out/static, its include/, no Chromium libc++" {
+    const a = try selectVersion(.@"13.1", .static, .macos);
+    try testing.expectEqualStrings("jsengines/v8/out/static/obj/libv8_monolith.a", a.monolith);
+    try testing.expectEqualStrings("jsengines/v8/include", a.include);
+    try testing.expect(a.chromium == null);
+}
+
+test "15.7 static on macOS: the 15.7.112.43 directory, its include/ (with v8-gn.h), Chromium's libc++ and Temporal's Rust" {
+    const a = try selectVersion(.@"15.7", .static, .macos);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/out/static", a.dir);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/out/static/obj/libv8_monolith.a", a.monolith);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/out/static/obj/libv8_libplatform_fat.a", a.libplatform);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/out/static/obj/libv8_libbase_fat.a", a.libbase);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/include", a.include);
+    const c = a.chromium orelse return error.TestExpectedChromiumLibcxx;
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/out/static/obj/libc++_chromium.a", c.libcxx);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/out/static/obj/librust_v8.a", c.rust);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/libcxx/flags.txt", c.libcxx_flags);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/system-libs.txt", c.system_libs);
+    // -I order: __config_site first, then libc++'s headers, then libc++abi's.
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/libcxx/config", c.libcxx_include[0]);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/libcxx/include", c.libcxx_include[1]);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/libcxx/abi-include", c.libcxx_include[2]);
+}
+
+test "15.7 static on Linux: the same directory (each host installs its own build there)" {
+    const a = try selectVersion(.@"15.7", .static, .linux);
+    try testing.expectEqualStrings("jsengines/v8/15.7.112.43/out/static/obj/libv8_monolith.a", a.monolith);
+    try testing.expect(a.chromium != null);
+}
+
+test "15.7 has no official build: retired until roadmap item v8-pgo (ruling R3)" {
+    try testing.expectError(error.NoOfficialBuild, selectVersion(.@"15.7", .official, .macos));
+}
+
+test "15.7 for iOS: no V8 for iOS in any form" {
+    try testing.expectError(error.NoV8ForIos, selectVersion(.@"15.7", .static, .ios));
+}
