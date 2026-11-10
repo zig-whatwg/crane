@@ -427,7 +427,7 @@ step_smoke() {
   [ "$HOST_OS" = linux ] && extra=(-lpthread -ldl -lm)
   # `zig cc` links no C++ library of its own: Chromium's (libc++_chromium.a) is the only one.
   ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" cc "$t/smoke.o" "$o/libv8_monolith.a" "$o/libv8_libplatform_fat.a" \
-    "$o/libv8_libbase_fat.a" "$o/libc++_chromium.a" "${extra[@]}" -o "$t/smoke" > "$t/link.txt" 2>&1 || rc=$?
+    "$o/libv8_libbase_fat.a" "$o/libc++_chromium.a" ${extra[@]+"${extra[@]}"} -o "$t/smoke" > "$t/link.txt" 2>&1 || rc=$?
   if [ "$rc" != 0 ]; then
     {
       echo "LINK FAILED (rc $rc). Undefined symbols (Rust std/temporal ones mean Crane's link must add Rust):"
