@@ -2429,7 +2429,52 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // Step 8: "If document's node navigable is non-null and document's node
     // navigable's ongoing navigation is a navigation ID, then stop loading
     // document's node navigable."
-    @import("dom").content_navigables.stopLoadingIfNavigating(instance);
+    //
+    // Deviation, stated (golden rule 2, no newer spec involved: the browsers
+    // differ from the spec text, and Chrome and Safari are the majority). The
+    // spec checks only for an ongoing navigation ID, and a declarative
+    // refresh that is set up but has not come due is none, so open() stops
+    // nothing. Chrome and Safari stop: a refresh of time 0 that has not
+    // navigated yet is an attempt to navigate too. Stopping loading aborts
+    // the document ("abort a document" step 2 cancels every fetch in its
+    // context, whatever its progress), and the refresh, the navigation
+    // stopped, ends with it.
+    // - Blink, third_party/blink/renderer/core/dom/document.cc
+    //   Document::open(): StopAllLoaders when HasProvisionalNavigation() or
+    //   IsHttpRefreshScheduledWithin(base::TimeDelta()) ("we want to treat
+    //   ongoing navigation and queued navigation the same way", whatwg/html
+    //   #3975). core/loader/frame_loader.cc FrameLoader::StopAllLoaders
+    //   calls Document::CancelParsing, which cancels the refresh
+    //   (http_refresh_scheduler_->Cancel()).
+    // - WebKit, Source/WebCore/dom/Document.cpp Document::open: stopAllLoaders
+    //   when loader/NavigationScheduler.cpp hasQueuedNavigation() (a
+    //   scheduled redirect whose delay is 0). loader/FrameLoader.cpp
+    //   FrameLoader::didExplicitOpen cancels the scheduler.
+    // - Gecko follows the spec text: dom/base/Document.cpp Document::Open
+    //   stops only when docshell/base/nsDocShell.cpp
+    //   nsDocShell::GetIsAttemptingToNavigate() ("the document.open spec says
+    //   to abort even if there's just a queued navigation task, sort of ...
+    //   for now let's not do that").
+    // When a refresh waits is an open spec issue (whatwg/html#4003, "meta
+    // refresh waiting is broken").
+    // wpt.fyi (WPT 792c7512e3: Chrome 157, Firefox 159, Safari 27.2),
+    // html/webappapis/dynamic-markup-insertion/opening-the-input-stream/
+    // abort-refresh-immediate.window.js:
+    // - Chrome 6/6.
+    // - Firefox 4/6: never stops, so its XMLHttpRequest cases TIMEOUT.
+    // - Safari 4/6: it stops, but its XMLHttpRequest cases TIMEOUT because
+    //   XMLHttpRequest::didFail fires error, not abort, for a cancellation
+    //   the client did not ask for.
+    // Without this, only the refresh's reload aborted the fetch, several
+    // tasks later, and a response task queued first resolved it (the file's
+    // third flake).
+    if (zeroTimeRefreshAwaitingNavigation(instance, internal)) |refresh| {
+        internal.declarative_refresh = null;
+        refresh.cancel();
+        @import("dom").content_navigables.stopLoading(instance);
+    } else {
+        @import("dom").content_navigables.stopLoadingIfNavigating(instance);
+    }
 
     // Detach the previous parser before replacing its DOM.
     // A parser pump currently on the stack keeps its own reference until
@@ -2538,6 +2583,17 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
 
     // Return the document
     return instance;
+}
+
+/// The document open steps' step 8, its stated deviation: `document`'s
+/// declarative refresh, when its time is 0 and it has not navigated yet, in
+/// a document its node navigable shows (the step's "node navigable is
+/// non-null"; Blink's GetFrame(), WebKit's frame()).
+fn zeroTimeRefreshAwaitingNavigation(document: *runtime.Instance, internal: *InternalState) ?*DeclarativeRefresh {
+    const refresh = internal.declarative_refresh orelse return null;
+    if (refresh.delay_ms != 0) return null;
+    if (internal.default_view == null or !isShownByItsWindow(document)) return null;
+    return refresh;
 }
 
 fn documentOfRealm(realm: ?runtime.Context) ?*runtime.Instance {
