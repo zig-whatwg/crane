@@ -139,6 +139,11 @@ pub const html_tag_names = [_][]const u8{
     "datalist",
     "optgroup",
     "option",
+    // The customizable select's (HTML 4.10.7.x, HTMLSelectedContentElement):
+    // the parser makes it, so its name is static like the rest (lane nd2
+    // batch 1-fix; review appendix-nd2.md F11 found every Browser interning
+    // it).
+    "selectedcontent",
     "textarea",
     "output",
     "progress",
@@ -305,16 +310,28 @@ pub const interned_tags: InternedTagMap = blk: {
 /// HTML tag names are case-insensitive, so "DIV" should match "div".
 const LowerInternedTagMap = std.StaticStringMap([]const u8);
 
-/// Pre-computed lowercase tag name intern map.
-/// This allows O(1) lookup after lowercasing the input.
+/// Pre-computed lowercase tag name intern map: each name in ASCII
+/// lowercase, mapped to itself, for a lookup after lowercasing the input.
+/// Not every name in html_tag_names is lowercase - "foreignObject" is not -
+/// so the keys and values are lowered here: the tokenizer's "foreignobject"
+/// interns too (it missed, and tree_builder's initElement copied it;
+/// appendix-nd2.md F12).
 pub const lowercase_interned_tags: LowerInternedTagMap = blk: {
+    @setEvalBranchQuota(100_000);
     var kvs: [html_tag_names.len]struct { []const u8, []const u8 } = undefined;
     for (html_tag_names, 0..) |name, i| {
-        // All names in html_tag_names are already lowercase
-        kvs[i] = .{ name, name };
+        const lower = lowerComptime(name);
+        kvs[i] = .{ lower, lower };
     }
     break :blk LowerInternedTagMap.initComptime(&kvs);
 };
+
+fn lowerComptime(comptime name: []const u8) []const u8 {
+    var buffer: [name.len]u8 = undefined;
+    for (name, 0..) |c, i| buffer[i] = std.ascii.toLower(c);
+    const final = buffer;
+    return &final;
+}
 
 /// Attempt to intern a tag name.
 ///
@@ -439,6 +456,12 @@ test "intern is case-insensitive" {
     // Pointers should be equal (same static memory)
     try std.testing.expect(lower.?.ptr == upper.?.ptr);
     try std.testing.expect(lower.?.ptr == mixed.?.ptr);
+}
+
+test "intern finds a camelCase name from its lowercase, as the tokenizer gives it" {
+    try std.testing.expectEqualStrings("foreignobject", intern("foreignobject").?);
+    try std.testing.expectEqualStrings("foreignobject", intern("FOREIGNOBJECT").?);
+    try std.testing.expectEqualStrings("selectedcontent", intern("selectedcontent").?);
 }
 
 test "intern handles all HTML5 tags" {
