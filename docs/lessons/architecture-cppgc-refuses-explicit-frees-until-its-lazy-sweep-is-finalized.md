@@ -1,0 +1,12 @@
+# Architecture: cppgc refuses explicit frees until a lazy sweep is finalized, and that finalization needs the host's event loop
+
+**Date**: 2026-11-10
+**Lesson**: After any full collection V8 does not force, cppgc sweeps lazily: concurrently, then finalized on the agent's thread by a task that first reschedules itself 100 ms later, or by allocation. Until then `HeapState::IsSweeping` holds and `FreeUnreferencedObject` is a silent no-op. A host that runs long scripts, or never turns its event loop, can see every explicit free refused from one full collection to the next.
+
+**Why**: V8 13.1.203 src/heap/cppgc/sweeper.cc SweeperImpl::Start posts a 0-delay task whose first run only reschedules it 100 ms later (`regular_task_is_delayed_idle_task_`). Heap::CompleteSweepingYoung's FinishSweepingIfOutOfWork finishes the sweep only when no swept page is left unfinalized. explicit-management.cc InGC refuses a free while `sweeper().IsSweepingInProgress()`. A forced collection (LowMemoryNotification) sweeps atomically, which is why requested-collection tests never see this.
+
+**What Happened**: Lane wr1 batch 8's drain frees scavenge-dropped NodeAnchors and counts each refusal. gc_bench with 2,080,000 dropped divs in short scripts and no event loop: 9 V8-scheduled full collections; 6,627,961 refusals; only 805,879 anchors freed; 308,277 waiting at the end; 8.25 MB of C++ heap. The same run turning the event loop after each batch: 246,310 refusals, 2,059,262 freed, 0 waiting. tests/v8/wr8_anchor_free_test.zig pins the refusal with a full collection made unforced through critical memory pressure (v8_test_Isolate_CollectUnforced).
+
+**Fix**: what batch 8 does - count each refusal, retry at every later drain, and let the next full collection take what is still waiting (ProcessWeak drops it from the list) - is correct, but not prompt in such hosts. Making it prompt needs a point where the sweep is known to be finalized, which cppgc's public API does not give.
+
+**Takeaway**: **An explicit free into a collector is allowed only between its phases, and a lazy phase ends when the host's event loop lets it: measure the refusals in the host's own run shape - a long script, no loop - not only in tests whose requested collections sweep atomically.**
