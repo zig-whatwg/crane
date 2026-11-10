@@ -19,4 +19,6 @@ _ = @as(*const volatile u8, @ptrFromInt(address)).*;
 std.c._exit(0);
 ```
 
+**And check the release first**: a small range just released is handed to the next mapping at once (the oss review's probe P4), and `fork()` itself maps memory under ThreadSanitizer - on chat2 a released 4-page range was mapped again before the child read it, and the read did not fault. Check `msync(MS_ASYNC)` answers ENOMEM for the range right after the release, before anything else can map, and release a range too large for an incidental mapping to fill.
+
 **Takeaway**: **Prove a fault in a forked child that catches it: the parent reads an exit status, the test process survives, and no crash report is left on the host.**
