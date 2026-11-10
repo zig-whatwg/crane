@@ -189,6 +189,9 @@ pub const reflected_with_fallback = @import("reflected_with_fallback.zig");
 /// An element's attribute list, ID, classes and qualified name, read in
 /// place by the tree's own algorithms (WebKit's ElementData).
 pub const element_data = @import("element_data.zig");
+/// An element's qualified name as one shared record: static for known
+/// names, else its Browser's interned one (lane nd2 N2; Blink's QualifiedName).
+pub const element_name = @import("element_name.zig");
 /// An element's rare data - the fields few elements use, made on first use
 /// and never moved (WebKit's ElementRareData; lane perf3 D2) - with
 /// HTMLElement's part, reached through the hooks Element installs.

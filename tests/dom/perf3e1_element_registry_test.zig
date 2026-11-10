@@ -67,7 +67,7 @@ const has_rare_registry = @hasField(ElementRareData, "custom_element_registry");
 // Sizes (red until E1)
 // ============================================================================
 
-test "Element's InternalState keeps no 40-byte registry association: a one-byte place, 136 bytes" {
+test "Element's InternalState keeps no 40-byte registry association: a one-byte place, 88 bytes" {
     if (comptime @hasField(ElementState, "custom_element_registry")) {
         const F = @FieldType(ElementState, "custom_element_registry");
         if (@sizeOf(F) > 1) {
@@ -77,13 +77,13 @@ test "Element's InternalState keeps no 40-byte registry association: a one-byte 
     }
     // 240 after D2: - 40 (the association) + a one-byte place, in the
     // padding after the three one-byte fields: 200; item 2 then took the
-    // slottable state out (tests/dom/perf3e1_slottable_test.zig): 136.
-    try expectSize(ElementState, 136);
+    // slottable state out (tests/dom/perf3e1_slottable_test.zig): 136; lane nd2 N2 took the name into one record pointer (tests/dom/nd2_element_name_test.zig): 88.
+    try expectSize(ElementState, 88);
 }
 
-test "a div's one block is 360 bytes: 472 less perf2 b7's 8, the association (40) and the slottable state (64)" {
+test "a div's one block is 312 bytes: 472 less perf2 b7's 8, the association (40), the slottable state (64) and nd2 N2's 48" {
     const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 360);
+    try expectSize(S, 312);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
     if (held - @sizeOf(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });
@@ -91,11 +91,12 @@ test "a div's one block is 360 bytes: 472 less perf2 b7's 8, the association (40
     }
 }
 
-test "ElementRareData keeps the association for a registry that is not the node document's: 344 bytes" {
+test "ElementRareData keeps the association for a registry that is not the node document's: 312 bytes" {
     if (comptime !has_rare_registry) return error.NoRareRegistry;
     try testing.expectEqual(@sizeOf(dom.custom_elements.RegistryAssociation), @sizeOf(@FieldType(ElementRareData, "custom_element_registry")));
     // 240 after D2 + the association (40) + the slottable state (64, item 2).
-    try expectSize(ElementRareData, 344);
+    // 344 at E1; nd2 N2 moved the prefix (32) into the name record.
+    try expectSize(ElementRareData, 312);
 }
 
 // ============================================================================

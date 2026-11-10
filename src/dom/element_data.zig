@@ -48,6 +48,9 @@
 //! `dom.element_attributes` (`set`, `remove`, `append`, `change`), never
 //! through this data, which `of` hands out read-only.
 //!
+//! The element's qualified name is ONE pointer to a shared record
+//! (`name`, dom.element_name; lane nd2 N2).
+//!
 //! Spec: https://dom.spec.whatwg.org/#concept-element-attribute
 //!
 //! lint-impls: hook for Element
@@ -56,6 +59,7 @@ const std = @import("std");
 const infra = @import("infra");
 const runtime = @import("runtime");
 const Hook = @import("hook.zig").Hook;
+const element_name = @import("element_name.zig");
 
 /// The Attr node made for an attribute, once script asked for one, with the
 /// slab generation that tells it from a later object at its address.
@@ -74,18 +78,11 @@ pub const AttrNodeLink = struct {
 };
 
 /// The namespace string every element and attribute in one of the six named
-/// namespaces (Infra 8) shares, or null for any other: an element's
-/// namespace was a 28-byte copy per element.
-pub fn internNamespace(namespace: []const u8) ?[]const u8 {
-    const named = [_][]const u8{
-        infra.namespaces.HTML_NAMESPACE,  infra.namespaces.SVG_NAMESPACE, infra.namespaces.MATHML_NAMESPACE,
-        infra.namespaces.XLINK_NAMESPACE, infra.namespaces.XML_NAMESPACE, infra.namespaces.XMLNS_NAMESPACE,
-    };
-    inline for (named) |ns| {
-        if (std.mem.eql(u8, namespace, ns)) return ns;
-    }
-    return null;
-}
+/// namespaces (Infra 8) shares, or null for any other (dom.element_name's).
+pub const internNamespace = element_name.internNamespace;
+
+/// An element's qualified name record (lane nd2 N2): `ElementData.name`.
+pub const ElementName = element_name.ElementName;
 
 /// An attribute's qualified name: its namespace, namespace prefix and local
 /// name (DOM 4.9.2), which an attribute keeps for its whole life ("replace"
@@ -345,16 +342,18 @@ pub const AttrNodeList = struct {
     }
 };
 
-/// An element's attribute list, ID, classes and qualified name. Its
-/// namespace prefix and the Attr nodes made for its attributes are rare data
-/// (dom.element_rare_data, lane perf3 D2): no element of the perf pages had
-/// either.
+/// An element's attribute list, ID, classes and qualified name. The Attr
+/// nodes made for its attributes are rare data (dom.element_rare_data, lane
+/// perf3 D2): no element of the perf pages had one.
 pub const ElementData = struct {
-    /// The element's namespace (DOM 4.9); null for none. One of the six
-    /// named namespaces is the static string (`internNamespace`), not a copy.
-    namespace_uri: ?runtime.DOMString = null,
-    /// The element's local name, fixed by "create an element".
-    local_name: runtime.DOMString = .{ .empty = {} },
+    /// The element's namespace, namespace prefix and local name (DOM 4.9),
+    /// fixed by "create an element": ONE pointer to a record every element
+    /// of the name shares - static for the HTML, SVG and MathML names
+    /// html_core's tag table knows, else its Browser's interned one
+    /// (dom.element_name; lane nd2 N2: Blink's `Element::tag_name_`). It
+    /// was a 32-byte namespace and a 24-byte local name here and a 32-byte
+    /// prefix in rare data. Written only by Element.
+    name: *const ElementName = &element_name.unnamed,
 
     /// The element's ID ("set / unset element's ID", DOM 4.9's attribute
     /// change steps): a view of its id attribute's value, or empty when it
@@ -377,10 +376,9 @@ pub const ElementData = struct {
     /// Free the names and every attribute. An attribute's Attr node is its
     /// owner's to let go first (AttrNodeList.take): this frees the list only.
     pub fn deinit(self: *ElementData, allocator: std.mem.Allocator) void {
-        if (self.namespace_uri) |*ns| ns.deinit(allocator);
-        self.namespace_uri = null;
-        self.local_name.deinit(allocator);
-        self.local_name = .{ .empty = {} };
+        // The name record is shared (static, or its Browser's): nothing of
+        // the element's own.
+        self.name = &element_name.unnamed;
         // Views of attribute values: nothing of their own to free.
         self.id = .{ .empty = {} };
         self.class_name = .{ .empty = {} };
@@ -399,7 +397,12 @@ pub const ElementData = struct {
 
     /// The element's namespace, borrowed; null for none.
     pub fn namespaceSlice(self: *const ElementData) ?[]const u8 {
-        return if (self.namespace_uri) |ns| ns.asSlice() else null;
+        return self.name.namespace_uri;
+    }
+
+    /// The element's local name, borrowed.
+    pub fn localName(self: *const ElementData) []const u8 {
+        return self.name.local_name;
     }
 
     /// The number of attributes in the list.

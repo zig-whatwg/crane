@@ -145,7 +145,7 @@ fn matchesDocumentFilter(element: *runtime.Instance, filter: live_collections.Do
     const data = dom.element_data.of(element) orelse return false;
     const namespace = data.namespaceSlice() orelse return false;
     if (!std.mem.eql(u8, namespace, "http://www.w3.org/1999/xhtml")) return false;
-    const local = data.local_name.asSlice();
+    const local = data.localName();
     const matched = switch (filter) {
         .images => std.mem.eql(u8, local, "img"),
         .embeds => std.mem.eql(u8, local, "embed"),

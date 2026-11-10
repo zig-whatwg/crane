@@ -292,10 +292,21 @@ fn isValueOf(internal: *const InternalState) ?[]const u8 {
     return if (rare.is_value) |value| value.asSlice() else null;
 }
 
-/// The element's namespace prefix, borrowed; null for none.
+/// The element's namespace prefix, borrowed; null for none. Its name
+/// record's (lane nd2 N2; rare data's before).
 fn prefixOf(internal: *const InternalState) ?[]const u8 {
-    const rare = internal.rare orelse return null;
-    return if (rare.prefix) |p| p.asSlice() else null;
+    return internal.data.name.prefix;
+}
+
+/// The name record of (`namespace`, `prefix`, `local_name`): html_core's
+/// static one for a known HTML, SVG or MathML name (Blink's html_names /
+/// svg_names / mathml_names), else the one `instance`'s Browser interned
+/// (dom.element_name: Blink's QualifiedNameCache, Gecko's per-document
+/// nsNodeInfoManager). Static first, so a known name never has a second
+/// record.
+fn elementName(instance: *runtime.Instance, namespace: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) error{OutOfMemory}!*const dom.element_name.ElementName {
+    if (html_core.internElementName(namespace, prefix, local_name)) |static| return static;
+    return dom.element_name.intern(runtime.BrowserScope.ofInstance(instance), namespace, prefix, local_name);
 }
 
 /// `dom.element_rare_data.of`: the element's rare data, if it has any.
@@ -314,11 +325,8 @@ fn ensureRareDataHook(instance: *runtime.Instance) dom.element_rare_data.Error!*
 /// name, borrowed - fixed for its life once "create an element" set them.
 fn namesHook(instance: *runtime.Instance) ?dom.node_creation.ElementNames {
     const internal = getInternal(instance) orelse return null;
-    return .{
-        .namespace = if (internal.data.namespace_uri) |ns| ns.asSlice() else null,
-        .prefix = prefixOf(internal),
-        .local_name = internal.data.local_name.asSlice(),
-    };
+    const name = internal.data.name;
+    return .{ .namespace = name.namespace_uri, .prefix = name.prefix, .local_name = name.local_name };
 }
 
 fn shadowRootOf(instance: *runtime.Instance) ?*runtime.Instance {
@@ -405,18 +413,21 @@ fn customElementData(instance: *runtime.Instance) ?dom.custom_elements.ElementDa
 fn initializeCustomElement(instance: *runtime.Instance, prefix: ?[]const u8, is_value: ?[]const u8, state: CustomElementState) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const allocator = runtime.allocatorOf(instance);
-    // Both live in rare data: made only when one of them is set, or to clear
-    // one an earlier call set.
-    if (prefix != null or is_value != null or internal.rare != null) {
+    // DOM create-an-element-internal steps 1-3 give the element its prefix
+    // after its namespace and local name (`setNamesHook`): the prefix is its
+    // name record's (lane nd2 N2), so a new prefix is another record -
+    // Blink's QualifiedName::SetPrefix makes a new QualifiedName the same way.
+    const current = internal.data.name;
+    const name = if (optionalEql(current.prefix, prefix)) current else try elementName(instance, current.namespace_uri, prefix, current.local_name);
+    // The is value lives in rare data: made only when one is set, or to
+    // clear one an earlier call set.
+    if (is_value != null or internal.rare != null) {
         const rare = try ensureRare(instance, internal);
-        var owned_is = if (is_value) |value| try runtime.DOMString.initDupe(allocator, value) else null;
-        errdefer if (owned_is) |*value| value.deinit(allocator);
-        const owned_prefix = if (prefix) |value| try runtime.DOMString.initDupe(allocator, value) else null;
-        if (rare.prefix) |*value| value.deinit(allocator);
-        rare.prefix = owned_prefix;
+        const owned_is = if (is_value) |value| try runtime.DOMString.initDupe(allocator, value) else null;
         if (rare.is_value) |*value| value.deinit(allocator);
         rare.is_value = owned_is;
     }
+    internal.data.name = name;
     internal.custom_element_state = state;
 }
 
@@ -517,99 +528,44 @@ fn sweepRemaining(scope: *runtime.BrowserScope) void {
 // Setters for internal state (used by Document factory methods)
 // =============================================================================
 
-/// Set the namespace URI of this element
-/// Used by Document.createElementNS
-pub fn setNamespaceURI(instance: *runtime.Instance, namespace: ?[]const u8) !void {
+/// DOM "create an element": the element's namespace and local name, kept as
+/// ONE name record (lane nd2 N2; `elementName`). Its prefix, if any, is
+/// still the record's: "create an element" sets it next
+/// (`initializeCustomElement`), as Blink's Element keeps one QualifiedName.
+fn setNames(instance: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Free existing namespace if any
-    if (internal.data.namespace_uri) |*ns| {
-        ns.deinit(runtime.allocatorOf(instance));
-        internal.data.namespace_uri = null;
-    }
-
-    // Set new namespace if provided: one of the six named namespaces is
-    // their static string (Blink and WebKit intern an element's namespace in
-    // its QualifiedName), any other a copy.
-    if (namespace) |ns| {
-        internal.data.namespace_uri = if (dom.element_data.internNamespace(ns)) |static|
-            runtime.DOMString.initInterned(static)
-        else
-            try runtime.DOMString.initDupe(runtime.allocatorOf(instance), ns);
-    }
-}
-
-/// Set the namespace prefix of this element
-/// Used by Document.createElementNS
-pub fn setPrefix(instance: *runtime.Instance, prefix: ?[]const u8) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    const allocator = runtime.allocatorOf(instance);
-    // Rare data (lane perf3 D2): made only to keep a prefix, or to clear one.
-    if (prefix == null and internal.rare == null) return;
-    const rare = try ensureRare(instance, internal);
-
-    // Free existing prefix if any
-    if (rare.prefix) |*p| {
-        p.deinit(allocator);
-        rare.prefix = null;
-    }
-
-    // Set new prefix if provided
-    if (prefix) |p| {
-        rare.prefix = try runtime.DOMString.initDupe(allocator, p);
-    }
-}
-
-/// Set the local name of this element
-/// Used by Document.createElement and Document.createElementNS
-/// Uses tag name interning for common HTML elements to avoid allocation.
-pub fn setLocalName(instance: *runtime.Instance, local_name: []const u8) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Free existing local name
-    internal.data.local_name.deinit(runtime.allocatorOf(instance));
-
-    // Try to use interned tag name for common HTML elements - on an exact
-    // match only: a local name is case-sensitive.
-    if (html_core.internTagNameExact(local_name)) |interned| {
-        // Use interned static string - no allocation needed
-        internal.data.local_name = runtime.DOMString.initInterned(interned);
-    } else {
-        // Fall back to allocation for custom/unknown elements
-        internal.data.local_name = try runtime.DOMString.initDupe(runtime.allocatorOf(instance), local_name);
-    }
+    // DOM's algorithms make an empty namespace null before they name an
+    // element ("validate and extract", the parsers); the record keeps none.
+    const ns: ?[]const u8 = if (namespace) |n| (if (n.len == 0) null else n) else null;
+    internal.data.name = try elementName(instance, ns, internal.data.name.prefix, local_name);
 }
 
 /// Getter for namespaceURI
 /// DOM §4.8 - Returns the namespace URI of this element
 pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.data.namespace_uri) |ns| {
-        // Clone to transfer ownership to caller (interface layer will free)
-        return try ns.clone(instance.ctx.allocator);
-    }
-    // DOMString?: an element in no namespace answers null, not "".
-    return null;
+    // Borrowed from the name record, which outlives every element of its
+    // Browser (dom.element_name): no copy. DOMString?: an element in no
+    // namespace answers null, not "".
+    const ns = internal.data.name.namespace_uri orelse return null;
+    return runtime.DOMString.initInterned(ns);
 }
 
 /// Getter for prefix
 /// DOM §4.8 - Returns the namespace prefix of this element
 pub fn get_prefix(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (prefixOf(internal)) |p| {
-        // Copied to transfer ownership to caller (interface layer will free)
-        return try runtime.DOMString.initDupe(instance.ctx.allocator, p);
-    }
-    return null;
+    // Borrowed from the name record (see get_namespaceURI).
+    const p = prefixOf(internal) orelse return null;
+    return runtime.DOMString.initInterned(p);
 }
 
 /// Getter for localName
 /// DOM §4.8 - Returns the local name of this element
 pub fn get_localName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.data.local_name.clone(instance.ctx.allocator);
+    // Borrowed from the name record (see get_namespaceURI).
+    return runtime.DOMString.initInterned(internal.data.name.local_name);
 }
 
 /// Getter for tagName
@@ -619,52 +575,18 @@ pub fn get_localName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 pub fn get_tagName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // DOM 4.9 "HTML-uppercased qualified name": "If this is in the HTML
-    // namespace and its node document is an HTML document, then set
-    // qualifiedName to qualifiedName in ASCII uppercase." An element in no
-    // namespace, or one in an XML document, keeps its name as written
-    // (dom/nodes/Element-tagName.html, Document-createElement.html's XML
-    // and XHTML documents).
-    const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
-    const is_html_element = internal.data.namespace_uri != null and
-        std.mem.eql(u8, internal.data.namespace_uri.?.asSlice(), HTML_NAMESPACE) and
-        nodeDocumentIsHtml(instance);
-
-    // If there's a prefix, return "prefix:localName"
-    if (prefixOf(internal)) |prefix_slice| {
-        const local_slice = internal.data.local_name.asSlice();
-
-        // Allocate buffer for "prefix:localName"
-        const total_len = prefix_slice.len + 1 + local_slice.len;
-        var buffer = try instance.ctx.allocator.alloc(u8, total_len);
-        @memcpy(buffer[0..prefix_slice.len], prefix_slice);
-        buffer[prefix_slice.len] = ':';
-        @memcpy(buffer[prefix_slice.len + 1 ..], local_slice);
-
-        // Uppercase for HTML elements in HTML documents
-        if (is_html_element) {
-            for (buffer) |*c| {
-                c.* = std.ascii.toUpper(c.*);
-            }
-        }
-
-        return runtime.DOMString.initOwned(buffer);
-    }
-
-    // No prefix, return just local name
-    // Uppercase for HTML elements in HTML documents
-    if (is_html_element) {
-        const local_slice = internal.data.local_name.asSlice();
-        var buffer = try instance.ctx.allocator.alloc(u8, local_slice.len);
-        for (local_slice, 0..) |c, i| {
-            buffer[i] = std.ascii.toUpper(c);
-        }
-        return runtime.DOMString.initOwned(buffer);
-    }
-
-    // Non-HTML element: return as-is
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.data.local_name.clone(instance.ctx.allocator);
+    // DOM 4.9 "HTML-uppercased qualified name": "Let qualifiedName be this's
+    // qualified name. If this is in the HTML namespace and its node document
+    // is an HTML document, then set qualifiedName to qualifiedName in ASCII
+    // uppercase." An element in no namespace, or one in an XML document,
+    // keeps its name as written (dom/nodes/Element-tagName.html,
+    // Document-createElement.html's XML and XHTML documents). Both forms are
+    // precomputed in the name record (lane nd2 N2) - Gecko's NodeInfo keeps
+    // mNodeName so, Blink its QualifiedName's LocalNameUpper - so this
+    // allocates nothing; the node document is asked only for an HTML element.
+    const name = internal.data.name;
+    const html_document = name.isHtml() and nodeDocumentIsHtml(instance);
+    return runtime.DOMString.initInterned(name.tagName(html_document));
 }
 
 /// Whether `element`'s node document is an HTML document (DOM 4.5: its type
@@ -1081,8 +1003,7 @@ pub fn set_slot(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 /// document": when getAttribute, setAttribute, hasAttribute, removeAttribute
 /// and toggleAttribute lowercase the name they are given.
 fn isHtmlElementInHtmlDocument(instance: *runtime.Instance, internal: *const InternalState) bool {
-    const ns = internal.data.namespace_uri orelse return false;
-    if (!std.mem.eql(u8, ns.asSlice(), infra.namespaces.HTML_NAMESPACE)) return false;
+    if (!internal.data.name.isHtml()) return false;
     const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return false;
     return dom.document_internals.getDocumentType(document) == .html;
 }
@@ -1232,10 +1153,11 @@ fn attributeChangeSteps(
     // HTMLIFrameElement or HTMLScriptElement (createElementNS(other, "iframe")
     // ran the iframe's steps on a plain Element, whose state they read as an
     // iframe's - a wild pointer).
-    const element_namespace = if (internal.data.namespace_uri) |ns| ns.asSlice() else return;
+    const own_name = internal.data.name;
+    const element_namespace = own_name.namespace_uri orelse return;
     dom.attribute_change_steps.runForAttribute(instance, element_namespace, local_name, old_value, value, namespace);
-    if (!std.mem.eql(u8, element_namespace, "http://www.w3.org/1999/xhtml")) return;
-    dom.attribute_change_steps.run(instance, internal.data.local_name.asSlice(), local_name, old_value, value, namespace);
+    if (!own_name.isHtml()) return;
+    dom.attribute_change_steps.run(instance, own_name.local_name, local_name, old_value, value, namespace);
 }
 
 /// Whether an attribute change left its value as it was (both absent, or
@@ -1391,10 +1313,7 @@ fn removeAttributeByName(instance: *runtime.Instance, qualified_name: []const u8
 /// element's local name and namespace, unvalidated. Both are set even when
 /// one fails; the first failure is reported.
 fn setNamesHook(element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) dom.node_creation.Error!void {
-    const named = setLocalName(element, local_name);
-    const namespaced = setNamespaceURI(element, namespace);
-    try named;
-    try namespaced;
+    return setNames(element, namespace, local_name);
 }
 
 /// `dom.element_attributes.at`: the list read in place.
@@ -1620,7 +1539,7 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
     // HTML html-element context at EOF. Keep the empty-fragment shortcut
     // only for other contexts (as Blink's SetInnerHTMLInternal does).
     if (html_string.len == 0 and
-        !(std.mem.eql(u8, internal.data.local_name.asSlice(), "html") and isHtmlElementInHtmlDocument(instance, internal)))
+        !(internal.data.name.is(.html, "html") and isHtmlElementInHtmlDocument(instance, internal)))
     {
         try dom.mutation.replaceAll(@as(?*dom.NodeBase, null), element_base);
         return;
@@ -2589,8 +2508,7 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
     // Step 1: the caller has checked the null attribute namespace.
     if (!std.mem.startsWith(u8, local_name, "on") or local_name.len <= 2) return;
     const internal = getInternal(instance) orelse return;
-    const ns = if (internal.data.namespace_uri) |n| n.asSlice() else return;
-    if (!std.mem.eql(u8, ns, "http://www.w3.org/1999/xhtml")) return;
+    if (!internal.data.name.isHtml()) return;
     const window_reflecting = (instance.stateAs(interfaces.HTMLBodyElement.State) != null or
         instance.stateAs(interfaces.HTMLFrameSetElement.State) != null) and
         dom.event_handlers.isWindowReflecting(local_name);
@@ -2712,10 +2630,10 @@ fn compileRawEventHandler(target: *runtime.Instance, event_type: []const u8, raw
 /// subtests 1, 3, 5, 7 and 8 (the clones' declarations) and all fail 19 and 20.
 /// A parsed or set value is still checked (crane/style3-clone-style-csp.html).
 fn styleAttributeChangeSteps(instance: *runtime.Instance, internal: *InternalState, value: ?[]const u8) void {
-    const ns = if (internal.data.namespace_uri) |n| n.asSlice() else return;
-    if (!std.mem.eql(u8, ns, "http://www.w3.org/1999/xhtml") and
-        !std.mem.eql(u8, ns, "http://www.w3.org/2000/svg") and
-        !std.mem.eql(u8, ns, "http://www.w3.org/1998/Math/MathML")) return;
+    switch (internal.data.name.namespace) {
+        .html, .svg, .mathml => {},
+        else => return,
+    }
     // CSSOM "update style attribute for" sets the attribute with the
     // block's updating flag set: the block already holds the value.
     if (internal.style) |style_state| if (style_state.updating) return;
@@ -2796,9 +2714,7 @@ pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: runtime.DO
     defer if (temporary_body) |body| dom.node_creation.destroyUninserted(body);
     const use_body = if (context_type != interfaces.Node.get_ELEMENT_NODE()) true else blk: {
         const state = getInternal(context) orelse return error.InvalidStateError;
-        if (!std.mem.eql(u8, state.data.local_name.asSlice(), "html")) break :blk false;
-        const namespace = state.data.namespace_uri orelse break :blk false;
-        if (!std.mem.eql(u8, namespace.asSlice(), infra.namespaces.HTML_NAMESPACE)) break :blk false;
+        if (!state.data.name.is(.html, "html")) break :blk false;
         const document = (try interfaces.Node.get_ownerDocument(context)) orelse return error.InvalidStateError;
         break :blk dom.document_internals.getDocumentType(document) == .html;
     };
@@ -2925,14 +2841,14 @@ fn attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootI
 
     // Step 1: "If element's namespace is not the HTML namespace, then throw a
     // NotSupportedError DOMException."
-    const namespace = if (internal.data.namespace_uri) |ns| ns.asSlice() else "";
-    if (!std.mem.eql(u8, namespace, "http://www.w3.org/1999/xhtml")) return error.NotSupportedError;
+    if (!internal.data.name.isHtml()) return error.NotSupportedError;
+    const namespace = internal.data.name.namespace_uri.?;
 
     // Step 2: "If element's local name is not a valid shadow host name, then
     // throw a NotSupportedError DOMException." Only these hosts are ever
     // given a shadow root - and every one of them tears down through
     // Element.deinit, which is what releases it.
-    const local_name = internal.data.local_name.asSlice();
+    const local_name = internal.data.name.local_name;
     if (!isValidShadowHostName(local_name)) return error.NotSupportedError;
 
     // Step 3: "If element's local name is a valid custom element name, or

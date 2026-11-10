@@ -113,9 +113,8 @@ const Facts = struct {
 const NamedType = enum { other, embed, form, iframe, img, object };
 
 fn namedTypeOf(data: *const element_data.ElementData) NamedType {
-    const namespace = data.namespace_uri orelse return .other;
-    if (!std.mem.eql(u8, namespace.asSlice(), html_namespace)) return .other;
-    const local = data.local_name.asSlice();
+    if (!data.name.isHtml()) return .other;
+    const local = data.localName();
     // Local names are case-sensitive: an HTML element made as "IMG" by
     // createElementNS is no img element.
     inline for (.{ "embed", "form", "iframe", "img", "object" }, .{ NamedType.embed, .form, .iframe, .img, .object }) |name, value| {

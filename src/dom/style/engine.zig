@@ -975,7 +975,7 @@ fn colorSchemeMetaContent(element: *runtime.Instance) ?[]const u8 {
     const data = element_data.of(element) orelse return null;
     const ns = data.namespaceSlice() orelse return null;
     if (!std.mem.eql(u8, ns, html_namespace)) return null;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "meta")) return null;
+    if (!std.mem.eql(u8, data.localName(), "meta")) return null;
     const name = data.findAttribute(null, "name") orelse return null;
     if (!std.ascii.eqlIgnoreCase(name.value, "color-scheme")) return null;
     const content = data.findAttribute(null, "content") orelse return null;
@@ -1250,7 +1250,7 @@ fn isSelectButton(select: *runtime.Instance, child: *NodeBase) bool {
         if (c != child) return false;
         const e = instanceOf(c) orelse return false;
         const data = element_data.of(e) orelse return false;
-        return std.mem.eql(u8, data.local_name.asSlice(), "button") and std.mem.eql(u8, data.namespaceSlice() orelse "", html_namespace);
+        return std.mem.eql(u8, data.localName(), "button") and std.mem.eql(u8, data.namespaceSlice() orelse "", html_namespace);
     }
     return false;
 }
@@ -1702,7 +1702,7 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
 
     // The keys the rule buckets file rules under.
     var lower_buffer: [64]u8 = undefined;
-    const local = data.local_name.asSlice();
+    const local = data.localName();
     const local_lower = if (local.len <= lower_buffer.len) std.ascii.lowerString(lower_buffer[0..local.len], local) else local;
     var names_storage: [32][]const u8 = undefined;
     var name_buffers: [32][48]u8 = undefined;

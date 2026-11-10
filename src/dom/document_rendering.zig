@@ -273,7 +273,7 @@ pub fn canBeIndicated(element: *runtime.Instance) bool {
     if (!(interfaces.Node.get_isConnected(element) catch false)) return false;
     const data = element_data.of(element) orelse return false;
     if (data.id.asSlice().len != 0) return true;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "a")) return false;
+    if (!std.mem.eql(u8, data.localName(), "a")) return false;
     const namespace = data.namespaceSlice() orelse return false;
     if (!std.mem.eql(u8, namespace, "http://www.w3.org/1999/xhtml")) return false;
     return data.findAttribute(null, "name") != null;

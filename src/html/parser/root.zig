@@ -79,6 +79,7 @@ pub const FragmentParseOptions = fragment_parser.FragmentParseOptions;
 pub const tag_name_intern = @import("tag_name_intern.zig");
 pub const internTagName = tag_name_intern.intern;
 pub const internTagNameExact = tag_name_intern.internExact;
+pub const internElementName = tag_name_intern.internElementName;
 pub const isKnownHtmlTag = tag_name_intern.isKnownHtmlTag;
 pub const eqlInternedTag = tag_name_intern.eqlInterned;
 

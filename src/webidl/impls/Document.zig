@@ -1632,7 +1632,7 @@ pub fn get_fgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     // no body or a frameset returns "". Then DOMString getter steps 1-6.
     const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    if (!std.mem.eql(u8, data.localName(), "body")) return runtime.DOMString.initEmpty();
     var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "text" });
     defer value.deinit(body.ctx.allocator);
     // An adopted body's realm can differ; this getter's caller frees with
@@ -1646,7 +1646,7 @@ pub fn get_linkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    if (!std.mem.eql(u8, data.localName(), "body")) return runtime.DOMString.initEmpty();
     var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "link" });
     defer value.deinit(body.ctx.allocator);
     return value.clone(instance.ctx.allocator);
@@ -1658,7 +1658,7 @@ pub fn get_vlinkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    if (!std.mem.eql(u8, data.localName(), "body")) return runtime.DOMString.initEmpty();
     var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "vlink" });
     defer value.deinit(body.ctx.allocator);
     return value.clone(instance.ctx.allocator);
@@ -1670,7 +1670,7 @@ pub fn get_alinkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    if (!std.mem.eql(u8, data.localName(), "body")) return runtime.DOMString.initEmpty();
     var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "alink" });
     defer value.deinit(body.ctx.allocator);
     return value.clone(instance.ctx.allocator);
@@ -1682,7 +1682,7 @@ pub fn get_bgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    if (!std.mem.eql(u8, data.localName(), "body")) return runtime.DOMString.initEmpty();
     var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "bgcolor" });
     defer value.deinit(body.ctx.allocator);
     return value.clone(instance.ctx.allocator);
@@ -2036,7 +2036,7 @@ pub fn set_body(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror
     }
 
     const value_data = @import("dom").element_data.of(actual_value) orelse return error.HierarchyRequestError;
-    const tag_name = value_data.local_name.asSlice();
+    const tag_name = value_data.localName();
 
     const is_body = if (internal.doc_type == .html)
         std.ascii.eqlIgnoreCase(tag_name, "body")
@@ -2102,7 +2102,7 @@ pub fn set_fgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerr
     // reflection setter: set the corresponding content attribute on body.
     const body = (try interfaces.Document.get_body(instance)) orelse return;
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    if (!std.mem.eql(u8, data.localName(), "body")) return;
     try dom.reflection.set(runtime.DOMString, body, .{ .name = "text" }, value);
 }
 
@@ -2112,7 +2112,7 @@ pub fn set_linkColor(instance: *runtime.Instance, value: runtime.DOMString) anye
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return;
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    if (!std.mem.eql(u8, data.localName(), "body")) return;
     try dom.reflection.set(runtime.DOMString, body, .{ .name = "link" }, value);
 }
 
@@ -2122,7 +2122,7 @@ pub fn set_vlinkColor(instance: *runtime.Instance, value: runtime.DOMString) any
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return;
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    if (!std.mem.eql(u8, data.localName(), "body")) return;
     try dom.reflection.set(runtime.DOMString, body, .{ .name = "vlink" }, value);
 }
 
@@ -2132,7 +2132,7 @@ pub fn set_alinkColor(instance: *runtime.Instance, value: runtime.DOMString) any
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return;
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    if (!std.mem.eql(u8, data.localName(), "body")) return;
     try dom.reflection.set(runtime.DOMString, body, .{ .name = "alink" }, value);
 }
 
@@ -2142,7 +2142,7 @@ pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerr
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return;
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    if (!std.mem.eql(u8, data.localName(), "body")) return;
     try dom.reflection.set(runtime.DOMString, body, .{ .name = "bgcolor" }, value);
 }
 
