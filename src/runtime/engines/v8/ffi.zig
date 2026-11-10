@@ -269,10 +269,10 @@ pub const PropertyCallbackInfo = opaque {
     /// Get the V8 isolate for this callback
     pub extern fn v8_PropertyCallbackInfo_GetIsolate(self: *const PropertyCallbackInfo) *Isolate;
 
-    /// Get the 'this' object for the property access
-    pub extern fn v8_PropertyCallbackInfo_This(self: *const PropertyCallbackInfo) *Object;
-
-    /// Get the holder object
+    /// The object that has the interceptor or accessor - WebIDL's O. V8 >= 14
+    /// gives a property callback no receiver (PropertyCallbackInfo::This() is
+    /// gone, 24eb3c4ba35); v8_wrapper.cpp v8_PropertyCallbackInfo_Holder says
+    /// why the holder is what the algorithms ask for.
     pub extern fn v8_PropertyCallbackInfo_Holder(self: *const PropertyCallbackInfo) ?*Object;
 
     /// The aligned pointer in internal field `index` of the object that has
@@ -301,16 +301,14 @@ pub const PropertyCallbackInfo = opaque {
     /// Get data associated with the accessor
     pub extern fn v8_PropertyCallbackInfo_Data(self: *const PropertyCallbackInfo) *Value;
 
-    /// Check if errors should throw (indicates strict mode)
-    /// Returns true if we're in strict mode and should throw TypeError on failure
+    /// Whether a setter, definer or deleter interceptor should throw (strict
+    /// mode). Only those ask: the C++ side reads the info as the
+    /// PropertyCallbackInfo<Boolean> V8 >= 14 passes them, the only kind it
+    /// answers for (a Value one says false in strict mode too).
     pub extern fn v8_PropertyCallbackInfo_ShouldThrowOnError(self: *const PropertyCallbackInfo) bool;
 
     pub inline fn getIsolate(self: *const PropertyCallbackInfo) *Isolate {
         return v8_PropertyCallbackInfo_GetIsolate(self);
-    }
-
-    pub inline fn getThis(self: *const PropertyCallbackInfo) *Object {
-        return v8_PropertyCallbackInfo_This(self);
     }
 
     pub inline fn getHolder(self: *const PropertyCallbackInfo) ?*Object {
@@ -365,47 +363,41 @@ pub const AccessorGetterCallback = *const fn (
 pub const AccessorSetterCallback = *const fn (
     property_name: *Name,
     value: *Value,
-    info: *const PropertyCallbackInfoVoid,
+    info: *const PropertyCallbackInfoBoolean,
 ) callconv(.c) void;
 
-/// PropertyCallbackInfo for setters (returns void)
-pub const PropertyCallbackInfoVoid = opaque {
-    pub extern fn v8_PropertyCallbackInfo_Void_GetIsolate(self: *const PropertyCallbackInfoVoid) *Isolate;
+/// The info of a setter or definer: V8 >= 14 types it PropertyCallbackInfo<Boolean>
+/// (the setter's answer is a boolean; it was <void> before, crbug 348660658).
+pub const PropertyCallbackInfoBoolean = opaque {
+    pub extern fn v8_PropertyCallbackInfo_Boolean_GetIsolate(self: *const PropertyCallbackInfoBoolean) *Isolate;
 
     /// Check if errors should throw (indicates strict mode)
     /// Returns true if we're in strict mode and should throw TypeError on failure
-    pub extern fn v8_PropertyCallbackInfo_Void_ShouldThrowOnError(self: *const PropertyCallbackInfoVoid) bool;
+    pub extern fn v8_PropertyCallbackInfo_Boolean_ShouldThrowOnError(self: *const PropertyCallbackInfoBoolean) bool;
 
-    /// Get the 'this' object
-    pub extern fn v8_PropertyCallbackInfo_Void_This(self: *const PropertyCallbackInfoVoid) *Object;
-
-    /// Get the holder object
-    pub extern fn v8_PropertyCallbackInfo_Void_Holder(self: *const PropertyCallbackInfoVoid) ?*Object;
+    /// The object being set or defined on (v8_PropertyCallbackInfo_Holder says why).
+    pub extern fn v8_PropertyCallbackInfo_Boolean_Holder(self: *const PropertyCallbackInfoBoolean) ?*Object;
 
     /// A definer or setter interceptor's "return false" (WebIDL 3.9.3):
     /// Object.defineProperty's TypeError, Reflect.defineProperty's false.
-    pub extern fn v8_PropertyCallbackInfo_Void_SetFalse(self: *const PropertyCallbackInfoVoid) void;
+    pub extern fn v8_PropertyCallbackInfo_Boolean_SetFalse(self: *const PropertyCallbackInfoBoolean) void;
 
-    pub inline fn getIsolate(self: *const PropertyCallbackInfoVoid) *Isolate {
-        return v8_PropertyCallbackInfo_Void_GetIsolate(self);
+    pub inline fn getIsolate(self: *const PropertyCallbackInfoBoolean) *Isolate {
+        return v8_PropertyCallbackInfo_Boolean_GetIsolate(self);
     }
 
-    pub inline fn getThis(self: *const PropertyCallbackInfoVoid) *Object {
-        return v8_PropertyCallbackInfo_Void_This(self);
+    pub inline fn getHolder(self: *const PropertyCallbackInfoBoolean) ?*Object {
+        return v8_PropertyCallbackInfo_Boolean_Holder(self);
     }
 
-    pub inline fn getHolder(self: *const PropertyCallbackInfoVoid) ?*Object {
-        return v8_PropertyCallbackInfo_Void_Holder(self);
-    }
-
-    pub inline fn setFalse(self: *const PropertyCallbackInfoVoid) void {
-        v8_PropertyCallbackInfo_Void_SetFalse(self);
+    pub inline fn setFalse(self: *const PropertyCallbackInfoBoolean) void {
+        v8_PropertyCallbackInfo_Boolean_SetFalse(self);
     }
 
     /// Check if errors should throw (indicates strict mode)
     /// Returns true if we're in strict mode and should throw TypeError on failure
-    pub inline fn shouldThrowOnError(self: *const PropertyCallbackInfoVoid) bool {
-        return v8_PropertyCallbackInfo_Void_ShouldThrowOnError(self);
+    pub inline fn shouldThrowOnError(self: *const PropertyCallbackInfoBoolean) bool {
+        return v8_PropertyCallbackInfo_Boolean_ShouldThrowOnError(self);
     }
 };
 
@@ -614,7 +606,7 @@ pub extern fn v8_ObjectTemplate_SetNamedPropertyHandlerFull(
 pub const NamedPropertyDefinerCallback = *const fn (
     property: *Name,
     desc: *const PropertyDescriptor,
-    info: *const PropertyCallbackInfoVoid,
+    info: *const PropertyCallbackInfoBoolean,
 ) callconv(.c) Intercepted;
 
 pub extern fn v8_ObjectTemplate_SetNamedPropertyHandlerWithDefiner(
@@ -701,7 +693,7 @@ pub const PropertyDescriptor = opaque {};
 pub const IndexedPropertyDefinerCallback = *const fn (
     index: u32,
     desc: *const PropertyDescriptor,
-    info: *const PropertyCallbackInfoVoid,
+    info: *const PropertyCallbackInfoBoolean,
 ) callconv(.c) Intercepted;
 
 /// Check if PropertyDescriptor is an accessor descriptor (has get or set)

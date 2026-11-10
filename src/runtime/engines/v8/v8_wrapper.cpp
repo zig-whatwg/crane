@@ -70,6 +70,18 @@ using namespace v8;
 // (docs/lessons/architecture-suppressmicrotaskexecutionscope-must-live-on-the.md).
 using NativeStepScope = Isolate::SuppressMicrotaskExecutionScope;
 
+// V8 >= 14 checks the type of every pointer an External, an internal field or
+// a context's embedder data holds against the tag it was stored with
+// (External::New/Value f8fa8e7d227, internal fields and embedder data
+// 4de1c836b12; ExternalPointerTypeTag, EmbedderDataTypeTag). The adapter
+// stores pointers of many types through FFI functions whose callers alone know
+// the type, so it uses the default tags V8 names for an embedder that does not
+// type them ("If type tags are not used in the embedder, the default value
+// kExternalPointerTypeTagDefault can be used", v8-external.h; the same for
+// kEmbedderDataTypeTagDefault, v8-object.h).
+static constexpr ExternalPointerTypeTag kCraneExternalTag = kExternalPointerTypeTagDefault;
+static constexpr EmbedderDataTypeTag kCraneEmbedderDataTag = kEmbedderDataTypeTagDefault;
+
 /// V8's platform and its start, once per process (v8_Platform_Start). V8
 /// itself allows one start: V8::InitializePlatform and V8::Initialize advance
 /// a process-wide state and FATAL on a second or concurrent start (13.1.203
@@ -1896,8 +1908,8 @@ static void zigReactionTrampoline(const FunctionCallbackInfo<Value>& info, bool 
     Local<Value> callback_slot;
     if (!holder->Get(ctx, kReactionData).ToLocal(&data_slot) || !data_slot->IsExternal()) return;
     if (!holder->Get(ctx, kReactionCallback).ToLocal(&callback_slot) || !callback_slot->IsExternal()) return;
-    void* data = data_slot.As<External>()->Value();
-    auto callback = reinterpret_cast<ZigReactionCallback>(callback_slot.As<External>()->Value());
+    void* data = data_slot.As<External>()->Value(kCraneExternalTag);
+    auto callback = reinterpret_cast<ZigReactionCallback>(callback_slot.As<External>()->Value(kCraneExternalTag));
     // A promise settles once and `then` registered exactly one reaction, so the
     // other function sharing this holder never runs; disarm it anyway before
     // calling out, so nothing can reach the record the callback frees.
@@ -1940,8 +1952,8 @@ bool v8_Promise_React(
     if (!value->IsPromise()) return false;
 
     Local<Value> slots[] = {
-        External::New(isolate, data),
-        External::New(isolate, reinterpret_cast<void*>(callback)),
+        External::New(isolate, data, kCraneExternalTag),
+        External::New(isolate, reinterpret_cast<void*>(callback), kCraneExternalTag),
     };
     Local<Array> holder = Array::New(isolate, slots, 2);
 
@@ -2697,19 +2709,17 @@ struct IsolateData {
     /// installGCPauseRecorder adds after Isolate::Initialize write it, with
     /// this record as their data until the record goes after Dispose.
     GCPauses gc_pauses;
-    /// The agent's C++ heap (newAgentCppHeap), handed to V8 as
-    /// CreateParams::cpp_heap - attached from Isolate::Initialize on - and
-    /// OWNED here too, because V8 13.1.203 never frees it: "V8 takes
-    /// ownership of the CppHeap passed this way" (v8-isolate.h), but its
-    /// Heap::StartTearDown, inside Isolate::Dispose, releases its owning
-    /// pointer, detaches the heap and terminates it, and nothing deletes it
-    /// (src/heap/heap.cc, StartTearDown: `owning_cpp_heap_.release()`) - one
-    /// leaked heap per agent. V8 13.4.100 frees it there itself (1c079f473b1,
-    /// "[cppheap] Change order of CppHeap teardown calls":
-    /// `owning_cpp_heap_.reset()`), which the static_assert below holds to.
-    /// So the record frees it with itself: after Isolate::Dispose has
-    /// returned (v8_Isolate_Dispose) - detached and terminated by then, so
-    /// its end touches no isolate - or when no isolate was made with it.
+    /// The agent's C++ heap (newAgentCppHeap) until V8 takes it: handed to
+    /// V8 as CreateParams::cpp_heap and attached from Isolate::Initialize on,
+    /// after which V8 OWNS it ("V8 takes ownership of the CppHeap passed this
+    /// way", v8-isolate.h) and deletes it in Isolate::Dispose: 15.7's
+    /// Heap::TearDown detaches it and hands `owning_cpp_heap_` to
+    /// RunReleaseCppHeapCallback, which with no callback lets the unique_ptr
+    /// go (src/heap/heap.cc:6322-6324, src/execution/isolate.cc:7711; since
+    /// 1c079f473b1, 13.4). So `adoptCppHeap` releases this record's hold right
+    /// after Isolate::Initialize; the record frees the heap itself only when
+    /// no isolate was made with it. (13.1.203 never freed it - the record
+    /// did, after Dispose - and freeing it here now would free it twice.)
     std::unique_ptr<CppHeap> cpp_heap;
     /// The agent's node wrapper registry (node_wrappers.zig `Registry`, the
     /// wrapper redesign's P2), OWNED: made by the adapter's Zig side on the
@@ -2741,11 +2751,16 @@ struct IsolateData {
     }
 };
 
-// IsolateData::cpp_heap frees what 13.1.203 leaves: from 13.4 V8 frees it,
-// and the record would free it twice.
-static_assert(V8_MAJOR_VERSION == 13 && V8_MINOR_VERSION < 4,
-              "V8 13.4 frees a CppHeap given in CreateParams in Heap::StartTearDown (1c079f473b1): "
-              "IsolateData::cpp_heap must stop owning it");
+// From 13.4 V8 frees a CppHeap given in CreateParams (1c079f473b1), so the
+// record lets go of it once the isolate has it (IsolateData::cpp_heap).
+static_assert(V8_MAJOR_VERSION > 13 || (V8_MAJOR_VERSION == 13 && V8_MINOR_VERSION >= 4),
+              "a V8 before 13.4 never frees a CppHeap given in CreateParams: IsolateData::cpp_heap would have to own it");
+
+/// Isolate::Initialize has attached `record`'s C++ heap: V8 owns it from now
+/// on and deletes it in Isolate::Dispose (IsolateData::cpp_heap).
+static void adoptCppHeap(IsolateData* record) {
+    (void)record->cpp_heap.release();
+}
 
 /// `isolate`'s record, or null for an isolate this file did not make (the
 /// snapshot creator's).
@@ -2902,8 +2917,8 @@ extern "C" void* v8_NodeWrapper_ClearWeak(void* slot) {
 
 static void clearInternalFields(Local<Object> object) {
     const int count = object->InternalFieldCount();
-    if (count >= 1) object->SetAlignedPointerInInternalField(0, nullptr);
-    if (count >= 2) object->SetAlignedPointerInInternalField(1, nullptr);
+    if (count >= 1) object->SetAlignedPointerInInternalField(0, nullptr, kCraneEmbedderDataTag);
+    if (count >= 2) object->SetAlignedPointerInInternalField(1, nullptr, kCraneEmbedderDataTag);
 }
 
 /// The node's wrapper ends outside a collection: its node's teardown began
@@ -3248,8 +3263,8 @@ Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options) {
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     auto record = std::make_unique<IsolateData>();
     applyIsolateOptions(record.get(), options);
-    // The agent's C++ heap, attached from Isolate::Initialize on; the record
-    // frees it (IsolateData::cpp_heap says why).
+    // The agent's C++ heap, attached from Isolate::Initialize on and V8's to
+    // free from then (IsolateData::cpp_heap says why).
     record->cpp_heap = newAgentCppHeap();
     create_params.cpp_heap = record->cpp_heap.get();
     // V8's built-in snapshot: always allowed (g_read_only_heap says why).
@@ -3262,8 +3277,10 @@ Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options) {
         releaseReadOnlyHeap();
         return nullptr;
     }
-    isolate->SetData(kIsolateDataSlot, record.release());
+    IsolateData* data = record.release();
+    isolate->SetData(kIsolateDataSlot, data);
     Isolate::Initialize(isolate, create_params);
+    adoptCppHeap(data);
     installGCPauseRecorder(isolate);
     return isolate;
 }
@@ -3384,8 +3401,7 @@ void v8_Isolate_Dispose(Isolate* isolate) {
         // held a pointer to that until Dispose returned ("The embedder owns
         // the blob", v8-isolate.h CreateParams::snapshot_blob). The bytes it
         // points at are the caller's, freed by the caller after this. Its C++
-        // heap goes with it: Dispose detached and terminated it
-        // (IsolateData::cpp_heap).
+        // heap is gone already: Dispose deleted it (IsolateData::cpp_heap).
         delete record;
     }
 }
@@ -3736,12 +3752,12 @@ static void* CraneContextIdOf(Local<Context> ctx) {
     // Only Crane writes embedder data at this index, so a slot within the
     // array's length is ours.
     if (ctx->GetNumberOfEmbedderDataFields() > static_cast<uint32_t>(kCraneContextIdIndex)) {
-        if (void* id = ctx->GetAlignedPointerFromEmbedderData(kCraneContextIdIndex)) return id;
+        if (void* id = ctx->GetAlignedPointerFromEmbedderData(kCraneContextIdIndex, kCraneEmbedderDataTag)) return id;
     }
     // Shifted so the value is an aligned pointer, as the embedder-data API
     // requires; never zero.
     void* id = reinterpret_cast<void*>(g_next_context_id.fetch_add(1, std::memory_order_relaxed) << 3);
-    ctx->SetAlignedPointerInEmbedderData(kCraneContextIdIndex, id);
+    ctx->SetAlignedPointerInEmbedderData(kCraneContextIdIndex, id, kCraneEmbedderDataTag);
     return id;
 }
 
@@ -5323,7 +5339,7 @@ void v8_Object_SetAlignedPointerInInternalField(Global<Object>* obj, int index, 
         // but we've logged useful debug info
     }
     
-    local_obj->SetAlignedPointerInInternalField(index, value);
+    local_obj->SetAlignedPointerInInternalField(index, value, kCraneEmbedderDataTag);
 }
 
 int v8_Object_InternalFieldCount(Global<Object>* obj) {
@@ -5362,7 +5378,7 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
         return nullptr;
     }
 
-    void* result = local_obj->GetAlignedPointerFromInternalField(index);
+    void* result = local_obj->GetAlignedPointerFromInternalField(index, kCraneEmbedderDataTag);
     return result;
 }
 
@@ -5570,8 +5586,8 @@ static char* importTypeAttribute(Isolate* isolate, Local<Context> context, Local
     if (attributes.IsEmpty()) return nullptr;
     char* type = nullptr;
     for (int i = 0; i + 1 < attributes->Length(); i += stride) {
-        Local<Data> key_data = attributes->Get(context, i);
-        Local<Data> value_data = attributes->Get(context, i + 1);
+        Local<Data> key_data = attributes->Get(i);
+        Local<Data> value_data = attributes->Get(i + 1);
         if (key_data.IsEmpty() || !key_data->IsValue() || value_data.IsEmpty() || !value_data->IsValue()) continue;
         String::Utf8Value key(isolate, key_data.As<Value>());
         if (*key && strcmp(*key, "type") == 0) {
@@ -5704,7 +5720,7 @@ char* v8_Module_GetModuleRequest(Global<Module>* module, int index) {
     }
     
     // FixedArray::Get returns Local<Data>, cast to ModuleRequest
-    Local<Data> data = requests->Get(isolate->GetCurrentContext(), index);
+    Local<Data> data = requests->Get(index);
     Local<ModuleRequest> request = data.As<ModuleRequest>();
     Local<String> specifier = request->GetSpecifier();
     
@@ -5895,7 +5911,7 @@ char* v8_Module_GetModuleRequestType(Global<Module>* module, int index, int* sta
     }
 
     Local<Context> context = isolate->GetCurrentContext();
-    Local<ModuleRequest> request = requests->Get(context, index).As<ModuleRequest>();
+    Local<ModuleRequest> request = requests->Get(index).As<ModuleRequest>();
     bool has_unsupported_key = false;
     char* type = importTypeAttribute(isolate, context, request->GetImportAttributes(), 3, &has_unsupported_key);
     if (has_unsupported_key) {
@@ -5924,7 +5940,7 @@ char* v8_Module_GetModuleRequestType(Global<Module>* module, int index, int* sta
 // json_module_to_parsed_json_map.
 
 static MaybeLocal<Value> JsonModuleEvaluationSteps(Local<Context> context, Local<Module> module) {
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
 
     Local<Value> value;
     bool found = false;
@@ -6084,7 +6100,7 @@ Global<Object>* v8_Context_ErrorPrototype(Global<Context>* context) {
     Context::Scope context_scope(ctx);
     Local<Value> error = Exception::Error(String::Empty(isolate));
     if (!error->IsObject()) return nullptr;
-    Local<Value> proto = error.As<Object>()->GetPrototypeV2();
+    Local<Value> proto = error.As<Object>()->GetPrototype();
     if (!proto->IsObject()) return nullptr;
     return trackHandle(new Global<Object>(isolate, proto.As<Object>()));
 }
@@ -6743,7 +6759,7 @@ void v8_FunctionTemplate_SetCallHandler(
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
-    Local<Value> callback_data = data ? Local<Value>(External::New(isolate, data)) : Local<Value>();
+    Local<Value> callback_data = data ? Local<Value>(External::New(isolate, data, kCraneExternalTag)) : Local<Value>();
     local_tpl->SetCallHandler(callback, callback_data);
 }
 
@@ -6782,8 +6798,8 @@ void v8_FunctionCallbackInfo_ThisInstanceFields(const FunctionCallbackInfo<Value
     }
     const int count = self->InternalFieldCount();
     Isolate* isolate = info->GetIsolate();
-    if (count >= 1) *instance = self->GetAlignedPointerFromInternalField(isolate, 0);
-    if (count >= 2) *type_info = self->GetAlignedPointerFromInternalField(isolate, 1);
+    if (count >= 1) *instance = self->GetAlignedPointerFromInternalField(isolate, 0, kCraneEmbedderDataTag);
+    if (count >= 2) *type_info = self->GetAlignedPointerFromInternalField(isolate, 1, kCraneEmbedderDataTag);
 }
 
 // FunctionCallbackInfo - set a primitive return value straight into the
@@ -6904,13 +6920,13 @@ void v8_FunctionCallbackInfo_ReadArgument(const FunctionCallbackInfo<Value>* inf
     } else if (value->IsString()) {
         out->kind = 5;
         Local<String> str = value.As<String>();
-        int chars = 0;
-        const int written = str->WriteUtf8(isolate, buffer, capacity, &chars, String::NO_NULL_TERMINATION);
-        if (chars == str->Length()) {
+        size_t chars = 0;
+        const size_t written = capacity > 0 ? str->WriteUtf8(isolate, buffer, static_cast<size_t>(capacity), String::WriteFlags::kNone, &chars) : 0;
+        if (chars == static_cast<size_t>(str->Length())) {
             out->fits = true;
-            out->length = written;
+            out->length = static_cast<int>(written);
         } else {
-            out->length = str->Utf8Length(isolate);
+            out->length = static_cast<int>(str->Utf8Length(isolate));
         }
     } else if (value->IsObject()) {
         out->kind = 6;
@@ -6922,8 +6938,8 @@ void v8_FunctionCallbackInfo_ReadArgument(const FunctionCallbackInfo<Value>* inf
             object = target.As<Object>();
         }
         const int count = object->InternalFieldCount();
-        if (count >= 1) out->instance = object->GetAlignedPointerFromInternalField(isolate, 0);
-        if (count >= 2) out->type_info = object->GetAlignedPointerFromInternalField(isolate, 1);
+        if (count >= 1) out->instance = object->GetAlignedPointerFromInternalField(isolate, 0, kCraneEmbedderDataTag);
+        if (count >= 2) out->type_info = object->GetAlignedPointerFromInternalField(isolate, 1, kCraneEmbedderDataTag);
     } else {
         out->kind = 7;
     }
@@ -6938,10 +6954,11 @@ int v8_FunctionCallbackInfo_ReadArgumentString(const FunctionCallbackInfo<Value>
     if (!value->IsString()) return -1;
     Isolate* isolate = info->GetIsolate();
     Local<String> str = value.As<String>();
-    int chars = 0;
-    const int written = str->WriteUtf8(isolate, buffer, length, &chars, String::NO_NULL_TERMINATION);
-    if (chars != str->Length()) return -1;
-    return written;
+    if (length < 0) return -1;
+    size_t chars = 0;
+    const size_t written = str->WriteUtf8(isolate, buffer, static_cast<size_t>(length), String::WriteFlags::kNone, &chars);
+    if (chars != static_cast<size_t>(str->Length())) return -1;
+    return static_cast<int>(written);
 }
 
 void v8_FunctionCallbackInfo_SetReturnValue(const FunctionCallbackInfo<Value>* info, Global<Value>* value) {
@@ -7324,7 +7341,7 @@ Global<Context>* v8_Function_GetCreationContext(Global<Function>* func) {
 // Create External value wrapping a C pointer
 Global<External>* v8_External_New(Isolate* isolate, void* value) {
     HandleScope handle_scope(isolate);
-    Local<External> external = External::New(isolate, value);
+    Local<External> external = External::New(isolate, value, kCraneExternalTag);
     return trackHandle(new Global<External>(isolate, external));
 }
 
@@ -7333,7 +7350,7 @@ void* v8_External_Value(Global<External>* external) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<External> local_ext = external->Get(isolate);
-    return local_ext->Value();
+    return local_ext->Value(kCraneExternalTag);
 }
 
 // Dispose External
@@ -7487,20 +7504,23 @@ void v8_ObjectTemplate_SetCallAsFunctionHandler(
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
-    Local<Value> callback_data = data ? Local<Value>(External::New(isolate, data)) : Local<Value>();
+    Local<Value> callback_data = data ? Local<Value>(External::New(isolate, data, kCraneExternalTag)) : Local<Value>();
     local_tpl->SetCallAsFunctionHandler(callback, callback_data);
 }
 
 // Callback types for accessors (using Name instead of String for modern V8 API)
 typedef void (*AccessorNameGetterCallback)(Local<Name> property, const PropertyCallbackInfo<Value>& info);
-typedef void (*AccessorNameSetterCallback)(Local<Name> property, Local<Value> value, const PropertyCallbackInfo<void>& info);
+// V8 >= 14's native data property setter takes the info a setter gets,
+// PropertyCallbackInfo<Boolean> (v8::AccessorNameSetterCallbackV2); the <void>
+// one is deprecated. Named for this file so it is not v8's own typedef's twin.
+using CraneAccessorNameSetterCallback = AccessorNameSetterCallbackV2;
 
 // ObjectTemplate - set accessor (getter/setter) using SetNativeDataProperty
 void v8_ObjectTemplate_SetAccessor(
     Global<ObjectTemplate>* tpl,
     Global<String>* name,
     AccessorNameGetterCallback getter,
-    AccessorNameSetterCallback setter,
+    CraneAccessorNameSetterCallback setter,
     Global<Value>* data
 ) {
     Isolate* isolate = Isolate::GetCurrent();
@@ -7622,7 +7642,7 @@ void v8_ObjectTemplate_SetAccessorPropertyChecked(
 void v8_ObjectTemplate_SetNamedPropertyHandler(
     Global<ObjectTemplate>* tpl,
     NamedPropertyGetterCallback getter,
-    NamedPropertySetterCallback setter,
+    NamedPropertySetterCallbackV2 setter,
     NamedPropertyQueryCallback query,
     NamedPropertyDeleterCallback deleter,
     NamedPropertyEnumeratorCallback enumerator,
@@ -7657,7 +7677,7 @@ typedef Intercepted (*InterceptedNamedDescriptorCallback)(Local<Name> property, 
 void v8_ObjectTemplate_SetNamedPropertyHandlerFull(
     Global<ObjectTemplate>* tpl,
     NamedPropertyGetterCallback getter,
-    NamedPropertySetterCallback setter,
+    NamedPropertySetterCallbackV2 setter,
     InterceptedNamedQueryCallback query,
     NamedPropertyDeleterCallback deleter,
     NamedPropertyEnumeratorCallback enumerator,
@@ -7686,13 +7706,13 @@ void v8_ObjectTemplate_SetNamedPropertyHandlerFull(
 typedef Intercepted (*InterceptedNamedDefinerCallback)(
     Local<Name> property,
     const PropertyDescriptor& desc,
-    const PropertyCallbackInfo<void>& info);
+    const PropertyCallbackInfo<Boolean>& info);
 
 // Named property handler with definer support for [[DefineOwnProperty]] per WebIDL §3.9.3
 void v8_ObjectTemplate_SetNamedPropertyHandlerWithDefiner(
     Global<ObjectTemplate>* tpl,
     NamedPropertyGetterCallback getter,
-    NamedPropertySetterCallback setter,
+    NamedPropertySetterCallbackV2 setter,
     InterceptedNamedQueryCallback query,
     NamedPropertyDeleterCallback deleter,
     NamedPropertyEnumeratorCallback enumerator,
@@ -7775,7 +7795,7 @@ typedef Intercepted (*InterceptedIndexedDescriptorCallback)(uint32_t index, cons
 typedef Intercepted (*InterceptedIndexedSetterCallbackFull)(
     uint32_t index,
     Local<Value> value,
-    const PropertyCallbackInfo<void>& info);
+    const PropertyCallbackInfo<Boolean>& info);
 
 void v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
     Global<ObjectTemplate>* tpl,
@@ -7809,13 +7829,13 @@ void v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
 typedef Intercepted (*InterceptedIndexedDefinerCallback)(
     uint32_t index,
     const PropertyDescriptor& desc,
-    const PropertyCallbackInfo<void>& info);
+    const PropertyCallbackInfo<Boolean>& info);
 
 // Setter callback type for indexed properties
 typedef Intercepted (*InterceptedIndexedSetterCallback)(
     uint32_t index,
     Local<Value> value,
-    const PropertyCallbackInfo<void>& info);
+    const PropertyCallbackInfo<Boolean>& info);
 
 // ObjectTemplate - set indexed property handler with definer support
 // This enables proper [[DefineOwnProperty]] handling per WebIDL spec
@@ -7869,16 +7889,8 @@ Isolate* v8_PropertyCallbackInfo_GetIsolate(const PropertyCallbackInfo<Value>* i
 }
 
 // PropertyCallbackInfo (void) - get isolate (for setters)
-Isolate* v8_PropertyCallbackInfo_Void_GetIsolate(const PropertyCallbackInfo<void>* info) {
+Isolate* v8_PropertyCallbackInfo_Boolean_GetIsolate(const PropertyCallbackInfo<Boolean>* info) {
     return info->GetIsolate();
-}
-
-// PropertyCallbackInfo - get this
-Global<Object>* v8_PropertyCallbackInfo_This(const PropertyCallbackInfo<Value>* info) {
-    g_obj_src[1].fetch_add(1, std::memory_order_relaxed);
-    Isolate* isolate = info->GetIsolate();
-    HandleScope handle_scope(isolate);
-    return trackHandle(new Global<Object>(isolate, info->This()));
 }
 
 // PropertyCallbackInfo - the aligned pointer in internal field `index` of the
@@ -7897,11 +7909,11 @@ Global<Object>* v8_PropertyCallbackInfo_This(const PropertyCallbackInfo<Value>* 
 // v8_PropertyCallbackInfo_This's Global - made, tracked and disposed per call
 // - was a third of the read (gc_bench profile, 2026-10-11).
 void* v8_PropertyCallbackInfo_HolderAlignedPointer(const PropertyCallbackInfo<Value>* info, int index) {
-    Local<Object> holder = info->HolderV2();
+    Local<Object> holder = info->Holder();
     if (holder->InternalFieldCount() <= index) return nullptr;
     // The isolate overload: the one without it finds the isolate from the
     // object's page (GetIsolateForSandbox) on every read.
-    return holder->GetAlignedPointerFromInternalField(info->GetIsolate(), index);
+    return holder->GetAlignedPointerFromInternalField(info->GetIsolate(), index, kCraneEmbedderDataTag);
 }
 
 // A deleter interceptor's answer, the value `delete` evaluates to (WebIDL
@@ -7916,7 +7928,7 @@ void v8_PropertyCallbackInfo_SetReturnValueBool(const PropertyCallbackInfo<Boole
 // [[DefineOwnProperty]]): V8 makes it Object.defineProperty's TypeError, or
 // Reflect.defineProperty's false (js-objects.cc OrdinaryDefineOwnProperty:
 // InterceptorResult::kFalse -> CannotCreateProperty with should_throw).
-void v8_PropertyCallbackInfo_Void_SetFalse(const PropertyCallbackInfo<void>* info) {
+void v8_PropertyCallbackInfo_Boolean_SetFalse(const PropertyCallbackInfo<Boolean>* info) {
     info->GetReturnValue().SetFalse();
 }
 
@@ -7935,7 +7947,7 @@ uint8_t v8_LegacyPlatformObject_NamedPropertyState(const PropertyCallbackInfo<Va
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
     Local<Context> context = isolate->GetCurrentContext();
-    Local<Object> holder = info->HolderV2();
+    Local<Object> holder = info->Holder();
     Local<String> name;
     if (!String::NewFromTwoByte(isolate, units, NewStringType::kNormal, count).ToLocal(&name)) return 0;
     uint8_t bits = 0;
@@ -7963,9 +7975,18 @@ void v8_PropertyCallbackInfo_SetReturnValueInt32(const PropertyCallbackInfo<Inte
     }
 }
 
-// PropertyCallbackInfo - get holder object
-// Returns nullptr if not available (e.g., accessing property on prototype)
+// PropertyCallbackInfo - the object that has the interceptor or accessor.
+// V8 >= 14 gives a property callback no receiver: PropertyCallbackInfo::This()
+// is gone (24eb3c4ba35, "Remove deprecated v8::PropertyCallbackInfo<T>::This()";
+// HolderV2 became Holder, 3d66b2bdda7). WebIDL's legacy platform object
+// algorithms ask O, which is the holder ([[GetOwnProperty]] 3.9.1, [[Set]] 3.9.2
+// step 1: V8 calls a setter, definer or deleter interceptor only when the holder
+// is the receiver - objects.cc SetPropertyInternal, HolderIsReceiverOrHiddenPrototype),
+// and for a property on the global object Holder() is the global proxy, the
+// WindowProxy (v8-function-callback.h). Blink reads info.Holder() the same way.
+// Returns nullptr if not available (e.g., accessing property on prototype).
 Global<Object>* v8_PropertyCallbackInfo_Holder(const PropertyCallbackInfo<Value>* info) {
+    g_obj_src[1].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
     Local<Object> holder = info->Holder();
@@ -7973,8 +7994,10 @@ Global<Object>* v8_PropertyCallbackInfo_Holder(const PropertyCallbackInfo<Value>
     return trackHandle(new Global<Object>(isolate, holder));
 }
 
-// PropertyCallbackInfo (void) - get holder
-Global<Object>* v8_PropertyCallbackInfo_Void_Holder(const PropertyCallbackInfo<void>* info) {
+// A setter, definer or deleter's info (PropertyCallbackInfo<Boolean> in V8 >= 14)
+// - get holder (v8_PropertyCallbackInfo_Holder says why the holder)
+Global<Object>* v8_PropertyCallbackInfo_Boolean_Holder(const PropertyCallbackInfo<Boolean>* info) {
+    g_obj_src[1].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
     Local<Object> holder = info->Holder();
@@ -7995,14 +8018,6 @@ void v8_PropertyCallbackInfo_SetReturnValue(const PropertyCallbackInfo<Value>* i
     info->GetReturnValue().Set(*value);
 }
 
-// PropertyCallbackInfo (void) - set return value (mostly for Boolean results)
-void v8_PropertyCallbackInfo_Void_SetReturnValue(const PropertyCallbackInfo<void>* info, Global<Value>* value) {
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Value> val = value->Get(isolate);
-    info->GetReturnValue().Set(val);
-}
-
 // PropertyCallbackInfo - set return value to undefined
 void v8_PropertyCallbackInfo_SetUndefined(const PropertyCallbackInfo<Value>* info) {
     Isolate* isolate = info->GetIsolate();
@@ -8010,15 +8025,20 @@ void v8_PropertyCallbackInfo_SetUndefined(const PropertyCallbackInfo<Value>* inf
     info->GetReturnValue().SetUndefined();
 }
 
-// PropertyCallbackInfo<Value> - check if errors should throw (strict mode)
-// Returns true if we're in strict mode and should throw TypeError on failure
-bool v8_PropertyCallbackInfo_ShouldThrowOnError(const PropertyCallbackInfo<Value>* info) {
+// Whether a [[Set]], [[DefineOwnProperty]] or [[Delete]] interceptor should
+// throw (strict mode). Only those ask, and V8 >= 14 answers only for the
+// instantiation it calls them with: PropertyCallbackInfo<T>::ShouldThrowOnError
+// is `if constexpr (!HasShouldThrowOnError()) return false;` unless T is Boolean
+// or void (v8-function-callback.h:720) - a PropertyCallbackInfo<Value> would
+// say false in strict mode too. So the info is read as the Boolean one V8
+// passes setters, definers and deleters (the same pointer the Zig callback got).
+bool v8_PropertyCallbackInfo_ShouldThrowOnError(const PropertyCallbackInfo<Boolean>* info) {
     return info->ShouldThrowOnError();
 }
 
-// PropertyCallbackInfo<void> - check if errors should throw (strict mode)
+// A setter or definer's info - check if errors should throw (strict mode)
 // Returns true if we're in strict mode and should throw TypeError on failure
-bool v8_PropertyCallbackInfo_Void_ShouldThrowOnError(const PropertyCallbackInfo<void>* info) {
+bool v8_PropertyCallbackInfo_Boolean_ShouldThrowOnError(const PropertyCallbackInfo<Boolean>* info) {
     return info->ShouldThrowOnError();
 }
 
@@ -8069,7 +8089,7 @@ void* v8_Object_GetAlignedPointerFromInternalField_Raw(const void* obj, int inde
         return nullptr;
     }
 
-    void* result = object_ptr->GetAlignedPointerFromInternalField(index);
+    void* result = object_ptr->GetAlignedPointerFromInternalField(index, kCraneEmbedderDataTag);
 
     // Debug: print what we're returning for internal field 0
     if (index == 0) {
@@ -8146,8 +8166,8 @@ int v8_Value_StringWriteUtf8_Raw(const void* value, char* buffer, int buffer_len
     }
     
     Local<String> str = val.As<String>();
-    int flags = String::NO_NULL_TERMINATION;
-    return str->WriteUtf8(isolate, buffer, buffer_len, nullptr, flags);
+    if (buffer_len <= 0) return 0;
+    return static_cast<int>(str->WriteUtf8(isolate, buffer, static_cast<size_t>(buffer_len)));
 }
 
 // ============================================================================
@@ -8372,19 +8392,6 @@ bool v8_PropertyDescriptor_Writable(const PropertyDescriptor* desc) {
     return desc->writable();
 }
 
-// Get the isolate from PropertyCallbackInfo<void>
-// (PropertyCallbackInfo<void> is used for setters and definers)
-Isolate* v8_PropertyCallbackInfo_Void_This_GetIsolate(const PropertyCallbackInfo<void>* info) {
-    return info->GetIsolate();
-}
-
-// Get 'this' object from PropertyCallbackInfo<void>
-Global<Object>* v8_PropertyCallbackInfo_Void_This(const PropertyCallbackInfo<void>* info) {
-    Isolate* isolate = info->GetIsolate();
-    HandleScope handle_scope(isolate);
-    return trackHandle(new Global<Object>(isolate, info->This()));
-}
-
 // Set an object's prototype as immutable
 bool v8_Object_SetImmutableProto(Global<Object>* object, Global<Context>* context) {
     if (!object || !context) return false;
@@ -8431,7 +8438,7 @@ bool v8_Object_SetPrototypeV2(Global<Object>* object, Global<Context>* context, 
     Local<Context> ctx = context->Get(isolate);
     Local<Value> proto = prototype->Get(isolate);
 
-    return obj->SetPrototypeV2(ctx, proto).FromMaybe(false);
+    return obj->SetPrototype(ctx, proto).FromMaybe(false);
 }
 
 Global<Value>* v8_Object_GetPrototype(Global<Object>* object) {
@@ -8456,7 +8463,7 @@ Global<Value>* v8_Object_GetPrototypeV2(Global<Object>* object) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Object> obj = object->Get(isolate);
-    Local<Value> proto = obj->GetPrototypeV2();
+    Local<Value> proto = obj->GetPrototype();
     if (proto.IsEmpty()) {
         return nullptr;
     }
@@ -8993,7 +9000,7 @@ Global<Function>* v8_PromiseResolver_CreateResolveHandler(
     
     // Create External to hold resolver pointer
     // NOTE: We're storing a raw pointer - caller must ensure resolver outlives handler
-    Local<External> data = External::New(isolate, resolver);
+    Local<External> data = External::New(isolate, resolver, kCraneExternalTag);
     
     // Create callback that resolves the PromiseResolver
     auto callback = [](const FunctionCallbackInfo<Value>& info) {
@@ -9002,7 +9009,7 @@ Global<Function>* v8_PromiseResolver_CreateResolveHandler(
         
         // Extract resolver from data
         Local<External> external = Local<External>::Cast(info.Data());
-        auto* resolver = static_cast<Global<Promise::Resolver>*>(external->Value());
+        auto* resolver = static_cast<Global<Promise::Resolver>*>(external->Value(kCraneExternalTag));
         
         // Get value argument (or undefined if no args)
         Local<Value> value = info.Length() > 0 ? info[0] : Undefined(isolate).As<Value>();
@@ -9042,7 +9049,7 @@ Global<Function>* v8_PromiseResolver_CreateRejectHandler(
     Local<Context> ctx = context->Get(isolate);
     
     // Create External to hold resolver pointer
-    Local<External> data = External::New(isolate, resolver);
+    Local<External> data = External::New(isolate, resolver, kCraneExternalTag);
     
     // Create callback that rejects the PromiseResolver
     auto callback = [](const FunctionCallbackInfo<Value>& info) {
@@ -9051,7 +9058,7 @@ Global<Function>* v8_PromiseResolver_CreateRejectHandler(
         
         // Extract resolver from data
         Local<External> external = Local<External>::Cast(info.Data());
-        auto* resolver = static_cast<Global<Promise::Resolver>*>(external->Value());
+        auto* resolver = static_cast<Global<Promise::Resolver>*>(external->Value(kCraneExternalTag));
         
         // Get reason argument (or undefined if no args)
         Local<Value> reason = info.Length() > 0 ? info[0] : Undefined(isolate).As<Value>();
@@ -9127,7 +9134,7 @@ Global<Function>* v8_CreateZigFulfillHandler(
     };
     
     // Store in External
-    Local<External> external = External::New(isolate, data);
+    Local<External> external = External::New(isolate, data, kCraneExternalTag);
     
     // Create callback that invokes the Zig function
     auto callback = [](const FunctionCallbackInfo<Value>& info) {
@@ -9136,7 +9143,7 @@ Global<Function>* v8_CreateZigFulfillHandler(
         
         // Extract callback data
         Local<External> external = Local<External>::Cast(info.Data());
-        auto* data = static_cast<ZigPromiseCallbackData*>(external->Value());
+        auto* data = static_cast<ZigPromiseCallbackData*>(external->Value(kCraneExternalTag));
         
         if (data && data->fulfill_callback) {
             // Get value argument (or nullptr if no args/undefined)
@@ -9198,7 +9205,7 @@ Global<Function>* v8_CreateZigRejectHandler(
     };
     
     // Store in External
-    Local<External> external = External::New(isolate, data);
+    Local<External> external = External::New(isolate, data, kCraneExternalTag);
     
     // Create callback that invokes the Zig function
     auto callback = [](const FunctionCallbackInfo<Value>& info) {
@@ -9207,7 +9214,7 @@ Global<Function>* v8_CreateZigRejectHandler(
         
         // Extract callback data
         Local<External> external = Local<External>::Cast(info.Data());
-        auto* data = static_cast<ZigPromiseCallbackData*>(external->Value());
+        auto* data = static_cast<ZigPromiseCallbackData*>(external->Value(kCraneExternalTag));
         
         if (data && data->reject_callback) {
             // Get reason argument (or nullptr if no args/undefined)
@@ -9829,7 +9836,7 @@ static void AsyncIteratorNextCallback(const FunctionCallbackInfo<Value>& info) {
     }
     
     Local<External> external = Local<External>::Cast(data_value);
-    AsyncIteratorData* data = static_cast<AsyncIteratorData*>(external->Value());
+    AsyncIteratorData* data = static_cast<AsyncIteratorData*>(external->Value(kCraneExternalTag));
     
 
     
@@ -9880,7 +9887,7 @@ static void AsyncIteratorReturnCallback(const FunctionCallbackInfo<Value>& info)
     }
     
     Local<External> external = Local<External>::Cast(data_value);
-    AsyncIteratorData* data = static_cast<AsyncIteratorData*>(external->Value());
+    AsyncIteratorData* data = static_cast<AsyncIteratorData*>(external->Value(kCraneExternalTag));
     
     if (!data || !data->return_fn) {
         isolate->ThrowException(Exception::TypeError(
@@ -10041,7 +10048,7 @@ void DeserializeInternalFields(Local<Object> holder, int index,
     // For minimal snapshots, set internal field to nullptr
     // WebIDL objects are registered at runtime, not from snapshot
     if (payload.raw_size == 0) {
-        holder->SetAlignedPointerInInternalField(index, nullptr);
+        holder->SetAlignedPointerInInternalField(index, nullptr, kCraneEmbedderDataTag);
     }
 }
 
@@ -10355,6 +10362,7 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
     }
     isolate->SetData(kIsolateDataSlot, isolate_data);
     Isolate::Initialize(isolate, create_params);
+    adoptCppHeap(isolate_data);
     installGCPauseRecorder(isolate);
 
     return isolate;
@@ -11066,15 +11074,8 @@ int v8_JSON_Stringify_ToBuffer(
     }
     
     // Write UTF-8 to buffer
-    int written = json_str->WriteUtf8(
-        isolate,
-        buffer,
-        buffer_len,
-        nullptr,  // nchars_ref
-        String::NO_NULL_TERMINATION
-    );
-    
-    return written;
+    if (buffer_len <= 0) return 0;
+    return static_cast<int>(json_str->WriteUtf8(isolate, buffer, static_cast<size_t>(buffer_len)));
 }
 
 /// Parse JSON string from buffer and return V8 value
@@ -11705,7 +11706,7 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
             // Step 3: "Perform ? OrdinarySetWithOwnDescriptor(O, P, V,
             // Receiver, ownDesc)" with ownDesc undefined: ES 10.1.9.2 step 1
             // walks the prototype chain for P.
-            Local<Value> proto = target->GetPrototypeV2();
+            Local<Value> proto = target->GetPrototype();
             while (proto->IsObject()) {
                 Local<Object> holder = proto.As<Object>();
                 Local<Value> desc_value;
@@ -11713,7 +11714,7 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
                     return;  // an exception is pending
                 }
                 if (desc_value->IsUndefined()) {
-                    proto = holder->GetPrototypeV2();
+                    proto = holder->GetPrototype();
                     continue;
                 }
                 Local<Object> desc = desc_value.As<Object>();
@@ -11931,7 +11932,7 @@ static std::atomic<ShadowRealmContextDispatch> g_shadow_realm_dispatch{nullptr};
 /// V8 internal callback for ShadowRealm context creation
 /// This is called by V8 when JavaScript code executes `new ShadowRealm()`
 static MaybeLocal<Context> V8HostCreateShadowRealmContextCallback(Local<Context> initiator_context) {
-    Isolate* isolate = initiator_context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     void* result = nullptr;
     if (ShadowRealmContextDispatch dispatch = g_shadow_realm_dispatch.load(std::memory_order_acquire)) {
         // The initiator, for Zig to read during the call.
@@ -13516,7 +13517,7 @@ static MaybeLocal<Module> ProtocolResolveModuleCallback(
     Local<FixedArray> import_attributes,
     Local<Module> referrer
 ) {
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     ProtocolResolver* resolver = t_protocol_resolver;
     if (!resolver || !resolver->resolve) {
         throwUnresolvedModuleSpecifier(isolate, specifier);
@@ -13739,7 +13740,7 @@ static MaybeLocal<Promise> ProtocolHostImportModuleDynamically(
     Local<FixedArray> import_attributes
 ) {
     (void)resource_name;
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     EscapableHandleScope handle_scope(isolate);
     Local<Promise::Resolver> resolver;
     if (!Promise::Resolver::New(context).ToLocal(&resolver)) return MaybeLocal<Promise>();
@@ -13822,7 +13823,7 @@ static void ProtocolImportMetaResolve(const FunctionCallbackInfo<Value>& info) {
 static void ProtocolInitializeImportMeta(Local<Context> context, Local<Module> module, Local<Object> meta) {
     auto dispatch = g_protocol_import_meta_url.load(std::memory_order_acquire);
     if (!dispatch) return;
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     Global<Module> handle(isolate, module);
     size_t len = 0;
     const char* url = dispatch(isolate, &handle, module->GetIdentityHash(), &len);
@@ -13947,7 +13948,7 @@ void v8_RunWithBackupIncumbent(Isolate* isolate, Global<Context>* incumbent, voi
 /// Test-only public lifecycle probe. Context::SetPromiseHooks is unavailable
 /// in the linked build (V8_ENABLE_JAVASCRIPT_PROMISE_HOOKS is disabled).
 static void testPromiseHook(PromiseHookType type, Local<Promise> promise, Local<Value>) {
-    IsolateData* data = isolateData(promise->GetIsolate());
+    IsolateData* data = isolateData(Isolate::GetCurrent());
     if (data && data->test_promise_hook)
         data->test_promise_hook(static_cast<int>(type), data->test_promise_hook_data);
 }
@@ -14663,7 +14664,7 @@ static ModifyCodeGenerationFromStringsResult ProtocolModifyCodeGenerationFromStr
     result.codegen_allowed = true;
     auto dispatch = g_protocol_code_generation.load(std::memory_order_acquire);
     if (!dispatch) return result;
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     Global<Context> realm(isolate, context);
     char* code = nullptr;
     size_t code_len = 0;
@@ -14699,7 +14700,7 @@ static bool ProtocolAllowWasmCodeGeneration(Local<Context> context, Local<String
     (void)source;  // V8 passes the empty string (wasm-module.cc IsWasmCodegenAllowed).
     auto dispatch = g_protocol_wasm_code_generation.load(std::memory_order_acquire);
     if (!dispatch) return true;
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     Global<Context> realm(isolate, context);
     return dispatch(isolate, &realm);
 }
@@ -14767,7 +14768,7 @@ static Local<Private> wasmExceptionStackKey(Isolate* isolate) {
 }
 
 static bool wasmCaptureExceptionStack(Local<Context> context, Local<Object> exception) {
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     Local<String> stack_name = String::NewFromUtf8Literal(isolate, "stack");
     Maybe<bool> captured = exception->HasOwnProperty(context, stack_name);
     if (captured.IsNothing()) return false;
@@ -14925,7 +14926,7 @@ static void WasmConstructorConstruct(const FunctionCallbackInfo<Value>& info) {
     if (index == 7 && !wasmCaptureExceptionStack(context, made)) return;
     // WebIDL step 9. The native constructor makes the Wasm internal slots;
     // only its externally observable prototype needs adapting.
-    if (!made->GetPrototypeV2()->StrictEquals(prototype) && !made->SetPrototypeV2(context, prototype).FromMaybe(false)) return;
+    if (!made->GetPrototype()->StrictEquals(prototype) && !made->SetPrototype(context, prototype).FromMaybe(false)) return;
     info.GetReturnValue().Set(made);
 }
 
@@ -15013,7 +15014,7 @@ static void WasmSuspendingConstruct(const FunctionCallbackInfo<Value>& info) {
 // Materialize only on a namespace read or an indirect use of this realm's
 // Wasm intrinsics. Public deletion/assignment never removes the private state.
 static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparation) {
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     Context::Scope context_scope(context);
     NativeStepScope native_step(isolate);
     Local<Value> wasm_value;
@@ -15200,13 +15201,13 @@ static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparat
     Local<Function> apply;
     if (!Function::New(context, WasmSuspendingApply, {}, 3, ConstructorBehavior::kThrow).ToLocal(&apply)) return false;
     Local<Object> apply_handler = Object::New(isolate);
-    if (!apply_handler->SetPrototypeV2(context, Null(isolate)).FromMaybe(false) ||
+    if (!apply_handler->SetPrototype(context, Null(isolate)).FromMaybe(false) ||
         !apply_handler->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "apply"), apply).FromMaybe(false) ||
         !apply_handler->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
     Local<Function> construct;
     if (!Function::New(context, WasmSuspendingConstruct, apply_handler, 3, ConstructorBehavior::kThrow).ToLocal(&construct)) return false;
     Local<Object> construct_handler = Object::New(isolate);
-    if (!construct_handler->SetPrototypeV2(context, Null(isolate)).FromMaybe(false) ||
+    if (!construct_handler->SetPrototype(context, Null(isolate)).FromMaybe(false) ||
         !construct_handler->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "construct"), construct).FromMaybe(false) ||
         !construct_handler->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
     Local<Proxy> suspending_adapter;
@@ -15219,7 +15220,7 @@ static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparat
 }
 
 static bool ensureWasmAdapters(Local<Context> context) {
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     Local<Value> intrinsics, preparation;
     if (!context->Global()->GetPrivate(context, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics)) return false;
     if (intrinsics->IsArray()) return true;
@@ -15757,7 +15758,7 @@ void ThrowCrossOriginSecurityError(Isolate* isolate) {
 /// or null - a Window freed with its page, a severed global.
 void* CrossOriginPlatformObject(Isolate* isolate, Local<Object> object) {
     if (object->InternalFieldCount() < 1) return nullptr;
-    return object->GetAlignedPointerFromInternalField(isolate, 0);
+    return object->GetAlignedPointerFromInternalField(isolate, 0, kCraneEmbedderDataTag);
 }
 
 /// IsPlatformObjectSameOrigin (7.2.1.3.3) as V8's access check: whether the
@@ -15765,7 +15766,7 @@ void* CrossOriginPlatformObject(Isolate* isolate, Local<Object> object) {
 /// ordinary object.
 bool CrossOriginAccessCheck(Local<Context> accessing_context, Local<Object> accessed_object, Local<Value> data) {
     (void)data;
-    Isolate* isolate = accessing_context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     // A platform object of the current realm itself: same origin-domain by
     // definition. V8 never asks this for a global proxy of the accessing
     // context, but asks it on every access to a Location.
@@ -15793,7 +15794,7 @@ bool CrossOriginAccessCheck(Local<Context> accessing_context, Local<Object> acce
 void CrossOriginFailedAccessCheck(Local<Object> target, AccessType type, Local<Value> data) {
     (void)type;
     (void)data;
-    ThrowCrossOriginSecurityError(target->GetIsolate());
+    ThrowCrossOriginSecurityError(Isolate::GetCurrent());
 }
 
 /// `kind`'s CrossOriginProperties entry named `name`, if any.
@@ -15805,8 +15806,7 @@ const CrossOriginMember* FindCrossOriginMember(Isolate* isolate, int32_t kind, L
     Local<String> string = name.As<String>();
     if (string->Length() > 32) return nullptr;
     char buffer[64];
-    int written = string->WriteUtf8(isolate, buffer, sizeof(buffer) - 1, nullptr, String::NO_NULL_TERMINATION);
-    if (written < 0) return nullptr;
+    const size_t written = string->WriteUtf8(isolate, buffer, sizeof(buffer) - 1);
     for (size_t i = 0; i < count; i++) {
         if (members[i].name_len == static_cast<size_t>(written) && std::memcmp(members[i].name, buffer, members[i].name_len) == 0) {
             if (index_out) *index_out = i;
@@ -15934,7 +15934,7 @@ Intercepted CrossOriginNamedGetter(Local<Name> name, const PropertyCallbackInfo<
     Isolate* isolate = info.GetIsolate();
     int32_t kind = CrossOriginKindOf(info.Data());
     Local<Context> current = isolate->GetCurrentContext();
-    Local<Object> holder = info.HolderV2();
+    Local<Object> holder = info.Holder();
     size_t index = 0;
     if (const CrossOriginMember* member = FindCrossOriginMember(isolate, kind, name, &index)) {
         // CrossOriginGet step 3: a data descriptor's [[Value]] - an
@@ -15957,7 +15957,7 @@ Intercepted CrossOriginNamedGetter(Local<Name> name, const PropertyCallbackInfo<
             return Intercepted::kYes;
         }
         Local<Value> result;
-        if (getter->Call(current, info.This(), 0, nullptr).ToLocal(&result)) info.GetReturnValue().Set(result);
+        if (getter->Call(current, info.Holder(), 0, nullptr).ToLocal(&result)) info.GetReturnValue().Set(result);
         return Intercepted::kYes;
     }
     // 7.2.3.5 step 6: a named child navigable.
@@ -15981,7 +15981,7 @@ Intercepted CrossOriginNamedGetter(Local<Name> name, const PropertyCallbackInfo<
 /// [[Set]] (7.2.3.8 step 4, 7.2.4.8 step 2): CrossOriginSet - the setter of
 /// a member that has one, called on the receiver; a SecurityError for
 /// anything else (expandos included).
-Intercepted CrossOriginNamedSetter(Local<Name> name, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+Intercepted CrossOriginNamedSetter(Local<Name> name, Local<Value> value, const PropertyCallbackInfo<Boolean>& info) {
     Isolate* isolate = info.GetIsolate();
     int32_t kind = CrossOriginKindOf(info.Data());
     Local<Context> current = isolate->GetCurrentContext();
@@ -15992,11 +15992,11 @@ Intercepted CrossOriginNamedSetter(Local<Name> name, Local<Value> value, const P
         return Intercepted::kYes;
     }
     Local<Function> setter;
-    if (!CrossOriginFunction(isolate, current, info.HolderV2(), kind, index, *member, CrossOriginFunctionKind::kSetter).ToLocal(&setter)) {
+    if (!CrossOriginFunction(isolate, current, info.Holder(), kind, index, *member, CrossOriginFunctionKind::kSetter).ToLocal(&setter)) {
         return Intercepted::kYes;
     }
     Local<Value> argv[1] = {value};
-    (void)setter->Call(current, info.This(), 1, argv);
+    (void)setter->Call(current, info.Holder(), 1, argv);
     return Intercepted::kYes;
 }
 
@@ -16013,7 +16013,7 @@ Intercepted CrossOriginNamedQuery(Local<Name> name, const PropertyCallbackInfo<I
         return Intercepted::kYes;
     }
     Local<Value> child;
-    if ((kind == kCrossOriginWindow && CrossOriginNamedChild(isolate, info.HolderV2(), name, &child)) || IsCrossOriginFallbackKey(isolate, name)) {
+    if ((kind == kCrossOriginWindow && CrossOriginNamedChild(isolate, info.Holder(), name, &child)) || IsCrossOriginFallbackKey(isolate, name)) {
         info.GetReturnValue().Set(static_cast<int>(PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly));
         return Intercepted::kYes;
     }
@@ -16026,7 +16026,7 @@ Intercepted CrossOriginNamedDescriptor(Local<Name> name, const PropertyCallbackI
     Isolate* isolate = info.GetIsolate();
     int32_t kind = CrossOriginKindOf(info.Data());
     Local<Context> current = isolate->GetCurrentContext();
-    Local<Object> holder = info.HolderV2();
+    Local<Object> holder = info.Holder();
     size_t index = 0;
     if (const CrossOriginMember* member = FindCrossOriginMember(isolate, kind, name, &index)) {
         if (member->method) {
@@ -16083,7 +16083,7 @@ Intercepted CrossOriginNamedDeleter(Local<Name> name, const PropertyCallbackInfo
 }
 
 /// [[DefineOwnProperty]] (7.2.3.6 step 3, 7.2.4.6 step 2): a SecurityError.
-Intercepted CrossOriginNamedDefiner(Local<Name> name, const PropertyDescriptor& desc, const PropertyCallbackInfo<void>& info) {
+Intercepted CrossOriginNamedDefiner(Local<Name> name, const PropertyDescriptor& desc, const PropertyCallbackInfo<Boolean>& info) {
     (void)name;
     (void)desc;
     ThrowCrossOriginSecurityError(info.GetIsolate());
@@ -16150,7 +16150,7 @@ Intercepted CrossOriginIndexedQuery(uint32_t index, const PropertyCallbackInfo<I
     Isolate* isolate = info.GetIsolate();
     const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
-        void* window = CrossOriginPlatformObject(isolate, info.HolderV2());
+        void* window = CrossOriginPlatformObject(isolate, info.Holder());
         if (window && index < dispatch->child_count(window)) {
             info.GetReturnValue().Set(static_cast<int>(PropertyAttribute::ReadOnly));
             return Intercepted::kYes;
@@ -16162,7 +16162,7 @@ Intercepted CrossOriginIndexedQuery(uint32_t index, const PropertyCallbackInfo<I
 
 /// [[Set]] of an array index: CrossOriginSet finds no setter - a
 /// SecurityError, as are [[Delete]] and [[DefineOwnProperty]].
-Intercepted CrossOriginIndexedSetter(uint32_t index, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+Intercepted CrossOriginIndexedSetter(uint32_t index, Local<Value> value, const PropertyCallbackInfo<Boolean>& info) {
     (void)index;
     (void)value;
     ThrowCrossOriginSecurityError(info.GetIsolate());
@@ -16175,7 +16175,7 @@ Intercepted CrossOriginIndexedDeleter(uint32_t index, const PropertyCallbackInfo
     return Intercepted::kYes;
 }
 
-Intercepted CrossOriginIndexedDefiner(uint32_t index, const PropertyDescriptor& desc, const PropertyCallbackInfo<void>& info) {
+Intercepted CrossOriginIndexedDefiner(uint32_t index, const PropertyDescriptor& desc, const PropertyCallbackInfo<Boolean>& info) {
     (void)index;
     (void)desc;
     ThrowCrossOriginSecurityError(info.GetIsolate());
@@ -16189,7 +16189,7 @@ void CrossOriginIndexedEnumerator(const PropertyCallbackInfo<Array>& info) {
     const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     uint32_t count = 0;
     if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
-        if (void* window = CrossOriginPlatformObject(isolate, info.HolderV2())) count = dispatch->child_count(window);
+        if (void* window = CrossOriginPlatformObject(isolate, info.Holder())) count = dispatch->child_count(window);
     }
     Local<Context> context = isolate->GetCurrentContext();
     Local<Array> keys = Array::New(isolate, static_cast<int>(count));
@@ -16544,10 +16544,10 @@ int v8_RegExpBuiltinExecCaptures(Isolate* isolate, PatternMatcher* matcher, cons
         int32_t length = -1;
         if (element->IsString()) {
             Local<String> string = element.As<String>();
-            length = string->Utf8Length(isolate);
+            length = static_cast<int32_t>(string->Utf8Length(isolate));
             std::memcpy(at, &length, sizeof(length));
             at += sizeof(length);
-            if (length > 0) string->WriteUtf8(isolate, at, length, nullptr, String::NO_NULL_TERMINATION);
+            if (length > 0) string->WriteUtf8(isolate, at, static_cast<size_t>(length));
             at += length;
         } else {
             std::memcpy(at, &length, sizeof(length));
@@ -16645,7 +16645,7 @@ void v8_WasmResponseCompilation_Finish(CraneWasmResponseCompilation* compilation
     {
         HandleScope scope(compilation->isolate);
         if (url_length != 0) compilation->streaming->SetUrl(url, url_length);
-        compilation->streaming->Finish();
+        compilation->streaming->Finish({});  // no code cache: no caching callback (d1834d91d32)
     }
     delete compilation;
 }

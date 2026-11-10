@@ -1,8 +1,8 @@
 //! Which V8 archives a build links: `-Dv8`, `-Dv8-build` and the target's OS.
 //!
-//! `-Dv8` picks the V8 version. 13.1 (13.1.203, Chrome 131's) is the default
-//! until the switch commit; 15.7 is 15.7.112.43, the V8 Chrome 157 ships (the
-//! user, 2026-11-10; tmp/plans/v8-update-plan.md), built by
+//! `-Dv8` picks the V8 version. 15.7 is 15.7.112.43, the V8 Chrome 157 ships (the
+//! user, 2026-11-10; tmp/plans/v8-update-plan.md) and the default since the
+//! adapter was ported to it (build.zig refuses 13.1.203 now), built by
 //! scripts/build-v8-15.7.sh into jsengines/v8/15.7.112.43/ beside 13.1's
 //! directories. 15.7's sandbox requires libc++ hardening (V8 BUILD.gn:896), so
 //! that archive is compiled against Chromium's own libc++ (std::__Cr) and
@@ -57,9 +57,9 @@ pub const Version = enum {
     @"13.1",
     @"15.7",
 
-    /// The version a build links unless -Dv8 says otherwise: 13.1 until the
-    /// switch commit.
-    pub const default: Version = .@"13.1";
+    /// The version a build links unless -Dv8 says otherwise: 15.7, since the
+    /// adapter (v8_wrapper.cpp) was ported to it.
+    pub const default: Version = .@"15.7";
 };
 
 /// What an archive built against Chromium's libc++ (15.7) brings beside
@@ -189,8 +189,8 @@ test "an iOS target has no V8 archive, static or official: iOS is JavaScriptCore
     try testing.expectError(error.NoV8ForIos, select(.official, .ios));
 }
 
-test "a plain build links V8 13.1 until the switch" {
-    try testing.expectEqual(Version.@"13.1", Version.default);
+test "a plain build links V8 15.7: the adapter is ported to it" {
+    try testing.expectEqual(Version.@"15.7", Version.default);
 }
 
 test "13.1 static: today's out/static, its include/, no Chromium libc++" {

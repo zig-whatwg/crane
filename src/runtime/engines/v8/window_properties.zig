@@ -454,7 +454,7 @@ fn namedPropertyDeleter(
 fn namedPropertyDefiner(
     _: *v8.Name,
     _: *const v8.PropertyDescriptor,
-    info: *const v8.PropertyCallbackInfoVoid,
+    info: *const v8.PropertyCallbackInfoBoolean,
 ) callconv(.c) v8.Intercepted {
     const isolate = info.getIsolate();
 

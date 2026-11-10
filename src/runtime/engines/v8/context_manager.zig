@@ -1067,7 +1067,7 @@ pub fn windowIndexedPropertyGetter(
     defer v8.v8_Context_Dispose(v8_context);
 
     // Get the 'this' object (the global/Window object)
-    const this_obj = info.getThis();
+    const this_obj = info.getHolder() orelse return .kNo;
     defer v8.v8_Object_Dispose(this_obj);
 
     // Also try getting the global from the context (might be different from this_obj)
@@ -1178,7 +1178,7 @@ pub fn windowIndexedPropertyQuery(
     index: u32,
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
-    const this_obj = info.getThis();
+    const this_obj = info.getHolder() orelse return .kNo;
     defer v8.v8_Object_Dispose(this_obj);
     const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
     if (instance_ptr == null) return .kNo;
@@ -1212,7 +1212,7 @@ pub fn windowIndexedPropertyEnumerator(
     // copy what they are given. Kept, they were two Globals per enumeration
     // of the window's own keys - the context and the array - and one more per
     // child navigable.
-    const this_obj = info.getThis();
+    const this_obj = info.getHolder() orelse return;
     defer v8.v8_Object_Dispose(this_obj);
     const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
     const length: u32 = if (instance_ptr) |ptr| blk: {
@@ -1286,7 +1286,7 @@ pub fn windowNamedPropertyGetter(
     }
 
     // Get the Window instance from the global object
-    const this_obj = info.getThis();
+    const this_obj = info.getHolder() orelse return .kNo;
     defer v8.v8_Object_Dispose(this_obj);
     var instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 
@@ -1357,7 +1357,7 @@ pub fn windowNamedPropertyQuery(
     }
 
     // Get Window instance
-    const this_obj = info.getThis();
+    const this_obj = info.getHolder() orelse return .kNo;
     defer v8.v8_Object_Dispose(this_obj);
     var instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
 

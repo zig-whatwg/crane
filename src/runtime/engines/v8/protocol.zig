@@ -1137,7 +1137,7 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "globals_created", .value = ffi.v8_Debug_CreatedGlobals() },
         // v8_wrapper.cpp's g_obj_src slots, in its order.
         .{ .name = "object_globals_from.FunctionCallbackInfo_This", .value = ffi.v8_Debug_ObjSrc(0) },
-        .{ .name = "object_globals_from.PropertyCallbackInfo_This", .value = ffi.v8_Debug_ObjSrc(1) },
+        .{ .name = "object_globals_from.PropertyCallbackInfo_Holder", .value = ffi.v8_Debug_ObjSrc(1) },
         .{ .name = "object_globals_from.Context_Global", .value = ffi.v8_Debug_ObjSrc(2) },
         .{ .name = "object_globals_from.GetGlobalPrototype", .value = ffi.v8_Debug_ObjSrc(3) },
         .{ .name = "object_globals_from.FunctionTemplate_GetPrototypeObject", .value = ffi.v8_Debug_ObjSrc(4) },

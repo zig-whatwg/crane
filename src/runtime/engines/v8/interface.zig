@@ -5287,7 +5287,7 @@ pub fn V8Interface(comptime Interface: type) type {
             defer v8.v8_Context_Dispose(v8_context);
 
             // Get the 'this' object (the interface instance)
-            const this_obj = info.getThis();
+            const this_obj = info.getHolder() orelse return;
             defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
@@ -5538,7 +5538,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const isolate = info.getIsolate();
 
             // Get the 'this' object
-            const this_obj = info.getThis();
+            const this_obj = info.getHolder() orelse return .kNo;
             defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
@@ -5605,7 +5605,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const isolate = info.getIsolate();
 
             // Get the 'this' object
-            const this_obj = info.getThis();
+            const this_obj = info.getHolder() orelse return .kNo;
             defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
@@ -5700,7 +5700,7 @@ pub fn V8Interface(comptime Interface: type) type {
         fn indexedPropertyDefiner(
             index: u32,
             desc: *const v8.PropertyDescriptor,
-            info: *const v8.PropertyCallbackInfoVoid,
+            info: *const v8.PropertyCallbackInfoBoolean,
         ) callconv(.c) v8.Intercepted {
             const isolate = info.getIsolate();
             // The current context is acquired below, only where a value is
@@ -5729,8 +5729,8 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Step 1.7: Invoke indexed property setter with value
             // Extract instance pointer from internal field of the actual instance (This)
-            // Note: getThis() returns the actual object, getHolder() returns the prototype
-            const this_obj = info.getThis();
+            // The holder: V8 calls a definer only on the object it defines on (the receiver)
+            const this_obj = info.getHolder() orelse return .kNo;
             defer v8.v8_Object_Dispose(this_obj);
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
             if (instance_ptr) |ptr| {
@@ -6210,7 +6210,7 @@ pub fn V8Interface(comptime Interface: type) type {
         ///         otherwise invoke it with P and Desc.[[Value]], return true.
         ///   3. Otherwise OrdinaryDefineOwnProperty.
         /// "Return false" is refuseDefine's.
-        fn namedDefine(info: *const v8.PropertyCallbackInfoVoid, key: []const u8, desc: *const v8.PropertyDescriptor) v8.Intercepted {
+        fn namedDefine(info: *const v8.PropertyCallbackInfoBoolean, key: []const u8, desc: *const v8.PropertyDescriptor) v8.Intercepted {
             if (comptime !has_named_getter) return .kNo;
             const isolate = info.getIsolate();
             if (comptime special.crane_css_properties) {
@@ -6253,7 +6253,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// 'x', {get() {}})`). With the exception pending, V8 propagates it
         /// (GetBooleanReturnValue answers Nothing). The indexed definer
         /// throws its own the same way.
-        fn refuseDefine(info: *const v8.PropertyCallbackInfoVoid, isolate: *v8.Isolate) v8.Intercepted {
+        fn refuseDefine(info: *const v8.PropertyCallbackInfoBoolean, isolate: *v8.Isolate) v8.Intercepted {
             info.setFalse();
             if (info.shouldThrowOnError()) conv.throwTypeError(isolate, "Cannot define this property of a legacy platform object");
             return .kYes;
@@ -6329,7 +6329,7 @@ pub fn V8Interface(comptime Interface: type) type {
             return namedSetReadOnly(info, key.read(property) orelse return .kNo);
         }
 
-        fn namedPropertyDefiner(property: *v8.Name, desc: *const v8.PropertyDescriptor, info: *const v8.PropertyCallbackInfoVoid) callconv(.c) v8.Intercepted {
+        fn namedPropertyDefiner(property: *v8.Name, desc: *const v8.PropertyDescriptor, info: *const v8.PropertyCallbackInfoBoolean) callconv(.c) v8.Intercepted {
             var key: PropertyName = .{};
             defer key.deinit();
             return namedDefine(info, key.read(property) orelse return .kNo, desc);
@@ -6366,7 +6366,7 @@ pub fn V8Interface(comptime Interface: type) type {
             return namedSetReadOnly(info, key.of(index));
         }
 
-        fn forwardedIndexDefiner(index: u32, desc: *const v8.PropertyDescriptor, info: *const v8.PropertyCallbackInfoVoid) callconv(.c) v8.Intercepted {
+        fn forwardedIndexDefiner(index: u32, desc: *const v8.PropertyDescriptor, info: *const v8.PropertyCallbackInfoBoolean) callconv(.c) v8.Intercepted {
             var key: IndexName = .{};
             return namedDefine(info, key.of(index), desc);
         }

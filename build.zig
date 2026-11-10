@@ -2916,7 +2916,11 @@ pub fn build(b: *std.Build) void {
     // -Dv8: the V8 version (tools/v8_archives.zig Version): 13.1 until the
     // switch commit; 15.7 is 15.7.112.43, Chrome 157's (the user, 2026-11-10;
     // tmp/plans/v8-update-plan.md), from jsengines/v8/15.7.112.43/.
-    const v8_version = b.option(v8_archives.Version, "v8", "The V8 to link: 13.1 (default until the switch; jsengines/v8/out/...) or 15.7 (15.7.112.43, Chrome 157's: jsengines/v8/15.7.112.43, scripts/build-v8-15.7.sh)") orelse v8_archives.Version.default;
+    const v8_version = b.option(v8_archives.Version, "v8", "The V8 to link: 15.7 (default: 15.7.112.43, Chrome 157's - jsengines/v8/15.7.112.43, scripts/build-v8-15.7.sh); 13.1 is refused, the adapter is ported") orelse v8_archives.Version.default;
+    if (v8_version == .@"13.1") {
+        std.debug.print("Error: -Dv8=13.1: the V8 adapter (src/runtime/engines/v8/v8_wrapper.cpp) is ported to V8 15.7.112.43 and no longer compiles against 13.1.203; drop -Dv8\n", .{});
+        std.process.exit(1);
+    }
     const v8_selected = v8_archives.selectVersion(v8_version, v8_build, target.result.os.tag) catch |err| switch (err) {
         error.NoOfficialBuild => {
             std.debug.print("Error: -Dv8=15.7 has no official build: out/official is retired until roadmap item v8-pgo (the user, 2026-11-10); drop -Dv8-build\n", .{});
