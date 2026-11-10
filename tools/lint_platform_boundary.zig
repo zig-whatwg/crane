@@ -55,8 +55,6 @@ const scanned_roots = [_][]const u8{ "src", "tests", "tools" };
 
 /// The facade's re-exports of today's backends (protocol.zig, TRANSITIONAL).
 pub const transitional_names = [_][]const u8{
-    "media_backend",
-    "media_adapter",
     "timer_backend",
     "clipboard_backend",
     "ClipboardBackend",
@@ -859,21 +857,21 @@ test "platform.adapter counts outside tests/; the transitional names count every
     try expectRefs("src/html/a.zig",
         \\const platform = @import("platform");
         \\const control = platform.adapter.control;
-        \\const media = @import("platform").media_backend;
+        \\const clip = @import("platform").clipboard_backend;
         \\const t = platform.timer_backend;
         \\const now = platform.monotonicNow();
     , &.{
         "2:platform.adapter",
-        "3:platform.media_backend",
+        "3:platform.clipboard_backend",
         "4:platform.timer_backend",
     });
     try expectRefs("tests/wpt_runner/x.zig",
         \\const platform = @import("platform");
         \\const control = platform.adapter.control;
-        \\const media = @import("platform").media_backend;
+        \\const clip = @import("platform").clipboard_backend;
         \\const c = std.c.getenv("X");
     , &.{
-        "3:platform.media_backend",
+        "3:platform.clipboard_backend",
     });
     try expectRefs("tools/repl.zig",
         \\const p = @import("platform");

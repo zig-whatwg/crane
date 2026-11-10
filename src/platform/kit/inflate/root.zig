@@ -1,5 +1,5 @@
 //! kit/inflate: a zlib inflater (RFC 1950's container around RFC 1951's
-//! DEFLATE), for the testing platform's png.zig and kit/sfnt's WOFF tables.
+//! DEFLATE), for kit/image_decoding's png.zig and kit/sfnt's WOFF tables.
 //! `zlib` decodes as far as its input
 //! goes and stops exactly there: every symbol whose bits are all present is
 //! decoded and none is guessed, as zlib's own inflate leaves a truncated

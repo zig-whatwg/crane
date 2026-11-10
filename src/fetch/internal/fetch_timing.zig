@@ -56,6 +56,26 @@ pub const ConnectionTimingInfo = struct {
         return .{};
     }
 
+    /// The final connection timing info of a fetch that made no connection:
+    /// a response from the HTTP cache (HTTP-network-or-cache fetch step
+    /// 26.2.2.3) or from a service worker. Fetch leaves it null there, and
+    /// Resource Timing's getters read it; Chrome, Firefox and Safari report
+    /// every connection time as fetchStart for such a response, and
+    /// secureConnectionStart 0 (Resource Timing Level 1's note: "If ... the
+    /// resource is retrieved from relevant application caches or local
+    /// resources, this attribute must return the value of fetchStart";
+    /// Blink's PerformanceResourceTiming and Gecko's PerformanceTimingData
+    /// fall back to fetchStart when no connection was timed; wpt.fyi:
+    /// resource-timing-level1.sub.html 21/21 in Edge 159, run
+    /// 4884359317028864, and resource-timing-fetch-variants.https.html's
+    /// "Connection info" for a service worker's response, df642c4142).
+    /// `fetch_start`: the fetch's post-redirect start time.
+    pub fn noConnection(fetch_start: DOMHighResTimeStamp) Self {
+        var info = forReusedConnection(fetch_start);
+        info.secure_connection_start_time = 0;
+        return info;
+    }
+
     /// Create a ConnectionTimingInfo for a reused connection.
     /// All timing values are set to the default start time.
     pub fn forReusedConnection(default_start_time: DOMHighResTimeStamp) Self {
@@ -469,4 +489,23 @@ test "clampAndCoarsenConnectionTimingInfo with reused connection" {
     try std.testing.expectEqual(default_start, result.secure_connection_start_time);
     // Protocol should still be preserved
     try std.testing.expectEqualStrings("h2", result.alpn_negotiated_protocol);
+}
+
+test "a fetch that made no connection - a response from the HTTP cache or a service worker - has every connection time at its fetch start, and no TLS time" {
+    // Resource Timing's attribute steps read the fetch timing info's final
+    // connection timing info, which Fetch leaves null when no connection was
+    // made. Chrome, Firefox and Safari report domainLookupStart ==
+    // domainLookupEnd == connectStart == connectEnd == fetchStart for such a
+    // response (Resource Timing Level 1's note: "If ... the resource is
+    // retrieved from relevant application caches or local resources, this
+    // attribute must return the value of fetchStart"; Blink's
+    // PerformanceResourceTiming and Gecko's PerformanceTimingData fall back
+    // to fetchStart), and secureConnectionStart 0.
+    const info = ConnectionTimingInfo.noConnection(42.5);
+    try std.testing.expectEqual(@as(DOMHighResTimeStamp, 42.5), info.domain_lookup_start_time);
+    try std.testing.expectEqual(@as(DOMHighResTimeStamp, 42.5), info.domain_lookup_end_time);
+    try std.testing.expectEqual(@as(DOMHighResTimeStamp, 42.5), info.connection_start_time);
+    try std.testing.expectEqual(@as(DOMHighResTimeStamp, 42.5), info.connection_end_time);
+    try std.testing.expectEqual(@as(DOMHighResTimeStamp, 0), info.secure_connection_start_time);
+    try std.testing.expectEqualStrings("", info.alpn_negotiated_protocol);
 }

@@ -289,29 +289,38 @@ pub const ExemptionKind = enum {
     /// a bug in the test filed upstream (the user, 2026-11-08); exempt until
     /// that bug is resolved, then revisited.
     test_bug,
+    /// The file fails ONLY because no renderer answers geometry - a layout
+    /// box's size or position (the user, 2026-11-09): it still runs and
+    /// shows, but does not block 0.1 until a renderer exists.
+    needs_renderer,
 
     /// The word the file spells the kind with.
     pub fn word(k: ExemptionKind) []const u8 {
         return switch (k) {
             .intentional => "intentional",
             .test_bug => "test-bug",
+            .needs_renderer => "needs-renderer",
         };
     }
 };
 
 /// One entry of tools/wpt_gate_exemptions.txt: a worklist file omitted from
 /// the blocking count - because all three browsers intentionally deviate from
-/// the spec it tests (`intentional`), or because it fails identically in all
-/// three through a test bug filed upstream (`test_bug`). Every key of the
-/// entry's kind is required; slices point into the text.
+/// the spec it tests (`intentional`), because it fails identically in all
+/// three through a test bug filed upstream (`test_bug`), or because it fails
+/// only for want of a renderer to answer geometry (`needs_renderer`). Every
+/// key of the entry's kind is required; slices point into the text.
 pub const Exemption = struct {
     path: []const u8,
     kind: ExemptionKind = .intentional,
+    /// What the browsers do instead, what is wrong with the test, or why the
+    /// failing assertion needs a layout box.
     why: []const u8,
     /// `intentional` only: the spec text (and change) the browsers decline.
     spec: []const u8 = "",
-    /// Per `Browser`: "wpt.fyi run <id>: <passes>/<total>".
-    result: [3][]const u8,
+    /// `intentional` and `test_bug`, per `Browser`: "wpt.fyi run <id>:
+    /// <passes>/<total>".
+    result: [3][]const u8 = .{ "", "", "" },
     /// `intentional` only, per `Browser`: the standards position, WontFix
     /// bug or objection URL.
     intent: [3][]const u8 = .{ "", "", "" },
@@ -319,6 +328,8 @@ pub const Exemption = struct {
     upstream: []const u8 = "",
     /// `test_bug` only: "when <upstream> is resolved".
     revisit: []const u8 = "",
+    /// `needs_renderer` only: the failing assertion, as the run reports it.
+    assertion: []const u8 = "",
 };
 
 /// Where and why the exemptions are invalid. The message lives in `buf`, so
@@ -338,13 +349,14 @@ const exemption_keys = [_][]const u8{
     "firefox.result", "firefox.intent",
     "safari.result",  "safari.intent",
     "kind",           "upstream",
-    "revisit",
+    "revisit",        "assertion",
 };
 const key_why = 0;
 const key_spec = 1;
 const key_kind = 8;
 const key_upstream = 9;
 const key_revisit = 10;
+const key_assertion = 11;
 /// The `result` key of each `Browser`, and its `intent` key (the next one).
 const key_result = [3]usize{ 2, 4, 6 };
 
@@ -360,6 +372,7 @@ fn keyOf(kind: ExemptionKind, ki: usize) bool {
                 if (ki == r) break true;
             } else false,
         },
+        .needs_renderer => ki == key_why or ki == key_kind or ki == key_assertion,
     };
 }
 
@@ -443,7 +456,7 @@ fn finishExemption(p: PendingExemption, diag: *ExemptionDiag) error{InvalidExemp
     // No kind: intentional, the one kind there was before the user's
     // 2026-11-08 ruling added the second - every older entry keeps its meaning.
     const kind: ExemptionKind = if (v[key_kind]) |k|
-        (if (std.mem.eql(u8, k, "test-bug")) .test_bug else .intentional)
+        (if (std.mem.eql(u8, k, "test-bug")) .test_bug else if (std.mem.eql(u8, k, "needs-renderer")) .needs_renderer else .intentional)
     else
         .intentional;
     const article = if (kind == .intentional) "an" else "a";
@@ -457,6 +470,7 @@ fn finishExemption(p: PendingExemption, diag: *ExemptionDiag) error{InvalidExemp
         if (value == null) return switch (kind) {
             .intentional => invalid(diag, p.line, "[{s}]: missing \"{s}\" - an exemption needs the spec and every browser's evidence", .{ p.path, k }),
             .test_bug => invalid(diag, p.line, "[{s}]: missing \"{s}\" - a test-bug exemption needs the upstream issue, every browser's result and when to revisit", .{ p.path, k }),
+            .needs_renderer => invalid(diag, p.line, "[{s}]: missing \"{s}\" - a needs-renderer exemption needs the failing assertion and why it needs a layout box", .{ p.path, k }),
         };
     }
     switch (kind) {
@@ -486,6 +500,12 @@ fn finishExemption(p: PendingExemption, diag: *ExemptionDiag) error{InvalidExemp
                 .upstream = upstream,
                 .revisit = revisit,
             };
+        },
+        .needs_renderer => return .{
+            .path = p.path,
+            .kind = .needs_renderer,
+            .why = v[key_why].?,
+            .assertion = v[key_assertion].?,
         },
     }
 }
@@ -528,8 +548,8 @@ pub fn parseExemptions(arena: std.mem.Allocator, text: []const u8, diag: *Exempt
             return invalid(diag, n, "[{s}]: {s} must read \"wpt.fyi run <id>: <passes>/<total>\"", .{ p.path, key });
         if ((std.mem.eql(u8, key, "spec") or std.mem.endsWith(u8, key, ".intent")) and !isHttpUrl(value))
             return invalid(diag, n, "[{s}]: {s} must be an http(s) URL", .{ p.path, key });
-        if (ki == key_kind and !std.mem.eql(u8, value, "intentional") and !std.mem.eql(u8, value, "test-bug"))
-            return invalid(diag, n, "[{s}]: kind must be intentional or test-bug, not \"{s}\"", .{ p.path, value });
+        if (ki == key_kind and !std.mem.eql(u8, value, "intentional") and !std.mem.eql(u8, value, "test-bug") and !std.mem.eql(u8, value, "needs-renderer"))
+            return invalid(diag, n, "[{s}]: kind must be intentional, test-bug or needs-renderer, not \"{s}\"", .{ p.path, value });
         if (ki == key_upstream and !isWptIssueUrl(value))
             return invalid(diag, n, "[{s}]: upstream must be a web-platform-tests issue or pull request (https://github.com/web-platform-tests/wpt/issues/<n> or /pull/<n>)", .{p.path});
         if (ki == key_revisit and !(value.len > revisit_prefix.len + revisit_suffix.len and
@@ -555,10 +575,17 @@ pub const SweepHost = struct {
     /// "<os>-<arch>": "linux-x86_64", "macos-arm64".
     os: []const u8,
     runners: u32,
+    /// The host's installed font set when the run was made (`fonts=<hash>`,
+    /// a hash of its fontconfig list): the production run takes its fonts
+    /// from the host, as a browser does (lane wptcfg; the integrator accepted
+    /// recording it with each generation, as wpt.fyi pins its font set in its
+    /// image), so a generation names the set its font results came from.
+    /// Null: not recorded.
+    fonts: ?[]const u8 = null,
 };
 
 /// Parses tools/wpt_generation_hosts.txt (its header documents the format):
-/// one `<label> <host> <os>-<arch> <runners>` line per run. Any invalid line
+/// one `<label> <host> <os>-<arch> <runners> [fonts=<hash>]` line per run. Any invalid line
 /// fails the whole parse with `diag` set: a wrong host must stop the site,
 /// never print silently.
 pub fn parseSweepHosts(arena: std.mem.Allocator, text: []const u8, diag: *ExemptionDiag) error{ InvalidHosts, OutOfMemory }![]const SweepHost {
@@ -569,14 +596,24 @@ pub fn parseSweepHosts(arena: std.mem.Allocator, text: []const u8, diag: *Exempt
         n += 1;
         const line = std.mem.trim(u8, raw, " \t\r");
         if (line.len == 0 or line[0] == '#') continue;
-        var fields: [5][]const u8 = undefined;
+        // One more than a line may hold, so a line with too many is seen.
+        var fields: [6][]const u8 = undefined;
         var count: usize = 0;
         var words = std.mem.tokenizeAny(u8, line, " \t");
         while (words.next()) |word| : (count += 1) {
             if (count == fields.len) break;
             fields[count] = word;
         }
-        if (count != 4) return hostsInvalid(diag, n, "\"{s}\": expected <label> <host> <os>-<arch> <runners>", .{line});
+        if (count != 4 and count != 5) return hostsInvalid(diag, n, "\"{s}\": expected <label> <host> <os>-<arch> <runners> [fonts=<hash>]", .{line});
+        const fonts: ?[]const u8 = if (count == 5) fonts: {
+            const prefix = "fonts=";
+            const hash = if (std.mem.startsWith(u8, fields[4], prefix)) fields[4][prefix.len..] else "";
+            const hex = hash.len > 0 and for (hash) |c| {
+                if (!std.ascii.isHex(c)) break false;
+            } else true;
+            if (!hex) return hostsInvalid(diag, n, "\"{s}\": the fifth field must read fonts=<hash> (hex)", .{fields[4]});
+            break :fonts hash;
+        } else null;
         const os = fields[2];
         const dash = std.mem.indexOfScalar(u8, os, '-') orelse 0;
         const known_os = std.mem.eql(u8, os[0..dash], "linux") or std.mem.eql(u8, os[0..dash], "macos");
@@ -590,7 +627,7 @@ pub fn parseSweepHosts(arena: std.mem.Allocator, text: []const u8, diag: *Exempt
         if (runners == 0) return hostsInvalid(diag, n, "\"{s}\": runners must be a whole number above 0", .{fields[3]});
         for (out.items) |h| if (std.mem.eql(u8, h.label, fields[0]))
             return hostsInvalid(diag, n, "{s} is listed twice", .{fields[0]});
-        try out.append(arena, .{ .label = fields[0], .host = fields[1], .os = os, .runners = runners });
+        try out.append(arena, .{ .label = fields[0], .host = fields[1], .os = os, .runners = runners, .fonts = fonts });
     }
     return out.items;
 }
@@ -998,7 +1035,7 @@ test "exemptions: a malformed test-bug entry, or one mixing the kinds' keys, is 
     const a = testing.allocator;
     const cases = [_]struct { []const u8, []const u8, []const u8 }{
         // An unknown kind.
-        .{ "kind = test-bug", "kind = testbug", "kind must be intentional or test-bug" },
+        .{ "kind = test-bug", "kind = testbug", "kind must be intentional, test-bug or needs-renderer" },
         // Upstream is a web-platform-tests issue or pull request, nothing else.
         .{ "upstream = https://github.com/web-platform-tests/wpt/issues/99999", "upstream = https://bugs.webkit.org/show_bug.cgi?id=1", "web-platform-tests issue or pull request" },
         .{ "upstream = https://github.com/web-platform-tests/wpt/issues/99999", "upstream = https://github.com/web-platform-tests/wpt/issues/", "web-platform-tests issue or pull request" },
@@ -1046,6 +1083,110 @@ test "exemptions: a test-bug exempt file counts as exempt, never as blocking" {
     try testing.expectEqual(Gate.exempt, gateOf("TIMEOUT", .{ .passed = 3, .timed_out = 1, .notrun = 5 }).exempted());
 }
 
+// The third kind (the user, 2026-11-09): a file that fails ONLY because no
+// renderer answers geometry, exempt until a renderer exists. Its keys: kind,
+// why (why the assertion needs a layout box) and the failing assertion.
+const fixture_needs_renderer =
+    \\[html/x/decodes-image-data.html]
+    \\kind = needs-renderer
+    \\why = common/security-features decodeImageData reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight); with no renderer clientWidth is 0 (CSSOM View's no-box answer), so getImageData throws IndexSizeError
+    \\assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+    \\
+;
+
+test "exemptions: a needs-renderer entry parses, with why and the failing assertion and nothing else" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    const list = try parseExemptions(arena.allocator(), fixture_needs_renderer, &diag);
+    try testing.expectEqual(@as(usize, 1), list.len);
+    const e = list[0];
+    try testing.expectEqual(ExemptionKind.needs_renderer, e.kind);
+    try testing.expectEqualStrings("needs-renderer", e.kind.word());
+    try testing.expectEqualStrings("html/x/decodes-image-data.html", e.path);
+    try testing.expect(std.mem.startsWith(u8, e.why, "common/security-features decodeImageData reads the image back"));
+    try testing.expectEqualStrings("promise_test: Unhandled rejection with value: object \"IndexSizeError: IndexSizeError\"", e.assertion);
+    // No other kind's evidence: no spec, intent, result, upstream or revisit.
+    try testing.expectEqualStrings("", e.spec);
+    try testing.expectEqualStrings("", e.upstream);
+    try testing.expectEqualStrings("", e.revisit);
+    for (0..3) |i| {
+        try testing.expectEqualStrings("", e.result[i]);
+        try testing.expectEqualStrings("", e.intent[i]);
+    }
+    // All three kinds in one file, in the file's order.
+    const every = try std.mem.concat(arena.allocator(), u8, &.{ fixture_exemption, fixture_test_bug, fixture_needs_renderer });
+    const all = try parseExemptions(arena.allocator(), every, &diag);
+    try testing.expectEqual(@as(usize, 3), all.len);
+    try testing.expectEqual(ExemptionKind.intentional, all[0].kind);
+    try testing.expectEqual(ExemptionKind.test_bug, all[1].kind);
+    try testing.expectEqual(ExemptionKind.needs_renderer, all[2].kind);
+    try testing.expectEqualStrings("", all[0].assertion);
+    try testing.expectEqualStrings("", all[1].assertion);
+}
+
+test "exemptions: a needs-renderer entry missing a key, or with any other, is invalid" {
+    const missing = [_]struct { []const u8, []const u8 }{
+        // Without its kind it reads as intentional, which has no assertion.
+        .{ "kind =", "\"assertion\" is not a key of an intentional exemption" },
+        .{ "why =", "missing \"why\" - a needs-renderer exemption needs the failing assertion and why it needs a layout box" },
+        .{ "assertion =", "missing \"assertion\" - a needs-renderer exemption needs the failing assertion and why it needs a layout box" },
+    };
+    for (missing) |m| {
+        var buf: std.ArrayList(u8) = .empty;
+        defer buf.deinit(testing.allocator);
+        var it = std.mem.splitScalar(u8, fixture_needs_renderer, '\n');
+        while (it.next()) |line| {
+            if (std.mem.startsWith(u8, line, m[0])) continue;
+            try buf.appendSlice(testing.allocator, line);
+            try buf.append(testing.allocator, '\n');
+        }
+        try expectInvalid(buf.items, m[1]);
+    }
+    const a = testing.allocator;
+    const cases = [_]struct { []const u8, []const u8, []const u8 }{
+        // No other kind's key, and no unknown key.
+        .{ "why = ", "spec = https://example.org/spec#step\nwhy = ", "\"spec\" is not a key of a needs-renderer exemption" },
+        .{ "why = ", "upstream = https://github.com/web-platform-tests/wpt/issues/99999\nwhy = ", "\"upstream\" is not a key of a needs-renderer exemption" },
+        .{ "why = ", "chrome.result = wpt.fyi run 5070179567140864: 0/2\nwhy = ", "\"chrome.result\" is not a key of a needs-renderer exemption" },
+        .{ "why = ", "renderer = none\nwhy = ", "unknown key \"renderer\"" },
+        // An unknown kind, a kind given twice, an empty assertion.
+        .{ "kind = needs-renderer", "kind = needs-a-renderer", "kind must be intentional, test-bug or needs-renderer" },
+        .{ "kind = needs-renderer", "kind = needs-renderer\nkind = needs-renderer", "twice" },
+        .{ "assertion = promise_test", "assertion = \nassertion_ = promise_test", "\"assertion\" is empty" },
+    };
+    for (cases) |c| {
+        const text = try std.mem.replaceOwned(u8, a, fixture_needs_renderer, c[0], c[1]);
+        defer a.free(text);
+        try expectInvalid(text, c[2]);
+    }
+    // Its assertion belongs to no other kind.
+    {
+        const text = try std.mem.replaceOwned(u8, a, fixture_exemption, "why = ", "assertion = promise_test: x\nwhy = ");
+        defer a.free(text);
+        try expectInvalid(text, "\"assertion\" is not a key of an intentional exemption");
+    }
+    {
+        const text = try std.mem.replaceOwned(u8, a, fixture_test_bug, "why = ", "assertion = promise_test: x\nwhy = ");
+        defer a.free(text);
+        try expectInvalid(text, "\"assertion\" is not a key of a test-bug exemption");
+    }
+}
+
+test "exemptions: a needs-renderer exempt file counts as exempt, never as blocking" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    const list = try parseExemptions(arena.allocator(), fixture_needs_renderer, &diag);
+    var known: std.StringHashMapUnmanaged(void) = .empty;
+    defer known.deinit(testing.allocator);
+    try known.put(testing.allocator, "css/x/other.html", {});
+    try testing.expectError(error.InvalidExemption, checkExemptionPaths(list, &known, &diag));
+    try known.put(testing.allocator, "html/x/decodes-image-data.html", {});
+    try checkExemptionPaths(list, &known, &diag);
+    try testing.expectEqual(Gate.exempt, gateOf("OK", .{ .failed = 4 }).exempted());
+}
+
 // ============================================================================
 // Where each generation was swept (tests)
 // ============================================================================
@@ -1090,7 +1231,8 @@ fn expectInvalidHosts(text: []const u8, needle: []const u8) !void {
 
 test "hosts: a malformed or repeated line is invalid" {
     try expectInvalidHosts("sweep-a server1 linux-x86_64\n", "expected <label> <host> <os>-<arch> <runners>");
-    try expectInvalidHosts("sweep-a server1 linux-x86_64 32 extra\n", "expected <label> <host> <os>-<arch> <runners>");
+    try expectInvalidHosts("sweep-a server1 linux-x86_64 32 extra\n", "the fifth field must read fonts=<hash>");
+    try expectInvalidHosts("sweep-a server1 linux-x86_64 32 fonts=ab extra\n", "expected <label> <host> <os>-<arch> <runners>");
     try expectInvalidHosts("sweep-a server1 Linux 32\n", "<os>-<arch>");
     try expectInvalidHosts("sweep-a server1 freebsd-x86_64 32\n", "<os>-<arch>");
     try expectInvalidHosts("sweep-a server1 linux- 32\n", "<os>-<arch>");
@@ -1103,6 +1245,18 @@ test "hosts: a malformed or repeated line is invalid" {
     var diag: ExemptionDiag = .{};
     try testing.expectError(error.InvalidHosts, parseSweepHosts(arena.allocator(), "# c\nsweep-a server1 linux-x86_64 32\nsweep-b x\n", &diag));
     try testing.expectEqual(@as(usize, 3), diag.line);
+}
+
+test "hosts: a run may name its host's font set, as a hash" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    const list = try parseSweepHosts(arena.allocator(), "sweep-a server1 linux-x86_64 32 fonts=1a2b3c4d\nsweep-b chat.local macos-arm64 8\n", &diag);
+    try testing.expectEqualStrings("1a2b3c4d", list[0].fonts.?);
+    try testing.expect(list[1].fonts == null);
+    try testing.expectError(error.InvalidHosts, parseSweepHosts(arena.allocator(), "sweep-a server1 linux-x86_64 32 fonts=\n", &diag));
+    try testing.expectError(error.InvalidHosts, parseSweepHosts(arena.allocator(), "sweep-a server1 linux-x86_64 32 production\n", &diag));
+    try testing.expectError(error.InvalidHosts, parseSweepHosts(arena.allocator(), "sweep-a server1 linux-x86_64 32 fonts=xyz\n", &diag));
 }
 
 test "hosts: an OS as the site says it" {

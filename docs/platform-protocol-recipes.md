@@ -535,6 +535,16 @@ WPT: workers/ and html/webappapis/system-state-and-capabilities/ A/B.
 
 **Retires**: src/platform/media_backend.zig and media_adapter.zig (their callers move to the media_decoding operations).
 
+**Done for media decoding** (lane wptcfg D4, the user 2026-11-09: the platform compiled in decides
+whether a capability is built in or links out): kit/media_decoding (WAV linear PCM, the runner's
+wav_backend.zig moved with its history) is composed by darwin, linux AND testing, `media_decoding`
+native on all three, so Crane's own browser - the console - plays what WPT plays. HTMLMediaElement
+reaches it through src/html/media/decoding.zig (html.platform_state.of(realm), gated on the
+capability); `BrowserConfig.media_backend`, `MediaHost`, media_backend.zig, media_adapter.zig and
+their TRANSITIONAL re-exports are deleted. The runner's header-only WebM code (it decoded no pixels or
+samples) was deleted, not moved: WebM answers "" until a real decoder exists. The rest of this step
+(platform events, the fake devices, the control surface) is still to do.
+
 **Goal**: the WPT runner builds with `-Dplatform=testing` and stops passing backends through
 BrowserConfig; platform events reach Crane; media decoding is a capability.
 
@@ -679,9 +689,11 @@ WPT: the 17 type=file and 17 showPicker worklist files A/B.
 execCommand copy/cut/paste (src/html/editing/executor.zig:126, selection_ops.zig:302) through
 `platform.readClipboard` / `writeClipboard`, with the Async Clipboard API's permission and activation
 rules above; src/html/navigator/clipboard/root.zig's private ClipboardBackend and
-src/html/navigator/navigator.zig:69's field go. darwin: NSPasteboard (macOS) / UIPasteboard (iOS) on
-the main queue - iOS shows its own paste prompt; linux: the system clipboard when a display is present,
-kit/memory_clipboard otherwise; testing: kit/memory_clipboard per Browser.
+src/html/navigator/navigator.zig:69's field go. The platform side is built: darwin, linux and testing
+all answer with kit/memory_clipboard per Browser (darwin and linux since D2, the user 2026-11-09, as
+headless Chrome keeps an in-memory clipboard). Linking out to the OS - darwin's NSPasteboard (macOS) /
+UIPasteboard (iOS) on the main queue, where iOS shows its own paste prompt; linux's system clipboard
+when a display is present - is each adapter's later choice (the user, 2026-11-09 21:09 UTC).
 
 **Tests**: write then read round-trips through the testing platform; two Browsers' in-memory
 clipboards are separate; a read without permission or activation rejects as the spec says. WPT:

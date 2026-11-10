@@ -105,6 +105,9 @@ printf '%s\n' 'document.title' 'document.querySelector("a").click()' 'location.h
   geometry (`getBoundingClientRect` and layout-dependent values are what the layout backend gives:
   none here).
 - Automation protocols (CDP, WebDriver BiDi): not the console's - src/webdriver is their home.
-- Media and image decoding: the host's (BrowserConfig.media_backend); the console builds in no
-  decoder, so `canPlayType` answers `""`.
+- Media decoding beyond WAV: the platform decides what it decodes (protocol `media_decoding`; lane
+  wptcfg D4, the user 2026-11-09). Crane's default platforms build in WAV linear PCM
+  (kit/media_decoding), so the console's `<audio>` plays a WAV - `canPlayType('audio/wav')` is
+  `"maybe"`, `loadedmetadata` and `ended` fire - and answers `""` for WebM, Ogg and MP4, which nothing
+  decodes yet.
 - Persistence: everything is in memory (above).

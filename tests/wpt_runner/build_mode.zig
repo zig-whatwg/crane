@@ -113,6 +113,73 @@ pub fn releaseOption(release: bool, release_fast: bool) error{TwoReleaseBuilds}!
     return null;
 }
 
+/// The platform module graph a build links (build.zig maps it to a
+/// `Platform`): the console's - the target's own adapter (linux, darwin),
+/// what Crane's own browser ships - or the testing platform's, whose
+/// compiled-in test capabilities (image decoders, an in-memory clipboard,
+/// fixed fonts, the replaced-element layout stopgap) only the unit tests use.
+pub const PlatformGraph = enum { console, testing };
+
+/// A build's configuration as far as the WPT question goes: its modes (with
+/// its allocator) and its platform graph.
+pub const Build = struct {
+    modes: RunnerModes,
+    platform: PlatformGraph,
+};
+
+/// Crane's production configuration: the release console's
+/// (`zig build repl-exe -Dwpt-runner-release`, tools/repl.zig) - every part
+/// in the release mode, libc's malloc, and the console's platform graph.
+pub fn releaseConsole(release: Release) Build {
+    return .{ .modes = releaseRunner(release), .platform = .console };
+}
+
+/// The WPT runner's two builds, as the browsers have them (the user,
+/// 2026-11-09: "ok then we should architect ours like the way browsers do
+/// it"): wpt.fyi scores the browsers' SHIPPING builds, and their own CI runs
+/// the same tests on debug and sanitizer builds that never feed a score.
+pub const RunnerBuild = enum {
+    /// `wpt_runner` (`zig build wpt-runner`): Crane exactly as it runs in
+    /// production (`releaseConsole`). Generation sweeps, the progress site,
+    /// every lane A/B's pass counts, cost pairs and every timing gate.
+    production,
+    /// `wpt_runner_bug_finding` (`zig build wpt-runner-bug-finding`): the
+    /// same product with detection added - Crane's modules in Debug, the full
+    /// C sanitizer, the leak- and double-free-detecting allocator with
+    /// poison-on-free. It runs the same worklist to catch crashes,
+    /// use-after-free reads, leaks and assertion failures; it is never
+    /// published and never timed.
+    bug_finding,
+
+    pub fn binaryName(self: RunnerBuild) []const u8 {
+        return switch (self) {
+            .production => "wpt_runner",
+            .bug_finding => "wpt_runner_bug_finding",
+        };
+    }
+
+    /// The `build` its journal records carry (journal.zig `Build`).
+    pub fn journalName(self: RunnerBuild) []const u8 {
+        return switch (self) {
+            .production => "production",
+            .bug_finding => "bug-finding",
+        };
+    }
+};
+
+/// One runner build's configuration. `release`: -Dwpt-runner-release or
+/// -Dwpt-runner-release-fast (`releaseOption`), which choose the release
+/// console's mode - and with it production's, ReleaseSafe when neither is
+/// given. `runner_option`, `optimize`, `optimize_given`: as `runnerModes`,
+/// which decide the bug-finding runner alone (production follows the
+/// console, never a runner option).
+pub fn runnerBuild(build: RunnerBuild, release: ?Release, runner_option: ?Mode, optimize: Mode, optimize_given: bool) Build {
+    return switch (build) {
+        .production => releaseConsole(release orelse .safe),
+        .bug_finding => .{ .modes = runnerModes(runner_option, optimize, optimize_given), .platform = .console },
+    };
+}
+
 /// `modes` as a Crane pin's build identity names them (tools/perf_bench, the
 /// journal's `engine.optimize`): "root ReleaseSafe, Crane modules
 /// ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc".
@@ -484,6 +551,88 @@ test "repl.modes: the release console's build identity in its pin's own key=valu
         "optimize=root ReleaseFast, Crane modules ReleaseFast, C libraries ReleaseFast, sanitize_c off, libc malloc\ntarget_cpu=apple_m4 (native)\n",
         w.buffered(),
     );
+}
+
+test "the production runner is the release console: its modes, allocator and platform graph, exactly" {
+    // The user, 2026-11-09 (15:38 ET): "I want our WPT to only ever run Crane
+    // with the exact same configuration and memory setup that Crane would
+    // have running in a production environment. We should never special case
+    // something." Crane's production configuration is its own browser's,
+    // the release console's (tools/repl.zig under -Dwpt-runner-release, the
+    // build /performance/ times). The production runner takes it through
+    // `production`, as the console does, so the two cannot drift: pinned for
+    // the headline build (ReleaseSafe) and for the ReleaseFast column, and
+    // whatever -Drepl-optimize or -Dwpt-runner-optimize say.
+    for ([_]?Release{ null, .safe, .fast }) |release| {
+        const runner = runnerBuild(.production, release, null, .Debug, false);
+        const console = releaseConsole(release orelse .safe);
+        try testing.expectEqual(console.modes.root, runner.modes.root);
+        try testing.expectEqual(console.modes.crane_modules, runner.modes.crane_modules);
+        try testing.expectEqual(console.modes.c_libraries, runner.modes.c_libraries);
+        try testing.expectEqual(console.modes.sanitize_c, runner.modes.sanitize_c);
+        try testing.expectEqual(console.modes.allocator, runner.modes.allocator);
+        try testing.expectEqual(console.platform, runner.platform);
+        // The release console is what consoleModes builds under the option.
+        const built = consoleModes(release orelse .safe, .Debug, .Debug, true);
+        try testing.expectEqual(built.root, console.modes.root);
+        try testing.expectEqual(built.crane_modules, console.modes.crane_modules);
+        try testing.expectEqual(built.c_libraries, console.modes.c_libraries);
+        try testing.expectEqual(built.sanitize_c, console.modes.sanitize_c);
+        try testing.expectEqual(built.allocator, console.modes.allocator);
+    }
+    // -Dwpt-runner-optimize decides nothing of production's.
+    const asked_debug = runnerBuild(.production, null, .Debug, .Debug, true);
+    try testing.expectEqual(Mode.ReleaseSafe, asked_debug.modes.root);
+    try testing.expectEqual(Mode.ReleaseSafe, asked_debug.modes.crane_modules);
+}
+
+test "the production runner, spelled out: ReleaseSafe throughout, ReleaseSafe's own C sanitizer, libc malloc, the console's platform" {
+    const p = runnerBuild(.production, null, null, .Debug, false);
+    try testing.expectEqual(Mode.ReleaseSafe, p.modes.root);
+    try testing.expectEqual(Mode.ReleaseSafe, p.modes.crane_modules);
+    try testing.expectEqual(Mode.ReleaseSafe, p.modes.c_libraries);
+    try testing.expectEqual(@as(?std.zig.SanitizeC, .trap), p.modes.sanitize_c);
+    try testing.expectEqual(RunnerAllocator.production, p.modes.allocator);
+    // The console's graph: the target's own platform adapter (linux, darwin),
+    // never the testing platform's compiled-in test capabilities.
+    try testing.expectEqual(PlatformGraph.console, p.platform);
+    var buf: [160]u8 = undefined;
+    try testing.expectEqualStrings(
+        "root ReleaseSafe, Crane modules ReleaseSafe, C libraries ReleaseSafe, sanitize_c trap, libc malloc",
+        try describe(&buf, p.modes),
+    );
+}
+
+test "the bug-finding runner differs from production only in detection: same platform graph, debug allocator, Debug checks, the full C sanitizer" {
+    // The browsers' model (the user, 2026-11-09, 15:40 ET: "ok then we should
+    // architect ours like the way browsers do it"): wpt.fyi scores shipping
+    // builds; Chromium's and Firefox's own CI also run WPT on debug and
+    // sanitizer builds of the SAME product, which never feed a score. So the
+    // bug-finding build keeps the production platform graph - a subtest that
+    // differs between the two runs is then a bug, never a configuration -
+    // and adds only detection: Crane's modules in Debug (the refcount ledger,
+    // the isolate cleanup validation, the teardown-hold checks), the full C
+    // sanitizer, and the leak- and double-free-detecting allocator.
+    const b = runnerBuild(.bug_finding, null, null, .Debug, false);
+    const p = runnerBuild(.production, null, null, .Debug, false);
+    try testing.expectEqual(p.platform, b.platform);
+    try testing.expectEqual(RunnerAllocator.debug, b.modes.allocator);
+    try testing.expectEqual(Mode.ReleaseSafe, b.modes.root);
+    try testing.expectEqual(Mode.Debug, b.modes.crane_modules);
+    try testing.expectEqual(Mode.ReleaseSafe, b.modes.c_libraries);
+    try testing.expectEqual(@as(?std.zig.SanitizeC, .full), b.modes.sanitize_c);
+    // -Dwpt-runner-optimize=Debug: the Debug bug-finding runner a diagnosis
+    // wants; the release options name the console's build, never this one.
+    try testing.expectEqual(Mode.Debug, runnerBuild(.bug_finding, null, .Debug, .Debug, false).modes.root);
+    try testing.expectEqual(RunnerAllocator.debug, runnerBuild(.bug_finding, .safe, null, .Debug, false).modes.allocator);
+    try testing.expectEqual(Mode.Debug, runnerBuild(.bug_finding, .fast, null, .Debug, false).modes.crane_modules);
+}
+
+test "the two runners' binaries and journal names" {
+    try testing.expectEqualStrings("wpt_runner", RunnerBuild.production.binaryName());
+    try testing.expectEqualStrings("wpt_runner_bug_finding", RunnerBuild.bug_finding.binaryName());
+    try testing.expectEqualStrings("production", RunnerBuild.production.journalName());
+    try testing.expectEqualStrings("bug-finding", RunnerBuild.bug_finding.journalName());
 }
 
 test "every other runner keeps the leak- and double-free-detecting allocator" {

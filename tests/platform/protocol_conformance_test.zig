@@ -72,8 +72,9 @@ test "conformance: the bound platform matches every operation" {
         count += 1;
     }
     // Every operation of the contract is declared (section 6): pin the count,
-    // so an operation removed by accident shows here.
-    try testing.expectEqual(@as(usize, 222), count);
+    // so an operation removed by accident shows here. 221 since D3 (the user,
+    // 2026-11-09 22:21 UTC) removed replacedElementBox.
+    try testing.expectEqual(@as(usize, 221), count);
 }
 
 // ---------------------------------------------------------------------------
@@ -293,14 +294,19 @@ fn dropped(context: *anyopaque) callconv(.c) void {
 const ReadBack = struct {
     text: [16]u8 = undefined,
     len: usize = 0,
+    /// How many items the read delivered (0: an empty clipboard).
+    items: usize = 0,
     outcome: u8 = 0,
 
     fn deliver(context: *anyopaque, items: *const platform.ClipboardItems) callconv(.c) void {
         const self: *ReadBack = @ptrCast(@alignCast(context));
         self.outcome = 1;
+        self.items = items.len;
+        if (items.len == 0 or items.ptr[0].len == 0) return;
         const data = items.ptr[0].ptr[0].data.slice();
-        @memcpy(self.text[0..data.len], data);
-        self.len = data.len;
+        const kept = @min(data.len, self.text.len);
+        @memcpy(self.text[0..kept], data[0..kept]);
+        self.len = kept;
     }
 
     fn drop(context: *anyopaque) callconv(.c) void {
@@ -329,4 +335,159 @@ test "the clipboard, where the platform has one, round-trips through a Reply" {
         // to call.
         try testing.expect(true);
     }
+}
+
+/// Whether -Dplatform-without names `capability` in this build.
+fn compiledOut(comptime capability: []const u8) bool {
+    return for (platform_options.platform_without) |name| {
+        if (std.mem.eql(u8, name, capability)) break true;
+    } else false;
+}
+
+const clipboard_requester: platform.Requester = .{ .request_id = 1, .tab = 1, .frame = 1, .origin = .{}, .top_level_origin = .{}, .secure_context = true, .transient_activation = true };
+
+fn writeClipboardText(browser: *platform.BrowserPlatform, text: []const u8) !void {
+    const representations = [_]platform.ClipboardRepresentation{.{ .mime_type = platform.Str.from("text/plain"), .data = platform.Bytes.from(text) }};
+    const item = [_]platform.ClipboardEntry{.{ .ptr = &representations, .len = 1 }};
+    var written: u8 = 0;
+    platform.writeClipboard(browser, &clipboard_requester, &.{ .ptr = &item, .len = 1 }, .{ .context = &written, .deliver = keepUnit, .drop = dropped });
+    try testing.expectEqual(@as(u8, 1), written);
+}
+
+fn readClipboardText(browser: *platform.BrowserPlatform) !ReadBack {
+    var back: ReadBack = .{};
+    platform.readClipboard(browser, &clipboard_requester, &.{platform.Str.from("text/plain")}, .{ .context = &back, .deliver = ReadBack.deliver, .drop = ReadBack.drop });
+    try testing.expectEqual(@as(u8, 1), back.outcome);
+    return back;
+}
+
+// The user's ruling D2 (2026-11-09): the production platforms, darwin and
+// linux, answer the Clipboard API from an in-memory clipboard per Browser
+// (kit/memory_clipboard), as the testing platform does - headless Chrome's
+// own: components/headless/clipboard/headless_clipboard.cc, a
+// ui::ClipboardNonBacked that headless/lib/browser/
+// headless_browser_main_parts.cc installs. Every built-in platform this file
+// is bound to declares it `.emulated` unless -Dplatform-without=clipboard.
+test "every built-in platform has the in-memory clipboard unless it is compiled out" {
+    const expected: platform.Support = if (comptime compiledOut("clipboard")) .unsupported else .emulated;
+    try testing.expectEqual(expected, platform.capabilities.clipboard);
+}
+
+test "the in-memory clipboard is per Browser: two Browsers do not share it" {
+    if (platform.capabilities.clipboard != .emulated) {
+        // Only compiled out may a built-in platform lack it (pinned above).
+        try testing.expect(comptime compiledOut("clipboard"));
+    } else {
+        const allocator = testing.allocator;
+        const first = try platform.createBrowserPlatform(allocator, &.{}, no_events);
+        defer platform.destroyBrowserPlatform(first);
+        const second = try platform.createBrowserPlatform(allocator, &.{}, no_events);
+        defer platform.destroyBrowserPlatform(second);
+
+        // A fresh Browser's clipboard is empty.
+        try testing.expectEqual(@as(usize, 0), (try readClipboardText(first)).items);
+
+        try writeClipboardText(first, "first");
+        // What one Browser copies, the other does not see...
+        try testing.expectEqual(@as(usize, 0), (try readClipboardText(second)).items);
+        // ...and the other's copy does not replace it.
+        try writeClipboardText(second, "second");
+        const from_first = try readClipboardText(first);
+        try testing.expectEqual(@as(usize, 1), from_first.items);
+        try testing.expectEqualStrings("first", from_first.text[0..from_first.len]);
+        const from_second = try readClipboardText(second);
+        try testing.expectEqual(@as(usize, 1), from_second.items);
+        try testing.expectEqualStrings("second", from_second.text[0..from_second.len]);
+    }
+}
+
+// The user's ruling D1 (2026-11-09), and the architecture of 21:09 UTC: "our
+// default platform for running wpt should get its own implementation of these
+// things ... The platform itself that is compiled in will decide if these
+// features are built within the platform or dynamically link out to existing
+// capabilities on the platform." Every built-in platform - darwin and linux,
+// which Crane's own browser and the production WPT runner compile in, and
+// testing - decodes PNG, BMP, GIF, JPEG and SVG with the kit's built-in
+// decoders (kit/image_decoding) unless -Dplatform-without=image_decoding.
+test "every built-in platform decodes images unless image_decoding is compiled out" {
+    const expected: platform.Support = if (comptime compiledOut("image_decoding")) .unsupported else .native;
+    try testing.expectEqual(expected, platform.capabilities.image_decoding);
+}
+
+const image_limits: platform.ImageLimits = .{ .max_dimension = 4096, .max_pixels = 4096 * 4096 };
+
+fn expectDecodes(essence: []const u8, bytes: []const u8, width: u32, height: u32) !void {
+    const image = try platform.decodeImage(testing.allocator, platform.Str.from(essence), platform.Bytes.from(bytes), image_limits);
+    defer testing.allocator.free(image.pixels.slice());
+    try testing.expectEqual(width, image.width);
+    try testing.expectEqual(height, image.height);
+    try testing.expectEqual(@as(usize, width) * height * 4, image.pixels.slice().len);
+    try testing.expect(!image.empty);
+}
+
+test "image decoding: PNG, JPEG, GIF, BMP and SVG decode through the bound platform, which says which types it takes" {
+    if (platform.capabilities.image_decoding == .unsupported) {
+        // Only compiled out may a built-in platform lack it (pinned above).
+        try testing.expect(comptime compiledOut("image_decoding"));
+    } else {
+        const allocator = testing.allocator;
+        for ([_][]const u8{ "image/png", "image/apng", "image/jpeg", "image/gif", "image/bmp", "image/x-bmp", "image/x-ms-bmp", "image/svg+xml" }) |essence| {
+            try testing.expect(platform.imageMimeTypeSupported(platform.Str.from(essence)));
+        }
+        try testing.expect(!platform.imageMimeTypeSupported(platform.Str.from("image/x-unknown")));
+        try testing.expect(!platform.imageMimeTypeSupported(platform.Str.from("text/plain")));
+
+        // Read from the repository root (build.zig sets this run's cwd).
+        const Case = struct { essence: []const u8, path: []const u8, width: u32, height: u32 };
+        const cases = [_]Case{
+            .{ .essence = "image/png", .path = "tests/wpt/images/green.png", .width = 100, .height = 50 },
+            .{ .essence = "image/jpeg", .path = "tests/wpt/html/semantics/embedded-content/the-img-element/3.jpg", .width = 650, .height = 470 },
+            .{ .essence = "image/gif", .path = "tests/wpt/images/anim-gr.gif", .width = 100, .height = 50 },
+            .{ .essence = "image/bmp", .path = "tests/platform/fixtures/image-py-28.bmp", .width = 28, .height = 28 },
+        };
+        for (cases) |case| {
+            const bytes = try platform.readFile(allocator, platform.Str.from(case.path), 1 << 22);
+            defer allocator.free(bytes);
+            try expectDecodes(case.essence, bytes, case.width, case.height);
+        }
+        try expectDecodes("image/svg+xml", "<svg xmlns='http://www.w3.org/2000/svg' width='2' height='2'><rect width='2' height='2'/></svg>", 2, 2);
+        // A type it does not take is UnsupportedFormat: the image is broken.
+        try testing.expectError(error.UnsupportedFormat, platform.decodeImage(allocator, platform.Str.from("image/x-unknown"), platform.Bytes.from("bytes"), image_limits));
+    }
+}
+
+// D3 (the user, 2026-11-09 22:21 UTC): geometry is a READ on whatever
+// rendering engine the compiled-in platform plugs in (6.9: layoutBox,
+// clientRects, hitTest, isRendered, forceLayout, invalidateLayout). Crane
+// never computes a box itself, so the protocol has no operation that sizes a
+// box from facts Crane hands over - decision 19b's replacedElementBox and its
+// ReplacedElementFacts are gone - and no built-in platform plugs a renderer
+// in yet: each answers layout as kit/headless does, with no box anywhere.
+test "the protocol has no replaced-element box: geometry is only read from a renderer" {
+    try testing.expect(!@hasDecl(platform, "replacedElementBox"));
+    try testing.expect(!@hasDecl(platform, "ReplacedElementFacts"));
+    try testing.expect(!@hasDecl(platform.adapter, "replacedElementBox"));
+}
+
+test "every built-in platform answers layout as headless does: no renderer, no box" {
+    try testing.expectEqual(platform.Support.unsupported, platform.capabilities.layout);
+    // The adapter's own answers, which the facade's gate keeps Crane from
+    // asking while the capability is unsupported (CSSOM View's no-box
+    // answers above the protocol).
+    const allocator = testing.allocator;
+    const browser = try platform.createBrowserPlatform(allocator, &.{}, no_events);
+    defer platform.destroyBrowserPlatform(browser);
+    const document: platform.LayoutNode = .{ .id = 1 };
+    const node: platform.LayoutNode = .{ .id = 2 };
+    platform.adapter.invalidateLayout(browser, document, node, .attribute);
+    platform.adapter.forceLayout(browser, document);
+    try testing.expectEqual(@as(?platform.BoxMetrics, null), platform.adapter.layoutBox(browser, document, node));
+    const rects = try platform.adapter.clientRects(browser, document, node, allocator);
+    defer allocator.free(rects);
+    try testing.expectEqual(@as(usize, 0), rects.len);
+    const hits = try platform.adapter.hitTest(browser, document, .{}, allocator);
+    defer allocator.free(hits);
+    try testing.expectEqual(@as(usize, 0), hits.len);
+    try testing.expect(!platform.adapter.isRendered(browser, document, node));
+    try testing.expect((try platform.adapter.renderedText(browser, document, node, allocator)) == null);
 }

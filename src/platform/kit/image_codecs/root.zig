@@ -1,5 +1,6 @@
-//! Vendored JPEG/SVG decoders for the testing platform. The returned pixels
-//! use the caller's allocator; native codec contexts are scoped to one call.
+//! Vendored JPEG/SVG decoders for kit/image_decoding, which every built-in
+//! platform runs (D1, the user 2026-11-09). The returned pixels use the
+//! caller's allocator; native codec contexts are scoped to one call.
 const std = @import("std");
 const platform = @import("platform");
 // image_codecs.h, translated by build.zig (addCImport).

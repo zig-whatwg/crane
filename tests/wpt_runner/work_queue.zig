@@ -388,6 +388,9 @@ pub const Plan = struct {
     /// Children in a row that may end before claiming a file before their
     /// runner gives up (a runner that cannot start must not spin).
     max_empty_spawns: u32 = 3,
+    /// The runner build this run is (journal.Build), stamped on the records
+    /// the supervisor writes for its children.
+    build: ?journal.Build = null,
 };
 
 pub const Outcome = enum {
@@ -562,6 +565,7 @@ const SlotRun = struct {
         const path = plan.paths[index];
         var j = try journal.Journal.append(a, jp);
         defer j.deinit();
+        j.build = plan.build;
         switch (exit.how) {
             .crashed => {
                 plan.reporter.say("\n{s}!!! crashed on [{d}] {s} ({s})\n\n", .{ label, index, path, exit.detail() });
@@ -638,6 +642,7 @@ fn journalNotRun(plan: *const Plan, indices: []const usize) !void {
     defer a.free(jp);
     var j = try journal.Journal.append(a, jp);
     defer j.deinit();
+    j.build = plan.build;
     plan.reporter.say("\nSupervisor: {d} file(s) still not journalled after a second round; journalled ERROR \"not run\" (first: [{d}] {s})\n\n", .{ indices.len, indices[0], plan.paths[indices[0]] });
     for (indices) |index| try j.record(.{
         .index = index,
@@ -786,8 +791,9 @@ pub fn merge(allocator: Allocator, output_dir: []const u8, total: usize) !Merged
 pub const MergeCounts = struct { records: usize, duplicates: usize, missing: usize };
 
 /// Fold the runners' journals in `output_dir` into `journal_path`: written
-/// whole beside it, then renamed over it.
-pub fn writeMerged(allocator: Allocator, output_dir: []const u8, total: usize, journal_path: []const u8) !MergeCounts {
+/// whole beside it, then renamed over it. `build`: the run's runner build,
+/// stamped on any record that names none.
+pub fn writeMerged(allocator: Allocator, output_dir: []const u8, total: usize, journal_path: []const u8, build: ?journal.Build) !MergeCounts {
     var m = try merge(allocator, output_dir, total);
     defer m.deinit();
     const tmp = try std.fmt.allocPrint(allocator, "{s}.merge-tmp", .{journal_path});
@@ -795,6 +801,7 @@ pub fn writeMerged(allocator: Allocator, output_dir: []const u8, total: usize, j
     {
         var out = try journal.Journal.create(allocator, tmp);
         defer out.deinit();
+        out.build = build;
         for (m.records) |rec| try out.record(rec);
     }
     try host.cwd().rename(tmp, host.cwd(), journal_path, host.io());
@@ -1422,4 +1429,34 @@ test "the merge counts a file journalled twice, and a file never journalled" {
     try testing.expectEqual(@as(usize, 0), m.records[0].index);
     // The first record of a file stands.
     try testing.expectEqual(journal.Status.ok, m.records[1].status);
+}
+
+test "the run's journal names its build on every record, the ones the supervisor wrote included" {
+    // A child stamps the records it writes (journal.Journal.build); a CRASH
+    // the supervisor journals for a child that died, and the merge, carry the
+    // run's build too, so a bug-finding run's journal can never pass for a
+    // production one (tools/wpt_progress.py refuses it).
+    var s = try Scratch.init();
+    defer s.deinit();
+    const out = try s.path("out");
+    defer testing.allocator.free(out);
+    try host.cwd().createDirPath(host.io(), out);
+    {
+        const p0 = try slotJournalPath(testing.allocator, out, 0);
+        defer testing.allocator.free(p0);
+        var j = try journal.Journal.create(testing.allocator, p0);
+        defer j.deinit();
+        j.build = .bug_finding;
+        try j.record(.{ .index = 0, .path = "a.html", .status = .ok });
+        // An older child's record, with no build of its own.
+        j.build = null;
+        try j.record(.{ .index = 1, .path = "b.html", .status = .crash });
+    }
+    const merged = try s.path("journal.jsonl");
+    defer testing.allocator.free(merged);
+    const counts = try writeMerged(testing.allocator, out, 2, merged, .bug_finding);
+    try testing.expectEqual(@as(usize, 2), counts.records);
+    var log = try journal.read(testing.allocator, merged);
+    defer log.deinit();
+    for (log.records) |rec| try testing.expectEqual(@as(?journal.Build, .bug_finding), rec.build);
 }

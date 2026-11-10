@@ -1,4 +1,4 @@
-//! The testing platform's BMP decoder (decision 19a): Windows and OS/2
+//! kit/image_decoding's BMP decoder (decision 19a): Windows and OS/2
 //! bitmaps to RGBA8, in Zig. There is no web specification for BMP; the
 //! formats are Microsoft's (BITMAPCOREHEADER, BITMAPINFOHEADER,
 //! BITMAPV4HEADER, BITMAPV5HEADER and the V2/V3 headers between them) and

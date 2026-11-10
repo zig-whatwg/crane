@@ -1,6 +1,8 @@
 //! kit/memory_clipboard: a per-Browser in-memory clipboard
-//! (docs/platform-protocol.md 6.10.6) - the testing platform's, and that of a
-//! platform with no system clipboard (a display-less server). A platform
+//! (docs/platform-protocol.md 6.10.6) - every built-in platform's: darwin's
+//! and linux's (D2, the user 2026-11-09, as headless Chrome keeps one) and the
+//! testing platform's, and that of any platform with no system clipboard (a
+//! display-less server). A platform
 //! embeds a `Clipboard` in its per-Browser state and answers `readClipboard`
 //! and `writeClipboard` through it. Deviation from a system clipboard, for the
 //! platform's `.emulated` constant: nothing leaves the Browser, and nothing

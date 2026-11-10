@@ -2,7 +2,7 @@
 //! decodes image/gif in Zig - GIF87a and GIF89a, the first frame only,
 //! composited onto a transparent canvas of the logical screen's size (the
 //! rules, and which browser each follows, are listed in
-//! src/platform/adapters/testing/gif.zig).
+//! src/platform/kit/image_decoding/gif.zig).
 //!
 //! WPT's own GIFs are the main cases: every .gif file in the tree, read from
 //! tests/wpt at run time as the PngSuite cases are, with the expected pixels

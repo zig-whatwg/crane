@@ -270,7 +270,7 @@ pub const LoadState = struct {
         self.delaying_load_event = false;
     }
 
-    /// What a decoder result says (platform.media_backend.Result): metadata
+    /// What a decoder result says (html.media_runtime.decoding.Result): metadata
     /// only, or data at the current playback position.
     pub const Data = enum { metadata, current_data };
 

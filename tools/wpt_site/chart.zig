@@ -81,6 +81,15 @@ pub const Generation = struct {
     /// tools/wpt_generation_hosts.txt - where the generation's largest run
     /// (`mainSource`) ran. Null: not recorded.
     swept: ?*const model.SweepHost = null,
+    /// The runner build whose results these are: "production" (the WPT
+    /// runner as Crane's own browser runs, lane wptcfg), or null - the hybrid
+    /// runner of every generation before it (wpt_progress.py `generation_build`).
+    build: ?[]const u8 = null,
+    /// A change of how the results are measured that the history recorded at
+    /// this generation (wpt_progress.py `configuration_change`): "configuration
+    /// change: production build" at the first production generation. Marked
+    /// like the `events` below.
+    configuration_change: ?[]const u8 = null,
 
     /// The run that supplied most of this generation's results: its sweep,
     /// beside any smaller targeted run. Null when the history names none.
@@ -131,6 +140,23 @@ pub const events = [_]Event{
 pub fn eventAt(list: []const Event, n: u64) ?[]const u8 {
     for (list) |e| if (e.n == n) return e.label;
     return null;
+}
+
+/// The change of measurement marked at `g`: one the history recorded at it
+/// (`Generation.configuration_change`), else one of `list` keyed by its number.
+pub fn eventOf(list: []const Event, g: Generation) ?[]const u8 {
+    return g.configuration_change orelse eventAt(list, g.n);
+}
+
+test "a configuration change the history recorded is marked at its generation, like a keyed event" {
+    // The first generation of the production run (lane wptcfg; the user,
+    // 2026-11-09): the history shifts once, and the chart says why.
+    const recorded: Generation = .{ .n = 214, .at = "2026-11-10T00:00:00", .configuration_change = "configuration change: production build" };
+    try std.testing.expectEqualStrings("configuration change: production build", eventOf(&events, recorded).?);
+    const keyed: Generation = .{ .n = 85, .at = "2026-10-01T00:00:00" };
+    try std.testing.expectEqualStrings("new WPT snapshot", eventOf(&events, keyed).?);
+    const plain: Generation = .{ .n = 215, .at = "2026-11-10T00:00:00", .build = "production" };
+    try std.testing.expect(eventOf(&events, plain) == null);
 }
 
 pub const Options = struct {
@@ -282,7 +308,7 @@ pub fn draw(w: W, gens: []const Generation, o: Options) Io.Writer.Error!void {
     if (live) |k| if (k > 0) try mark(w, x.at(k - 1), x.at(k), pad, ih, "live history begins", "start");
     for (gens, 0..) |g, k| {
         if (k == 0) continue;
-        const label = eventAt(o.events, g.n) orelse continue;
+        const label = eventOf(o.events, g) orelse continue;
         try mark(w, x.at(k - 1), x.at(k), pad, ih, label, "end");
     }
     // One column per generation, with its numbers as a native tooltip.

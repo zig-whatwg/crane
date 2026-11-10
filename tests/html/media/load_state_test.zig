@@ -240,7 +240,7 @@ test "silent cancellation invalidates pending candidates and failure tasks" {
 // =============================================================================
 //
 // A decoder reports metadata, or data at the current playback position
-// (platform.media_backend.Result). Crane derives the rest: a current_data
+// (html.media_runtime.decoding.Result). Crane derives the rest: a current_data
 // result on the end_of_stream push means every byte has arrived, so waiting
 // longer will not get more data - HAVE_ENOUGH_DATA's second condition - while
 // the position is short of the end. At the end there is no more data in the

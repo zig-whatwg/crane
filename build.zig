@@ -2559,6 +2559,9 @@ const PlatformBinding = struct {
     /// run (decision 20).
     kit_sfnt: *std.Build.Module,
     kit_inflate: *std.Build.Module,
+    /// kit/media_decoding, the built-in media decoders (lane wptcfg D4),
+    /// whose own test blocks the platform tests run.
+    kit_media_decoding: *std.Build.Module,
     /// <time.h> translated (addCImport), which kit/posix imports as `c_time`;
     /// tests/platform takes the same module (one per header set per graph).
     c_time: *std.Build.Module,
@@ -2585,6 +2588,11 @@ const PlatformBindingOptions = struct {
     clock: *std.Build.Module,
     host: *std.Build.Module,
     memory: *std.Build.Module,
+    /// MIME Sniffing's parser, which kit/media_decoding's canPlayType parses
+    /// a type with: one parser in Crane, not a copy in the platform. Pure
+    /// Zig over `infra` (whose only import is the clock bridge), so no part
+    /// of it reaches back to the facade.
+    mimesniff: *std.Build.Module,
 };
 
 fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: PlatformBindingOptions) PlatformBinding {
@@ -2620,7 +2628,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     const font_decoding_enabled = for (options.without) |name| {
         if (std.mem.eql(u8, name, "font_decoding")) break false;
     } else true;
-    const kit_parts = [_][]const u8{ "posix", "headless", "memory_store", "curl", "crypto", "memory_clipboard", "browser_state", "brotli", "image_codecs", "inflate", "sfnt" };
+    const kit_parts = [_][]const u8{ "posix", "headless", "memory_store", "curl", "crypto", "memory_clipboard", "browser_state", "brotli", "image_codecs", "inflate", "sfnt", "image_decoding", "media_decoding" };
     var kit: [kit_parts.len]*std.Build.Module = undefined;
     for (kit_parts, 0..) |part, i| {
         kit[i] = b.createModule(.{
@@ -2646,6 +2654,23 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     // kit/brotli - headless's NotSupported when no Brotli library is built.
     kit[10].addImport("kit_inflate", kit[9]);
     kit[10].addImport("kit_brotli", if (options.brotli != null) kit[7] else kit[1]);
+    // kit/image_decoding (D1, the user 2026-11-09): every built-in platform's
+    // image decoders - PNG through kit/inflate, JPEG and SVG through
+    // kit/image_codecs. Found by name, so a part appended after it keeps it.
+    const image_decoding_part = comptime for (kit_parts, 0..) |part, i| {
+        if (std.mem.eql(u8, part, "image_decoding")) break i;
+    } else unreachable;
+    const kit_image_decoding = kit[image_decoding_part];
+    kit_image_decoding.addImport("kit_inflate", kit[9]);
+    kit_image_decoding.addImport("kit_image_codecs", kit[8]);
+    // kit/media_decoding (lane wptcfg D4, the user 2026-11-09): the media
+    // decoders darwin, linux and testing build in - WAV linear PCM - its
+    // canPlayType parsing with MIME Sniffing's parser. Found by name too.
+    const media_decoding_part = comptime for (kit_parts, 0..) |part, i| {
+        if (std.mem.eql(u8, part, "media_decoding")) break i;
+    } else unreachable;
+    const kit_media_decoding = kit[media_decoding_part];
+    kit_media_decoding.addImport("mimesniff", options.mimesniff);
     if (options.image_codecs) |codecs| {
         kit[8].linkLibrary(codecs);
         kit[8].addImport("image_codecs_c", addCImport(b, "image_codecs_c", target, .{ .includes = &.{"image_codecs.h"}, .libs = &.{codecs} }));
@@ -2702,7 +2727,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
         kit[3].linkSystemLibrary("curl", .{});
         kit[3].addImport("curl_c", addCImport(b, "curl_c", target, .{ .includes = kit_curl_includes, .system_libs = &.{"curl"} }));
     }
-    return .{ .facade = facade, .options = options_mod, .kit_curl_share = kit_curl_share, .kit_sfnt = kit[10], .kit_inflate = kit[9], .c_time = c_time };
+    return .{ .facade = facade, .options = options_mod, .kit_curl_share = kit_curl_share, .kit_sfnt = kit[10], .kit_inflate = kit[9], .kit_media_decoding = kit_media_decoding, .c_time = c_time };
 }
 
 /// A module of a graph: registered by name when the graph is public, private
@@ -3048,34 +3073,42 @@ pub fn build(b: *std.Build) void {
     const crane_graph = addCraneModules(b, target, target_platform, module_config);
     const testing_graph = if (target_platform == .testing) crane_graph else addCraneModules(b, target, .testing, module_config);
 
-    // The WPT runner's modes (tests/wpt_runner/build_mode.zig): ReleaseSafe by
-    // default (the user, 2026-10-11). A compilation's LLVM pipeline is its root
-    // module's, so a ReleaseSafe root optimizes ALL of the runner's Zig, while
-    // Crane's modules keep -Doptimize's `builtin.mode` and with it every
-    // Debug-only check the sweeps read (the refcount ledger, the isolate cleanup
-    // validation). Its C libraries are built in its mode: a graph of its own,
-    // the testing graph's modules over its own libcurl, mbedTLS, zlib, nghttp2.
-    // `-Dwpt-runner-optimize=Debug` (or an explicit `-Doptimize=Debug`) builds
-    // the Debug runner, on the shared libraries, for a diagnosis.
-    // `-Dwpt-runner-release` builds the release runner (build_mode.zig
-    // `release_runner`): every part ReleaseSafe, the C code at ReleaseSafe's
-    // default sanitizer, libc's malloc - the build to time and measure beside a
-    // browser's official release, never one to sweep or gate with (the user,
-    // 2026-11-04). It wins over -Dwpt-runner-optimize.
-    // `-Dwpt-runner-release-fast` is the same release build with only the mode
-    // changed (build_mode.zig `releaseRunner(.fast)`): every part ReleaseFast,
-    // no C sanitizer - the extra column perf round 0 times beside the
-    // ReleaseSafe build, which stays the headline (the user, 2026-11-05).
-    // The two name different builds: both at once is refused.
+    // The WPT runner's two builds (tests/wpt_runner/build_mode.zig
+    // `RunnerBuild`; the user, 2026-11-09: "I want our WPT to only ever run
+    // Crane with the exact same configuration and memory setup that Crane
+    // would have running in a production environment. We should never
+    // special case something" - and "ok then we should architect ours like
+    // the way browsers do it"). wpt.fyi scores the browsers' SHIPPING builds;
+    // their own CI also runs WPT on debug and sanitizer builds, which never
+    // feed a score. So:
+    // - `wpt_runner` (`zig build wpt-runner`) is the PRODUCTION run: Crane
+    //   exactly as its own browser, the release console, is built - every
+    //   part in the release mode, the C code at that mode's own sanitizer,
+    //   libc's malloc, and the console's platform graph (the target's own
+    //   adapter, never the testing platform's compiled-in test
+    //   capabilities). It shares the release console's graph, so the two
+    //   cannot drift (build_mode.zig pins the configuration). Generation
+    //   sweeps, the progress site, lane A/B pass counts and every timing.
+    // - `wpt_runner_bug_finding` (`zig build wpt-runner-bug-finding`) is the
+    //   BUG-FINDING run: the same platform graph, with detection added -
+    //   Crane's modules keep -Doptimize's `builtin.mode` (Debug: the refcount
+    //   ledger, the isolate cleanup validation), the C code at the full
+    //   sanitizer, the leak- and double-free-detecting allocator with
+    //   poison-on-free. Never published, never timed. `-Dwpt-runner-optimize`
+    //   sets its root's mode (Debug for a diagnosis).
+    // `-Dwpt-runner-release` / `-Dwpt-runner-release-fast` choose the release
+    // console's mode - ReleaseSafe, the headline, or the ReleaseFast column
+    // (the user, 2026-11-04 and 11-05) - and production follows it. The two
+    // name different builds: both at once is refused.
     const runner_release_safe = b.option(
         bool,
         "wpt-runner-release",
-        "The release runner, for timing and memory beside a browser's release build: wpt_runner, gc_bench and the console ReleaseSafe throughout (Crane's modules and C libraries too), the C code at ReleaseSafe's default sanitizer, libc's malloc - no leak or double-free detection, so never for sweeps or gates",
+        "Crane's release build in ReleaseSafe - the console, the production WPT runner (always) and gc_bench: every part ReleaseSafe, the C code at ReleaseSafe's default sanitizer, libc's malloc",
     ) orelse false;
     const runner_release_fast = b.option(
         bool,
         "wpt-runner-release-fast",
-        "-Dwpt-runner-release with only the mode changed: wpt_runner, gc_bench and the console ReleaseFast throughout, no C sanitizer, libc's malloc - for timing beside the ReleaseSafe release build, never for sweeps or gates",
+        "-Dwpt-runner-release with only the mode changed: the console, the production WPT runner and gc_bench ReleaseFast throughout, no C sanitizer - for timing beside the ReleaseSafe release build",
     ) orelse false;
     const runner_release = runner_build_mode.releaseOption(runner_release_safe, runner_release_fast) catch {
         std.debug.print("Error: -Dwpt-runner-release and -Dwpt-runner-release-fast name two release builds; pass one\n", .{});
@@ -3084,24 +3117,42 @@ pub fn build(b: *std.Build) void {
     const runner_optimize_option = b.option(
         std.builtin.OptimizeMode,
         "wpt-runner-optimize",
-        "Optimize mode of wpt_runner and gc_bench (default: ReleaseSafe, or -Doptimize when given; Debug for a diagnosis)",
+        "Optimize mode of the bug-finding WPT runner's root and of gc_bench (default: ReleaseSafe, or -Doptimize when given; Debug for a diagnosis). The production runner is always the release console's",
     );
-    const runner_modes = if (runner_release) |release| runner_build_mode.releaseRunner(release) else runner_build_mode.runnerModes(
-        runner_optimize_option,
-        optimize,
-        b.user_input_options.contains("optimize") or b.graph.release_mode != .off,
-    );
-    // A graph of its own when its C libraries or its Crane modules differ from
-    // the shared graph's: a release runner's Crane modules are in its release
-    // mode.
-    const runner_graph = if (!runner_modes.ownGraph(optimize) or use_system_curl) testing_graph else runner_graph: {
-        var runner_config = module_config;
-        runner_config.optimize = runner_modes.crane_modules;
-        runner_config.brotli = buildBrotli(b, target, runner_modes.c_libraries, runner_modes.sanitize_c);
-        runner_config.image_codecs = buildImageCodecs(b, target, runner_modes.c_libraries, runner_modes.sanitize_c);
-        runner_config.static_libcurl = buildStaticLibcurl(b, target, runner_modes.c_libraries, enable_http2, runner_modes.sanitize_c, if (brotli_enabled) runner_config.brotli else null);
-        break :runner_graph addCraneModules(b, target, .testing, runner_config);
-    };
+    const optimize_given = b.user_input_options.contains("optimize") or b.graph.release_mode != .off;
+    const production_build = runner_build_mode.runnerBuild(.production, runner_release, runner_optimize_option, optimize, optimize_given);
+    const bug_finding_build = runner_build_mode.runnerBuild(.bug_finding, runner_release, runner_optimize_option, optimize, optimize_given);
+    // gc_bench keeps the runner rule it was built with: the bug-finding
+    // root's mode, or the release build under -Dwpt-runner-release.
+    const gc_bench_modes = if (runner_release) |release| runner_build_mode.releaseRunner(release) else bug_finding_build.modes;
+    // The production graph: a private graph of the console's platform in the
+    // release modes (docs/lessons/workflow-a-second-graph-of-the-target-
+    // platform-must-be-private.md), over C libraries built at the root's
+    // sanitizer - a .trap root links no full UBSan runtime, so C built with
+    // .full would not link (docs/lessons/workflow-a-release-root-over-debug-
+    // c-libraries-must-link-the-full-sanitizer-runtime.md). The release
+    // console links this same graph (repl_graph below).
+    const production_graph = runnerGraph(b, target, production_build, .{
+        .module_config = module_config,
+        .target_platform = target_platform,
+        .shared = crane_graph,
+        .testing = testing_graph,
+        .use_system_curl = use_system_curl,
+        .enable_http2 = enable_http2,
+        .brotli_enabled = brotli_enabled,
+    });
+    // The bug-finding graph: the same platform; the shared graph itself when
+    // its modes are -Doptimize's throughout (`-Doptimize=Debug`), else a
+    // private one with its own C libraries in its root's mode.
+    const bug_finding_graph = runnerGraph(b, target, bug_finding_build, .{
+        .module_config = module_config,
+        .target_platform = target_platform,
+        .shared = crane_graph,
+        .testing = testing_graph,
+        .use_system_curl = use_system_curl,
+        .enable_http2 = enable_http2,
+        .brotli_enabled = brotli_enabled,
+    });
     const whatwg_mod = crane_graph.whatwg;
     const clock_mod = crane_graph.clock;
     const host_mod = crane_graph.host;
@@ -4261,6 +4312,7 @@ pub fn build(b: *std.Build) void {
                 .clock = testing_graph.clock,
                 .host = testing_graph.host,
                 .memory = testing_graph.memory,
+                .mimesniff = testing_graph.mimesniff,
             });
             const conformance = b.addTest(.{
                 .name = b.fmt("platform_protocol_{s}", .{binding.name}),
@@ -4293,11 +4345,24 @@ pub fn build(b: *std.Build) void {
                 run_font_adapters.setCwd(b.path("."));
                 test_step.dependOn(&run_font_adapters.step);
                 check_target_step.dependOn(&font_adapters.step);
+                // Media decoding on darwin and linux (lane wptcfg, D4): the
+                // directory's tests/platform/media_decoding_test.zig, bound to
+                // each - the three default platforms share kit/media_decoding.
+                const media_decoding = b.addTest(.{
+                    .name = b.fmt("platform_media_{s}", .{binding.name}),
+                    .root_module = b.createModule(.{
+                        .root_source_file = b.path("tests/platform/media_decoding_test.zig"),
+                        .target = target,
+                        .imports = &.{.{ .name = "platform", .module = bound.facade }},
+                    }),
+                });
+                test_step.dependOn(&addSuiteRun(b, launch, media_decoding, media_decoding.name, null).step);
+                check_target_step.dependOn(&media_decoding.step);
             }
             // The kit parts with test blocks of their own, once (they do
             // not depend on the platform they are bound with).
             if (std.mem.eql(u8, binding.name, "darwin")) {
-                for ([_]*std.Build.Module{ bound.kit_sfnt, bound.kit_inflate }, [_][]const u8{ "kit_sfnt", "kit_inflate" }) |module, name| {
+                for ([_]*std.Build.Module{ bound.kit_sfnt, bound.kit_inflate, bound.kit_media_decoding }, [_][]const u8{ "kit_sfnt", "kit_inflate", "kit_media_decoding" }) |module, name| {
                     const kit_tests = b.addTest(.{ .name = name, .root_module = module });
                     test_step.dependOn(&addSuiteRun(b, launch, kit_tests, name, null).step);
                 }
@@ -4305,21 +4370,6 @@ pub fn build(b: *std.Build) void {
             // Built, not run: the target need not be this machine.
             check_target_step.dependOn(&conformance.step);
         }
-
-        // The WPT runner's media backends (host decoders built only into
-        // wpt_runner: WAV/PCM, WebM): their std.testing blocks, reached from
-        // host_media.zig. No V8 - only the media backend contract and MIME
-        // Sniffing's parser.
-        const wav_backend_tests = b.addTest(.{ .root_module = b.createModule(.{
-            .root_source_file = b.path("tests/wpt_runner/host_media.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "platform", .module = testing_graph.platform },
-                .{ .name = "mimesniff", .module = testing_graph.mimesniff },
-            },
-        }) });
-        test_step.dependOn(&addSuiteRun(b, launch, wav_backend_tests, "wpt_runner-host_media", null).step);
     }
 
     // Benchmark tests (requires V8 + browser)
@@ -5080,31 +5130,16 @@ pub fn build(b: *std.Build) void {
     // `-Dwpt-runner-release` makes it Crane's release build, the one the
     // performance suite times beside the browsers (tools/perf_bench,
     // docs/performance.md): release_runner's modes exactly (build_mode.zig
-    // consoleModes) - its Crane modules and C libraries ReleaseSafe, the C
-    // code at .trap - over a module graph of its own on the console's
-    // platform (the release runner's graph is the testing platform's). Its
-    // C libraries are built at the root's sanitizer: a .trap root links no
-    // full UBSan runtime, so C built with .full would not link
-    // (docs/lessons/workflow-a-release-root-over-debug-c-libraries-must-link-
-    // the-full-sanitizer-runtime.md).
+    // consoleModes) over the production graph - the very graph the
+    // production WPT runner links (`production_graph` above), so what WPT
+    // scores and times is what the console runs (the user, 2026-11-09).
     const repl_modes = runner_build_mode.consoleModes(
         runner_release,
         b.option(std.builtin.OptimizeMode, "repl-optimize", "Optimize mode of the browser console (default: ReleaseSafe, or -Doptimize when given; Debug for a diagnosis)"),
         optimize,
-        b.user_input_options.contains("optimize") or b.graph.release_mode != .off,
+        optimize_given,
     );
-    const repl_graph = if (runner_release != null and !use_system_curl) repl_graph: {
-        var repl_config = module_config;
-        // A private graph: crane_graph is the target platform's public one,
-        // whose modules are registered by name (addCraneModules), and a name
-        // is registered once.
-        repl_config.public_platform = if (target_platform == .testing) .darwin else .testing;
-        repl_config.optimize = repl_modes.crane_modules;
-        repl_config.brotli = buildBrotli(b, target, repl_modes.c_libraries, repl_modes.sanitize_c);
-        repl_config.image_codecs = buildImageCodecs(b, target, repl_modes.c_libraries, repl_modes.sanitize_c);
-        repl_config.static_libcurl = buildStaticLibcurl(b, target, repl_modes.c_libraries, enable_http2, repl_modes.sanitize_c, if (brotli_enabled) repl_config.brotli else null);
-        break :repl_graph addCraneModules(b, target, target_platform, repl_config);
-    } else crane_graph;
+    const repl_graph = if (runner_release != null) production_graph else crane_graph;
     const repl_optimize = repl_modes.root;
     const repl_exe = b.addExecutable(.{
         .name = "repl",
@@ -5278,7 +5313,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/gc_bench.zig"),
             .target = target,
-            .optimize = runner_modes.root,
+            .optimize = gc_bench_modes.root,
             .imports = &.{
                 .{ .name = "runtime", .module = runtime_mod },
                 .{ .name = "engine", .module = engine_mod },
@@ -5311,8 +5346,8 @@ pub fn build(b: *std.Build) void {
     gc_bench_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
     gc_bench_exe.root_module.link_libcpp = true;
     // As the runner's: the full C sanitizer, and its runtime bundled for the
-    // C libraries a release root links (see wpt_runner_exe below).
-    if (runner_modes.sanitize_c) |sanitizer| gc_bench_exe.root_module.sanitize_c = sanitizer;
+    // C libraries a release root links (see addWptRunner).
+    if (gc_bench_modes.sanitize_c) |sanitizer| gc_bench_exe.root_module.sanitize_c = sanitizer;
     gc_bench_exe.bundle_ubsan_rt = true;
     gc_bench_exe.step.dependOn(&install_snapshot.step);
 
@@ -5380,6 +5415,7 @@ pub fn build(b: *std.Build) void {
             "tests/wpt_runner/build_mode.zig",
             "tests/wpt_runner/file_lock.zig",
             "tests/wpt_runner/work_queue.zig",
+            "tests/wpt_runner/build_compare.zig",
         };
         for (harness_sources) |src| {
             const harness_tests = b.addTest(.{
@@ -5439,106 +5475,12 @@ pub fn build(b: *std.Build) void {
         _ = addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", null, target, &command_test_imports, true, launch, v8);
     }
 
-    // WPT Runner executable for running Web Platform Tests
-    const wpt_runner_imports = [_]std.Build.Module.Import{
-        // The sweep allocator's poisoning front (runner_allocator.zig), shared
-        // with the Crane test runner (lane poison2).
-        .{ .name = "poisoning", .module = poisoning_module },
-        .{ .name = "clock", .module = runner_graph.clock },
-        .{ .name = "host", .module = runner_graph.host },
-        .{ .name = "xml", .module = runner_graph.xml },
-        .{ .name = "xml_document_encoding", .module = runner_graph.xml_document_encoding },
-        .{ .name = "runtime", .module = runner_graph.runtime },
-        .{ .name = "engine", .module = runner_graph.engine },
-        .{ .name = "interfaces", .module = runner_graph.interfaces },
-        .{ .name = "namespaces", .module = runner_graph.namespaces },
-        .{ .name = "fetch", .module = runner_graph.fetch },
-        // Platform abstraction for timer backend
-        .{ .name = "platform", .module = runner_graph.platform },
-        // HTML event loop and timer manager (core module without interfaces)
-        .{ .name = "html", .module = runner_graph.html_core },
-        // HTML full module with custom_elements for thread-local cleanup
-        .{ .name = "html_full", .module = runner_graph.html },
-        // DOM module for mutation observer thread-local cleanup
-        .{ .name = "dom", .module = runner_graph.dom },
-        // Infra primitives
-        .{ .name = "infra", .module = runner_graph.infra },
-        // Browser module for single-isolate WPT execution
-        .{ .name = "browser", .module = runner_graph.browser },
-        // Impls module for HTMLParser (needed for HTML test parsing)
-        .{ .name = "impls", .module = runner_graph.impls },
-        // WebIDL module for Optional type wrappers
-        .{ .name = "webidl", .module = runner_graph.webidl },
-        // Dictionaries module for Event init dictionaries
-        .{ .name = "dictionaries", .module = runner_graph.dictionaries },
-        // Storage module for cleanup
-        .{ .name = "storage", .module = runner_graph.storage },
-        // File module for blob URL store cleanup
-        .{ .name = "file", .module = runner_graph.file },
-        // The cookie store, for testdriver's cookie commands (test_driver.zig)
-        .{ .name = "cookiestore", .module = runner_graph.cookiestore },
-        // Permissions, for testdriver's set_permission (test_driver.zig).
-        .{ .name = "permissions", .module = runner_graph.permissions },
-        // MIME Sniffing's parser, for the WAV test backend's canPlayType
-        // (wav_backend.zig)
-        .{ .name = "mimesniff", .module = runner_graph.mimesniff },
-    };
-    const wpt_runner_exe = b.addExecutable(.{
-        .name = "wpt_runner",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tests/wpt_runner/main.zig"),
-            .target = target,
-            .optimize = runner_modes.root,
-            .imports = &wpt_runner_imports,
-        }),
-    });
-
-    // Add V8 C++ wrapper
-    wpt_runner_exe.root_module.addCSourceFile(.{
-        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = v8WrapperFlags(b, target.result.os.tag, &.{}),
-    });
-
-    // Add V8 include paths (custom-built V8 with WebIDL-compliant settings)
-    wpt_runner_exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
-
-    // Link V8 libraries (custom-built static libraries)
-    wpt_runner_exe.root_module.addObjectFile(.{ .cwd_relative = v8_monolith_path });
-    wpt_runner_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libplatform_path });
-    wpt_runner_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
-
-    // Link C++ standard library
-    wpt_runner_exe.root_module.link_libcpp = true; //
-
-    // v8_wrapper.cpp's sanitizer: `.full` in the safe modes, so a failed
-    // check names itself in a ReleaseSafe runner as it does in Debug
-    // (build_mode.zig, RunnerModes.sanitize_c).
-    if (runner_modes.sanitize_c) |sanitizer| wpt_runner_exe.root_module.sanitize_c = sanitizer;
-    // The full sanitizer's handlers (___ubsan_handle_*) are called from C
-    // libraries built as artifacts of their own, which a release root does not
-    // bundle a runtime for: without this a ReleaseSafe runner fails to link on
-    // them (libmbedtls.a).
-    wpt_runner_exe.bundle_ubsan_rt = true;
-
-    // Make WPT runner depend on snapshot generation
-    // This ensures the snapshot is always up-to-date with the current V8 build
-    wpt_runner_exe.step.dependOn(&install_snapshot.step);
-
-    b.installArtifact(wpt_runner_exe);
-
-    // Build ONLY wpt_runner. A bare `zig build` compiles all 19 installed
-    // artifacts, and every one that embeds the tree is a separate root-module
-    // analysis of ~1M lines - about 6 GB of RAM each, three at a time by
-    // default. On a 32 GB machine, one full build plus two agents doing the
-    // same is swap, not CPU. The WPT loop needs exactly this executable:
-    //
-    //     zig build wpt-runner -j2 --cache-dir /tmp/<cache>
-    //
-    // `-j2` caps concurrent root compiles; the `wpt` step (build + run) is the
-    // other single-artifact path.
-    const wpt_runner_step = b.step("wpt-runner", "Build only wpt_runner (no run); pair with -j2");
-    wpt_runner_step.dependOn(&b.addInstallArtifact(wpt_runner_exe, .{}).step);
-
+    // The WPT runner's two builds (build_mode.zig `RunnerBuild`, the graphs
+    // above): `wpt_runner`, the PRODUCTION run - Crane exactly as the release
+    // console runs it - and `wpt_runner_bug_finding`, the same product with
+    // detection added. Each is one ReleaseSafe compile of the whole tree
+    // (about 12 min cold on Zig 0.17), so each has a step of its own and
+    // neither step builds the other.
     // WPT build options
     const wpt_output = b.option(
         []const u8,
@@ -5558,23 +5500,64 @@ pub fn build(b: *std.Build) void {
         "Enable debug log output (std.log.debug) during WPT tests",
     ) orelse false;
 
-    // Create WPT options module for compile-time configuration
-    const wpt_options = b.addOptions();
-    wpt_options.addOption(bool, "debug_enabled", wpt_debug);
-    // For the build banner: the root's mode is the runner's own builtin.mode.
-    wpt_options.addOption(std.builtin.OptimizeMode, "crane_modules_mode", runner_modes.crane_modules);
-    wpt_options.addOption(std.builtin.OptimizeMode, "c_libraries_mode", runner_modes.c_libraries);
-    // The release runner allocates from libc's malloc, with no leak or double-free detection.
-    wpt_options.addOption(bool, "production_allocator", runner_modes.allocator == .production);
-
-    // Add WPT options to the runner's root module
-    wpt_runner_exe.root_module.addOptions("wpt_options", wpt_options);
-
-    // wpt_runner without a binary, for check-target: no snapshot (nothing runs),
-    // no link.
-    const wpt_runner_check = addCompileCheck(b, "wpt_runner_check", "tests/wpt_runner/main.zig", target, runner_modes.root, &wpt_runner_imports);
-    wpt_runner_check.root_module.addOptions("wpt_options", wpt_options);
-    check_target_step.dependOn(&wpt_runner_check.step);
+    const wpt_runner_exe = addWptRunner(b, .production, production_build, production_graph, .{
+        .target = target,
+        .poisoning = poisoning_module,
+        .install_snapshot = &install_snapshot.step,
+        .wpt_debug = wpt_debug,
+        .check_target = check_target_step,
+        .v8_monolith = v8_monolith_path,
+        .v8_libplatform = v8_libplatform_path,
+        .v8_libbase = v8_libbase_path,
+    });
+    const wpt_runner_check = wpt_runner_exe.check;
+    // Build ONLY wpt_runner. A bare `zig build` compiles all 19 installed
+    // artifacts, and every one that embeds the tree is a separate root-module
+    // analysis of ~1M lines - about 6 GB of RAM each, three at a time by
+    // default. On a 32 GB machine, one full build plus two agents doing the
+    // same is swap, not CPU. The WPT loop needs exactly this executable:
+    //
+    //     zig build wpt-runner -j2 --cache-dir /tmp/<cache>
+    //
+    // `-j2` caps concurrent root compiles; the `wpt` step (build + run) is the
+    // other single-artifact path.
+    const wpt_runner_step = b.step("wpt-runner", "Build only wpt_runner, the PRODUCTION WPT runner (Crane's production configuration: published and timed); pair with -j2");
+    wpt_runner_step.dependOn(&wpt_runner_exe.install.step);
+    const bug_finding_runner = addWptRunner(b, .bug_finding, bug_finding_build, bug_finding_graph, .{
+        .target = target,
+        .poisoning = poisoning_module,
+        .install_snapshot = &install_snapshot.step,
+        .wpt_debug = wpt_debug,
+        .check_target = check_target_step,
+        .v8_monolith = v8_monolith_path,
+        .v8_libplatform = v8_libplatform_path,
+        .v8_libbase = v8_libbase_path,
+    });
+    // The two runs compared (tests/wpt_runner/build_compare.zig): the
+    // bug-finding run's gate - no crash, poison read, leak, double free,
+    // panic, refcount or ownership violation - and every difference between
+    // the runs against tools/wpt_build_differences.txt. std-only: built for
+    // the host, it reads journals, result streams and logs.
+    const build_compare_exe = b.addExecutable(.{
+        .name = "wpt_build_compare",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/wpt_runner/build_compare.zig"),
+            .target = target,
+            .optimize = .ReleaseSafe,
+            .imports = &.{.{ .name = "host", .module = testing_graph.host }},
+        }),
+    });
+    const install_build_compare = b.addInstallArtifact(build_compare_exe, .{});
+    b.getInstallStep().dependOn(&install_build_compare.step);
+    const run_build_compare = b.addRunArtifact(build_compare_exe);
+    run_build_compare.setCwd(b.path("."));
+    run_build_compare.addPassthruArgs();
+    const build_compare_step = b.step("wpt-build-compare", "Compare a production WPT run with a bug-finding run of the same tree: the bug-finding gate, and every difference against tools/wpt_build_differences.txt (use -- --production=<dir> --bug-finding=<dir> --log=<sweep.log>)");
+    build_compare_step.dependOn(&run_build_compare.step);
+    const install_build_compare_step = b.step("wpt-build-compare-exe", "Build only zig-out/bin/wpt_build_compare");
+    install_build_compare_step.dependOn(&install_build_compare.step);
+    const bug_finding_step = b.step("wpt-runner-bug-finding", "Build only wpt_runner_bug_finding, the BUG-FINDING WPT runner (debug allocator, poison-on-free, Debug checks, the full C sanitizer: never published or timed); pair with -j2");
+    bug_finding_step.dependOn(&bug_finding_runner.install.step);
 
     // Add step to clear WPT ports before running
     // There used to be a `clear_ports` pre-step here that `kill -9`ed every
@@ -5587,10 +5570,10 @@ pub fn build(b: *std.Build) void {
     // needs to kill anything.
 
     // Add run step for WPT runner
-    const run_wpt = b.addRunArtifact(wpt_runner_exe);
+    const run_wpt = b.addRunArtifact(wpt_runner_exe.exe);
     // Only wpt_runner. `b.getInstallStep()` here meant `zig build wpt` built
     // all 19 installed artifacts - see the `wpt-runner` step above for the cost.
-    run_wpt.step.dependOn(&b.addInstallArtifact(wpt_runner_exe, .{}).step);
+    run_wpt.step.dependOn(&wpt_runner_exe.install.step);
 
     // Pass build options as command-line arguments
     run_wpt.addArg(b.fmt("--output={s}", .{wpt_output}));
@@ -6704,7 +6687,7 @@ pub fn build(b: *std.Build) void {
     // (addCrossLibraryStubs), so nothing may link them: a step that asks for a
     // check's binary (an install, a run, getEmittedBin) would link against the
     // stubs. Asked or not is known here, once every step exists.
-    for ([_]*std.Build.Step.Compile{ crane_check, wpt_runner_check }) |check| {
+    for ([_]*std.Build.Step.Compile{ crane_check, wpt_runner_check, bug_finding_runner.check }) |check| {
         if (check.generated_bin != .none) std.debug.panic("build.zig: {s} is compile-only; nothing may ask for its binary (addCrossLibraryStubs)", .{check.name});
     }
 
@@ -6801,6 +6784,173 @@ const CraneModules = struct {
 /// One graph of Crane modules for `platform`. The graph of the target's own platform
 /// is `public`: its modules are registered by name (b.addModule) for packages that
 /// depend on Crane; any other graph is private to this build.
+/// What `addWptRunner` needs beside the build and its graph.
+const WptRunnerContext = struct {
+    target: std.Build.ResolvedTarget,
+    /// runner_allocator.zig's poisoning front (tests/test_runner/poisoning.zig).
+    poisoning: *std.Build.Module,
+    /// The snapshot's install: the runner reads zig-out/bin/whatwg_snapshot.bin.
+    install_snapshot: *std.Build.Step,
+    /// -Dwpt-debug.
+    wpt_debug: bool,
+    check_target: *std.Build.Step,
+    /// V8's static libraries (v8.monolith, v8.libplatform, v8.libbase).
+    v8_monolith: []const u8,
+    v8_libplatform: []const u8,
+    v8_libbase: []const u8,
+};
+
+/// One built WPT runner (`addWptRunner`).
+const WptRunner = struct {
+    exe: *std.Build.Step.Compile,
+    install: *std.Build.Step.InstallArtifact,
+    /// The runner without a binary, for check-target: no snapshot (nothing
+    /// runs), no link.
+    check: *std.Build.Step.Compile,
+};
+
+/// One build of tests/wpt_runner/main.zig (build_mode.zig `RunnerBuild`):
+/// `build.modes` decide its root's mode, its C sanitizer and its allocator,
+/// `graph` is the module graph it links (`runnerGraph`), and its
+/// `wpt_options` tell main.zig which build it is.
+fn addWptRunner(b: *std.Build, which: runner_build_mode.RunnerBuild, config: runner_build_mode.Build, graph: CraneModules, ctx: WptRunnerContext) WptRunner {
+    const imports = b.allocator.dupe(std.Build.Module.Import, &.{
+        // The sweep allocator's poisoning front (runner_allocator.zig), shared
+        // with the Crane test runner (lane poison2).
+        .{ .name = "poisoning", .module = ctx.poisoning },
+        .{ .name = "clock", .module = graph.clock },
+        .{ .name = "host", .module = graph.host },
+        .{ .name = "xml", .module = graph.xml },
+        .{ .name = "xml_document_encoding", .module = graph.xml_document_encoding },
+        .{ .name = "runtime", .module = graph.runtime },
+        .{ .name = "engine", .module = graph.engine },
+        .{ .name = "interfaces", .module = graph.interfaces },
+        .{ .name = "namespaces", .module = graph.namespaces },
+        .{ .name = "fetch", .module = graph.fetch },
+        // Platform abstraction for timer backend
+        .{ .name = "platform", .module = graph.platform },
+        // HTML event loop and timer manager (core module without interfaces)
+        .{ .name = "html", .module = graph.html_core },
+        // HTML full module with custom_elements for thread-local cleanup
+        .{ .name = "html_full", .module = graph.html },
+        // DOM module for mutation observer thread-local cleanup
+        .{ .name = "dom", .module = graph.dom },
+        // Infra primitives
+        .{ .name = "infra", .module = graph.infra },
+        // Browser module for single-isolate WPT execution
+        .{ .name = "browser", .module = graph.browser },
+        // Impls module for HTMLParser (needed for HTML test parsing)
+        .{ .name = "impls", .module = graph.impls },
+        // WebIDL module for Optional type wrappers
+        .{ .name = "webidl", .module = graph.webidl },
+        // Dictionaries module for Event init dictionaries
+        .{ .name = "dictionaries", .module = graph.dictionaries },
+        // Storage module for cleanup
+        .{ .name = "storage", .module = graph.storage },
+        // File module for blob URL store cleanup
+        .{ .name = "file", .module = graph.file },
+        // The cookie store, for testdriver's cookie commands (test_driver.zig)
+        .{ .name = "cookiestore", .module = graph.cookiestore },
+        // Permissions, for testdriver's set_permission (test_driver.zig).
+        .{ .name = "permissions", .module = graph.permissions },
+    }) catch @panic("OOM");
+
+    const exe = b.addExecutable(.{
+        .name = which.binaryName(),
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/wpt_runner/main.zig"),
+            .target = ctx.target,
+            .optimize = config.modes.root,
+            .imports = imports,
+        }),
+    });
+    exe.root_module.addCSourceFile(.{
+        .file = b.path("src/runtime/engines/v8/v8_wrapper.cpp"),
+        .flags = v8WrapperFlags(b, ctx.target.result.os.tag, &.{}),
+    });
+    exe.root_module.addIncludePath(.{ .cwd_relative = "jsengines/v8/include" });
+    exe.root_module.addObjectFile(.{ .cwd_relative = ctx.v8_monolith });
+    exe.root_module.addObjectFile(.{ .cwd_relative = ctx.v8_libplatform });
+    exe.root_module.addObjectFile(.{ .cwd_relative = ctx.v8_libbase });
+    exe.root_module.link_libcpp = true;
+    // v8_wrapper.cpp's sanitizer (build_mode.zig, RunnerModes.sanitize_c):
+    // the production run's is its release mode's own (.trap), as the
+    // console's; the bug-finding run's is `.full`, so a failed check names
+    // itself in a ReleaseSafe runner as it does in Debug.
+    if (config.modes.sanitize_c) |sanitizer| exe.root_module.sanitize_c = sanitizer;
+    // The full sanitizer's handlers (___ubsan_handle_*) are called from C
+    // libraries built as artifacts of their own, which a release root does not
+    // bundle a runtime for: without this a ReleaseSafe runner fails to link on
+    // them (libmbedtls.a).
+    exe.bundle_ubsan_rt = true;
+    // The runner reads the snapshot beside it.
+    exe.step.dependOn(ctx.install_snapshot);
+    const install = b.addInstallArtifact(exe, .{});
+    b.getInstallStep().dependOn(&install.step);
+
+    const options = b.addOptions();
+    options.addOption(bool, "debug_enabled", ctx.wpt_debug);
+    // Which build this is (build_mode.zig RunnerBuild): what its banner
+    // names, what its journal records carry, and everything main.zig does
+    // differently in the bug-finding build.
+    options.addOption(bool, "production", which == .production);
+    // For the build banner: the root's mode is the runner's own builtin.mode.
+    options.addOption(std.builtin.OptimizeMode, "crane_modules_mode", config.modes.crane_modules);
+    options.addOption(std.builtin.OptimizeMode, "c_libraries_mode", config.modes.c_libraries);
+    // libc's malloc (the production run's, as the console's) or the leak-
+    // and double-free-detecting allocator (the bug-finding run's).
+    options.addOption(bool, "production_allocator", config.modes.allocator == .production);
+    // The build's identity, as repl.modes spells the console's
+    // (build_mode.zig `describe`), for the banner.
+    var described: [160]u8 = undefined;
+    options.addOption([]const u8, "modes", b.dupe(runner_build_mode.describe(&described, config.modes) catch @panic("modes")));
+    exe.root_module.addOptions("wpt_options", options);
+
+    const check = addCompileCheck(b, b.fmt("{s}_check", .{which.binaryName()}), "tests/wpt_runner/main.zig", ctx.target, config.modes.root, imports);
+    check.root_module.addOptions("wpt_options", options);
+    ctx.check_target.dependOn(&check.step);
+    return .{ .exe = exe, .install = install, .check = check };
+}
+
+/// What `runnerGraph` reuses or builds from: the invocation's module
+/// configuration and the graphs it already has.
+const RunnerGraphContext = struct {
+    module_config: ModuleConfig,
+    target_platform: Platform,
+    /// The target platform's public graph, in -Doptimize's mode.
+    shared: CraneModules,
+    /// The testing platform's graph, in -Doptimize's mode.
+    testing: CraneModules,
+    use_system_curl: bool,
+    enable_http2: bool,
+    brotli_enabled: bool,
+};
+
+/// The module graph a WPT runner build links (tests/wpt_runner/build_mode.zig
+/// `Build`): its platform graph's existing one when its modes are
+/// -Doptimize's throughout (or with -Dsystem-curl, whose one libcurl cannot
+/// be built per mode), else a private graph of that platform in its modes,
+/// over C libraries of its own built at its root's sanitizer. Private: the
+/// target platform's public graph registers its modules by name, once
+/// (docs/lessons/workflow-a-second-graph-of-the-target-platform-must-be-
+/// private.md).
+fn runnerGraph(b: *std.Build, target: std.Build.ResolvedTarget, runner: runner_build_mode.Build, ctx: RunnerGraphContext) CraneModules {
+    const platform: Platform = switch (runner.platform) {
+        .console => ctx.target_platform,
+        .testing => .testing,
+    };
+    const existing = if (platform == .testing) ctx.testing else ctx.shared;
+    if (!runner.modes.ownGraph(ctx.module_config.optimize) or ctx.use_system_curl) return existing;
+    var config = ctx.module_config;
+    // Any platform but the graph's own.
+    config.public_platform = if (platform == .testing) .darwin else .testing;
+    config.optimize = runner.modes.crane_modules;
+    config.brotli = buildBrotli(b, target, runner.modes.c_libraries, runner.modes.sanitize_c);
+    config.image_codecs = buildImageCodecs(b, target, runner.modes.c_libraries, runner.modes.sanitize_c);
+    config.static_libcurl = buildStaticLibcurl(b, target, runner.modes.c_libraries, ctx.enable_http2, runner.modes.sanitize_c, if (ctx.brotli_enabled) config.brotli else null);
+    return addCraneModules(b, target, platform, config);
+}
+
 fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Platform, config: ModuleConfig) CraneModules {
     const public = platform == config.public_platform;
     const optimize = config.optimize;
@@ -7967,6 +8117,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .clock = clock_mod,
         .host = host_mod,
         .memory = memory_mod,
+        .mimesniff = mimesniff_mod,
     });
     const platform_mod = platform_binding.facade;
     compression_mod.addImport("platform", platform_mod);
@@ -8184,7 +8335,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dom", dom_mod);
     browser_mod.addImport("html", html_mod);
-    // BrowserConfig.media_backend: the host's media decoding.
+    // The platform protocol: the Browser's platform state, clock and seed.
     browser_mod.addImport("platform", platform_mod);
     // A navigation's URL string is parsed and serialized before it is fetched.
     browser_mod.addImport("basic_parser", url_basic_parser_mod);

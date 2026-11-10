@@ -30,8 +30,8 @@
 //! var browser = try adapter.BrowserAdapter.init(allocator, wpt_root, false);
 //! defer browser.deinit();
 //!
-//! // For each test (creates fresh context)
-//! const result = try browser.runTest(test_path, test_content, timeout);
+//! // For each test (a fresh top-level traversable)
+//! const result = try browser.runTestFromUrl(test_url, test_path, timeout, .window);
 //! ```
 
 const std = @import("std");
@@ -129,41 +129,6 @@ pub const BrowserAdapter = struct {
             // Never run (GlobalType.isImplemented).
             .window_module, .jsshell => .window,
         };
-    }
-
-    /// Run a single WPT test (JavaScript content)
-    ///
-    /// Creates a FRESH V8 context for each test, matching real browser behavior.
-    /// This provides complete JavaScript isolation between tests.
-    ///
-    /// Flow:
-    /// 1. Create new context (reuses V8 isolate for performance)
-    /// 2. Load testharness.js
-    /// 3. Execute test script
-    /// 4. Wait for completion
-    /// 5. Cleanup context
-    pub fn runTest(
-        self: *BrowserAdapter,
-        test_path: []const u8,
-        test_content: []const u8,
-        timeout: config.Timeout,
-        context_type: test_parser.GlobalType,
-    ) !test_harness.TestResult {
-        const result = self.wpt_browser.runTest(
-            test_path,
-            test_content,
-            timeout,
-            context_type,
-        ) catch |err| {
-            // Convert error to TestResult
-            var error_result = try test_harness.TestResult.init(self.allocator, test_path);
-            error_result.status = .@"error";
-            error_result.message = try std.fmt.allocPrint(self.allocator, "Test execution failed: {}", .{err});
-            return error_result;
-        };
-
-        self.tests_run += 1;
-        return result;
     }
 
     /// Run an HTML WPT test via HTTP navigation

@@ -18,6 +18,11 @@ pub const Options = struct {
     allocator: std.mem.Allocator,
     /// Output directory for results
     output_dir: []const u8 = "wpt-results",
+    /// The environment the supervisor's children start with, when it is not
+    /// this process's own: the bug-finding run's, with libc's poison-on-free
+    /// turned on (runner_allocator.addLibcScribble). Set by main.zig, never
+    /// parsed; borrowed.
+    child_environ: ?*const std.process.Environ.Map = null,
     /// Verbose output (default: true, use --quiet to disable)
     verbose: bool = true,
     /// Number of parallel runners: 0 means "one per core", null means the flag

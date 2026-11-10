@@ -1,5 +1,6 @@
-//! HTML media loading and resource selection. The host owns decoding; default
-//! support is empty. Every asynchronous continuation is fenced by its load ID.
+//! HTML media loading and resource selection. The platform decodes
+//! (`media_decoding`, html.media_runtime.decoding); without it support is
+//! empty. Every asynchronous continuation is fenced by its load ID.
 const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
@@ -11,7 +12,8 @@ const dom = @import("dom");
 const html = @import("html");
 const common = html.media_runtime;
 const LoadState = @import("html_core").media.LoadState;
-const backend = @import("platform").media_backend;
+/// Decoding through the Browser's platform (`media_decoding`).
+const backend = common.decoding;
 const same_object = @import("same_object.zig");
 const clock = @import("clock");
 const hooks = dom.media_elements;
@@ -62,7 +64,7 @@ pub const InternalState = struct {
     /// The media timeline's clock while potentially playing: the monotonic
     /// time the current playback position was last advanced to, and the
     /// timer that runs "time marches on". Crane plays nothing out loud; the
-    /// host's decoder holds the data, and the position moves on this clock.
+    /// platform's decoder holds the data, and the position moves on this clock.
     clock_anchor: ?i128 = null,
     clock_timer: @import("html_core").media.Deadline(runtime.TimerInterface) = .{},
     /// The official playback position was set from the clock in this task;
@@ -71,7 +73,7 @@ pub const InternalState = struct {
     /// current playback position").
     official_fresh: bool = false,
     /// The video's natural size (HTML 4.8.8): the size of the frame at the
-    /// current playback position, as the host's decoder reports it; 0x0 for
+    /// current playback position, as the platform's decoder reports it; 0x0 for
     /// a resource with no video.
     video_size: backend.VideoSize = .{ .width = 0, .height = 0 },
 
@@ -318,7 +320,7 @@ pub const InternalState = struct {
                     }
                     const mime = (try @import("fetch").internal.mime.extractMimeEssence(self.load.allocator, &response.header_list)) orelse try self.load.allocator.dupe(u8, "");
                     defer self.load.allocator.free(mime);
-                    self.decoder = try common.forRealm(self.activity.instance.?.ctx).open(self.load.allocator, mime);
+                    self.decoder = try backend.Decoder.open(self.activity.instance.?.ctx, mime);
                 },
                 .bytes => |bytes| {
                     if (bytes.len != 0) {
@@ -1194,7 +1196,7 @@ pub fn call_pause(instance: *runtime.Instance) anyerror!void {
     try self.activity.queuePlay(@backingInt(Kind.pause), self.load.generation, "pause", &self.pending_play, "AbortError");
 }
 pub fn call_canPlayType(instance: *runtime.Instance, mime: runtime.DOMString) anyerror!enums.CanPlayTypeResult {
-    return switch (common.forRealm(instance.ctx).canPlayType(mime.asSlice())) {
+    return switch (backend.canPlayType(instance.ctx, mime.asSlice())) {
         .unsupported => .__,
         .maybe => ._maybe_,
         .probably => ._probably_,

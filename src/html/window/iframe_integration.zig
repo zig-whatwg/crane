@@ -214,20 +214,6 @@ pub const HostRealms = struct {
     committed: ?*const fn (*anyopaque, *anyopaque, bool) void = null,
 };
 
-/// An embedder's answer for the external classic scripts that the parser of
-/// a document its own navigation commits prepares - the WPT runner's
-/// testharnessreport.js, as wptrunner's server answers that path for a
-/// browser (dom.top_level_traversables.NavigateOptions). The shape of
-/// html.scripted_parser.ScriptLoader: `load` answers the source of the
-/// script at a src (null: fetch it as usual), and the parser that keeps it
-/// holds its own reference (`retain`/`release`).
-pub const EmbedderScriptLoader = struct {
-    context: ?*anyopaque,
-    load: *const fn (?*anyopaque, []const u8) ?[]const u8,
-    retain: *const fn (?*anyopaque) void,
-    release: *const fn (?*anyopaque) void,
-};
-
 pub const IFrameIntegration = struct {
     /// Allocator for this integration's resources
     allocator: Allocator,
@@ -466,10 +452,6 @@ pub const IFrameIntegration = struct {
     /// the record asks it rather than making a frame's. Null for an iframe's
     /// navigable or a popup's.
     host_realms: ?HostRealms = null,
-    /// The embedder's script loader for the document the committing
-    /// navigation makes (EmbedderScriptLoader): set around the commit by the
-    /// engine, read by its parser. BORROWED from the navigation.
-    next_script_loader: ?EmbedderScriptLoader = null,
     /// The URL of the document the committing navigation makes, while its
     /// realm is chosen ("create and initialize a Document object" steps
     /// 6-7): the host makes a new Window's realm for it (HostRealms), whose
