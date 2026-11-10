@@ -390,6 +390,28 @@ def _git_ok(repo, *args):
     return _GIT_ANSWERS[key]
 
 
+def test_in_commit(commit, test, repo):
+    """Whether red test `test` is in `commit`'s tree. A Crane test lives in the WPT fork
+    (tests/wpt/crane/, a submodule): it is in the commit when the tests/wpt revision that
+    commit records holds it - the integrator commits a lane's Crane tests to the fork and
+    bumps the submodule at the merge, so that merge-side commit is where the fix and its
+    test first stand together (the integrator, 2026-11-10: lane docopen1's do1- test)."""
+    if test.startswith('tests/wpt/'):
+        rest = test[len('tests/wpt/'):]
+        if not rest.startswith('crane/'):
+            return False   # only Crane's own tests; an upstream file is never a red test of ours
+        try:
+            out = subprocess.run(['git', 'ls-tree', commit, '--', 'tests/wpt'], cwd=repo,
+                                 capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.SubprocessError):
+            return False
+        match = re.fullmatch(r'160000 commit ([0-9a-f]{40})\ttests/wpt\n?', out.stdout)
+        if out.returncode != 0 or not match:
+            return False
+        return _git_ok(os.path.join(repo, 'tests', 'wpt'), 'cat-file', '-e', f'{match.group(1)}:{rest}')
+    return _git_ok(repo, 'cat-file', '-e', f'{commit}:{test}')
+
+
 def git_is_commit(commit, repo):
     return bool(commit) and _git_ok(repo, 'cat-file', '-e', f'{commit}^{{commit}}')
 
@@ -565,7 +587,7 @@ def parse_loss_dispositions(text, worklist, repo=None):
             if not git_contains('HEAD', commit, repo):
                 error(f'commit {commit} is not an ancestor of HEAD: a fix explains a loss once it is merged')
             for test in (t.strip() for t in values['test'].split(',')):
-                if not test or not _git_ok(repo, 'cat-file', '-e', f'{commit}:{test}'):
+                if not test or not test_in_commit(commit, test, repo):
                     error(f'test "{test}" is not in the fix commit {commit}: the red test comes with its fix')
             match = re.fullmatch(r'before (\d+)/(\d+); after (\d+)/(\d+)', values['repro'])
             if not match:
@@ -3069,6 +3091,43 @@ def main():
     return 0
 
 
+def _check_fixed_crane_test_in_fork():
+    """A fixed disposition's red test may be a Crane test in the WPT fork: it is in the
+    commit when the tests/wpt revision that commit records holds tests/wpt/crane/<file>
+    (lane docopen1, 2026-11-10). An upstream WPT path never is."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        env = dict(os.environ, GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t',
+                   GIT_COMMITTER_EMAIL='t@t', GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1')
+
+        def git(cwd, *args):
+            return subprocess.run(['git', *args], cwd=cwd, env=env, check=True,
+                                  capture_output=True, text=True).stdout.strip()
+        repo = os.path.join(d, 'repo')
+        sub = os.path.join(repo, 'tests', 'wpt')
+        os.makedirs(os.path.join(sub, 'crane'))
+        git(sub, 'init', '-q')
+        with open(os.path.join(sub, 'crane', 'red.html'), 'w') as f:
+            f.write('<!doctype html>')
+        git(sub, 'add', '.')
+        git(sub, 'commit', '-q', '-m', 'crane test')
+        with_test = git(sub, 'rev-parse', 'HEAD')
+        git(repo, 'init', '-q')
+        with open(os.path.join(repo, 'fix.zig'), 'w') as f:
+            f.write('// fix')
+        git(repo, 'add', 'fix.zig')
+        git(repo, 'update-index', '--add', '--cacheinfo', f'160000,{with_test},tests/wpt')
+        git(repo, 'commit', '-q', '-m', 'fix + its Crane test')
+        bump = git(repo, 'rev-parse', 'HEAD')
+        _GIT_ANSWERS.clear()
+        assert test_in_commit(bump, 'tests/wpt/crane/red.html', repo)
+        assert not test_in_commit(bump, 'tests/wpt/crane/missing.html', repo)
+        assert not test_in_commit(bump, 'tests/wpt/dom/upstream.html', repo), 'an upstream file is never ours'
+        assert test_in_commit(bump, 'fix.zig', repo)
+        assert not test_in_commit(bump, 'tests/v8/none_test.zig', repo)
+        _GIT_ANSWERS.clear()
+
+
 def _check_gate_rule():
     """The gate's status rule, pinned: OK with none passed blocks; OK with no
     subtests, or with any pass, does not; the runner's own statuses pass through."""
@@ -4480,6 +4539,7 @@ if __name__ == '__main__':
         _check_declared_variants()
         _check_history_chart()
         _check_gate_rule()
+        _check_fixed_crane_test_in_fork()
         _check_history_subs()
         _check_history_sources()
         _check_exemptions()

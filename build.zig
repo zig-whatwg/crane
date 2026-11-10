@@ -174,15 +174,23 @@ const tls_backend: TlsBackend = .mbedtls;
 /// - zstd (additional compression)
 /// - FTP, TFTP, Telnet, etc. (non-HTTP protocols)
 ///
-/// Built ONCE per invocation and mode (build() calls it before any module
-/// graph), because it mutates the memoized curl artifact and builds nghttp2:
-/// every module graph links the same libcurl through linkStaticLibcurl. The
-/// one exception is the WPT runner's own set, in its mode
-/// (runner_build_mode.RunnerModes.ownCLibraries) - a second curl dependency
-/// instance, since its arguments differ.
+/// Called once per C-library set: build() for the shared graph, and
+/// runnerGraph for each runner graph whose C libraries differ from it
+/// (runner_build_mode.RunnerModes.ownCLibraries). Every call compiles
+/// libraries of its OWN - libcurl, mbedTLS, zlib and nghttp2, each a new
+/// artifact (copyCLibrary, buildNghttp2) - in `optimize`, with `sanitize_c`
+/// (null: Zig's default for the mode). The dependencies' own artifacts are
+/// only read: Zig memoizes a dependency by its arguments, so two graphs in
+/// one mode get ONE curl, ONE mbedTLS and ONE zlib artifact, and a setting
+/// either graph wrote onto them would be both graphs' (lane buildfix1,
+/// 2026-11-10: the bug-finding graph's `.full` overwrote the production
+/// graph's `.trap` on mbedTLS and zlib; main's release console failed to link,
+/// and generation 214's production runner carried the full sanitizer in them).
+/// build() checks every build's linked C libraries against its modes at the
+/// end of configuration (checkLinkedC).
 ///
-/// `sanitize_c`, when given, is the C sanitizer of mbedTLS, zlib and nghttp2
-/// (libcurl's own sources keep theirs off, below).
+/// `sanitize_c` is the C sanitizer of mbedTLS, zlib and nghttp2 (libcurl's own
+/// sources keep theirs off, `libcurl_sanitize_c`, below).
 fn buildStaticLibcurl(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
@@ -238,9 +246,10 @@ fn buildStaticLibcurl(
         .@"ca-path" = @as([]const u8, "none"),
     }) orelse return null; // Lazy dependency not available
 
-    // Get the libcurl static library artifact from the dependency
-    // The curl package exposes both "curl" exe and lib, so we need to find the library specifically
-    const libcurl = findLibraryArtifact(curl_dep, "curl") orelse return null;
+    // The curl package declares both a "curl" exe and a "curl" library: its
+    // library is the recipe this call's own libcurl is compiled from, in
+    // `optimize` with libcurl's own sanitizer (below).
+    const libcurl = copyCLibrary(b, findLibraryArtifact(curl_dep, "curl") orelse return null, optimize, libcurl_sanitize_c);
     // "none" above is what upstream curl's CMake takes as "no CA file / no CA
     // directory" (CMakeLists.txt: unset when "none"), but allyourcodebase/curl
     // (5184bb9ff2) writes it into curl_config.h as the PATH "none"
@@ -248,7 +257,8 @@ fn buildStaticLibcurl(
     // every connection then failed to read a CA file named "none"
     // (CURLE_SSL_CACERT_BADFILE). Both are left undefined in the header, as
     // CMake leaves them; tests/fetch/trust_store_test.zig pins that curl names
-    // neither (CURLINFO_CAINFO, CURLINFO_CAPATH).
+    // neither (CURLINFO_CAINFO, CURLINFO_CAPATH). The header is this libcurl's
+    // own copy (copyCLibrary), so the recipe's stays as curl's build wrote it.
     undefineConfigHeaderValue(libcurl.root_module, "curl_config.h", "CURL_CA_BUNDLE");
     undefineConfigHeaderValue(libcurl.root_module, "curl_config.h", "CURL_CA_PATH");
 
@@ -264,6 +274,9 @@ fn buildStaticLibcurl(
     // built with the arguments curl passes, and libcurl's link entries for curl's
     // copies are pointed at them. Nothing else reaches curl's copies: they are
     // fetched (curl's build asks for them) but never compiled or linked.
+    // Root's are recipes too: this call compiles its own of each, in its mode
+    // and with its sanitizer (copyCLibrary), and never writes to the
+    // dependency's artifact, which every graph in this mode is given.
     // tests/linked_libraries/versions_test.zig asks the linked code which versions it
     // is, and replaceLinkedLibrary fails the build if a curl bump links either
     // library some other way.
@@ -279,12 +292,8 @@ fn buildStaticLibcurl(
         .target = target,
         .optimize = optimize,
     }) orelse return null;
-    const mbedtls = mbedtls_dep.artifact("mbedtls");
-    const zlib = zlib_dep.artifact("z");
-    if (sanitize_c) |sanitizer| {
-        mbedtls.root_module.sanitize_c = sanitizer;
-        zlib.root_module.sanitize_c = sanitizer;
-    }
+    const mbedtls = copyCLibrary(b, mbedtls_dep.artifact("mbedtls"), optimize, sanitize_c);
+    const zlib = copyCLibrary(b, zlib_dep.artifact("z"), optimize, sanitize_c);
     replaceLinkedLibrary(libcurl, "mbedtls", mbedtls);
     replaceLinkedLibrary(libcurl, "z", zlib);
     // curl's build passes the version IT pins as MBEDTLS_VERSION - a CMake
@@ -306,9 +315,9 @@ fn buildStaticLibcurl(
     // check is absent, passes every one of these tests. The defect is real C UB but it
     // is upstream's, in a content-hash-pinned dependency we cannot patch from here.
     //
-    // This disables the sanitizer for libcurl ONLY. Every Zig module in Crane keeps its
-    // full safety checks. Revisit when a curl release fixes it upstream.
-    libcurl.root_module.sanitize_c = .off;
+    // This disables the sanitizer for libcurl ONLY (`libcurl_sanitize_c`, given to
+    // copyCLibrary above). Every Zig module in Crane keeps its full safety checks.
+    // Revisit when a curl release fixes it upstream.
 
     // HTTP/2: nghttp2 built here from its pinned release and linked into
     // libcurl (curl's `nghttp2` option above stays off).
@@ -321,8 +330,7 @@ fn buildStaticLibcurl(
     // `fetch`'s test "libcurl speaks HTTP/2 when the build asked for it"
     // fails if HTTP/2 goes missing.
     if (enable_http2) {
-        if (buildNghttp2(b, target, optimize)) |nghttp2| {
-            if (sanitize_c) |sanitizer| nghttp2.root_module.sanitize_c = sanitizer;
+        if (buildNghttp2(b, target, optimize, sanitize_c)) |nghttp2| {
             libcurl.root_module.addCMacro("USE_NGHTTP2", "1");
             libcurl.root_module.addCMacro("NGHTTP2_STATICLIB", "1");
             libcurl.root_module.linkLibrary(nghttp2);
@@ -378,7 +386,75 @@ fn buildStaticLibcurl(
     return .{ .libcurl = libcurl, .mbedtls = mbedtls };
 }
 
-/// libcurl and the mbedTLS it links, built once by buildStaticLibcurl.
+/// libcurl's own C sanitizer, in every mode: off (buildStaticLibcurl says
+/// why). checkLinkedC holds libcurl to it.
+const libcurl_sanitize_c: std.zig.SanitizeC = .off;
+
+/// A C library of the calling graph's own, compiled from `recipe` - a static
+/// library a dependency's build.zig declares - in `optimize` with `sanitize_c`
+/// (null: Zig's default for the mode).
+///
+/// Zig memoizes a dependency by its arguments, so every graph that asks for
+/// curl, mbedTLS or zlib with the same target and mode is given the SAME
+/// artifact, and whatever one graph writes onto it is every graph's. None of
+/// the three packages declares an option for the C sanitizer (allyourcodebase/
+/// mbedtls 3.6.6 declares `threading`, zlib 1.3.2 `pie`, curl none for it), so
+/// no honest argument tells two instances apart. The dependency's artifact is
+/// therefore a recipe that is only read - never built, never written: the copy
+/// takes its root module whole (its C sources and their flags, its macros,
+/// include directories, link entries, system libraries and frameworks, and
+/// every other setting) with its own mode and sanitizer, a config header of
+/// its own (so an edit to it stays this copy's), and the recipe's installed
+/// headers, and is a new artifact. The configuration fails here if the
+/// recipe is anything but a static C library, or carries a link entry a copy
+/// cannot take.
+fn copyCLibrary(b: *std.Build, recipe: *std.Build.Step.Compile, optimize: std.builtin.OptimizeMode, sanitize_c: ?std.zig.SanitizeC) *std.Build.Step.Compile {
+    const from = recipe.root_module;
+    if (recipe.kind != .lib or recipe.linkage != .static or from.root_source_file != null or from.import_table.count() != 0) {
+        std.debug.panic("{s} is not a static C library; re-check copyCLibrary", .{recipe.name});
+    }
+    const gpa = b.allocator;
+    const module = gpa.create(std.Build.Module) catch @panic("OOM");
+    module.init(b, .{ .existing = from });
+    module.owner = b;
+    module.optimize = optimize;
+    module.sanitize_c = sanitize_c;
+    module.cached_graph = .{ .modules = &.{}, .names = &.{} };
+    module.import_table = .empty;
+    module.c_macros = from.c_macros.clone(gpa) catch @panic("OOM");
+    module.include_dirs = from.include_dirs.clone(gpa) catch @panic("OOM");
+    module.lib_paths = from.lib_paths.clone(gpa) catch @panic("OOM");
+    module.rpaths = from.rpaths.clone(gpa) catch @panic("OOM");
+    module.frameworks = from.frameworks.clone(gpa) catch @panic("OOM");
+    module.link_objects = from.link_objects.clone(gpa) catch @panic("OOM");
+    for (module.include_dirs.items) |*dir| switch (dir.*) {
+        .config_header_step => |header| dir.* = .{ .config_header_step = copyConfigHeader(b, header) },
+        else => {},
+    };
+    for (module.link_objects.items) |object| switch (object) {
+        .c_source_files, .c_source_file, .assembly_file, .static_path, .other_step, .system_lib => {},
+        .win32_resource_file => std.debug.panic("{s} compiles a Win32 resource; re-check copyCLibrary", .{recipe.name}),
+    };
+    const lib = b.addLibrary(.{ .name = recipe.name, .linkage = .static, .root_module = module, .version = recipe.version });
+    lib.installLibraryHeaders(recipe);
+    return lib;
+}
+
+/// A config header of its own with `original`'s template and values
+/// (copyCLibrary).
+fn copyConfigHeader(b: *std.Build, original: *std.Build.Step.ConfigHeader) *std.Build.Step.ConfigHeader {
+    if (original.include_guard != .none) std.debug.panic("{s} has an include guard; re-check copyConfigHeader", .{original.include_path});
+    const copy = std.Build.Step.ConfigHeader.create(b, .{
+        .style = original.style,
+        .max_bytes = original.input_size_limit,
+        .include_path = original.include_path,
+    });
+    copy.values = original.values.clone(b.allocator) catch @panic("OOM");
+    return copy;
+}
+
+/// libcurl and the mbedTLS it links, built by buildStaticLibcurl for one
+/// C-library set.
 const StaticLibcurl = struct {
     libcurl: *std.Build.Step.Compile,
     mbedtls: *std.Build.Step.Compile,
@@ -748,7 +824,7 @@ const jpeg_sources = [_][]const u8{
 /// its release tarball (build.zig.zon `nghttp2`, pinned by hash), never a
 /// system library. Only lib/ is built, as upstream's --enable-lib-only does:
 /// lib/CMakeLists.txt's NGHTTP2_SOURCES and definitions.
-fn buildNghttp2(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) ?*std.Build.Step.Compile {
+fn buildNghttp2(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, sanitize_c: ?std.zig.SanitizeC) ?*std.Build.Step.Compile {
     const upstream = b.lazyDependency("nghttp2", .{}) orelse return null;
     const version_h = b.addConfigHeader(.{
         .style = .{ .cmake = upstream.path("lib/includes/nghttp2/nghttp2ver.h.in") },
@@ -760,7 +836,7 @@ fn buildNghttp2(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.b
     const lib = b.addLibrary(.{
         .name = "nghttp2",
         .linkage = .static,
-        .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true }),
+        .root_module = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .sanitize_c = sanitize_c }),
     });
     lib.root_module.addIncludePath(upstream.path("lib/includes"));
     lib.root_module.addConfigHeader(version_h);
@@ -3023,8 +3099,11 @@ pub fn build(b: *std.Build) void {
     // MODULE GRAPHS - one per platform this invocation builds for
     // ========================================================================
 
-    // The C libraries every graph links, built once: a second graph links the
-    // same artifacts rather than building its own.
+    // The shared graph's C libraries, in -Doptimize's mode at Zig's default C
+    // sanitizer: the target platform's graph and the testing graph link the
+    // same artifacts. A runner graph whose C libraries differ in mode or
+    // sanitizer builds its own (runnerGraph); none is ever written to by
+    // another graph (checkLinkedC, at the end of build()).
     const platform_without = optionList(b, "platform-without", b.option([]const u8, "platform-without", "Capabilities to compile out (comma-separated; src/platform/protocol.zig Capabilities)"), &platform_capability_names);
     const brotli_enabled = for (platform_without) |name| {
         if (std.mem.eql(u8, name, "brotli")) break false;
@@ -3153,6 +3232,15 @@ pub fn build(b: *std.Build) void {
         .enable_http2 = enable_http2,
         .brotli_enabled = brotli_enabled,
     });
+    // The mode and C sanitizer of each graph's C libraries: the shared
+    // graph's are -Doptimize's at Zig's default; a runner graph's are its
+    // modes' (-Dsystem-curl builds every runner on the shared graph,
+    // runnerGraph). What each binary bundles of the UBSan runtime follows
+    // from them (addWptRunner, gc_bench), and checkLinkedC holds every build
+    // to them at the end of build().
+    const shared_c: CModes = .{ .optimize = optimize, .sanitize_c = null };
+    const production_c: CModes = if (use_system_curl) shared_c else .libraries(production_build.modes);
+    const bug_finding_c: CModes = if (use_system_curl) shared_c else .libraries(bug_finding_build.modes);
     const whatwg_mod = crane_graph.whatwg;
     const clock_mod = crane_graph.clock;
     const host_mod = crane_graph.host;
@@ -5140,6 +5228,9 @@ pub fn build(b: *std.Build) void {
         optimize_given,
     );
     const repl_graph = if (runner_release != null) production_graph else crane_graph;
+    // What that graph's C libraries are built with (-Dsystem-curl builds the
+    // production graph as the shared one, runnerGraph).
+    const repl_c: CModes = if (runner_release != null and !use_system_curl) .libraries(repl_modes) else shared_c;
     const repl_optimize = repl_modes.root;
     const repl_exe = b.addExecutable(.{
         .name = "repl",
@@ -5162,6 +5253,10 @@ pub fn build(b: *std.Build) void {
     // into (the runner's rule, RunnerModes.sanitize_c), or the link misses
     // __ubsan_handle_* (libbrotli, a Debug-built C library).
     if (repl_modes.sanitize_c) |sanitizer| repl_exe.root_module.sanitize_c = sanitizer;
+    // And it links the runtime for C libraries built with the full sanitizer
+    // (the shared graph's, in Debug), as the runners do (addWptRunner); the
+    // release console's are `.trap`, so it links none.
+    if (repl_c.compilesFull()) repl_exe.bundle_ubsan_rt = true;
 
     // Add V8 C++ wrapper
     repl_exe.root_module.addCSourceFile(.{
@@ -5346,9 +5441,10 @@ pub fn build(b: *std.Build) void {
     gc_bench_exe.root_module.addObjectFile(.{ .cwd_relative = v8_libbase_path });
     gc_bench_exe.root_module.link_libcpp = true;
     // As the runner's: the full C sanitizer, and its runtime bundled for the
-    // C libraries a release root links (see addWptRunner).
+    // C libraries a release root links when they are built with the full
+    // sanitizer (the shared graph's: -Doptimize's mode; see addWptRunner).
     if (gc_bench_modes.sanitize_c) |sanitizer| gc_bench_exe.root_module.sanitize_c = sanitizer;
-    gc_bench_exe.bundle_ubsan_rt = true;
+    if (shared_c.compilesFull()) gc_bench_exe.bundle_ubsan_rt = true;
     gc_bench_exe.step.dependOn(&install_snapshot.step);
 
     b.installArtifact(gc_bench_exe);
@@ -5500,7 +5596,7 @@ pub fn build(b: *std.Build) void {
         "Enable debug log output (std.log.debug) during WPT tests",
     ) orelse false;
 
-    const wpt_runner_exe = addWptRunner(b, .production, production_build, production_graph, .{
+    const wpt_runner_exe = addWptRunner(b, .production, production_build, production_graph, production_c, .{
         .target = target,
         .poisoning = poisoning_module,
         .install_snapshot = &install_snapshot.step,
@@ -5523,7 +5619,7 @@ pub fn build(b: *std.Build) void {
     // other single-artifact path.
     const wpt_runner_step = b.step("wpt-runner", "Build only wpt_runner, the PRODUCTION WPT runner (Crane's production configuration: published and timed); pair with -j2");
     wpt_runner_step.dependOn(&wpt_runner_exe.install.step);
-    const bug_finding_runner = addWptRunner(b, .bug_finding, bug_finding_build, bug_finding_graph, .{
+    const bug_finding_runner = addWptRunner(b, .bug_finding, bug_finding_build, bug_finding_graph, bug_finding_c, .{
         .target = target,
         .poisoning = poisoning_module,
         .install_snapshot = &install_snapshot.step,
@@ -5646,6 +5742,45 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_wpt_site_tests.step);
 
     // ========================================================================
+    // The UBSan-symbol check
+    // ========================================================================
+    // tools/ubsan_symbols.zig counts the `__ubsan_handle_*` symbols in a built
+    // binary's symbol tables. The end of build() runs it on the production
+    // runner, the bug-finding runner and the release console as part of
+    // their own steps (checkLinkedC's builds). Its tests read real objects:
+    // one C source compiled for ELF and for Mach-O, with the full sanitizer
+    // (it calls handlers) and at `.trap` (it calls none).
+    const ubsan_fixture_source = b.addWriteFiles().add("ubsan_fixture.c",
+        \\int crane_fixture_add(int a, int b) { return a + b; }
+        \\int crane_fixture_shift(int a, int b) { return a << b; }
+        \\
+    );
+    const ubsan_fixtures = b.addOptions();
+    for ([_]struct { []const u8, []const u8 }{ .{ "elf", "x86_64-linux-none" }, .{ "mach_o", "aarch64-macos-none" } }) |format| {
+        const fixture_target = b.resolveTargetQuery(std.Target.Query.parse(.{ .arch_os_abi = format[1] }) catch @panic("fixture target"));
+        for ([_]std.zig.SanitizeC{ .full, .trap }) |sanitizer| {
+            const object = b.addObject(.{
+                .name = b.fmt("ubsan_fixture_{s}_{t}", .{ format[0], sanitizer }),
+                .root_module = b.createModule(.{ .target = fixture_target, .optimize = .ReleaseSafe, .sanitize_c = sanitizer }),
+            });
+            object.root_module.addCSourceFile(.{ .file = ubsan_fixture_source });
+            ubsan_fixtures.addOptionPath(b.fmt("{s}_{t}", .{ format[0], sanitizer }), object.getEmittedBin());
+        }
+    }
+    const ubsan_symbols_module = b.createModule(.{
+        .root_source_file = b.path("tools/ubsan_symbols.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    ubsan_symbols_module.addOptions("ubsan_fixtures", ubsan_fixtures);
+    const ubsan_symbols_exe = b.addExecutable(.{ .name = "ubsan_symbols", .root_module = ubsan_symbols_module });
+    const ubsan_symbols_tests = b.addTest(.{ .root_module = ubsan_symbols_module });
+    test_step.dependOn(&addSuiteRun(b, launch, ubsan_symbols_tests, "tools-ubsan_symbols", null).step);
+    // Verify mode for its tests, which live in the tool:
+    // -Dverify-files=tools/ubsan_symbols.zig.
+    addTestVerify(b, launch, ubsan_symbols_tests, "tools-ubsan_symbols", "tools", &.{"ubsan_symbols.zig"});
+
+    // ========================================================================
     // PERFORMANCE: the benchmark suite's runner and /performance/ (tools/perf_bench/)
     // ========================================================================
     // tools/perf_bench serves tests/perf/ (the engine-neutral workload
@@ -5689,7 +5824,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&elements_suite_check.step);
     // `zig build perf-bench-test`: the tool's tests and the suite check
     // alone, with build_mode's (the console's release modes).
-    const perf_bench_test_step = b.step("perf-bench-test", "Run tools/perf_bench's tests, the suite check, the WPT site's tests and the runner build-mode tests alone");
+    const perf_bench_test_step = b.step("perf-bench-test", "Run tools/perf_bench's tests, the suite check, the WPT site's tests, the runner build-mode tests and the UBSan-symbol check's tests alone");
     perf_bench_test_step.dependOn(&run_perf_bench_tests.step);
     perf_bench_test_step.dependOn(&perf_suite_check.step);
     perf_bench_test_step.dependOn(&elements_suite_check.step);
@@ -5701,6 +5836,9 @@ pub fn build(b: *std.Build) void {
         .target = b.graph.host,
         .optimize = .Debug,
     }) }), "perf-build_mode", null).step);
+    // The check that reads the built runners and console back (build_mode's
+    // modes, as their binaries carry them).
+    perf_bench_test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = ubsan_symbols_module }), "perf-ubsan_symbols", null).step);
 
     // tools/test_suites.zig: the configure-time check that every tests/<dir>/
     // with test files is a suite (checkEveryTestDirectoryIsASuite), std-only.
@@ -6702,6 +6840,147 @@ pub fn build(b: *std.Build) void {
     }
     if (launch.sanitize_thread) instrumentForThreadSanitizer(b, launch);
     finishTestVerify(b, launch.verify);
+
+    // Every C library each build links is compiled in the mode and with the
+    // C sanitizer that build's modes say (build_mode.zig checkCLibraries),
+    // known here, once every graph is configured: a dependency instance two
+    // graphs share and each writes to fails the configuration, naming the
+    // artifact, instead of silently crossing graphs (lane buildfix1,
+    // 2026-11-10: generation 214's production runner linked the bug-finding
+    // graph's full-sanitizer mbedTLS and zlib, and main's release console did
+    // not link). The production runner and the release console are held to
+    // the release build's modes, the bug-finding runner to its own; every
+    // build on the shared graph to -Doptimize's mode at Zig's default
+    // sanitizer (production_c, bug_finding_c, shared_c).
+    // Both directions (the integrator, 2026-11-10): the production runner
+    // and the release console carry no `.full` C and no UBSan runtime; the
+    // bug-finding runner carries `.full` everywhere, nghttp2 and Brotli
+    // included, and the runtime it calls.
+    const checked_builds = [_]CheckedBuild{
+        .{ .exe = wpt_runner_exe.exe, .root = .root(production_build.modes), .c = production_c, .step = wpt_runner_step },
+        .{ .exe = bug_finding_runner.exe, .root = .root(bug_finding_build.modes), .c = bug_finding_c, .step = bug_finding_step },
+        .{ .exe = repl_exe, .root = .root(repl_modes), .c = repl_c, .step = if (runner_release != null) repl_exe_step else null },
+        .{ .exe = gc_bench_exe, .root = .root(gc_bench_modes), .c = shared_c, .step = null },
+    };
+    checkLinkedC(b, &checked_builds);
+    // And once built, each of the three binaries is read back: its symbol
+    // tables name a `__ubsan_handle_*` exactly when its modes need the
+    // runtime (tools/ubsan_symbols.zig), as part of its own step.
+    for (checked_builds) |checked| if (checked.step) |step| {
+        const check = b.addRunArtifact(ubsan_symbols_exe);
+        check.addArg(if (checked.needsUbsanRuntime()) "--expect=some" else "--expect=none");
+        check.addArg(b.fmt("--name={s}", .{checked.exe.name}));
+        check.addFileArg(checked.exe.getEmittedBin());
+        // Checked, not inherited: no side effects, so Zig's cache reruns it
+        // only when the binary (its file argument) changes, and its stderr
+        // is shown when it fails.
+        check.expectExitCode(0);
+        step.dependOn(&check.step);
+    };
+}
+
+/// The mode and C sanitizer one part of a build compiles its C with (null:
+/// Zig's default for the mode): its root's own C and C++, or the C libraries
+/// it links.
+const CModes = struct {
+    optimize: std.builtin.OptimizeMode,
+    sanitize_c: ?std.zig.SanitizeC,
+
+    /// What `modes` give the C libraries.
+    fn libraries(modes: runner_build_mode.RunnerModes) CModes {
+        return .{ .optimize = modes.c_libraries, .sanitize_c = modes.sanitize_c };
+    }
+
+    /// What `modes` give the root (v8_wrapper.cpp).
+    fn root(modes: runner_build_mode.RunnerModes) CModes {
+        return .{ .optimize = modes.root, .sanitize_c = modes.sanitize_c };
+    }
+
+    /// Whether this C is compiled with the full sanitizer, whose failed
+    /// checks call the UBSan runtime.
+    fn compilesFull(self: CModes) bool {
+        return runner_build_mode.effectiveSanitizeC(self.sanitize_c, self.optimize) == .full;
+    }
+};
+
+/// A build checkLinkedC checks: its executable, what its modes give its root
+/// and its C libraries, and the step that builds it alone, which also reads
+/// the built binary back (tools/ubsan_symbols.zig) - none for a build no
+/// step names.
+const CheckedBuild = struct {
+    exe: *std.Build.Step.Compile,
+    root: CModes,
+    c: CModes,
+    step: ?*std.Build.Step,
+
+    fn needsUbsanRuntime(self: CheckedBuild) bool {
+        return runner_build_mode.needsUbsanRuntimeFor(self.root.optimize, self.root.sanitize_c, self.c.optimize, self.c.sanitize_c);
+    }
+};
+
+/// Fails the configuration unless each of `builds` is what its modes say
+/// (build_mode.zig checkCLibraries): its root, and every C library it links,
+/// in its modes' mode and C sanitizer; and Zig's UBSan runtime linked exactly
+/// when they need it. What a build links is found from its executable: every
+/// library artifact reachable through the link entries of the modules in its
+/// graph, and of those libraries in turn (libcurl's mbedTLS, zlib, nghttp2,
+/// Brotli). libcurl's own sources are held to `libcurl_sanitize_c`.
+fn checkLinkedC(b: *std.Build, builds: []const CheckedBuild) void {
+    const gpa = b.allocator;
+    var linked: std.ArrayList(runner_build_mode.LinkedCLibrary) = .empty;
+    var runtimes: std.ArrayList(runner_build_mode.LinkedUbsanRuntime) = .empty;
+    for (builds) |checked| {
+        const root = checked.exe.root_module;
+        const root_optimize = root.optimize orelse .debug;
+        linked.append(gpa, .{
+            .build = checked.exe.name,
+            .library = "the root",
+            .artifact = @intFromPtr(checked.exe),
+            .optimize = root_optimize,
+            .sanitize_c = root.sanitize_c,
+            .want_optimize = checked.root.optimize,
+            .want_sanitize_c = checked.root.sanitize_c,
+        }) catch @panic("OOM");
+        // Zig links the runtime when asked (bundle_ubsan_rt), and by default
+        // when the root compiles its own C at the full sanitizer.
+        runtimes.append(gpa, .{
+            .build = checked.exe.name,
+            .links = checked.exe.bundle_ubsan_rt orelse (runner_build_mode.effectiveSanitizeC(root.sanitize_c, root_optimize) == .full),
+            .needs = checked.needsUbsanRuntime(),
+        }) catch @panic("OOM");
+        var modules: std.array_hash_map.Auto(*std.Build.Module, void) = .empty;
+        var libraries: std.array_hash_map.Auto(*std.Build.Step.Compile, void) = .empty;
+        modules.put(gpa, checked.exe.root_module, {}) catch @panic("OOM");
+        var next: usize = 0;
+        while (next < modules.count()) : (next += 1) {
+            const module = modules.keys()[next];
+            for (module.import_table.values()) |imported| modules.put(gpa, imported, {}) catch @panic("OOM");
+            for (module.link_objects.items) |object| switch (object) {
+                .other_step => |other| if (other.kind == .lib) {
+                    libraries.put(gpa, other, {}) catch @panic("OOM");
+                    modules.put(gpa, other.root_module, {}) catch @panic("OOM");
+                },
+                else => {},
+            };
+        }
+        for (libraries.keys()) |library| {
+            const is_libcurl = std.mem.eql(u8, library.name, "curl");
+            linked.append(gpa, .{
+                .build = checked.exe.name,
+                .library = library.name,
+                .artifact = @intFromPtr(library),
+                .optimize = library.root_module.optimize orelse .debug,
+                .sanitize_c = library.root_module.sanitize_c,
+                .want_optimize = checked.c.optimize,
+                .want_sanitize_c = if (is_libcurl) libcurl_sanitize_c else checked.c.sanitize_c,
+            }) catch @panic("OOM");
+        }
+    }
+    var report: std.Io.Writer.Allocating = .init(gpa);
+    const problems = runner_build_mode.checkCLibraries(&report.writer, linked.items, runtimes.items) catch @panic("OOM");
+    if (problems == 0) return;
+    std.debug.print("error: build.zig: {d} problem(s) with the C a build compiles and links (tests/wpt_runner/build_mode.zig checkCLibraries):\n{s}", .{ problems, report.written() });
+    std.process.exit(1);
 }
 
 /// Every Crane module, built for one platform (docs/platform-protocol.md 1.1).
@@ -6812,8 +7091,9 @@ const WptRunner = struct {
 /// One build of tests/wpt_runner/main.zig (build_mode.zig `RunnerBuild`):
 /// `build.modes` decide its root's mode, its C sanitizer and its allocator,
 /// `graph` is the module graph it links (`runnerGraph`), and its
-/// `wpt_options` tell main.zig which build it is.
-fn addWptRunner(b: *std.Build, which: runner_build_mode.RunnerBuild, config: runner_build_mode.Build, graph: CraneModules, ctx: WptRunnerContext) WptRunner {
+/// `wpt_options` tell main.zig which build it is; `c_libraries` is what that
+/// graph's C libraries are built with.
+fn addWptRunner(b: *std.Build, which: runner_build_mode.RunnerBuild, config: runner_build_mode.Build, graph: CraneModules, c_libraries: CModes, ctx: WptRunnerContext) WptRunner {
     const imports = b.allocator.dupe(std.Build.Module.Import, &.{
         // The sweep allocator's poisoning front (runner_allocator.zig), shared
         // with the Crane test runner (lane poison2).
@@ -6880,9 +7160,11 @@ fn addWptRunner(b: *std.Build, which: runner_build_mode.RunnerBuild, config: run
     if (config.modes.sanitize_c) |sanitizer| exe.root_module.sanitize_c = sanitizer;
     // The full sanitizer's handlers (___ubsan_handle_*) are called from C
     // libraries built as artifacts of their own, which a release root does not
-    // bundle a runtime for: without this a ReleaseSafe runner fails to link on
-    // them (libmbedtls.a).
-    exe.bundle_ubsan_rt = true;
+    // bundle a runtime for: without this a ReleaseSafe bug-finding runner fails
+    // to link on them (libmbedtls.a). Only that build: the production run's C
+    // libraries are `.trap`, which calls no handler, so it links no runtime -
+    // as the release console links none (build_mode.zig needsUbsanRuntimeFor).
+    if (c_libraries.compilesFull()) exe.bundle_ubsan_rt = true;
     // The runner reads the snapshot beside it.
     exe.step.dependOn(ctx.install_snapshot);
     const install = b.addInstallArtifact(exe, .{});
@@ -6927,13 +7209,15 @@ const RunnerGraphContext = struct {
 };
 
 /// The module graph a WPT runner build links (tests/wpt_runner/build_mode.zig
-/// `Build`): its platform graph's existing one when its modes are
-/// -Doptimize's throughout (or with -Dsystem-curl, whose one libcurl cannot
-/// be built per mode), else a private graph of that platform in its modes,
-/// over C libraries of its own built at its root's sanitizer. Private: the
-/// target platform's public graph registers its modules by name, once
-/// (docs/lessons/workflow-a-second-graph-of-the-target-platform-must-be-
-/// private.md).
+/// `Build`): its platform graph's existing one when its Crane modules and C
+/// libraries are the shared graph's - -Doptimize's mode, at Zig's default C
+/// sanitizer for it (`RunnerModes.ownGraph`) - or with -Dsystem-curl, whose
+/// one libcurl cannot be built per mode; else a private graph of that
+/// platform in its modes, over C libraries of its own (buildStaticLibcurl,
+/// buildBrotli, buildImageCodecs: new artifacts per call) built at its root's
+/// sanitizer. Private: the target platform's public graph registers its
+/// modules by name, once (docs/lessons/workflow-a-second-graph-of-the-target-
+/// platform-must-be-private.md).
 fn runnerGraph(b: *std.Build, target: std.Build.ResolvedTarget, runner: runner_build_mode.Build, ctx: RunnerGraphContext) CraneModules {
     const platform: Platform = switch (runner.platform) {
         .console => ctx.target_platform,
