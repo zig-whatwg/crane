@@ -118,6 +118,8 @@ pub const protocol = struct {
         c.http2 = if (platform_options.http2) .native else .unsupported;
         // src/platform/memory.zig reads task_info / /proc/self/statm.
         c.resident_memory = .native;
+        // Reserved address space for each Browser's heap (6.11): kit/posix.
+        c.address_space = .native;
         // kit/memory_clipboard per Browser (D2, the user 2026-11-09), as
         // headless Chrome's. Deviation: nothing leaves the Browser and nothing
         // another application copies arrives.
@@ -159,6 +161,17 @@ pub const protocol = struct {
     pub const fillBrowserRandom = posix.fillBrowserRandom;
     pub const spawnThread = posix.spawnThread;
     pub const joinThread = posix.joinThread;
+    // 6.11 Address space: kit/posix's, which takes this OS's own path
+    // (darwin: a VM tag per label, MADV_FREE_REUSABLE / MADV_FREE_REUSE;
+    // Linux: VMA names, MADV_NOHUGEPAGE on the node cage, mprotect-only
+    // commit), chosen by the target it is built for.
+    pub const pageSize = headless.pageSize;
+    pub const reserveAddressSpace = headless.reserveAddressSpace;
+    pub const labelAddressSpace = headless.labelAddressSpace;
+    pub const commitPages = headless.commitPages;
+    pub const decommitPages = headless.decommitPages;
+    pub const protectPages = headless.protectPages;
+    pub const releaseAddressSpace = headless.releaseAddressSpace;
     pub const makeDirectoryPath = posix.makeDirectoryPath;
     pub const readFile = posix.readFile;
     pub const writeFileAtomic = posix.writeFileAtomic;
