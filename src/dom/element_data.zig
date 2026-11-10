@@ -342,10 +342,12 @@ pub const AttributeList = struct {
         return null;
     }
 
-    /// The value of the attribute `index` finds, or "".
-    fn valueAt(self: *AttributeList, tables: Tables, index: u8, comptime static: NameId) []const u8 {
-        const position = self.find(tables, index, static) orelse return "";
-        return tables.value(self.items()[position].value);
+    /// The value of the attribute `index` finds in `scope`'s tables, or "":
+    /// one table read (the values'), the names' too only past a saturated
+    /// index.
+    fn valueAt(self: *AttributeList, scope: *runtime.BrowserScope, index: u8, comptime static: NameId) []const u8 {
+        const position = (if (index == saturated_index) self.find(Tables.of(scope), index, static) else self.find(.{}, index, static)) orelse return "";
+        return attribute_values.bytesIn(attribute_values.tableOf(scope), self.items()[position].value);
     }
 
     /// The attribute just appended at `position` is the id or class
@@ -659,7 +661,7 @@ pub const View = struct {
     /// Blink's Element::GetIdAttribute reads the attribute the same way.
     pub fn idValue(self: View) []const u8 {
         const list = self.data.attrs orelse return "";
-        return list.valueAt(self.tables(), list.id_index, id_name);
+        return list.valueAt(self.scope, list.id_index, id_name);
     }
 
     /// The class attribute's value in no namespace, or "": what the class
@@ -667,7 +669,7 @@ pub const View = struct {
     /// `idValue`.
     pub fn classValue(self: View) []const u8 {
         const list = self.data.attrs orelse return "";
-        return list.valueAt(self.tables(), list.class_index, class_name);
+        return list.valueAt(self.scope, list.class_index, class_name);
     }
 
     /// The number of attributes in the list.

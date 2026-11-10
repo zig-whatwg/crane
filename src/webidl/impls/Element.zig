@@ -1800,9 +1800,10 @@ pub fn call_getAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
     const name = try lookupName(instance, internal, qualifiedName.asSlice(), &buffer);
     defer name.deinit(runtime.allocatorOf(instance));
     // Step 2: "If attr is null, return null."
-    const index = attrsOf(instance, internal).indexOfQualifiedName(name.slice) orelse return null;
+    const attributes = attrsOf(instance, internal);
+    const index = attributes.indexOfQualifiedName(name.slice) orelse return null;
     // Step 3: "Return attr's value."
-    return runtime.DOMString.initInterned(attrsOf(instance, internal).attributeAt(index).?.value);
+    return runtime.DOMString.initInterned(attributes.attributeAt(index).?.value);
 }
 
 /// Operation: hasAttribute
