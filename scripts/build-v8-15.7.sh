@@ -143,7 +143,10 @@ ARGS
 step_deps() {
   check_stop deps
   local cmd
-  for cmd in git python3 curl tar xz; do command -v "$cmd" > /dev/null || die "missing command: $cmd"; done
+  for cmd in git python3 curl tar; do command -v "$cmd" > /dev/null || die "missing command: $cmd"; done
+  # gclient unpacks the .tar.xz GCS packages (clang, Rust) with Python's tarfile: lzma is what it
+  # needs, not an xz binary (macOS hosts have none).
+  python3 -c 'import lzma' 2> /dev/null || die "python3 has no lzma module (gclient cannot unpack .tar.xz)"
   [ -x "$ZIG" ] || die "no Zig at $ZIG"
   [ "$("$ZIG" version)" = "$ZIG_VERSION" ] || die "$ZIG is $("$ZIG" version), not the pinned $ZIG_VERSION"
   if [ "$HOST_OS" = mac ]; then
