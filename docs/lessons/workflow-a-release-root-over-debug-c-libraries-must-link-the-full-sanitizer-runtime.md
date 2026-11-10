@@ -10,3 +10,5 @@
 **Fix**: any root whose mode can differ from the C libraries' asks for the full sanitizer in the safe modes: the console through `runner_build_mode.runnerModes(...).sanitize_c`, the generator through `tools/snapshot_generator_mode.zig` `sanitizeC` (ReleaseSafe: `.full`; Debug: Zig's default, already full; the fast modes: none). Pinned by each file's tests.
 
 **Takeaway**: **Giving an artifact a root mode of its own is two decisions, not one: the optimizer, and which sanitizer runtime the root links for the C libraries it did not build. Make both from the same rule, and build each new mode once before relying on it.**
+
+**Status 2026-11-10 (lane buildfix1):** "every runner bundles the runtime" is now "only a build whose C is compiled with the full sanitizer bundles it": the production WPT runner and the release console link none (tools/ubsan_symbols.zig checks it on each binary). See workflow-a-memoized-dependency-is-one-artifact-for-every-graph-that-asks-alike.md.
