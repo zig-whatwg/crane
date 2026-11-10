@@ -342,6 +342,7 @@ pub const event_handlers = @import("event_handlers.zig");
 /// Whether an event target has a listener of a type (EventTarget's step):
 /// a service worker's set of event types to handle.
 pub const event_listener_types = @import("event_listener_types.zig");
+pub const event_listener_list = @import("event_listener_list.zig");
 /// A change of an event target's listener list, told to the owner that asked
 /// (EventTarget's step; WebKit's eventListenersDidChange): an object kept
 /// while it has listeners of a type (PermissionStatus).

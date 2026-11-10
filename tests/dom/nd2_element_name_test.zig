@@ -127,13 +127,14 @@ test "Element's InternalState is 88 bytes at N2, 40 after N3" {
     try expectSize(ElementState, 40);
 }
 
-test "a div's one block is 312 bytes at N2 (a 320-byte class), 264 after N3 (272)" {
+test "a div's one block is 312 bytes at N2 (a 320-byte class), 264 after N3 (272), 248 after N5 (256)" {
     // 360 at main b1bd4eae568 (a 368-byte class), less ElementData's 48.
     const S = interfaces.HTMLDivElement.State;
-    // N3: 48 more (ElementData's ID and classes views).
-    try expectSize(S, 264);
+    // N3: 48 more (ElementData's ID and classes views). N5 (lane lis1): 16
+    // more, EventTarget's state one pointer to a lazily made listener block.
+    try expectSize(S, 248);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
-    try testing.expectEqual(@as(usize, 272), held);
+    try testing.expectEqual(@as(usize, 256), held);
 }
 
 // ============================================================================

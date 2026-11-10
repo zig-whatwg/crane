@@ -96,8 +96,8 @@ test "Element's InternalState stays 40 bytes: the rare word, and click()'s flag 
     try expectSize(ElementState, 40);
 }
 
-test "a div's one block stays 264 bytes" {
-    try expectSize(interfaces.HTMLDivElement.State, 264);
+test "this batch leaves a div's one block as it was: 248 bytes since lane lis1's N5 (264 when rare1 was measured)" {
+    try expectSize(interfaces.HTMLDivElement.State, 248);
 }
 
 // ============================================================================
