@@ -1875,14 +1875,6 @@ why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1
 date = 2026-11-09
 decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
 
-[html/webappapis/dynamic-markup-insertion/opening-the-input-stream/abort-refresh-immediate.window.js]
-generation = 214
-kind = flake
-why = 4 -> 3 in generation 214's PRODUCTION sweep (server1, 32 runners): "document.open() aborts documents that are queued for navigation through <meta> refresh with timeout 0 (fetch())" failed once under the sweep's load and passed in the same generation's bug-finding sweep (wpt_build_compare: the one NEW difference). Isolated (integrator, 2026-11-10 00:42 UTC, server1): generation 214's production runner --repeat=10 and bug-finding runner --repeat=10 both 4/6 every run (the fetch() subtest passes 10/10; the two XMLHttpRequest variants time out in every run, as in generation 213: 4 passed / 2 timed out); generation 213's runner --repeat=3 4/6 every run. A load-dependent race between the zero-timeout refresh and document.open(). Recorded as a FLAKE in tmp/plans/feature-queue.md: the next flip makes it a bug with an owner (a navigation lane).
-pair.1 = base 4/6; tip 4/6
-pair.2 = base 4/6; tip 4/6
-pair.3 = base 4/6; tip 4/6
-
 [service-workers/service-worker/navigation-timing-extended.https.html]
 generation = 214
 kind = timing-bound
