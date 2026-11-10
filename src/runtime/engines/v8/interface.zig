@@ -5188,9 +5188,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (err == conv.ConversionError.ExceptionPending) {
                     return .kNo;
                 }
-                // The receiver's realm, the error's: `this` is taken here,
-                // on the throwing path only.
-                const this_obj = info.getThis();
+                // The holder's realm, the error's (V8 >= 14 gives a property
+                // callback no receiver): taken here, on the throwing path only.
+                const this_obj = info.getHolder() orelse return .kNo;
                 defer v8.v8_Object_Dispose(this_obj);
                 // Owned when V8 answers it - a fresh Global<Context>.
                 const creation_ctx = v8.v8_Object_GetCreationContext(this_obj);
@@ -5857,10 +5857,10 @@ pub fn V8Interface(comptime Interface: type) type {
             return instanceOf(info.holderAlignedPointer(0));
         }
 
-        /// O for a write: the receiver (V8 runs a setter or definer
-        /// interceptor only on the holder itself).
+        /// O for a write: the holder, which is the receiver (V8 runs a setter
+        /// or definer interceptor only on the holder itself).
         fn receiverInstance(info: anytype) ?*runtime.Instance {
-            const this_obj = info.getThis();
+            const this_obj = info.getHolder() orelse return null;
             defer v8.v8_Object_Dispose(this_obj);
             return instanceOf(v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0));
         }
