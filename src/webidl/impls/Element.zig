@@ -49,8 +49,9 @@ pub const CustomElementState = dom.custom_elements.State;
 const Attribute = dom.element_data.Attribute;
 const QualifiedName = dom.element_data.QualifiedName;
 const ElementData = dom.element_data.ElementData;
-/// The fields few elements use (lane perf3 D2), in a block made on first use.
-const ElementRareData = dom.element_rare_data.ElementRareData;
+/// The fields few elements use (lane perf3 D2), in one sparse block made on
+/// first use and grown by reallocation (lane rare1).
+const rare_data = dom.element_rare_data;
 const html_core = @import("html_core");
 
 /// The slot an Attr node is kept in: one per node, named by its address - an
@@ -92,13 +93,15 @@ pub const InternalState = struct {
     /// visit (dom.style.hooks.elementStyleSlot).
     style: ?*dom.style.ElementStyle = null,
 
-    /// The fields few elements use - its prefix, Attr nodes, NamedNodeMap,
-    /// shadow root, definition, is value, element references, a registry
-    /// that is not its node document's and its slottable state (E1) and
-    /// HTMLElement's part - or null while none was needed (lane perf3 D2;
-    /// WebKit's ElementRareData). Made by `ensureRare`, never moved, freed
-    /// by `deinit` at both of the element's exits.
-    rare: ?*ElementRareData = null,
+    /// The fields few elements use - Attr nodes, NamedNodeMap, shadow root,
+    /// definition, is value, element references, a registry that is not its
+    /// node document's, its slottable state and HTMLElement's (element.style,
+    /// the nonce, ElementInternals) - in ONE sparse block (lane rare1;
+    /// Blink's NodeRareData since 2026-01): empty while none was needed. The
+    /// block MOVES when it grows: read it by value, write it through this
+    /// field's address (dom.element_rare_data), never keep a pointer into
+    /// it. Freed by `end` at both of the element's exits.
+    rare: rare_data.Holder = .{},
 
     /// Custom element state per HTML spec
     custom_element_state: CustomElementState = .undefined,
@@ -115,6 +118,13 @@ pub const InternalState = struct {
     /// 40 bytes on every element before). Written only by
     /// `setCustomElementRegistry`.
     registry_place: dom.custom_elements.RegistryPlace = .none,
+    /// HTMLElement's: HTML click() steps 2-5's "click in progress flag",
+    /// read and written only by HTMLElement through
+    /// dom.element_rare_data.access. In this state's padding (0 bytes): the
+    /// one bool that would make a rare block on its own (lane rare1; Blink
+    /// and WebKit keep it out of the element too - EventDispatcher::
+    /// DispatchSimulatedClick's and simulateClick's set of elements).
+    click_in_progress: bool = false,
 
     pub fn init() InternalState {
         return .{ .data = ElementData.init() };
@@ -133,14 +143,9 @@ pub const InternalState = struct {
         const allocator = scope.allocator;
         if (self.style) |style_state| style_state.destroy();
         self.style = null;
-        if (self.rare) |rare| {
-            if (rare.references) |refs| {
-                refs.deinit(allocator);
-                allocator.destroy(refs);
-                rare.references = null;
-            }
-            if (rare.custom_element_definition) |definition| definition.deinit();
-            rare.custom_element_definition = null;
+        if (self.rare.block != null) {
+            if (rare_data.get(self.rare, .custom_element_definition)) |definition| definition.deinit();
+            rare_data.clear(&self.rare, .custom_element_definition);
 
             // The cached NamedNodeMap goes WHOLE with its element: its
             // destructor and its storage (runtime.gc.releaseOwned) - back now
@@ -162,33 +167,30 @@ pub const InternalState = struct {
             // tells them apart (a freed map's block reads 0xAA, which sails
             // past a null check: custom-elements/connected-callbacks.html's
             // exit SEGV).
-            if (rare.named_node_map) |nnm| {
-                if (runtime.SlabAllocator.generationOf(nnm) == rare.named_node_map_generation) runtime.gc.releaseOwned(nnm);
-                rare.named_node_map = null;
-            }
+            rare_data.keptReleaseOwned(&self.rare, .named_node_map);
 
             // The attributes' Attr nodes go before the list with the names.
             var index: usize = 0;
             while (self.data.storedAt(index)) |attribute| : (index += 1) detachAttrNode(allocator, null, self, attribute);
-            // Then the block, with what it still owns (its prefix, is value,
-            // Attr node list storage and HTMLElement's part).
-            self.rare = null;
-            rare.destroy(allocator, memory);
+            // Then the block, with what it still owns (the Attr node list,
+            // the element references, the slottable state, the registry
+            // association, the is value's and nonce's bytes).
+            rare_data.destroy(.{ .allocator = allocator, .memory = memory }, &self.rare);
         }
         self.data.deinit(scope);
     }
 };
 
-/// The element's rare data, made now if it has none (WebKit's
-/// `ensureElementRareData`): every writer of a rare field calls this, and
-/// only for a value that is not the default, so an element that never sets
-/// one never gets the block. It is counted in its Browser's DOM memory while
-/// it lives, and never moves.
-fn ensureRare(instance: *runtime.Instance, internal: *InternalState) error{OutOfMemory}!*ElementRareData {
-    if (internal.rare) |rare| return rare;
-    const rare = try ElementRareData.create(runtime.allocatorOf(instance), domMemoryOf(instance));
-    internal.rare = rare;
-    return rare;
+/// The element's Attr node list (a block of its own in its rare data), if
+/// one was made: its address stays good whatever the rare block does.
+fn attrNodesOf(internal: *const InternalState) ?*dom.element_data.AttrNodeList {
+    return rare_data.get(internal.rare, .attr_nodes);
+}
+
+/// The element's Attr node list, made now if it has none - only when script
+/// asks for a node.
+fn ensureAttrNodes(instance: *runtime.Instance, internal: *InternalState) error{OutOfMemory}!*dom.element_data.AttrNodeList {
+    return rare_data.ensureOwn(rare_data.contextOf(instance), &internal.rare, .attr_nodes);
 }
 
 /// The DOM memory of `instance`'s Browser, where its rare data is counted
@@ -244,9 +246,9 @@ pub fn installHooks() void {
     // The list, the ID and classes and the qualified name, read in place by
     // the tree's own algorithms (the selector matcher, getElementById, the
     // HTML elements' reflection, the CSSOM).
-    // And its rare data, which HTMLElement keeps its part in
+    // And its rare data, which HTMLElement keeps its fields in
     // (dom.element_rare_data), through the same slot.
-    dom.element_data.install(.{ .of = &dataOf, .rare_of = &rareDataOf, .ensure_rare = &ensureRareDataHook });
+    dom.element_data.install(.{ .of = &dataOf, .rare_holder = &rareHolderHook });
     // The element's style state, which the style engine keeps in it.
     dom.style.hooks.install(.{ .element_style_slot = &styleSlotOf });
     // The parsers' "create an element" sets names through `dom.node_creation`.
@@ -287,8 +289,7 @@ fn isValueHook(instance: *runtime.Instance) ?[]const u8 {
 
 /// The element's is value, borrowed; null for none.
 fn isValueOf(internal: *const InternalState) ?[]const u8 {
-    const rare = internal.rare orelse return null;
-    return if (rare.is_value) |value| value.asSlice() else null;
+    return rare_data.getBytes(internal.rare, .is_value);
 }
 
 /// The element's namespace prefix, borrowed; null for none. Its name
@@ -309,16 +310,12 @@ fn elementName(scope: *runtime.BrowserScope, namespace: ?[]const u8, prefix: ?[]
     return dom.element_name.intern(scope, namespace, prefix, local_name);
 }
 
-/// `dom.element_rare_data.of`: the element's rare data, if it has any.
-fn rareDataOf(instance: *runtime.Instance) ?*ElementRareData {
-    return (getInternal(instance) orelse return null).rare;
-}
-
-/// `dom.element_rare_data.ensure`: the element's rare data, made now if it
-/// has none.
-fn ensureRareDataHook(instance: *runtime.Instance) dom.element_rare_data.Error!*ElementRareData {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return ensureRare(instance, internal);
+/// `dom.element_rare_data.access`: the addresses of the element's rare
+/// holder and of click()'s flag, both in this state - which never moves -
+/// so good for the element's life.
+fn rareHolderHook(instance: *runtime.Instance) ?rare_data.Access {
+    const internal = getInternal(instance) orelse return null;
+    return .{ .holder = &internal.rare, .click_in_progress = &internal.click_in_progress };
 }
 
 /// dom.node_creation's names: this element's namespace, prefix and local
@@ -330,8 +327,7 @@ fn namesHook(instance: *runtime.Instance) ?dom.node_creation.ElementNames {
 }
 
 fn shadowRootOf(instance: *runtime.Instance) ?*runtime.Instance {
-    const rare = (getInternal(instance) orelse return null).rare orelse return null;
-    return rare.shadow_root;
+    return rare_data.keptGet((getInternal(instance) orelse return null).rare, .shadow_root);
 }
 
 /// `dom.slot_helpers`' readers' path: the element as a slottable - its state
@@ -342,7 +338,7 @@ fn shadowRootOf(instance: *runtime.Instance) ?*runtime.Instance {
 /// style engine) make nothing.
 fn slottableOf(instance: *runtime.Instance) ?dom.slot_helpers.Slottable {
     const internal = getInternal(instance) orelse return null;
-    const state: *const dom.slot_helpers.SlottableState = if (internal.rare) |rare| &rare.slottable else &dom.slot_helpers.unassigned;
+    const state: *const dom.slot_helpers.SlottableState = rare_data.get(internal.rare, .slottable) orelse &dom.slot_helpers.unassigned;
     return .{ .state = state, .name = slotName(internal) };
 }
 
@@ -350,8 +346,7 @@ fn slottableOf(instance: *runtime.Instance) ?dom.slot_helpers.Slottable {
 /// data made now if it has none - only for an element a slot assigns.
 fn ensureSlottableOf(instance: *runtime.Instance) error{OutOfMemory}!?*dom.slot_helpers.SlottableState {
     const internal = getInternal(instance) orelse return null;
-    const rare = try ensureRare(instance, internal);
-    return &rare.slottable;
+    return try rare_data.ensureOwn(rare_data.contextOf(instance), &internal.rare, .slottable);
 }
 
 fn markCustomElementEnqueued(instance: *runtime.Instance) void {
@@ -372,11 +367,11 @@ fn setCustomElementRegistry(instance: *runtime.Instance, registry: ?*runtime.Ins
     const place = dom.custom_elements.RegistryPlace.of(registry, document_registry);
     if (place == .rare) {
         // Made before anything changes, so a failure leaves the old value.
-        const rare = try ensureRare(instance, internal);
-        rare.custom_element_registry.set(instance, registry);
+        const association = try rare_data.ensureOwn(rare_data.contextOf(instance), &internal.rare, .custom_element_registry);
+        association.set(instance, registry);
     } else if (internal.registry_place == .rare) {
-        // Its association let go; the block stays (it never moves).
-        if (internal.rare) |rare| rare.custom_element_registry.set(instance, null);
+        // Its association let go; its block stays until the element goes.
+        if (rare_data.get(internal.rare, .custom_element_registry)) |association| association.set(instance, null);
     }
     internal.registry_place = place;
 }
@@ -397,7 +392,7 @@ fn customElementRegistryOf(instance: *runtime.Instance, internal: *const Interna
             const registry = interfaces.Document.get_customElementRegistry(document) catch return null;
             return dom.custom_elements.effectiveGlobal(registry);
         },
-        .rare => if (internal.rare) |rare| rare.custom_element_registry.get() else null,
+        .rare => if (rare_data.get(internal.rare, .custom_element_registry)) |association| association.get() else null,
     };
 }
 
@@ -405,7 +400,7 @@ fn customElementData(instance: *runtime.Instance) ?dom.custom_elements.ElementDa
     const internal = getInternal(instance) orelse return null;
     return .{
         .state = internal.custom_element_state,
-        .definition = if (internal.rare) |rare| rare.custom_element_definition else null,
+        .definition = rare_data.get(internal.rare, .custom_element_definition),
         .is_value = isValueOf(internal),
     };
 }
@@ -424,14 +419,10 @@ fn initializeCustomElement(instance: *runtime.Instance, prefix: ?[]const u8, is_
     const current = internal.data.name;
     const renamed: ?*const dom.element_name.ElementName = if (optionalEql(current.prefix, prefix)) null else try elementName(scope, current.namespace_uri, prefix, current.local_name);
     errdefer if (renamed) |name| dom.element_name.release(scope, name);
-    // The is value lives in rare data: made only when one is set, or to
-    // clear one an earlier call set.
-    if (is_value != null or internal.rare != null) {
-        const rare = try ensureRare(instance, internal);
-        const owned_is = if (is_value) |value| try runtime.DOMString.initDupe(allocator, value) else null;
-        if (rare.is_value) |*value| value.deinit(allocator);
-        rare.is_value = owned_is;
-    }
+    // The is value lives in rare data: made only when one is set, or
+    // cleared where an earlier call set one.
+    const rare_ctx: rare_data.Context = .{ .allocator = allocator, .memory = &scope.dom_memory };
+    if (is_value) |value| try rare_data.putBytes(rare_ctx, &internal.rare, .is_value, value) else rare_data.clearBytes(rare_ctx, &internal.rare, .is_value);
     if (renamed) |name| internal.data.rename(scope, name);
     internal.custom_element_state = state;
 }
@@ -443,13 +434,15 @@ fn setCustomElementState(instance: *runtime.Instance, state: CustomElementState)
 
 fn setCustomElementDefinition(instance: *runtime.Instance, definition: ?*dom.custom_elements.Definition) void {
     const internal = getInternal(instance) orelse return;
-    // Clearing one that was never set needs no rare data.
-    if (definition == null and internal.rare == null) return;
-    // The hook cannot fail: an element whose block cannot be made keeps no
-    // definition (as one whose state is gone), the out-of-memory answer.
-    const rare = ensureRare(instance, internal) catch return;
-    const old = rare.custom_element_definition;
-    rare.custom_element_definition = if (definition) |value| value.retain() else null;
+    // Clearing one that was never set needs no rare data (`put` of null
+    // never makes it). The hook cannot fail: an element whose block cannot
+    // grow keeps its old definition, the out-of-memory answer.
+    const old = rare_data.get(internal.rare, .custom_element_definition);
+    const new = if (definition) |value| value.retain() else null;
+    rare_data.put(rare_data.contextOf(instance), &internal.rare, .custom_element_definition, new) catch {
+        if (new) |value| value.deinit();
+        return;
+    };
     if (old) |value| value.deinit();
 }
 
@@ -493,7 +486,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     if (Registry.get(instance)) |internal| {
         if (internal.custom_element_ever_enqueued) dom.custom_elements.cancelElement(instance);
         // Only a rare association draws an edge to forget.
-        if (internal.registry_place == .rare) if (internal.rare) |rare| rare.custom_element_registry.release(instance);
+        if (internal.registry_place == .rare) if (rare_data.get(internal.rare, .custom_element_registry)) |association| association.release(instance);
         // The host lets its shadow root go: the shadow root forgets its host
         // (dom.shadow_hosts); the host's edge to it goes with the host's
         // wrapper, so the wrapper cache frees it - and its subtree - once
@@ -506,13 +499,8 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         // a node its tree's teardown frees, or at the realm's end - and the
         // shadow root must go on working as a DocumentFragment. Its `host`
         // then answers InvalidStateError (ShadowRoot.get_host).
-        if (internal.rare) |rare| {
-            if (rare.shadow_root) |shadow| {
-                rare.shadow_root_kept.release(shadow, forgetHost);
-                rare.shadow_root = null;
-            }
-            if (rare.references != null) dom.element_references.State.releaseUnwrapped(instance);
-        }
+        rare_data.keptRelease(&internal.rare, .shadow_root, forgetHost);
+        if (rare_data.get(internal.rare, .references) != null) dom.element_references.State.releaseUnwrapped(instance);
         internal.end(runtime.BrowserScope.ofInstance(instance), domMemoryOf(instance));
     }
     Registry.remove(instance);
@@ -677,13 +665,12 @@ pub fn get_attributes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     };
 
     // Return cached NamedNodeMap if it exists
-    if (internal.rare) |rare| if (rare.named_node_map) |cached| {
-        return cached;
-    };
+    if (rare_data.keptGet(internal.rare, .named_node_map)) |cached| return cached;
 
     // Its cache is rare data (WebKit's m_attributeMap, Blink's
-    // kAttributeMap), made first so that nothing can fail after the map is.
-    const rare = try ensureRare(instance, internal);
+    // kAttributeMap), its slots reserved first so that nothing can fail
+    // after the map is.
+    try rare_data.keptReserve(rare_data.contextOf(instance), &internal.rare, .named_node_map);
 
     // Create a NamedNodeMap whose element is this one (its construction
     // argument)
@@ -694,9 +681,9 @@ pub fn get_attributes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // so there is nothing to copy into it.
 
     // Cache the NamedNodeMap for future accesses, with the generation that
-    // proves it is still this map at deinit.
-    rare.named_node_map = named_node_map;
-    rare.named_node_map_generation = runtime.SlabAllocator.generationOf(named_node_map);
+    // proves it is still this map at deinit: in place, through the holder
+    // read now (the map's construction may have grown the block).
+    rare_data.keptSet(&internal.rare, .named_node_map, named_node_map);
 
     return named_node_map;
 }
@@ -713,8 +700,7 @@ pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: Let shadow be this's shadow root
-    const rare = internal.rare orelse return null;
-    const shadow = rare.shadow_root orelse return null;
+    const shadow = rare_data.keptGet(internal.rare, .shadow_root) orelse return null;
 
     // Step 2: If shadow's mode is "closed", return null
     // Use interface instead of impl (per Golden Rule #13)
@@ -1120,7 +1106,7 @@ fn attributeChangeSteps(
     if (namespace != null) return;
     const internal = getInternal(instance) orelse return;
 
-    if (internal.rare) |rare| if (rare.references) |refs| refs.attributeChanged(runtime.allocatorOf(instance), local_name);
+    if (rare_data.get(internal.rare, .references)) |refs| refs.attributeChanged(runtime.allocatorOf(instance), local_name);
 
     // DOM §4.9: "If localName is id, namespace is null, and value is null or
     // the empty string, then unset element's ID. Otherwise, if localName is
@@ -1417,8 +1403,8 @@ fn attrNodeAtHook(element: *runtime.Instance, index: usize) dom.element_attribut
 fn existingAttrNodeAtHook(element: *runtime.Instance, index: usize) ?*runtime.Instance {
     const internal = getInternal(element) orelse return null;
     const attribute = internal.data.storedAt(index) orelse return null;
-    const rare = internal.rare orelse return null;
-    const link = rare.attr_nodes.get(attribute.name) orelse return null;
+    const list = attrNodesOf(internal) orelse return null;
+    const link = list.get(attribute.name) orelse return null;
     return if (link.isLive()) link.instance else null;
 }
 
@@ -1478,28 +1464,22 @@ fn setAriaAttribute(instance: *runtime.Instance, aria_name: []const u8, value: ?
     }
 }
 
-/// Allocate reflection state only for elements that use it.
+/// Allocate reflection state only for elements that use it: a block of its
+/// own in the rare data, whose address stays good.
 fn ensureReferences(instance: *runtime.Instance, internal: *InternalState) !*dom.element_references.State {
-    const rare = try ensureRare(instance, internal);
-    if (rare.references) |refs| return refs;
-    const refs = try runtime.allocatorOf(instance).create(dom.element_references.State);
-    refs.* = .{};
-    rare.references = refs;
-    return refs;
+    return rare_data.ensureOwn(rare_data.contextOf(instance), &internal.rare, .references);
 }
 
 fn getAriaElementRef(instance: *runtime.Instance, _: []const u8) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    return dom.element_references.getSingle(instance, if (internal.rare) |rare| rare.references else null);
+    return dom.element_references.getSingle(instance, rare_data.get(internal.rare, .references));
 }
 
 fn setAriaElementRef(instance: *runtime.Instance, aria_attr: []const u8, element: ?*runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // HTML 2.6.1 setter step 1: clear the weak association and remove attr.
     const target = element orelse {
-        if (internal.rare) |rare| if (rare.references) |refs| {
-            refs.single = null;
-        };
+        if (rare_data.get(internal.rare, .references)) |refs| refs.single = null;
         removeAttributeByNamespaceAndLocalName(instance, null, aria_attr);
         return;
     };
@@ -1898,19 +1878,19 @@ fn ensureAttrNode(instance: *runtime.Instance, internal: *InternalState, index: 
     // the list. `Attr.init` and the Attr hooks below change no attribute, so
     // the record is still this attribute's after them.
     const attribute = internal.data.storedAt(index) orelse return error.InvalidStateError;
-    if (internal.rare) |rare| if (rare.attr_nodes.get(attribute.name)) |link| {
+    if (attrNodesOf(internal)) |list| if (list.get(attribute.name)) |link| {
         if (link.isLive()) return link.instance;
     };
 
-    // The element's Attr nodes are rare data (Blink's kAttrNodeList), made
-    // before the node so that nothing can fail after it is.
-    const rare = try ensureRare(instance, internal);
+    // The element's Attr nodes are rare data (Blink's kAttrNodeList), a list
+    // of its own made before the node so that nothing can fail after it is.
+    const list = try ensureAttrNodes(instance, internal);
     const attr = try interfaces.Attr.init(allocator, instance.ctx);
     errdefer interfaces.Attr.deinit(attr);
     try dom.attr_nodes.name(attr, attribute.name.namespace_uri, attribute.name.prefix, attribute.name.local_name);
     // A link left here is a dead node's (a live one returned above).
-    const old = try rare.attr_nodes.put(allocator, attribute.name, dom.element_data.AttrNodeLink.to(attr));
-    errdefer _ = rare.attr_nodes.take(allocator, attribute.name);
+    const old = try list.put(allocator, attribute.name, dom.element_data.AttrNodeLink.to(attr));
+    errdefer _ = list.take(allocator, attribute.name);
     if (old) |dead| forgetAttrNode(instance, dead.instance);
     try dom.attr_nodes.attach(attr, instance);
     traceAttrNode(instance, attr);
@@ -1922,8 +1902,8 @@ fn ensureAttrNode(instance: *runtime.Instance, internal: *InternalState, index: 
 /// keeping it - `element` null when the element is being torn down, where the
 /// edge goes with its wrapper.
 fn detachAttrNode(allocator: std.mem.Allocator, element: ?*runtime.Instance, internal: *InternalState, attribute: Attribute) void {
-    const rare = internal.rare orelse return;
-    const link = rare.attr_nodes.take(allocator, attribute.name) orelse return;
+    const list = attrNodesOf(internal) orelse return;
+    const link = list.take(allocator, attribute.name) orelse return;
     if (element) |e| forgetAttrNode(e, link.instance);
     // A teardown sweep - or the collector, with the element - may have freed
     // the node first.
@@ -1934,9 +1914,9 @@ fn detachAttrNode(allocator: std.mem.Allocator, element: ?*runtime.Instance, int
 /// `attr` is now the Attr node for the attribute at `index`.
 fn adoptAttrNode(instance: *runtime.Instance, internal: *InternalState, index: usize, attr: *runtime.Instance) !void {
     const attribute = internal.data.storedAt(index) orelse return error.InvalidStateError;
-    const rare = try ensureRare(instance, internal);
+    const list = try ensureAttrNodes(instance, internal);
     try dom.attr_nodes.attach(attr, instance);
-    const old = try rare.attr_nodes.put(runtime.allocatorOf(instance), attribute.name, dom.element_data.AttrNodeLink.to(attr));
+    const old = try list.put(runtime.allocatorOf(instance), attribute.name, dom.element_data.AttrNodeLink.to(attr));
     if (old) |previous| forgetAttrNode(instance, previous.instance);
     traceAttrNode(instance, attr);
 }
@@ -2016,7 +1996,7 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
     };
 
     // Step 4: "If oldAttr is attr, return attr."
-    if (internal.rare) |rare| if (rare.attr_nodes.get(internal.data.storedAt(old_index).?.name)) |link| {
+    if (attrNodesOf(internal)) |list| if (list.get(internal.data.storedAt(old_index).?.name)) |link| {
         if (link.isLive() and link.instance == attr) return attr;
     };
 
@@ -2061,7 +2041,7 @@ fn replaceAttributeAt(instance: *runtime.Instance, internal: *InternalState, ind
     const old_value = internal.data.setValueAt(index, new_value);
     const replaced_name: ?*const QualifiedName = if (new_name != old_name) internal.data.setNameAt(index, new_name) else null;
     // An Attr node kept for the attribute follows it to its new name record.
-    if (replaced_name) |old| if (internal.rare) |rare| rare.attr_nodes.rename(old, new_name);
+    if (replaced_name) |old| if (attrNodesOf(internal)) |list| list.rename(old, new_name);
     defer {
         allocator.free(old_value);
         if (replaced_name) |name| if (name.isOwned()) name.destroy(allocator);
@@ -2270,9 +2250,9 @@ pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Inst
     // "NotFoundError" DOMException." The list contains attr when attr is the
     // node made for one of its attributes.
     var index: usize = 0;
-    const rare = internal.rare orelse return error.NotFoundError;
+    const list = attrNodesOf(internal) orelse return error.NotFoundError;
     const found = while (internal.data.storedAt(index)) |attribute| : (index += 1) {
-        const link = rare.attr_nodes.get(attribute.name) orelse continue;
+        const link = list.get(attribute.name) orelse continue;
         if (link.isLive() and link.instance == attr) break true;
     } else false;
     if (!found) return error.NotFoundError;
@@ -2883,7 +2863,7 @@ fn attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootI
     }
 
     // Step 4: "If element is a shadow host":
-    if (if (internal.rare) |rare| rare.shadow_root else null) |current| {
+    if (rare_data.keptGet(internal.rare, .shadow_root)) |current| {
         // 4.1-4.2: "If currentShadowRoot's declarative is false, or its mode
         // is not mode, then throw a NotSupportedError DOMException."
         if (!dom.declarative_shadow.isDeclarative(current)) return error.NotSupportedError;
@@ -2896,17 +2876,19 @@ fn attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootI
         return current;
     }
 
-    // The element's shadow root is rare data (Blink's kShadowRoot), made
-    // before the shadow root so that nothing can fail after it is.
-    const rare = try ensureRare(instance, internal);
+    // The element's shadow root is rare data (Blink's kShadowRoot), its
+    // slots reserved before the shadow root is made so that nothing can fail
+    // after it is.
+    try rare_data.keptReserve(rare_data.contextOf(instance), &internal.rare, .shadow_root);
 
     // Steps 5–14: create and initialize through the shadow root's owner.
     const shadow_root = try dom.custom_elements.createShadow(instance, init_data, registry);
 
     // Step 13: "Set element's shadow root to shadow." The element keeps it
     // for its whole life - nothing else does - by an edge from its wrapper,
-    // which script holds: it is calling this.
-    rare.shadow_root = shadow_root;
+    // which script holds: it is calling this. In place, through the holder
+    // read now (making the shadow root may have grown the block).
+    rare_data.keptSet(&internal.rare, .shadow_root, shadow_root);
     // The node's shadow host bit, the slot steps' fast-path guard
     // (NodeBase.is_shadow_host).
     if (dom.instance_bridge.getNodeBase(instance)) |base| base.is_shadow_host = true;
@@ -2914,8 +2896,7 @@ fn attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootI
     // Here, in the step itself, so every attach - scripted and declarative -
     // runs it.
     dom.shadow_hosts.attached(instance, shadow_root);
-    rare.shadow_root_kept.made(shadow_root);
-    rare.shadow_root_kept.handOut(instance, shadow_root, .{ .name = "shadowRoot" });
+    rare_data.keptHandOut(&internal.rare, .shadow_root, instance, shadow_root, .{ .name = "shadowRoot" });
     // And the shadow root keeps its host, whose `host` it answers for its
     // whole life: script routinely holds only the shadow root
     // (`document.createElement("div").attachShadow(...)`). Blink traces it

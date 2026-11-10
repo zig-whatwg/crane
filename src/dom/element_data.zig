@@ -694,12 +694,12 @@ const element_rare_data = @import("element_rare_data.zig");
 pub const Implementation = struct {
     /// `element`'s data, or null when `element` has no Element part.
     of: *const fn (element: *runtime.Instance) ?*ElementData,
-    /// `element`'s rare data, or null when it has none (or is no element).
-    /// Never makes one.
-    rare_of: *const fn (element: *runtime.Instance) ?*element_rare_data.ElementRareData,
-    /// `element`'s rare data, made now if it has none. InvalidStateError
-    /// for an instance that is no element.
-    ensure_rare: *const fn (element: *runtime.Instance) element_rare_data.Error!*element_rare_data.ElementRareData,
+    /// `element`'s rare data access - the addresses of its holder and of
+    /// click()'s flag, good for the element's life - or null when it is no
+    /// element. The block moves when it grows, so a writer passes the
+    /// holder itself (lane rare1; Blink's RareDataUpdate refreshes
+    /// Node::data_).
+    rare_holder: *const fn (element: *runtime.Instance) ?element_rare_data.Access,
 };
 
 // process-wide: an immutable function pointer Element installs once at process start (crane.Process); it reads only the element it is given, so one serves every Browser and thread
@@ -717,16 +717,11 @@ pub fn of(element: *runtime.Instance) ?*const ElementData {
     return impl.of(element);
 }
 
-/// `element`'s rare data, or null when it has none: dom.element_rare_data.of.
-pub fn rareDataOf(element: *runtime.Instance) ?*element_rare_data.ElementRareData {
+/// `element`'s rare data access, or null when it is no element:
+/// dom.element_rare_data.access.
+pub fn rareHolderOf(element: *runtime.Instance) ?element_rare_data.Access {
     const impl = implementation.get() orelse return null;
-    return impl.rare_of(element);
-}
-
-/// `element`'s rare data, made on first use: dom.element_rare_data.ensure.
-pub fn ensureRareData(element: *runtime.Instance) element_rare_data.Error!*element_rare_data.ElementRareData {
-    const impl = implementation.get() orelse return error.InvalidStateError;
-    return impl.ensure_rare(element);
+    return impl.rare_holder(element);
 }
 
 // ============================================================================
@@ -891,7 +886,7 @@ test "without an installed implementation no node has element data or rare data"
     // Never dereferenced: with no implementation the calls do not reach it.
     var element: runtime.Instance = undefined;
     try std.testing.expect(of(&element) == null);
-    try std.testing.expect(rareDataOf(&element) == null);
-    try std.testing.expectError(error.InvalidStateError, ensureRareData(&element));
-    try std.testing.expect(element_rare_data.of(&element) == null);
+    try std.testing.expect(rareHolderOf(&element) == null);
+    try std.testing.expect(element_rare_data.access(&element) == null);
+    try std.testing.expect(element_rare_data.of(&element).block == null);
 }
