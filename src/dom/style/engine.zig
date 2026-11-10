@@ -1723,8 +1723,8 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
         name_count += 1;
     }
     const keys: sheet_mod.ElementKeys = .{
-        .id = data.id.asSlice(),
-        .class_name = data.class_name.asSlice(),
+        .id = data.idValue(),
+        .class_name = data.classValue(),
         .local_name_lower = local_lower,
         .attribute_names = names_storage[0..name_count],
     };

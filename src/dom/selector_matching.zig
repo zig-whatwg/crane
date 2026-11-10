@@ -956,11 +956,11 @@ const Matcher = struct {
     /// Selectors 4 6.6: one of the element's classes (its class attribute
     /// split on ASCII whitespace) is `name`.
     fn hasClass(self: *const Matcher, data: *const ElementData, name: []const u8) bool {
-        return classListHas(data.class_name.asSlice(), name, self.quirks);
+        return classListHas(data.classValue(), name, self.quirks);
     }
 
     fn idIs(self: *const Matcher, data: *const ElementData, id: []const u8) bool {
-        const own = data.id.asSlice();
+        const own = data.idValue();
         return if (self.quirks) std.ascii.eqlIgnoreCase(own, id) else std.mem.eql(u8, own, id);
     }
 

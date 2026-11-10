@@ -95,7 +95,7 @@ fn findElementById(node: *runtime.Instance, target_id: []const u8) ?*runtime.Ins
         if (node_type == interfaces.Node.get_ELEMENT_NODE()) {
             // Get element's id
             if (element_data.of(c)) |data| {
-                const elem_id = data.id.asSlice();
+                const elem_id = data.idValue();
                 if (std.mem.eql(u8, elem_id, target_id)) {
                     return c;
                 }

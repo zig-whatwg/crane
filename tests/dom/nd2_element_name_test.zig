@@ -89,7 +89,7 @@ fn expectNoFields(comptime T: type, comptime gone: anytype) !void {
 // Sizes (red until N2)
 // ============================================================================
 
-test "ElementData names its element with one 8-byte record pointer: 64 bytes" {
+test "ElementData names its element with one 8-byte record pointer: 64 bytes at N2, 16 after N3" {
     // 112 at main b1bd4eae568: - 32 (namespace_uri, a ?DOMString) - 24
     // (local_name, a DOMString) + 8 (the record pointer).
     try expectNoFields(ElementData, .{ "namespace_uri", "local_name" });
@@ -98,7 +98,9 @@ test "ElementData names its element with one 8-byte record pointer: 64 bytes" {
         return error.NameStillInline;
     } else {
         try testing.expect(@FieldType(ElementData, "name") == *const dom.element_name.ElementName);
-        try expectSize(ElementData, 64);
+        // 64 at N2; N3 took the ID and classes views out (48,
+        // tests/dom/nd2_id_class_index_test.zig).
+        try expectSize(ElementData, 16);
     }
 }
 
@@ -109,17 +111,18 @@ test "ElementRareData keeps no prefix: it is the name record's - 312 bytes" {
     try expectSize(ElementRareData, 312);
 }
 
-test "Element's InternalState is 88 bytes" {
-    // 136 at main b1bd4eae568, less ElementData's 48.
-    try expectSize(ElementState, 88);
+test "Element's InternalState is 88 bytes at N2, 40 after N3" {
+    // 136 at main b1bd4eae568, less ElementData's 48: 88; N3 48 more.
+    try expectSize(ElementState, 40);
 }
 
-test "a div's one block is 312 bytes, in a 320-byte class" {
+test "a div's one block is 312 bytes at N2 (a 320-byte class), 264 after N3 (272)" {
     // 360 at main b1bd4eae568 (a 368-byte class), less ElementData's 48.
     const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 312);
+    // N3: 48 more (ElementData's ID and classes views).
+    try expectSize(S, 264);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
-    try testing.expectEqual(@as(usize, 320), held);
+    try testing.expectEqual(@as(usize, 272), held);
 }
 
 // ============================================================================

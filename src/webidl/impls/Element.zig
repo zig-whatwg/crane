@@ -600,16 +600,17 @@ fn nodeDocumentIsHtml(element: *runtime.Instance) bool {
 /// DOM §4.8 - Returns the value of the id attribute
 pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.data.id.clone(instance.ctx.allocator);
+    // A copy for the caller (the binding frees it): the attribute's value
+    // can change before a native caller is done with it.
+    return runtime.DOMString.initDupe(instance.ctx.allocator, internal.data.idValue());
 }
 
 /// Getter for className
 /// DOM §4.8 - Returns the value of the class attribute
 pub fn get_className(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Clone to transfer ownership to caller (interface layer will free)
-    return try internal.data.class_name.clone(instance.ctx.allocator);
+    // A copy for the caller, as `get_id`'s.
+    return runtime.DOMString.initDupe(instance.ctx.allocator, internal.data.classValue());
 }
 
 /// Getter for classList
@@ -627,7 +628,7 @@ pub fn get_classList(instance: *runtime.Instance) anyerror!*runtime.Instance {
     errdefer interfaces.DOMTokenList.deinit(token_list);
 
     // Initialize with current class attribute value
-    interfaces.DOMTokenList.set_value(token_list, internal.data.class_name) catch return error.OutOfMemory;
+    interfaces.DOMTokenList.set_value(token_list, runtime.DOMString.initInterned(internal.data.classValue())) catch return error.OutOfMemory;
 
     // Associate with this element and the "class" attribute (DOMTokenList's
     // step, through dom.token_lists)
@@ -1104,24 +1105,21 @@ fn attributeChangeSteps(
 
     // DOM §4.9: "If localName is id, namespace is null, and value is null or
     // the empty string, then unset element's ID. Otherwise, if localName is
-    // id, namespace is null, then set element's ID to value." The class and
-    // slot caches follow their attributes the same way. The ID and the
-    // classes are views of their attributes' values, RE-DERIVED from the
-    // list here, after the list changed (lane perf3 D1, the safety rule of
-    // tmp/plans/perf3b2-element-data-design.md 6): the old value's buffer is
-    // freed only after these steps, so `beginChange` below still reads the
-    // old ID. Blink's ElementData keeps `id_for_style_resolution_` and
-    // `class_names_` the same way, updated by Element::AttributeChanged.
+    // id, namespace is null, then set element's ID to value." The ID and the
+    // classes are READ from the list through the two indices its header
+    // keeps (lane nd2 N3: ElementData.idValue / classValue), which the
+    // list's own append and remove re-derive - so they already say the new
+    // value here, and nothing is left to set. Blink's ElementData keeps
+    // `id_for_style_resolution_` and `class_names_` beside its attributes,
+    // updated by Element::AttributeChanged.
     if (std.mem.eql(u8, local_name, "id")) {
         // domindex1: the element's tree scope's maps follow its ID - out
-        // under the old one before the cache moves, in under the new one
-        // after (Blink Element::UpdateId, WebKit Element::updateId). An
-        // unchanged value changes nothing (and keeps a known order).
-        if (sameAttributeValue(old_value, value)) {
-            internal.data.rederiveId();
-        } else {
-            const change = dom.tree_ordered_map.beginChange(instance, &internal.data, .current);
-            internal.data.rederiveId();
+        // under the old one, in under the new one (Blink Element::UpdateId,
+        // WebKit Element::updateId). The old ID is the attribute's old value
+        // (the list already reads the new one). An unchanged value changes
+        // nothing (and keeps a known order).
+        if (!sameAttributeValue(old_value, value)) {
+            const change = dom.tree_ordered_map.beginChange(instance, &internal.data, .{ .id_was = old_value orelse "" });
             dom.tree_ordered_map.endChange(&internal.data, change);
         }
     } else if (std.mem.eql(u8, local_name, "name")) {
@@ -1132,8 +1130,6 @@ fn attributeChangeSteps(
         if (!sameAttributeValue(old_value, value)) {
             dom.tree_ordered_map.endChange(&internal.data, dom.tree_ordered_map.beginChange(instance, &internal.data, .{ .was = old_value orelse "" }));
         }
-    } else if (std.mem.eql(u8, local_name, "class")) {
-        internal.data.rederiveClassName();
     } else if (std.mem.eql(u8, local_name, "slot")) {
         // DOM 4.2.2.2: the slottable's name follows its slot attribute - it
         // is read from it (`slotName`) - and a changed name re-assigns it.

@@ -67,7 +67,7 @@ const has_rare_registry = @hasField(ElementRareData, "custom_element_registry");
 // Sizes (red until E1)
 // ============================================================================
 
-test "Element's InternalState keeps no 40-byte registry association: a one-byte place, 88 bytes" {
+test "Element's InternalState keeps no 40-byte registry association: a one-byte place, 40 bytes" {
     if (comptime @hasField(ElementState, "custom_element_registry")) {
         const F = @FieldType(ElementState, "custom_element_registry");
         if (@sizeOf(F) > 1) {
@@ -78,12 +78,13 @@ test "Element's InternalState keeps no 40-byte registry association: a one-byte 
     // 240 after D2: - 40 (the association) + a one-byte place, in the
     // padding after the three one-byte fields: 200; item 2 then took the
     // slottable state out (tests/dom/perf3e1_slottable_test.zig): 136; lane nd2 N2 took the name into one record pointer (tests/dom/nd2_element_name_test.zig): 88.
-    try expectSize(ElementState, 88);
+    // nd2 N3: the ID and classes views (48) are indices in the list's header.
+    try expectSize(ElementState, 40);
 }
 
-test "a div's one block is 312 bytes: 472 less perf2 b7's 8, the association (40), the slottable state (64) and nd2 N2's 48" {
+test "a div's one block is 264 bytes: 472 less perf2 b7's 8, the association (40), the slottable state (64) and nd2 N2's and N3's 48 each" {
     const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 312);
+    try expectSize(S, 264);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
     if (held - @sizeOf(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });

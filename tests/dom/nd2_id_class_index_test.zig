@@ -184,9 +184,15 @@ const Page = struct {
             try testing.expect((try interfaces.Document.call_querySelector(self.document, str(try std.fmt.bufPrint(&buffer, "#{s}", .{id})))) == el);
         }
         if (class_name.len != 0) {
+            // .class matches each of its classes; the first one stands for them.
             var buffer: [64]u8 = undefined;
-            try testing.expect(try interfaces.Element.call_matches(el, str(try std.fmt.bufPrint(&buffer, ".{s}", .{class_name}))));
+            var classes = std.mem.tokenizeScalar(u8, class_name, ' ');
+            try testing.expect(try interfaces.Element.call_matches(el, str(try std.fmt.bufPrint(&buffer, ".{s}", .{classes.next().?}))));
+            // Engine-less: the collection is the test's to free, the way a
+            // collected wrapper's object goes (its slot's generation moves,
+            // so the document's collection cache makes a new one next time).
             const list = try interfaces.Document.call_getElementsByClassName(self.document, str(class_name));
+            defer runtime.gc.onObjectFreed(list);
             try testing.expectEqual(@as(u32, 1), try interfaces.HTMLCollection.get_length(list));
             try testing.expect((try interfaces.HTMLCollection.call_item(list, 0)) == el);
         }

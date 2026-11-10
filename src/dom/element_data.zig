@@ -43,10 +43,12 @@
 //! the element is freed; copy what you keep. Writes - "change", "append",
 //! "remove" and "replace" an attribute - stay Element's, where "handle
 //! attribute changes" queues the mutation record, enqueues the custom
-//! element reaction and runs the attribute change steps that re-derive `id`
-//! and `class_name` from the list: callers write through
-//! `dom.element_attributes` (`set`, `remove`, `append`, `change`), never
-//! through this data, which `of` hands out read-only.
+//! element reaction and runs the attribute change steps: callers write
+//! through `dom.element_attributes` (`set`, `remove`, `append`, `change`),
+//! never through this data, which `of` hands out read-only. The ID and
+//! classes are read from the list through two indices its header keeps
+//! (`idValue`, `classValue`; lane nd2 N3), which the list's own append and
+//! remove re-derive - no step can forget them.
 //!
 //! The element's qualified name is ONE pointer to a shared record
 //! (`name`, dom.element_name; lane nd2 N2).
@@ -226,23 +228,60 @@ pub const AttributeEntry = struct {
 /// allocation. It grows by one slot up to four (85% of elements have at
 /// most one attribute and none on the perf pages more than four) and then
 /// doubles; the element frees it when its last attribute goes.
+///
+/// The header also keeps the element's ID and classes as the POSITIONS of
+/// its id and class attributes in no namespace (lane nd2 N3; the integrator's
+/// perf3 D1 condition: indices, never pointers - a pointer into a list that
+/// moves would dangle). Blink and WebKit keep the ID and classes in their
+/// out-of-line ElementData the same way (Blink core/dom/element_data.h
+/// `id_for_style_resolution_`, `class_names_`; WebKit
+/// Source/WebCore/dom/ElementData.h), so an element with no attributes
+/// pays nothing for them. One byte each: 0..253 is the attribute's
+/// position, `no_index` none, and `saturated_index` "at a position past
+/// 253: scan from there" - an element has no cap on its attributes, and its
+/// length stays 32 bits. The list's own changes keep them (`append`,
+/// `take`); a change of value or prefix ("change", "replace") moves no
+/// attribute. 8 bytes, as before: the capacity is a one-byte growth class.
 pub const AttributeList = struct {
     len: u32,
-    cap: u32,
+    /// The capacity's growth class: 1 to 4 is that many slots, k > 4 is
+    /// 4 << (k - 4) - exactly the growth policy above (`capacity`).
+    cap_class: u8,
+    /// Where the id attribute in no namespace is (see above).
+    id_index: u8 = no_index,
+    /// Where the class attribute in no namespace is.
+    class_index: u8 = no_index,
+    _reserved: u8 = 0,
+
+    /// No such attribute.
+    pub const no_index: u8 = 0xFF;
+    /// The attribute is at position `saturated_index` or later: found by a
+    /// scan from there.
+    pub const saturated_index: u8 = 0xFE;
 
     comptime {
+        std.debug.assert(@sizeOf(AttributeList) == 8);
         std.debug.assert(@sizeOf(AttributeList) % @alignOf(Attribute) == 0);
     }
 
     const Memory = []align(@alignOf(Attribute)) u8;
 
-    fn bytesFor(cap: u32) usize {
-        return @sizeOf(AttributeList) + @as(usize, cap) * @sizeOf(Attribute);
+    fn capacityOf(class: u8) usize {
+        return if (class <= 4) class else @as(usize, 4) << @intCast(class - 4);
+    }
+
+    /// The slots the list holds.
+    pub fn capacity(self: *const AttributeList) usize {
+        return capacityOf(self.cap_class);
+    }
+
+    fn bytesFor(cap: usize) usize {
+        return @sizeOf(AttributeList) + cap * @sizeOf(Attribute);
     }
 
     fn memory(self: *AttributeList) Memory {
         const base: [*]align(@alignOf(Attribute)) u8 = @ptrCast(@alignCast(self));
-        return base[0..bytesFor(self.cap)];
+        return base[0..bytesFor(self.capacity())];
     }
 
     fn slots(self: *AttributeList) [*]Attribute {
@@ -254,10 +293,10 @@ pub const AttributeList = struct {
         return self.slots()[0..self.len];
     }
 
-    fn create(allocator: std.mem.Allocator, cap: u32) !*AttributeList {
-        const bytes = try allocator.alignedAlloc(u8, .of(Attribute), bytesFor(cap));
+    fn create(allocator: std.mem.Allocator) !*AttributeList {
+        const bytes = try allocator.alignedAlloc(u8, .of(Attribute), bytesFor(capacityOf(1)));
         const list: *AttributeList = @ptrCast(bytes.ptr);
-        list.* = .{ .len = 0, .cap = cap };
+        list.* = .{ .len = 0, .cap_class = 1 };
         return list;
     }
 
@@ -268,12 +307,68 @@ pub const AttributeList = struct {
     /// The list with room for one more: itself, or a larger copy that
     /// replaces it (MOVED - nothing may hold a pointer into it across this).
     fn withRoom(self: *AttributeList, allocator: std.mem.Allocator) !*AttributeList {
-        if (self.len < self.cap) return self;
-        const cap: u32 = if (self.cap < 4) self.cap + 1 else self.cap * 2;
-        const bytes = try allocator.realloc(self.memory(), bytesFor(cap));
+        // The length is 32 bits; past it there is no room to make.
+        if (self.len == std.math.maxInt(u32)) return error.OutOfMemory;
+        if (self.len < self.capacity()) return self;
+        const class = self.cap_class + 1;
+        const bytes = try allocator.realloc(self.memory(), bytesFor(capacityOf(class)));
         const list: *AttributeList = @ptrCast(bytes.ptr);
-        list.cap = cap;
+        list.cap_class = class;
         return list;
+    }
+
+    /// The index byte for an attribute at `position`.
+    fn indexFor(position: usize) u8 {
+        return if (position < saturated_index) @intCast(position) else saturated_index;
+    }
+
+    /// The position of the attribute in no namespace named `local_name`
+    /// that `index` says where to find, or null.
+    fn find(self: *AttributeList, index: u8, local_name: []const u8) ?usize {
+        if (index == no_index) return null;
+        if (index != saturated_index) return index;
+        const from = @min(@as(usize, saturated_index), self.len);
+        for (self.items()[from..], from..) |attribute, position| {
+            if (attribute.name.isNamed(null, local_name)) return position;
+        }
+        return null;
+    }
+
+    /// The value of the attribute `index` finds, or "".
+    fn valueAt(self: *AttributeList, index: u8, local_name: []const u8) []const u8 {
+        const position = self.find(index, local_name) orelse return "";
+        return self.items()[position].value;
+    }
+
+    /// The attribute just appended at `position` is the id or class
+    /// attribute: its index follows it. There is at most one of each (an
+    /// attribute is appended only when absent).
+    fn appended(self: *AttributeList, position: usize, name: *const QualifiedName) void {
+        if (name.namespace_uri != null) return;
+        if (self.id_index == no_index and std.mem.eql(u8, name.local_name, "id")) self.id_index = indexFor(position);
+        if (self.class_index == no_index and std.mem.eql(u8, name.local_name, "class")) self.class_index = indexFor(position);
+    }
+
+    /// The attribute at `position`, named `name`, was just taken out: the
+    /// indices after it move down one, its own goes, and a saturated one is
+    /// found again (it may be exact now).
+    fn taken(self: *AttributeList, position: usize, name: *const QualifiedName) void {
+        self.id_index = self.indexAfterTake(self.id_index, position, name, "id");
+        self.class_index = self.indexAfterTake(self.class_index, position, name, "class");
+    }
+
+    fn indexAfterTake(self: *AttributeList, index: u8, position: usize, name: *const QualifiedName, local_name: []const u8) u8 {
+        if (index == no_index) return no_index;
+        if (name.isNamed(null, local_name)) return no_index;
+        if (index == saturated_index) {
+            // It was at 254 or later, so it is at 253 or later now.
+            const from = @min(@as(usize, saturated_index - 1), self.len);
+            for (self.items()[from..], from..) |attribute, at| {
+                if (attribute.name.isNamed(null, local_name)) return indexFor(at);
+            }
+            return no_index;
+        }
+        return if (position < index) index - 1 else index;
     }
 };
 
@@ -355,18 +450,8 @@ pub const ElementData = struct {
     /// prefix in rare data. Written only by Element.
     name: *const ElementName = &element_name.unnamed,
 
-    /// The element's ID ("set / unset element's ID", DOM 4.9's attribute
-    /// change steps): a view of its id attribute's value, or empty when it
-    /// has none. Re-derived from the list by those steps after every change
-    /// to that attribute (`rederiveId`), never freed: the value's buffer is
-    /// freed only after the steps re-derived it.
-    id: runtime.DOMString = .{ .empty = {} },
-    /// The class attribute's value, or empty when it has none: what the
-    /// class selector, classList and getElementsByClassName read. A view,
-    /// kept like `id` (`rederiveClassName`).
-    class_name: runtime.DOMString = .{ .empty = {} },
-
-    /// The attributes in list order; null while there are none.
+    /// The attributes in list order, with the positions of the id and class
+    /// attributes in its header; null while there are none.
     attrs: ?*AttributeList = null,
 
     pub fn init() ElementData {
@@ -379,9 +464,6 @@ pub const ElementData = struct {
         // The name record is shared (static, or its Browser's): nothing of
         // the element's own.
         self.name = &element_name.unnamed;
-        // Views of attribute values: nothing of their own to free.
-        self.id = .{ .empty = {} };
-        self.class_name = .{ .empty = {} };
         if (self.attrs) |list| {
             for (list.items()) |attribute| freeAttribute(allocator, attribute);
             list.destroy(allocator);
@@ -403,6 +485,25 @@ pub const ElementData = struct {
     /// The element's local name, borrowed.
     pub fn localName(self: *const ElementData) []const u8 {
         return self.name.local_name;
+    }
+
+    /// The element's ID (DOM 4.9 "set / unset element's ID": its id
+    /// attribute's value in no namespace; empty is no ID), or "". Read from
+    /// the list through the header's index (lane nd2 N3; a 24-byte view on
+    /// every element before), BORROWED: the value's own buffer, which does
+    /// not move with the list - valid until that attribute next changes.
+    /// Blink's Element::GetIdAttribute reads the attribute the same way.
+    pub fn idValue(self: *const ElementData) []const u8 {
+        const list = self.attrs orelse return "";
+        return list.valueAt(list.id_index, "id");
+    }
+
+    /// The class attribute's value in no namespace, or "": what the class
+    /// selector, classList and getElementsByClassName read. Borrowed, like
+    /// `idValue`.
+    pub fn classValue(self: *const ElementData) []const u8 {
+        const list = self.attrs orelse return "";
+        return list.valueAt(list.class_index, "class");
     }
 
     /// The number of attributes in the list.
@@ -485,10 +586,12 @@ pub const ElementData = struct {
     /// is its own, its name - on success only. Element's "append an
     /// attribute" step 1. The list may MOVE.
     pub fn appendAttribute(self: *ElementData, allocator: std.mem.Allocator, attribute: Attribute) !void {
-        const list = if (self.attrs) |list| try list.withRoom(allocator) else try AttributeList.create(allocator, 1);
+        const list = if (self.attrs) |list| try list.withRoom(allocator) else try AttributeList.create(allocator);
         self.attrs = list;
-        list.slots()[list.len] = attribute;
+        const position = list.len;
+        list.slots()[position] = attribute;
         list.len += 1;
+        list.appended(position, attribute.name);
     }
 
     /// Remove the attribute at `index` and hand it - value and name - to the
@@ -504,7 +607,9 @@ pub const ElementData = struct {
         if (list.len == 0) {
             list.destroy(allocator);
             self.attrs = null;
+            return attribute;
         }
+        list.taken(index, attribute.name);
         return attribute;
     }
 
@@ -527,24 +632,6 @@ pub const ElementData = struct {
         std.debug.assert(name.isNamed(old.namespace_uri, old.local_name));
         slot.name = name;
         return old;
-    }
-
-    /// Re-derive the element's ID from the list: its id attribute's value in
-    /// no namespace, or empty ("set / unset element's ID").
-    pub fn rederiveId(self: *ElementData) void {
-        self.id = viewOf(self.findAttribute(null, "id"));
-    }
-
-    /// Re-derive the element's classes from the list: its class attribute's
-    /// value in no namespace, or empty.
-    pub fn rederiveClassName(self: *ElementData) void {
-        self.class_name = viewOf(self.findAttribute(null, "class"));
-    }
-
-    fn viewOf(attribute: ?AttributeEntry) runtime.DOMString {
-        const found = attribute orelse return .{ .empty = {} };
-        if (found.value.len == 0) return .{ .empty = {} };
-        return runtime.DOMString.initInterned(found.value);
     }
 };
 
@@ -646,7 +733,7 @@ test "the list keeps its order as it grows past four and shrinks to nothing" {
     const names = [_][]const u8{ "a", "b", "c", "d", "e", "f" };
     for (names) |name| try data.appendAttribute(allocator, try testAttribute(allocator, null, null, name, name));
     try std.testing.expectEqual(@as(usize, 6), data.getAttributeCount());
-    try std.testing.expectEqual(@as(u32, 8), data.attrs.?.cap);
+    try std.testing.expectEqual(@as(usize, 8), data.attrs.?.capacity());
     for (names, 0..) |name, i| try std.testing.expectEqualStrings(name, data.attributeAt(i).?.local_name);
     try std.testing.expect(data.attributeAt(6) == null);
 
@@ -711,7 +798,6 @@ test "views survive the list's reallocation; Attr node links follow a renamed at
     defer data.deinit(allocator);
 
     try data.appendAttribute(allocator, try testAttribute(allocator, null, null, "id", "main"));
-    data.rederiveId();
     const first = data.attributeAt(0).?;
     var i: usize = 0;
     while (i < 20) : (i += 1) {
@@ -721,7 +807,7 @@ test "views survive the list's reallocation; Attr node links follow a renamed at
     }
     // The view taken before and the ID read the value's own buffer.
     try std.testing.expectEqualStrings("main", first.value);
-    try std.testing.expectEqualStrings("main", data.id.asSlice());
+    try std.testing.expectEqualStrings("main", data.idValue());
 
     // An Attr node link is keyed by the name record and follows "replace".
     var nodes: AttrNodeList = .{};
@@ -738,6 +824,42 @@ test "views survive the list's reallocation; Attr node links follow a renamed at
     try std.testing.expect(nodes.get(old) == null);
     try std.testing.expect(nodes.take(allocator, renamed) != null);
     try std.testing.expectEqual(@as(usize, 0), nodes.entries.capacity);
+}
+
+test "the header's indices follow appends and removals, saturate past 253 and stay exact below it" {
+    const allocator = std.testing.allocator;
+    var data = ElementData.init();
+    defer data.deinit(allocator);
+
+    try std.testing.expectEqualStrings("", data.idValue());
+    // A namespaced id is not the element's.
+    try data.appendAttribute(allocator, try testAttribute(allocator, "urn:x", "p", "id", "ns"));
+    try std.testing.expectEqual(AttributeList.no_index, data.attrs.?.id_index);
+    var i: usize = 0;
+    while (i < 252) : (i += 1) {
+        var buffer: [16]u8 = undefined;
+        const name = try std.fmt.bufPrint(&buffer, "a{d}", .{i});
+        try data.appendAttribute(allocator, try testAttribute(allocator, null, null, name, ""));
+    }
+    // Position 253: the last exact index. Position 254: saturated.
+    try data.appendAttribute(allocator, try testAttribute(allocator, null, null, "id", "i"));
+    try data.appendAttribute(allocator, try testAttribute(allocator, null, null, "class", "c"));
+    try std.testing.expectEqual(@as(u8, 253), data.attrs.?.id_index);
+    try std.testing.expectEqual(AttributeList.saturated_index, data.attrs.?.class_index);
+    try std.testing.expectEqualStrings("i", data.idValue());
+    try std.testing.expectEqualStrings("c", data.classValue());
+    // A removal before both: the class comes down to an exact 253.
+    ElementData.freeAttribute(allocator, data.takeAttributeAt(allocator, 0));
+    try std.testing.expectEqual(@as(u8, 252), data.attrs.?.id_index);
+    try std.testing.expectEqual(@as(u8, 253), data.attrs.?.class_index);
+    try std.testing.expectEqualStrings("c", data.classValue());
+    // The id goes; the class moves down.
+    ElementData.freeAttribute(allocator, data.takeAttributeAt(allocator, 252));
+    try std.testing.expectEqual(AttributeList.no_index, data.attrs.?.id_index);
+    try std.testing.expectEqual(@as(u8, 252), data.attrs.?.class_index);
+    try std.testing.expectEqualStrings("", data.idValue());
+    // The capacity class grew as the old policy did: 1, 2, 3, 4, 8, ...
+    try std.testing.expectEqual(@as(usize, 256), data.attrs.?.capacity());
 }
 
 test "without an installed implementation no node has element data or rare data" {

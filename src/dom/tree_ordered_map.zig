@@ -126,7 +126,7 @@ fn namedTypeOf(data: *const element_data.ElementData) NamedType {
 fn factsOfData(data: *const element_data.ElementData) Facts {
     const named_type = namedTypeOf(data);
     const name: []const u8 = if (named_type == .other) "" else if (element_data.getAttributeByNamespaceAndLocalName(data, null, "name")) |attribute| attribute.value else "";
-    return .{ .named_type = named_type, .id = data.id.asSlice(), .name = name };
+    return .{ .named_type = named_type, .id = data.idValue(), .name = name };
 }
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
@@ -589,11 +589,15 @@ pub const Change = struct {
     member: Link,
 };
 
-/// What the element's name attribute was, for `beginChange`.
+/// What changed, for `beginChange`: the element's ID or its name attribute,
+/// and the value it had.
 pub const OldName = union(enum) {
-    /// Its name attribute stands (an ID change).
-    current,
-    /// It changed from this value ("" for none).
+    /// Its ID changed from this value ("" for none); its name attribute
+    /// stands. The ID is read from the attribute list (lane nd2 N3:
+    /// ElementData.idValue), which already holds the new value when the
+    /// change steps run - so the old one is passed, as the name's is.
+    id_was: []const u8,
+    /// Its name attribute changed from this value ("" for none).
     was: []const u8,
 };
 
@@ -604,7 +608,7 @@ pub const OldName = union(enum) {
 pub fn beginChange(element: *runtime.Instance, data: *const element_data.ElementData, old_name: OldName) ?Change {
     var facts = factsOfData(data);
     switch (old_name) {
-        .current => {},
+        .id_was => |value| facts.id = value,
         // No kind reads the name of an element of no named type.
         .was => |value| {
             if (facts.named_type == .other) return null;

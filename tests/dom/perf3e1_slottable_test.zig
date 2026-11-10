@@ -60,7 +60,7 @@ const has_rare_slottable = @hasField(ElementRareData, "slottable");
 // Sizes (red until item 2)
 // ============================================================================
 
-test "Element's InternalState keeps no slottable state: 88 bytes" {
+test "Element's InternalState keeps no slottable state: 40 bytes" {
     if (comptime @hasField(ElementState, "slottable")) {
         printLayout(ElementState);
         return error.SlottableStillInElement;
@@ -68,12 +68,13 @@ test "Element's InternalState keeps no slottable state: 88 bytes" {
     // 200 after item 1: - 64 (the assigned slot and the manual slot
     // assignment, two NodeRefs with their optional tags).
     // 136 at E1; lane nd2 N2 took the name into one record pointer (tests/dom/nd2_element_name_test.zig): 88.
-    try expectSize(ElementState, 88);
+    // nd2 N3: the ID and classes views (48) are indices in the list's header.
+    try expectSize(ElementState, 40);
 }
 
-test "a div's one block is 312 bytes: 432 less the slottable state, perf2 b7's 8 (merged after) and nd2 N2's 48" {
+test "a div's one block is 264 bytes: 432 less the slottable state, perf2 b7's 8 (merged after) and nd2 N2's and N3's 48 each" {
     const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 312);
+    try expectSize(S, 264);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
     if (held - @sizeOf(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });

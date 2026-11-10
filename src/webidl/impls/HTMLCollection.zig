@@ -513,7 +513,7 @@ fn refillClassNames(collection: *runtime.Instance, root: *runtime.Instance) bool
         if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
         const element = instanceOfBase(node) orelse continue;
         const data = dom.element_data.of(element) orelse continue;
-        if (!wanted.allIn(data.class_name.asSlice(), quirks)) continue;
+        if (!wanted.allIn(data.classValue(), quirks)) continue;
         addElement(collection, element) catch return false;
     }
     return true;
@@ -758,7 +758,7 @@ fn namesOf(element: *runtime.Instance) ?ElementNames {
         (if (data.attributeAt(index)) |entry| entry.value else null)
     else
         null;
-    return .{ .id = data.id.asSlice(), .name = name };
+    return .{ .id = data.idValue(), .name = name };
 }
 
 /// Whether `name` is one of the collection's supported property names
