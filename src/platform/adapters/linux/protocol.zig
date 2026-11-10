@@ -165,13 +165,13 @@ pub const protocol = struct {
     // (darwin: a VM tag per label, MADV_FREE_REUSABLE / MADV_FREE_REUSE;
     // Linux: VMA names, MADV_NOHUGEPAGE on the node cage, mprotect-only
     // commit), chosen by the target it is built for.
-    pub const pageSize = headless.pageSize;
-    pub const reserveAddressSpace = headless.reserveAddressSpace;
-    pub const labelAddressSpace = headless.labelAddressSpace;
-    pub const commitPages = headless.commitPages;
-    pub const decommitPages = headless.decommitPages;
-    pub const protectPages = headless.protectPages;
-    pub const releaseAddressSpace = headless.releaseAddressSpace;
+    pub const pageSize = posix.pageSize;
+    pub const reserveAddressSpace = posix.reserveAddressSpace;
+    pub const labelAddressSpace = posix.labelAddressSpace;
+    pub const commitPages = posix.commitPages;
+    pub const decommitPages = posix.decommitPages;
+    pub const protectPages = posix.protectPages;
+    pub const releaseAddressSpace = posix.releaseAddressSpace;
     pub const makeDirectoryPath = posix.makeDirectoryPath;
     pub const readFile = posix.readFile;
     pub const writeFileAtomic = posix.writeFileAtomic;
