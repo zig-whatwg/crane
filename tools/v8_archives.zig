@@ -22,8 +22,11 @@
 //! its three archives byte for byte (lane v8opt1, 2026-11-04: equal
 //! SHA-256s), so static and official differ in ThinLTO and PGO alone.
 //!
-//! iOS links out/ios-arm64. There is no official iOS build, so
-//! -Dv8-build=official for an iOS target is an error, not a quiet fallback.
+//! An iOS target has no V8 archive at all: iOS is JavaScriptCore's (the
+//! user, 2026-11-10, ruling R4: "ios was always supposed to use javascript
+//! core"), so `select` answers error.NoV8ForIos for either build, never a
+//! quiet fallback to another archive. iOS builds wait for the JavaScriptCore
+//! adapter (src/runtime/engines/jsc/).
 //!
 //! std-only, so `zig build test` pins the paths (tools-v8_archives).
 
@@ -53,17 +56,13 @@ pub const Archives = struct {
 };
 
 pub const SelectError = error{
-    /// -Dv8-build=official for an iOS target: out/ios-arm64 is the only iOS
-    /// build.
-    NoOfficialIosBuild,
+    /// An iOS target: no V8 for iOS in any form (ruling R4).
+    NoV8ForIos,
 };
 
 /// The archives `build` names for a target whose OS is `os`.
 pub fn select(build: Build, os: std.Target.Os.Tag) SelectError!Archives {
-    if (os == .ios) return switch (build) {
-        .static => archivesIn("jsengines/v8/out/ios-arm64"),
-        .official => error.NoOfficialIosBuild,
-    };
+    if (os == .ios) return error.NoV8ForIos;
     return switch (build) {
         .static => archivesIn("jsengines/v8/out/static"),
         .official => archivesIn("jsengines/v8/out/official"),

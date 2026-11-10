@@ -2819,26 +2819,25 @@ pub fn build(b: *std.Build) void {
 
     // Where this target's V8 archives live.
     //
-    // Every consumer used to hardcode `out/static`, which is the macOS arm64 build -
-    // `lipo` says arm64 and the Mach-O load command says PLATFORM_MACOS. Linking
-    // those into an aarch64-ios image fails the platform check, so an iOS build
-    // could never work however much Zig-side work was done. Selecting by target OS
-    // is the other half of that fix; the archives themselves come from a
-    // `target_os="ios"` GN build in `out/ios-arm64`.
-    //
     // -Dv8-build picks between two macOS builds of the same V8 (13.1.203):
     // `static` (the default) and `official`, the build with Chrome's official
     // ThinLTO and PGO (scripts/build-v8-official.sh, whose control build
     // reproduces out/static byte for byte). tools/v8_archives.zig holds the
-    // paths and pins them; iOS keeps out/ios-arm64.
+    // paths and pins them. An iOS target has none: iOS is JavaScriptCore's (the
+    // user, 2026-11-10, ruling R4 - no V8 for iOS in any form), and the user
+    // paused every iOS build until the JavaScriptCore adapter exists (15:55 ET:
+    // "skip ios builds and tests for now until we get js core implemented").
+    // So an aarch64-ios configure - check-ios's sub-build, or -Dtarget=aarch64-ios
+    // with any -Dengine - stops here with that reason; nothing else changes for
+    // a host build, and no gate builds for iOS.
     const v8_build = b.option(
         v8_archives.Build,
         "v8-build",
         "Which V8 13.1.203 build to link on macOS: static (default; jsengines/v8/out/static) or official (opt-in: jsengines/v8/out/official, ThinLTO + PGO as Chrome's official build, scripts/build-v8-official.sh; on chat.local only - build with it there)",
     ) orelse v8_archives.Build.default;
     const v8 = v8_archives.select(v8_build, target.result.os.tag) catch |err| switch (err) {
-        error.NoOfficialIosBuild => {
-            std.debug.print("Error: -Dv8-build={s} has no iOS build: an aarch64-ios target links jsengines/v8/out/ios-arm64 (drop -Dv8-build)\n", .{@tagName(v8_build)});
+        error.NoV8ForIos => {
+            std.debug.print("Error: an iOS target builds nothing yet: iOS uses JavaScriptCore, never V8 (the user, 2026-11-10), and iOS builds wait for the JavaScriptCore adapter (src/runtime/engines/jsc/)\n", .{});
             std.process.exit(1);
         },
     };
@@ -4978,6 +4977,10 @@ pub fn build(b: *std.Build) void {
     // wrapper - 24 V8 API symbols are missing from today's, lane zig017trial -
     // and iOS ships on JavaScriptCore). -Dios-sdk passes through: the merge
     // check runs `zig build check-ios -Dios-sdk=$HOME/sdks/iPhoneOS.sdk -j2`.
+    // PAUSED (the user, 2026-11-10 15:55 ET: "skip ios builds and tests for now
+    // until we get js core implemented"): the sub-build's configure stops at the
+    // V8 archive selection (no V8 for iOS) with that reason, so this step fails
+    // with it until the JavaScriptCore adapter builds lib-full; it is no gate.
     const check_ios_step = b.step("check-ios", "lib-full for aarch64-ios (a static library: built, not linked); -Dios-sdk passes through");
     const ios_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "lib-full", "-Dtarget=aarch64-ios", "-j2" });
     if (ios_sdk_option) |sdk| ios_build.addArg(b.fmt("-Dios-sdk={s}", .{sdk}));
