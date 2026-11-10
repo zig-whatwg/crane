@@ -51,7 +51,8 @@
 //! remove re-derive - no step can forget them.
 //!
 //! The element's qualified name is ONE pointer to a shared record
-//! (`name`, dom.element_name; lane nd2 N2).
+//! (`name`, dom.element_name; lane nd2 N2), a counted reference to an
+//! interned one (batch 1-fix): `rename` and `deinit` keep the count.
 //!
 //! Spec: https://dom.spec.whatwg.org/#concept-element-attribute
 //!
@@ -233,10 +234,12 @@ pub const AttributeEntry = struct {
 /// its id and class attributes in no namespace (lane nd2 N3; the integrator's
 /// perf3 D1 condition: indices, never pointers - a pointer into a list that
 /// moves would dangle). Blink and WebKit keep the ID and classes in their
-/// out-of-line ElementData the same way (Blink core/dom/element_data.h
-/// `id_for_style_resolution_`, `class_names_`; WebKit
-/// Source/WebCore/dom/ElementData.h), so an element with no attributes
-/// pays nothing for them. One byte each: 0..253 is the attribute's
+/// out-of-line ElementData too, so an element with no attributes pays
+/// nothing for them - but as a cached atomized ID and pre-split class
+/// tokens (Blink core/dom/element_data.h `id_for_style_resolution_`,
+/// `class_names_`, a SpaceSplitString; WebKit Source/WebCore/dom/
+/// ElementData.h), not positions: here a class match still splits the
+/// value (appendix-nd2.md F6, F12). One byte each: 0..253 is the attribute's
 /// position, `no_index` none, and `saturated_index` "at a position past
 /// 253: scan from there" - an element has no cap on its attributes, and its
 /// length stays 32 bits. The list's own changes keep them (`append`,
@@ -447,7 +450,9 @@ pub const ElementData = struct {
     /// html_core's tag table knows, else its Browser's interned one
     /// (dom.element_name; lane nd2 N2: Blink's `Element::tag_name_`). It
     /// was a 32-byte namespace and a 24-byte local name here and a 32-byte
-    /// prefix in rare data. Written only by Element.
+    /// prefix in rare data. An interned record is a COUNTED reference this
+    /// data holds (batch 1-fix): written only by Element, through `rename`,
+    /// and let go by `deinit`.
     name: *const ElementName = &element_name.unnamed,
 
     /// The attributes in list order, with the positions of the id and class
@@ -458,12 +463,22 @@ pub const ElementData = struct {
         return .{};
     }
 
-    /// Free the names and every attribute. An attribute's Attr node is its
-    /// owner's to let go first (AttrNodeList.take): this frees the list only.
-    pub fn deinit(self: *ElementData, allocator: std.mem.Allocator) void {
-        // The name record is shared (static, or its Browser's): nothing of
-        // the element's own.
-        self.name = &element_name.unnamed;
+    /// Name the element `name`, a reference the caller hands over (counted,
+    /// for an interned record: dom.element_name.intern), and let the old
+    /// name's go - after, so renaming to the same record keeps it.
+    pub fn rename(self: *ElementData, scope: *runtime.BrowserScope, name: *const ElementName) void {
+        const old = self.name;
+        self.name = name;
+        element_name.release(scope, old);
+    }
+
+    /// Let the name record go and free every attribute. `scope` is the
+    /// element's Browser's: its allocator made the list, its table counts
+    /// the name. An attribute's Attr node is its owner's to let go first
+    /// (AttrNodeList.take): this frees the list only.
+    pub fn deinit(self: *ElementData, scope: *runtime.BrowserScope) void {
+        const allocator = scope.allocator;
+        self.rename(scope, &element_name.unnamed);
         if (self.attrs) |list| {
             for (list.items()) |attribute| freeAttribute(allocator, attribute);
             list.destroy(allocator);
@@ -726,8 +741,10 @@ fn testAttribute(allocator: std.mem.Allocator, namespace: ?[]const u8, prefix: ?
 
 test "the list keeps its order as it grows past four and shrinks to nothing" {
     const allocator = std.testing.allocator;
+    var scope = runtime.BrowserScope.init(allocator);
+    defer scope.deinit();
     var data = ElementData.init();
-    defer data.deinit(allocator);
+    defer data.deinit(&scope);
 
     try std.testing.expect(data.attrs == null);
     const names = [_][]const u8{ "a", "b", "c", "d", "e", "f" };
@@ -752,8 +769,10 @@ test "the list keeps its order as it grows past four and shrinks to nothing" {
 
 test "attributes are named by namespace and local name, and found by qualified name" {
     const allocator = std.testing.allocator;
+    var scope = runtime.BrowserScope.init(allocator);
+    defer scope.deinit();
     var data = ElementData.init();
-    defer data.deinit(allocator);
+    defer data.deinit(&scope);
 
     try data.appendAttribute(allocator, try testAttribute(allocator, "urn:x", "x", "title", "namespaced"));
     const plain_name: QualifiedName = .{ .local_name = "title" };
@@ -794,8 +813,10 @@ test "an attribute's own name is one allocation; a named namespace stays static"
 
 test "views survive the list's reallocation; Attr node links follow a renamed attribute" {
     const allocator = std.testing.allocator;
+    var scope = runtime.BrowserScope.init(allocator);
+    defer scope.deinit();
     var data = ElementData.init();
-    defer data.deinit(allocator);
+    defer data.deinit(&scope);
 
     try data.appendAttribute(allocator, try testAttribute(allocator, null, null, "id", "main"));
     const first = data.attributeAt(0).?;
@@ -828,8 +849,10 @@ test "views survive the list's reallocation; Attr node links follow a renamed at
 
 test "the header's indices follow appends and removals, saturate past 253 and stay exact below it" {
     const allocator = std.testing.allocator;
+    var scope = runtime.BrowserScope.init(allocator);
+    defer scope.deinit();
     var data = ElementData.init();
-    defer data.deinit(allocator);
+    defer data.deinit(&scope);
 
     try std.testing.expectEqualStrings("", data.idValue());
     // A namespaced id is not the element's.

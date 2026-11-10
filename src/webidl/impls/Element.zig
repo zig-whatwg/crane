@@ -120,18 +120,17 @@ pub const InternalState = struct {
         return .{ .data = ElementData.init() };
     }
 
-    /// Free what the state owns. `allocator` is its element's Browser's
-    /// (runtime.allocatorOf), which made all of it: the state keeps no copy
-    /// (lane perf3 D2; Element's init asserts the identity). Both exits run
-    /// this: the element's deinit, and its Browser's teardown sweep
-    /// (runtime.OwnState.deinitAllAndClear passes the scope's allocator).
-    /// `memory` is the DOM memory the rare data was counted in; null from
-    /// the sweep, at the Browser's end, where nothing reads it any more.
-    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        self.deinitCounted(allocator, null);
-    }
-
-    fn deinitCounted(self: *InternalState, allocator: std.mem.Allocator, memory: ?*runtime.gc.ExternalMemory) void {
+    /// Free what the state owns and let its name record go. `scope` is its
+    /// element's Browser's (runtime.BrowserScope.ofInstance), whose
+    /// allocator made all of it - the state keeps no copy (lane perf3 D2;
+    /// Element's init asserts the identity) - and whose table counts its
+    /// name (dom.element_name). Both exits run this, and only this: the
+    /// element's deinit (`deinitOwn`), and its Browser's teardown sweep
+    /// (`sweepRemaining`). `memory` is the DOM memory the rare data was
+    /// counted in; null from the sweep, at the Browser's end, where nothing
+    /// reads it any more.
+    fn end(self: *InternalState, scope: *runtime.BrowserScope, memory: ?*runtime.gc.ExternalMemory) void {
+        const allocator = scope.allocator;
         if (self.style) |style_state| style_state.destroy();
         self.style = null;
         if (self.rare) |rare| {
@@ -176,7 +175,7 @@ pub const InternalState = struct {
             self.rare = null;
             rare.destroy(allocator, memory);
         }
-        self.data.deinit(allocator);
+        self.data.deinit(scope);
     }
 };
 
@@ -300,13 +299,14 @@ fn prefixOf(internal: *const InternalState) ?[]const u8 {
 
 /// The name record of (`namespace`, `prefix`, `local_name`): html_core's
 /// static one for a known HTML, SVG or MathML name (Blink's html_names /
-/// svg_names / mathml_names), else the one `instance`'s Browser interned
-/// (dom.element_name: Blink's QualifiedNameCache, Gecko's per-document
-/// nsNodeInfoManager). Static first, so a known name never has a second
-/// record.
-fn elementName(instance: *runtime.Instance, namespace: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) error{OutOfMemory}!*const dom.element_name.ElementName {
+/// svg_names / mathml_names), else a COUNTED reference to the one `scope`'s
+/// Browser interned (dom.element_name: Blink's QualifiedNameCache, Gecko's
+/// per-document nsNodeInfoManager), the caller's to keep in an ElementData
+/// (`ElementData.rename`) or let go (`dom.element_name.release`). Static
+/// first, so a known name never has a second record.
+fn elementName(scope: *runtime.BrowserScope, namespace: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) error{OutOfMemory}!*const dom.element_name.ElementName {
     if (html_core.internElementName(namespace, prefix, local_name)) |static| return static;
-    return dom.element_name.intern(runtime.BrowserScope.ofInstance(instance), namespace, prefix, local_name);
+    return dom.element_name.intern(scope, namespace, prefix, local_name);
 }
 
 /// `dom.element_rare_data.of`: the element's rare data, if it has any.
@@ -412,13 +412,18 @@ fn customElementData(instance: *runtime.Instance) ?dom.custom_elements.ElementDa
 
 fn initializeCustomElement(instance: *runtime.Instance, prefix: ?[]const u8, is_value: ?[]const u8, state: CustomElementState) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const allocator = runtime.allocatorOf(instance);
-    // DOM create-an-element-internal steps 1-3 give the element its prefix
-    // after its namespace and local name (`setNamesHook`): the prefix is its
-    // name record's (lane nd2 N2), so a new prefix is another record -
-    // Blink's QualifiedName::SetPrefix makes a new QualifiedName the same way.
+    const scope = runtime.BrowserScope.ofInstance(instance);
+    const allocator = scope.allocator;
+    // "Create an element" names the element with its prefix already
+    // (`setNames`), so this finds it set. A custom element its constructor
+    // made has none yet: DOM create-an-element step 5.1.4.9 "Set result's
+    // namespace prefix to prefix" - another record, as Blink's
+    // QualifiedName::SetPrefix makes another QualifiedName (the prefix is
+    // the name record's, lane nd2 N2). Its reference is counted; the old
+    // record's goes when the new one is kept.
     const current = internal.data.name;
-    const name = if (optionalEql(current.prefix, prefix)) current else try elementName(instance, current.namespace_uri, prefix, current.local_name);
+    const renamed: ?*const dom.element_name.ElementName = if (optionalEql(current.prefix, prefix)) null else try elementName(scope, current.namespace_uri, prefix, current.local_name);
+    errdefer if (renamed) |name| dom.element_name.release(scope, name);
     // The is value lives in rare data: made only when one is set, or to
     // clear one an earlier call set.
     if (is_value != null or internal.rare != null) {
@@ -427,7 +432,7 @@ fn initializeCustomElement(instance: *runtime.Instance, prefix: ?[]const u8, is_
         if (rare.is_value) |*value| value.deinit(allocator);
         rare.is_value = owned_is;
     }
-    internal.data.name = name;
+    if (renamed) |name| internal.data.rename(scope, name);
     internal.custom_element_state = state;
 }
 
@@ -492,8 +497,8 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         // The host lets its shadow root go: the shadow root forgets its host
         // (dom.shadow_hosts); the host's edge to it goes with the host's
         // wrapper, so the wrapper cache frees it - and its subtree - once
-        // script drops it too. Here and not in InternalState.deinit, which
-        // cleanupAllRemainingInternal's exit sweep also runs, after the
+        // script drops it too. Here and not in InternalState.end, which
+        // the Browser's exit sweep (`sweepRemaining`) also runs, after the
         // engine is gone.
         //
         // Not torn down: a shadow root keeps its host while script holds it
@@ -508,7 +513,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
             }
             if (rare.references != null) dom.element_references.State.releaseUnwrapped(instance);
         }
-        internal.deinitCounted(runtime.allocatorOf(instance), domMemoryOf(instance));
+        internal.end(runtime.BrowserScope.ofInstance(instance), domMemoryOf(instance));
     }
     Registry.remove(instance);
 }
@@ -519,34 +524,48 @@ fn forgetHost(shadow: *runtime.Instance) void {
 }
 
 /// dom.teardown_sweeps: at its Browser's end, every Element state still in
-/// `scope`'s table - an orphan's no teardown reached - frees what it owns.
+/// `scope`'s table - an orphan's no teardown reached - frees what it owns
+/// and lets its name record go (`InternalState.end`).
 fn sweepRemaining(scope: *runtime.BrowserScope) void {
-    Registry.deinitAllAndClear(scope);
+    Registry.sweep(scope, scope, struct {
+        fn visit(owner: *runtime.BrowserScope, _: *runtime.Instance, internal: *InternalState) void {
+            internal.end(owner, null);
+        }
+    }.visit);
 }
 
 // =============================================================================
 // Setters for internal state (used by Document factory methods)
 // =============================================================================
 
-/// DOM "create an element": the element's namespace and local name, kept as
-/// ONE name record (lane nd2 N2; `elementName`). Its prefix, if any, is
-/// still the record's: "create an element" sets it next
-/// (`initializeCustomElement`), as Blink's Element keeps one QualifiedName.
-fn setNames(instance: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) !void {
+/// DOM "create an element" step 4 (create-an-element-internal step 1): "a
+/// new element ... with ... namespace set to namespace, namespace prefix set
+/// to prefix, local name set to localName" - the three at once, kept as ONE
+/// name record (lane nd2 N2; `elementName`), interned once with its prefix
+/// (batch 1-fix: batch 1 interned (namespace, null, local name) here and the
+/// prefixed record in `initializeCustomElement`, two records per prefixed
+/// name - appendix-nd2.md F2). Blink's Element is constructed with its one
+/// QualifiedName the same way (Element::Element(const QualifiedName&, ...)).
+fn setNames(instance: *runtime.Instance, namespace: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // DOM's algorithms make an empty namespace null before they name an
     // element ("validate and extract", the parsers); the record keeps none.
     const ns: ?[]const u8 = if (namespace) |n| (if (n.len == 0) null else n) else null;
-    internal.data.name = try elementName(instance, ns, internal.data.name.prefix, local_name);
+    const scope = runtime.BrowserScope.ofInstance(instance);
+    internal.data.rename(scope, try elementName(scope, ns, prefix, local_name));
 }
 
 /// Getter for namespaceURI
 /// DOM §4.8 - Returns the namespace URI of this element
 pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Borrowed from the name record, which outlives every element of its
-    // Browser (dom.element_name): no copy. DOMString?: an element in no
-    // namespace answers null, not "".
+    // BORROWED from the element's name record (dom.element_name): valid
+    // while the element lives - the record goes with the last element of
+    // its name - so no copy; the binding copies it into a script string,
+    // and a native caller that keeps it past the element copies it (every
+    // native caller reads it within its call: lane nd2 batch 1-fix's audit,
+    // 60 calls in 25 files). DOMString?: an element in no namespace answers
+    // null, not "".
     const ns = internal.data.name.namespace_uri orelse return null;
     return runtime.DOMString.initInterned(ns);
 }
@@ -1118,6 +1137,15 @@ fn attributeChangeSteps(
         // WebKit Element::updateId). The old ID is the attribute's old value
         // (the list already reads the new one). An unchanged value changes
         // nothing (and keeps a known order).
+        //
+        // From the list write to here - the refcount, resource-loading and
+        // style steps, the mutation record, the custom element reaction and
+        // the element references above - `idValue()` already reads the new
+        // ID while the tree scope's maps still hold the element under the
+        // old one. None of those steps reads the maps (appendix-nd2.md F8);
+        // a step added there that asks getElementById must be given the old
+        // ID, or it finds nothing where the maps expect the element and
+        // degrades them.
         if (!sameAttributeValue(old_value, value)) {
             const change = dom.tree_ordered_map.beginChange(instance, &internal.data, .{ .id_was = old_value orelse "" });
             dom.tree_ordered_map.endChange(&internal.data, change);
@@ -1305,11 +1333,11 @@ fn removeAttributeByName(instance: *runtime.Instance, qualified_name: []const u8
     removeAttributeAt(instance, internal, index);
 }
 
-/// `dom.node_creation.setElementNames`: DOM "create an element" setting the
-/// element's local name and namespace, unvalidated. Both are set even when
-/// one fails; the first failure is reported.
-fn setNamesHook(element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) dom.node_creation.Error!void {
-    return setNames(element, namespace, local_name);
+/// `dom.node_creation.setElementNames` / `setElementQualifiedNames`: DOM
+/// "create an element" setting the element's namespace, namespace prefix and
+/// local name, unvalidated.
+fn setNamesHook(element: *runtime.Instance, namespace: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) dom.node_creation.Error!void {
+    return setNames(element, namespace, prefix, local_name);
 }
 
 /// `dom.element_attributes.at`: the list read in place.

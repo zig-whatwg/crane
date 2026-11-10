@@ -190,7 +190,8 @@ pub fn createInternal(options: Creation, state: ce.State, interface: Interface) 
     else
         try interfaces.Element.init(realm.allocator, realm);
     errdefer dom.node_creation.destroyUninserted(element);
-    try dom.node_creation.setElementNames(element, options.namespace, options.local_name);
+    // Step 1's namespace, prefix and local name, at once: one name record.
+    try dom.node_creation.setElementQualifiedNames(element, options.namespace, options.prefix, options.local_name);
     try dom.node_document.set(element, options.document);
     try ce.initialize(element, options.prefix, options.is_value, state);
     try ce.setElementRegistry(element, switch (options.registry) {

@@ -23,7 +23,9 @@
 //! namespace, prefix, local name, qualified name and its ASCII uppercase -
 //! static for the HTML, SVG and MathML names html_core's tag table knows,
 //! else interned in its Browser's name table (exact for every namespace and
-//! prefix, never a lossy enum), living as long as its Browser.
+//! prefix, never a lossy enum) - counted, and freed with the last element of
+//! its name (batch 1-fix, plan-v2 B2; batch 1 kept it as long as its
+//! Browser).
 //!
 //! The size pins and the record tests are red until N2 lands. The names
 //! tests hold before and after it.
@@ -338,8 +340,8 @@ test "each Browser interns its own records, freed with it" {
         try testing.expectEqualStrings(one_name.local_name, two_name.local_name);
         // A static name is the same in both.
         try testing.expect(dom.element_data.of(first.div).?.name == dom.element_data.of(second.div).?.name);
-        // An element that goes keeps nothing alive: its record is its
-        // Browser's (std.testing.allocator checks both ends free it all).
+        // An element that goes takes its record with it, the last of its
+        // name (std.testing.allocator checks both ends free it all).
         const gone = try first.element("x-gone");
         dom.node_creation.destroyUninserted(gone);
         const again = try first.element("x-gone");
