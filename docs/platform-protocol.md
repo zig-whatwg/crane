@@ -288,6 +288,7 @@ system state (defaults allowed), console output.
 | `brotli` | native (vendored Google Brotli) | native (same) | native (same) | CompressionStream/DecompressionStream reject "brotli"; the static HTTP backend does not advertise or decode br |
 | `thread_qos` | native | unsupported | as its host OS | default priority |
 | `resident_memory` | native | native | native | diagnostics report nothing |
+| `address_space` | native (kit/posix: VM tags, MADV_FREE_REUSABLE / REUSE) | native (kit/posix: VMA names, MADV_NOHUGEPAGE on the node cage) | native (the host OS's) | no Browser heap: `Browser.init` fails with NotSupported (6.11); no page sees the difference |
 | `layout` | unsupported (headless) | unsupported | unsupported (headless) | CSSOM View with no layout box: zero boxes, no hit (6.9) |
 | `os_permissions` | native: the OS permission system, per app (section 8) | unsupported (no OS permission system: Crane's store and the platform's policy) | emulated (Crane's store; scripted policy, section 9) | a request in the prompt state is denied |
 | `simple_dialogs` | native: system alerts over the key window (NSAlert; UIAlertController), the unsupported path with no window | unsupported | native (dismiss) | HTML 8.9.1 "cannot show simple dialogs" |
@@ -710,6 +711,35 @@ One channel shape for every device kind, with a request union per kind:
 | `openEyeDropper` | eyedropper | Reply-based | AbortError |
 | `queryLocalFonts` | local_fonts | Reply-based (Local Font Access) | an empty list |
 | `showVirtualKeyboard`, `hideVirtualKeyboard` | virtual_keyboard | geometry as events | no-op |
+
+### 6.11 Address space [address_space]
+
+Reserved address space, committed and decommitted in place: what each Browser's heap is made of
+(runtime.BrowserScope.Heap; tmp/redesign/node-memory-architecture.md 6.6 as amended by
+node-memory-plan-v2.md). PartitionAlloc's page allocator is the model (page_allocator.h,
+page_allocator_internals_posix.h at Chromium 145), as V8 takes its pages from the embedder's
+`v8::PageAllocator`. Offsets and lengths are multiples of `pageSize()`, a run-time value (4 to 64 KiB
+on aarch64-linux). Any thread; a range is its owner's.
+
+| Operation | Signature | Notes |
+|---|---|---|
+| `pageSize` | `() usize` | The unit of every offset and length here (std.heap.pageSize). |
+| `reserveAddressSpace` | `(size, alignment, alignment_offset, label: AddressLabel) Error!AddressRange` | Inaccessible and uncommitted; `base` is `alignment_offset` above a multiple of `alignment`. Random exact-size aligned hints first (consecutive reservations do not reuse the released address: oss review R12, appendix P4), then over-reserve and trim (PartitionAlloc's AllocPagesWithAlignOffset); no hints under ThreadSanitizer. OutOfMemory when the address space or RLIMIT_AS has no room. OWNED until released. |
+| `labelAddressSpace` | `(range, offset, length, label) void` | Renames an uncommitted part, once, at reservation: darwin maps it again in place with the label's tag; Linux names the VMA (PR_SET_VMA_ANON_NAME, Linux 5.17+, else absent) and applies the label's huge-page advice. Best effort. |
+| `commitPages` | `(range, offset, length) Error!void` | Readable and writable, memory accounted: mprotect, never MAP_FIXED over a live range (oss R24); darwin then MADV_FREE_REUSE, or a recycled page stays out of the footprint (oss R3; appendix P1 measured 64 of 64 MiB missing). |
+| `decommitPages` | `(range, offset, length) Error!void` | The memory goes back, the pages stay accessible: darwin MADV_FREE_REUSABLE with an MADV_DONTNEED fallback (it "sometimes fails"), Linux MADV_DONTNEED. The part must be committed and writable throughout - REUSABLE fails with EPERM on an inaccessible page or a range with one - so decommit BEFORE protecting, and never across an uncommitted super page. An error when the OS refused both. A decommitted page reads zero on Linux and zero or its old bytes on darwin. |
+| `protectPages` | `(range, offset, length, access: PageAccess) Error!void` | none / read / read_write; contents kept. |
+| `releaseAddressSpace` | `(range) void` | Once, at the owner's end. |
+
+| `AddressLabel` | darwin VM tag (vmmap, footprint) | Linux `/proc/<pid>/maps` | Linux THP |
+|---|---|---|---|
+| `node_cage` | 240 ("App-Specific Tag 1") | `[anon:crane-node-cage]` | MADV_NOHUGEPAGE (oss R4, appendix P3: 512 kB live cost 64 MiB under `always`) |
+| `objects` | 241 | `[anon:crane-objects]` | the system's |
+| `bytes` | 242 | `[anon:crane-bytes]` | the system's |
+| `heap_metadata` | 243 | `[anon:crane-heap]` | the system's |
+
+kit/posix implements the group for darwin and Linux, by the target it is built for; darwin, linux and testing
+alias it. kit/headless answers NotSupported, and a Browser on such a platform fails `Browser.init` cleanly.
 
 ## 7. Platform events
 

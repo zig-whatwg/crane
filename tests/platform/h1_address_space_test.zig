@@ -257,13 +257,15 @@ test "consecutive reservations do not reuse the released address (appendix P4: 7
 /// darwin: the VM tag of the map entry holding `address` (vmmap's
 /// "App-Specific Tag N" is tag 239 + N).
 fn darwinTag(address: usize) !u32 {
-    if (comptime !is_darwin) unreachable;
+    if (comptime !builtin.os.tag.isDarwin()) unreachable;
+    // VM_REGION_EXTENDED_INFO: every field 4 bytes, so its layout needs none
+    // of the `#pragma pack(4)` the submap info's C declaration has.
     var region: std.c.mach_vm_address_t = address;
     var size: std.c.mach_vm_size_t = 0;
-    var depth: std.c.natural_t = 0;
-    var info: std.c.vm_region_submap_info_64 = undefined;
-    var count: std.c.mach_msg_type_number_t = std.c.VM.REGION.SUBMAP_INFO_COUNT_64;
-    if (std.c.mach_vm_region_recurse(std.c.mach_task_self(), &region, &size, &depth, @ptrCast(&info), &count) != 0) return error.RegionQueryFailed;
+    var info: std.c.vm_region_extended_info = undefined;
+    var count: std.c.mach_msg_type_number_t = std.c.VM.REGION.EXTENDED_INFO_COUNT;
+    var object_name: std.c.mach_port_t = 0;
+    if (std.c.mach_vm_region(std.c.mach_task_self(), &region, &size, std.c.VM.REGION.EXTENDED_INFO, @ptrCast(&info), &count, &object_name) != 0) return error.RegionQueryFailed;
     if (region > address) return error.NotMapped;
     return info.user_tag;
 }
