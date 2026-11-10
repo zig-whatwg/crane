@@ -1,31 +1,47 @@
 #!/bin/bash
 # Build V8 15.7.112.43 - the newest 15.7.112.x on build day, the V8 Chrome 157 stable ships (the user,
 # 2026-11-10: "the same V8 that Chrome 157 uses"; ruling R1: the newest 15.7.112.x tag) - as Crane's
-# static monolith for THIS host: macOS arm64 (the SDK's libc++, as out/static) or Linux x86-64 (Zig's
-# libc++, as scripts/build-v8-linux.sh). It installs BESIDE the 13.1.203 archives and touches nothing
-# of theirs: $CRANE_V8/15.7.112.43/ holds include/ (+ the build's own v8-gn.h), out/static/obj/ (the
-# three archives), args.gn, PROVENANCE, SHA256SUMS, ninja-tail.txt and smoke.txt. The plan:
-# tmp/plans/v8-update-plan.md (lane v8up). V8's sources are never patched.
+# static monolith for THIS host (macOS arm64 or Linux x86-64), the way Chrome builds it: against
+# Chromium's own libc++ (see "THE C++ LIBRARY"). It installs BESIDE the 13.1.203 archives and touches
+# nothing of theirs: $CRANE_V8/15.7.112.43/ holds include/ (+ the build's own v8-gn.h),
+# out/static/obj/ (the three V8 archives and libc++_chromium.a), libcxx/ (that libc++'s headers and
+# the compile flags a consumer needs, read from the build), args.gn, PROVENANCE, SHA256SUMS,
+# ninja-tail.txt, rust.txt and smoke.txt. The plan: tmp/plans/v8-update-plan.md (lane v8up). V8's
+# sources are never patched.
 #
 #   scripts/build-v8-15.7.sh <step>...   (in this order the first time; `all` runs them all)
 #     deps       the commands needed, the pinned Zig, free disk (needs ~25 GB: checkout ~10, out ~10)
 #     checkout   V8 at the pinned commit in a gclient root of its own ($V8_ROOT, default
 #                ~/v8-15.7.112.43), at that tag's DEPS: V8's clang (llvmorg-24-init-7747), gn, ninja,
-#                its Rust toolchain (Temporal), cpython3 - with --nohooks (no hook is needed: no
-#                sysroot, no Xcode download, LASTCHANGE written here)
-#     toolchain  (Linux) a copy of V8's clang directory whose clang++ compiles with Zig's libc++
-#     build      gn gen + ninja v8_monolith v8_libplatform v8_libbase and the generated v8-gn.h, then
-#                regular ("fat") archives of GN's thin ones
-#     verify     one C++ library only (std::__1; never Chromium's std::__Cr or libstdc++); whether
-#                the monolith carries Temporal's Rust code and Rust's std (rust.txt)
-#     smoke      Zig compiles and links a 60-line program against the archives as Crane would
-#                (-DV8_GN_HEADER, the archive's v8-gn.h): `1+1`, a Temporal call, a cppgc
-#                allocation that survives a full collection
+#                its Rust toolchain (Temporal), cpython3, Chromium's libc++ - with --nohooks (no hook
+#                is needed: no sysroot, no Xcode download, LASTCHANGE written here)
+#     build      gn gen + ninja v8_monolith v8_libplatform v8_libbase, Chromium's libc++ and libc++abi,
+#                and the generated v8-gn.h; then regular ("fat") archives of GN's thin ones
+#     verify     one C++ library only (Chromium's std::__Cr; never std::__1 or libstdc++); whether the
+#                monolith carries Temporal's Rust code and Rust's std (rust.txt)
+#     smoke      Zig compiles and links a 70-line program against the archives as Crane would (the
+#                archive's v8-gn.h, Chromium's libc++ headers and objects, no Zig libc++): `1+1`, a
+#                Temporal call, a cppgc allocation that survives a full collection
 #     install    copy everything to $CRANE_V8/$V8_TAG/ and write SHA256SUMS
 #     clean      delete the build directory (intermediates) after install; the checkout stays
 #
-# GN ARGUMENTS (each a choice; the plan's section 3): out/static's 13.1.203 arguments (the same list
-# as scripts/build-v8-official.sh control_args and scripts/build-v8-linux.sh linux_args), plus:
+# THE C++ LIBRARY. V8 15.7 refuses to build its sandbox without libc++ hardening: BUILD.gn:896
+# `assert(!v8_enable_sandbox || use_safe_libcxx, "The sandbox requires libc++ hardening")` (5958585ab32,
+# 2026-02-20), and build/config/c++/c++.gni:119 sets `use_safe_libcxx = use_custom_libcxx &&
+# enable_safe_libcxx` - not an argument. So with the sandbox (Chrome's configuration, and Crane's at
+# 13.1) V8 is compiled against Chromium's own libc++ (third_party/libc++, namespace std::__Cr, ABI v2,
+# hardened), as Chrome is. 13.1.203's archives were compiled against the SDK's libc++ (macOS) or Zig's
+# (Linux), std::__1, because Crane's v8_wrapper.cpp, compiled by Zig, passes std types across V8's API
+# (std::unique_ptr<v8::BackingStore>, std::shared_ptr, NewDefaultPlatform's std::unique_ptr, the
+# platform's std::unique_ptr<Task>). At 15.7 the wrapper must therefore be compiled against the SAME
+# Chromium libc++ (its headers and the defines GN gives every consumer: libcxx/flags.txt, read from a
+# real compile command, never written by hand) and the binary must hold that one C++ runtime: Crane's
+# V8-linking artifacts link libc++_chromium.a (libc++ + libc++abi from this build) instead of Zig's
+# libc++. This is how Chrome links V8, and how rusty_v8 (Deno) does - V8, its glue and Chromium's
+# libc++ in one library. The other way, v8_enable_sandbox = false, departs from Chrome 157.
+#
+# GN ARGUMENTS (each a choice; the plan's section 3): out/static's 13.1.203 arguments (the same list as
+# scripts/build-v8-official.sh control_args) EXCEPT use_custom_libcxx (above), plus:
 #  - use_siso = false: V8 15.7's .gn makes Siso the default; this script runs ninja, as before.
 #  - v8_enable_partition_alloc = false: 15.7 defaults it ON for a standalone V8 (BUILD.gn:719), but
 #    Chrome's own V8 never uses it (BUILD.gn:964 asserts !build_with_chromium || !partition_alloc),
@@ -47,12 +63,14 @@
 #    __start_gc_info_section, which the FINAL link (Zig's, for Crane) must define for V8's objects and
 #    v8_wrapper.cpp's together - unproven for Zig's Mach-O and ELF linkers. Off: GCInfo indices are
 #    registered at run time, as at 13.1.
+#  - Linux: use_sysroot = false (the host's glibc, which Crane's link uses) and use_glib = false (V8
+#    uses no glib, and without the sysroot pkg-config would ask the host for one), as at 13.1.
 #
 # Environment: V8_ROOT (gclient root), CRANE_V8 (install root, default ~/projects/crane/jsengines/v8),
 # ZIG (the pinned Zig), JOBS (ninja -j; default the CPU count), STOP (a file whose existence stops the
-# script between steps; default $V8_ROOT/STOP; `stop.sh`-style TERM also stops ninja), OUT (the build
-# directory under $V8, default out/static-15.7), DEVELOPER_DIR (macOS: an Xcode; Chromium's build/
-# asks xcodebuild for the SDK, which the Command Line Tools cannot answer).
+# script between steps; default $V8_ROOT/STOP; a TERM to the pid in $V8_ROOT/build.pid stops ninja
+# too), OUT (the build directory under $V8, default out/static-15.7), DEVELOPER_DIR (macOS: an Xcode;
+# Chromium's build/ asks xcodebuild for the SDK, which the Command Line Tools cannot answer).
 set -euo pipefail
 
 V8_TAG=15.7.112.43
@@ -70,8 +88,6 @@ ZIG_VERSION=0.17.1-dev+77c319a0f0
 OUT="${OUT:-out/static-15.7}"
 STOP="${STOP:-$V8_ROOT/STOP}"
 LLVM="$V8/third_party/llvm-build/Release+Asserts"
-WRAP="${WRAP:-$V8_ROOT/zigcxx-clang}"
-ZIG_RT="${ZIG_RT:-$V8_ROOT/zigcxx-lib}"
 case "$(uname -s)" in
   Darwin) HOST_OS=mac; GN_DIR=mac; TARGET_CPU=arm64; NCPU=$(sysctl -n hw.ncpu)
           export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" ;;
@@ -103,6 +119,7 @@ run_long() {
 static_args() {
   cat <<ARGS
 # V8 $V8_TAG for Crane ($HOST_OS $TARGET_CPU, scripts/build-v8-15.7.sh): out/static's 13.1.203 arguments
+# except use_custom_libcxx (Chromium's libc++: the sandbox requires its hardening, BUILD.gn:896)
 is_component_build = false
 v8_monolithic = true
 v8_use_external_startup_data = false
@@ -120,7 +137,7 @@ v8_enable_v8_checks = false
 v8_enable_i18n_support = false
 clang_use_chrome_plugins = false
 treat_warnings_as_errors = false
-use_custom_libcxx = false
+use_custom_libcxx = true
 target_cpu = "$TARGET_CPU"
 # + V8 15.7 (the header of scripts/build-v8-15.7.sh says why, one by one)
 use_siso = false
@@ -132,10 +149,8 @@ cppgc_enable_object_section_gcinfo = false
 ARGS
   if [ "$HOST_OS" = linux ]; then
     cat <<ARGS
-# Linux: the host's glibc, no glib, V8's clang compiling against Zig's libc++ (scripts/build-v8-linux.sh)
 use_sysroot = false
 use_glib = false
-clang_base_path = "$WRAP"
 ARGS
   fi
 }
@@ -151,7 +166,7 @@ step_deps() {
   [ "$("$ZIG" version)" = "$ZIG_VERSION" ] || die "$ZIG is $("$ZIG" version), not the pinned $ZIG_VERSION"
   if [ "$HOST_OS" = mac ]; then
     [ -d "$DEVELOPER_DIR" ] || die "no Xcode at DEVELOPER_DIR=$DEVELOPER_DIR"
-    log "Xcode: $(DEVELOPER_DIR=$DEVELOPER_DIR xcodebuild -version 2>/dev/null | tr '\n' ' '); macOS SDK $(xcrun --sdk macosx --show-sdk-version)"
+    log "Xcode: $(xcodebuild -version 2>/dev/null | tr '\n' ' '); macOS SDK $(xcrun --sdk macosx --show-sdk-version)"
   fi
   mkdir -p "$V8_ROOT"
   local free_kb
@@ -192,8 +207,12 @@ GCLIENT
     git -C v8 checkout -q "refs/tags/$V8_TAG"
   fi
   [ "$(git -C v8 rev-parse HEAD)" = "$V8_COMMIT" ] || die "v8 is not at $V8_TAG ($V8_COMMIT)"
-  log "gclient sync at $V8_COMMIT, no hooks, no history"
-  run_long gclient sync --nohooks --no-history --shallow -D --revision "v8@$V8_COMMIT" --jobs 8
+  if [ -x "$LLVM/bin/clang" ] && [ -x "$V8/buildtools/$GN_DIR/gn" ] && [ -x "$V8/third_party/rust-toolchain/bin/rustc" ]; then
+    log "DEPS already synced (clang, gn, rustc present)"
+  else
+    log "gclient sync at $V8_COMMIT, no hooks, no history"
+    run_long gclient sync --nohooks --no-history --shallow -D --revision "v8@$V8_COMMIT" --jobs 8
+  fi
   [ "$(git -C v8 rev-parse HEAD)" = "$V8_COMMIT" ] || die "gclient moved v8 off $V8_TAG"
   ( cd v8 && python3 build/util/lastchange.py -o build/util/LASTCHANGE )
   local t
@@ -201,98 +220,35 @@ GCLIENT
     "$V8/third_party/rust-toolchain/bin/rustc" "$V8/third_party/cpython3/host/bin/python3"; do
     [ -x "$t" ] || die "the checkout has no $t"
   done
+  [ -d "$V8/third_party/libc++/src/include" ] || die "the checkout has no Chromium libc++ (third_party/libc++/src)"
   grep -q "V8_PATCH_LEVEL 43" v8/include/v8-version.h || die "include/v8-version.h is not $V8_TAG"
   log "checkout: $("$LLVM/bin/clang" --version | head -1); $("$V8/third_party/rust-toolchain/bin/rustc" --version); $(du -sh "$V8_ROOT" | cut -f1)"
 }
 
-# Zig's libc++ configuration as `zig c++` compiles a C++ file (scripts/build-v8-linux.sh, verbatim).
-zig_cxx_flags() {
-  local t; t=$(mktemp -d)
-  printf 'int main() { return 0; }\n' > "$t/probe.cpp"
-  ( cd "$t" && ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" c++ -### -c probe.cpp -o probe.o ) > "$t/cmd" 2>&1
-  python3 -I - "$t" "$t/cmd" <<'PY'
-import os, shlex, sys
-cwd, path = sys.argv[1], sys.argv[2]
-line = next((l for l in open(path) if '"-cc1"' in l), None)
-if line is None:
-    sys.exit("zig c++ -### printed no -cc1 command")
-args = shlex.split(line)
-out = ["-nostdinc++"]
-i = 0
-while i < len(args):
-    a = args[i]
-    if a == "-isystem" and i + 1 < len(args):
-        p = args[i + 1].rstrip("/")
-        if p.endswith("libcxx/include") or p.endswith("libcxxabi/include"):
-            out += ["-isystem", os.path.realpath(os.path.join(cwd, p))]
-        i += 2
-        continue
-    if a == "-D" and i + 1 < len(args):
-        if args[i + 1].startswith(("_LIBCPP_", "_LIBCXXABI_")):
-            out.append("-D" + args[i + 1])
-        i += 2
-        continue
-    if a.startswith(("-D_LIBCPP_", "-D_LIBCXXABI_")):
-        out.append(a)
-    i += 1
-print("\n".join(out))
-PY
-  rm -rf "$t"
+# The ninja names of Chromium's libc++ and libc++abi targets (source sets GN reaches through
+# //build/config:common_deps, so a static library such as the monolith does not carry them).
+libcxx_targets() {
+  "$V8/third_party/ninja/ninja" -C "$V8/$OUT" -t targets all \
+    | sed -n 's#^\(buildtools/third_party/libc++\(abi\)\{0,1\}:libc++\(abi\)\{0,1\}\): phony$#\1#p' | LC_ALL=C sort -u
 }
 
-# Linux only: V8's clang directory with a clang++ that compiles against Zig's libc++ (the decision
-# and its reasons: scripts/build-v8-linux.sh, "THE C++ LIBRARY").
-step_toolchain() {
-  check_stop toolchain
-  [ "$HOST_OS" = linux ] || { log "toolchain: macOS uses the SDK's libc++ (use_custom_libcxx = false), nothing to do"; return 0; }
-  [ -x "$LLVM/bin/clang++" ] || die "no V8 clang at $LLVM (run checkout)"
-  mkdir -p "$ZIG_RT"
-  local t; t=$(mktemp -d)
-  printf '#include <string>\nint main(){ std::string s("x"); return (int)s.size() - 1; }\n' > "$t/m.cpp"
-  ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" c++ "$t/m.cpp" -o "$t/m"
-  "$t/m"
-  cp "$(find "$t/gc" -name 'libc++.a' | head -1)" "$ZIG_RT/libc++.a"
-  cp "$(find "$t/gc" -name 'libc++abi.a' | head -1)" "$ZIG_RT/libc++abi.a"
-  rm -rf "$t"
-  local flags; flags=$(zig_cxx_flags)
-  echo "$flags" | grep -q -x -- '-nostdinc++' || die "zig c++ -### named no -nostdinc++"
-  echo "$flags" | grep -q -x -- '-D_LIBCPP_ABI_NAMESPACE=__1' || die "Zig's libc++ is not std::__1"
-  rm -rf "$WRAP"; mkdir -p "$WRAP/bin"
-  local f
-  for f in "$LLVM"/bin/*; do ln -s "$f" "$WRAP/bin/$(basename "$f")"; done
-  rm "$WRAP/bin/clang++"
-  ln -s "$LLVM/lib" "$WRAP/lib"
-  for f in cr_build_revision llvmobjdump_build_revision; do [ ! -e "$LLVM/$f" ] || ln -s "$LLVM/$f" "$WRAP/$f"; done
-  {
-    echo '#!/bin/bash'
-    echo "# V8's clang++ with Zig's libc++ headers and configuration (scripts/build-v8-15.7.sh)."
-    echo "real=$(printf %q "$LLVM/bin/clang++")"
-    printf 'cxx=('
-    while IFS= read -r f; do printf ' %q' "$f"; done <<< "$flags"
-    echo ' )'
-    echo 'compile=0'
-    echo 'for a in "$@"; do case "$a" in -c|-S|-E|-M|-MM) compile=1;; esac; done'
-    echo 'if [ $compile = 1 ]; then exec "$real" "$@" "${cxx[@]}"; fi'
-    echo "exec \"\$real\" \"\$@\" -nostdlib++ $(printf %q "$ZIG_RT/libc++.a") $(printf %q "$ZIG_RT/libc++abi.a") -lpthread"
-  } > "$WRAP/bin/clang++"
-  chmod 755 "$WRAP/bin/clang++"
-  log "toolchain: $WRAP (Zig libc++ $(echo "$flags" | grep -c . ) flags)"
-}
-
-archives() { echo libv8_monolith.a libv8_libplatform_fat.a libv8_libbase_fat.a; }
+archives() { echo libv8_monolith.a libv8_libplatform_fat.a libv8_libbase_fat.a libc++_chromium.a; }
 
 step_build() {
   check_stop build
-  [ "$HOST_OS" = mac ] || [ -x "$WRAP/bin/clang++" ] || die "no clang wrapper at $WRAP (run toolchain)"
   cd "$V8"
   mkdir -p "$OUT"
   static_args > "$OUT/args.gn"
   log "gn gen $OUT"
   "buildtools/$GN_DIR/gn" gen "$OUT" > "$OUT/gn-gen.txt" 2>&1 || { cat "$OUT/gn-gen.txt"; die "gn gen failed"; }
+  local cxx
+  cxx=$(libcxx_targets | tr '\n' ' ')
+  [ "$(echo "$cxx" | wc -w)" -eq 2 ] || die "expected the libc++ and libc++abi targets, found: '$cxx'"
   check_stop "ninja"
-  log "ninja -C $OUT -j $JOBS v8_monolith v8_libplatform v8_libbase gen/include/v8-gn.h (log: $V8/$OUT/ninja.log.txt)"
+  log "ninja -C $OUT -j $JOBS v8_monolith v8_libplatform v8_libbase $cxx gen/include/v8-gn.h (log: $V8/$OUT/ninja.log.txt)"
   local start; start=$(date +%s)
-  run_long third_party/ninja/ninja -C "$OUT" -j "$JOBS" v8_monolith v8_libplatform v8_libbase gen/include/v8-gn.h \
+  # shellcheck disable=SC2086
+  run_long third_party/ninja/ninja -C "$OUT" -j "$JOBS" v8_monolith v8_libplatform v8_libbase $cxx gen/include/v8-gn.h \
     > "$OUT/ninja.log.txt" 2>&1 || { tail -60 "$OUT/ninja.log.txt"; die "ninja failed"; }
   log "ninja took $(( $(date +%s) - start )) s"
   tail -3 "$OUT/ninja.log.txt"
@@ -309,7 +265,43 @@ step_build() {
     "$LLVM/bin/llvm-ar" rcs libv8_monolith.a $("$LLVM/bin/llvm-ar" t libv8_monolith_thin.a)
     rm libv8_monolith_thin.a
   fi
-  ls -la libv8_monolith.a libv8_libplatform_fat.a libv8_libbase_fat.a
+  # Chromium's libc++ and libc++abi objects, one archive.
+  rm -f libc++_chromium.a
+  "$LLVM/bin/llvm-ar" rcs libc++_chromium.a $(find buildtools/third_party/libc++ buildtools/third_party/libc++abi -name '*.o' | LC_ALL=C sort)
+  ls -la $(archives)
+}
+
+# The flags GN gives a C++ consumer of Chromium's libc++, read from the compile command of one of
+# V8's own objects (cwd = the build directory, so relative paths are made absolute): -nostdinc++,
+# the libc++/libc++abi -isystem directories, buildtools/third_party/libc++ (its __config_site),
+# and every -D_LIBCPP_*, -D_LIBCXXABI_*, -DCR_LIBCXX_REVISION.
+libcxx_consumer_flags() {
+  local cmd
+  cmd=$("$V8/third_party/ninja/ninja" -C "$V8/$OUT" -t commands v8_libbase | grep -m1 -- '-nostdinc++') \
+    || die "no v8_libbase compile command with -nostdinc++"
+  python3 -I - "$V8/$OUT" "$cmd" <<'PY'
+import os, shlex, sys
+cwd, cmd = sys.argv[1], sys.argv[2]
+args = shlex.split(cmd)
+out, i = [], 0
+def absolute(p):
+    return os.path.realpath(os.path.join(cwd, p))
+while i < len(args):
+    a = args[i]
+    if a == "-nostdinc++":
+        out.append(a)
+    elif a.startswith("-isystem") and ("libc++" in a or (a == "-isystem" and i + 1 < len(args) and "libc++" in args[i + 1])):
+        p = a[len("-isystem"):] or args[i + 1]
+        if a == "-isystem":
+            i += 1
+        out += ["-isystem", absolute(p)]
+    elif a.startswith("-I") and a.rstrip("/").endswith("buildtools/third_party/libc++"):
+        out += ["-I", absolute(a[2:])]
+    elif a.startswith(("-D_LIBCPP_", "-D_LIBCXXABI_", "-DCR_LIBCXX_REVISION")):
+        out.append(a)
+    i += 1
+print("\n".join(out))
+PY
 }
 
 step_verify() {
@@ -318,30 +310,35 @@ step_verify() {
   local nm="$LLVM/bin/llvm-nm" a std1 cr cxx11 gnu bad=0
   for a in $(archives); do
     std1=$("$nm" "$a" 2>/dev/null | grep -c 'St3__1' || true)
-    cr=$("$nm" "$a" 2>/dev/null | grep -c 'St3__Cr' || true)
+    cr=$("$nm" "$a" 2>/dev/null | grep -c 'St4__Cr' || true)
     cxx11=$("$nm" "$a" 2>/dev/null | grep -c '_ZNSt7__cxx11\|_ZNKSt7__cxx11' || true)
     gnu=$("$nm" "$a" 2>/dev/null | grep -c '__gnu_cxx' || true)
-    echo "   $a: std::__1 $std1 | std::__Cr $cr | std::__cxx11 $cxx11 | __gnu_cxx $gnu"
-    [ "$cr" = 0 ] && [ "$cxx11" = 0 ] && [ "$gnu" = 0 ] || bad=1
+    echo "   $a: std::__Cr $cr | std::__1 $std1 | std::__cxx11 $cxx11 | __gnu_cxx $gnu"
+    [ "$std1" = 0 ] && [ "$cxx11" = 0 ] && [ "$gnu" = 0 ] || bad=1
   done
-  [ "$bad" = 0 ] || die "an archive names another C++ library than std::__1"
+  [ "$bad" = 0 ] || die "an archive names another C++ library than Chromium's std::__Cr"
+  libcxx_consumer_flags > "$V8/$OUT/libcxx-flags.txt"
+  log "libc++ consumer flags ($(wc -l < "$V8/$OUT/libcxx-flags.txt" | tr -d ' ') lines):"
+  sed 's/^/   /' "$V8/$OUT/libcxx-flags.txt"
+  grep -q -x -- '-nostdinc++' "$V8/$OUT/libcxx-flags.txt" || die "no -nostdinc++ in the consumer flags"
   # Temporal's Rust code (temporal_capi, temporal_rs) and Rust's std: defined in the monolith, or
   # only referenced (then Crane's link must add them)?
   {
     echo "monolith members: $("$LLVM/bin/llvm-ar" t libv8_monolith.a | wc -l | tr -d ' ')"
-    echo "members whose name looks Rust (.rlib/.rcgu/temporal): $("$LLVM/bin/llvm-ar" t libv8_monolith.a | grep -c -E 'rcgu|rlib|temporal' || true)"
-    echo "defined temporal_rs/temporal_capi C symbols: $("$nm" --defined-only libv8_monolith.a 2>/dev/null | grep -c -i -E ' [TDBRS] _?temporal_rs_' || true)"
-    echo "undefined temporal_rs/temporal_capi C symbols: $("$nm" --undefined-only libv8_monolith.a 2>/dev/null | grep -i -E 'temporal_rs_' | sort -u | wc -l | tr -d ' ')"
+    echo "members whose name looks Rust (rcgu/rlib/temporal): $("$LLVM/bin/llvm-ar" t libv8_monolith.a | grep -c -E 'rcgu|rlib|temporal' || true)"
+    echo "defined temporal_rs C symbols: $("$nm" --defined-only libv8_monolith.a 2>/dev/null | grep -c -E ' [TDBRS] _?temporal_rs_' || true)"
+    echo "undefined temporal_rs C symbols: $("$nm" --undefined-only libv8_monolith.a 2>/dev/null | grep -E 'temporal_rs_' | sort -u | wc -l | tr -d ' ')"
     echo "defined Rust-mangled symbols (_R / _ZN..17h): $("$nm" --defined-only libv8_monolith.a 2>/dev/null | grep -c -E ' [TDBRS] _?(_R[A-Za-z]|_ZN.*17h[0-9a-f]{16}E)' || true)"
-    echo "undefined Rust std symbols (core/alloc/std): $("$nm" --undefined-only libv8_monolith.a 2>/dev/null | grep -E '_R[A-Za-z].*(4core|5alloc|3std)|_ZN(4core|5alloc|3std)' | sort -u | wc -l | tr -d ' ')"
-    echo "rlibs the build made: $(find "$V8/$OUT" -name '*.rlib' | wc -l | tr -d ' '); Rust static libs (.a outside obj/v8*): $(find "$V8/$OUT" -name '*.a' -path '*rust*' | wc -l | tr -d ' ')"
+    echo "undefined Rust core/alloc/std symbols: $("$nm" --undefined-only libv8_monolith.a 2>/dev/null | grep -E '_R[A-Za-z].*(4core|5alloc|3std)|_ZN(4core|5alloc|3std)' | sort -u | wc -l | tr -d ' ')"
+    echo "rlibs the build made: $(find "$V8/$OUT" -name '*.rlib' | wc -l | tr -d ' ')"
   } | tee "$V8/$OUT/rust.txt"
-  log "verify: one C++ library (std::__1); Rust facts in $V8/$OUT/rust.txt"
+  log "verify: one C++ library (Chromium's std::__Cr); Rust facts in $V8/$OUT/rust.txt"
 }
 
 smoke_source() {
   cat <<'CC'
-// scripts/build-v8-15.7.sh smoke: the archives as Crane links them (Zig, -DV8_GN_HEADER).
+// scripts/build-v8-15.7.sh smoke: the archives as Crane links them (Zig, -DV8_GN_HEADER, Chromium's
+// libc++ headers and objects, no Zig libc++).
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -402,22 +399,33 @@ step_smoke() {
   cp -R "$V8/include" "$inc"
   cp "$V8/$OUT/gen/include/v8-gn.h" "$inc/v8-gn.h"
   smoke_source > "$t/smoke.cc"
-  local extra=()
-  [ "$HOST_OS" = linux ] && extra=(-lpthread -ldl)
+  local flags=()
+  while IFS= read -r f; do flags+=("$f"); done < "$V8/$OUT/libcxx-flags.txt"
   local rc=0
-  # The flags Crane's v8_wrapper.cpp compile would take, with the archive's own defines.
-  ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" c++ -std=c++20 -fno-exceptions -fno-rtti -DV8_GN_HEADER -I "$inc" \
-    "$t/smoke.cc" "$o/libv8_monolith.a" "$o/libv8_libplatform_fat.a" "$o/libv8_libbase_fat.a" "${extra[@]}" \
-    -o "$t/smoke" > "$t/link.txt" 2>&1 || rc=$?
+  # Compile as Crane compiles v8_wrapper.cpp (C++20, no exceptions, no RTTI), but against Chromium's
+  # libc++ (the consumer flags) and with the archive's own V8/cppgc defines (v8-gn.h).
+  ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" cc -x c++ -std=c++20 -fno-exceptions -fno-rtti "${flags[@]}" -DV8_GN_HEADER \
+    -I "$inc" -c "$t/smoke.cc" -o "$t/smoke.o" > "$t/compile.txt" 2>&1 || rc=$?
+  if [ "$rc" != 0 ]; then
+    head -60 "$t/compile.txt" | tee "$V8/$OUT/smoke.txt"
+    cp "$t/compile.txt" "$V8/$OUT/smoke-compile.txt"
+    rm -rf "$t"
+    die "the smoke compile (Zig's clang against Chromium's libc++ headers) failed; see $V8/$OUT/smoke-compile.txt"
+  fi
+  local extra=()
+  [ "$HOST_OS" = linux ] && extra=(-lpthread -ldl -lm)
+  # `zig cc` links no C++ library of its own: Chromium's (libc++_chromium.a) is the only one.
+  ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" cc "$t/smoke.o" "$o/libv8_monolith.a" "$o/libv8_libplatform_fat.a" \
+    "$o/libv8_libbase_fat.a" "$o/libc++_chromium.a" "${extra[@]}" -o "$t/smoke" > "$t/link.txt" 2>&1 || rc=$?
   if [ "$rc" != 0 ]; then
     {
-      echo "LINK FAILED (rc $rc). Undefined symbols, first 40 (Rust std/temporal ones mean Crane's link must add Rust):"
-      grep -E 'undefined|Undefined' "$t/link.txt" | head -40
-      echo "distinct undefined: $(grep -c -E 'undefined symbol|Undefined symbols' "$t/link.txt" || true)"
+      echo "LINK FAILED (rc $rc). Undefined symbols (Rust std/temporal ones mean Crane's link must add Rust):"
+      grep -i -E 'undefined' "$t/link.txt" | head -60
+      echo "lines naming 'undefined': $(grep -c -i 'undefined' "$t/link.txt" || true)"
     } | tee "$V8/$OUT/smoke.txt"
     cp "$t/link.txt" "$V8/$OUT/smoke-link.txt"
     rm -rf "$t"
-    die "the smoke link failed; see $V8/$OUT/smoke.txt"
+    die "the smoke link failed; see $V8/$OUT/smoke-link.txt"
   fi
   rc=0
   "$t/smoke" > "$V8/$OUT/smoke.txt" 2>&1 || rc=$?
@@ -430,11 +438,21 @@ step_smoke() {
 step_install() {
   check_stop install
   [ ! -e "$DEST" ] || die "$DEST exists (remove it first, by hand)"
-  mkdir -p "$DEST/out/static/obj"
+  mkdir -p "$DEST/out/static/obj" "$DEST/libcxx"
   cd "$V8"
   cp $(for a in $(archives); do echo "$OUT/obj/$a"; done) "$DEST/out/static/obj/"
   cp -R include "$DEST/include"
   cp "$OUT/gen/include/v8-gn.h" "$DEST/include/v8-gn.h"
+  # Chromium's libc++ for consumers: its headers and the flags, rewritten to the installed copies.
+  cp -R third_party/libc++/src/include "$DEST/libcxx/include"
+  cp -R third_party/libc++abi/src/include "$DEST/libcxx/abi-include"
+  mkdir -p "$DEST/libcxx/config"
+  cp buildtools/third_party/libc++/__config_site buildtools/third_party/libc++/__assertion_handler "$DEST/libcxx/config/"
+  sed -e "s#^$V8/third_party/libc++/src/include\$#$DEST/libcxx/include#" \
+      -e "s#^$V8/third_party/libc++abi/src/include\$#$DEST/libcxx/abi-include#" \
+      -e "s#^$V8/buildtools/third_party/libc++\$#$DEST/libcxx/config#" \
+      "$OUT/libcxx-flags.txt" > "$DEST/libcxx/flags.txt"
+  ! grep -q "$V8_ROOT" "$DEST/libcxx/flags.txt" || die "libcxx/flags.txt still names the checkout"
   cp "$OUT/args.gn" "$DEST/args.gn"
   tail -40 "$OUT/ninja.log.txt" > "$DEST/ninja-tail.txt"
   cp "$OUT/rust.txt" "$OUT/smoke.txt" "$DEST/"
@@ -442,8 +460,8 @@ step_install() {
     echo "V8 $V8_TAG ($(git rev-parse HEAD)) for $HOST_OS $TARGET_CPU, built $(date -u +%FT%TZ) on $(hostname) by scripts/build-v8-15.7.sh"
     echo "clang: $("$LLVM/bin/clang" --version | head -1)"
     echo "rustc: $("$V8/third_party/rust-toolchain/bin/rustc" --version)"
-    if [ "$HOST_OS" = mac ]; then echo "libc++: the macOS SDK's (std::__1); SDK $(xcrun --sdk macosx --show-sdk-version)";
-    else echo "libc++: Zig $("$ZIG" version) (std::__1, ABI v1)"; fi
+    echo "libc++: Chromium's (third_party/libc++ at this tag's DEPS, std::__Cr, hardened); libc++_chromium.a"
+    [ "$HOST_OS" != mac ] || echo "SDK: macOS $(xcrun --sdk macosx --show-sdk-version)"
   } > "$DEST/PROVENANCE"
   ( cd "$DEST" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | xargs $SHA256 > SHA256SUMS && $SHA256 -c SHA256SUMS > /dev/null )
   log "installed to $DEST ($(du -sh "$DEST" | cut -f1)); archives: $(cd "$DEST/out/static/obj" && ls -la $(archives) | awk '{printf "%s %s; ", $NF, $5}')"
@@ -457,13 +475,13 @@ step_clean() {
   log "clean: checkout now $(du -sh "$V8_ROOT" | cut -f1); free $(df -Ph "$V8_ROOT" | awk 'NR == 2 {print $4}')"
 }
 
-[ "$#" -gt 0 ] || { sed -n '2,25p' "$0"; exit 2; }
+[ "$#" -gt 0 ] || { sed -n '2,30p' "$0"; exit 2; }
 mkdir -p "$V8_ROOT"
 echo "$$ $0 $*" > "$PIDFILE"
 for step in "$@"; do
   case "$step" in
-    all) for s in deps checkout toolchain build verify smoke install; do "step_$s"; done ;;
-    deps|checkout|toolchain|build|verify|smoke|install|clean) "step_$step" ;;
+    all) for s in deps checkout build verify smoke install; do "step_$s"; done ;;
+    deps|checkout|build|verify|smoke|install|clean) "step_$step" ;;
     *) die "unknown step: $step" ;;
   esac
 done
