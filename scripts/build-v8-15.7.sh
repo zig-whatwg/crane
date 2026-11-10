@@ -416,8 +416,9 @@ PYIN
   ( cd "$w" && find . -name '*.o' | LC_ALL=C sort | xargs "$LLVM/bin/llvm-ar" rcs "$V8/$OUT/obj/librust_v8.a" )
   rm -rf "$w"
   # The system libraries and frameworks, as link flags.
-  { grep '^framework ' "$OUT/d8-link-inputs.txt" | while read -r _ f; do echo "-framework $f"; done
-    grep '^lib ' "$OUT/d8-link-inputs.txt" | while read -r _ f; do echo "-l$f"; done; } > "$OUT/system-libs.txt"
+  # (grep finding nothing is no failure here: Linux names no framework, macOS no -l library.)
+  { { grep '^framework ' "$OUT/d8-link-inputs.txt" || true; } | while read -r _ f; do echo "-framework $f"; done
+    { grep '^lib ' "$OUT/d8-link-inputs.txt" || true; } | while read -r _ f; do echo "-l$f"; done; } > "$OUT/system-libs.txt"
   log "librust_v8.a: $(ls -la "$OUT/obj/librust_v8.a" | awk '{print $5}') bytes, $("$LLVM/bin/llvm-ar" t "$OUT/obj/librust_v8.a" | wc -l | tr -d ' ') objects; system libs: $(tr '\n' ' ' < "$OUT/system-libs.txt")"
   local rc=0
   "$OUT/d8" -e "print(1 + 1, Temporal.PlainDate.from('2026-11-10').add({ days: 1 }).toString())" > "$OUT/d8-smoke.txt" 2>&1 || rc=$?
