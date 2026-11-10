@@ -2677,6 +2677,79 @@ struct GCPauses {
     }
 };
 
+/// Where an isolate's full collections spend their atomic pause, and what
+/// becomes of the node anchors scavenges free - engine.diagnosticCounters'
+/// `node_anchor*` and `gc_atomic_*` / `cpp_atomic_*` (lane wr1 batch 8: P8's
+/// full-collection pause grew with the wrappers scavenges had dropped since
+/// the last one, and two parts of the pause could be why - the anchors'
+/// weak processing walking their slots, or the C++ heap sweeping them). Each
+/// `_max` is the largest one full collection has had so far; only the
+/// isolate's own thread writes or reads it.
+/// - The anchors' weak processing (NodeWrapperRegistry::ProcessWeak): its
+///   time and the slots it read.
+/// - The atomic pause's phases as V8 reports them to the embedder's metrics
+///   recorder (GCPhaseRecorder; 13.1.203 src/heap/gc-tracer.cc
+///   GCTracer::ReportFullCycleToRecorder, at the end of each full cycle):
+///   `main_thread_atomic` for the whole heap - mark, weak (MC_CLEAR), compact
+///   (MC_EVACUATE + MC_FINISH + MC_EPILOGUE), sweep (MC_SWEEP) - and
+///   `main_thread_atomic_cpp` for the C++ heap's share, from cppgc's own
+///   recorder: its marking (the walk among it), its weak processing (the
+///   anchors' among it), its compaction and its sweep - atomic, inside the
+///   pause, for a forced collection (cpp-heap.cc CppHeap::SelectSweepingType).
+///   Diagnostics only: nothing reads them to decide anything.
+struct GCPhaseStats {
+    uint64_t anchor_weak_ns_max = 0;
+    uint64_t anchor_weak_slots_max = 0;
+    int64_t atomic_us_max = 0;
+    int64_t atomic_mark_us_max = 0;
+    int64_t atomic_weak_us_max = 0;
+    int64_t atomic_compact_us_max = 0;
+    int64_t atomic_sweep_us_max = 0;
+    int64_t cpp_us_max = 0;
+    int64_t cpp_mark_us_max = 0;
+    int64_t cpp_weak_us_max = 0;
+    int64_t cpp_compact_us_max = 0;
+    int64_t cpp_sweep_us_max = 0;
+
+    static void keepMax(int64_t& kept, int64_t value) {
+        if (value > kept) kept = value;
+    }
+};
+
+/// The embedder's metrics recorder (v8-metrics.h; Chromium installs one per
+/// isolate, V8MetricsRecorder): it keeps the largest of each atomic phase of
+/// a full cycle in its isolate's GCPhaseStats. V8 owns it (a shared_ptr) and
+/// tells it when the isolate goes (NotifyIsolateDisposal, from
+/// Isolate::Deinit inside Isolate::Dispose): from there it writes nothing,
+/// so the record, deleted after Dispose, is never written late.
+class GCPhaseRecorder final : public metrics::Recorder {
+ public:
+    explicit GCPhaseRecorder(GCPhaseStats* stats) : stats_(stats) {}
+
+    using metrics::Recorder::AddMainThreadEvent;
+
+    void AddMainThreadEvent(const metrics::GarbageCollectionFullCycle& event, ContextId) override {
+        if (!stats_) return;
+        GCPhaseStats::keepMax(stats_->atomic_us_max, event.main_thread_atomic.total_wall_clock_duration_in_us);
+        GCPhaseStats::keepMax(stats_->atomic_mark_us_max, event.main_thread_atomic.mark_wall_clock_duration_in_us);
+        GCPhaseStats::keepMax(stats_->atomic_weak_us_max, event.main_thread_atomic.weak_wall_clock_duration_in_us);
+        GCPhaseStats::keepMax(stats_->atomic_compact_us_max, event.main_thread_atomic.compact_wall_clock_duration_in_us);
+        GCPhaseStats::keepMax(stats_->atomic_sweep_us_max, event.main_thread_atomic.sweep_wall_clock_duration_in_us);
+        GCPhaseStats::keepMax(stats_->cpp_us_max, event.main_thread_atomic_cpp.total_wall_clock_duration_in_us);
+        GCPhaseStats::keepMax(stats_->cpp_mark_us_max, event.main_thread_atomic_cpp.mark_wall_clock_duration_in_us);
+        GCPhaseStats::keepMax(stats_->cpp_weak_us_max, event.main_thread_atomic_cpp.weak_wall_clock_duration_in_us);
+        GCPhaseStats::keepMax(stats_->cpp_compact_us_max, event.main_thread_atomic_cpp.compact_wall_clock_duration_in_us);
+        GCPhaseStats::keepMax(stats_->cpp_sweep_us_max, event.main_thread_atomic_cpp.sweep_wall_clock_duration_in_us);
+    }
+
+    void NotifyIsolateDisposal() override {
+        stats_ = nullptr;
+    }
+
+ private:
+    GCPhaseStats* stats_;
+};
+
 // ----------------------------------------------------------------------------
 // Node anchors: node wrappers on the agent's C++ heap (the wrapper redesign's
 // P4, tmp/redesign/wrapper-redesign-design.md 4.1-4.5)
@@ -2928,6 +3001,10 @@ struct IsolateData {
     /// installGCPauseRecorder adds after Isolate::Initialize write it, with
     /// this record as their data until the record goes after Dispose.
     GCPauses gc_pauses;
+    /// Where the full collections' atomic pauses go (GCPhaseStats): written
+    /// by the anchors' weak processing and the isolate's metrics recorder
+    /// (installGCPauseRecorder).
+    GCPhaseStats gc_phases;
     /// The agent's C++ heap (newAgentCppHeap), handed to V8 as
     /// CreateParams::cpp_heap - attached from Isolate::Initialize on - and
     /// OWNED here too, because V8 13.1.203 never frees it: "V8 takes
@@ -3067,7 +3144,9 @@ static void gcPauseEpilogue(Isolate*, GCType, GCCallbackFlags, void* data) {
 /// Record `isolate`'s full-collection pauses in its record from now on: right
 /// after Isolate::Initialize, by each function that makes an isolate with a
 /// record. The callbacks go with the isolate; the record outlives it
-/// (v8_Isolate_Dispose deletes it after Isolate::Dispose).
+/// (v8_Isolate_Dispose deletes it after Isolate::Dispose). With them, the
+/// isolate's metrics recorder (GCPhaseRecorder), which keeps the atomic
+/// pause's phases in the record's GCPhaseStats.
 static void installGCPauseRecorder(Isolate* isolate) {
     IsolateData* record = isolateData(isolate);
     if (!record) return;
@@ -3075,6 +3154,7 @@ static void installGCPauseRecorder(Isolate* isolate) {
     isolate->AddGCEpilogueCallback(gcPauseEpilogue, &record->gc_pauses, kGCTypeMarkSweepCompact);
     isolate->AddGCPrologueCallback(gcMinorPrologue, &record->gc_pauses,
                                    static_cast<GCType>(kGCTypeScavenge | kGCTypeMinorMarkSweep));
+    isolate->SetMetricsRecorder(std::make_shared<GCPhaseRecorder>(&record->gc_phases));
 }
 
 /// `isolate`'s full collections so far, their longest pause and the 95th
@@ -3097,6 +3177,52 @@ extern "C" void v8_Debug_FullGCPauses(Isolate* isolate, uint64_t* count, uint64_
 extern "C" uint64_t v8_Debug_MinorGCCount(Isolate* isolate) {
     IsolateData* record = isolateData(isolate);
     return record ? record->gc_pauses.minor_count : 0;
+}
+
+/// What v8_Debug_NodeAnchorStats reads (ffi.zig's NodeAnchorStats mirrors
+/// it): the agent's node anchors now - in its registry, or dropped by a
+/// scavenge and waiting for their free -, the frees so far and the ones
+/// cppgc refused, and GCPhaseStats.
+struct CraneNodeAnchorStats {
+    uint64_t registered;
+    uint64_t dropped_waiting;
+    uint64_t freed;
+    uint64_t frees_deferred;
+    uint64_t weak_ns_max;
+    uint64_t weak_slots_max;
+    int64_t atomic_us_max;
+    int64_t atomic_mark_us_max;
+    int64_t atomic_weak_us_max;
+    int64_t atomic_compact_us_max;
+    int64_t atomic_sweep_us_max;
+    int64_t cpp_us_max;
+    int64_t cpp_mark_us_max;
+    int64_t cpp_weak_us_max;
+    int64_t cpp_compact_us_max;
+    int64_t cpp_sweep_us_max;
+};
+
+/// `isolate`'s node anchors and the phases of its full collections' atomic
+/// pauses (GCPhaseStats), for engine.diagnosticCounters: all 0 for a null
+/// isolate or one this file did not make. On the isolate's thread.
+extern "C" void v8_Debug_NodeAnchorStats(Isolate* isolate, CraneNodeAnchorStats* out) {
+    *out = CraneNodeAnchorStats{};
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    if (NodeWrapperRegistry* registry = record->node_anchors.Get()) out->registered = registry->anchors.size();
+    const GCPhaseStats& phases = record->gc_phases;
+    out->weak_ns_max = phases.anchor_weak_ns_max;
+    out->weak_slots_max = phases.anchor_weak_slots_max;
+    out->atomic_us_max = phases.atomic_us_max;
+    out->atomic_mark_us_max = phases.atomic_mark_us_max;
+    out->atomic_weak_us_max = phases.atomic_weak_us_max;
+    out->atomic_compact_us_max = phases.atomic_compact_us_max;
+    out->atomic_sweep_us_max = phases.atomic_sweep_us_max;
+    out->cpp_us_max = phases.cpp_us_max;
+    out->cpp_mark_us_max = phases.cpp_mark_us_max;
+    out->cpp_weak_us_max = phases.cpp_weak_us_max;
+    out->cpp_compact_us_max = phases.cpp_compact_us_max;
+    out->cpp_sweep_us_max = phases.cpp_sweep_us_max;
 }
 
 // ============================================================================
@@ -3236,6 +3362,10 @@ void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
         }
         record->node_wrapper_trace_check(record->node_wrappers, live.data(), live.size(), dead.data(), dead.size());
     }
+    // GCPhaseStats: the time of the walk over the slots below (the oracle
+    // above and the walk's end below are not the slots' cost), and how many.
+    const auto started = std::chrono::steady_clock::now();
+    const uint64_t slots = anchors.size();
     size_t kept = 0;
     bool released = false;
     for (NodeAnchor* anchor : anchors) {
@@ -3262,6 +3392,10 @@ void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
         smaller.insert(smaller.end(), anchors.begin(), anchors.end());
         anchors.swap(smaller);
     }
+    const auto elapsed = std::chrono::steady_clock::now() - started;
+    const uint64_t ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count());
+    if (ns > record->gc_phases.anchor_weak_ns_max) record->gc_phases.anchor_weak_ns_max = ns;
+    if (slots > record->gc_phases.anchor_weak_slots_max) record->gc_phases.anchor_weak_slots_max = slots;
     if (released) record->node_wrappers_drain_due = true;
     // Marking is over: the walk's per-collection sets end.
     if (record->node_wrappers && record->node_wrappers_marked) record->node_wrappers_marked(record->node_wrappers);
@@ -3786,6 +3920,22 @@ extern "C" void v8_test_Isolate_MinorGC(Isolate* isolate, uint32_t n) {
         HandleScope scope(isolate);
         for (int i = 0; i < 256; i++) (void)Array::New(isolate, 128);
     }
+}
+
+/// A full collection of `isolate` (entered by the caller) that V8 does not
+/// force: its answer to critical memory pressure (13.1.203 heap.cc
+/// Heap::CollectGarbageOnMemoryPressure, kReduceMemoryFootprint with no
+/// kForced), after which the C++ heap sweeps concurrently and finalizes on
+/// the agent's thread - not atomically, as a requested collection's does
+/// (cpp-heap.cc CppHeap::SelectSweepingType). Whether the C++ heap is still
+/// collecting - sweeping, or marking again - when it returns: what
+/// tests/v8/wr8_anchor_free_test.zig needs to see a free refused.
+extern "C" bool v8_test_Isolate_CollectUnforced(Isolate* isolate) {
+    isolate->MemoryPressureNotification(MemoryPressureLevel::kCritical);
+    CppHeap* heap = isolate->GetCppHeap();
+    if (!heap) return false;
+    const cppgc::HeapHandle& handle = heap->GetHeapHandle();
+    return cppgc::subtle::HeapState::IsSweeping(handle) || cppgc::subtle::HeapState::IsMarking(handle);
 }
 
 // ---- tests/v8/wr8_young_generation_test.zig: what V8 lets a scavenge drop ----

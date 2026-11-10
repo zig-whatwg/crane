@@ -249,7 +249,7 @@ const Sample = struct {
 
 /// The most adapter counters a reading keeps; an adapter reporting more is
 /// read as reporting none.
-const max_counters = 32;
+const max_counters = 64;
 
 /// The agent to ask for heap statistics, set once the browser exists.
 var heap_agent: ?*engine.Agent = null;

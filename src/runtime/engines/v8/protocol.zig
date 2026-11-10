@@ -1121,6 +1121,21 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   asked the host about (the wrapper redesign's P5, node_wrappers.zig "The
 ///   walk") - and the walk oracle's findings (-Dwrapper-trace-check; 0 in
 ///   every other build), cumulative; 0 with no isolate current;
+/// - `node_anchors_registered`: the current isolate's node anchors in its
+///   registry - those whose wrapper may still live - now;
+/// - `node_anchors_dropped_waiting`, `node_anchors_freed`,
+///   `node_anchor_frees_deferred`: anchors whose wrapper a scavenge dropped
+///   and that wait for their free now, those freed so far, and the frees
+///   cppgc refused because its heap was collecting (v8_wrapper.cpp
+///   freeDroppedAnchors);
+/// - `node_anchor_weak_ns_max`, `node_anchor_weak_slots_max`: the anchors'
+///   weak processing in one full collection at most - its walk over the
+///   registry's slots, and the slots (v8_wrapper.cpp GCPhaseStats);
+/// - `gc_atomic_*_us_max`, `cpp_atomic_*_us_max`: one full collection's
+///   atomic pause at most, whole and by phase (mark, weak, compact, sweep),
+///   for the whole heap and for the C++ heap's share, as V8 reports them to
+///   the isolate's metrics recorder (GCPhaseStats) - with the two above,
+///   where a pause goes (lane wr1 batch 8); 0 with no isolate current;
 /// - `globals_created`: Globals made through the wrapper's tracked path,
 ///   cumulative - 0 unless v8_wrapper.cpp is built with
 ///   -DCRANE_TRACK_GLOBALS=1, as gc_bench's is;
@@ -1145,6 +1160,8 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
     var full_gc_max_us: u64 = 0;
     var full_gc_p95_us: u64 = 0;
     ffi.v8_Debug_FullGCPauses(ffi.v8_Isolate_GetCurrent(), &full_gcs, &full_gc_max_us, &full_gc_p95_us);
+    var anchors: ffi.NodeAnchorStats = .{};
+    ffi.v8_Debug_NodeAnchorStats(ffi.v8_Isolate_GetCurrent(), &anchors);
     const walk_counts = @import("node_wrappers.zig").walkCountsOfCurrent();
     const handles = [_]engine.Counter{
         .{ .name = "live_string_globals", .value = ffi.v8_Debug_LiveStringGlobals() },
@@ -1164,6 +1181,22 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "node_wrapper_walks", .value = @intCast(walk_counts.walks) },
         .{ .name = "node_wrapper_holder_traces", .value = @intCast(walk_counts.holder_traces) },
         .{ .name = "wrapper_trace_check_failures", .value = @intCast(walk_counts.check_failures) },
+        .{ .name = "node_anchors_registered", .value = @intCast(anchors.registered) },
+        .{ .name = "node_anchors_dropped_waiting", .value = @intCast(anchors.dropped_waiting) },
+        .{ .name = "node_anchors_freed", .value = @intCast(anchors.freed) },
+        .{ .name = "node_anchor_frees_deferred", .value = @intCast(anchors.frees_deferred) },
+        .{ .name = "node_anchor_weak_ns_max", .value = @intCast(anchors.weak_ns_max) },
+        .{ .name = "node_anchor_weak_slots_max", .value = @intCast(anchors.weak_slots_max) },
+        .{ .name = "gc_atomic_us_max", .value = anchors.atomic_us_max },
+        .{ .name = "gc_atomic_mark_us_max", .value = anchors.atomic_mark_us_max },
+        .{ .name = "gc_atomic_weak_us_max", .value = anchors.atomic_weak_us_max },
+        .{ .name = "gc_atomic_compact_us_max", .value = anchors.atomic_compact_us_max },
+        .{ .name = "gc_atomic_sweep_us_max", .value = anchors.atomic_sweep_us_max },
+        .{ .name = "cpp_atomic_us_max", .value = anchors.cpp_us_max },
+        .{ .name = "cpp_atomic_mark_us_max", .value = anchors.cpp_mark_us_max },
+        .{ .name = "cpp_atomic_weak_us_max", .value = anchors.cpp_weak_us_max },
+        .{ .name = "cpp_atomic_compact_us_max", .value = anchors.cpp_compact_us_max },
+        .{ .name = "cpp_atomic_sweep_us_max", .value = anchors.cpp_sweep_us_max },
         .{ .name = "globals_created", .value = ffi.v8_Debug_CreatedGlobals() },
         // v8_wrapper.cpp's g_obj_src slots, in its order.
         .{ .name = "object_globals_from.FunctionCallbackInfo_This", .value = ffi.v8_Debug_ObjSrc(0) },

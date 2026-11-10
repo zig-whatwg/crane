@@ -996,6 +996,39 @@ pub extern fn v8_Debug_FullGCPauses(isolate: ?*Isolate, count: *u64, max_us: *u6
 /// mark-sweeps, counted at their prologue (v8_wrapper.cpp GCPauses::
 /// minor_count). 0 for a null isolate or one the adapter did not make.
 pub extern fn v8_Debug_MinorGCCount(isolate: ?*Isolate) u64;
+/// `isolate`'s node anchors and where its full collections' atomic pauses go
+/// (v8_wrapper.cpp GCPhaseStats); mirrors CraneNodeAnchorStats. Each `_max`
+/// is the largest of one full collection so far.
+pub const NodeAnchorStats = extern struct {
+    /// Anchors in the agent's registry: their wrapper may live.
+    registered: u64 = 0,
+    /// Anchors whose wrapper a scavenge dropped, waiting for their free.
+    dropped_waiting: u64 = 0,
+    /// Anchors freed after a scavenge dropped their wrapper, so far.
+    freed: u64 = 0,
+    /// Frees cppgc refused so far - its heap was collecting - each anchor
+    /// counted once per refusal.
+    frees_deferred: u64 = 0,
+    /// The anchors' weak processing (NodeWrapperRegistry::ProcessWeak): its
+    /// walk over the slots, and the slots.
+    weak_ns_max: u64 = 0,
+    weak_slots_max: u64 = 0,
+    /// The atomic pause's phases as V8 reports them (metrics::Recorder's
+    /// GarbageCollectionFullCycle): the whole heap's, then the C++ heap's.
+    atomic_us_max: i64 = 0,
+    atomic_mark_us_max: i64 = 0,
+    atomic_weak_us_max: i64 = 0,
+    atomic_compact_us_max: i64 = 0,
+    atomic_sweep_us_max: i64 = 0,
+    cpp_us_max: i64 = 0,
+    cpp_mark_us_max: i64 = 0,
+    cpp_weak_us_max: i64 = 0,
+    cpp_compact_us_max: i64 = 0,
+    cpp_sweep_us_max: i64 = 0,
+};
+/// All 0 for a null isolate or one the adapter did not make. On the
+/// isolate's thread.
+pub extern fn v8_Debug_NodeAnchorStats(isolate: ?*Isolate, out: *NodeAnchorStats) void;
 /// Bytes of V8's global handle table in use - every live `Global<T>`, counted
 /// by V8 and updated as each is created or reset. In every build: the measure
 /// for a test asserting that an operation leaves no handle behind.
@@ -2842,6 +2875,10 @@ pub extern fn v8_test_NodeWrappers_Dropped(isolate: *Isolate) u64;
 /// tests/v8: at least `n` young-generation collections of `isolate`
 /// (entered), by filling its young generation with unreachable arrays.
 pub extern fn v8_test_Isolate_MinorGC(isolate: *Isolate, n: u32) void;
+/// tests/v8/wr8_anchor_free_test.zig: a full collection V8 does not force
+/// (critical memory pressure), after which the C++ heap sweeps lazily; whether
+/// the C++ heap is still collecting when it returns.
+pub extern fn v8_test_Isolate_CollectUnforced(isolate: *Isolate) bool;
 
 /// tests/v8: whether V8 drops in a scavenge an unreachable object made from
 /// `tpl`'s instance template - with `prototype` set as its prototype when
