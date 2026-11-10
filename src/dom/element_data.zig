@@ -345,9 +345,9 @@ pub const AttributeList = struct {
     /// The value of the attribute `index` finds, decoded with `view`'s
     /// tables, or "": the values' table alone, the names' too only past a
     /// saturated index.
-    fn valueAt(self: *AttributeList, view: View, index: u8, comptime static: NameId) []const u8 {
+    fn valueAt(self: *AttributeList, view: View, values: ?*const attribute_values.Table, index: u8, comptime static: NameId) []const u8 {
         const position = (if (index == saturated_index) self.find(view.tables(), index, static) else self.find(.{}, index, static)) orelse return "";
-        return attribute_values.bytesIn(view.valuesTable(), self.items()[position].value);
+        return attribute_values.bytesIn(values, self.items()[position].value);
     }
 
     /// The attribute just appended at `position` is the id or class
@@ -638,24 +638,18 @@ pub const View = struct {
     /// The element's qualified name record (`ElementData.name`).
     name: *const ElementName,
     scope: *runtime.BrowserScope,
-    /// The tables a reader of many elements of one Browser looked up once
-    /// (the selector matcher: `ofIn`). A table made since is looked up
-    /// afresh: a cached null is not trusted (a table is made by its first
-    /// intern, and lives as long as its Browser, so a cached table stays
-    /// right).
-    cache: Tables = .{},
 
     /// The tables, as they are now.
     pub inline fn tables(self: View) Tables {
-        return .{ .names = self.namesTable(), .values = self.valuesTable() };
+        return Tables.of(self.scope);
     }
 
     inline fn namesTable(self: View) ?*const attribute_names.Table {
-        return self.cache.names orelse attribute_names.tableOf(self.scope);
+        return attribute_names.tableOf(self.scope);
     }
 
     inline fn valuesTable(self: View) ?*const attribute_values.Table {
-        return self.cache.values orelse attribute_values.tableOf(self.scope);
+        return attribute_values.tableOf(self.scope);
     }
 
     /// The element's namespace, borrowed; null for none.
@@ -675,7 +669,14 @@ pub const View = struct {
     /// Blink's Element::GetIdAttribute reads the attribute the same way.
     pub fn idValue(self: View) []const u8 {
         const list = self.data.attrs orelse return "";
-        return list.valueAt(self, list.id_index, id_name);
+        return list.valueAt(self, self.valuesTable(), list.id_index, id_name);
+    }
+
+    /// `idValue`, with the values table a reader of many elements of this
+    /// Browser found once (the selector matcher): no table load a visit.
+    pub fn idValueIn(self: View, values: ?*const attribute_values.Table) []const u8 {
+        const list = self.data.attrs orelse return "";
+        return list.valueAt(self, values orelse self.valuesTable(), list.id_index, id_name);
     }
 
     /// The class attribute's value in no namespace, or "": what the class
@@ -683,7 +684,13 @@ pub const View = struct {
     /// `idValue`.
     pub fn classValue(self: View) []const u8 {
         const list = self.data.attrs orelse return "";
-        return list.valueAt(self, list.class_index, class_name);
+        return list.valueAt(self, self.valuesTable(), list.class_index, class_name);
+    }
+
+    /// `classValue`, with the values table found once (`idValueIn`).
+    pub fn classValueIn(self: View, values: ?*const attribute_values.Table) []const u8 {
+        const list = self.data.attrs orelse return "";
+        return list.valueAt(self, values orelse self.valuesTable(), list.class_index, class_name);
     }
 
     /// The number of attributes in the list.
@@ -808,13 +815,12 @@ fn viewOfElement(data: *const ElementData, element: *runtime.Instance) View {
 }
 
 /// `of`, for a reader that visits many elements of ONE Browser in one step
-/// (the selector matcher, lane nd2 batch 2): `scope` and `tables` are that
-/// Browser's, found once (`Tables.of(scope)`), so a visit costs no address
-/// lookup and no table load.
-pub fn ofIn(element: *runtime.Instance, scope: *runtime.BrowserScope, tables: Tables) ?View {
+/// (the selector matcher, lane nd2 batch 2): `scope` is that Browser's,
+/// found once, so a visit costs no address lookup.
+pub fn ofIn(element: *runtime.Instance, scope: *runtime.BrowserScope) ?View {
     const impl = implementation.get() orelse return null;
     const data = impl.of(element) orelse return null;
-    return .{ .data = data, .name = data.name, .scope = scope, .cache = tables };
+    return .{ .data = data, .name = data.name, .scope = scope };
 }
 
 /// An element's rare data (dom.element_rare_data), which Element keeps and

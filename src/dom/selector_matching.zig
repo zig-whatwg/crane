@@ -27,6 +27,7 @@ const selector = @import("selector");
 const NodeBase = @import("node_base.zig").NodeBase;
 const instance_bridge = @import("instance_bridge.zig");
 const element_data = @import("element_data.zig");
+const dom_attribute_values = @import("attribute_values.zig");
 /// A reader's view of an element's data: its attributes' ids decode with its
 /// Browser's tables (lane nd2 batch 2). Passed by value.
 const ElementData = element_data.View;
@@ -718,11 +719,12 @@ const Matcher = struct {
     pseudo_target: ?[]const u8 = null,
     state_reads: ?*StateReads = null,
     /// The Browser of every node the query visits - the scoping root's - and
-    /// its attribute tables, found once (lane nd2 batch 2): a visit decodes
-    /// the attributes' ids with no address lookup and no table load
-    /// (`dataIn`). Null for a scope no slab issued (never in a Browser).
+    /// its attribute values table, found once (lane nd2 batch 2): a visit
+    /// decodes the ID and classes with no address lookup and no table load
+    /// (`dataIn`, `hasClass`, `idIs`). A table made after `init` (none is:
+    /// matching interns nothing) is looked up afresh.
     browser: ?*runtime.BrowserScope = null,
-    attribute_tables: element_data.Tables = .{},
+    values_table: ?*const dom_attribute_values.Table = null,
 
     fn init(scope: *NodeBase, scope_instance: *runtime.Instance) Matcher {
         const document: ?*runtime.Instance = if (scope.node_type == DOCUMENT_NODE)
@@ -743,14 +745,14 @@ const Matcher = struct {
         }
         const browser = runtime.BrowserScope.ofInstance(scope_instance);
         matcher.browser = browser;
-        matcher.attribute_tables = element_data.Tables.of(browser);
+        matcher.values_table = dom_attribute_values.tableOf(browser);
         return matcher;
     }
 
     /// `dataOf`, with the Browser and tables found at `init`.
     fn dataIn(self: *const Matcher, node: *NodeBase) ?ElementData {
         const browser = self.browser orelse return dataOf(node);
-        return element_data.ofIn(instanceOf(node) orelse return null, browser, self.attribute_tables);
+        return element_data.ofIn(instanceOf(node) orelse return null, browser);
     }
 
     /// querySelector's candidates are the scope's descendants. A selector of
@@ -973,11 +975,11 @@ const Matcher = struct {
     /// Selectors 4 6.6: one of the element's classes (its class attribute
     /// split on ASCII whitespace) is `name`.
     fn hasClass(self: *const Matcher, data: ElementData, name: []const u8) bool {
-        return classListHas(data.classValue(), name, self.quirks);
+        return classListHas(data.classValueIn(self.values_table), name, self.quirks);
     }
 
     fn idIs(self: *const Matcher, data: ElementData, id: []const u8) bool {
-        const own = data.idValue();
+        const own = data.idValueIn(self.values_table);
         return if (self.quirks) std.ascii.eqlIgnoreCase(own, id) else std.mem.eql(u8, own, id);
     }
 
