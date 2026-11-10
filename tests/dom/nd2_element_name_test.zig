@@ -111,6 +111,14 @@ test "ElementRareData keeps no prefix: it is the name record's - 312 bytes" {
     try expectSize(ElementRareData, 312);
 }
 
+test "a name record is 88 bytes, its count (batch 1-fix) in what was padding" {
+    // Five slices (80), the namespace byte and the static flag (2), and a
+    // u32 count of the elements that name it (plan-v2 B2): 86, aligned 88.
+    const ElementName = dom.element_name.ElementName;
+    try testing.expect(@hasField(ElementName, "references"));
+    try expectSize(ElementName, 88);
+}
+
 test "Element's InternalState is 88 bytes at N2, 40 after N3" {
     // 136 at main b1bd4eae568, less ElementData's 48: 88; N3 48 more.
     try expectSize(ElementState, 40);
@@ -138,10 +146,16 @@ const Page = struct {
 
     /// In place: the scope must not move once it has made an object.
     fn open(self: *Page) !void {
+        return self.openWith(testing.allocator);
+    }
+
+    /// `open`, its Browser's allocator `allocator` (its realm's too: an
+    /// element is made with its Browser's allocator).
+    fn openWith(self: *Page, allocator: std.mem.Allocator) !void {
         interfaces.process_hooks.startHooksForTest();
-        self.* = .{ .scope = runtime.BrowserScope.init(testing.allocator), .ctx = try runtime.ContextData.init(testing.allocator, .{}) };
+        self.* = .{ .scope = runtime.BrowserScope.init(allocator), .ctx = try runtime.ContextData.init(allocator, .{}) };
         self.ctx.browser_scope = &self.scope;
-        self.document = try interfaces.Document.init(testing.allocator, &self.ctx);
+        self.document = try interfaces.Document.init(allocator, &self.ctx);
         try dom.document_internals.setContentType(self.document, "text/html");
         try dom.document_internals.setDocumentType(self.document, .html);
         self.div = try self.element("div");
@@ -342,10 +356,13 @@ test "a custom element's prefix, set by create-an-element after its names, joins
 
         // create-an-element sets the namespace and local name first, then
         // the prefix and is value (dom.custom_elements.initialize).
+        const start = tableCount(&page.scope);
         const el = try interfaces.Element.init(testing.allocator, &page.ctx);
         defer dom.node_creation.destroyUninserted(el);
         try dom.node_creation.setElementNames(el, infra.namespaces.HTML_NAMESPACE, "x-late");
         try dom.custom_elements.initialize(el, "pre", "x-is", .undefined);
+        // The record it was named with first went with its last element.
+        try testing.expectEqual(start + 1, tableCount(&page.scope));
         const name = dom.element_data.of(el).?.name;
         try testing.expectEqualStrings("pre", name.prefix.?);
         try testing.expectEqualStrings("x-late", name.local_name);
@@ -356,4 +373,207 @@ test "a custom element's prefix, set by create-an-element after its names, joins
         try testing.expect(dom.element_data.of(el).?.name.prefix == null);
         try testing.expect(dom.node_creation.elementIsValue(el) == null);
     }
+}
+
+// ============================================================================
+// Lifetime (lane nd2 batch 1-fix, plan-v2 B2: red until the fix)
+// ============================================================================
+//
+// A dynamic record is COUNTED - one reference per element of its name - and
+// its Browser's table is weak: the last release removes and frees it, then
+// and there (Blink: QualifiedNameImpl's destructor erases it from the
+// QualifiedNameCache, static names never counted, qualified_name.cc;
+// WebKit: ~QualifiedNameImpl, QualifiedName.cpp; Gecko: NodeInfo's last
+// release removes it from its nsNodeInfoManager, nsNodeInfoManager.cpp).
+// Batch 1 kept every record for its Browser's life: `createElement('x-' + i)`
+// held about 131 B per distinct name until the Browser ended
+// (tmp/redesign/review/source/appendix-nd2.md F1).
+
+/// The Browser's interned names, 0 before its first.
+fn tableCount(scope: *runtime.BrowserScope) usize {
+    const table = scope.existingTable(.element_names, dom.element_name.Table) orelse return 0;
+    return table.count();
+}
+
+/// A page whose Browser's allocator counts what it holds.
+const CountedPage = struct {
+    counting: std.testing.FailingAllocator,
+    page: Page,
+
+    /// In place, as Page.
+    fn open(self: *CountedPage) !void {
+        self.counting = std.testing.FailingAllocator.init(testing.allocator, .{});
+        try self.page.openWith(self.counting.allocator());
+    }
+
+    fn close(self: *CountedPage) void {
+        self.page.close();
+    }
+
+    /// The bytes the Browser's allocator handed out and has not had back.
+    fn live(self: *const CountedPage) usize {
+        return self.counting.allocated_bytes - self.counting.freed_bytes;
+    }
+};
+
+const Shape = enum { create_element, create_element_ns_prefixed };
+
+/// Elements `first`..`end` of `shape` - each a name of its own - made and
+/// dropped one at a time, as script makes and drops them.
+fn churn(page: *Page, first: usize, end: usize, shape: Shape) !void {
+    var buffer: [32]u8 = undefined;
+    for (first..end) |i| {
+        const el = switch (shape) {
+            .create_element => try page.element(try std.fmt.bufPrint(&buffer, "x-{d}", .{i})),
+            .create_element_ns_prefixed => try interfaces.Document.call_createElementNS(page.document, str("urn:x"), str(try std.fmt.bufPrint(&buffer, "p:x{d}", .{i})), .{ .was_passed = false, .value = undefined }),
+        };
+        dom.node_creation.destroyUninserted(el);
+    }
+}
+
+fn expectFlat(shape: Shape) !void {
+    var counted: CountedPage = undefined;
+    try counted.open();
+    defer counted.close();
+    const page = &counted.page;
+
+    const names_at_start = tableCount(&page.scope);
+    // Warm: the classes, chunks and map storage a steady churn reuses.
+    try churn(page, 0, 1_000, shape);
+    const live_warm = counted.live();
+    const arena_warm = page.scope.arena.stats().bytes_in_use;
+
+    try churn(page, 1_000, 1_000_000, shape);
+
+    const names_at_end = tableCount(&page.scope);
+    const live_end = counted.live();
+    const arena_end = page.scope.arena.stats().bytes_in_use;
+    if (names_at_end != names_at_start or live_end > live_warm + 64 * 1024 or arena_end > arena_warm + 64 * 1024) {
+        std.debug.print("{s}: names {d} -> {d}; Browser live bytes {d} -> {d}; arena in use {d} -> {d}\n", .{ @tagName(shape), names_at_start, names_at_end, live_warm, live_end, arena_warm, arena_end });
+    }
+    try testing.expectEqual(names_at_start, names_at_end);
+    try testing.expect(live_end <= live_warm + 64 * 1024);
+    try testing.expect(arena_end <= arena_warm + 64 * 1024);
+}
+
+test "a million createElement('x-' + i), each dropped, leave the Browser's name table and memory where they started" {
+    try expectFlat(.create_element);
+}
+
+test "a million prefixed createElementNS('urn:x', 'p:x' + i), each dropped, leave the name table and memory where they started" {
+    try expectFlat(.create_element_ns_prefixed);
+}
+
+test "a record lives while any element of its name does, and goes with the last" {
+    var page: Page = undefined;
+    try page.open();
+    defer page.close();
+
+    const start = tableCount(&page.scope);
+    const first = try page.element("x-pair");
+    const second = try page.element("x-pair");
+    try testing.expectEqual(start + 1, tableCount(&page.scope));
+    try testing.expect(dom.element_data.of(first).?.name == dom.element_data.of(second).?.name);
+    dom.node_creation.destroyUninserted(first);
+    // The other element's names are its record's, still whole.
+    try testing.expectEqual(start + 1, tableCount(&page.scope));
+    try page.expectNames(second, infra.namespaces.HTML_NAMESPACE, null, "x-pair", "X-PAIR");
+    // A clone counts its own reference: its original going leaves it named.
+    const clone = try interfaces.Node.call_cloneNode(second, .{ .was_passed = true, .value = false });
+    dom.node_creation.destroyUninserted(second);
+    try testing.expectEqual(start + 1, tableCount(&page.scope));
+    try testing.expectEqualStrings("x-pair", dom.element_data.of(clone).?.name.local_name);
+    dom.node_creation.destroyUninserted(clone);
+    try testing.expectEqual(start, tableCount(&page.scope));
+}
+
+test "a prefixed name makes exactly one record" {
+    var page: Page = undefined;
+    try page.open();
+    defer page.close();
+
+    // DOM "create an element" gives the element its namespace, prefix and
+    // local name at once: one record, (urn:x, p, q) - never (urn:x, null, q)
+    // first (appendix-nd2.md F2: Element.setNames then initialize).
+    const start = tableCount(&page.scope);
+    const el = try page.elementNS("urn:x", "p:q");
+    try testing.expectEqual(start + 1, tableCount(&page.scope));
+    try testing.expectEqualStrings("p", dom.element_data.of(el).?.name.prefix.?);
+    // The unprefixed name is another record, made only when asked for.
+    _ = try page.elementNS("urn:x", "q");
+    try testing.expectEqual(start + 2, tableCount(&page.scope));
+}
+
+test "a name record never takes a freed node block" {
+    var page: Page = undefined;
+    try page.open();
+    defer page.close();
+
+    // Two divs' blocks go back to the state arena's class list, and the
+    // next two divs take them at once (the premise: the arena reuses them).
+    const first = try page.element("div");
+    const second = try page.element("div");
+    const blocks = [2]usize{ @intFromPtr(first.state), @intFromPtr(second.state) };
+    dom.node_creation.destroyUninserted(first);
+    dom.node_creation.destroyUninserted(second);
+    const again = [2]*runtime.Instance{ try page.element("div"), try page.element("div") };
+    for (again) |div| try testing.expect(@intFromPtr(div.state) == blocks[0] or @intFromPtr(div.state) == blocks[1]);
+    for (again) |div| dom.node_creation.destroyUninserted(div);
+    // An element whose record is the size of a div's block (the record, its
+    // local name and that name's uppercase: 264 bytes, the div's 272-byte
+    // class) - page-chosen bytes. Its own block takes one freed div block;
+    // its record never takes the other: records are not the state arena's
+    // (node-memory-architecture.md 3.2: a block whose bytes the page
+    // controls is never a former node block; appendix-nd2.md F3).
+    var name: [88]u8 = undefined;
+    @memcpy(name[0..2], "x-");
+    @memset(name[2..], 'a');
+    const el = try page.element(&name);
+    defer dom.node_creation.destroyUninserted(el);
+    const record = @intFromPtr(dom.element_data.of(el).?.name);
+    for (blocks) |block| try testing.expect(record < block or record >= block + 272);
+}
+
+test "only an HTML record keeps an uppercase copy: nothing else reads one" {
+    var page: Page = undefined;
+    try page.open();
+    defer page.close();
+
+    // tagName uppercases an element in the HTML namespace only (DOM 4.9).
+    for ([_]struct { ?[]const u8, []const u8 }{ .{ null, "feed" }, .{ "urn:x", "p:entry" }, .{ infra.namespaces.SVG_NAMESPACE, "fooBar" }, .{ infra.namespaces.MATHML_NAMESPACE, "mfoo" } }) |case| {
+        const name = dom.element_data.of(try page.elementNS(case[0], case[1])).?.name;
+        try testing.expect(!name.is_static);
+        try testing.expect(name.qualified_name_upper.ptr == name.qualified_name.ptr);
+    }
+    const html = dom.element_data.of(try page.elementNS(infra.namespaces.HTML_NAMESPACE, "x-up")).?.name;
+    try testing.expectEqualStrings("X-UP", html.qualified_name_upper);
+}
+
+test "the parser's selectedcontent is a static name" {
+    var page: Page = undefined;
+    try page.open();
+    defer page.close();
+
+    // HTML's selectedcontent element (element_interface's table has it): a
+    // static record, never one interned per Browser (appendix-nd2.md F11).
+    const el = try page.element("selectedcontent");
+    _ = try interfaces.Node.call_appendChild(page.div, el);
+    try testing.expect(dom.element_data.of(el).?.name.is_static);
+}
+
+test ":nth-of-type counts a prefixed and an unprefixed element of one expanded name as one type" {
+    var page: Page = undefined;
+    try page.open();
+    defer page.close();
+
+    // Selectors 4 13.4: an element's type is its namespace and local name -
+    // the prefix is not part of it, though it is part of a record's identity
+    // (appendix-nd2.md F5: a later cache keyed by record must not split them).
+    const first = try page.elementNS(infra.namespaces.HTML_NAMESPACE, "div");
+    const second = try page.elementNS(infra.namespaces.HTML_NAMESPACE, "p:div");
+    try testing.expect(dom.element_data.of(first).?.name != dom.element_data.of(second).?.name);
+    try testing.expect(try interfaces.Element.call_matches(first, str(":first-of-type")));
+    try testing.expect(!try interfaces.Element.call_matches(second, str(":first-of-type")));
+    try testing.expect(try interfaces.Element.call_matches(second, str(":nth-of-type(2)")));
+    try testing.expect(try interfaces.Element.call_matches(second, str(":last-of-type")));
 }
