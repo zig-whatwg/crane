@@ -1408,15 +1408,12 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
         NodeType.ELEMENT_NODE => {
             const owner = document orelse node_internal.owner_document orelse
                 return error.InvalidStateError;
-            // The getters below clone into ctx.allocator, so they must be freed
-            // with ctx.allocator - the node's Browser's allocator is not
-            // necessarily the same one.
+            // These getters BORROW the element's own name record (lane nd2
+            // N2, dom.element_name): valid while `node` lives, and their
+            // deinit frees nothing. They stay DOMStrings with a deinit, so a
+            // getter that copies again needs no change here.
             const instance_allocator = node.ctx.allocator;
 
-            // Each of these getters CLONES into ctx.allocator and transfers
-            // ownership to the caller. Script callers are freed by the interface
-            // layer; a Zig caller must free them itself or every clone leaks the
-            // element's name, namespace and prefix.
             var namespace_owned = try interfaces.Element.get_namespaceURI(node);
             defer if (namespace_owned) |*n| n.deinit(instance_allocator);
             var local_name_owned = try interfaces.Element.get_localName(node);
