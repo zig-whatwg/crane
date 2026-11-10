@@ -380,14 +380,15 @@ while i < len(tokens):
         emit("lib", t[2:])
     elif t.endswith(".rlib"):
         emit("rlib", os.path.realpath(os.path.join(cwd, t)))
-    elif t.endswith((".a", ".o")) and ("/rust/" in t or "rust" in os.path.basename(t)):
+    elif t.endswith((".a", ".o")) and "/rust/" in t:
         emit("rustobj", os.path.realpath(os.path.join(cwd, t)))
     elif t.endswith((".a", ".o")):
         emit("other", t)
     i += 1
 PYIN
   log "d8's link: $(grep -c '^rlib ' "$OUT/d8-link-inputs.txt") rlibs, $(grep -c '^rustobj ' "$OUT/d8-link-inputs.txt" || true) Rust objects/archives, frameworks: $(grep '^framework ' "$OUT/d8-link-inputs.txt" | cut -d' ' -f2 | tr '\n' ' '), libs: $(grep '^lib ' "$OUT/d8-link-inputs.txt" | cut -d' ' -f2 | tr '\n' ' ')"
-  grep '^other ' "$OUT/d8-link-inputs.txt" | sed 's/^/   other input: /' | head -20
+  # (Everything else d8 links is V8 itself as objects - the monolith's content - and d8's own files.)
+  log "d8's other inputs (V8's and d8's own objects): $(grep -c '^other ' "$OUT/d8-link-inputs.txt" || true)"
   # One archive of the rlibs' and shims' objects (an rlib is an ar archive: its objects plus lib.rmeta).
   local w="$OUT/rust-objs" n=0 f
   rm -rf "$w"; mkdir -p "$w"
