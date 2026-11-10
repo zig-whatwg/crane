@@ -15,9 +15,10 @@
 //! later in a call, after the impl had run script, it was a bus error
 //! (perf3 phase 1b; tests/v8/context_counter_test.zig).
 //!
-//! The probe below is called from script and asks, through the same read,
-//! what the target is: a FunctionTemplateInfo or the function, never
-//! anything else; and its function realm is the realm it was made in.
+//! V8 >= 14 keeps the target slot private (FunctionCallbackInfo is a view of
+//! the API exit frame, b9c4e374820): the realm is now the current context,
+//! which V8 enters for the call. The probe below is called from script in
+//! another realm and asks for its function realm: the realm it was made in.
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -29,7 +30,6 @@ var test_agent: test_process.TestAgent = .{};
 
 /// What the probe saw, the last time script called it.
 const Seen = struct {
-    kind: c_int = -1,
     realm_key: ?*anyopaque = null,
     calls: u32 = 0,
 };
@@ -37,7 +37,6 @@ var seen: Seen = .{};
 
 fn probe(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     seen.calls += 1;
-    seen.kind = ffi.FunctionCallbackInfo.v8_Debug_FunctionCallbackTargetKind(info);
     const realm = info.getFunctionCreationContext() orelse return;
     defer ffi.v8_Context_Dispose(realm);
     seen.realm_key = ffi.v8_Context_GetRawAddress(realm);
@@ -52,7 +51,7 @@ fn run(context: *ffi.Context, isolate: *ffi.Isolate, source: []const u8) !void {
     ffi.v8_Value_Dispose(result);
 }
 
-test "a callback's target is its function template or its function, and its realm is the one it was made in" {
+test "a callback's function realm is the one it was made in, called from another realm, interpreted and optimized" {
     const isolate = try test_agent.open(.{});
     defer test_agent.close();
     const home = test_agent.context.?;
@@ -76,9 +75,5 @@ test "a callback's target is its function template or its function, and its real
     try run(other, isolate, "probe(); for (let i = 0; i < 20000; i++) probe();");
 
     try testing.expect(seen.calls > 1);
-    if (seen.kind != 1 and seen.kind != 2) {
-        std.debug.print("the callback's target read as kind {d}\n", .{seen.kind});
-        return error.TargetIsNotTheCallee;
-    }
     try testing.expectEqual(ffi.v8_Context_GetRawAddress(home), seen.realm_key);
 }

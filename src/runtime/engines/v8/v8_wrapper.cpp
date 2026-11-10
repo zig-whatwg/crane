@@ -937,28 +937,6 @@ static V8ErrorInfo* extractException(Isolate* isolate, TryCatch* try_catch) {
 
 extern "C" {
 
-Global<Function>* v8_FunctionCallbackInfo_GetFunction(const FunctionCallbackInfo<Value>* info) {
-    if (!info) return nullptr;
-    Isolate* isolate = info->GetIsolate();
-    HandleScope handle_scope(isolate);
-    
-    // FCILayout { implicit_args, values, length }
-    struct FCILayout {
-        internal::Address* implicit_args;
-        internal::Address* values;
-        internal::Address length;
-    };
-    const FCILayout* layout = reinterpret_cast<const FCILayout*>(info);
-    internal::Address target_addr = layout->implicit_args[4]; // kTargetIndex
-    Local<Value> target_val = *reinterpret_cast<Local<Value>*>(&target_addr);
-    
-    if (target_val.IsEmpty() || !target_val->IsFunction()) {
-        return nullptr;
-    }
-    
-    return trackHandle(new Global<Function>(isolate, target_val.As<Function>()));
-}
-
 // ============================================================================
 // V8ErrorInfo Functions
 // ============================================================================
@@ -7125,79 +7103,21 @@ Global<Value>* v8_FunctionCallbackInfo_Data(const FunctionCallbackInfo<Value>* i
     return trackHandle(new Global<Value>(isolate, data));
 }
 
-/// The callback's target - implicit_args[kTargetIndex] (4), what V8's own
-/// FunctionCallbackInfo::Data() reads: the called function's
-/// FunctionTemplateInfo, or the function - as a Local.
-///
-/// FunctionCallbackInfo stores (v8-function-callback.h):
-///   internal::Address* implicit_args_;   // offset 0
-///   internal::Address* values_;          // offset 8
-///   internal::Address length_;           // offset 16
-struct FCILayout {
-    internal::Address* implicit_args;
-    internal::Address* values;
-    internal::Address length;
-};
-
-static Local<Data> functionCallbackTarget(const FunctionCallbackInfo<Value>* info) {
-    const FCILayout* layout = reinterpret_cast<const FCILayout*>(info);
-    // A Local over the SLOT, as Data() makes one
-    // (Local<Data>::FromSlot(&implicit_args_[kTargetIndex])): in V8 13.1,
-    // without direct handles, a Local is the address of a slot that holds
-    // the tagged pointer. The slot is part of the API callback's frame, so
-    // the Local is good for the whole call, read at its start or after its
-    // impl has run script. This read used to copy the slot's value and
-    // reinterpret THAT as the Local - the tagged pointer taken for a slot -
-    // so every question asked of the target read its first word as an
-    // object: garbage, nearly always "not a function", and once, read late
-    // in a call, a bus error (tests/v8/perf3_function_creation_context_test.zig).
-    internal::Address* target_slot = &layout->implicit_args[4];
-    return *reinterpret_cast<Local<Data>*>(&target_slot);
-}
-
-/// What the callback's target is, read as GetFunctionCreationContext reads it:
-/// 1 a FunctionTemplateInfo, 2 a function, 3 anything else, 0 none. For tests
-/// (tests/v8/perf3_function_creation_context_test.zig).
-extern "C" int v8_Debug_FunctionCallbackTargetKind(const FunctionCallbackInfo<Value>* info) {
-    Local<Data> target = functionCallbackTarget(info);
-    if (target.IsEmpty()) return 0;
-    if (target->IsFunctionTemplate()) return 1;
-    if (target->IsValue() && target.As<Value>()->IsFunction()) return 2;
-    return 3;
-}
-
-/// Get the creation context of the target function being called.
-/// This is critical for cross-realm support: when calling
-/// other.SomeInterface.prototype.method.call(obj), we need the context
-/// where 'method' was instantiated (the iframe's context), not where
-/// 'obj' was created (the main context) or the calling context.
-///
-/// Reads the target at kTargetIndex (functionCallbackTarget), then gets its
-/// creation context.
+/// The realm of the function being called: the current context. Calling a
+/// function enters its realm - the call sequence loads the JSFunction's own
+/// context, and V8's API-callback builtins run the callback in it - so inside
+/// a FunctionCallback the current context IS the callee's [[Realm]], the
+/// realm WebIDL's operations, getters, setters and constructors throw and
+/// create in ("the current realm"; Blink: ScriptState::ForCurrentRealm(info)
+/// reads isolate->GetCurrentContext()). V8 >= 14 flattened
+/// FunctionCallbackInfo into a view of the API exit frame (b9c4e374820) and
+/// keeps its target slot private; the old read of `implicit_args_[kTargetIndex]`
+/// through a copied layout would read garbage there.
 Global<Context>* v8_FunctionCallbackInfo_GetFunctionCreationContext(const FunctionCallbackInfo<Value>* info) {
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
-    Local<Data> target = functionCallbackTarget(info);
-    Local<Value> target_value = target.IsEmpty() || !target->IsValue() ? Local<Value>() : target.As<Value>();
-
-    if (target_value.IsEmpty() || !target_value->IsFunction()) {
-        // Fallback: return current context
-        countContextGlobal();
-        return trackHandle(new Global<Context>(isolate, isolate->GetCurrentContext()));
-    }
-    
-    Local<Function> target_func = target_value.As<Function>();
-    
-    // Get the creation context of the function
-    // This is the context where the function was instantiated (e.g., iframe context)
-    MaybeLocal<Context> maybe_ctx = target_func->GetCreationContext();
-    if (maybe_ctx.IsEmpty()) {
-        countContextGlobal();
-        return trackHandle(new Global<Context>(isolate, isolate->GetCurrentContext()));
-    }
-    
     countContextGlobal();
-    return trackHandle(new Global<Context>(isolate, maybe_ctx.ToLocalChecked()));
+    return trackHandle(new Global<Context>(isolate, isolate->GetCurrentContext()));
 }
 
 /// Get the NewTarget from a constructor call.
@@ -9391,7 +9311,7 @@ bool v8_Value_IsInt32Array(Global<Value>* value) {
     return val->IsInt32Array();
 }
 
-/// Check if Value is a Float16Array (ES2025; installed by --js-float16array)
+/// Check if Value is a Float16Array (ES2025; shipped in V8 13.5)
 bool v8_Value_IsFloat16Array(Global<Value>* value) {
     if (!value) return false;
     Isolate* isolate = Isolate::GetCurrent();

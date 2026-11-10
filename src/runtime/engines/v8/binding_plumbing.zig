@@ -135,14 +135,16 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     // Implementation of GetFunctionRealm algorithm for constructor realm
     // This ensures we correctly handle cross-realm construction, bound functions, and proxies.
     // Using the constructor function's realm (F.[[Realm]]) per WebIDL spec.
-    const constructor_v8_fn = info.getFunction();
-    defer if (constructor_v8_fn) |f| v8.v8_Value_Dispose(@ptrCast(f));
+    // The constructor is the callee: its realm is the current context V8
+    // entered for the call (v8_FunctionCallbackInfo_GetFunctionCreationContext).
+    // A construct call's target is the FunctionTemplateInfo, so the callee
+    // function itself was never read here (V8 >= 14 keeps it private).
     // Owned in both branches, and released: `ctx_mgr.getOrCreateWithIsolate`
     // keeps its own copy of the handle when it creates an entry, so the
     // caller's is always the caller's. (Before it did, this leaked one
     // Global<Context> per constructor call - each one keeping its page's
     // whole native context alive.)
-    const constructor_v8_context = if (constructor_v8_fn) |f| interface.getFunctionRealm(@ptrCast(f), isolate) else info.getFunctionCreationContext();
+    const constructor_v8_context = info.getFunctionCreationContext();
     defer if (constructor_v8_context) |c| v8.v8_Context_Dispose(c);
     const constructor_context = constructor_v8_context orelse current_context;
 
@@ -323,8 +325,8 @@ fn constructHTMLElement(
     // The active function object: this interface's interface object.
     // A construct call's FunctionCallbackInfo names its target as the
     // FunctionTemplateInfo rather than the function (V8's
-    // GetTargetFunctionTemplateInfo reads either), so info.getFunction()
-    // is null there; the interface object is then the template's
+    // GetTargetFunctionTemplateInfo reads either), and V8 >= 14 gives no
+    // read of it; the interface object is then the template's
     // instantiation in the current context - the callee's, which V8
     // entered for the call.
     const own_active: ?*v8.Function = if (active_function == null) activeInterfaceObject(self, current_context) else null;

@@ -168,9 +168,6 @@ pub const FunctionCallbackInfo = opaque {
     /// Get data associated with the function template
     pub extern fn v8_FunctionCallbackInfo_Data(self: *const FunctionCallbackInfo) *Value;
 
-    /// Get the function being called
-    pub extern fn v8_FunctionCallbackInfo_GetFunction(self: *const FunctionCallbackInfo) ?*Function;
-
     /// Get the creation context of the target function being called.
     /// This is critical for cross-realm support: when calling
     /// other.SomeInterface.prototype.method.call(obj), we need the context
@@ -217,21 +214,11 @@ pub const FunctionCallbackInfo = opaque {
         return v8_FunctionCallbackInfo_Data(self);
     }
 
-    /// Get the function being called.
-    pub inline fn getFunction(self: *const FunctionCallbackInfo) ?*Function {
-        return v8_FunctionCallbackInfo_GetFunction(self);
-    }
-
     /// Get the creation context of the target function being called.
     /// For cross-realm support: returns the context where the method was instantiated.
     pub inline fn getFunctionCreationContext(self: *const FunctionCallbackInfo) ?*Context {
         return v8_FunctionCallbackInfo_GetFunctionCreationContext(self);
     }
-
-    /// What the callback's target is, read as
-    /// v8_FunctionCallbackInfo_GetFunctionCreationContext reads it: 1 a
-    /// FunctionTemplateInfo, 2 a function, 3 anything else, 0 none. For tests.
-    pub extern fn v8_Debug_FunctionCallbackTargetKind(self: *const FunctionCallbackInfo) c_int;
 
     /// A string result, `length` bytes of ASCII (`one_byte`) or well-formed
     /// UTF-8, made in the callback's own HandleScope and set into the return
