@@ -831,3 +831,1065 @@ why = Not a code change: 2 -> 1 in generation 213's sweep (server1, Linux x86-64
 pair.1 = base 2/2; tip 2/2
 pair.2 = base 2/2; tip 2/2
 pair.3 = base 2/2; tip 2/2
+
+[referrer-policy/4K+1/gen/top.http-rp/no-referrer-when-downgrade/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K+1/gen/top.http-rp/origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K+1/gen/top.http-rp/same-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K+1/gen/top.http-rp/strict-origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K+1/gen/top.http-rp/unsafe-url/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K+1/gen/top.http-rp/unset/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K+1/gen/top.meta/no-referrer-when-downgrade/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K+1/gen/top.meta/origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K+1/gen/top.meta/same-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K+1/gen/top.meta/strict-origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K+1/gen/top.meta/unsafe-url/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K+1/gen/top.meta/unset/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K-1/gen/top.http-rp/no-referrer-when-downgrade/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K-1/gen/top.http-rp/origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K-1/gen/top.http-rp/same-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K-1/gen/top.http-rp/strict-origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K-1/gen/top.http-rp/unsafe-url/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K-1/gen/top.http-rp/unset/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K-1/gen/top.meta/no-referrer-when-downgrade/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K-1/gen/top.meta/origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K-1/gen/top.meta/same-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K-1/gen/top.meta/strict-origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K-1/gen/top.meta/unsafe-url/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K-1/gen/top.meta/unset/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K/gen/top.http-rp/no-referrer-when-downgrade/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K/gen/top.http-rp/origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K/gen/top.http-rp/same-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K/gen/top.http-rp/strict-origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K/gen/top.http-rp/unsafe-url/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K/gen/top.http-rp/unset/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K/gen/top.meta/no-referrer-when-downgrade/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K/gen/top.meta/origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K/gen/top.meta/same-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K/gen/top.meta/strict-origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K/gen/top.meta/unsafe-url/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/4K/gen/top.meta/unset/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (2 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.http-rp/no-referrer-when-downgrade/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.http-rp/no-referrer/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.http-rp/origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.http-rp/origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.http-rp/same-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (10 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.http-rp/strict-origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.http-rp/strict-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.http-rp/unsafe-url/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.http-rp/unset/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.meta/always/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.meta/default/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.meta/never/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.meta/no-referrer-when-downgrade/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.meta/no-referrer/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.meta/origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.meta/origin-when-crossorigin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.meta/origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.meta/same-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (10 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.meta/strict-origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.meta/strict-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.meta/unsafe-url/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/iframe.meta/unset/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/req.attr/no-referrer-when-downgrade/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/req.attr/no-referrer/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/req.attr/origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/req.attr/origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/req.attr/same-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (10 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/req.attr/strict-origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/req.attr/strict-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/req.attr/unsafe-url/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/no-referrer-when-downgrade/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/no-referrer/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/same-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (10 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/strict-origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/strict-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/unsafe-url/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.http-rp/unset/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.meta/always/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.meta/default/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.meta/never/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.meta/no-referrer-when-downgrade/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.meta/no-referrer/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.meta/origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.meta/origin-when-crossorigin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.meta/origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.meta/same-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (10 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.meta/strict-origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.meta/strict-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.meta/unsafe-url/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc-inherit.meta/unset/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc.meta/always/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc.meta/default/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc.meta/never/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc.meta/no-referrer-when-downgrade/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc.meta/no-referrer/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc.meta/origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc.meta/origin-when-crossorigin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc.meta/origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc.meta/same-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (10 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc.meta/strict-origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc.meta/strict-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/srcdoc.meta/unsafe-url/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.http-rp/no-referrer-when-downgrade/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.http-rp/no-referrer/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.http-rp/origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.http-rp/origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.http-rp/same-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (10 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.http-rp/strict-origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.http-rp/strict-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.http-rp/unsafe-url/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.http-rp/unset/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.meta/always/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.meta/default/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.meta/never/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.meta/no-referrer-when-downgrade/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.meta/no-referrer/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.meta/origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.meta/origin-when-crossorigin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.meta/origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.meta/same-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (10 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.meta/strict-origin-when-cross-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.meta/strict-origin/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.meta/unsafe-url/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/gen/top.meta/unset/img-tag.http.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (12 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/generic/link-rel-prefetch.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (1 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/generic/multiple-headers-and-values.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (1 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/generic/multiple-headers-combined.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (1 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/generic/multiple-headers-one-unknown-token.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (1 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/generic/multiple-headers.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (1 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/generic/subresource-test/image-decoding.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (1 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[referrer-policy/generic/unsupported-csp-referrer-directive.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): Crane exactly as it ships, with the decision-19b replaced-element box shortcut removed - geometry is a read on the plugged-in rendering engine (platform protocol 6.9), and with no renderer img.clientWidth / clientHeight are 0, so common/security-features decodeImageData's getImageData(0, 0, img.clientWidth, img.clientHeight) throws IndexSizeError (1 -> 0). Listed as needs-renderer in tools/wpt_gate_exemptions.txt.
+date = 2026-11-09
+decision = the user, 2026-11-09 22:21 UTC: "1 yes" (remove the image-box shortcut; geometry is a read on the rendering engine) and "3 b" (needs-renderer files do not block 0.1)
+
+[content-security-policy/media-src/media-src-7_1.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (3 -> 0). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[content-security-policy/media-src/media-src-7_1_2.sub.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (3 -> 2). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[content-security-policy/media-src/media-src-7_2_2.sub.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (3 -> 2). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[content-security-policy/media-src/media-src-7_3.sub.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (2 -> 0). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[content-security-policy/media-src/media-src-blocked.sub.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (4 -> 1). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[content-security-policy/media-src/media-src-redir-bug.sub.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (5 -> 0). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[css/selectors/invalidation/media-loading-pseudo-classes-in-has.sub.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (2 -> 0). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[css/selectors/invalidation/media-pseudo-classes-in-has.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (2 -> 0). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[css/selectors/media/media-loading-state-timing.sub.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (1 -> 0). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[css/selectors/media/media-loading-state.sub.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (3 -> 1). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[css/selectors/media/media-playback-state-timing.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (3 -> 1). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[css/selectors/media/media-playback-state.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (4 -> 2). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[css/selectors/media/media-playing-paused-style-invalidation.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (3 -> 0). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[css/selectors/media/sound-state.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (5 -> 4). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[fetch/api/request/destination/fetch-destination.https.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (16 -> 15). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[html/semantics/embedded-content/the-iframe-element/sandbox_002.htm]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (1 -> 0). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[mimesniff/media/media-sniff.window.js]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (12 -> 6). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[resource-timing/initiator-type/video.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (3 -> 2). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[service-workers/service-worker/fetch-canvas-tainting-video-cache.https.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (36 -> 19). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[service-workers/service-worker/fetch-canvas-tainting-video.https.html]
+generation = 214
+kind = user-ruling
+why = Generation 214 is the first sweep of the PRODUCTION runner (lane wptcfg b1): media decoding goes through the default platform's media_decoding capability, which decodes WAV only; WebM (VP8/VP9, Vorbis/Opus) is not claimed until it is really decoded - the old runner's WebM test backend read headers only and decoded no pixel or sample (36 -> 19). Real WebM decoding is queued (tmp/plans/feature-queue.md, MEDIA real WebM decoding).
+date = 2026-11-09
+decision = the user, 2026-11-09 23:28 UTC: "1" - merge lane wptcfg now with the WebM/video loss; real decoding queued
+
+[html/webappapis/dynamic-markup-insertion/opening-the-input-stream/abort-refresh-immediate.window.js]
+generation = 214
+kind = flake
+why = 4 -> 3 in generation 214's PRODUCTION sweep (server1, 32 runners): "document.open() aborts documents that are queued for navigation through <meta> refresh with timeout 0 (fetch())" failed once under the sweep's load and passed in the same generation's bug-finding sweep (wpt_build_compare: the one NEW difference). Isolated (integrator, 2026-11-10 00:42 UTC, server1): generation 214's production runner --repeat=10 and bug-finding runner --repeat=10 both 4/6 every run (the fetch() subtest passes 10/10; the two XMLHttpRequest variants time out in every run, as in generation 213: 4 passed / 2 timed out); generation 213's runner --repeat=3 4/6 every run. A load-dependent race between the zero-timeout refresh and document.open(). Recorded as a FLAKE in tmp/plans/feature-queue.md: the next flip makes it a bug with an owner (a navigation lane).
+pair.1 = base 4/6; tip 4/6
+pair.2 = base 4/6; tip 4/6
+pair.3 = base 4/6; tip 4/6
+
+[service-workers/service-worker/navigation-timing-extended.https.html]
+generation = 214
+kind = timing-bound
+why = Not an ordering bug and not a flake: the file's three strict asserts compare coarse marks that the specs put back to back. The one that fails most - "fetchStart should be marked before the Fetch event handler is called" - compares the fetch event dispatch time (Service Workers "Create Fetch Event and Dispatch" step 17.4.12, Navigation Timing's fetchStart under a service worker) with the handler's first performance.now(): the event is dispatched at step 17.4.13 with nothing between, so the two are 25-30 us apart and equal on the 125 us grid unless that gap crosses a tick (lesson spec-compliance-a-strict-order-between-coarse-marks-is-a-bet-on-time.md). The second - "fetchStart should be marked once the worker is activated" - compares it with the activate handler's waitUntil then-callback; between them Crane runs only Activate step 11 (Update Worker State "activated") and Handle Fetch's wait ending, two thread hops. Lane flaky7, server1, the file alone in a fresh runner process per run (wpt_runner --repeat): a diagnostic build of f95a0121bf5 logging the raw monotonic ns of every performance.now(), of 17.4.12's time and of each worker state change (tmp/flaky7/diag-nt2.patch) - unloaded, fetchStart->handler min 18 / p50 26 / max 273 us and activateWorkerEnd->fetchStart p50 589 us (pass 25/60); with 28 busy threads beside it (--load=28, a 32-runner sweep's load) the hops get FASTER - activateWorkerEnd->fetchStart min 68 / p50 79 / max 1214 us, fetchStart->handler min 25 / p50 28 / max 152 us (pass 5/40) - because an idle host's sleeping threads wake slowly and a loaded host's do not. The raw gaps floored onto the 125 us grid predict each run's result: 58/59 unloaded, 39/39 loaded. Generation 211's own runner (9053db756ef): 24/60 alone, 24/40 after three service-worker files in its process, 2/40 alone under --load=28, 0/30 both - which is why every generation sweep since 2026-10-31 failed it while isolated x10 runs passed 3-5/10. No browser passes the file (wpt.fyi fea36e49dd: Chrome 157 fails the workerStart assert, Firefox 159 the handler assert by 1 ms, Safari 27.2 the activation assert); Chrome passes the handler assert only because it marks fetchStart in its browser process before the IPC to the worker. Nothing to fix without a delay between two spec steps (no invented paths).
+tick_us = 125
+gap_us = min 25 / p50 28 / max 152
+pass_rate = 2/40
+condition = a sweep's load: the file alone in a fresh runner process with 28 busy threads beside it on server1's 32 (wpt_runner --repeat=40 --load=28, generation 211's runner); unloaded it passes 24/60, so x10 runs on a quiet host overstate a sweep's rate
+measured_at = 9053db756ef
+paths = src/service_worker/fetch_event.zig, src/service_worker/registry.zig, src/hr_time/time_origin.zig, src/hr_time/coarsen.zig, src/dom/performance_timeline.zig
