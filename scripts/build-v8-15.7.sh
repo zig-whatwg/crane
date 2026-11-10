@@ -397,7 +397,16 @@ PYIN
         n=$((n + 1)); mkdir -p "$w/$n"
         case "$f" in
           *.o) cp "$f" "$w/$n/" ;;
-          *) ( cd "$w/$n" && "$LLVM/bin/llvm-ar" x "$f" ) ;;
+          *)
+            if [ "$(head -c 7 "$f")" = '!<thin>' ]; then
+              # A thin archive names its members by path, relative to the archive's directory.
+              local m d; d=$(dirname "$f")
+              "$LLVM/bin/llvm-ar" t "$f" | while IFS= read -r m; do
+                case "$m" in /*) cp "$m" "$w/$n/" ;; *) cp "$d/$m" "$w/$n/" ;; esac
+              done
+            else
+              ( cd "$w/$n" && "$LLVM/bin/llvm-ar" x "$f" )
+            fi ;;
         esac ;;
     esac
   done < "$OUT/d8-link-inputs.txt"
