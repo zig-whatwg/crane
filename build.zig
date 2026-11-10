@@ -6863,6 +6863,10 @@ pub fn build(b: *std.Build) void {
         check.addArg(if (checked.needsUbsanRuntime()) "--expect=some" else "--expect=none");
         check.addArg(b.fmt("--name={s}", .{checked.exe.name}));
         check.addFileArg(checked.exe.getEmittedBin());
+        // Checked, not inherited: no side effects, so Zig's cache reruns it
+        // only when the binary (its file argument) changes, and its stderr
+        // is shown when it fails.
+        check.expectExitCode(0);
         step.dependOn(&check.step);
     };
 }
