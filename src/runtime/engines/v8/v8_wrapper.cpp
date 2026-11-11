@@ -4258,10 +4258,29 @@ void v8_Context_DetachGlobal(Global<Context>* context) {
 /// lives on - posts a task that runs a young collection unless one ran since.
 /// Neither collects anything here.
 ///
+/// V8 takes the isolate's CURRENT context for the disposed one: with
+/// kNoDependants it aborts that context's asynchronous WebAssembly
+/// compilations (15.7 src/api/api.cc Isolate::ContextDisposedNotification:
+/// "We left the current context, we can abort all WebAssembly compilations
+/// of that context" - WasmEngine::DeleteCompileJobsOnContext), and with
+/// either it drops that context's dirty FinalizationRegistries and retained
+/// maps (Heap::NotifyContextDisposed). Blink is inside a ScriptState::Scope
+/// of the context it disposes for the whole of DisposeContext; so `disposed`
+/// is entered here for the call. Sent with another page's context entered,
+/// it deleted that page's compile jobs, and their promises never settled
+/// (tests/v8/page_realm_operations_test.zig, "a page that ends does not
+/// abort another page's WebAssembly compilation"). A context the collector
+/// already took is not told of: V8 collected it itself.
+///
+/// @param disposed - the context being disposed, still alive.
 /// @param has_dependants - false for a main frame's context, true for a child
 ///     frame's.
-void v8_Isolate_ContextDisposedNotification(Isolate* isolate, bool has_dependants) {
-    if (!isolate) return;
+void v8_Isolate_ContextDisposedNotification(Isolate* isolate, Global<Context>* disposed, bool has_dependants) {
+    if (!isolate || !disposed || disposed->IsEmpty()) return;
+    HandleScope handle_scope(isolate);
+    Local<Context> context = disposed->Get(isolate);
+    if (context.IsEmpty()) return;
+    Context::Scope entered(context);
     if (IsolateData* record = isolateData(isolate)) ++record->context_disposals[has_dependants ? 1 : 0];
     isolate->ContextDisposedNotification(has_dependants ? ContextDependants::kSomeDependants : ContextDependants::kNoDependants);
 }

@@ -906,8 +906,30 @@ fn detach(realm: Context, state: *WindowRealmState) void {
     // object, closing over the frame, would otherwise keep it forever. Blink
     // traces each listener from its target.
     _ = ffi.v8_Object_WeakenTaggedHandles(global, key, retained_key.ptr, retained_key.len);
+    // The context is disposed, in Blink's sense, now: V8 is told while it is
+    // alive, before its handle goes weak.
+    notifyContextDisposed(state.isolate, context, state);
     ffi.v8_Context_SetWeak(context, record, realmCollected);
     state.detached = record;
+}
+
+/// Tell V8 a Window realm's context is disposed, and whether it had
+/// dependants, as Blink does from LocalWindowProxy::DisposeContext
+/// (V8GCForContextDispose::NotifyContextDisposed, bindings/core/v8/
+/// v8_gc_for_context_dispose.cc: `is_main_frame ? kNoDependants :
+/// kSomeDependants`): a page's top-level realm has none - V8 takes its
+/// allocation limits back to their initial values, tells its memory reducer
+/// and aborts the context's WebAssembly compilations - and a child
+/// navigable's has some, its page living on - V8 runs a young collection by
+/// task. A realm with no state is told as a child's, which resets nothing.
+/// The context is entered for the call (ffi.v8_Isolate_
+/// ContextDisposedNotification): V8 takes the current context for the
+/// disposed one. Neither collects here: that a page's memory comes back when
+/// it goes is the host's memory-pressure notice (Browser,
+/// engine.notifyMemoryPressure).
+fn notifyContextDisposed(isolate: *ffi.Isolate, context: *ffi.Context, state: ?*WindowRealmState) void {
+    const has_dependants = if (state) |s| !s.top_level else true;
+    ffi.v8_Isolate_ContextDisposedNotification(isolate, context, has_dependants);
 }
 
 /// The collector took a detached realm's context (its weak handle's first
@@ -1047,20 +1069,13 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
         else
             log.warn("a Window realm ended under another entered context; its context stays entered", .{});
     }
-    // 4. Tell V8 a context is garbage, and whether it had dependants, as
-    // Blink does from LocalWindowProxy::DisposeContext
-    // (V8GCForContextDispose::NotifyContextDisposed, bindings/core/v8/
-    // v8_gc_for_context_dispose.cc: `is_main_frame ? kNoDependants :
-    // kSomeDependants`): a page's top-level realm has none - V8 takes its
-    // allocation limits back to their initial values and tells its memory
-    // reducer - and a child navigable's has some, its page living on - V8
-    // runs a young collection by task. A realm with no state is told as a
-    // child's, which resets nothing. Neither collects here: that a page's
-    // memory comes back when it goes is the host's memory-pressure notice
-    // (Browser, engine.notifyMemoryPressure). Then release the handle - a
-    // detached realm's weak arm with it.
-    const has_dependants = if (state) |s| !s.top_level else true;
-    ffi.v8_Isolate_ContextDisposedNotification(isolate, has_dependants);
+    // 4. Tell V8 the context is disposed (`notifyContextDisposed`) - unless
+    // the realm was detached, when V8 was told then, at the moment Blink
+    // tells it (the navigation, the frame's removal), or the collector took
+    // the context, which V8 did itself. Never from a detached realm's later
+    // end: that runs from the collector's queue, with another page's context
+    // entered. Then release the handle - a detached realm's weak arm with it.
+    if (detached == null and isLive(context)) notifyContextDisposed(isolate, context, state);
     ffi.v8_Context_Dispose(context);
     if (state) |s| if (s.entered_isolate) ffi.v8_Isolate_Exit(isolate);
     // 5. The Window's storage goes back to its Browser's slab: its teardown

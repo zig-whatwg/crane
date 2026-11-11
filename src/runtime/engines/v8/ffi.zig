@@ -1085,8 +1085,11 @@ pub extern fn v8_Context_DetachGlobal(context: *Context) void;
 /// `has_dependants` is false for a main frame's context (kNoDependants: V8
 /// resets its allocation limits and tells its memory reducer) and true for a
 /// child frame's (kSomeDependants: a young collection by task). It collects
-/// nothing by itself.
-pub extern fn v8_Isolate_ContextDisposedNotification(isolate: *Isolate, has_dependants: bool) void;
+/// nothing by itself. `disposed`, the context being disposed and still alive,
+/// is entered for the call, as Blink's DisposeContext is inside it: V8 takes
+/// the current context for the disposed one, and aborts its WebAssembly
+/// compilations. Nothing is sent for a context the collector already took.
+pub extern fn v8_Isolate_ContextDisposedNotification(isolate: *Isolate, disposed: *Context, has_dependants: bool) void;
 /// `isolate`'s context disposals so far, by what V8 was told: a main frame's
 /// (no dependants) and a child frame's. A diagnostic for tests; 0 for an
 /// isolate the adapter did not make.
