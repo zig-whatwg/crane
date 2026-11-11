@@ -1413,7 +1413,28 @@ fn handleSetAttributes(instance: *runtime.Instance, internal: *InternalState, sc
 fn setParsedAttributesHook(element: *runtime.Instance, attributes: []const dom.element_attributes.Attribute, cache: ?*dom.element_attributes.SharingCache) dom.element_attributes.Error!void {
     const internal = getInternal(element) orelse return error.InvalidStateError;
     if (attributes.len == 0) return;
-    if (internal.data.getAttributeCount() != 0) return error.InvalidStateError;
+    // An element that already has attributes takes the token's one by one:
+    // "Append each attribute in the given token to element" exactly as
+    // written (and as main did). It has them when script ran inside "create
+    // an element": a customized built-in is upgraded synchronously there, so
+    // its constructor's setAttribute comes before this step (custom-elements/
+    // customized-built-in-constructor-exceptions.html, "Make sure customized
+    // <input> element that sets attributes doesnt crash"). Blink takes the
+    // same two paths, read in source 2026-11-11: HTMLConstructionSite::
+    // CreateElement, under `will_execute_script = definition &&
+    // !is_parsing_fragment_`, loops `element->setAttribute(attribute.
+    // GetName(), attribute.Value())` - "We don't use setAttributes here
+    // because the custom element constructor may have manipulated
+    // attributes." - and calls SetAttributes(element, token) otherwise. Blink
+    // SETS where the spec and this append: they differ only for a name the
+    // constructor also set, which is main's behaviour and not this step's to
+    // change.
+    if (internal.data.getAttributeCount() != 0) {
+        for (attributes) |attribute| {
+            try appendAttribute(element, internal, attribute.namespace, attribute.prefix, attribute.local_name, attribute.value);
+        }
+        return;
+    }
     const scope = runtime.BrowserScope.ofInstance(element);
     var stack: [16]AttributeEntryIds = undefined;
     const on_heap = attributes.len > stack.len;
