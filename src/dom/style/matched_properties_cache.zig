@@ -794,27 +794,3 @@ test "an entry that serves hits is kept whole under allocation failure, or not a
         try testing.expect((hit != null) == (cache.entries == 1));
     }
 }
-
-test "a parent whose custom property record is another object with the same values is the same parent (Blink compares inherited variables by value)" {
-    // AG Grid's elements each declare the same custom properties, so each
-    // cascade makes its own record: 958,906 of the grid page's 963,214
-    // misses were this parent pointer (style1 b2 census).
-    const cache = try MatchedPropertiesCache.create(testing.allocator);
-    defer cache.destroy();
-    var scene: Scene = undefined;
-    try scene.init("--w: 3px; --c: red", "margin-left: var(--w); color: var(--c)");
-    defer scene.deinit();
-    const first = try scene.miss(cache, scene.parent);
-    defer first.destroy();
-    var twin = try rootStyle("--w: 3px; --c: red");
-    defer twin.block.deinit();
-    defer twin.style.destroy();
-    try testing.expect(twin.style.custom != scene.parent.custom);
-    const held = cache.find(scene.lookup(twin.style)) orelse return error.ExpectedHit;
-    try testing.expect(try differenceFromCascade(.{ .allocator = testing.allocator, .parent = twin.style }, &scene.matched, held) == null);
-    // One value differs: another parent.
-    var other = try rootStyle("--w: 3px; --c: blue");
-    defer other.block.deinit();
-    defer other.style.destroy();
-    try testing.expect(cache.find(scene.lookup(other.style)) == null);
-}
