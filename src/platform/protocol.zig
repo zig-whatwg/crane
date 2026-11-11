@@ -235,6 +235,12 @@ pub const Thread = extern struct {
     handle: usize,
 };
 
+/// A thread's alternate signal stack, OWNED by the thread that attached it
+/// until `detachSignalStack`. `handle` 0: none was made.
+pub const SignalStack = extern struct {
+    handle: usize = 0,
+};
+
 // ============================================================================
 // 3. Per-Browser state
 // ============================================================================
@@ -712,6 +718,33 @@ pub inline fn spawnThread(options: ThreadOptions, entry: *const fn (?*anyopaque)
 /// Wait for `thread` to end and release it.
 pub inline fn joinThread(thread: Thread) void {
     return impl.joinThread(thread);
+}
+
+/// Give the calling thread an alternate signal stack: where the process's
+/// fault handler runs when the thread's own stack is what ran out, so a
+/// stack overflow is reported instead of ending the process silently (POSIX
+/// sigaltstack, for a handler installed SA_ONSTACK - Zig std's, in a build
+/// with runtime safety). OWNED until `detachSignalStack`. A thread that
+/// already has one at least as large keeps it and the handle is 0; so is it
+/// on a platform with no such thing. Any thread; synchronous; never fails
+/// (a refused mapping is a handle of 0: the thread runs unattached).
+///
+/// Every thread `spawnThread` starts has one. This is for a thread the
+/// platform did not start: the process's main thread (a root sets
+/// `std_options.signal_stack_size = null` - std's own is a 256 KB
+/// thread-local that every thread touching a thread-local pays for - and
+/// calls this first in `main`), a host's own threads, and Crane's worker and
+/// IndexedDB threads until they move to `spawnThread`. A thread nobody
+/// attached - the JavaScript engine's own worker threads - has none, as it
+/// never had: a stack overflow there ends the process without a report.
+pub inline fn attachSignalStack() SignalStack {
+    return impl.attachSignalStack();
+}
+
+/// Release what `attachSignalStack` returned, on the thread that attached
+/// it, before that thread ends. A handle of 0 is nothing to release.
+pub inline fn detachSignalStack(stack: SignalStack) void {
+    return impl.detachSignalStack(stack);
 }
 
 // ============================================================================
