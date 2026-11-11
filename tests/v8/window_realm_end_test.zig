@@ -1,9 +1,10 @@
 //! What a Window realm's end leaves of its Window (lane winslot1, step 1).
 //!
 //! - Every engine object that named the Window loses it before the context
-//!   manager frees it: the WindowProxy and the WindowProperties object on the
-//!   global's prototype chain carry the Window in internal field 0, and a
-//!   member called on them unwraps that field. A realm ended with
+//!   manager frees it: the WindowProxy carries the Window in internal field 0,
+//!   and the proxy, its hidden global and the WindowProperties object on the
+//!   global's prototype chain carry the realm's GlobalAnchor (lane v8up b3c),
+//!   and a member called on them unwraps those. A realm ended with
 //!   .global_detached and no hand-on - a top-level page, a retired frame
 //!   realm - left it in both (only a destroyed navigable's were severed), so
 //!   a getter taken from the realm and called on its kept, detached proxy
@@ -72,34 +73,29 @@ fn field0(object: *ffi.Value) ?*anyopaque {
     return ffi.v8_Object_GetAlignedPointerFromInternalField(o, 0);
 }
 
-/// The realm's global proxy and the WindowProperties object behind it
-/// (the hidden global's prototype chain: Window.prototype, then it), each a
-/// Global the caller disposes.
+/// The realm's global proxy and the WindowProperties object on its prototype
+/// chain, each held for the test. Never the hidden global object: V8 >= 14
+/// gives no handle to it (crbug.com/333672197; the V1 GetPrototype read here
+/// answers Object.getPrototypeOf on 15.7, design 2.8). What names the Window
+/// is read as V8 keeps it: the proxy's field 0, and the GlobalAnchor the
+/// proxy, the hidden global and WindowProperties are wrapped with
+/// (realm_global.attach; v8_Debug_GlobalAnchorInstanceOf).
 const Kept = struct {
     proxy: protocol.Owned,
-    window_properties: ?*ffi.Value,
+    window_properties: protocol.Owned,
 
     fn of(realm: runtime.Context) !Kept {
         const proxy = try protocol.evaluateClassicScript(realm, .{ .utf8 = "globalThis" }, "", null, Ignored.reporter);
         errdefer proxy.release();
-        const proxy_value: *ffi.Value = @ptrCast(@alignCast(proxy.value.handle.ptr));
-        // V8's V1 GetPrototype on a global proxy answers the hidden global.
-        const hidden = ffi.v8_Object_GetPrototype(@ptrCast(proxy_value)) orelse return error.NoGlobal;
-        defer ffi.v8_Global_Dispose(hidden);
-        var at: *ffi.Value = hidden;
-        var links: [2]?*ffi.Value = .{ null, null };
-        defer for (links) |l| if (l) |v| ffi.v8_Global_Dispose(v);
-        var window_properties: ?*ffi.Value = null;
-        for (&links) |*slot| {
-            const proto = ffi.v8_Object_GetPrototypeV2(@ptrCast(at)) orelse break;
-            slot.* = proto;
-            if (!ffi.v8_Value_IsObject(proto)) break;
-            if (ffi.v8_Object_InternalFieldCount(@ptrCast(proto)) >= 1) {
-                window_properties = ffi.v8_Global_Clone(proto);
-                break;
-            }
-            at = proto;
-        }
+        const window_properties = try protocol.evaluateClassicScript(realm, .{ .utf8 =
+            \\(() => {
+            \\  for (let o = Object.getPrototypeOf(globalThis); o; o = Object.getPrototypeOf(o)) {
+            \\    const d = Object.getOwnPropertyDescriptor(o, Symbol.toStringTag);
+            \\    if (d && d.value === "WindowProperties") return o;
+            \\  }
+            \\  return null;
+            \\})()
+        }, "", null, Ignored.reporter);
         return .{ .proxy = proxy, .window_properties = window_properties };
     }
 
@@ -107,12 +103,19 @@ const Kept = struct {
         return field0(@ptrCast(@alignCast(self.proxy.value.handle.ptr)));
     }
 
-    fn propertiesField(self: Kept) ?*anyopaque {
-        return field0(self.window_properties orelse return null);
+    /// The Window of the proxy's anchor - the proxy's and the hidden
+    /// global's, which `check_global` (an attached proxy only) checks agree.
+    fn proxyAnchor(self: Kept, check_global: bool) ?*anyopaque {
+        return ffi.v8_Debug_GlobalAnchorInstanceOf(@ptrCast(@alignCast(self.proxy.value.handle.ptr)), check_global);
+    }
+
+    fn propertiesAnchor(self: Kept) ?*anyopaque {
+        if (self.window_properties.value != .handle) return null;
+        return ffi.v8_Debug_GlobalAnchorInstanceOf(@ptrCast(@alignCast(self.window_properties.value.handle.ptr)), false);
     }
 
     fn release(self: Kept) void {
-        if (self.window_properties) |wp| ffi.v8_Global_Dispose(wp);
+        self.window_properties.release();
         self.proxy.release();
     }
 };
@@ -135,21 +138,25 @@ fn expectSevered(how: protocol.WindowRealmEnd) !void {
         kept.release();
         ffi.v8_Isolate_Exit(isolate);
     }
-    // Both name the Window while the realm lives.
+    // All three name the Window while the realm lives.
     try testing.expectEqual(@as(?*anyopaque, @ptrCast(window)), kept.proxyField());
-    try testing.expect(kept.window_properties != null);
-    try testing.expectEqual(@as(?*anyopaque, @ptrCast(window)), kept.propertiesField());
+    try testing.expectEqual(@as(?*anyopaque, @ptrCast(window)), kept.proxyAnchor(true));
+    try testing.expect(kept.window_properties.value == .handle);
+    try testing.expectEqual(@as(?*anyopaque, @ptrCast(window)), kept.propertiesAnchor());
 
     protocol.destroyWindowRealm(realm, how);
 
     ffi.v8_Isolate_Enter(isolate);
     const proxy_field = kept.proxyField();
-    const properties_field = kept.propertiesField();
+    // A detached proxy (.global_detached) has no hidden global to compare.
+    const proxy_anchor = kept.proxyAnchor(how == .navigable_destroyed);
+    const properties_anchor = kept.propertiesAnchor();
     ffi.v8_Isolate_Exit(isolate);
-    if (proxy_field != null or properties_field != null)
-        std.debug.print("after the end ({s}): proxy field 0 {?*}, WindowProperties field 0 {?*}, the Window {*}\n", .{ @tagName(how), proxy_field, properties_field, window });
+    if (proxy_field != null or proxy_anchor != null or properties_anchor != null)
+        std.debug.print("after the end ({s}): proxy field 0 {?*}, proxy anchor {?*}, WindowProperties anchor {?*}, the Window {*}\n", .{ @tagName(how), proxy_field, proxy_anchor, properties_anchor, window });
     try testing.expect(proxy_field == null);
-    try testing.expect(properties_field == null);
+    try testing.expect(proxy_anchor == null);
+    try testing.expect(properties_anchor == null);
 }
 
 test "a realm's end with its global detached severs the proxy and WindowProperties from its Window" {

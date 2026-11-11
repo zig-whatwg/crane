@@ -211,3 +211,21 @@ test "snapshot agent: v8_Context_New and v8_Context_NewWithMicrotaskQueue make a
     }
     try std.testing.expect(try page.holds("globalThis instanceof Window && typeof Document === 'function'"));
 }
+
+test "snapshot agent: a restored Window realm's global is attached as a fresh one is - a GlobalAnchor naming its Window on the proxy and the hidden global" {
+    // Lane v8up b3c (design 2.7): Blink's snapshot never carries the global's wrap - LocalWindowProxy::Initialize
+    // runs SetupWindowPrototypeChain (WrapGlobal) after Context::FromSnapshot as after Context::New - and Crane's
+    // restored realm goes through the same attach function (realm_global.attach).
+    const page = (try SnapshotPage.open()) orelse return error.SkipZigTest;
+    defer page.close();
+    const record = page.realm.getRealm() orelse return error.NoRealm;
+    const window = record.global_object orelse return error.NoWindow;
+    var reports: Reports = .{};
+    const global = try protocol.evaluateClassicScript(page.realm, .{ .utf8 = "globalThis" }, "", null, reports.reporter());
+    defer global.release();
+    try std.testing.expectEqual(@as(usize, 0), reports.count);
+    // With the isolate entered (the realm's own entry may be its page's only).
+    ffi.v8_Isolate_Enter(page.isolate());
+    defer ffi.v8_Isolate_Exit(page.isolate());
+    try std.testing.expectEqual(@as(?*anyopaque, window), ffi.v8_Debug_GlobalAnchorInstanceOf(@ptrCast(@alignCast(global.value.handle.ptr)), true));
+}

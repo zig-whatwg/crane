@@ -3589,9 +3589,10 @@ pub extern fn v8_Object_DeletePrivateRef(holder: *Object, key: [*]const u8, key_
 /// tracedValue). Needs an entered context.
 pub extern fn v8_Object_GetPrivateRef(holder: *Object, key: [*]const u8, key_len: c_int) ?*Value;
 /// Keep `value` alive exactly as long as `holder` (an object - a detached
-/// realm's hidden global object, never its proxy): appended to an array in a
-/// private property (`key`) of it - an edge, never a root. Runs in the
-/// holder's creation context. A no-op for an empty (collected) holder.
+/// realm's retained store, which its global's GlobalAnchor traces): appended
+/// to an array in a private property (`key`) of it - an edge, never a root.
+/// Runs in the holder's creation context. A no-op for an empty (collected)
+/// holder.
 pub extern fn v8_Object_RetainInPrivateArray(holder: *Value, key: [*]const u8, key_len: c_int, value: *Value) void;
 /// Set `holder`'s private property `key` to `value`, or delete it when
 /// `value` is null: an edge, never a root - a node's wrapper keeping its
@@ -3610,9 +3611,43 @@ pub extern fn v8_Context_SetWeak(context: *Context, user_data: ?*anyopaque, call
 /// event handler); a dispose untags it.
 pub extern fn v8_Global_TagRealm(global: *Value, realm_key: usize) void;
 /// A detached realm (`realm_key`): every handle tagged with it is kept from
-/// `holder`, its hidden global object (an array in private `key`), and made
-/// weak. Returns how many.
+/// `holder`, its retained store (an array in private `key`), and made weak.
+/// Returns how many.
 pub extern fn v8_Object_WeakenTaggedHandles(holder: *Value, realm_key: usize, key: [*]const u8, key_len: c_int) c_int;
+/// Zig's reference to a realm global's GlobalAnchor (v8_wrapper.cpp): a
+/// cppgc::WeakPersistent, which cppgc clears in the collection that finds the
+/// anchor - and the global object holding it - dead. Disposed at the realm's
+/// end, on its agent's thread (v8_GlobalAnchor_Dispose).
+pub const GlobalAnchorRef = opaque {};
+/// THE attach function for a realm's global (realm_global.attach): `instance`
+/// in the global proxy's field 0 and a new GlobalAnchor on the proxy and its
+/// hidden global (Object::WrapGlobal). Null when the isolate has no C++ heap.
+pub extern fn v8_GlobalAnchor_Attach(context: *Context, instance: ?*anyopaque) ?*GlobalAnchorRef;
+/// A navigation hands `context`'s WindowProxy on: clear the PROXY's anchor
+/// (Blink ClearNativeInfo), before DetachGlobal.
+pub extern fn v8_GlobalAnchor_ClearProxy(context: *Context) void;
+/// Wrap `object` (a WindowProperties object) with the realm's anchor.
+pub extern fn v8_GlobalAnchor_WrapObject(ref: *GlobalAnchorRef, object: *Object) void;
+/// The anchor's instance is about to be freed: every object wrapped with it
+/// finds none from now on.
+pub extern fn v8_GlobalAnchor_Clear(ref: *GlobalAnchorRef) void;
+/// Whether the anchor (so the global object holding it) is alive.
+pub extern fn v8_GlobalAnchor_IsAlive(ref: *GlobalAnchorRef) bool;
+/// The realm's retained store, an owned Global (v8_Global_Dispose); null once
+/// the anchor is gone.
+pub extern fn v8_GlobalAnchor_Retained(ref: *GlobalAnchorRef) ?*Value;
+/// Zig's reference ends.
+pub extern fn v8_GlobalAnchor_Dispose(ref: *GlobalAnchorRef) void;
+/// The instance of the anchor an interceptor's holder is wrapped with - only
+/// for a holder Crane wrapped (WindowProperties).
+pub extern fn v8_PropertyCallbackInfo_HolderGlobalAnchorInstance(info: *const PropertyCallbackInfo) ?*anyopaque;
+/// Tests: the instance of the anchor a global proxy or a WindowProperties
+/// object (BORROWED) carries; with `check_global` (an ATTACHED proxy only),
+/// after V8's CheckGlobalWrappable (proxy and hidden global agree; fatal if
+/// not).
+pub extern fn v8_Debug_GlobalAnchorInstanceOf(object: *Object, check_global: bool) ?*anyopaque;
+/// Tests: whether a global proxy carries any GlobalAnchor.
+pub extern fn v8_Debug_HasGlobalAnchor(proxy: *Object) bool;
 // ---- end lane: realms ----
 // ---- lane: speed ----
 /// Isolate::TerminateExecution: any thread, no lock (engine.abortRunningScript).

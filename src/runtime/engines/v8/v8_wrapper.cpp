@@ -3561,6 +3561,7 @@ static_assert(kGlobalAnchor == kCraneWrappableFirst && kGlobalAnchor < kNodeAnch
 
 constexpr CppHeapPointerTag tag(uint16_t value) { return static_cast<CppHeapPointerTag>(value); }
 [[maybe_unused]] constexpr CppHeapPointerTagRange kCraneWrappableRange{tag(kCraneWrappableFirst), tag(kCraneWrappableLast)};
+constexpr CppHeapPointerTagRange kGlobalAnchorRange{tag(kGlobalAnchor), tag(kGlobalAnchor)};
 [[maybe_unused]] constexpr CppHeapPointerTagRange kNodeAnchorRange{tag(kNodeAnchorFirst), tag(kNodeAnchorLast)};
 [[maybe_unused]] constexpr CppHeapPointerTagRange kPlatformAnchorRange{tag(kPlatformAnchorFirst), tag(kPlatformAnchorLast)};
 }  // namespace crane_tags
@@ -3580,6 +3581,204 @@ class CraneWrappable : public v8::Object::Wrappable {
 static_assert(sizeof(CraneWrappable) == sizeof(void*), "CraneWrappable carries no data: each kind lays out its own fields");
 static_assert(!std::is_trivially_destructible_v<CraneWrappable>,
               "a Wrappable is a NameProvider: cppgc finalizes it (its destructor is the anchor's finalizer)");
+
+// ----------------------------------------------------------------------------
+// GlobalAnchor: a realm global's native info (lane v8up b3c;
+// tmp/plans/v8-global-object-design.md 1.1-1.2, 2.1-2.5). V8 >= 14 gives the
+// embedder no handle to a context's JSGlobalObject (crbug.com/333672197);
+// what it gives is Object::WrapGlobal, which sets ONE CppHeap pointer on the
+// JSGlobalProxy AND on its hidden prototype, the JSGlobalObject (v8-object.h
+// 662-668). Blink attaches the DOMWindow that way at context creation
+// (LocalWindowProxy::SetupWindowPrototypeChain, local_window_proxy.cc 405-449,
+// V8DOMWrapper::SetNativeInfoForGlobal) and a worker's global scope the same
+// (WorkerOrWorkletScriptController::Initialize...,
+// worker_or_worklet_script_controller.cc 205-213). Crane attaches a
+// GlobalAnchor through one function, `v8_GlobalAnchor_Attach`, for every
+// realm global: Window (fresh or restored from the snapshot - Blink wraps a
+// restored context's global by the same SetupWindowPrototypeChain, 1.5),
+// worker, worklet, ShadowRealm.
+//
+// What it carries:
+// - `instance_`: the Zig global instance (a Window, a WorkerGlobalScope...),
+//   NOT owned - Zig frees it and calls clear() first. Read by the realm's
+//   WindowProperties object, which Blink wraps with the window too
+//   (SetupWindowPrototypeChain 434-437: SetNativeInfo), so one clear() severs
+//   the proxy's, the hidden global's and WindowProperties' link at once.
+// - `retained_`: the realm's retained store, a plain object made in the
+//   realm. What the realm's global keeps alive hangs on it as private
+//   properties - its Window's traced edges (protocol_tracing), and once the
+//   realm is detached its wrappers and callbacks (WrapperCache.detach,
+//   v8_Object_WeakenTaggedHandles). The anchor traces it, so it lives exactly
+//   while the global object does - the hidden global after a navigation
+//   handed the proxy on (Blink 1.2: the old JSGlobalObject keeps its CppHeap
+//   pointer to the OLD window, and tracing keeps what the window holds; no
+//   handle to the old global exists). Crane's Window is a Zig object, not a
+//   cppgc one, so its edges are JS edges from this store - the same graph:
+//   global object -> anchor -> store -> what the Window keeps. Set once, in
+//   the constructor, before the anchor is reachable: a concurrent marker
+//   never reads it mid-write (the contract's concurrency rule).
+//
+// Zig never keeps a raw pointer to the anchor: it keeps a GlobalAnchorRef, a
+// cppgc::WeakPersistent, which cppgc clears in the atomic pause of the
+// collection that finds the anchor dead. That is the signal "the old global
+// object is gone" (it replaces the weak handle to the hidden global that V8
+// >= 14 no longer lets Crane make); a raw pointer told by the finalizer would
+// be stale from the atomic pause to the sweep, while the store's traced node
+// is already freed. The destructor is therefore the base's: it does nothing.
+// ----------------------------------------------------------------------------
+class GlobalAnchor final : public CraneWrappable {
+ public:
+    GlobalAnchor(Isolate* isolate, void* instance, Local<Object> retained)
+        : instance_(instance), retained_(isolate, retained) {}
+
+    void Trace(cppgc::Visitor* visitor) const override {
+        CraneWrappable::Trace(visitor);
+        visitor->Trace(retained_);
+    }
+    const char* GetHumanReadableName() const override { return "Crane GlobalAnchor"; }
+
+    void* instance() const { return instance_; }
+    /// The Zig instance is about to be freed: every JS object wrapped with
+    /// this anchor - the proxy while it is this realm's, the hidden global,
+    /// WindowProperties - finds no instance from now on.
+    void clear() { instance_ = nullptr; }
+    Local<Object> retained(Isolate* isolate) const { return retained_.Get(isolate); }
+
+ private:
+    void* instance_;
+    TracedReference<Object> retained_;
+};
+
+static_assert(sizeof(GlobalAnchor) == 3 * sizeof(void*), "GlobalAnchor: the vptr, instance_, retained_ (one per realm global)");
+
+/// What Zig holds of an anchor: cleared by cppgc when the anchor dies.
+using GlobalAnchorRef = cppgc::WeakPersistent<GlobalAnchor>;
+
+extern "C" {
+
+/// THE attach function for a realm's global (design 2.1): `instance` (the
+/// Zig global instance, or null for a realm with none - a ShadowRealm's) in
+/// the global proxy's internal field 0, which the bindings read for a
+/// receiver and every conversion reads for a WindowProxy value (as every
+/// Crane wrapper carries its instance until lanes wr1/wrap1 move wrappers to
+/// Object::Wrap), and a new GlobalAnchor set on the proxy and its hidden
+/// global object by Object::WrapGlobal. Returns Zig's reference to the anchor
+/// (v8_GlobalAnchor_Dispose), or null when the isolate has no C++ heap.
+GlobalAnchorRef* v8_GlobalAnchor_Attach(Global<Context>* context, void* instance) {
+    if (!context || context->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return nullptr;
+    CppHeap* heap = isolate->GetCppHeap();
+    if (!heap) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<Object> proxy = ctx->Global();
+    if (proxy->InternalFieldCount() >= 1) proxy->SetAlignedPointerInInternalField(0, instance, kCraneEmbedderDataTag);
+    Local<Object> retained = Object::New(isolate);
+    GlobalAnchor* anchor = cppgc::MakeGarbageCollected<GlobalAnchor>(heap->GetAllocationHandle(), isolate, instance, retained);
+    Object::WrapGlobal(isolate, proxy, anchor, crane_tags::tag(crane_tags::kGlobalAnchor));
+    return new GlobalAnchorRef(anchor);
+}
+
+/// A navigation hands `context`'s WindowProxy to a new realm (Blink
+/// LocalWindowProxy::DisposeContext, kGlobalObjectIsDetached, step 2:
+/// ClearNativeInfo, local_window_proxy.cc 205-214): the PROXY's CppHeap
+/// pointer is cleared; the hidden global object keeps the old anchor. Called
+/// before Context::DetachGlobal, while the proxy is still `context`'s.
+void v8_GlobalAnchor_ClearProxy(Global<Context>* context) {
+    if (!context || context->IsEmpty()) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return;
+    HandleScope handle_scope(isolate);
+    Local<Object> proxy = context->Get(isolate)->Global();
+    Object::Wrap(isolate, proxy, nullptr, crane_tags::tag(crane_tags::kGlobalAnchor));
+}
+
+/// Wrap `object` with `ref`'s anchor (Blink SetupWindowPrototypeChain: the
+/// WindowProperties object gets the window's native info). A no-op once the
+/// anchor is gone.
+void v8_GlobalAnchor_WrapObject(GlobalAnchorRef* ref, Global<Object>* object) {
+    if (!ref || !object || object->IsEmpty()) return;
+    GlobalAnchor* anchor = ref->Get();
+    if (!anchor) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return;
+    HandleScope handle_scope(isolate);
+    Object::Wrap(isolate, object->Get(isolate), anchor, crane_tags::tag(crane_tags::kGlobalAnchor));
+}
+
+/// The anchor's instance is about to be freed (GlobalAnchor::clear). A no-op
+/// once the anchor is gone.
+void v8_GlobalAnchor_Clear(GlobalAnchorRef* ref) {
+    if (!ref) return;
+    if (GlobalAnchor* anchor = ref->Get()) anchor->clear();
+}
+
+/// Whether the anchor - and so the global object that holds it - is alive.
+bool v8_GlobalAnchor_IsAlive(GlobalAnchorRef* ref) {
+    return ref && ref->Get() != nullptr;
+}
+
+/// The realm's retained store (see GlobalAnchor), as a Global the caller
+/// releases (v8_Global_Dispose); null once the anchor is gone.
+Global<Value>* v8_GlobalAnchor_Retained(GlobalAnchorRef* ref) {
+    if (!ref) return nullptr;
+    GlobalAnchor* anchor = ref->Get();
+    if (!anchor) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<Object> retained = anchor->retained(isolate);
+    if (retained.IsEmpty()) return nullptr;
+    return trackHandle(new Global<Value>(isolate, retained));
+}
+
+/// Zig's reference ends (the realm's end, on the agent's thread - a
+/// WeakPersistent belongs to its heap's thread).
+void v8_GlobalAnchor_Dispose(GlobalAnchorRef* ref) {
+    delete ref;
+}
+
+/// The instance of the GlobalAnchor `info`'s holder is wrapped with - a
+/// WindowProperties object's Window (window_properties.zig) - or null: no
+/// anchor, or one cleared. Only for a holder Crane wrapped (an interceptor
+/// installed on WindowProperties alone): Unwrap reads the object's CppHeap
+/// pointer field, which an arbitrary object does not have.
+void* v8_PropertyCallbackInfo_HolderGlobalAnchorInstance(const PropertyCallbackInfo<Value>* info) {
+    Local<Object> holder = info->Holder();
+    GlobalAnchor* anchor = Object::Unwrap<GlobalAnchor>(info->GetIsolate(), holder, crane_tags::kGlobalAnchorRange);
+    return anchor ? anchor->instance() : nullptr;
+}
+
+/// Tests (tests/v8): the instance of the GlobalAnchor `object` (BORROWED) is
+/// wrapped with - a global proxy, or a WindowProperties object - or null: none,
+/// or one cleared. With `check_global`, `object` must be an ATTACHED global
+/// proxy, and V8's Object::CheckGlobalWrappable first checks that the proxy
+/// and its hidden global object carry the same anchor (a fatal API check when
+/// they do not; on a detached proxy, whose hidden prototype is gone, it is a
+/// CHECK failure - pass false there).
+void* v8_Debug_GlobalAnchorInstanceOf(Global<Object>* object, bool check_global) {
+    if (!object || object->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<Object> local = object->Get(isolate);
+    if (check_global) (void)Object::CheckGlobalWrappable(isolate, local, crane_tags::kGlobalAnchorRange);
+    GlobalAnchor* anchor = Object::Unwrap<GlobalAnchor>(isolate, local, crane_tags::kGlobalAnchorRange);
+    return anchor ? anchor->instance() : nullptr;
+}
+
+/// Tests: whether `proxy` carries any GlobalAnchor (a cleared one too).
+bool v8_Debug_HasGlobalAnchor(Global<Object>* proxy) {
+    if (!proxy || proxy->IsEmpty()) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return false;
+    HandleScope handle_scope(isolate);
+    return Object::Unwrap<GlobalAnchor>(isolate, proxy->Get(isolate), crane_tags::kGlobalAnchorRange) != nullptr;
+}
+
+}  // extern "C"
 
 // cppgc's own registry of the process's live C++ heaps: every heap registers
 // in its constructor and unregisters in its destructor (13.1.203
@@ -14330,12 +14529,13 @@ Global<Value>* v8_Object_GetPrivateRef(Global<Object>* holder, const char* key, 
 /// appended to an array held in `holder`'s private property `key`, made on
 /// first use. An edge, never a root - what a Window realm whose navigable was
 /// destroyed, or whose document a navigation replaced, holds its wrappers and
-/// callbacks by: `holder` is its HIDDEN global object (never the global proxy,
-/// which a navigation hands to the next realm - a private property set through
-/// it lands on whichever global object it reaches now), so the collector can
-/// take the realm once nothing reaches it (the engine protocol's Window realm
-/// ends). Runs in `holder`'s creation context. A no-op for an empty holder -
-/// a global object already collected.
+/// callbacks by: `holder` is its retained store, which its global object keeps
+/// through its GlobalAnchor (never the global proxy, which a navigation hands
+/// to the next realm - a private property set through it lands on whichever
+/// global object it reaches now), so the collector can take the realm once
+/// nothing reaches it (the engine protocol's Window realm ends). Runs in
+/// `holder`'s creation context. A no-op for an empty holder - a store already
+/// collected with its global.
 void v8_Object_RetainInPrivateArray(Global<Value>* holder, const char* key, int key_len, Global<Value>* value) {
     if (!holder || holder->IsEmpty() || !value || value->IsEmpty()) return;
     Isolate* isolate = Isolate::GetCurrent();
@@ -14466,8 +14666,8 @@ void v8_Global_TagRealm(Global<Value>* global, uintptr_t realm_key) {
 static void taggedHandleCollected(void*, size_t) {}
 
 /// A Window realm that is detached (`realm_key` its context's key): every
-/// handle tagged with it is kept by an edge from `holder` - its hidden global
-/// object (v8_Object_RetainInPrivateArray, `key`) - instead, and made weak; its
+/// handle tagged with it is kept by an edge from `holder` - its retained store
+/// (v8_Object_RetainInPrivateArray, `key`) - instead, and made weak; its
 /// holder still owns and disposes it, and it reads empty once the realm is
 /// collected. Returns how many it weakened.
 int v8_Object_WeakenTaggedHandles(Global<Value>* holder, uintptr_t realm_key, const char* key, int key_len) {
