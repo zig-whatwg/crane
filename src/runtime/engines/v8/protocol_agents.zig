@@ -875,33 +875,43 @@ pub fn queueMicrotask(agent: *Agent, steps: engine.RealmSteps, data: ?*anyopaque
     ffi.v8_Isolate_EnqueueMicrotask(entered.isolate, @ptrCast(&runQueuedMicrotask), queued);
 }
 
-/// notifyMemoryPressure: `.critical` is LowMemoryNotification - a full,
-/// synchronous collection - three times with checkpoints between, so that
-/// what each pass's weak callbacks let go (and the reactions they queued) is
-/// collected by the next; `.moderate` is the hint V8 takes after a
-/// context is let go (ContextDisposedNotification, not forced), which moves
-/// its next collection up.
+/// notifyMemoryPressure: Isolate::MemoryPressureNotification at both levels,
+/// the one signal Blink sends V8 for memory pressure (content/renderer/
+/// blink_isolates_pressure_listener.cc OnReleaseMemory ->
+/// blink::MemoryPressureNotificationToAllIsolates, Chromium 157.0.8103.51;
+/// Blink's MemoryPurgeManager reaches the same call with a critical notice
+/// for a renderer left in the background). The agent's isolate is entered on
+/// this thread, so V8 answers before the call returns (15.7 src/heap/heap.cc
+/// Heap::CheckMemoryPressure):
+/// - `.moderate` starts an incremental collection that reduces the footprint;
+///   V8's marking job finishes it in foreground tasks, the event loop's
+///   engine-task step. Nothing is collected here.
+/// - `.critical` drops V8's caches and collects everything now - once, and a
+///   second time when the first left much to free
+///   (Heap::CollectGarbageOnMemoryPressure) - with the weak callbacks' second
+///   pass run inside it (kGCCallbackFlagCollectAllAvailableGarbage), so what
+///   the collection found dead is finalized before it returns. Then the
+///   reactions those finalizers queued run (a checkpoint), and the trees the
+///   collection queued are torn down now - the host wants the memory back -
+///   unless a walk holds the agent's teardowns, when they wait for its end or
+///   the next turn (engine.deferTeardowns). What the teardown let go of is
+///   V8's to collect at its next collection, as what a Blink finalizer lets
+///   go of is.
+/// It was three LowMemoryNotifications with checkpoints between at
+/// `.critical` - at least six full collections for every page that ended -
+/// and ContextDisposedNotification at `.moderate`, which starts no collection.
 pub fn notifyMemoryPressure(agent: *Agent, level: engine.MemoryPressure) void {
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
     switch (level) {
         .critical => {
-            ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
+            ffi.v8_Isolate_MemoryPressureNotification(entered.isolate, .critical);
             ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
-            ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
-            ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
-            // The trees the collections queued are torn down now - the host
-            // wants the memory back - and what their teardown let go of is
-            // collected by the third pass, which also takes what the
-            // second's weak callbacks revived - unless a walk holds the
-            // agent's teardowns, when they wait for its end or the next turn
-            // (engine.deferTeardowns).
-            const queue = if (teardownsHeld(entered.isolate)) null else deferredTeardownOf(entered.isolate);
-            if (queue) |q| q.drainAll();
-            ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
-            if (queue) |q| q.drainAll();
+            if (!teardownsHeld(entered.isolate)) {
+                if (deferredTeardownOf(entered.isolate)) |queue| queue.drainAll();
+            }
         },
-        .moderate => ffi.v8_Isolate_ContextDisposedNotification(entered.isolate, false),
+        .moderate => ffi.v8_Isolate_MemoryPressureNotification(entered.isolate, .moderate),
     }
 }
 

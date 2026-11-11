@@ -61,6 +61,13 @@ const WindowRealmState = struct {
     /// An auxiliary navigable's realm (WindowRealmOptions.auxiliary): a realm
     /// built around its parent's WindowProxy adopts it.
     auxiliary: bool = false,
+    /// The realm's Window is its page's top-level one - a top-level
+    /// traversable's, an auxiliary one's included (a popup is the main frame
+    /// of its own page) - never a child navigable's: Blink's
+    /// LocalFrame::IsMainFrame. Fixed at the realm's making: a top-level
+    /// realm a later realm adopts (`parent` is set then) stays one. It
+    /// decides what the realm's end tells V8 (`endRealm` step 4).
+    top_level: bool,
     /// The realms made with this one as their parent that have not ended:
     /// they end first when this one does.
     children: std.ArrayListUnmanaged(Context) = .empty,
@@ -425,6 +432,7 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         .host = options.host,
         .parent = options.parent,
         .auxiliary = options.auxiliary and options.parent != null,
+        .top_level = options.parent == null or options.auxiliary,
         .window = window,
         .window_generation = runtime.SlabAllocator.generationOf(window),
         .allocator = allocator,
@@ -1039,9 +1047,20 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
         else
             log.warn("a Window realm ended under another entered context; its context stays entered", .{});
     }
-    // 4. Tell V8 a context is garbage (forced: sequential pages must not pile
-    // up), and release the handle - a detached realm's weak arm with it.
-    ffi.v8_Isolate_ContextDisposedNotification(isolate, true);
+    // 4. Tell V8 a context is garbage, and whether it had dependants, as
+    // Blink does from LocalWindowProxy::DisposeContext
+    // (V8GCForContextDispose::NotifyContextDisposed, bindings/core/v8/
+    // v8_gc_for_context_dispose.cc: `is_main_frame ? kNoDependants :
+    // kSomeDependants`): a page's top-level realm has none - V8 takes its
+    // allocation limits back to their initial values and tells its memory
+    // reducer - and a child navigable's has some, its page living on - V8
+    // runs a young collection by task. A realm with no state is told as a
+    // child's, which resets nothing. Neither collects here: that a page's
+    // memory comes back when it goes is the host's memory-pressure notice
+    // (Browser, engine.notifyMemoryPressure). Then release the handle - a
+    // detached realm's weak arm with it.
+    const has_dependants = if (state) |s| !s.top_level else true;
+    ffi.v8_Isolate_ContextDisposedNotification(isolate, has_dependants);
     ffi.v8_Context_Dispose(context);
     if (state) |s| if (s.entered_isolate) ffi.v8_Isolate_Exit(isolate);
     // 5. The Window's storage goes back to its Browser's slab: its teardown
