@@ -127,6 +127,15 @@ pub const ValueId = enum(u32) {
     /// under 16 bytes is read through a zero-padded copy (a zero byte is
     /// neither whitespace nor upper case), the last partial step through an
     /// overlapping load (OR-ing a byte twice changes nothing).
+    ///
+    /// Every load is inside `bytes`: under 16 bytes, only `bytes.len` bytes
+    /// are copied (into `padded`, whose other bytes stay zero) and the copy is
+    /// what is read; from 16 bytes on, each step reads `bytes[at..at + 16]`
+    /// with `at + 16 <= bytes.len`, and the tail step `bytes[len - 16..len]`
+    /// starts at `len - 16 >= 0` - both slices bounds-checked in safe builds
+    /// (the bug-finding runner's, the tests'). The vectors are portable
+    /// (@Vector: NEON on aarch64, SSE2 on x86-64); the unit test compares
+    /// both against a byte-by-byte reading on each pool host.
     fn flagsOf(bytes: []const u8) u32 {
         const V = @Vector(16, u8);
         var whitespace: V = @splat(0);
