@@ -108,7 +108,17 @@ const snapshot_only_flags = "--hash-seed=0 --predictable";
 /// third-party apps no W^X exception, so V8 generating code there gets the process
 /// killed; interpreter-only is the only way to run at all. It is a build-time
 /// decision rather than runtime because it must be set before V8 initializes.
-pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm" ++ if (build_options.jitless) " --jitless" else "";
+///
+/// `--no-compilation-cache` is appended only by the measurement switch
+/// -Dv8-no-compilation-cache (build.zig says what it measures); the default
+/// build leaves V8's compilation cache on, as Chrome does.
+pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm" ++
+    (if (build_options.jitless) " --jitless" else "") ++
+    (if (no_compilation_cache) " --no-compilation-cache" else "");
+
+/// Whether this build starts V8 without its compilation cache
+/// (-Dv8-no-compilation-cache; off by default).
+pub const no_compilation_cache = build_options.v8_no_compilation_cache;
 
 /// Initialize V8 platform with proper flags for snapshot support.
 /// This MUST be called instead of v8_Platform_Initialize() when using snapshots.

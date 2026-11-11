@@ -3192,6 +3192,20 @@ pub fn build(b: *std.Build) void {
     ) orelse jitless_default;
     build_options.addOption(bool, "jitless", jitless);
 
+    // A MEASUREMENT switch, off by default (lane v8up b4, 2026-11-11; the integrator's request): start V8 with
+    // --no-compilation-cache. V8 15.7's eval cache serves `new Function(...)` and eval by source text alone
+    // (EvalCacheKey: source, outer function, language mode, position - no host-defined options) and stores a
+    // compile on its FIRST sighting (13.1: on its second), so a Function built from the same text by a second
+    // script imports with the FIRST script's base URL and nonce (WPT dynamic-import/code-cache-base-url.html,
+    // code-cache-nonce.html; Chrome 157 fails them, Firefox and Safari pass). The flag turns off the script
+    // cache too - 15.7 has no narrower one - so its cost is measured before anyone turns it on.
+    const v8_no_compilation_cache = b.option(
+        bool,
+        "v8-no-compilation-cache",
+        "Start V8 with --no-compilation-cache (a measurement switch; default off = Chrome's configuration)",
+    ) orelse false;
+    build_options.addOption(bool, "v8_no_compilation_cache", v8_no_compilation_cache);
+
     build_options.addOption([]const u8, "engine_name", engine_choice);
     build_options.addOption(bool, "has_snapshot_support", std.mem.eql(u8, engine_choice, "v8"));
     build_options.addOption(bool, "has_isolate_per_thread", std.mem.eql(u8, engine_choice, "v8"));
