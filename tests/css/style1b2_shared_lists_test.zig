@@ -1,11 +1,9 @@
 //! Lane style1 batch 2, item (B): a computed transition or animation list
 //! whose items all compute to themselves is the declared list, one more
 //! reference - as Easing.compute keeps a keyword easing and grid Line.compute
-//! an integer line. Blink and WebKit store the declared CSSValueList's
-//! computed data once per style builder pass from shared CSSValues
-//! (CSSToStyleMap::MapAnimation* read the shared value; nothing per element
-//! is allocated for a keyword or a literal time), so siblings matched by the
-//! same rule hold the same transition data.
+//! an integer line - so siblings matched by the same rule hold the same
+//! transition data (Blink and WebKit share it between such elements through
+//! their matched-properties caches).
 //!
 //! RED at 55e9a4f78de: List.compute allocated a fresh list per element
 //! (animation_values.List.create + its items + a dupe of every name), so two
