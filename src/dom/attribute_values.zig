@@ -928,7 +928,14 @@ test "a parked record comes back with its id and a count of one, and leaves the 
 }
 
 test "a million distinct values end at the table's size plus at most the ring" {
-    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    // A leak-checking, poisoning DebugAllocator with no stack traces, not
+    // std.testing.allocator: its capture of 7 frames at every allocation and
+    // free runs the DWARF self-unwinder on macOS, which made this test 73 s
+    // on chat2 against 8 s on server1 (lane nd2 batch 3; tests/dom/
+    // nd2_element_name_test.zig CountedPage has the profile).
+    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
+    defer if (debug.deinit() == .leak) @panic("a million distinct values leaked");
+    var scope = runtime.BrowserScope.init(debug.allocator());
     defer scope.deinit();
     const keep = try intern(&scope, "kept");
     const table = tableOf(&scope).?;

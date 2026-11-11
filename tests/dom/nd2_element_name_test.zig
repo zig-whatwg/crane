@@ -399,19 +399,34 @@ fn tableCount(scope: *runtime.BrowserScope) usize {
     return table.count();
 }
 
-/// A page whose Browser's allocator counts what it holds.
+/// A page whose Browser's allocator counts what it holds - over a
+/// leak-checking, poisoning DebugAllocator that records NO stack traces, not
+/// std.testing.allocator. The testing allocator captures 7 frames at every
+/// allocation and every free; on macOS that capture runs the DWARF
+/// self-unwinder (debug.SelfInfo.MachO.unwindFrameInner, Dwarf.Unwind
+/// .VirtualMachine) frame by frame, and a `sample` of the million-name churn
+/// on chat2 (2026-11-11, lane nd2 batch 3) put 9,880 of its 10,394 samples
+/// (95%) under SafeAllocator.captureStackTrace: 148 s on chat2 and 213 s on
+/// chat.local against 27 s on server1, where the capture is cheap. The
+/// churn's leak and poison checks stay (the DebugAllocator's deinit, its
+/// poisoned frees); only the traces, which a leak report here never needs
+/// (the counters below name the leak), go.
 const CountedPage = struct {
+    debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }),
     counting: std.testing.FailingAllocator,
     page: Page,
 
-    /// In place, as Page.
+    /// In place, as Page: the allocators point into it.
     fn open(self: *CountedPage) !void {
-        self.counting = std.testing.FailingAllocator.init(testing.allocator, .{});
+        self.debug = .init;
+        self.counting = std.testing.FailingAllocator.init(self.debug.allocator(), .{});
         try self.page.openWith(self.counting.allocator());
     }
 
-    fn close(self: *CountedPage) void {
+    /// The page's end, then the DebugAllocator's leak check.
+    fn close(self: *CountedPage) !void {
         self.page.close();
+        if (self.debug.deinit() == .leak) return error.Leaked;
     }
 
     /// The bytes the Browser's allocator handed out and has not had back.
@@ -438,7 +453,8 @@ fn churn(page: *Page, first: usize, end: usize, shape: Shape) !void {
 fn expectFlat(shape: Shape) !void {
     var counted: CountedPage = undefined;
     try counted.open();
-    defer counted.close();
+    var closed = false;
+    defer if (!closed) counted.close() catch {};
     const page = &counted.page;
 
     const names_at_start = tableCount(&page.scope);
@@ -458,6 +474,8 @@ fn expectFlat(shape: Shape) !void {
     try testing.expectEqual(names_at_start, names_at_end);
     try testing.expect(live_end <= live_warm + 64 * 1024);
     try testing.expect(arena_end <= arena_warm + 64 * 1024);
+    closed = true;
+    try counted.close();
 }
 
 test "a million createElement('x-' + i), each dropped, leave the Browser's name table and memory where they started" {
