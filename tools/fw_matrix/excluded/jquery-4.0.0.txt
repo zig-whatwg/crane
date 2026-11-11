@@ -341,6 +341,13 @@ kind   = needs-server
 why    = its request to mock.php?action=contentType needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2504: url: url( "mock.php?action=contentType" ),
 source = test/unit/ajax.js:2502
 
+# test/unit/ajax.js defines this test twice (lines 2502 and 2519); QUnit renames the second by appending a
+# space (qunit.js Test: `this.testName += ' '`), so the next entry's name ends in a space.
+[ajax: gh-2587 - when content-type not xml, but looks like one ]
+kind   = needs-server
+why    = its request to mock.php?action=contentType needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2521: url: url( "mock.php?action=contentType" ),
+source = test/unit/ajax.js:2519
+
 [ajax: gh-2587 - when content-type not json, but looks like one]
 kind   = needs-server
 why    = its request to mock.php?action=contentType needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2538: url: url( "mock.php?action=contentType" ),
@@ -605,3 +612,469 @@ source = test/unit/ajax.js:2361
 kind   = needs-server
 why    = its request to mock.php?action=echoData needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2346: url: url( "mock.php?action=echoData" ) (the loop's request helper)
 source = test/unit/ajax.js:2361
+
+# ---------------------------------------------------------------------------------------------------------------
+# EXCLUDED: rendering (ruling R7). A test is here when an assertion's expected value needs a layout box or pixels:
+# :visible/:hidden (offsetWidth || offsetHeight || getClientRects().length), offset*/client*/scroll* geometry,
+# .offset()/.position()/.offsetParent(), the window's and the document's sizes, and resolved values that CSSOM
+# defines as used values (auto/%/content-based sizes as px). Read by hand at the tag from the diagnosis run of
+# 2026-11-11 (lane fw1, unfiltered). NOT excluded, though they read sizes: jQuery's dimension getters over sizes the
+# element declares in px (width/inner/outer arithmetic from computed padding/border/box-sizing is the style system:
+# dimensions "width(Function(args))", "height(Function(args))", "fractional getters", both "child of a hidden
+# elem" tests, "hidden element with dimensions from a stylesheet", the three SVG tests, "passing undefined is a
+# setter", "width/height on element with transform"; basic "dimensions"; effects "animate block width/height",
+# "Animations with 0 duration don't ease", "slideDown() after stop()"), and offset tests that assert only the shape
+# of the result or a box that cannot exist ("empty set", "disconnected element", "hidden (display: none) element",
+# "normal element", "chaining").
+# ---------------------------------------------------------------------------------------------------------------
+
+[basic: offset]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: .offset getter | Expected: 25 | Result: 0
+source    = test/unit/basic.js:213
+
+[css: css() mismatched relative values with bounded styles (gh-2144)]
+kind      = rendering
+why       = converts `right: -=25em` on an absolutely positioned box with left/right 50%: the resolved value of `right` is its used value, which layout gives
+assertion = QUnit: Constraints do not interfere with unit conversion | Expected: 100 | Result: -50
+source    = test/unit/css.js:272
+
+[css: toggle()]
+kind      = rendering
+why       = asserts jQuery's :visible / :hidden, which jQuery 4 defines as offsetWidth || offsetHeight || getClientRects().length: a layout box
+assertion = QUnit: is visible | Expected: true | Result: false
+source    = test/unit/css.js:964
+
+[css: computed margins (trac-3333; gh-2237)]
+kind      = rendering
+why       = asserts a resolved value that CSSOM defines as the used value (the property applies and the element is rendered), i.e. a length only layout yields (an auto margin as px)
+assertion = QUnit: auto margins are computed to pixels | Expected: "25px" | Result: "auto"
+source    = test/unit/css.js:1072
+
+[css: box model properties incorrectly returning % instead of px, see trac-10639 and trac-12088]
+kind      = rendering
+why       = asserts a resolved value that CSSOM defines as the used value (the property applies and the element is rendered), i.e. a length only layout yields (a % margin as px)
+assertion = QUnit: css('marginRight') returning % instead of px, see trac-10639 | Expected: "200px" | Result: "50%"
+source    = test/unit/css.js:1098
+
+[css: percentage properties for left and top should be transformed to pixels, see trac-9505]
+kind      = rendering
+why       = asserts a resolved value that CSSOM defines as the used value (the property applies and the element is rendered), i.e. a length only layout yields (% left/top as px)
+assertion = QUnit: position properties not transformed to pixels, see trac-9505 | Expected: "100px" | Result: "50%"
+source    = test/unit/css.js:1171
+
+[css: table rows width/height should be unaffected by inline styles]
+kind      = rendering
+why       = asserts a table row's width, which jQuery reads from offsetWidth when the row's computed size is unreliable: layout
+assertion = QUnit: tr width unaffected by inline style | Expected: true | Result: false
+source    = test/unit/css.js:1347
+
+[css: Test computeStyleTests for hidden iframe]
+kind      = rendering
+why       = asserts a table row's width (101 from a 100.7px table): layout
+assertion = QUnit: tr width as expected | Expected: 101 | Result: 0
+source    = test/unit/css.js:1405
+
+[css: :visible/:hidden selectors]
+kind      = rendering
+why       = asserts jQuery's :visible / :hidden, which jQuery 4 defines as offsetWidth || offsetHeight || getClientRects().length: a layout box
+assertion = QUnit: Modifying CSS display: Assert element is visible | Expected: true | Result: false
+source    = test/unit/css.js:1522
+
+[dimensions: width()]
+kind      = rendering
+why       = asserts the window's dimension against document.documentElement.clientWidth/Height: the viewport's size less its scrollbars, which layout decides
+assertion = assert.equal( jQuery( window ).width(), document.documentElement.clientWidth, ... ) (testWidth)
+source    = test/unit/dimensions.js:61
+
+[dimensions: width(Function)]
+kind      = rendering
+why       = asserts the window's dimension against document.documentElement.clientWidth/Height: the viewport's size less its scrollbars, which layout decides
+assertion = assert.equal( jQuery( window ).width(), document.documentElement.clientWidth, ... ) (testWidth)
+source    = test/unit/dimensions.js:65
+
+[dimensions: height()]
+kind      = rendering
+why       = asserts the window's dimension against document.documentElement.clientWidth/Height: the viewport's size less its scrollbars, which layout decides
+assertion = assert.equal( jQuery( window ).height(), document.documentElement.clientHeight, ... ) (testHeight)
+source    = test/unit/dimensions.js:112
+
+[dimensions: height(Function)]
+kind      = rendering
+why       = asserts the window's dimension against document.documentElement.clientWidth/Height: the viewport's size less its scrollbars, which layout decides
+assertion = assert.equal( jQuery( window ).height(), document.documentElement.clientHeight, ... ) (testHeight)
+source    = test/unit/dimensions.js:116
+
+[dimensions: innerWidth()]
+kind      = rendering
+why       = asserts the window's dimension against document.documentElement.clientWidth/Height: the viewport's size less its scrollbars, which layout decides
+assertion = assert.equal( jQuery( window ).innerWidth(), $win.width(), "Test on window" )
+source    = test/unit/dimensions.js:132
+
+[dimensions: innerHeight()]
+kind      = rendering
+why       = asserts the window's dimension against document.documentElement.clientWidth/Height: the viewport's size less its scrollbars, which layout decides
+assertion = assert.equal( jQuery( window ).innerHeight(), $win.height(), "Test on window" )
+source    = test/unit/dimensions.js:167
+
+[dimensions: outerWidth()]
+kind      = rendering
+why       = asserts the window's dimension against document.documentElement.clientWidth/Height: the viewport's size less its scrollbars, which layout decides
+assertion = assert.equal( jQuery( window ).outerWidth(), winwidth, "Test on window without margin option" )
+source    = test/unit/dimensions.js:202
+
+[dimensions: outerHeight()]
+kind      = rendering
+why       = asserts the window's dimension against document.documentElement.clientWidth/Height: the viewport's size less its scrollbars, which layout decides
+assertion = assert.equal( jQuery( window ).outerHeight(), winheight, "Test on window without margin option" )
+source    = test/unit/dimensions.js:242
+
+[dimensions: hidden element with implicit content-based dimensions]
+kind      = rendering
+why       = asserts the size of an element sized by its content: layout
+assertion = QUnit: width of a hidden element | Expected: 60 | Result: 0
+source    = test/unit/dimensions.js:368
+
+[dimensions: table dimensions]
+kind      = rendering
+why       = asserts table column widths (a col with span): table layout
+assertion = QUnit: col with span measured correctly (gh-5628) | Expected: 600 | Result: 0
+source    = test/unit/dimensions.js:388
+
+[dimensions: setters with and without box-sizing:border-box]
+kind      = rendering
+why       = round-trips a percentage width through .width(): % to px is layout
+assertion = QUnit: test border-box width(percentage) by roundtripping | Expected: 100 | Result: -6
+source    = test/unit/dimensions.js:543
+
+[dimensions: window vs. large document]
+kind      = rendering
+why       = asserts the document's size against the viewport's: layout
+assertion = QUnit: document height is larger than window height | Expected: true | Result: false
+source    = test/unit/dimensions.js:607
+
+[dimensions: allow modification of coordinates argument (gh-1848)]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: coordinates are modified (got offset.top: 0) | Expected: true | Result: false
+source    = test/unit/dimensions.js:618
+
+[dimensions: outside view position (gh-2836)]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry (in a scrolled container)
+assertion = QUnit: failed | Expected: -100 | Result: 0
+source    = test/unit/dimensions.js:635
+
+[dimensions: width/height on an inline element with no explicitly-set dimensions (gh-3571)]
+kind      = rendering
+why       = asserts an inline element's content-based size: layout
+assertion = QUnit: Width should not be zero on inline element. | Expected: NOT 0 | Result: 0
+source    = test/unit/dimensions.js:671
+
+[dimensions: width/height on an inline element with percentage dimensions (gh-3611)]
+kind      = rendering
+why       = asserts an inline element's size against getBoundingClientRect: layout
+assertion = QUnit: .outerWidth(): 10 approximates 0 | Expected: 0 | Result: 10
+source    = test/unit/dimensions.js:685
+
+[dimensions: width/height on a table row with phantom borders (gh-3698)]
+kind      = rendering
+why       = asserts a table row's outer size: table layout
+assertion = QUnit: outerWidth should match content dimensions | Expected: 42 | Result: 20
+source    = test/unit/dimensions.js:708
+
+[dimensions: interaction with scrollbars (gh-3589)]
+kind      = rendering
+why       = asserts inner/outer sizes that include the scroll gutter of overflow:scroll boxes: the scrollbar's width is layout
+assertion = assert.equal( ..innerWidth(), ..., "plain content-box innerWidth includes scroll gutter" ) and 15 more of its kind
+source    = test/unit/dimensions.js:728
+
+[dimensions: outerWidth/Height for table cells and textarea with border-box in IE 11 (gh-4102)]
+kind      = rendering
+why       = asserts table cells' outer widths, which the column's widest cell decides (190px declared, 200px expected): table layout
+assertion = QUnit: Second th has outerWidth 200. | Expected: 200 | Result: 190
+source    = test/unit/dimensions.js:820
+
+[effects: sanity check]
+kind      = rendering
+why       = asserts jQuery's :visible / :hidden, which jQuery 4 defines as offsetWidth || offsetHeight || getClientRects().length: a layout box
+assertion = QUnit: QUnit state is correct for testing effects | Expected: 2 | Result: 0
+source    = test/unit/effects.js:34
+
+[effects: animate relative values]
+kind      = rendering
+why       = asserts offsetHeight/offsetWidth after a relative animation: a layout box
+assertion = assert.equal( this.offsetHeight, value * baseScale + 2 * adjustScale, ... )
+source    = test/unit/effects.js:263
+
+[effects: animate negative height]
+kind      = rendering
+why       = asserts offsetHeight after animating to a negative height: a layout box (Crane's 0 matches without proving anything)
+assertion = assert.equal( this.offsetHeight, 0, "Verify height." )
+source    = test/unit/effects.js:302
+
+[effects: animate block as inline width/height]
+kind      = rendering
+why       = asserts offsetWidth/offsetHeight: a layout box
+assertion = QUnit: width was animated | Expected: 42 | Result: 0
+source    = test/unit/effects.js:334
+
+[effects: animate native inline width/height]
+kind      = rendering
+why       = asserts offsetWidth/offsetHeight: a layout box
+assertion = QUnit: width was animated | Expected: 42 | Result: 0
+source    = test/unit/effects.js:345
+
+[effects: animate table-row width/height]
+kind      = rendering
+why       = asserts a table row's offsetWidth (shrink-wrap): table layout
+assertion = QUnit: width animated to shrink wrap point | Expected: 20 | Result: 0
+source    = test/unit/effects.js:395
+
+[effects: animate table-cell width/height]
+kind      = rendering
+why       = asserts a table cell's offsetWidth (shrink-wrap): table layout
+assertion = QUnit: width animated to shrink wrap point | Expected: 20 | Result: 0
+source    = test/unit/effects.js:410
+
+[effects: animate percentage(%) on width/height]
+kind      = rendering
+why       = asserts a resolved value that CSSOM defines as the used value (the property applies and the element is rendered), i.e. a length only layout yields (an animated % width as px)
+assertion = QUnit: Width was animated to 15px rather than 25px | Expected: "15px" | Result: "25%"
+source    = test/unit/effects.js:426
+
+[effects: toggle()]
+kind      = rendering
+why       = asserts jQuery's :visible / :hidden, which jQuery 4 defines as offsetWidth || offsetHeight || getClientRects().length: a layout box
+assertion = QUnit: is visible | Expected: true | Result: false
+source    = test/unit/effects.js:786
+
+[effects: CSS Auto to show]
+kind      = rendering
+why       = asserts an auto height grows when text is appended (jQuery.css(elem, "height")): the used height of an auto-height box is layout
+assertion = QUnit: Make sure height is auto. | Expected: NOT "0px" | Result: "0px"
+source    = test/unit/effects.js:938
+
+[effects: JS Auto to show]
+kind      = rendering
+why       = asserts an auto height grows when text is appended (jQuery.css(elem, "height")): the used height of an auto-height box is layout
+assertion = QUnit: Make sure height is auto. | Expected: NOT "0px" | Result: "0px"
+source    = test/unit/effects.js:938
+
+[effects: line-height animates correctly (trac-13855)]
+kind      = rendering
+why       = asserts each paragraph's auto height (.height()) shrinks while its line-height animates: line boxes are layout
+assertion = QUnit: hide unitless: upper bound; 0 < 0 @ 25% | Expected: true | Result: false
+source    = test/unit/effects.js:1414
+
+[effects: User supplied callback called after show when fx off (trac-8892)]
+kind      = rendering
+why       = asserts jQuery's :visible / :hidden, which jQuery 4 defines as offsetWidth || offsetHeight || getClientRects().length: a layout box
+assertion = QUnit: Element is visible in callback | Expected: true | Result: false
+source    = test/unit/effects.js:1550
+
+[manipulation: table manipulation]
+kind      = rendering
+why       = asserts the table's offsetHeight grows when rows are appended: a layout box
+assertion = QUnit: appended rows are visible | Expected: true | Result: false
+source    = test/unit/manipulation.js:1409
+
+[manipulation: Make sure col element is appended correctly]
+kind      = rendering
+why       = asserts a col's width: table layout
+assertion = QUnit: failed | Expected: 150 | Result: 0
+source    = test/unit/manipulation.js:2927
+
+[offset: 0 sized element]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: Retrieving offset on 0 sized elements (gh-3167) | Expected: NOT 0 | Result: 0
+source    = test/unit/offset.js:91
+
+[offset: hidden (visibility: hidden) element]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: Retrieving offset on visibility:hidden elements (gh-3167) | Expected: NOT 0 | Result: 0
+source    = test/unit/offset.js:105
+
+[offset: absolute]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#absolute-1').offset().top | Expected: 1 | Result: 0
+source    = test/unit/offset.js:135
+
+[offset: absolute ]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry (test/unit/offset.js defines "absolute" twice; QUnit appends a space to the second's name)
+assertion = QUnit: jQuery('#absolute-1').offset().top | Expected: 1 | Result: 0
+source    = test/unit/offset.js:160
+
+[offset: relative]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#relative-1').offset().top | Expected: 7 | Result: 0
+source    = test/unit/offset.js:245
+
+[offset: static]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#static-1').offset().top | Expected: 7 | Result: 0
+source    = test/unit/offset.js:303
+
+[offset: fixed]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#fixed-1').offset().top | Expected: 1001 | Result: 0
+source    = test/unit/offset.js:365
+
+[offset: table]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#table-1').offset().top | Expected: 6 | Result: 0
+source    = test/unit/offset.js:427
+
+[offset: scroll]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry and scrollTop/scrollLeft
+assertion = QUnit: jQuery('#scroll-1').offset().top | Expected: 7 | Result: 0
+source    = test/unit/offset.js:440
+
+[offset: body]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#body').offset().top | Expected: 1 | Result: 0
+source    = test/unit/offset.js:491
+
+[offset: nonzero box properties - html.static body.static]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 64, left 32 | Expected: { | "left": 32, | "top": 64 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: nonzero box properties - html.static body.relative]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 64, left 32 | Expected: { | "left": 32, | "top": 64 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: nonzero box properties - html.static body.absolute]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 64, left 32 | Expected: { | "left": 32, | "top": 64 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: nonzero box properties - html.static body.fixed]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 64, left 32 | Expected: { | "left": 32, | "top": 64 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: nonzero box properties - html.relative body.static]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 4160, left 2080 | Expected: { | "left": 2080, | "top": 4160 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: nonzero box properties - html.relative body.relative]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 4160, left 2080 | Expected: { | "left": 2080, | "top": 4160 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: nonzero box properties - html.relative body.absolute]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 4160, left 2080 | Expected: { | "left": 2080, | "top": 4160 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: nonzero box properties - html.relative body.fixed]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 4160, left 2080 | Expected: { | "left": 2080, | "top": 4160 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: nonzero box properties - html.absolute body.static]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 4160, left 2080 | Expected: { | "left": 2080, | "top": 4160 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: nonzero box properties - html.absolute body.relative]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 4160, left 2080 | Expected: { | "left": 2080, | "top": 4160 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: nonzero box properties - html.absolute body.absolute]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 4160, left 2080 | Expected: { | "left": 2080, | "top": 4160 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: nonzero box properties - html.absolute body.fixed]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 4160, left 2080 | Expected: { | "left": 2080, | "top": 4160 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: nonzero box properties - html.fixed body.static]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 4162, left 2081 | Expected: { | "left": 2081, | "top": 4162 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: nonzero box properties - html.fixed body.relative]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 4162, left 2081 | Expected: { | "left": 2081, | "top": 4162 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: nonzero box properties - html.fixed body.absolute]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 4162, left 2081 | Expected: { | "left": 2081, | "top": 4162 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: nonzero box properties - html.fixed body.fixed]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: jQuery('#documentElement').offset(): top 4162, left 2081 | Expected: { | "left": 2081, | "top": 4162 | } | Result: { | "left": 0, | "top": 0 | }
+source    = test/unit/offset.js:624
+
+[offset: offsetParent]
+kind      = rendering
+why       = asserts .offsetParent(), which CSSOM View defines from the layout boxes (an element with no box has none)
+assertion = QUnit: The #qunit-fixture is the offsetParent of #nothiddendivchild. | Expected: <div id="qunit-fixture" style="position: absolute;"></div> | Result: <html lang="en" id="html"></html>
+source    = test/unit/offset.js:682
+
+[offset: fractions (see trac-7730 and trac-7885)]
+kind      = rendering
+why       = asserts .offset() / .position(), which jQuery computes from getBoundingClientRect and the offsetParent: layout geometry
+assertion = QUnit: Check top within 0.25 of expected | Expected: true | Result: false
+source    = test/unit/offset.js:721
+
+[offset: iframe scrollTop/Left (see gh-1945)]
+kind      = rendering
+why       = asserts a document's scrollTop/scrollLeft after scrolling it: a scroll position is clamped to the scrollable overflow, which layout gives
+assertion = assert.equal( jQuery( ifDoc ).scrollTop(), 200, ... )
+source    = test/unit/offset.js:750
+
+[support: body background is not lost if set prior to loading jQuery (trac-9239)]
+kind      = rendering
+why       = compares support objects whose reliableTrDimensions / reliableColDimensions jQuery measures only once a test table has a layout box (computeTableStyleTests: `if ( table.offsetWidth === 0 ) return`): layout
+assertion = QUnit: Same support properties | Expected: { | "reliableColDimensions": undefined, | "reliableTrDimensions": undefined | } | Result: {}
+source    = test/unit/support.js:21
+
+[support: Verify correctness of support tests with bootstrap CSS on the page]
+kind      = rendering
+why       = compares support objects whose reliableTrDimensions / reliableColDimensions jQuery measures only once a test table has a layout box (computeTableStyleTests: `if ( table.offsetWidth === 0 ) return`): layout
+assertion = QUnit: Same support properties | Expected: { | "reliableColDimensions": undefined, | "reliableTrDimensions": undefined | } | Result: {}
+source    = test/unit/support.js:57
+
+[support: Verify correctness of support tests with CSS zoom on the root element]
+kind      = rendering
+why       = compares support objects whose reliableTrDimensions / reliableColDimensions jQuery measures only once a test table has a layout box (computeTableStyleTests: `if ( table.offsetWidth === 0 ) return`): layout
+assertion = QUnit: Same support properties | Expected: { | "reliableColDimensions": undefined, | "reliableTrDimensions": undefined | } | Result: {}
+source    = test/unit/support.js:69
+

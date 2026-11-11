@@ -45,9 +45,9 @@ why  = not loaded by test/test.html; the project runs it only through web-test-r
 
 # ---------------------------------------------------------------------------------------------------------------
 # EXCLUDED: rendering (ruling R7: what the test asserts needs a layout box). Read by hand at the tag; each `assertion`
-# is the test's own line. NOT excluded though they also end on a scroll assertion: 'boosted back restores content,
-# then the browser restores scroll' and 'back to an entry created by an anchor jump still restores content' - today
-# they fail before it, waiting for the history restore request (a test failing for another reason is never excluded).
+# is the test's own line. NOT excluded though it also ends on a scroll assertion: 'back to an entry created by an
+# anchor jump still restores content' - it fails before it (Mocha's 2,000 ms timeout waiting for the history restore
+# request; a test failing for another reason is never excluded).
 # ---------------------------------------------------------------------------------------------------------------
 
 [hx-swap modifiers swap with scroll:top modifier scrolls to top]
@@ -115,3 +115,9 @@ kind      = rendering
 why       = its only assertions are the viewport's restored scroll position (scrollY, scrollX over a 3000px x 3000px page): layout
 assertion = assert.equal(window.scrollY, 500); assert.equal(window.scrollX, 300)
 source    = test/tests/end2end/basic-history.js:471
+
+[scroll restoration on history traversal boosted back restores content, then the browser restores scroll]
+kind      = rendering
+why       = restores the content (that assertion passes in Crane: diagnosis run 2026-11-11), then asserts the viewport's restored scroll position (window.scrollY over a 3000px page): layout. In fw1 b1's probe it failed earlier (no restore request within 2,000 ms): a result that changed between runs, reported as a finding
+assertion = assert.equal(window.scrollY, 500)  (basic-history.js:401; Crane: expected +0 to equal 500)
+source    = test/tests/end2end/basic-history.js:377

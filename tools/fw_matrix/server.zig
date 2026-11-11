@@ -114,11 +114,11 @@ pub const Server = struct {
         const target = try self.gpa.dupe(u8, request.head.target);
         defer self.gpa.free(target);
         const path = target[0 .. std.mem.indexOfAny(u8, target, "?#") orelse target.len];
-        if (request.head.method != .GET and request.head.method != .HEAD) return respondText(request, .method_not_allowed, "method not allowed: a static server\n");
+        if (request.head.method != .GET and request.head.method != .HEAD) return self.respondText(request, .method_not_allowed, "method not allowed: a static server\n");
         if (std.mem.eql(u8, path, "/favicon.ico")) return request.respond("", .{ .status = .no_content, .extra_headers = &no_store });
         var decoded_buf: [4096]u8 = undefined;
-        const rel = decodePath(path, &decoded_buf) orelse return respondText(request, .not_found, "not found\n");
-        if (std.mem.endsWith(u8, rel, ".php")) return respondText(request, .not_found, "not found: PHP is not run here (the project's test server is not built: ruling R4)\n");
+        const rel = decodePath(path, &decoded_buf) orelse return self.respondText(request, .not_found, "not found\n");
+        if (std.mem.endsWith(u8, rel, ".php")) return self.respondText(request, .not_found, "not found: PHP is not run here (the project's test server is not built: ruling R4)\n");
         return self.serveFile(request, rel);
     }
 
@@ -132,23 +132,33 @@ pub const Server = struct {
             error.IsDir => {
                 const index = try std.fmt.allocPrint(self.gpa, "{s}/index.html", .{file_path});
                 defer self.gpa.free(index);
-                const b = self.root.readFileAlloc(self.io, index, self.gpa, .limited(max_file)) catch return respondText(request, .not_found, "not found\n");
+                const b = self.root.readFileAlloc(self.io, index, self.gpa, .limited(max_file)) catch return self.respondText(request, .not_found, "not found\n");
                 defer self.gpa.free(b);
-                return respondBytes(request, b, "text/html; charset=utf-8");
+                return self.respondBytes(request, b, "text/html; charset=utf-8");
             },
-            else => return respondText(request, .not_found, "not found\n"),
+            else => return self.respondText(request, .not_found, "not found\n"),
         };
         defer self.gpa.free(bytes);
-        return respondBytes(request, bytes, contentType(file_path));
+        return self.respondBytes(request, bytes, contentType(file_path));
     }
 
-    fn respondBytes(request: *std.http.Server.Request, bytes: []const u8, content_type: []const u8) !void {
-        const hs = [_]std.http.Header{ no_store[0], .{ .name = "content-type", .value = content_type } };
+    /// RFC 9110 6.6.1: an origin server with a clock sends Date (jQuery's
+    /// "jQuery.ajax() - HEAD requests" asserts one; its own test server,
+    /// Node's http module, sends it).
+    fn now(self: *Server, buf: *[29]u8) []const u8 {
+        const secs = Io.Timestamp.now(self.io, .real).toSeconds();
+        return httpDate(buf, @intCast(@max(0, secs)));
+    }
+
+    fn respondBytes(self: *Server, request: *std.http.Server.Request, bytes: []const u8, content_type: []const u8) !void {
+        var date: [29]u8 = undefined;
+        const hs = [_]std.http.Header{ no_store[0], .{ .name = "content-type", .value = content_type }, .{ .name = "date", .value = self.now(&date) } };
         return request.respond(bytes, .{ .extra_headers = &hs });
     }
 
-    fn respondText(request: *std.http.Server.Request, status: std.http.Status, text: []const u8) !void {
-        const hs = [_]std.http.Header{ no_store[0], .{ .name = "content-type", .value = "text/plain; charset=utf-8" } };
+    fn respondText(self: *Server, request: *std.http.Server.Request, status: std.http.Status, text: []const u8) !void {
+        var date: [29]u8 = undefined;
+        const hs = [_]std.http.Header{ no_store[0], .{ .name = "content-type", .value = "text/plain; charset=utf-8" }, .{ .name = "date", .value = self.now(&date) } };
         return request.respond(text, .{ .status = status, .extra_headers = &hs });
     }
 };
@@ -183,6 +193,20 @@ pub fn decodePath(path: []const u8, buf: []u8) ?[]const u8 {
     return rel;
 }
 
+/// RFC 9110 5.6.7 IMF-fixdate: "Sun, 06 Nov 1994 08:49:37 GMT".
+pub fn httpDate(buf: *[29]u8, unix_seconds: u64) []const u8 {
+    const es: std.time.epoch.EpochSeconds = .{ .secs = unix_seconds };
+    const day = es.getEpochDay();
+    const yd = day.calculateYearDay();
+    const md = yd.calculateMonthDay();
+    const ds = es.getDaySeconds();
+    const days = [_][]const u8{ "Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed" }; // 1970-01-01 was a Thursday
+    const months = [_][]const u8{ "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+    return std.fmt.bufPrint(buf, "{s}, {d:0>2} {s} {d} {d:0>2}:{d:0>2}:{d:0>2} GMT", .{
+        days[day.day % 7], @as(u32, md.day_index) + 1, months[@backingInt(md.month) - 1], yd.year, ds.getHoursIntoDay(), ds.getMinutesIntoHour(), ds.getSecondsIntoMinute(),
+    }) catch unreachable;
+}
+
 pub fn contentType(path: []const u8) []const u8 {
     const ext = std.fs.path.extension(path);
     const types = [_][2][]const u8{
@@ -212,6 +236,12 @@ pub fn contentType(path: []const u8) []const u8 {
 }
 
 const testing = std.testing;
+
+test "httpDate: RFC 9110's example, and a leap day" {
+    var buf: [29]u8 = undefined;
+    try testing.expectEqualStrings("Sun, 06 Nov 1994 08:49:37 GMT", httpDate(&buf, 784111777));
+    try testing.expectEqualStrings("Thu, 29 Feb 2024 00:00:00 GMT", httpDate(&buf, 1709164800));
+}
 
 test "decodePath: below the root only; percent-decoded" {
     var buf: [256]u8 = undefined;
@@ -272,6 +302,7 @@ test "the server: a file, a directory's index, a long query, PHP refused, POST r
     try testing.expect(std.mem.startsWith(u8, page, "HTTP/1.1 200 OK\r\n"));
     try testing.expect(std.mem.indexOf(u8, page, "content-type: text/html; charset=utf-8\r\n") != null);
     try testing.expect(std.mem.indexOf(u8, page, "cross-origin-embedder-policy") == null);
+    try testing.expect(std.mem.indexOf(u8, page, " GMT\r\n") != null and std.mem.indexOf(u8, page, "date: ") != null);
     try testing.expect(std.mem.endsWith(u8, page, "<!doctype html><p>hi"));
 
     const dir = try fetchRaw(testing.allocator, server.port(), "GET /test HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
