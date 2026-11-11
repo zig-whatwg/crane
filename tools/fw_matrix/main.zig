@@ -162,7 +162,7 @@ pub fn main(init: std.process.Init) !void {
         const s = manifest.find(m, args.need("suite")) orelse fail("no suite {s} in the manifest", .{args.need("suite")});
         const root = try std.fmt.allocPrint(arena, "{s}/{s}", .{ args.need("frameworks-dir"), try manifest.treeName(arena, s) });
         const port: u16 = if (args.get("port")) |p| std.fmt.parseInt(u16, p, 10) catch fail("--port={s}", .{p}) else 8000;
-        const srv = try server.Server.start(gpa, io, .{ .root = root, .port = port });
+        const srv = try server.Server.start(gpa, io, .{ .root = root, .port = port, .overlays = try run.serverOverlays(arena, s) });
         defer srv.stop();
         std.debug.print("fw_matrix: serving {s} on http://127.0.0.1:{d}/ (Ctrl+C ends)\n", .{ root, srv.port() });
         while (true) Io.sleep(io, .fromSeconds(3600), .awake) catch {};

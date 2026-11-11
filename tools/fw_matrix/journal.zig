@@ -84,7 +84,8 @@ pub const SuiteKind = enum {
     pub fn label(k: SuiteKind) []const u8 {
         return switch (k) {
             .project => "the project's own browser suite",
-            .todomvc_port => "the TodoMVC app spec, Crane's port, on the prebuilt TodoMVC app",
+            // The user's words for these rows (2026-11-11).
+            .todomvc_port => "TodoMVC; Crane's port of the app spec; the project's own suite is not runnable without Node",
         };
     }
 };

@@ -514,7 +514,8 @@ const Output = struct {
 
     /// Remove every file this run did not write, and the directories left
     /// empty. The top-level `.git` (a worktree's pointer file or a checkout)
-    /// is never touched, nor `performance/`, which tools/perf_bench writes.
+    /// is never touched, nor `performance/` (tools/perf_bench writes it) or
+    /// `frameworks/` (tools/fw_matrix's report).
     fn prune(o: *Output) !void {
         var stale: std.ArrayList([]const u8) = .empty;
         var dirs: std.ArrayList([]const u8) = .empty;
@@ -522,7 +523,7 @@ const Output = struct {
         defer walker.deinit();
         while (try walker.next(o.io)) |e| {
             if (e.depth() == 1 and std.mem.eql(u8, e.basename, ".git")) continue;
-            if (e.depth() == 1 and std.mem.eql(u8, e.basename, performance_dir)) continue;
+            if (e.depth() == 1 and (std.mem.eql(u8, e.basename, performance_dir) or std.mem.eql(u8, e.basename, frameworks_dir))) continue;
             if (e.kind == .directory) {
                 try dirs.append(o.arena, try o.arena.dupe(u8, e.path));
                 try walker.enter(o.io, e);
@@ -1055,10 +1056,14 @@ fn detectRevision(arena: Allocator, io: Io, wpt_root: []const u8) Revision {
 /// writes it (docs/performance.md), so this generator neither prunes it nor
 /// commits it.
 pub const performance_dir = "performance";
+/// /frameworks/, likewise: tools/fw_matrix's report, the JS framework
+/// compatibility matrix, published into the same tree.
+pub const frameworks_dir = "frameworks";
 
 /// What a generation's commit stages: everything this generator wrote -
-/// --force, because no ignore rule may decide what ships - but performance/.
-pub const stage_argv = [_][]const u8{ "git", "add", "-A", "--force", "--", ".", ":(exclude)" ++ performance_dir };
+/// --force, because no ignore rule may decide what ships - but performance/
+/// and frameworks/, which their own tools' publications commit.
+pub const stage_argv = [_][]const u8{ "git", "add", "-A", "--force", "--", ".", ":(exclude)" ++ frameworks_dir, ":(exclude)" ++ performance_dir };
 
 fn commitSite(arena: Allocator, io: Io, out: []const u8, summary: Summary) !void {
     Dir.cwd().access(io, try std.fmt.allocPrint(arena, "{s}/.git", .{out}), .{}) catch {
@@ -1785,6 +1790,26 @@ test "site: /performance/ is perf_bench's: a regeneration leaves it alone and ne
     try testing.expectEqualStrings(":(exclude)" ++ performance_dir, stage_argv[stage_argv.len - 1]);
 }
 
+test "site: /frameworks/ is fw_matrix's: a regeneration leaves it alone and never stages it" {
+    // tools/fw_matrix's report (the JS framework compatibility matrix) is
+    // published into the same gh-pages tree as /frameworks/, as
+    // perf_bench's /performance/ is.
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixture(gpa, &f, "out", fixture_worklist);
+    try f.tmp.dir.createDirPath(testing.io, "out/frameworks/react");
+    try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "out/frameworks/index.html", .data = "<!doctype html>matrix" });
+    try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "out/frameworks/react/index.html", .data = "<!doctype html>react" });
+    const s = try runFixture(gpa, &f, "out", fixture_worklist);
+    try testing.expectEqual(@as(usize, 0), s.removed);
+    try testing.expect(exists(&f, "out/frameworks/index.html"));
+    try testing.expect(exists(&f, "out/frameworks/react/index.html"));
+    var excluded = false;
+    for (stage_argv) |a| excluded = excluded or std.mem.eql(u8, a, ":(exclude)" ++ frameworks_dir);
+    try testing.expect(excluded);
+}
+
 test "site: the index links to /performance/" {
     const gpa = testing.allocator;
     var f = try Fixture.init(fixture_stream);
@@ -1797,6 +1822,21 @@ test "site: the index links to /performance/" {
     const page = try readOut(gpa, &f, "out/dom/index.html");
     defer gpa.free(page);
     try testing.expect(std.mem.indexOf(u8, page, "performance/") == null);
+}
+
+test "site: the index links to /frameworks/, beside /performance/" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixture(gpa, &f, "out", fixture_worklist);
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    // The JS framework compatibility matrix (tools/fw_matrix), right after
+    // the benchmark report's line.
+    try expectHas(index, "</a></dd></div>\n<div><dt>Frameworks</dt><dd><a href=\"frameworks/\">");
+    const page = try readOut(gpa, &f, "out/dom/index.html");
+    defer gpa.free(page);
+    try testing.expect(std.mem.indexOf(u8, page, "frameworks/") == null);
 }
 
 test "site: index.html carries the social card's tags, and the card is a 1200x630 PNG" {
@@ -2772,8 +2812,9 @@ test "site: every link to a test file is its section on its directory's page, an
             const href = page[start..end];
             var buf: [512]u8 = undefined;
             const r = resolveHref(&buf, e.path, href) orelse continue;
-            // Assets and the search's list are not pages; performance/ is perf_bench's.
-            if (!std.mem.endsWith(u8, r.path, ".html") or std.mem.startsWith(u8, r.path, "performance/")) continue;
+            // Assets and the search's list are not pages; performance/ is
+            // perf_bench's, frameworks/ fw_matrix's.
+            if (!std.mem.endsWith(u8, r.path, ".html") or std.mem.startsWith(u8, r.path, performance_dir ++ "/") or std.mem.startsWith(u8, r.path, frameworks_dir ++ "/")) continue;
             const target = out.readFileAlloc(testing.io, r.path, gpa, .limited(1 << 24)) catch {
                 std.debug.print("\n{s}: link {s} -> {s}, which the site does not have\n", .{ e.path, href, r.path });
                 return error.TestBrokenLink;

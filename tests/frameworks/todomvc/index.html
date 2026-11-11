@@ -1,0 +1,33 @@
+<!doctype html>
+<!--
+  Crane's port of TodoMVC's app spec (tastejs/todomvc ff43b02e59df,
+  cypress/e2e/spec.cy.js): one page for every app. ?framework=<name> picks
+  the prebuilt app under test (examples/<folder> of the served tree), which
+  runs in #aut as Cypress runs it in an iframe of its runner. The tests are
+  spec.js; the Cypress commands they use, driver.js. QUnit is the copy the
+  matrix pins for jQuery (external/qunit/ of the suite's tree).
+  ?prove=layout also checks the visibility answers against Cypress's layout
+  clauses (the Chrome run).
+  Served by tools/fw_matrix as the suites' overlay at /crane/todomvc/.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TodoMVC app spec (Crane's port)</title>
+<link rel="stylesheet" href="/external/qunit/qunit.css">
+<style>
+  /* Cypress's viewport (cypress.config.js viewportWidth 890; height: its
+     default 660). Geometry only: nothing the port runs reads it. */
+  #aut { display: block; width: 890px; height: 660px; border: 1px solid #ccc; margin: 1em 0; }
+</style>
+</head>
+<body>
+<div id="qunit"></div>
+<div id="qunit-fixture"></div>
+<iframe id="aut" title="The TodoMVC app under test"></iframe>
+<script src="/external/qunit/qunit.js"></script>
+<script src="driver.js"></script>
+<script>Driver.aut.frame = document.getElementById('aut');</script>
+<script src="spec.js"></script>
+</body>
+</html>
