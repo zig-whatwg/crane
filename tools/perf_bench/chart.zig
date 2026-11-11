@@ -72,6 +72,13 @@ pub fn scaleOf(hi: f64) Scale {
     return .{ .top = @ceil(h / step - 1e-9) * step, .step = step };
 }
 
+/// How many points apart two labels of `width` must be when neighbouring points are `spacing`
+/// apart: 1 where each point's label fits.
+fn strideFor(width: f64, spacing: f64) usize {
+    if (spacing <= 0 or spacing >= width) return 1;
+    return @intFromFloat(@ceil(width / spacing));
+}
+
 /// A share as a whole percentage ("81%", "0%"); a small one that is not whole keeps its decimal
 /// ("12.5%").
 fn writePercent(w: W, ratio: f64) !void {
@@ -121,13 +128,30 @@ pub fn trendChart(w: W, points: []const Point, t: Trend) !void {
         try writePercent(w, v);
         try w.writeAll("</text>");
     }
-    // The x labels: the round; under it its date and Crane's commit, where they fit.
+    // The x labels: the round; under it its date and Crane's commit, where they fit. Where the
+    // whole label ("Round 6") would run into its neighbour, each point carries its short label
+    // (the round's number) and the axis says once what the numbers are; where even those would
+    // collide, every k-th round is labelled, counted back from the latest, which always is.
     const full = n <= 1 or spacing >= full_label_spacing;
     const base = pad.t + ih;
+    var longest: usize = 0;
+    var longest_short: usize = 0;
+    for (points) |p| {
+        longest = @max(longest, p.label.len);
+        longest_short = @max(longest_short, if (p.short.len > 0) p.short.len else p.label.len);
+    }
+    const whole = n <= 1 or spacing >= @as(f64, @floatFromInt(longest)) * x_round_char;
+    const x_stride = if (whole) 1 else strideFor(@as(f64, @floatFromInt(longest_short)) * x_round_char, spacing);
+    if (!whole and t.x_title.len > 0) {
+        try w.print("<text class=\"x-title\" x=\"{d:.1}\" y=\"{d:.1}\" text-anchor=\"middle\">", .{ (x0 + x1) / 2, base + 32 });
+        try html.text(w, t.x_title);
+        try w.writeAll("</text>");
+    }
     for (points, 0..) |p, i| {
+        if ((n - 1 - i) % x_stride != 0) continue;
         const x = geo.x(i);
         try w.print("<text class=\"x-round\" x=\"{d:.1}\" y=\"{d:.1}\" text-anchor=\"middle\">", .{ x, base + 17 });
-        try html.text(w, p.label);
+        try html.text(w, if (!whole and p.short.len > 0) p.short else p.label);
         try w.writeAll("</text>");
         if (!full) continue;
         if (p.date.len > 0) {
@@ -153,15 +177,27 @@ pub fn trendChart(w: W, points: []const Point, t: Trend) !void {
         pen = true;
     }
     try w.writeAll("\"/>");
-    // Each round's dot, its value above it, and its tooltip.
+    // Each round's dot, its value above it, and its tooltip. Every round keeps its dot and its
+    // tooltip; the value is written above the first round, the latest, and every k-th counted
+    // back from the latest, as many as fit side by side (every number is in the HTML beside
+    // the chart: report.zig lists each round).
+    const value_width = 4 * value_char; // "100%"
+    const v_stride = if (n <= 1) 1 else strideFor(value_width, spacing);
     for (t.values, 0..) |v, i| {
         const x = v orelse continue;
         const cx = geo.x(i);
         const cy = geo.y(x);
         try w.print("<g><circle class=\"hit\" cx=\"{d:.1}\" cy=\"{d:.1}\" r=\"10\"/><circle class=\"trend-dot\" cx=\"{d:.1}\" cy=\"{d:.1}\" r=\"4.5\"/>", .{ cx, cy, cx, cy });
-        try w.print("<text class=\"trend-value\" x=\"{d:.1}\" y=\"{d:.1}\" text-anchor=\"middle\">", .{ cx, cy - 10 });
-        try writePercent(w, x);
-        try w.writeAll("</text><title>");
+        const last = i == n - 1;
+        const on_stride = (n - 1 - i) % v_stride == 0;
+        // The first round's value is always written, so a strided one too close to it is not.
+        const clear_of_first = last or @as(f64, @floatFromInt(i)) * spacing >= value_width;
+        if (i == 0 or (on_stride and clear_of_first)) {
+            try w.print("<text class=\"trend-value\" x=\"{d:.1}\" y=\"{d:.1}\" text-anchor=\"middle\">", .{ cx, cy - 10 });
+            try writePercent(w, x);
+            try w.writeAll("</text>");
+        }
+        try w.writeAll("<title>");
         try html.text(w, t.titles[i]);
         try w.writeAll("</title></g>");
     }
@@ -301,7 +337,14 @@ test "many rounds: an x label is the round alone where the date and commit would
     }
     try trendChart(&out.writer, &points, .{ .aria = "t", .values = &values, .titles = &titles });
     const svg = out.written();
-    try testing.expectEqual(@as(usize, 8), std.mem.count(u8, svg, "class=\"x-round\""));
+    // This test used to require all eight "Round N" labels: at this spacing (32.6 units for a
+    // 52-unit label) that is the overlap the user reported on 2026-11-11. Points with no short
+    // label are thinned instead: the latest is labelled and no two labels overlap.
+    var buf: [16]Label = undefined;
+    const rounds = try labelsOf(svg, "x-round", &buf);
+    try testing.expectEqualStrings("Round 7", rounds[rounds.len - 1].text);
+    try testing.expect(rounds.len < 8);
+    try expectNoOverlap(rounds, x_round_char);
     try testing.expect(std.mem.indexOf(u8, svg, ">2026-11-06</text>") == null);
     try testing.expect(std.mem.indexOf(u8, svg, ">0b6101f5f65</text>") == null);
 }
