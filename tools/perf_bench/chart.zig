@@ -21,6 +21,8 @@ const W = *Io.Writer;
 /// commit.
 pub const Point = struct {
     label: []const u8,
+    /// The label where the whole one would collide with its neighbours: the round's number.
+    short: []const u8 = "",
     date: []const u8 = "",
     commit: []const u8 = "",
 };
@@ -33,6 +35,8 @@ pub const Trend = struct {
     values: []const ?f64,
     /// One tooltip per point.
     titles: []const []const u8,
+    /// What the points' short labels are ("Round"): drawn once under the axis when they are used.
+    x_title: []const u8 = "",
     width: f64 = 360,
     height: f64 = 232,
 };
@@ -50,6 +54,12 @@ const pad = struct {
 /// Below this many units between two points, an x label is the round alone (no date, no
 /// commit: they would collide).
 const full_label_spacing = 84.0;
+
+/// The width of one character of an x label (.x-round: 12px, weight 600) and of a value label
+/// (.trend-value: 12px, weight 600), in the chart's units, with room to breathe: what the
+/// spacing rules below and their tests measure with.
+const x_round_char = 7.4;
+const value_char = 7.4;
 
 /// The scale of a trend: from 0 to its top, 100% or the data's highest point, whichever is
 /// higher, rounded up to a whole grid step - 25% up to 150%, 50% up to 300%, 100% beyond.
@@ -294,6 +304,110 @@ test "many rounds: an x label is the round alone where the date and commit would
     try testing.expectEqual(@as(usize, 8), std.mem.count(u8, svg, "class=\"x-round\""));
     try testing.expect(std.mem.indexOf(u8, svg, ">2026-11-06</text>") == null);
     try testing.expect(std.mem.indexOf(u8, svg, ">0b6101f5f65</text>") == null);
+}
+
+/// Every `class="<class>"` text of an SVG: its x and its content.
+const Label = struct { x: f64, text: []const u8 };
+
+fn labelsOf(svg: []const u8, comptime class: []const u8, buf: []Label) ![]Label {
+    const open = "<text class=\"" ++ class ++ "\" x=\"";
+    var n: usize = 0;
+    var at: usize = 0;
+    while (std.mem.indexOfPos(u8, svg, at, open)) |i| {
+        const xs = i + open.len;
+        const xe = std.mem.indexOfScalarPos(u8, svg, xs, '"').?;
+        const ts = std.mem.indexOfScalarPos(u8, svg, xe, '>').? + 1;
+        const te = std.mem.indexOfPos(u8, svg, ts, "</text>").?;
+        buf[n] = .{ .x = try std.fmt.parseFloat(f64, svg[xs..xe]), .text = svg[ts..te] };
+        n += 1;
+        at = te;
+    }
+    return buf[0..n];
+}
+
+/// No two neighbouring centred labels overlap, by the widths the chart itself assumes.
+fn expectNoOverlap(labels: []const Label, char_width: f64) !void {
+    for (labels[0 .. labels.len - 1], labels[1..]) |a, b| {
+        const need = (@as(f64, @floatFromInt(a.text.len)) + @as(f64, @floatFromInt(b.text.len))) / 2 * char_width;
+        if (b.x - a.x < need) {
+            std.debug.print("labels '{s}' at {d:.1} and '{s}' at {d:.1} overlap: {d:.1} apart, {d:.1} needed\n", .{ a.text, a.x, b.text, b.x, b.x - a.x, need });
+            return error.LabelsOverlap;
+        }
+    }
+}
+
+fn trendOf(comptime n: usize, out: *Io.Writer.Allocating) !void {
+    var points: [n]Point = undefined;
+    var values: [n]?f64 = undefined;
+    var titles: [n][]const u8 = undefined;
+    var names: [n][16]u8 = undefined;
+    var numbers: [n][8]u8 = undefined;
+    for (&points, &values, &titles, 0..) |*p, *v, *t, i| {
+        const label = try std.fmt.bufPrint(&names[i], "Round {d}", .{i});
+        const number = try std.fmt.bufPrint(&numbers[i], "{d}", .{i});
+        p.* = .{ .label = label, .short = number, .date = "2026-11-06", .commit = "0b6101f5f65" };
+        v.* = 1.0 - 0.02 * @as(f64, @floatFromInt(i));
+        t.* = "x";
+    }
+    try trendChart(&out.writer, &points, .{ .aria = "t", .values = &values, .titles = &titles, .x_title = "Round" });
+}
+
+test "seven rounds (the user, 2026-11-11: 'the x-axis label is starting to get crowded'): bare round numbers under one axis title, none overlapping" {
+    var out: Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try trendOf(7, &out);
+    const svg = out.written();
+    var buf: [64]Label = undefined;
+    const rounds = try labelsOf(svg, "x-round", &buf);
+    // Every round is still labelled, by its number alone.
+    try testing.expectEqual(@as(usize, 7), rounds.len);
+    try testing.expectEqualStrings("0", rounds[0].text);
+    try testing.expectEqualStrings("6", rounds[6].text);
+    try testing.expect(std.mem.indexOf(u8, svg, ">Round 6</text>") == null);
+    try expectNoOverlap(rounds, x_round_char);
+    // What the numbers are is said once, under them.
+    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, svg, "<text class=\"x-title\""));
+    try testing.expect(std.mem.indexOf(u8, svg, ">Round</text>") != null);
+    // Seven values still fit above their points.
+    var vbuf: [64]Label = undefined;
+    const vals = try labelsOf(svg, "trend-value", &vbuf);
+    try testing.expectEqual(@as(usize, 7), vals.len);
+    try expectNoOverlap(vals, value_char);
+}
+
+test "five rounds: the whole word still fits, and there is no axis title" {
+    var out: Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try trendOf(5, &out);
+    const svg = out.written();
+    var buf: [64]Label = undefined;
+    const rounds = try labelsOf(svg, "x-round", &buf);
+    try testing.expectEqual(@as(usize, 5), rounds.len);
+    try testing.expectEqualStrings("Round 4", rounds[4].text);
+    try expectNoOverlap(rounds, x_round_char);
+    try testing.expectEqual(@as(usize, 0), std.mem.count(u8, svg, "<text class=\"x-title\""));
+}
+
+test "forty rounds: labels are thinned, the latest round and value always labelled, none overlapping, every point keeps its dot and tooltip" {
+    var out: Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try trendOf(40, &out);
+    const svg = out.written();
+    var buf: [64]Label = undefined;
+    const rounds = try labelsOf(svg, "x-round", &buf);
+    try testing.expect(rounds.len < 40);
+    try testing.expect(rounds.len >= 4);
+    try testing.expectEqualStrings("39", rounds[rounds.len - 1].text);
+    try expectNoOverlap(rounds, x_round_char);
+    var vbuf: [64]Label = undefined;
+    const vals = try labelsOf(svg, "trend-value", &vbuf);
+    try testing.expect(vals.len < 40);
+    try testing.expectEqualStrings("100%", vals[0].text);
+    try testing.expectEqualStrings("22%", vals[vals.len - 1].text);
+    try expectNoOverlap(vals, value_char);
+    // Thinning removes text only: a round is still a dot with its tooltip.
+    try testing.expectEqual(@as(usize, 40), std.mem.count(u8, svg, "class=\"trend-dot\""));
+    try testing.expectEqual(@as(usize, 40), std.mem.count(u8, svg, "<title>"));
 }
 
 test "a sparkline: two rounds or more, the latest dotted, no dashed step" {
