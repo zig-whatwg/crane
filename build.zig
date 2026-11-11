@@ -5919,6 +5919,45 @@ pub fn build(b: *std.Build) void {
     // modes, as their binaries carry them).
     perf_bench_test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = ubsan_symbols_module }), "perf-ubsan_symbols", null).step);
 
+    // ========================================================================
+    // FRAMEWORKS: the JS framework compatibility matrix's harness (tools/fw_matrix/)
+    // ========================================================================
+    // tools/fw_matrix fetches the frameworks' pinned suites by checksum,
+    // serves each suite's tree on 127.0.0.1, opens its pages in Crane's
+    // console (`repl <url>`, a fresh one per page), reads the framework's own
+    // report and writes the journal (tmp/plans/framework-matrix-plan.md). A
+    // tool: std only, on the host; no Node.
+    const fw_matrix_module = b.createModule(.{
+        .root_source_file = b.path("tools/fw_matrix/main.zig"),
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+        // The report's HTML helpers are the WPT site's (escaping, numbers).
+        .imports = &.{
+            .{ .name = "site_html", .module = b.createModule(.{ .root_source_file = b.path("tools/wpt_site/html.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
+        },
+    });
+    const fw_matrix_exe = b.addExecutable(.{ .name = "fw_matrix", .root_module = fw_matrix_module });
+    const install_fw_matrix = b.addInstallArtifact(fw_matrix_exe, .{});
+    const fw_matrix_step = b.step("fw-matrix", "Build the JS framework matrix's harness alone (zig-out/bin/fw_matrix)");
+    fw_matrix_step.dependOn(&install_fw_matrix.step);
+    const fw_matrix_tests = b.addTest(.{ .root_module = fw_matrix_module });
+    const run_fw_matrix_tests = addSuiteRun(b, launch, fw_matrix_tests, "tools-fw_matrix", null);
+    test_step.dependOn(&run_fw_matrix_tests.step);
+    addTestVerify(b, launch, fw_matrix_tests, "tools-fw_matrix", "tools/fw_matrix", &.{
+        "main.zig",      "journal.zig", "exclusions.zig", "manifest.zig", "readers.zig",
+        "generated.zig", "server.zig",  "fetch.zig",      "run.zig",      "report.zig",
+    });
+    // The manifest and the exclusion lists, read strictly: every entry with
+    // its reason, each belonging to a page.
+    const fw_matrix_check = b.addRunArtifact(fw_matrix_exe);
+    fw_matrix_check.setCwd(b.path("."));
+    fw_matrix_check.addArgs(&.{"check"});
+    fw_matrix_check.has_side_effects = true;
+    test_step.dependOn(&fw_matrix_check.step);
+    const fw_matrix_test_step = b.step("fw-matrix-test", "Run tools/fw_matrix's tests and its manifest check alone");
+    fw_matrix_test_step.dependOn(&run_fw_matrix_tests.step);
+    fw_matrix_test_step.dependOn(&fw_matrix_check.step);
+
     // tools/test_suites.zig: the configure-time check that every tests/<dir>/
     // with test files is a suite (checkEveryTestDirectoryIsASuite), std-only.
     const test_suites_tests = b.addTest(.{ .root_module = b.createModule(.{
