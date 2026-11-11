@@ -163,6 +163,13 @@ pub const MatchedPropertiesCache = struct {
     /// Lookups answered and not (counters for tests and measurements).
     hits: u32 = 0,
     misses: u32 = 0,
+    /// Full correspondences `find` ran (`corresponds`), and values `add`'s
+    /// adoption compared (counters for tests and measurements).
+    correspondences: u32 = 0,
+    adoption_compares: u32 = 0,
+    /// Where each group last compared unequal in an adoption scan
+    /// (ComputedStyle.DifferenceHints).
+    difference_hints: css.computed_style.DifferenceHints = @splat(0),
 
     pub const per_key = 4;
     pub const limit = 500;
@@ -244,6 +251,7 @@ pub const MatchedPropertiesCache = struct {
                 i -= 1;
                 const entry = &bucket.items[i];
                 const hit = entry.hit orelse continue;
+                self.correspondences +%= 1;
                 if (!corresponds(hit, lookup)) continue;
                 entry.last_used = self.tick();
                 self.hits +%= 1;
@@ -268,12 +276,14 @@ pub const MatchedPropertiesCache = struct {
         // backwards): every group and custom property record the cascade
         // made that holds an entry's values becomes the entry's.
         if (self.buckets.getPtr(lookup.key)) |bucket| {
+            var scan = style.adoption();
             var i = bucket.len;
             while (i > 0 and (style.groupsHeldAlone() != 0 or style.customHeldAlone())) {
                 i -= 1;
                 const entry = &bucket.items[i];
-                if (style.adoptEqualGroups(entry.holder) + style.adoptEqualCustom(entry.holder) != 0) entry.last_used = self.tick();
+                if (style.adoptEqualGroupsIn(entry.holder, &scan, &self.difference_hints) + style.adoptEqualCustom(entry.holder) != 0) entry.last_used = self.tick();
             }
+            self.adoption_compares +%= scan.compared;
         }
         // Nothing of its own left to share and no hit to serve: not kept.
         if (!cacheable and style.groupsHeldAlone() == 0 and !style.customHeldAlone()) return;
@@ -908,4 +918,93 @@ test "a miss holds the record an entry made when its values are equal, and the g
     const font = css.computed_style.groups.location[@backingInt(Longhand.font_family)].group;
     try testing.expect(second.slots[font] == first.slots[font]);
     try testing.expect(second.firstDifference(first) == null);
+}
+
+// ---------------------------------------------------------------------------
+// Lane style1 b4: the miss path's two costs that bought nothing. A lookup
+// that missed a full key ran every entry's full correspondence, down to the
+// parent's non-inherited values, every time; an adoption scan compared a
+// group no entry holds equal with every entry's from its first value.
+// ---------------------------------------------------------------------------
+
+test "a lookup that misses a full key runs each entry's full correspondence once, then compares the parent value that rejected it first" {
+    const cache = try MatchedPropertiesCache.create(testing.allocator);
+    defer cache.destroy();
+    // Parents that differ only in margin-left (non-inherited) and a child
+    // that inherits it explicitly: one key for every parent.
+    var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, "margin-left: inherit");
+    defer block.deinit();
+    const matched = [_]Matched{.{ .block = &block, .source = .{ .origin = .author, .order = 3 } }};
+    var parents: [24]@TypeOf(try rootStyle("")) = undefined;
+    for (&parents, 0..) |*p, k| {
+        var buffer: [32]u8 = undefined;
+        p.* = try rootStyle(try std.fmt.bufPrint(&buffer, "margin-left: {d}px", .{k + 1}));
+    }
+    defer for (&parents) |*p| {
+        p.style.destroy();
+        p.block.deinit();
+    };
+    const key = keyOf(&matched, null, parents[0].style);
+    // The first per_key parents' children become the key's entries; every
+    // parent after them only looks it up, and misses.
+    for (parents, 0..) |p, k| {
+        try testing.expectEqual(key, keyOf(&matched, null, p.style));
+        const lookup: Lookup = .{ .key = key, .generation = 1, .matched = &matched, .parent = p.style };
+        try testing.expect(cache.find(lookup) == null);
+        if (k >= MatchedPropertiesCache.per_key) continue;
+        var deps: css.cascade.Dependencies = .{};
+        const style = try css.cascade.cascade(.{ .allocator = testing.allocator, .parent = p.style, .dependencies = &deps }, &matched);
+        defer style.destroy();
+        cache.add(lookup, deps, style);
+    }
+    try testing.expectEqual(@as(u32, MatchedPropertiesCache.per_key), cache.entries);
+    // Each entry ran its full correspondence for the first parent it did not
+    // stand for, which named the value that told them apart; every later
+    // parent with another value there is rejected on that value alone.
+    try testing.expectEqual(@as(u32, MatchedPropertiesCache.per_key), cache.correspondences);
+    // A parent with an entry's value there still hits, after one full
+    // correspondence: comparing that value first hides no hit.
+    var twin = try rootStyle("margin-left: 2px");
+    defer twin.block.deinit();
+    defer twin.style.destroy();
+    const counted = cache.correspondences;
+    const held = cache.find(.{ .key = key, .generation = 1, .matched = &matched, .parent = twin.style }) orelse return error.ExpectedHit;
+    try testing.expectEqual(@as(f64, 2), held.get(.margin_left).length.value);
+    try testing.expectEqual(counted + 1, cache.correspondences);
+}
+
+test "adoption compares a group no entry holds equal once per entry, at the value where it differed before" {
+    const allocator = testing.allocator;
+    const cache = try MatchedPropertiesCache.create(allocator);
+    defer cache.destroy();
+    const root = try styleOf(allocator, null, "");
+    defer root.destroy();
+    // Styles of one key that differ only in padding-left, the eighth value
+    // of its group: the first per_key become the key's entries, each holding
+    // a group of its own there and one box group between them.
+    var styles: [MatchedPropertiesCache.per_key + 1]*ComputedStyle = undefined;
+    for (&styles, 0..) |*s, k| {
+        var buffer: [64]u8 = undefined;
+        s.* = try styleOf(allocator, root, try std.fmt.bufPrint(&buffer, "display: flex; padding-left: {d}px", .{k + 1}));
+    }
+    defer for (styles) |s| s.destroy();
+    for (styles[0..MatchedPropertiesCache.per_key]) |s| cache.add(.{ .key = 1, .generation = 1 }, null, s);
+    try testing.expectEqual(@as(u32, MatchedPropertiesCache.per_key), cache.entries);
+    const box = css.computed_style.groups.location[@backingInt(Longhand.display)].group;
+    const surround = css.computed_style.groups.location[@backingInt(Longhand.padding_left)].group;
+    try testing.expect(styles[1].slots[box] == styles[0].slots[box]);
+    // The next style takes the box group from the most recent entry - every
+    // value compared - and compares its own surround group with each entry's
+    // once, at padding-left alone.
+    const before = cache.adoption_compares;
+    cache.add(.{ .key = 1, .generation = 1 }, null, styles[MatchedPropertiesCache.per_key]);
+    try testing.expect(styles[MatchedPropertiesCache.per_key].slots[box] == styles[0].slots[box]);
+    try testing.expectEqual(@as(u32, css.computed_style.groups.lengths[box] + MatchedPropertiesCache.per_key), cache.adoption_compares - before);
+    // A style equal to an entry still shares that entry's group: the value
+    // compared first orders the compares, it decides none.
+    const again = try styleOf(allocator, root, "display: flex; padding-left: 2px");
+    defer again.destroy();
+    cache.add(.{ .key = 1, .generation = 1 }, null, again);
+    try testing.expect(again.slots[surround] == styles[1].slots[surround]);
+    try testing.expectEqual(@as(usize, 0), again.groupsHeldAlone());
 }

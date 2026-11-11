@@ -188,15 +188,6 @@ fn same(comptime T: type, a: T, b: T) bool {
     };
 }
 
-/// Whether group `g`'s values at `a` and `b` are the same computed values,
-/// slot by slot: identical, or - for a value the cascade allocated, such as
-/// a font-family list or a color substituted from var() - equal (Value.eql).
-/// What adoption shares on: no reader can tell the two apart.
-fn groupValuesEqual(g: usize, a: [*]const Value, b: [*]const Value) bool {
-    for (a[0..groups.lengths[g]], b[0..groups.lengths[g]]) |x, y| if (!identical(x, y) and !heldEqual(x, y)) return false;
-    return true;
-}
-
 /// Value.eql for two values whose payload holds a reference (the only ones
 /// identical() can call different while equal); false for the rest, which
 /// identical() already compared bit for bit - so a miss pays eql only where
@@ -208,11 +199,43 @@ fn heldEqual(x: Value, y: Value) bool {
     };
 }
 
-/// Whether group `g`'s values at `a` and `b` are identical, slot by slot.
-fn groupValuesIdentical(g: usize, a: [*]const Value, b: [*]const Value) bool {
-    for (a[0..groups.lengths[g]], b[0..groups.lengths[g]]) |x, y| if (!identical(x, y)) return false;
+/// Whether group `g`'s values at `a` and `b` are the same computed values,
+/// slot by slot: identical, or - for a value the cascade allocated, such as
+/// a font-family list or a color substituted from var() - equal (Value.eql).
+/// What adoption shares on: no reader can tell the two apart. Counts the
+/// values it compares into `compared`.
+fn groupValuesEqual(g: usize, a: [*]const Value, b: [*]const Value, hints: *DifferenceHints, compared: *u32) bool {
+    _ = hints;
+    const n = groups.lengths[g];
+    for (0..n) |i| if (!identical(a[i], b[i]) and !heldEqual(a[i], b[i])) {
+        compared.* += @intCast(i + 1);
+        return false;
+    };
+    compared.* += n;
     return true;
 }
+
+/// Where a value lives in a style: its group, and its index in the group.
+pub const Place = struct {
+    group: u8,
+    index: u8,
+};
+
+/// Per group, the index of the value at which the group last compared
+/// unequal in an adoption scan: compared first the next time, so a group
+/// that differs where it differed before is rejected in one compare. Any
+/// index is a valid hint - it orders the compares, it never decides one.
+pub const DifferenceHints = [groups.count]u8;
+
+/// One style's adoption scan over the entries of a matched-properties cache
+/// key (dom/style/matched_properties_cache.zig, `add`): the groups it still
+/// holds alone, and how many values it compared.
+pub const Adoption = struct {
+    /// The groups the style holds alone and has not adopted yet.
+    pending: Held,
+    /// Values compared so far (the cache's counter: tests and censuses).
+    compared: u32 = 0,
+};
 
 /// Every group's initial values, in group order: what an unheld group's
 /// slots point into.
@@ -340,6 +363,24 @@ pub const ComputedStyle = struct {
     /// address as the children of every equal element, which is what the
     /// matched-properties cache keys on. Returns how many groups it shared.
     pub fn adoptEqualGroups(self: *ComputedStyle, from: *const ComputedStyle) usize {
+        var scan = self.adoption();
+        var hints: DifferenceHints = @splat(0);
+        return self.adoptEqualGroupsIn(from, &scan, &hints);
+    }
+
+    /// The start of an adoption scan: the groups this style holds alone.
+    pub fn adoption(self: *const ComputedStyle) Adoption {
+        var pending: Held = .empty;
+        var it = self.held.iterator(.{});
+        while (it.next()) |g| {
+            if (Group.of(self.slots[g]).refs == 1) pending.set(g);
+        }
+        return .{ .pending = pending };
+    }
+
+    /// adoptEqualGroups as one step of `scan`, which a matched-properties
+    /// cache runs over the entries of a key, most recent first.
+    pub fn adoptEqualGroupsIn(self: *ComputedStyle, from: *const ComputedStyle, scan: *Adoption, hints: *DifferenceHints) usize {
         var adopted: usize = 0;
         var it = self.held.iterator(.{});
         while (it.next()) |g| {
@@ -348,10 +389,11 @@ pub const ComputedStyle = struct {
             // A group shared already (the parent's inherited group, or one
             // adopted before) saves nothing by moving.
             if (mine.refs != 1) continue;
-            if (!groupValuesEqual(g, self.slots[g], from.slots[g])) continue;
+            if (!groupValuesEqual(g, self.slots[g], from.slots[g], hints, &scan.compared)) continue;
             Group.of(from.slots[g]).refs += 1;
             self.slots[g] = from.slots[g];
             mine.release();
+            scan.pending.unset(g);
             adopted += 1;
         }
         return adopted;
@@ -403,18 +445,34 @@ pub const ComputedStyle = struct {
     /// (DataRef: pointer-equal or value-equal). The custom property record
     /// is the caller's to compare.
     pub fn inheritedEqual(self: *const ComputedStyle, other: *const ComputedStyle) bool {
-        inline for (0..groups.count) |g| if (comptime groups.inherited[g]) {
-            if (self.slots[g] != other.slots[g] and !groupValuesIdentical(g, self.slots[g], other.slots[g])) return false;
-        };
-        return true;
+        return self.firstUnidentical(other, .inherited) == null;
     }
 
     /// inheritedEqual for the non-inherited groups (Blink NonInheritedEqual).
     pub fn nonInheritedEqual(self: *const ComputedStyle, other: *const ComputedStyle) bool {
-        inline for (0..groups.count) |g| if (comptime !groups.inherited[g]) {
-            if (self.slots[g] != other.slots[g] and !groupValuesIdentical(g, self.slots[g], other.slots[g])) return false;
+        return self.firstUnidentical(other, .non_inherited) == null;
+    }
+
+    /// The first value, in group order, at which the inherited (or the
+    /// non-inherited) groups of the two styles differ: not the same group and
+    /// not `identical` values. Null when inheritedEqual (nonInheritedEqual).
+    pub fn firstUnidentical(self: *const ComputedStyle, other: *const ComputedStyle, comptime which: enum { inherited, non_inherited }) ?Place {
+        inline for (0..groups.count) |g| if (comptime groups.inherited[g] == (which == .inherited)) {
+            const a = self.slots[g];
+            const b = other.slots[g];
+            if (a != b) for (0..groups.lengths[g]) |i| {
+                if (!identical(a[i], b[i])) return .{ .group = g, .index = @intCast(i) };
+            };
         };
-        return true;
+        return null;
+    }
+
+    /// Whether the value at `place` is the same in both styles: the same
+    /// group, or identical values there.
+    pub fn identicalAt(self: *const ComputedStyle, other: *const ComputedStyle, place: Place) bool {
+        const a = self.slots[place.group];
+        const b = other.slots[place.group];
+        return a == b or identical(a[place.index], b[place.index]);
     }
 
     /// The first stored longhand whose computed value a reader would see
