@@ -1455,7 +1455,7 @@ pub extern fn v8_Object_GetOwnPropertyNamesAsStrings(context: *Context, obj: *Ob
 pub extern fn v8_Object_GetOwnPropertySymbols(context: *Context, obj: *Object) ?*Array;
 pub extern fn v8_Object_GetPropertyNames(context: *Context, obj: *Object) ?*Array;
 /// `value` may be null: clearing field 0 is how a discarded Window is severed
-/// from its global (window_properties.detachWindow).
+/// from its global proxy (realm_global.clearInstance).
 pub extern fn v8_Object_SetAlignedPointerInInternalField(object: *Object, index: c_int, value: ?*anyopaque) void;
 pub extern fn v8_Object_InternalFieldCount(object: *Object) c_int;
 pub extern fn v8_Object_GetAlignedPointerFromInternalField(object: *Object, index: c_int) ?*anyopaque;

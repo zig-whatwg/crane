@@ -2284,7 +2284,7 @@ pub fn V8Interface(comptime Interface: type) type {
     // and operations - its mixins' included - are properties of the global
     // object, not of the interface prototype object. The globals this engine
     // gives them as own properties are Window's (protocol_realms
-    // bindWindowToGlobal, context_manager hydrateWindowContext) and the
+    // bindWindowToGlobal) and the
     // worker scopes' (worker_realm bindGlobalScope); their prototypes hold
     // none. Other [Global] interfaces (the worklets', ShadowRealmGlobalScope)
     // keep them on the prototype until their globals do the same.
@@ -3927,9 +3927,6 @@ pub fn V8Interface(comptime Interface: type) type {
         /// `w.self` answered (self-et-al.window.js). Answers false for any
         /// other `this`, which the generic path brand-checks.
         const answerWindowGetter = binding_plumbing.answerWindowGetter;
-
-        const realmWindow = binding_plumbing.realmWindow;
-        const globalReceiverWindow = binding_plumbing.globalReceiverWindow;
 
         /// WebIDL 3.7.6 attribute getter and setter step 1: "If O is not a
         /// platform object that implements the interface, throw a TypeError"

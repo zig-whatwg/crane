@@ -19,6 +19,8 @@
 //!   the old anchor - its retained store - lives while that object does, and Zig's reference to it reads
 //!   gone in the collection that takes it.
 //! - `clearInstance`, the global instance is about to be freed: field 0 and the anchor's instance go.
+//! - `receiverRealm` / `windowOfReceiver`, THE Window-receiver rule every Window member callback goes
+//!   through (design 2.3 and its ruling).
 //!
 //! The anchor itself is the context manager's, on the realm's entry (ContextEntry.global_anchor): made by
 //! `attach`, cleared before the realm's global instance is freed and disposed when the entry is retired
@@ -78,4 +80,81 @@ pub fn retainedStore(realm: runtime.Context) ?*ffi.Value {
     const context: *ffi.Context = @ptrCast(@alignCast(engine_ctx));
     const ref = context_manager.globalAnchorOf(context) orelse return null;
     return ffi.v8_GlobalAnchor_Retained(ref);
+}
+
+// ============================================================================
+// THE Window-receiver rule
+// ============================================================================
+
+/// The realm whose Window a Window member acts on, given the object V8 handed its callback - This() for
+/// a FunctionTemplate accessor or method, Holder() for a native accessor or an interceptor on the global
+/// - as an owned context (v8_Context_Dispose); null when the receiver is no Window (the binding throws
+/// "Illegal invocation").
+///
+/// 1. A CONTEXTUAL use - `document`, `setTimeout(...)`, `addEventListener(...)` with no `window.` - acts
+///    on the Window of the realm the callback runs in. The integrator's ruling (2026-11-11 00:48 UTC,
+///    golden rule 2; probe tmp/probes/v8up-detached/, design 2.3): after a navigation handed the
+///    WindowProxy on, a function of the OLD realm reads the OLD Window's members contextually, as
+///    ECMA-262 GetBindingValue of the global object record makes WebIDL's `this` the old global object,
+///    and as Firefox 159 and Safari 27 do; Chrome 156 reads the new Window, because V8 replaces the
+///    global-object receiver by `global_proxy()` (objects.cc 1650-1656, GetPropertyWithAccessor), which
+///    after DetachGlobal is the reused proxy. What V8 15.7 hands Crane for such a use: a FunctionTemplate
+///    member gets This() = the reused proxy - its realm's Global() - and runs in the holder's creation
+///    context, the OLD one (objects.cc 1660 SaveAndSwitchContext); a native accessor or interceptor gets
+///    Holder() = V8's detached COPY of the proxy, with empty fields and a contextless map
+///    (Isolate::DetachGlobal's global_proxy_for_api, V8 32fd863235d; GetHolderForApi,
+///    api-callbacks-inl.h 283-291) and runs in the caller's context, the OLD one. Both are "the current
+///    realm's Window" here.
+///    KNOWN DEVIATION (integrator 2026-11-11 01:05 UTC; pinned by
+///    tests/wpt/crane/v8up-old-realm-explicit-getter-deviation.html): `oldGetter.call(window)` from the
+///    old realm reads the OLD Window here; the spec and all three browsers (Chrome 156.0.8078.76,
+///    Firefox 159.0.1, Safari 27.0; probe v2) read the NEW one, through the WindowProxy. V8 15.7 cannot
+///    tell it from a contextual read: both arrive with This() = the reused proxy in the old context
+///    (Builtins::InvokeApiFunction with the receiver already replaced; FunctionCallbackInfo has no
+///    Holder() or Callee() any more), and a detached context's LoadGlobalIC always goes slow
+///    (ic.cc 1109-1113), so no IC state tells them apart either.
+/// 2. Any other realm's WindowProxy - `iframe.contentWindow.document`, a getter of one realm called on
+///    another's window - acts on the Window that proxy names now: its realm's (the receiver is the global
+///    proxy of its own creation context).
+/// 3. Anything else - Object.create(Window.prototype), a plain object - is no Window.
+pub fn receiverRealm(isolate: *ffi.Isolate, receiver: *ffi.Object) ?*ffi.Context {
+    const current = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+    // 1. The current realm's own global proxy, or V8's detached copy of it.
+    if (isGlobalOf(current, receiver) or isDetachedGlobalCopy(receiver)) return current;
+    ffi.v8_Context_Dispose(current);
+    // 2. Another realm's global proxy.
+    const own = ffi.v8_Object_GetCreationContext(receiver) orelse return null;
+    if (isGlobalOf(own, receiver)) return own;
+    ffi.v8_Context_Dispose(own);
+    // 3. No Window.
+    return null;
+}
+
+/// The Window `receiver` resolves to under `receiverRealm`'s rule, or null: the receiver is no Window,
+/// or its realm has none any more (ended - its Window was freed).
+pub fn windowOfReceiver(isolate: *ffi.Isolate, receiver: *ffi.Object) ?*runtime.Instance {
+    const context = receiverRealm(isolate, receiver) orelse return null;
+    defer ffi.v8_Context_Dispose(context);
+    return context_manager.getWindowForContext(context);
+}
+
+/// Whether `object` is `context`'s global proxy.
+fn isGlobalOf(context: *ffi.Context, object: *ffi.Object) bool {
+    const global = ffi.v8_Context_Global(context) orelse return false;
+    defer ffi.v8_Object_Dispose(global);
+    return ffi.v8_Value_StrictEquals(@ptrCast(object), @ptrCast(global));
+}
+
+/// Whether `object` is the copy of a global proxy V8 makes at DetachGlobal and hands a detached context's
+/// native accessors and interceptors as Holder() (Isolate::DetachGlobal, src/execution/isolate.cc
+/// 8010-8038 at 15.7.112.43): the proxy's map, so its internal field count, but every field empty and no
+/// creation context - DetachGlobal makes the shared map contextless. A live proxy, attached or not, has a
+/// creation context; a proxy whose Window was freed (a removed frame's, severed) has one too, so it is
+/// never taken for the current realm's.
+fn isDetachedGlobalCopy(object: *ffi.Object) bool {
+    if (ffi.v8_Object_InternalFieldCount(object) < 1) return false;
+    if (ffi.v8_Object_GetAlignedPointerFromInternalField(object, 0) != null) return false;
+    const context = ffi.v8_Object_GetCreationContext(object) orelse return true;
+    ffi.v8_Context_Dispose(context);
+    return false;
 }

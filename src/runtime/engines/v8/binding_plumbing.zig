@@ -46,6 +46,7 @@ const runtime = @import("runtime");
 const webidl = @import("webidl");
 const dom_algorithm = @import("dom_algorithm.zig");
 const interface = @import("interface.zig");
+const realm_global = @import("realm_global.zig");
 const template_registry = @import("template_registry.zig");
 const protocol_agents = @import("protocol_agents.zig");
 const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
@@ -736,97 +737,32 @@ fn operationReceiver(self: *const Operation, info: *const v8.FunctionCallbackInf
     // per call before (perf3 phase 1b). A freed instance's poisoned pointer
     // is none, as `interface.getInstance` answered. Whether it implements
     // this interface is the caller's check (operationBody step 2.4).
-    // Anything else - a [Global] interface, a `this` with no instance (the
-    // implicit global `this` below) - takes the handle.
+    // A Window found there - `this` is a WindowProxy, whose field 0 names
+    // the Window it reaches NOW - and any [Global] interface's receiver go
+    // through THE Window-receiver rule (realm_global.receiverRealm): an
+    // EventTarget member used contextually in a realm whose WindowProxy went
+    // on acts on that realm's own Window (design 2.3, the ruling).
     if (!self.global_interface) {
         if (thisInstance(info)) |found| {
-            if (!isPoisoned(@intFromPtr(found))) return @ptrCast(@alignCast(found));
+            if (!isPoisoned(@intFromPtr(found))) {
+                const instance: *runtime.Instance = @ptrCast(@alignCast(found));
+                if (!isWindowInstance(instance)) return instance;
+            }
         }
     }
     const this_obj = info.getThis();
     defer v8.v8_Object_Dispose(this_obj);
-
-    // For [Global] interfaces (like Window), we need special handling:
-    // Per WebIDL §3.8, if this is null/undefined, use the method's global object.
-    // See PropertyGetterCallback for detailed explanation.
-    if (self.global_interface) {
-        if (v8.v8_Isolate_GetCurrentContext(isolate)) |method_ctx| {
-            defer v8.v8_Context_Dispose(method_ctx);
-            if (v8.v8_Context_Global(method_ctx)) |method_global| {
-                // Owned: v8_Context_Global allocates where V8's Context::Global()
-                // returns a borrowed Local. Everything below only compares it or
-                // reads an internal field, so releasing at block exit is correct.
-                defer v8.v8_Object_Dispose(method_global);
-                // Check if this IS the method's global object
-                if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
-                    const global_ptr = realmWindow(method_ctx, method_global);
-                    if (global_ptr != null) {
-                        return @as(*runtime.Instance, @ptrCast(@alignCast(global_ptr)));
-                    }
-                }
-
-                // this is NOT the method's global - check handling
-                const this_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-
-                if (this_ptr == null) {
-                    // No internal field -> this is NOT a valid global object
-                    // (globals always have internal fields pointing to Window instance)
-                    //
-                    // This happens for Object.create(Window.prototype) or other
-                    // incompatible objects. Per WebIDL §3.8, we must throw TypeError.
-                    //
-                    // Note: if setter.call(null, value) is used, V8 coerces null to
-                    // the caller's global in sloppy mode, which DOES have internal
-                    // fields. So this_ptr == null means it's definitely NOT
-                    // a coerced null - it's an incompatible object.
-                    //
-                    // Fall through to throw TypeError
-                } else {
-                    // Another realm's WindowProxy: the operation acts
-                    // on that window (see PropertyGetterCallback).
-                    if (globalReceiverWindow(this_obj)) |this_window| {
-                        return @as(*runtime.Instance, @ptrCast(@alignCast(this_window)));
-                    }
-                }
-            }
-        }
-        // Fall through to throw TypeError
-        return null;
-    }
-
-    // Non-[Global] interface: `this`'s instance, whose interface the
-    // caller checks (operationBody step 2.4, the state ancestry).
-    if (interface.getInstance(runtime.Instance, this_obj)) |inst| {
-        return inst;
-    }
-
-    // IMPLICIT THIS HANDLING FOR GLOBAL OBJECTS:
-    // Per WebIDL §3.8, when an operation is called without a receiver
-    // (e.g., `const f = dispatchEvent; f(event)`), V8 may coerce `this`
-    // to the caller's global object in sloppy mode.
-    //
-    // For methods inherited from parent interfaces (like EventTarget),
-    // even though EventTarget itself doesn't have [Global], the method
-    // may be called on a global object (Window) which inherits from EventTarget.
-    //
-    // Check if `this` IS a global object and use it as implicit this.
-    if (v8.v8_Isolate_GetCurrentContext(isolate)) |ctx| {
-        defer v8.v8_Context_Dispose(ctx);
-        if (v8.v8_Context_Global(ctx)) |context_global| {
-            // Owned: v8_Context_Global allocates where V8's Context::Global()
-            // returns a borrowed Local. Everything below only compares it or
-            // reads an internal field, so releasing at block exit is correct.
-            defer v8.v8_Object_Dispose(context_global);
-            // Check if this_obj IS the current context's global
-            if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(context_global))) {
-                const global_ptr = realmWindow(ctx, context_global);
-                if (global_ptr != null) {
-                    return @as(*runtime.Instance, @ptrCast(@alignCast(global_ptr)));
-                }
-            }
+    if (!self.global_interface) {
+        // Non-[Global] interface: `this`'s instance, whose interface the
+        // caller checks (operationBody step 2.4, the state ancestry).
+        if (interface.getInstance(runtime.Instance, this_obj)) |inst| {
+            if (!isWindowInstance(inst)) return inst;
         }
     }
-    return null;
+    // A [Global] interface's receiver, a Window `this`, or a `this` with no
+    // instance - the global V8 made a missing receiver in sloppy mode
+    // (WebIDL 3.8: the operation's own global) - by the rule.
+    return @ptrCast(@alignCast(windowOf(isolate, this_obj)));
 }
 
 /// WebIDL "create an operation function" step 3, the overload
@@ -852,23 +788,20 @@ fn throwIfTooFewArguments(self: *const Operation, info: *const v8.FunctionCallba
 // [Global] receivers
 // ============================================================================
 
-/// The Window of the realm whose context is `method_ctx` and whose global is
-/// `method_global` (borrowed).
-pub fn realmWindow(method_ctx: *v8.Context, method_global: *v8.Object) ?*anyopaque {
-    if (@import("context_manager.zig").getWindowForContext(method_ctx)) |window| return @ptrCast(window);
-    return v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
+/// THE Window-receiver rule every Window member callback goes through -
+/// accessors, operations, the indexed interceptor
+/// (context_manager.windowIndexedPropertyGetter) and the lazy interface
+/// objects (global_constructor_handler): realm_global.receiverRealm, whose
+/// comment carries the rule, the probe and the KNOWN DEVIATION. `receiver`
+/// is This() (BORROWED). Null: no Window - "Illegal invocation".
+pub fn windowOf(isolate: *v8.Isolate, receiver: *v8.Object) ?*anyopaque {
+    return @ptrCast(realm_global.windowOfReceiver(isolate, receiver));
 }
 
-/// The Window of `this_obj` when it is a realm's global object - its
-/// creation context's WindowProxy - or null for any other object.
-pub fn globalReceiverWindow(this_obj: *v8.Object) ?*anyopaque {
-    const this_ctx = v8.v8_Object_GetCreationContext(this_obj) orelse return null;
-    defer v8.v8_Context_Dispose(this_ctx);
-    const this_global = v8.v8_Context_Global(this_ctx) orelse return null;
-    // Owned, and only compared and read here.
-    defer v8.v8_Object_Dispose(this_global);
-    if (!v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(this_global))) return null;
-    return realmWindow(this_ctx, this_global);
+/// Whether `instance` is a Window - a realm's global platform object, which
+/// script only ever reaches through a WindowProxy.
+fn isWindowInstance(instance: *const runtime.Instance) bool {
+    return std.mem.eql(u8, instance.vtable.name, "Window");
 }
 
 // ============================================================================
@@ -1016,95 +949,18 @@ pub fn attributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter
     // Instead, getters return undefined
     const is_lenient_this = self.lenient_this;
 
-    // For [Global] interfaces (like Window), we need special handling:
-    // Per WebIDL §3.8, if this is null/undefined, use the method's global object.
-    //
-    // The challenge is that when getter.call(null) is used:
-    // - V8 may coerce null to the CALLER's global in sloppy mode
-    // - But we need to use the METHOD's global (where the getter was defined)
-    //
-    // Solution: For [Global] interfaces, ALWAYS use the method's global object.
-    // This is correct because:
-    // 1. window.name -> this is method's global -> use it
-    // 2. otherNameGetter.call(null) -> should use method's global
-    // 3. otherNameGetter.call(wrongObject) -> should throw from method's realm
-    //
-    // Case 3 is handled by checking if the this object is the method's global.
-    // If it's not, we throw TypeError.
+    // For [Global] interfaces (like Window): THE Window-receiver rule
+    // (windowOf, realm_global.receiverRealm). A null or undefined `this` is
+    // the method's own global by then (V8 makes a missing receiver the
+    // function's global proxy), another realm's WindowProxy acts on its
+    // Window, and anything else throws a TypeError from the method's realm.
     const resolved_instance: ?*anyopaque = blk: {
         if (self.global_interface) {
-            const this_obj = this_handle.?;
-            // Get the method's context - V8 enters the function's creation context
-            if (v8.v8_Isolate_GetCurrentContext(isolate_inner)) |method_ctx| {
-                // The last of the two per-element context leaks that
-                // `leaks --atExit` named. This branch runs for [Global]
-                // interfaces, so every `window.document` read reached it
-                // and abandoned a Global<Context>: 31,597 per 200,000
-                // cycles, 1.00 per createElement.
-                //
-                // Safe to release, and provably so rather than hopefully:
-                // `method_ctx` appears on exactly two lines - this one and
-                // the call below - and `v8_Context_Global` reads it into a
-                // Local and returns a FRESH Global<Object> built from
-                // `local_context->Global()`. It keeps no pointer to the
-                // context. That is the distinction from the disposes
-                // reverted in 5abd41550 and 6c64a3925, where the callee's
-                // retention was never established.
-                defer v8.v8_Context_Dispose(method_ctx);
-                if (v8.v8_Context_Global(method_ctx)) |method_global| {
-                    // Owned: v8_Context_Global allocates where V8's Context::Global()
-                    // returns a borrowed Local. Everything below only compares it or
-                    // reads an internal field, so releasing at block exit is correct.
-                    defer v8.v8_Object_Dispose(method_global);
-                    // Check if this IS the method's global object
-                    // (handles normal case: window.name where this === window)
-                    if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
-                        const global_ptr = realmWindow(method_ctx, method_global);
-                        if (global_ptr != null) {
-                            break :blk global_ptr;
-                        }
-                    }
-
-                    // this is NOT the method's global - could be:
-                    // 1. getter.call(null) -> V8 coerced to caller's global
-                    // 2. getter.call(wrongObject) -> explicit wrong this
-                    //
-                    // Per WebIDL, we should use the method's global for case 1,
-                    // and throw TypeError for case 2.
-                    //
-                    // How to distinguish? Check if this_obj has internal field 0
-                    // pointing to a valid Window instance. If not, it's case 1.
-                    // If yes but it's a DIFFERENT window, it's case 2.
-                    const this_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-
-                    if (this_ptr == null) {
-                        // No internal field -> this is NOT a valid global object
-                        // (globals always have internal fields pointing to Window instance)
-                        //
-                        // This happens for Object.create(Window.prototype) or other
-                        // incompatible objects. Per WebIDL §3.8, we must throw TypeError.
-                        //
-                        // Note: if getter.call(null) is used, V8 coerces null to
-                        // the caller's global in sloppy mode, which DOES have internal
-                        // fields. So this_ptr == null means it's definitely NOT
-                        // a coerced null - it's an incompatible object.
-                        //
-                        // Fall through to throw TypeError
-                    } else {
-                        // `this` has a Window field: when it is a global
-                        // object - another realm's WindowProxy - the
-                        // attribute acts on THAT window (WebIDL 3.7.6:
-                        // O is `this`; a null `this` V8 already made the
-                        // function's own global). A cross-origin one got
-                        // here only for a member HTML lets through
-                        // (cross_origin.acceptsAnyReceiver).
-                        if (globalReceiverWindow(this_obj)) |this_window| break :blk this_window;
-
-                        // this is not a global object but has Window internal field
-                        // This is Object.create(Window.prototype) case -> throw TypeError
-                    }
-                }
-            }
+            // THE Window-receiver rule (windowOf): the method's own global
+            // (a missing receiver V8 made it), a realm's WindowProxy, or V8's
+            // detached copy of one; anything else - Object.create(Window.
+            // prototype), a plain object - is no Window, and throws below.
+            if (windowOf(isolate_inner, this_handle.?)) |window| break :blk window;
             // Fall through to throw TypeError
         } else {
             // Non-[Global] interface: use normal this handling
@@ -1695,16 +1551,14 @@ pub fn answerWindowGetter(info: *const v8.FunctionCallbackInfo, window_access: ?
     const this_obj = info.getThis();
     defer v8.v8_Object_Dispose(this_obj);
     if (!v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) return false;
-    // HTML 7.1.3.3's access report check, for the method's realm's Window.
-    // The global's Window field (null once the realm has ended) answers the
-    // check's first question - has the Browser started its access
-    // monitoring? - before realmWindow looks the Window up.
+    // HTML 7.1.3.3's access report check, for the method's realm's Window:
+    // `this` is the method's own global, so THE Window-receiver rule's
+    // contextual case - the Window the method's realm was attached with
+    // (never field 0 of its global, which a reused WindowProxy points at the
+    // next realm's Window). reportWindowAccess asks first whether the
+    // Browser monitors access at all.
     if (window_access) |property| {
-        const held = v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
-        const monitored = if (held) |window| @import("protocol_realms.zig").windowAccessMonitored(@ptrCast(@alignCast(window))) else true;
-        if (monitored) {
-            if (realmWindow(method_ctx, method_global)) |window| @import("protocol_realms.zig").reportWindowAccess(@ptrCast(@alignCast(window)), property);
-        }
+        if (@import("context_manager.zig").getWindowForContext(method_ctx)) |window| @import("protocol_realms.zig").reportWindowAccess(window, property);
     }
     // Copied into the return value; ours is released above.
     info.setReturnValue(@ptrCast(method_global));
@@ -1933,51 +1787,13 @@ fn setterBody(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
     // See PropertyGetterCallback for detailed explanation.
     const resolved_instance: ?*anyopaque = blk: {
         if (self.global_interface) {
-            // A handle for `this`: a [Global] receiver is compared with
-            // the realm's global object (the only setters that still make
-            // one; `thisInstance` serves every other).
+            // A handle for `this`, for THE Window-receiver rule (windowOf):
+            // the only setters that still make one; `thisInstance` serves
+            // every other.
             const this_obj = info.getThis();
             defer v8.v8_Object_Dispose(this_obj);
-            if (v8.v8_Isolate_GetCurrentContext(isolate_inner)) |method_ctx| {
-                // Owned, as in the getter: one Global<Context> per [Global] setter
-                // call leaked, pinning the page.
-                defer v8.v8_Context_Dispose(method_ctx);
-                if (v8.v8_Context_Global(method_ctx)) |method_global| {
-                    // Owned: v8_Context_Global allocates where V8's Context::Global()
-                    // returns a borrowed Local. Everything below only compares it or
-                    // reads an internal field, so releasing at block exit is correct.
-                    defer v8.v8_Object_Dispose(method_global);
-                    // Check if this IS the method's global object
-                    if (v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) {
-                        const global_ptr = realmWindow(method_ctx, method_global);
-                        if (global_ptr != null) {
-                            break :blk global_ptr;
-                        }
-                    }
-
-                    // this is NOT the method's global - check if it's caller's global
-                    const this_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-
-                    if (this_ptr == null) {
-                        // No internal field -> this is NOT a valid global object
-                        // (globals always have internal fields pointing to Window instance)
-                        //
-                        // This happens for Object.create(Window.prototype) or other
-                        // incompatible objects. Per WebIDL §3.8, we must throw TypeError.
-                        //
-                        // Note: if method.call(null, ...) is used, V8 coerces null to
-                        // the caller's global in sloppy mode, which DOES have internal
-                        // fields. So this_ptr == null means it's definitely NOT
-                        // a coerced null - it's an incompatible object.
-                        //
-                        // Fall through to throw TypeError
-                    } else {
-                        // Another realm's WindowProxy: the setter acts on
-                        // that window (see PropertyGetterCallback).
-                        if (globalReceiverWindow(this_obj)) |this_window| break :blk this_window;
-                    }
-                }
-            }
+            if (windowOf(isolate_inner, this_obj)) |window| break :blk window;
+            // No Window: throw below.
         } else {
             // Non-[Global] interface: use normal this handling
             //
