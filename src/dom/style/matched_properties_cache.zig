@@ -455,6 +455,10 @@ pub fn differenceFromCascade(ctx: css.cascade.Context, matched: []const Matched,
     defer fresh.destroy();
     if (!dependencies.cacheable()) return .{ .uncacheable = dependencies };
     if (style.firstDifference(fresh)) |l| return .{ .longhand = l };
+    // An observation independent of the predicate adoption shares on
+    // (computed_style.interchangeable): what getComputedStyle serializes and
+    // what the fetch layer requests (lane style1 b4).
+    if (try style.firstObservableDifference(fresh, ctx.allocator)) |l| return .{ .longhand = l };
     if (style.used_color_scheme != fresh.used_color_scheme or style.box_context != fresh.box_context or
         style.subgrid_ineligible != fresh.subgrid_ineligible or style.in_base_appearance != fresh.in_base_appearance or
         style.registered != fresh.registered) return .flags;
@@ -465,9 +469,13 @@ pub fn differenceFromCascade(ctx: css.cascade.Context, matched: []const Matched,
     if (names.len != fresh_names.len) return .{ .custom = if (names.len > fresh_names.len) names[fresh_names.len] else fresh_names[names.len] };
     for (names, fresh_names) |name, other| {
         if (!std.mem.eql(u8, name, other)) return .{ .custom = name };
+        // As getPropertyValue reads it - the text - and the taint a later
+        // substitution reads, field by field (not Text.eql, which record
+        // adoption compares through).
         const a = style.customValue(name).?;
         const b = fresh.customValue(other).?;
-        if (!a.eql(b)) return .{ .custom = name };
+        if (!std.mem.eql(u8, a.bytes, b.bytes) or a.taint.len != b.taint.len) return .{ .custom = name };
+        for (a.taint, b.taint) |x, y| if (!std.meta.eql(x, y)) return .{ .custom = name };
     }
     return null;
 }

@@ -202,3 +202,118 @@ test "a custom property record held alone and equal to another's is shared; a di
     try testing.expect(d.custom == root.custom);
     try testing.expectEqual(@as(usize, 0), d.adoptEqualCustom(a));
 }
+
+// Lane style1 b4: a url() is its resolved URL and the request made for it.
+// Value.eql compares a value's text only ("eql deliberately remains a
+// value/text comparison. Reuse decisions that keep a source need both":
+// Value.resourcesEql), so the same `url(./)` under two base URLs was one value
+// to b3's adoption - and to the Debug self-check, which compared through the
+// same eql. RED at 67d0ed46337 (server1): firstDifference found no
+// difference, and WPT css/cssom/css-style-attr-decl-block.html "Changes to
+// CSS declaration block after a base URL change" read the old base's URL
+// after the declaration was set again under the new one. Adoption now shares
+// on computed_style.interchangeable; the self-check observes
+// (firstObservableDifference: serialization and fetch identity).
+
+const UrlResolver = struct {
+    prefix: []const u8,
+    fn resolve(context: *const anyopaque, allocator: Allocator, raw: []const u8) ?[]u8 {
+        const self: *const UrlResolver = @ptrCast(@alignCast(context));
+        return std.mem.concat(allocator, u8, &.{ self.prefix, raw }) catch null;
+    }
+};
+
+/// A child of `parent` whose block sets `background-image: url(./)`,
+/// resolved against `base` and fetched under `policy`.
+fn urlStyle(allocator: Allocator, parent: *const ComputedStyle, base: []const u8, policy: []const u8) !*ComputedStyle {
+    const resolver: UrlResolver = .{ .prefix = base };
+    const source = try css.style_values.ResourceSource.create(allocator, .{ .base_url = base, .referrer_policy = policy });
+    defer source.unref();
+    var block = DeclarationBlock.init(allocator);
+    defer block.deinit();
+    try testing.expect(try block.setProperty(.{ .allocator = allocator, .resource_source = source, .url_resolver = .{ .context = &resolver, .resolve = UrlResolver.resolve } }, "background-image", "url(./)", ""));
+    return css.cascade.cascade(.{ .allocator = allocator, .parent = parent }, &.{.{ .block = &block, .source = .{ .origin = .author } }});
+}
+
+/// `new`, made after `old` from another source, keeps its own background
+/// group through adoption, and the self-check's observation names
+/// background-image where Value.eql sees nothing.
+fn expectKeptApart(old: *const ComputedStyle, new: *ComputedStyle) !void {
+    try testing.expect(new.firstDifference(old) == null);
+    try testing.expectEqual(@as(?Longhand, .background_image), try new.firstObservableDifference(old, testing.allocator));
+    const before = try serialized(new, .background_image);
+    defer testing.allocator.free(before);
+    _ = new.adoptEqualGroups(old);
+    const bg = groupOf(.background_image);
+    try testing.expect(new.slots[bg] != old.slots[bg]);
+    const after = try serialized(new, .background_image);
+    defer testing.allocator.free(after);
+    try testing.expectEqualStrings(before, after);
+}
+
+test "a url resolved against another base is another value: adoption keeps it apart, and the self-check observes it" {
+    const allocator = testing.allocator;
+    const root = try styleOf(allocator, null, "");
+    defer root.destroy();
+    const old = try urlStyle(allocator, root, "https://example.test/css/cssom/", "");
+    defer old.destroy();
+    const new = try urlStyle(allocator, root, "https://example.test/", "");
+    defer new.destroy();
+    const old_text = try serialized(old, .background_image);
+    defer testing.allocator.free(old_text);
+    const new_text = try serialized(new, .background_image);
+    defer testing.allocator.free(new_text);
+    try testing.expect(!std.mem.eql(u8, old_text, new_text));
+    try expectKeptApart(old, new);
+    // The same url under the same base is one value: shared.
+    const twin = try urlStyle(allocator, root, "https://example.test/", "");
+    defer twin.destroy();
+    try testing.expect(try twin.firstObservableDifference(new, allocator) == null);
+    try testing.expectEqual(@as(usize, 1), twin.adoptEqualGroups(new));
+    try testing.expect(twin.slots[groupOf(.background_image)] == new.slots[groupOf(.background_image)]);
+}
+
+test "a url fetched under another referrer policy is another value: the same text and URL, another request" {
+    const allocator = testing.allocator;
+    const root = try styleOf(allocator, null, "");
+    defer root.destroy();
+    const old = try urlStyle(allocator, root, "https://example.test/", "no-referrer");
+    defer old.destroy();
+    const new = try urlStyle(allocator, root, "https://example.test/", "");
+    defer new.destroy();
+    const old_text = try serialized(old, .background_image);
+    defer testing.allocator.free(old_text);
+    const new_text = try serialized(new, .background_image);
+    defer testing.allocator.free(new_text);
+    try testing.expectEqualStrings(old_text, new_text);
+    try expectKeptApart(old, new);
+}
+
+test "interchangeable is Value.eql and the resources behind the value; a record's whole identity is its eql" {
+    const allocator = testing.allocator;
+    const root = try styleOf(allocator, null, "--x: 1px");
+    defer root.destroy();
+    const a = try urlStyle(allocator, root, "https://example.test/a/", "");
+    defer a.destroy();
+    const b = try urlStyle(allocator, root, "https://example.test/b/", "");
+    defer b.destroy();
+    const x = a.get(.background_image);
+    const y = b.get(.background_image);
+    try testing.expect(x.eql(y));
+    try testing.expect(!computed.interchangeable(css.style_values.Value, x, y));
+    try testing.expect(computed.interchangeable(css.style_values.Value, x, a.get(.background_image)));
+    // Tree-scoped names keep their scope in Value.eql (font-family's named
+    // families, CSS Scoping 1): the same name from two trees is two values.
+    var block = try DeclarationBlock.parse(.{ .allocator = allocator }, "font-family: Foo");
+    defer block.deinit();
+    var scoped: [2]*ComputedStyle = undefined;
+    for (&scoped, 1..) |*s, serial| s.* = try css.cascade.cascade(.{ .allocator = allocator, .parent = root }, &.{.{ .block = &block, .source = .{ .origin = .author, .tree_scope = .{ .serial = serial } } }});
+    defer for (scoped) |s| s.destroy();
+    try testing.expect(!computed.interchangeable(css.style_values.Value, scoped[0].get(.font_family), scoped[1].get(.font_family)));
+    // A custom property record: its eql (names, text, taint, parents).
+    const c = try styleOf(allocator, root, "--a: 3px");
+    defer c.destroy();
+    const d = try styleOf(allocator, root, "--a: 3px");
+    defer d.destroy();
+    try testing.expect(computed.interchangeable(?*const css.custom_properties.CustomProperties, c.custom, d.custom));
+}

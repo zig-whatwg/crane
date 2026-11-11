@@ -188,20 +188,79 @@ fn same(comptime T: type, a: T, b: T) bool {
     };
 }
 
-/// Value.eql for two values whose payload holds a reference (the only ones
-/// identical() can call different while equal); false for the rest, which
-/// identical() already compared bit for bit - so a miss pays eql only where
-/// it can find something (lane style1 b3, guard on the all-miss benches).
+/// Whether no reader can tell `a` from `b`, so that one style may hold the
+/// other's object in its place (adoption: ComputedStyle.adoptEqualGroupsIn
+/// and adoptEqualCustom). T is Value or a custom property record.
+///
+/// A computed value: the same value (Value.eql - its text, numbers, keywords,
+/// names and the tree scope of the names that keep one: font-family's named
+/// families, animation-name's list) AND the same resources behind it
+/// (Value.resourcesEql - each url()'s resolved URL, local-fragment and valid
+/// flags, and its source's base URL, referrer, referrer policy and
+/// origin-clean flag: what the fetch layer reads). Value.eql "deliberately
+/// remains a value/text comparison" (style_values.zig) - a url() keeps its
+/// authored text there - so eql alone called `url(./)` under two base URLs
+/// one value, and lane style1 b3's adoption handed an element the previous
+/// declaration's URL (WPT css/cssom/css-style-attr-decl-block.html, "Changes
+/// to CSS declaration block after a base URL change"; lane style1 b4).
+///
+/// Audit of what Value.eql folds (lane style1 b4): resource identity (the
+/// one gap, closed here); -0 and +0 inside a payload's numbers (CSSOM
+/// serializes both as 0, and no computed value divides by a stored one);
+/// NaN (never eql: never adopted). Every other payload's eql compares its
+/// text or fields whole: colors by form and channels, named colors by name,
+/// images, gradients and content by serialization and resolution, families
+/// and animation names with their tree scope; no other computed value keeps
+/// a tree scope or loads anything (an Image holds no load state). A custom
+/// property record holds text and taint only - its url()s resolve where they
+/// are substituted (custom_properties.parse) - so CustomProperties.eql is its
+/// whole identity.
+pub fn interchangeable(comptime T: type, a: T, b: T) bool {
+    return switch (T) {
+        Value => a.eql(b) and a.resourcesEql(b),
+        ?*const custom_properties.CustomProperties => custom_properties.CustomProperties.eql(a, b),
+        else => @compileError("interchangeable: no rule for " ++ @typeName(T)),
+    };
+}
+
+/// Whether the fetch layer would make the same requests for both lists of
+/// url()s: each one's resolved URL, its valid and local-fragment flags, and
+/// its source's base URL, referrer, referrer policy and origin-clean flag,
+/// field by field (Fetch's request from CSS Values 4 §4.5.1 "fetch a style
+/// resource"). Written out rather than ResourceUrl.eql, which
+/// `interchangeable` uses: it is what the Debug self-check observes.
+fn sameFetch(a: []const values.ResourceUrl, b: []const values.ResourceUrl) bool {
+    if (a.len != b.len) return false;
+    for (a, b) |x, y| {
+        if (x.valid != y.valid or x.local_fragment != y.local_fragment or !std.mem.eql(u8, x.url, y.url)) return false;
+        const s = x.source orelse {
+            if (y.source != null) return false;
+            continue;
+        };
+        const t = y.source orelse return false;
+        if (s.origin_clean != t.origin_clean or !std.mem.eql(u8, s.base_url, t.base_url) or
+            !std.mem.eql(u8, s.referrer_policy, t.referrer_policy)) return false;
+        if ((s.referrer == null) != (t.referrer == null)) return false;
+        if (s.referrer) |r| if (!std.mem.eql(u8, r, t.referrer.?)) return false;
+    }
+    return true;
+}
+
+/// interchangeable for two values whose payload holds a reference (the only
+/// ones identical() can call different while interchangeable); false for
+/// the rest, which identical() already compared bit for bit - so a miss pays
+/// the compare only where it can find something (lane style1 b3, guard on
+/// the all-miss benches).
 fn heldEqual(x: Value, y: Value) bool {
     if (std.meta.activeTag(x) != std.meta.activeTag(y)) return false;
     return switch (x) {
-        inline else => |payload| if (comptime mayHoldReference(@TypeOf(payload))) x.eql(y) else false,
+        inline else => |payload| if (comptime mayHoldReference(@TypeOf(payload))) interchangeable(Value, x, y) else false,
     };
 }
 
 /// Whether group `g`'s values at `a` and `b` are the same computed values,
 /// slot by slot: identical, or - for a value the cascade allocated, such as
-/// a font-family list or a color substituted from var() - equal (Value.eql).
+/// a font-family list or a color substituted from var() - interchangeable.
 /// What adoption shares on: no reader can tell the two apart. The value at
 /// `hints[g]` - where the group last compared unequal - is compared first,
 /// and an unequal value found now becomes the hint; counts the values it
@@ -431,7 +490,7 @@ pub const ComputedStyle = struct {
         const mine = slot.* orelse return false;
         const other = from orelse return false;
         if (mine == other or mine.refs != 1) return false;
-        if (!custom_properties.CustomProperties.eql(mine, other)) return false;
+        if (!interchangeable(?*const custom_properties.CustomProperties, mine, other)) return false;
         other.retain();
         mine.release();
         slot.* = other;
@@ -501,6 +560,37 @@ pub const ComputedStyle = struct {
             const l: Longhand = @fromBackingInt(@intCast(i));
             if (l.logical() != null) continue;
             if (!self.get(l).eql(other.get(l))) return l;
+        }
+        return null;
+    }
+
+    /// The first longhand whose value an observer tells apart in the two
+    /// styles, observed WITHOUT Value.eql or `interchangeable`: its resolved
+    /// value as getComputedStyle serializes it (serializeResolved), and the
+    /// resources behind it as the fetch layer reads them (`sameFetch`). The
+    /// matched-properties cache's Debug self-check runs it beside
+    /// firstDifference, so the predicate adoption shares on is checked by an
+    /// observation, not repeated (lane style1 b4: a check through the same
+    /// eql could not see that eql folds a url()'s base URL). A longhand whose
+    /// values are `identical` (the same bits: the same objects) is skipped:
+    /// nothing about it can differ.
+    pub fn firstObservableDifference(self: *const ComputedStyle, other: *const ComputedStyle, allocator: Allocator) Allocator.Error!?Longhand {
+        var a: std.ArrayList(u8) = .empty;
+        defer a.deinit(allocator);
+        var b: std.ArrayList(u8) = .empty;
+        defer b.deinit(allocator);
+        for (0..Longhand.count) |i| {
+            const l: Longhand = @fromBackingInt(@intCast(i));
+            if (l.logical() != null) continue;
+            const x = self.get(l);
+            const y = other.get(l);
+            if (identical(x, y)) continue;
+            a.clearRetainingCapacity();
+            b.clearRetainingCapacity();
+            try self.serializeResolved(l, &a, allocator);
+            try other.serializeResolved(l, &b, allocator);
+            if (!std.mem.eql(u8, a.items, b.items)) return l;
+            if (!sameFetch(x.resourceUrls(), y.resourceUrls())) return l;
         }
         return null;
     }
