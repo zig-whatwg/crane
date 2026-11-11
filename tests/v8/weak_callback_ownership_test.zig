@@ -310,3 +310,219 @@ test "disposing a handle before its second pass cancels the finalizer and frees 
     try testing.expectEqual(@as(u32, 0), pass_probe.finalizes);
     try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
 }
+
+// ---------------------------------------------------------------------------
+// Finalizers leave V8's second pass: the agent's queue and its safe point
+// ---------------------------------------------------------------------------
+//
+// V8 15.7 runs a collection's second pass under DisallowJavascriptExecution
+// and DisallowJSObjectModification - at the end of a forced collection and in
+// the task it posts for every other one (src/heap/heap.cc:1470-1477,
+// src/handles/global-handles.cc:890-900) - and a write to a JS object there
+// is fatal: "Check failed: AllowJSObjectModification::IsAllowed(isolate)". A
+// finalizer is an instance's teardown and may write (a dropped Response
+// cancels its open body transfer, which reports a resource-timing entry to
+// its page), so the second pass only queues it on its agent, and it runs at
+// the agent's safe point: the pump, after the task; a forced collection,
+// before it returns (v8_wrapper.cpp `runQueuedFinalizers`).
+
+const QueueProbe = struct {
+    const max = 4;
+    isolate: *ffi.Isolate,
+    context: *ffi.Context,
+    /// What a finalizer writes to: a live object of the agent's.
+    target: *ffi.Object,
+    unlink_order: [max]u8 = @splat(0xff),
+    unlinks: usize = 0,
+    finalize_order: [max]u8 = @splat(0xff),
+    finalizes: usize = 0,
+    /// Whether each finalizer writes a new property of `target`.
+    writes: bool = true,
+    write_failed: bool = false,
+};
+var queue_probe: ?QueueProbe = null;
+
+/// One armed object: its index and its handle, which its finalizer disposes
+/// as an owner does.
+const Armed = struct {
+    index: u8,
+    handle: ?*ffi.Object = null,
+};
+
+fn queueUnlink(data: ?*anyopaque, _: usize) callconv(.c) void {
+    const armed: *Armed = @ptrCast(@alignCast(data.?));
+    const probe = &queue_probe.?;
+    probe.unlink_order[probe.unlinks] = armed.index;
+    probe.unlinks += 1;
+}
+
+/// The finalizer: engine work - a NEW property on a live JS object, which
+/// changes its map - then its handle goes.
+fn queueFinalize(data: ?*anyopaque, _: usize) callconv(.c) void {
+    const armed: *Armed = @ptrCast(@alignCast(data.?));
+    const probe = &queue_probe.?;
+    probe.finalize_order[probe.finalizes] = armed.index;
+    probe.finalizes += 1;
+    if (probe.writes) {
+        var name: [8]u8 = undefined;
+        const text = std.fmt.bufPrint(&name, "f{d}", .{armed.index}) catch unreachable;
+        const key = ffi.v8_String_NewFromUtf8(probe.isolate, text.ptr, @intCast(text.len)).?;
+        defer ffi.v8_String_Dispose(key);
+        const value = ffi.v8_Integer_New(probe.isolate, armed.index);
+        defer ffi.v8_Value_Dispose(@ptrCast(value));
+        if (!ffi.v8_Object_Set(probe.target, probe.context, @ptrCast(key), @ptrCast(value))) probe.write_failed = true;
+    }
+    if (armed.handle) |handle| ffi.v8_Object_Dispose(handle);
+    armed.handle = null;
+}
+
+fn armForQueue(e: Env, armed: *Armed) !void {
+    const scope = ffi.v8_HandleScope_New(e.isolate);
+    const obj = ffi.v8_Object_New(e.isolate) orelse return error.ObjectCreationFailed;
+    if (scope) |s| ffi.v8_HandleScope_Dispose(s);
+    armed.handle = obj;
+    ffi.v8_Global_SetWeakFinalizer(@ptrCast(obj), @ptrCast(armed), queueUnlink, queueFinalize);
+}
+
+fn openQueueProbe(e: Env, writes: bool) !void {
+    // Nothing of an earlier collection is under way or queued.
+    ffi.v8_Isolate_RequestGarbageCollection(e.isolate);
+    while (ffi.v8_Platform_PumpMessageLoop(e.isolate)) {}
+    const scope = ffi.v8_HandleScope_New(e.isolate);
+    const target = ffi.v8_Object_New(e.isolate) orelse return error.ObjectCreationFailed;
+    if (scope) |s| ffi.v8_HandleScope_Dispose(s);
+    queue_probe = .{ .isolate = e.isolate, .context = e.context, .target = target, .writes = writes };
+}
+
+fn closeQueueProbe() void {
+    if (queue_probe) |probe| ffi.v8_Object_Dispose(probe.target);
+    queue_probe = null;
+}
+
+/// A collection V8 delivers BY TASK, as it delivers every collection the
+/// embedder did not force. The trigger is a moderate memory-pressure notice
+/// (Isolate::MemoryPressureNotification(kModerate)): V8 starts an incremental
+/// collection that its marking job finishes in foreground tasks (15.7
+/// Heap::CheckMemoryPressure), and the second pass of such a collection is a
+/// task V8 posts (GlobalHandles::PostGarbageCollectionProcessing) - nothing
+/// is collected before the notice returns. Pumps WITHOUT the agent's safe
+/// point until `count` finalizers are queued.
+fn collectByTaskHoldingFinalizers(isolate: *ffi.Isolate, count: usize) !void {
+    ffi.v8_Isolate_MemoryPressureNotification(isolate, .moderate);
+    var turns: usize = 0;
+    while (ffi.v8_Debug_QueuedFinalizers(isolate) < count and turns < 2_000_000) : (turns += 1) {
+        if (queue_probe.?.finalizes != 0) {
+            std.debug.print("a finalizer ran inside V8's second pass: {d} run, {d} queued\n", .{ queue_probe.?.finalizes, ffi.v8_Debug_QueuedFinalizers(isolate) });
+            return error.FinalizerRanInsideTheSecondPass;
+        }
+        if (!ffi.v8_Debug_PumpMessageLoopHoldingFinalizers(isolate)) std.Thread.yield() catch {};
+    }
+    if (ffi.v8_Debug_QueuedFinalizers(isolate) < count) {
+        std.debug.print("{d} of {d} finalizers queued {d} loop turns after a moderate memory-pressure notice ({d} unlinked)\n", .{ ffi.v8_Debug_QueuedFinalizers(isolate), count, turns, queue_probe.?.unlinks });
+        return error.NoCollectionByTask;
+    }
+}
+
+test "a finalizer that writes a JS object runs when a forced collection returns, outside its second pass" {
+    defer test_agent.close();
+    const e = try env();
+    const baseline = ffi.v8_Debug_LiveWeakCallbackData();
+    try openQueueProbe(e, true);
+    defer closeQueueProbe();
+
+    var armed: Armed = .{ .index = 0 };
+    try armForQueue(e, &armed);
+    // Forced: V8 runs the second pass before it returns, under
+    // DisallowJSObjectModification. The finalizer's write must come after.
+    ffi.v8_Isolate_RequestGarbageCollection(e.isolate);
+    try testing.expectEqual(@as(usize, 1), queue_probe.?.finalizes);
+    try testing.expect(!queue_probe.?.write_failed);
+    try testing.expect(ffi.v8_Object_Has(e.context, queue_probe.?.target, "f0"));
+    try testing.expectEqual(@as(usize, 0), ffi.v8_Debug_QueuedFinalizers(e.isolate));
+    try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
+}
+
+test "finalizers of a collection delivered by task wait for the agent's safe point and run there in the order they were collected" {
+    defer test_agent.close();
+    const e = try env();
+    const baseline = ffi.v8_Debug_LiveWeakCallbackData();
+    try openQueueProbe(e, true);
+    defer closeQueueProbe();
+
+    var armed: [3]Armed = .{ .{ .index = 0 }, .{ .index = 1 }, .{ .index = 2 } };
+    for (&armed) |*a| try armForQueue(e, a);
+
+    try collectByTaskHoldingFinalizers(e.isolate, 3);
+    // Both passes have run and nothing of Zig's has: the three wait.
+    try testing.expectEqual(@as(usize, 3), queue_probe.?.unlinks);
+    try testing.expectEqual(@as(usize, 0), queue_probe.?.finalizes);
+    try testing.expect(!ffi.v8_Object_Has(e.context, queue_probe.?.target, "f0"));
+
+    // The safe point: the pump, V8's task off the stack. It answers that
+    // work ran, so the event loop performs its microtask checkpoint.
+    try testing.expect(ffi.v8_Platform_PumpMessageLoop(e.isolate));
+    try testing.expectEqual(@as(usize, 3), queue_probe.?.finalizes);
+    try testing.expectEqualSlices(u8, queue_probe.?.unlink_order[0..3], queue_probe.?.finalize_order[0..3]);
+    try testing.expect(!queue_probe.?.write_failed);
+    inline for (.{ "f0", "f1", "f2" }) |name| try testing.expect(ffi.v8_Object_Has(e.context, queue_probe.?.target, name));
+    try testing.expectEqual(@as(usize, 0), ffi.v8_Debug_QueuedFinalizers(e.isolate));
+    try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
+}
+
+test "a handle disposed while its finalizer is queued cancels it, and the safe point frees the record uncalled" {
+    defer test_agent.close();
+    const e = try env();
+    const baseline = ffi.v8_Debug_LiveWeakCallbackData();
+    try openQueueProbe(e, false);
+    defer closeQueueProbe();
+
+    var armed: [2]Armed = .{ .{ .index = 0 }, .{ .index = 1 } };
+    for (&armed) |*a| try armForQueue(e, a);
+    try collectByTaskHoldingFinalizers(e.isolate, 2);
+
+    // Their owner ends them first - a realm's end does, for every entry
+    // still pending (WrapperCache.deinit) - and frees what they point at.
+    for (&armed) |*a| {
+        ffi.v8_Object_Dispose(a.handle.?);
+        a.handle = null;
+    }
+    try testing.expectEqual(@as(usize, 0), ffi.v8_Debug_QueuedFinalizers(e.isolate));
+    while (ffi.v8_Platform_PumpMessageLoop(e.isolate)) {}
+    try testing.expectEqual(@as(usize, 0), queue_probe.?.finalizes);
+    try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
+}
+
+test "an agent that ends with finalizers queued runs each once while it is alive, and leaks neither their records nor what they free" {
+    const e = try env();
+    var closed = false;
+    defer if (!closed) test_agent.close();
+    const baseline = ffi.v8_Debug_LiveWeakCallbackData();
+    try openQueueProbe(e, false);
+
+    // What each finalizer frees is the test allocator's: one that never ran
+    // leaks, and one that ran twice frees twice.
+    const armed = try testing.allocator.alloc(Armed, 2);
+    var freed = false;
+    defer if (!freed) testing.allocator.free(armed);
+    for (armed, 0..) |*a, i| {
+        a.* = .{ .index = @intCast(i) };
+        try armForQueue(e, a);
+    }
+    try collectByTaskHoldingFinalizers(e.isolate, 2);
+    try testing.expectEqual(@as(usize, 0), queue_probe.?.finalizes);
+
+    // The agent ends: its last forced collections are a safe point, with
+    // the isolate entered and alive (protocol_agents.endAgent). Nothing is
+    // left for v8_Isolate_Dispose, which calls no finalizer. The probe's
+    // target goes before its agent; its counts stay readable.
+    ffi.v8_Object_Dispose(queue_probe.?.target);
+    test_agent.close();
+    closed = true;
+    const finalizes = queue_probe.?.finalizes;
+    queue_probe = null;
+    try testing.expectEqual(@as(usize, 2), finalizes);
+    for (armed) |a| try testing.expect(a.handle == null);
+    try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
+    testing.allocator.free(armed);
+    freed = true;
+}

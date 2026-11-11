@@ -881,9 +881,13 @@ fn unlinkCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
     entry.cache.linkPending(entry);
 }
 
-/// V8's SECOND pass for a collected wrapper (`unlinkCollected` ran): the
-/// collection is over and engine calls are allowed again, so the instance's
-/// teardown runs here - never while the engine is collecting.
+/// The finalizer of a collected wrapper (`unlinkCollected` ran), at its
+/// agent's safe point - never while the engine is collecting, and never in
+/// V8's second pass, which only queues it (v8_wrapper.cpp
+/// `runQueuedFinalizers`: after the platform task that carried the pass, or
+/// before a forced collection returns): the instance's teardown runs here,
+/// and may do any engine work - a dropped Response cancels its open body
+/// transfer, which reports to its page.
 fn finalizeCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
     const entry: *CacheEntry = @ptrCast(@alignCast(data orelse return));
     // A walk holds the agent's teardowns (engine.deferTeardowns): this one

@@ -121,8 +121,8 @@ const Record = struct {
         return .{ .steps = steps, .data = data };
     }
 
-    /// V8's second pass, after the collection (v8_Global_SetWeakFinalizer):
-    /// `finalize` may touch the engine.
+    /// The agent's safe point after the collection (never V8's second pass:
+    /// ffi.v8_Global_SetWeakFinalizer): `finalize` may touch the engine.
     fn collected(raw: ?*anyopaque, _: usize) callconv(.c) void {
         const self: *Record = @ptrCast(@alignCast(raw.?));
         const host = self.end();

@@ -2749,10 +2749,18 @@ pub extern fn v8_Global_SetWeak(
 /// `unlink(data)` (optional) runs in V8's first pass, under the same rule as
 /// v8_Global_SetWeak's callback - no V8 API - so that nothing can reach what
 /// is being finalized: the wrapper cache drops its entry there. `finalize(data)`
-/// runs in V8's second pass, once every first-pass callback of the collection
-/// has run - from V8's posted task, the next collection's prologue, or at the
-/// end of a forced collection - where V8 API calls are allowed. Disposing the
-/// handle before then cancels `finalize`.
+/// NEVER runs inside the collector, V8's second pass included: that pass runs
+/// under DisallowJSObjectModification on V8 15.7 (a write to a JS object there
+/// is a fatal CHECK) and only queues the finalizer on its agent, which runs it
+/// at the agent's safe point - `v8_Platform_PumpMessageLoop`, after the task
+/// that carried the second pass and before the event loop's microtask
+/// checkpoint; or `v8_Isolate_RequestGarbageCollection` /
+/// `v8_Isolate_MemoryPressureNotification`, before a forced collection
+/// returns - where it may do any engine work, in the order the collector
+/// found the wrappers dead. Disposing the handle before then cancels
+/// `finalize`; an agent's end runs what is queued in its last forced
+/// collections, and v8_Isolate_Dispose drops the rest uncalled
+/// (v8_wrapper.cpp `runQueuedFinalizers`).
 pub extern fn v8_Global_SetWeakFinalizer(
     handle: *anyopaque,
     data: ?*anyopaque,
@@ -2763,6 +2771,15 @@ pub extern fn v8_Global_SetWeakFinalizer(
 /// Whether this thread is inside V8's first-pass weak callbacks - for tests
 /// that a finalizer runs after the collection, never inside it.
 pub extern fn v8_Debug_InFirstPassWeakCallback() bool;
+
+/// Finalizers a collection's second pass has queued on `isolate`'s agent and
+/// its safe point has not run yet, not counting cancelled ones (tests).
+pub extern fn v8_Debug_QueuedFinalizers(isolate: *Isolate) usize;
+
+/// One platform task WITHOUT the agent's safe point: what its second pass
+/// queued stays queued. For tests of the finalizer queue only; the engine
+/// pumps with `v8_Platform_PumpMessageLoop`.
+pub extern fn v8_Debug_PumpMessageLoopHoldingFinalizers(isolate: *Isolate) bool;
 
 // ---- Node wrappers in the node's own slot (the wrapper redesign's P2;
 // node_wrappers.zig, v8_wrapper.cpp "Node wrappers in the node's own slot") ----

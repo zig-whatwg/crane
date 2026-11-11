@@ -107,8 +107,10 @@ const Reaction = struct {
         //    promise's value, which nothing observes.
     }
 
-    /// V8's second pass, after the collector took the holder - and with it
-    /// both reaction functions - while the promise was unsettled.
+    /// The agent's safe point after the collector took the holder - and with
+    /// it both reaction functions - while the promise was unsettled (never
+    /// V8's second pass: ffi.v8_Global_SetWeakFinalizer); `dropped` is the
+    /// host's and may touch the engine.
     fn collected(raw: ?*anyopaque, _: usize) callconv(.c) void {
         const self: *Reaction = @ptrCast(@alignCast(raw.?));
         const host = self.end();
