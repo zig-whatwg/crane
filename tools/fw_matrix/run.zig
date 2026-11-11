@@ -146,7 +146,7 @@ fn runSuite(gpa: Allocator, io: Io, config: *const Config, suite: manifest.Suite
         try pages.append(arena, p);
     }
 
-    const server = try server_mod.Server.start(gpa, io, .{ .root = tree });
+    const server = try server_mod.Server.start(gpa, io, .{ .root = tree, .overlays = try serverOverlays(arena, suite) });
     defer server.stop();
     std.debug.print("fw_matrix: {s} ({s} {s}): {d} page(s), served from {s} on 127.0.0.1:{d}\n", .{ suite.id, suite.title, suite.version, pages.items.len, tree, server.port() });
 
@@ -166,6 +166,14 @@ fn runSuite(gpa: Allocator, io: Io, config: *const Config, suite: manifest.Suite
     const n = @min(n_workers, threads.len);
     for (threads[0..n]) |*t| t.* = try std.Thread.spawn(.{}, worker, .{&shared});
     for (threads[0..n]) |t| t.join();
+}
+
+/// The suite's overlays as the server takes them (directories relative to
+/// the repository root the tool runs in).
+pub fn serverOverlays(arena: Allocator, suite: manifest.Suite) ![]const server_mod.Overlay {
+    const out = try arena.alloc(server_mod.Overlay, suite.overlay.len);
+    for (suite.overlay, out) |o, *s| s.* = .{ .prefix = o.prefix, .dir = o.dir };
+    return out;
 }
 
 /// Each `[file:<path>]` entry (a file the project runs only through its

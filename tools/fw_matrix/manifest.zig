@@ -62,6 +62,19 @@ pub const Remote = struct {
     sha256: []const u8,
 };
 
+/// A directory of the Crane repository served at a path prefix beside the
+/// suite's fetched tree: Crane's own page for a suite whose tests are ours
+/// (the TodoMVC port, tests/frameworks/todomvc/, beside the prebuilt app it
+/// drives - one origin, as a test page and its app share in Cypress's own
+/// runner). Requests below `prefix` are answered from `dir`, never from the
+/// tree; the tree is never written to.
+pub const Overlay = struct {
+    /// The URL path below the root ("crane/todomvc" -> /crane/todomvc/...).
+    prefix: []const u8,
+    /// The directory, relative to the repository root `fw_matrix` runs in.
+    dir: []const u8,
+};
+
 pub const Page = struct {
     /// Short and unique within the framework ("css", "test").
     id: []const u8,
@@ -95,6 +108,7 @@ pub const Suite = struct {
     generated: []const Generated = &.{},
     remote: []const Remote = &.{},
     allow_live_loads: bool = false,
+    overlay: []const Overlay = &.{},
     pages: []const Page,
     /// The exclusion list's file name below tools/fw_matrix/excluded/.
     excluded: []const u8,
@@ -112,7 +126,7 @@ pub const Manifest = struct {
     suites: []const Suite,
 };
 
-pub const Error = error{ OutOfMemory, ParseZon, BadName, BadSha256, BadPath, BadUrl, DuplicatePage, DuplicateSuite, NoPages, LiveLoadsNotAllowed, BadIntegrity };
+pub const Error = error{ OutOfMemory, ParseZon, BadName, BadSha256, BadPath, BadUrl, DuplicatePage, DuplicateSuite, NoPages, LiveLoadsNotAllowed, BadIntegrity, OverlappingOverlay };
 
 pub const Failure = struct {
     suite: []const u8 = "",
@@ -139,6 +153,13 @@ pub fn isRelativePath(s: []const u8) bool {
     while (it.next()) |seg| if (seg.len == 0 or std.mem.eql(u8, seg, "..") or std.mem.eql(u8, seg, ".")) return false;
     for (s) |c| if (c == '\\' or c == 0) return false;
     return true;
+}
+
+/// `path` is `prefix` or below it ("crane/todomvc/x" is below "crane";
+/// "cranex" is not).
+pub fn underPrefix(path: []const u8, prefix: []const u8) bool {
+    if (!std.mem.startsWith(u8, path, prefix)) return false;
+    return path.len == prefix.len or path[prefix.len] == '/';
 }
 
 fn isHttps(s: []const u8) bool {
@@ -170,6 +191,13 @@ pub fn validate(m: Manifest, failure: *Failure) Error!void {
             failure.what = r.url;
             if (!isHttps(r.url)) return error.BadUrl;
             if (!journal.isSha256(r.sha256)) return error.BadSha256;
+        }
+        for (f.overlay, 0..) |o, j| {
+            failure.what = o.prefix;
+            if (!isRelativePath(o.prefix) or !isRelativePath(o.dir)) return error.BadPath;
+            // One prefix inside another would leave which directory answers
+            // a path to the order of the list.
+            for (f.overlay[0..j]) |p| if (underPrefix(o.prefix, p.prefix) or underPrefix(p.prefix, o.prefix)) return error.OverlappingOverlay;
         }
         failure.what = "pages";
         if (f.pages.len == 0) return error.NoPages;
@@ -241,6 +269,36 @@ test "parse: a suite with its pins; defaults filled in" {
     try testing.expectEqual(@as(u32, 900), jq.page_budget_s);
     try testing.expect(!jq.allow_live_loads);
     try testing.expectEqualStrings("jquery-qunit-4.0.0", try treeName(arena_state.allocator(), jq));
+}
+
+test "parse: an overlay - a directory of the repository served at a path prefix beside the tree" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const with_overlay = try std.mem.replaceOwned(u8, a, sample, ".excluded = \"jquery-4.0.0.txt\",", ".excluded = \"jquery-4.0.0.txt\", .overlay = .{.{ .prefix = \"crane/todomvc\", .dir = \"tests/frameworks/todomvc\" }},");
+    var f: Failure = .{};
+    const m = try parse(testing.allocator, a, try a.dupeSentinel(u8, with_overlay, 0), &f);
+    const jq = find(m, "jquery-qunit").?;
+    try testing.expectEqual(@as(usize, 1), jq.overlay.len);
+    try testing.expectEqualStrings("crane/todomvc", jq.overlay[0].prefix);
+    try testing.expectEqualStrings("tests/frameworks/todomvc", jq.overlay[0].dir);
+    // None by default.
+    const plain = try parse(testing.allocator, a, sample, &f);
+    try testing.expectEqual(@as(usize, 0), find(plain, "jquery-qunit").?.overlay.len);
+
+    // A prefix or directory that leaves its root, and two overlays where one
+    // prefix holds the other, are refused.
+    const bad = [_]struct { []const u8, Error }{
+        .{ ".{ .prefix = \"../x\", .dir = \"tests/frameworks/todomvc\" }", error.BadPath },
+        .{ ".{ .prefix = \"crane/todomvc\", .dir = \"/etc\" }", error.BadPath },
+        .{ ".{ .prefix = \"crane\", .dir = \"a\" }, .{ .prefix = \"crane/todomvc\", .dir = \"b\" }", error.OverlappingOverlay },
+    };
+    for (bad) |c| {
+        const text = try std.mem.replaceOwned(u8, a, sample, ".excluded = \"jquery-4.0.0.txt\",", try std.fmt.allocPrint(a, ".excluded = \"jquery-4.0.0.txt\", .overlay = .{{ {s} }},", .{c[0]}));
+        var f2: Failure = .{};
+        try testing.expectError(c[1], parse(testing.allocator, a, try a.dupeSentinel(u8, text, 0), &f2));
+        try testing.expectEqualStrings("jquery-qunit", f2.suite);
+    }
 }
 
 test "validate refuses a bad checksum, a path out of the tree, plain http and duplicates" {
