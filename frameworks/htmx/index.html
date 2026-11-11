@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crane: htmx in the JS framework matrix</title>
+<meta name="description" content="A framework&#39;s browser test suites run in Crane: every failure with its message, every excluded test with its reason.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="../../site.css">
+<link rel="icon" href="data:,">
+<style>
+.fw h2 { margin-top: 2.2rem; }
+.fw .fail { color: var(--fail); }
+.fw .grey { color: var(--ink-2); }
+.fw .listing tbody th { width: auto; }
+.fw .listing td.msg pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 0.78rem/1.45 var(--mono); }
+.fw .meter { margin: 0.3rem 0 0; min-width: 8rem; }
+.fw .kind { display: block; font: 400 0.82rem/1.35 var(--sans); color: var(--ink-2); }
+</style>
+</head>
+<body>
+<main class="doc fw" id="main">
+<header class="head">
+<h1>htmx <span class="h1-rest">in Crane</span></h1>
+<p class="subtitle">htmx 4.0.1 &mdash; the project&#39;s own browser suite (Mocha 11.7.5 + Chai 4.5.0, 1 page). <a href="../">The matrix</a>.</p>
+</header>
+<div class="note"><p><span class="note-label">Not run: rendering.</span> Crane draws nothing: tests whose result depends on layout geometry or pixels are not run, and each is listed with its reason. Computed style, events, timers and animations are run. Tests that need a project&#39;s Node tooling or its own test server are not run either, and are listed with theirs.</p></div>
+<h2>The run</h2>
+<p>https://github.com/bigskysoftware/htmx at v4.0.1 (<code>8d112c71624f</code>), run by Crane <code>153ba4fd3d7</code> (console sha256 <code>5f03a6e50581d210&hellip;</code>), run <code>fw1-b3-run2</code>.</p>
+<div class="meter" role="img" aria-label="1,771 passed, 2 failed or errored, 17 excluded or not run"><span style="width:98.939%;background:var(--pass)"></span><span style="width:0.112%;background:var(--fail)"></span><span style="width:0.950%;background:var(--block-seg)"></span></div><table class="listing">
+<thead><tr><th>Page</th><th>Outcome</th><th class="n">Run</th><th class="n">Failed</th><th class="n">Excluded</th><th class="n">Not run</th><th class="n">Seconds</th></tr></thead>
+<tbody>
+<tr><th><code>test</code></th><td>OK</td><td class="n">1773</td><td class="n fail">2</td><td class="n grey">13</td><td class="n grey">4</td><td class="n">68</td></tr>
+</tbody>
+</table>
+<h2>Failed and errored</h2>
+<table class="listing">
+<thead><tr><th>Test</th><th>Page</th><th>First failing assertion</th></tr></thead>
+<tbody>
+<tr><th>swap() unit tests triggers view transition events with transition:true</th><td><code>test</code></td><td class="msg"><pre>AssertionError: expected false to be true
+    at Context.&lt;anonymous&gt; (http://127.0.0.1:44925/test/tests/unit/swap.js:400:34)</pre></td></tr>
+<tr><th>history restore edge cases skips a foreign entry but restores the htmx entry behind it</th><td><code>test</code></td><td class="msg"><pre>AssertionError: expected CustomEvent{ isTrusted: false } to equal null
+    at Context.&lt;anonymous&gt; (http://127.0.0.1:44925/test/tests/end2end/basic-history.js:628:16)</pre></td></tr>
+</tbody>
+</table>
+<h2>Excluded: rendering</h2>
+<table class="listing">
+<thead><tr><th>Test</th><th>Page</th><th>Why</th></tr></thead>
+<tbody>
+<tr><th>hx-swap modifiers swap with scroll:top modifier scrolls to top</th><td><code>test</code></td><td class="msg"><pre>asserts an element&#39;s scrollTop after a scroll:top swap; a scroll position is clamped to the element&#39;s scrollable overflow, which only layout gives (Crane&#39;s 0 matches without proving anything)</pre></td></tr>
+<tr><th>hx-swap modifiers swap with scroll:bottom modifier scrolls to bottom</th><td><code>test</code></td><td class="msg"><pre>asserts the element was scrolled to its bottom: scrollHeight and the scroll position are layout</pre></td></tr>
+<tr><th>hx-swap modifiers scrollTarget with id selector scrolls the target element</th><td><code>test</code></td><td class="msg"><pre>asserts the scroll target&#39;s scrollTop after the swap: a scroll position of a laid-out overflow box</pre></td></tr>
+<tr><th>hx-swap modifiers scrollTarget with relative selector (closest) scrolls the ancestor element</th><td><code>test</code></td><td class="msg"><pre>asserts the ancestor&#39;s scrollTop after the swap: a scroll position of a laid-out overflow box</pre></td></tr>
+<tr><th>hx-swap modifiers scrollTarget:window scrolls the window</th><td><code>test</code></td><td class="msg"><pre>asserts the viewport&#39;s scroll position (window.scrollY) after window.scrollTo over a 5000px spacer: the viewport&#39;s scrollable overflow is layout</pre></td></tr>
+<tr><th>hx-swap modifiers showTarget:window shows the bottom of the window</th><td><code>test</code></td><td class="msg"><pre>asserts the viewport scrolled to the bottom of the document (window.scrollY &gt; 0): the document&#39;s height is layout</pre></td></tr>
+<tr><th>hx-swap modifiers scrollTarget:document scrolls the window</th><td><code>test</code></td><td class="msg"><pre>asserts the viewport&#39;s scroll position (window.scrollY) after window.scrollTo over a 5000px spacer: the viewport&#39;s scrollable overflow is layout</pre></td></tr>
+<tr><th>hx-swap modifiers showTarget:document shows the bottom of the window</th><td><code>test</code></td><td class="msg"><pre>asserts the viewport scrolled to the bottom of the document (window.scrollY &gt; 0): the document&#39;s height is layout</pre></td></tr>
+<tr><th>hx-history-cache extension restores element scroll position</th><td><code>test</code></td><td class="msg"><pre>asserts a restored element&#39;s scrollTop (80 in a 50px-high overflow box over 200px of content): a scroll position of a laid-out overflow box</pre></td></tr>
+<tr><th>scroll restoration on history traversal back returns to the latest scroll position after re-scrolling</th><td><code>test</code></td><td class="msg"><pre>its only assertion is the viewport&#39;s restored scroll position (window.scrollY over a 3000px page): layout</pre></td></tr>
+<tr><th>scroll restoration on history traversal restores horizontal scroll as well</th><td><code>test</code></td><td class="msg"><pre>its only assertions are the viewport&#39;s restored scroll position (scrollY, scrollX over a 3000px x 3000px page): layout</pre></td></tr>
+<tr><th>scroll restoration on history traversal boosted back restores content, then the browser restores scroll</th><td><code>test</code></td><td class="msg"><pre>restores the content, then asserts the viewport&#39;s restored scroll position (window.scrollY over a 3000px page): layout. Its first failure varies between runs (b1 probe: Mocha&#39;s 2,000 ms timeout before the restore request; b2 diagnosis: the scroll assertion), reported as a history-traversal finding</pre></td></tr>
+<tr><th>scroll restoration on history traversal back to an entry created by an anchor jump still restores content</th><td><code>test</code></td><td class="msg"><pre>restores the content and checks location.hash, then asserts the viewport&#39;s restored scroll position (window.scrollY over a 3000px page): layout. Its first failure varies between runs (b1 probe and b2 diagnosis: Mocha&#39;s 2,000 ms timeout before the restore request; b2 run 1: the scroll assertion), reported as a history-traversal finding</pre></td></tr>
+</tbody>
+</table>
+<h3>Files not run</h3>
+<table class="listing">
+<tbody>
+<tr><th><code>test/tests/attributes/hx-query.js</code></th><td>not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner</td></tr>
+<tr><th><code>test/tests/ext/hx-csp.js</code></th><td>not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner</td></tr>
+<tr><th><code>test/tests/ext/hx-download.js</code></th><td>not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner</td></tr>
+<tr><th><code>test/tests/ext/hx-multipart.js</code></th><td>not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner</td></tr>
+<tr><th><code>test/tests/unit/__determineMethodAndAction.js</code></th><td>not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner</td></tr>
+<tr><th><code>test/tests/unit/__executeJavaScript.js</code></th><td>not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner</td></tr>
+<tr><th><code>test/tests/unit/__resolveHistoryAction.js</code></th><td>not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner</td></tr>
+<tr><th><code>test/tests/unit/logger.js</code></th><td>not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner</td></tr>
+<tr><th><code>test/tests/unit/package.js</code></th><td>not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner</td></tr>
+</tbody>
+</table>
+<h2>Skipped by the project</h2>
+<table class="listing">
+<thead><tr><th>Test</th><th>Page</th><th>Why</th></tr></thead>
+<tbody>
+<tr><th>ajax() unit Tests ajax works with no options (defaults to body)</th><td><code>test</code></td><td class="msg"><pre>the project skips it (QUnit.skip / Mocha pending)</pre></td></tr>
+<tr><th>swap() unit tests triggers CSS transitions during swap</th><td><code>test</code></td><td class="msg"><pre>the project skips it (QUnit.skip / Mocha pending)</pre></td></tr>
+<tr><th>hx-get attribute GET does not include surrounding data by default</th><td><code>test</code></td><td class="msg"><pre>the project skips it (QUnit.skip / Mocha pending)</pre></td></tr>
+<tr><th>hx-push-url and hx-replace-url attributes should use innerHTML swap when restoring history even if default swap is none</th><td><code>test</code></td><td class="msg"><pre>the project skips it (QUnit.skip / Mocha pending)</pre></td></tr>
+</tbody>
+</table>
+<h2>Loaded from other origins</h2>
+<p>The project's page loads these itself; a run depends on that origin being reachable.</p>
+<ul>
+<li><code>https://unpkg.com/mocha@11.7.4/mocha.css</code> (sha256 <code>f94c18b964616df2&hellip;</code>, checked by the harness before the run)</li>
+<li><code>https://unpkg.com/chai@4.5.0/chai.js</code> (sha256 <code>bdc229d660afad03&hellip;</code>, checked by the harness before the run)</li>
+<li><code>https://unpkg.com/mocha@11.7.5/mocha.js</code> (sha256 <code>3a5dde237edd92b5&hellip;</code>, checked by the harness before the run)</li>
+</ul>
+<footer class="foot"><p>Written as HTML by <code>tools/fw_matrix</code> from its journals (<code>crane-fw/1</code>).</p></footer>
+</main>
+</body>
+</html>

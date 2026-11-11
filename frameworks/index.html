@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crane: JS framework compatibility matrix</title>
+<meta name="description" content="JavaScript frameworks&#39; browser tests run in Crane, with rendering tests excluded and named.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="../site.css">
+<link rel="icon" href="data:,">
+<style>
+.fw h2 { margin-top: 2.2rem; }
+.fw .fail { color: var(--fail); }
+.fw .grey { color: var(--ink-2); }
+.fw .listing tbody th { width: auto; }
+.fw .listing td.msg pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 0.78rem/1.45 var(--mono); }
+.fw .meter { margin: 0.3rem 0 0; min-width: 8rem; }
+.fw .kind { display: block; font: 400 0.82rem/1.35 var(--sans); color: var(--ink-2); }
+</style>
+</head>
+<body>
+<main class="doc fw" id="main">
+<header class="head">
+<h1>Crane <span class="h1-rest">JS framework compatibility matrix</span></h1>
+<p class="subtitle">Each framework's own browser tests where they run without Node; for a framework whose own suite needs Node, its unmodified, prebuilt TodoMVC app checked by Crane's port of TodoMVC's app spec. Each page is opened in Crane's console as a user opens it and read from the test framework's own report. No Node runs at any step.</p>
+</header>
+<div class="note"><p><span class="note-label">Not run: rendering.</span> Crane draws nothing: tests whose result depends on layout geometry or pixels are not run, and each is listed with its reason. Computed style, events, timers and animations are run. Tests that need a project&#39;s Node tooling or its own test server are not run either, and are listed with theirs.</p></div>
+<h2>The matrix</h2>
+<table class="listing">
+<thead><tr><th>Framework</th><th class="n">Run</th><th class="n">Passed</th><th class="n">Failed</th><th class="n">Errored</th><th class="n">Excluded: rendering</th><th class="n">Not run</th><th class="n">Pass rate</th><th>History</th></tr></thead>
+<tbody>
+<tr><th><a href="jquery/">jQuery</a><span class="kind">jQuery 4.0.0 &mdash; the project&#39;s own browser suite (QUnit 2.24.2 + Sinon 9.2.4, 23 pages)</span><div class="meter" role="img" aria-label="947 passed, 6 failed or errored, 195 excluded or not run"><span style="width:82.491%;background:var(--pass)"></span><span style="width:0.523%;background:var(--fail)"></span><span style="width:16.986%;background:var(--block-seg)"></span></div></th><td class="n">953</td><td class="n">947</td><td class="n fail">6</td><td class="n">0</td><td class="n grey">75</td><td class="n grey">120</td><td class="n">99.4%</td><td><svg class="spark" viewBox="0 0 96 20" width="96" height="20" role="img" aria-label="passed tests per run: 947, 947"><polyline fill="none" stroke="var(--pass)" stroke-width="1.5" points="0.0,2.0 96.0,2.0 "/></svg></td></tr>
+<tr><th><a href="htmx/">htmx</a><span class="kind">htmx 4.0.1 &mdash; the project&#39;s own browser suite (Mocha 11.7.5 + Chai 4.5.0, 1 page)</span><div class="meter" role="img" aria-label="1,771 passed, 2 failed or errored, 17 excluded or not run"><span style="width:98.939%;background:var(--pass)"></span><span style="width:0.112%;background:var(--fail)"></span><span style="width:0.950%;background:var(--block-seg)"></span></div></th><td class="n">1773</td><td class="n">1771</td><td class="n fail">2</td><td class="n">0</td><td class="n grey">13</td><td class="n grey">13</td><td class="n">99.9%</td><td><svg class="spark" viewBox="0 0 96 20" width="96" height="20" role="img" aria-label="passed tests per run: 1,771, 1,771"><polyline fill="none" stroke="var(--pass)" stroke-width="1.5" points="0.0,2.0 96.0,2.0 "/></svg></td></tr>
+<tr><th><a href="react/">React</a><span class="kind">React 19.2.5 &mdash; TodoMVC; Crane&#39;s port of the app spec; the project&#39;s own suite is not runnable without Node (QUnit 2.24.2, 1 page)</span><div class="meter" role="img" aria-label="28 passed, 0 failed or errored, 1 excluded or not run"><span style="width:96.552%;background:var(--pass)"></span><span style="width:3.448%;background:var(--block-seg)"></span></div></th><td class="n">28</td><td class="n">28</td><td class="n">0</td><td class="n">0</td><td class="n grey">0</td><td class="n grey">1</td><td class="n">100.0%</td><td><svg class="spark" viewBox="0 0 96 20" width="96" height="20" role="img" aria-label="passed tests per run: 28, 28"><polyline fill="none" stroke="var(--pass)" stroke-width="1.5" points="0.0,2.0 96.0,2.0 "/></svg></td></tr>
+<tr><th><a href="vue/">Vue</a><span class="kind">Vue 3.5.33 &mdash; TodoMVC; Crane&#39;s port of the app spec; the project&#39;s own suite is not runnable without Node (QUnit 2.24.2, 1 page)</span><div class="meter" role="img" aria-label="28 passed, 0 failed or errored, 1 excluded or not run"><span style="width:96.552%;background:var(--pass)"></span><span style="width:3.448%;background:var(--block-seg)"></span></div></th><td class="n">28</td><td class="n">28</td><td class="n">0</td><td class="n">0</td><td class="n grey">0</td><td class="n grey">1</td><td class="n">100.0%</td><td><svg class="spark" viewBox="0 0 96 20" width="96" height="20" role="img" aria-label="passed tests per run: 28, 28"><polyline fill="none" stroke="var(--pass)" stroke-width="1.5" points="0.0,2.0 96.0,2.0 "/></svg></td></tr>
+<tr><th><a href="svelte/">Svelte</a><span class="kind">Svelte 5.55.5 &mdash; TodoMVC; Crane&#39;s port of the app spec; the project&#39;s own suite is not runnable without Node (QUnit 2.24.2, 1 page)</span><div class="meter" role="img" aria-label="28 passed, 0 failed or errored, 1 excluded or not run"><span style="width:96.552%;background:var(--pass)"></span><span style="width:3.448%;background:var(--block-seg)"></span></div></th><td class="n">28</td><td class="n">28</td><td class="n">0</td><td class="n">0</td><td class="n grey">0</td><td class="n grey">1</td><td class="n">100.0%</td><td><svg class="spark" viewBox="0 0 96 20" width="96" height="20" role="img" aria-label="passed tests per run: 28, 28"><polyline fill="none" stroke="var(--pass)" stroke-width="1.5" points="0.0,2.0 96.0,2.0 "/></svg></td></tr>
+<tr><th><a href="angular/">Angular</a><span class="kind">Angular 21.2.11 &mdash; TodoMVC; Crane&#39;s port of the app spec; the project&#39;s own suite is not runnable without Node (QUnit 2.24.2, 1 page)</span><div class="meter" role="img" aria-label="27 passed, 0 failed or errored, 2 excluded or not run"><span style="width:93.103%;background:var(--pass)"></span><span style="width:6.897%;background:var(--block-seg)"></span></div></th><td class="n">27</td><td class="n">27</td><td class="n">0</td><td class="n">0</td><td class="n grey">0</td><td class="n grey">2</td><td class="n">100.0%</td><td><svg class="spark" viewBox="0 0 96 20" width="96" height="20" role="img" aria-label="passed tests per run: 27, 27"><polyline fill="none" stroke="var(--pass)" stroke-width="1.5" points="0.0,2.0 96.0,2.0 "/></svg></td></tr>
+</tbody>
+</table>
+<p class="grey">Pass rate is passed over run. Errored: due to run and never reported (the page's time ran out, or the console ended). Not run: tests needing the project's test server or its Node build, files only its Node runner loads, and tests the project or the app spec itself skips.</p>
+<h2 id="not-run">What we do not run</h2>
+<p>Crane draws nothing: tests whose result depends on layout geometry or pixels are not run, and each is listed with its reason. Computed style, events, timers and animations are run. Tests that need a project&#39;s Node tooling or its own test server are not run either, and are listed with theirs. Each test is listed with its reason on its framework's page.</p>
+<table class="listing">
+<thead><tr><th>Kind</th><th class="n">Count</th><th>Where</th></tr></thead>
+<tbody>
+<tr><th>Excluded: rendering</th><td class="n grey">88</td><td>jQuery 75, htmx 13</td></tr>
+<tr><th>Needs the project&#39;s test server</th><td class="n grey">118</td><td>jQuery 118</td></tr>
+<tr><th>Needs the project&#39;s Node build</th><td class="n grey">1</td><td>jQuery 1</td></tr>
+<tr><th>Files only the project&#39;s Node runner loads</th><td class="n grey">9 files</td><td>htmx 9</td></tr>
+<tr><th>Skipped by the project</th><td class="n grey">5</td><td>jQuery 1, htmx 4</td></tr>
+<tr><th>Skipped by TodoMVC&#39;s app spec for the app</th><td class="n grey">5</td><td>React 1, Vue 1, Svelte 1, Angular 2</td></tr>
+</tbody>
+</table>
+<p>Crane&#39;s port runs every test of TodoMVC&#39;s app spec (cypress/e2e/spec.cy.js, 29 tests) on the framework&#39;s unmodified, prebuilt TodoMVC app, driving it through DOM events as Cypress drives it. Of Cypress&#39;s own checks it does not run the parts that need layout: visibility is decided by computed style (no box, visibility, opacity) and not by size, clipping or transforms, and an action does not scroll the element into view or check that nothing covers it. Tests the spec itself skips for an app (its localStorage test for apps that keep no data there, the app&#39;s entries in tests/knownIssues.js) are reported as skipped by the app spec.</p>
+<footer class="foot"><p>Written as HTML by <code>tools/fw_matrix</code> from its journals (<code>crane-fw/1</code>).</p></footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crane: Angular in the JS framework matrix</title>
+<meta name="description" content="A framework&#39;s browser test suites run in Crane: every failure with its message, every excluded test with its reason.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="../../site.css">
+<link rel="icon" href="data:,">
+<style>
+.fw h2 { margin-top: 2.2rem; }
+.fw .fail { color: var(--fail); }
+.fw .grey { color: var(--ink-2); }
+.fw .listing tbody th { width: auto; }
+.fw .listing td.msg pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 0.78rem/1.45 var(--mono); }
+.fw .meter { margin: 0.3rem 0 0; min-width: 8rem; }
+.fw .kind { display: block; font: 400 0.82rem/1.35 var(--sans); color: var(--ink-2); }
+</style>
+</head>
+<body>
+<main class="doc fw" id="main">
+<header class="head">
+<h1>Angular <span class="h1-rest">in Crane</span></h1>
+<p class="subtitle">Angular 21.2.11 &mdash; TodoMVC; Crane&#39;s port of the app spec; the project&#39;s own suite is not runnable without Node (QUnit 2.24.2, 1 page). <a href="../">The matrix</a>.</p>
+</header>
+<div class="note"><p><span class="note-label">Not run: rendering.</span> Crane draws nothing: tests whose result depends on layout geometry or pixels are not run, and each is listed with its reason. Computed style, events, timers and animations are run. Tests that need a project&#39;s Node tooling or its own test server are not run either, and are listed with theirs.</p></div>
+<p>Angular&#39;s browser suites are TypeScript bundled by Bazel and esbuild and run by Karma or web-test-runner, all Node. Crane&#39;s port runs every test of TodoMVC&#39;s app spec (cypress/e2e/spec.cy.js, 29 tests) on the framework&#39;s unmodified, prebuilt TodoMVC app, driving it through DOM events as Cypress drives it. Of Cypress&#39;s own checks it does not run the parts that need layout: visibility is decided by computed style (no box, visibility, opacity) and not by size, clipping or transforms, and an action does not scroll the element into view or check that nothing covers it. Tests the spec itself skips for an app (its localStorage test for apps that keep no data there, the app&#39;s entries in tests/knownIssues.js) are reported as skipped by the app spec. The port: <code>tests/frameworks/todomvc/</code> in Crane; the spec: <a href="https://github.com/tastejs/todomvc/blob/ff43b02e59dfa604386bb382034b2cd07c2bcd8a/cypress/e2e/spec.cy.js"><code>cypress/e2e/spec.cy.js</code></a>.</p>
+<h2>The run</h2>
+<p>https://github.com/tastejs/todomvc at examples/angular/dist/browser (<code>ff43b02e59df</code>), run by Crane <code>153ba4fd3d7</code> (console sha256 <code>5f03a6e50581d210&hellip;</code>), run <code>fw1-b3-run2</code>.</p>
+<div class="meter" role="img" aria-label="27 passed, 0 failed or errored, 2 excluded or not run"><span style="width:93.103%;background:var(--pass)"></span><span style="width:6.897%;background:var(--block-seg)"></span></div><table class="listing">
+<thead><tr><th>Page</th><th>Outcome</th><th class="n">Run</th><th class="n">Failed</th><th class="n">Excluded</th><th class="n">Not run</th><th class="n">Seconds</th></tr></thead>
+<tbody>
+<tr><th><code>todomvc</code></th><td>OK</td><td class="n">27</td><td class="n">0</td><td class="n grey">0</td><td class="n grey">2</td><td class="n">14</td></tr>
+</tbody>
+</table>
+<h2>Skipped by TodoMVC&#39;s app spec</h2>
+<table class="listing">
+<thead><tr><th>Test</th><th>Page</th><th>Why</th></tr></thead>
+<tbody>
+<tr><th>Persistence: should persist its data</th><td><code>todomvc</code></td><td class="msg"><pre>TodoMVC&#39;s app spec skips it for this app (spec.cy.js: its localStorage test for apps that keep nothing there; tests/knownIssues.js: the app&#39;s known issues)</pre></td></tr>
+<tr><th>Routing: should respect the back button</th><td><code>todomvc</code></td><td class="msg"><pre>TodoMVC&#39;s app spec skips it for this app (spec.cy.js: its localStorage test for apps that keep nothing there; tests/knownIssues.js: the app&#39;s known issues)</pre></td></tr>
+</tbody>
+</table>
+<footer class="foot"><p>Written as HTML by <code>tools/fw_matrix</code> from its journals (<code>crane-fw/1</code>).</p></footer>
+</main>
+</body>
+</html>
