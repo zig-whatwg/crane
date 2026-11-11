@@ -3638,10 +3638,20 @@ class GlobalAnchor final : public CraneWrappable {
     const char* GetHumanReadableName() const override { return "Crane GlobalAnchor"; }
 
     void* instance() const { return instance_; }
-    /// The Zig instance is about to be freed: every JS object wrapped with
-    /// this anchor - the proxy while it is this realm's, the hidden global,
-    /// WindowProperties - finds no instance from now on.
-    void clear() { instance_ = nullptr; }
+    /// The realm ends - its Zig instance is about to be freed: every JS
+    /// object wrapped with this anchor - the proxy while it is this realm's,
+    /// the hidden global, WindowProperties - finds no instance from now on,
+    /// and the retained store goes now rather than at the collection that
+    /// takes the global (what it kept is the ended realm's: its wrapper cache
+    /// is torn down). Its traced node counts in V8's used global handle bytes,
+    /// which a realm's end must leave as it found them (worklet_realm_test,
+    /// worker_iterator_template_test). Reset is safe while a concurrent
+    /// marker may read the reference (TracedReferenceBase's thread-safe slot,
+    /// as Blink resets a TraceWrapperV8Reference).
+    void clear() {
+        instance_ = nullptr;
+        retained_.Reset();
+    }
     Local<Object> retained(Isolate* isolate) const { return retained_.Get(isolate); }
 
  private:

@@ -793,9 +793,11 @@ fn throwIfTooFewArguments(self: *const Operation, info: *const v8.FunctionCallba
 /// (context_manager.windowIndexedPropertyGetter) and the lazy interface
 /// objects (global_constructor_handler): realm_global.receiverRealm, whose
 /// comment carries the rule, the probe and the KNOWN DEVIATION. `receiver`
-/// is This() (BORROWED). Null: no Window - "Illegal invocation".
+/// is This() (BORROWED). The answer is the receiver realm's global object: a
+/// Window, or a worker's or worklet's global scope for their own [Global]
+/// members. Null: none - "Illegal invocation".
 pub fn windowOf(isolate: *v8.Isolate, receiver: *v8.Object) ?*anyopaque {
-    return @ptrCast(realm_global.windowOfReceiver(isolate, receiver));
+    return @ptrCast(realm_global.globalOfReceiver(isolate, receiver));
 }
 
 /// Whether `instance` is a Window - a realm's global platform object, which

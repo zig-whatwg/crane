@@ -19,7 +19,7 @@
 //!   the old anchor - its retained store - lives while that object does, and Zig's reference to it reads
 //!   gone in the collection that takes it.
 //! - `clearInstance`, the global instance is about to be freed: field 0 and the anchor's instance go.
-//! - `receiverRealm` / `windowOfReceiver`, THE Window-receiver rule every Window member callback goes
+//! - `receiverRealm` / `globalOfReceiver`, THE Window-receiver rule every Window member callback goes
 //!   through (design 2.3 and its ruling).
 //!
 //! The anchor itself is the context manager's, on the realm's entry (ContextEntry.global_anchor): made by
@@ -130,12 +130,13 @@ pub fn receiverRealm(isolate: *ffi.Isolate, receiver: *ffi.Object) ?*ffi.Context
     return null;
 }
 
-/// The Window `receiver` resolves to under `receiverRealm`'s rule, or null: the receiver is no Window,
-/// or its realm has none any more (ended - its Window was freed).
-pub fn windowOfReceiver(isolate: *ffi.Isolate, receiver: *ffi.Object) ?*runtime.Instance {
+/// The global object `receiver` resolves to under `receiverRealm`'s rule - a Window, or a worker's or a
+/// worklet's global scope for their [Global] members - or null: the receiver is no realm's global, or its
+/// realm has none any more (ended - its global object was freed).
+pub fn globalOfReceiver(isolate: *ffi.Isolate, receiver: *ffi.Object) ?*runtime.Instance {
     const context = receiverRealm(isolate, receiver) orelse return null;
     defer ffi.v8_Context_Dispose(context);
-    return context_manager.getWindowForContext(context);
+    return context_manager.globalObjectForContext(context);
 }
 
 /// Whether `object` is `context`'s global proxy.

@@ -921,14 +921,14 @@ pub fn windowIndexedPropertyGetter(
     defer v8.v8_Context_Dispose(v8_context);
 
     // The Window whose child navigables `window[index]` names: THE
-    // Window-receiver rule (realm_global.windowOfReceiver) - the holder is the
+    // Window-receiver rule (realm_global.globalOfReceiver) - the holder is the
     // global proxy, or, for a use in a realm whose WindowProxy went on, V8's
     // detached copy of it (that realm's own Window). It read field 0 of the
     // holder, then of the current context's global: for the copy that was the
     // NEW Window behind the reused proxy (design 2.3 gap b).
     const this_obj = info.getHolder() orelse return .kNo;
     defer v8.v8_Object_Dispose(this_obj);
-    const instance = @import("realm_global.zig").windowOfReceiver(isolate, this_obj) orelse return .kNo;
+    const instance = @import("realm_global.zig").globalOfReceiver(isolate, this_obj) orelse return .kNo;
 
     // HTML 7.2.3.1 WindowProxy [[GetOwnProperty]] step 2: index is in the
     // Window's document-tree child navigables, and the result is the
@@ -1012,7 +1012,7 @@ pub fn windowIndexedPropertyQuery(
     // THE Window-receiver rule, as the getter's.
     const this_obj = info.getHolder() orelse return .kNo;
     defer v8.v8_Object_Dispose(this_obj);
-    const instance = @import("realm_global.zig").windowOfReceiver(info.getIsolate(), this_obj) orelse return .kNo;
+    const instance = @import("realm_global.zig").globalOfReceiver(info.getIsolate(), this_obj) orelse return .kNo;
 
     // Check if this index is valid
     const length = @import("interfaces").Window.get_length(instance) catch return .kNo;
@@ -1044,7 +1044,7 @@ pub fn windowIndexedPropertyEnumerator(
     // THE Window-receiver rule, as the getter's.
     const this_obj = info.getHolder() orelse return;
     defer v8.v8_Object_Dispose(this_obj);
-    const length: u32 = if (@import("realm_global.zig").windowOfReceiver(isolate, this_obj)) |instance|
+    const length: u32 = if (@import("realm_global.zig").globalOfReceiver(isolate, this_obj)) |instance|
         @import("interfaces").Window.get_length(instance) catch 0
     else
         0;
@@ -1177,6 +1177,20 @@ pub fn getWindowForContext(v8_ctx: *v8.Context) ?*runtime.Instance {
     const state = currentRealms() orelse return null;
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
     const entry = state.contexts.get(@intFromPtr(raw_addr)) orelse return null;
+    return entry.window_instance;
+}
+
+/// The global object of the realm whose context is `v8_ctx` - its Window,
+/// WorkerGlobalScope, worklet global scope: the realm record's (ECMA-262
+/// [[GlobalObject]], which the realm's creator records as it binds its global),
+/// or the Window the entry records; null when the context manager records no
+/// such realm (none, or ended). THE receiver rule's answer for every [Global]
+/// interface (realm_global.globalOfReceiver).
+pub fn globalObjectForContext(v8_ctx: *v8.Context) ?*runtime.Instance {
+    const state = currentRealms() orelse return null;
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
+    const entry = state.contexts.get(@intFromPtr(raw_addr)) orelse return null;
+    if (entry.realm) |record| if (record.global_object) |global| return @ptrCast(@alignCast(global));
     return entry.window_instance;
 }
 
