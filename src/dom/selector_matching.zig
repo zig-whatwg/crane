@@ -27,6 +27,7 @@ const selector = @import("selector");
 const NodeBase = @import("node_base.zig").NodeBase;
 const instance_bridge = @import("instance_bridge.zig");
 const element_data = @import("element_data.zig");
+const attribute_values = @import("attribute_values.zig");
 /// A reader's view of an element's data: its attributes' ids decode with its
 /// Browser's tables (lane nd2 batch 2). Passed by value.
 const ElementData = element_data.View;
@@ -45,6 +46,8 @@ const Combinator = selector.Combinator;
 const AttributeSelector = selector.AttributeSelector;
 const PseudoClassKind = selector.PseudoClassKind;
 const NthPattern = selector.NthPattern;
+
+const debug_checks = @import("builtin").mode == .debug;
 
 const ELEMENT_NODE: u16 = 1;
 const DOCUMENT_NODE: u16 = 9;
@@ -70,7 +73,7 @@ pub const Error = error{ SyntaxError, OutOfMemory };
 /// map (`IdPlan`): the general walk's answer, without walking the tree.
 pub fn querySelector(scope: *runtime.Instance, selectors: []const u8) Error!?*runtime.Instance {
     const scope_node = instance_bridge.getNodeBase(scope) orelse return querySelectorGeneral(scope, selectors);
-    var matcher = Matcher.init(scope_node, scope);
+    var matcher = Matcher.initForQuery(scope_node, scope);
     // DOM "scope-match a selectors string" steps 1-2: parse, or throw.
     var parsed = try Selectors.get(matcher.document, scope.ctx.getAllocator(), selectors);
     defer parsed.deinit();
@@ -99,7 +102,7 @@ pub fn querySelector(scope: *runtime.Instance, selectors: []const u8) Error!?*ru
 /// `out` as tree nodes. Parsed and searched as `querySelector` is.
 pub fn querySelectorAll(allocator: std.mem.Allocator, scope: *runtime.Instance, selectors: []const u8, out: *std.ArrayList(*NodeBase)) Error!void {
     const scope_node = instance_bridge.getNodeBase(scope) orelse return querySelectorAllGeneral(allocator, scope, selectors, out);
-    var matcher = Matcher.init(scope_node, scope);
+    var matcher = Matcher.initForQuery(scope_node, scope);
     var parsed = try Selectors.get(matcher.document, scope.ctx.getAllocator(), selectors);
     defer parsed.deinit();
     const list = parsed.list();
@@ -128,7 +131,7 @@ pub fn querySelectorAll(allocator: std.mem.Allocator, scope: *runtime.Instance, 
 /// document's cache.
 pub fn matches(element: *runtime.Instance, selectors: []const u8) Error!bool {
     const node = instance_bridge.getNodeBase(element) orelse return matchesGeneral(element, selectors);
-    const matcher = Matcher.init(node, element);
+    const matcher = Matcher.initForQuery(node, element);
     // Steps 1-2: parse, or throw a SyntaxError.
     var parsed = try Selectors.get(matcher.document, element.ctx.getAllocator(), selectors);
     defer parsed.deinit();
@@ -142,7 +145,7 @@ pub fn matches(element: *runtime.Instance, selectors: []const u8) Error!bool {
 /// Parsed through the document's cache.
 pub fn closest(element: *runtime.Instance, selectors: []const u8) Error!?*runtime.Instance {
     const node = instance_bridge.getNodeBase(element) orelse return closestGeneral(element, selectors);
-    const matcher = Matcher.init(node, element);
+    const matcher = Matcher.initForQuery(node, element);
     var parsed = try Selectors.get(matcher.document, element.ctx.getAllocator(), selectors);
     defer parsed.deinit();
     const list = parsed.list();
@@ -313,7 +316,7 @@ pub fn querySelectorGeneral(scope: *runtime.Instance, selectors: []const u8) Err
     defer list.deinit();
     var nth_cache = NthIndexCache{ .allocator = scope.ctx.getAllocator() };
     defer nth_cache.deinit();
-    var matcher = Matcher.init(scope_node, scope);
+    var matcher = Matcher.initForQuery(scope_node, scope);
     matcher.nth_cache = &nth_cache;
     const fast = FastPath.of(&list);
     var walk = Walk.init(scope_node);
@@ -332,7 +335,7 @@ pub fn querySelectorAllGeneral(allocator: std.mem.Allocator, scope: *runtime.Ins
     defer list.deinit();
     var nth_cache = NthIndexCache{ .allocator = allocator };
     defer nth_cache.deinit();
-    var matcher = Matcher.init(scope_node, scope);
+    var matcher = Matcher.initForQuery(scope_node, scope);
     matcher.nth_cache = &nth_cache;
     const fast = FastPath.of(&list);
     var walk = Walk.init(scope_node);
@@ -351,7 +354,7 @@ pub fn matchesGeneral(element: *runtime.Instance, selectors: []const u8) Error!b
     const node = instance_bridge.getNodeBase(element) orelse return false;
     if (node.node_type != ELEMENT_NODE) return false;
     // Step 3: match against this, with scoping root this.
-    const matcher = Matcher.init(node, element);
+    const matcher = Matcher.initForQuery(node, element);
     return matcher.matchesList(.{ .node = node }, &list);
 }
 
@@ -362,7 +365,7 @@ pub fn closestGeneral(element: *runtime.Instance, selectors: []const u8) Error!?
     var list = try parse(parse_memory.allocator(), selectors);
     defer list.deinit();
     const node = instance_bridge.getNodeBase(element) orelse return null;
-    const matcher = Matcher.init(node, element);
+    const matcher = Matcher.initForQuery(node, element);
     // Steps 3-4: "this's inclusive ancestors that are elements, in reverse
     // tree order".
     var current: ?*NodeBase = node;
@@ -717,6 +720,11 @@ const Matcher = struct {
     /// the per-element dynamic state a match read is recorded.
     pseudo_target: ?[]const u8 = null,
     state_reads: ?*StateReads = null,
+    /// A DOM query (querySelector, querySelectorAll, matches, closest): class
+    /// checks compare ids and fill the compiled selector's class operands
+    /// (`hasClass`). The style engine's matching - whose rules' selectors no
+    /// query cache owns - compares bytes.
+    class_ids: bool = false,
 
     fn init(scope: *NodeBase, scope_instance: *runtime.Instance) Matcher {
         const document: ?*runtime.Instance = if (scope.node_type == DOCUMENT_NODE)
@@ -735,6 +743,13 @@ const Matcher = struct {
             matcher.shadow_root = root;
             matcher.shadow_host = hostOf(root);
         }
+        return matcher;
+    }
+
+    /// `init`, for a DOM query's matching (`class_ids`).
+    fn initForQuery(scope: *NodeBase, scope_instance: *runtime.Instance) Matcher {
+        var matcher = init(scope, scope_instance);
+        matcher.class_ids = true;
         return matcher;
     }
 
@@ -929,7 +944,7 @@ const Matcher = struct {
             .Nesting => false,
             .Universal => |universal| universal.namespace == .any or data.namespaceSlice() == null,
             .Type => |type_selector| self.matchesType(data, type_selector.tag_name, type_selector.lower_name, type_selector.namespace),
-            .Class => |class| self.hasClass(data, class.class_name),
+            .Class => |*class| self.hasClass(data, class),
             .Id => |id| self.idIs(data, id.id),
             .Attribute => |*attribute| self.matchesAttribute(data, attribute),
             .NamespaceURI => |constraint| std.mem.eql(u8, data.namespaceSlice() orelse "", constraint.uri),
@@ -957,8 +972,62 @@ const Matcher = struct {
 
     /// Selectors 4 6.6: one of the element's classes (its class attribute
     /// split on ASCII whitespace) is `name`.
-    fn hasClass(self: *const Matcher, data: ElementData, name: []const u8) bool {
-        return classListHas(data.classValue(), name, self.quirks);
+    ///
+    /// A DOM query (`class_ids`) reads the class value's token list and
+    /// compares ids (lane nd2 batch 3): the element's class value is a record
+    /// id whose flags say whether it is one token (then it is its own class:
+    /// one compare, no table read), else its record's ClassNames hold its
+    /// tokens' ids, split once per distinct value (Blink's
+    /// ElementData::ClassNames().Contains(selector.Value()), a scan of the
+    /// SpaceSplitString's vector). In quirks mode both sides are the ASCII
+    /// lowercase (Blink's SetClassFoldingCase and SetValue(value,
+    /// match_lower_case)). The style engine's matching compares bytes.
+    fn hasClass(self: *const Matcher, data: ElementData, class: *const selector.ClassSelector) bool {
+        if (!self.class_ids) return self.hasClassBytes(data, class.class_name);
+        const id = data.classId();
+        if (id == .empty) return false;
+        // A class value means its Browser made its values table.
+        const table = attribute_values.classTable(data.scope) orelse return false;
+        const operand = self.classOperand(table, class) orelse return self.hasClassBytes(data, class.class_name);
+        const found = if (self.quirks) table.hasFoldedToken(id, operand) else table.hasToken(id, operand);
+        return found catch self.hasClassBytes(data, class.class_name);
+    }
+
+    /// The class selector's name as an id of `table` - the compiled
+    /// selector's cached one while it is valid (parser.ClassOperand: no
+    /// record an operand named has been freed since), else read again - or
+    /// null for a name kept as bytes (or no memory to read it).
+    fn classOperand(self: *const Matcher, table: *attribute_values.Table, class: *const selector.ClassSelector) ?attribute_values.ValueId {
+        // The cell is the compiled selector's own, written on this thread
+        // only (the document's selector cache, or this query's parse).
+        const cell: *selector.ClassOperand = @constCast(&class.operand);
+        if (cell.table == @as(*const anyopaque, table) and cell.frees == table.operand_frees and cell.folded == self.quirks) {
+            if (cell.bytes) return null;
+            const cached: attribute_values.ValueId = @fromBackingInt(cell.id);
+            return cached;
+        }
+        const id = table.operandOf(class.class_name, self.quirks) catch return null;
+        // Read after operandOf, whose release may have freed other records.
+        cell.* = .{
+            .table = table,
+            .frees = table.operand_frees,
+            .id = if (id) |i| @backingInt(i) else 0,
+            .folded = self.quirks,
+            .bytes = id == null,
+        };
+        return id;
+    }
+
+    /// The byte compare (the style engine's matching, a name too long to
+    /// keep as an id, no memory for a token list): Selectors 4 6.6 over the
+    /// value's bytes.
+    fn hasClassBytes(self: *const Matcher, data: ElementData, name: []const u8) bool {
+        const classes = data.classValue();
+        // A pass over a class value's bytes (attribute_values.Table.class_scans).
+        if (debug_checks and classes.len > 0) {
+            if (attribute_values.classTable(data.scope)) |table| table.class_scans += 1;
+        }
+        return classListHas(classes, name, self.quirks);
     }
 
     fn idIs(self: *const Matcher, data: ElementData, id: []const u8) bool {
@@ -1297,7 +1366,13 @@ fn classListHas(classes: []const u8, name: []const u8, insensitive: bool) bool {
     var from: usize = 0;
     while (std.mem.indexOfPos(u8, classes, from, name)) |at| {
         const end = at + name.len;
-        if ((at == 0 or isAsciiWhitespace(classes[at - 1])) and (end == classes.len or isAsciiWhitespace(classes[end]))) return true;
+        if ((at == 0 or isAsciiWhitespace(classes[at - 1])) and (end == classes.len or isAsciiWhitespace(classes[end]))) {
+            // A name holding whitespace (`.a\ b`) is no token, though its
+            // bytes may appear bounded by whitespace ("a b"): Blink's token
+            // vector never holds it. Checked on a hit only.
+            for (name) |c| if (isAsciiWhitespace(c)) return false;
+            return true;
+        }
         from = at + 1;
     }
     return false;
@@ -1317,7 +1392,7 @@ const FastPath = union(enum) {
     filtered: SubjectFilter,
     all,
     tag: SubjectFilter.Tag,
-    class: []const u8,
+    class: *const selector.ClassSelector,
     id: []const u8,
     attribute: *const AttributeSelector,
 
@@ -1327,10 +1402,11 @@ const FastPath = union(enum) {
         if (complex.is_relative) return .none;
         const compound = &complex.compound;
         if (complex.combinators.len == 0 and compound.simple_selectors.len == 1 and !compound.active_hover_quirk) {
-            switch (compound.simple_selectors[0]) {
+            const first = &compound.simple_selectors[0];
+            switch (first.*) {
                 .Universal => |universal| if (universal.namespace == .any) return .all,
                 .Type => |t| if (t.namespace == .any) return .{ .tag = .{ .name = t.tag_name, .lower_name = t.lower_name } },
-                .Class => |c| return .{ .class = c.class_name },
+                .Class => |*c| return .{ .class = c },
                 .Id => |id| return .{ .id = id.id },
                 .Attribute => |*attribute| return .{ .attribute = attribute },
                 else => {},
@@ -1344,16 +1420,17 @@ const FastPath = union(enum) {
 /// element can be rejected by cheaply.
 const SubjectFilter = union(enum) {
     tag: Tag,
-    class: []const u8,
+    class: *const selector.ClassSelector,
     id: []const u8,
 
     const Tag = struct { name: []const u8, lower_name: []const u8 };
 
     fn of(compound: *const CompoundSelector) ?SubjectFilter {
         if (compound.simple_selectors.len == 0) return null;
-        return switch (compound.simple_selectors[0]) {
+        const first = &compound.simple_selectors[0];
+        return switch (first.*) {
             .Type => |t| if (t.namespace == .any) .{ .tag = .{ .name = t.tag_name, .lower_name = t.lower_name } } else null,
-            .Class => |c| .{ .class = c.class_name },
+            .Class => |*c| .{ .class = c },
             .Id => |id| .{ .id = id.id },
             else => null,
         };
@@ -1589,6 +1666,9 @@ test "class lists: a whole name bounded by ASCII whitespace or an end" {
     try testing.expect(!classListHas("", "row", false));
     try testing.expect(classListHas("A ROW", "row", true));
     try testing.expect(!classListHas("ROW", "row", false));
+    // A name with whitespace is no class (Blink: no token holds it).
+    try testing.expect(!classListHas("a b", "a b", false));
+    try testing.expect(!classListHas("x a\tb", "a\tb", true));
 }
 
 test "attribute values: empty operands never match, ~= splits on ASCII whitespace" {
