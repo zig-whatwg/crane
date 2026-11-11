@@ -2184,10 +2184,7 @@ const Builder = struct {
         var display = s.display();
         // "A parent with a grid or flex display value blockifies the box's
         // display type."
-        const parent_blockifies = if (self.ctx.parent) |p| blk: {
-            const pd = p.display();
-            break :blk pd.box == .normal and (pd.inner == .flex or pd.inner == .grid);
-        } else false;
+        const parent_blockifies = if (self.ctx.parent) |p| blockifiesChildren(p) else false;
         if (self.ctx.is_root or out_of_flow or floated or parent_blockifies) display = display.blockified();
         // Display 4 2.8: "a display of contents computes to block on the root
         // element."
@@ -2242,6 +2239,15 @@ const Builder = struct {
         s.in_base_appearance = self.hasBaseAppearance();
     }
 };
+
+/// "A parent with a grid or flex display value blockifies the box's display
+/// type" (Display 4 2.7): what adjust() reads of the parent's display, and
+/// what a matched-properties cache hit compares (Blink
+/// StyleAdjuster::IsCacheCompatible: the layout parent's blockifying).
+pub fn blockifiesChildren(parent: *const ComputedStyle) bool {
+    const pd = parent.display();
+    return pd.box == .normal and (pd.inner == .flex or pd.inner == .grid);
+}
 
 fn fixOverflow(k: Keyword) Keyword {
     return switch (k) {

@@ -346,6 +346,39 @@ pub const ComputedStyle = struct {
         return alone;
     }
 
+    /// Every inherited group holds the same values in both styles: the same
+    /// group, or groups whose values are identical (`identical`). Blink's
+    /// ComputedStyle::InheritedEqual, WebKit's RenderStyle::inheritedEqual
+    /// (DataRef: pointer-equal or value-equal). The custom property record
+    /// is the caller's to compare.
+    pub fn inheritedEqual(self: *const ComputedStyle, other: *const ComputedStyle) bool {
+        inline for (0..groups.count) |g| if (comptime groups.inherited[g]) {
+            if (self.slots[g] != other.slots[g] and !groupValuesIdentical(g, self.slots[g], other.slots[g])) return false;
+        };
+        return true;
+    }
+
+    /// inheritedEqual for the non-inherited groups (Blink NonInheritedEqual).
+    pub fn nonInheritedEqual(self: *const ComputedStyle, other: *const ComputedStyle) bool {
+        inline for (0..groups.count) |g| if (comptime !groups.inherited[g]) {
+            if (self.slots[g] != other.slots[g] and !groupValuesIdentical(g, self.slots[g], other.slots[g])) return false;
+        };
+        return true;
+    }
+
+    /// The first stored longhand whose computed value a reader would see
+    /// differ (Value.eql), or null when every one is equal: what a
+    /// matched-properties cache hit's Debug self-check compares with the
+    /// cascade it skipped.
+    pub fn firstDifference(self: *const ComputedStyle, other: *const ComputedStyle) ?Longhand {
+        for (0..Longhand.count) |i| {
+            const l: Longhand = @fromBackingInt(@intCast(i));
+            if (l.logical() != null) continue;
+            if (!self.get(l).eql(other.get(l))) return l;
+        }
+        return null;
+    }
+
     /// The computed value of custom property `name` (case-sensitive), or
     /// null for the guaranteed-invalid value (absent included). Borrowed.
     pub fn customValue(self: *const ComputedStyle, name: []const u8) ?*custom_properties.Text {
