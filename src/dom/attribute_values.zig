@@ -334,6 +334,9 @@ pub const Table = struct {
     class_scans: usize = 0,
     class_lists: usize = 0,
     class_bytes: usize = 0,
+    /// Debug: the records read by their slot (`recordAt`), for the tests
+    /// that pin how many reads a step takes.
+    slot_reads: if (debug_checks) usize else void = if (debug_checks) 0 else {},
 
     const Map = std.HashMapUnmanaged(u32, void, SlotContext, 80);
 
@@ -463,6 +466,12 @@ pub const Table = struct {
     pub inline fn get(self: *const Table, id: ValueId) *const Value {
         const slot = id.slot();
         if (debug_checks and self.ids.generation(slot) != id.generation()) @panic("a stale attribute value id");
+        return self.recordAt(slot);
+    }
+
+    /// The record in `slot` (counted in Debug: `slot_reads`).
+    inline fn recordAt(self: *const Table, slot: u32) *Value {
+        if (debug_checks) @constCast(self).slot_reads += 1;
         return self.ids.get(slot);
     }
 
@@ -477,7 +486,7 @@ pub const Table = struct {
 
     /// The id of the record in `slot`.
     inline fn idAt(self: *const Table, slot: u32) ValueId {
-        return ValueId.of(slot, self.ids.generation(slot), self.ids.get(slot).flags());
+        return ValueId.of(slot, self.ids.generation(slot), self.recordAt(slot).flags());
     }
 
     /// `id`'s bytes.
@@ -494,7 +503,7 @@ pub const Table = struct {
         const key: BytesKey = .{ .bytes = bytes, .hash = hashOf(bytes) };
         if (self.records.getKeyAdapted(key, KeyAdapter{ .ids = &self.ids })) |slot| {
             const id = self.idAt(slot);
-            const value: *Value = @constCast(self.ids.get(slot));
+            const value: *Value = self.recordAt(slot);
             // A parked record comes back: out of the ring, with its id.
             if (value.references == 0) self.unpark(slot, value);
             self.retain(id);
@@ -544,7 +553,7 @@ pub const Table = struct {
         // evict) in turn: the loop re-reads the ring each time round.
         while (self.parked.len == Parking.max_records or self.parked.bytes + size > Parking.max_bytes) {
             const oldest = self.parked.removeAt(0);
-            const evicted: *Value = @constCast(self.ids.get(oldest));
+            const evicted: *Value = self.recordAt(oldest);
             self.parked.bytes -= self.parkedSize(oldest, evicted);
             self.free(oldest, evicted);
         }
@@ -963,6 +972,27 @@ test "a parked record comes back with its id and a count of one, and leaves the 
     try std.testing.expectEqual(@as(usize, 0), table.parkedBytes());
     try expectParkingSound(table);
     release(&scope, again);
+}
+
+test "a found value is read by its slot once: no second read for its id's flags or its count" {
+    if (!debug_checks) return error.SkipZigTest;
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    const first = try intern(&scope, "x");
+    const table = (classTable(&scope)).?;
+    // Counted: the found path of a value an attribute holds.
+    var reads = table.slot_reads;
+    const again = try table.intern("x");
+    try std.testing.expectEqual(first, again);
+    try std.testing.expectEqual(reads + 1, table.slot_reads);
+    // Parked: the found path that takes it out of the ring.
+    table.release(again);
+    table.release(first);
+    reads = table.slot_reads;
+    const back = try table.intern("x");
+    try std.testing.expectEqual(first, back);
+    try std.testing.expectEqual(reads + 1, table.slot_reads);
+    table.release(back);
 }
 
 test "a million distinct values end at the table's size plus at most the ring" {
