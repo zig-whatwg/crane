@@ -2756,8 +2756,9 @@ pub extern fn v8_Global_SetWeak(
 /// that carried the second pass and before the event loop's microtask
 /// checkpoint; or `v8_Isolate_RequestGarbageCollection` /
 /// `v8_Isolate_MemoryPressureNotification`, before a forced collection
-/// returns - where it may do any engine work, in the order the collector
-/// found the wrappers dead. Disposing the handle before then cancels
+/// returns - where it may do any engine work, in the order V8's second pass
+/// handed the finalizers over (the order they ran in when that pass ran them
+/// itself: the reverse of the first pass's). Disposing the handle before then cancels
 /// `finalize`; an agent's end runs what is queued in its last forced
 /// collections, and v8_Isolate_Dispose drops the rest uncalled
 /// (v8_wrapper.cpp `runQueuedFinalizers`).

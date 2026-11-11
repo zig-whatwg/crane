@@ -442,7 +442,7 @@ test "a finalizer that writes a JS object runs when a forced collection returns,
     try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
 }
 
-test "finalizers of a collection delivered by task wait for the agent's safe point and run there in the order they were collected" {
+test "finalizers of a collection delivered by task wait for the agent's safe point and run there in the order V8's second pass handed them over" {
     defer test_agent.close();
     const e = try env();
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -462,7 +462,14 @@ test "finalizers of a collection delivered by task wait for the agent's safe poi
     // work ran, so the event loop performs its microtask checkpoint.
     try testing.expect(ffi.v8_Platform_PumpMessageLoop(e.isolate));
     try testing.expectEqual(@as(usize, 3), queue_probe.?.finalizes);
-    try testing.expectEqualSlices(u8, queue_probe.?.unlink_order[0..3], queue_probe.?.finalize_order[0..3]);
+    // The queue keeps the second pass's order, so the finalizers run in the
+    // order they ran in when that pass ran them itself. V8 lists a record
+    // for its second pass as its first pass visits it (15.7 src/handles/
+    // global-handles.cc:850, push_back) and the second pass takes them from
+    // the back (:765-767): the reverse of the first pass's order.
+    var handed_over: [3]u8 = undefined;
+    for (&handed_over, 0..) |*index, i| index.* = queue_probe.?.unlink_order[2 - i];
+    try testing.expectEqualSlices(u8, &handed_over, queue_probe.?.finalize_order[0..3]);
     try testing.expect(!queue_probe.?.write_failed);
     inline for (.{ "f0", "f1", "f2" }) |name| try testing.expect(ffi.v8_Object_Has(e.context, queue_probe.?.target, name));
     try testing.expectEqual(@as(usize, 0), ffi.v8_Debug_QueuedFinalizers(e.isolate));
