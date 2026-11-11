@@ -648,7 +648,9 @@ pub const Table = struct {
     /// own class, any other value's are its list's (Blink's
     /// Data::Contains, a scan of the vector).
     pub fn hasToken(self: *Table, id: ValueId, token: ValueId) error{OutOfMemory}!bool {
-        if (id == token) return id != .empty;
+        // The same record: a class only if it is one token (a value of
+        // several is no token of itself; .empty is none).
+        if (id == token) return id.isOneToken();
         if (id.isOneToken() or id == .empty) return false;
         const names = try self.classNames(id);
         return std.mem.indexOfScalar(ValueId, names.tokens(), token) != null;

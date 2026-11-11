@@ -114,8 +114,9 @@ const Tokens = struct {
     value: []u8 = &.{},
 
     fn read(el: *runtime.Instance, page: *Page) !Tokens {
+        // [SameObject]: the element keeps it (never freed here: lesson
+        // architecture-a-getter-that-returns-a-kept-object-breaks-callers-that-free-it).
         const list = try interfaces.Element.get_classList(el);
-        defer runtime.gc.onObjectFreed(list);
         var self: Tokens = .{};
         const n = try interfaces.DOMTokenList.get_length(list);
         for (0..n) |i| {
@@ -293,7 +294,6 @@ test "in quirks mode classes compare ASCII case-insensitively: both sides lowerc
     defer tokens.deinit();
     try tokens.expect(&.{ "Foo", "bar" });
     const list = try interfaces.Element.get_classList(a);
-    defer runtime.gc.onObjectFreed(list);
     try testing.expect(!try interfaces.DOMTokenList.call_contains(list, str("foo")));
     try testing.expect(try interfaces.DOMTokenList.call_contains(list, str("Foo")));
     // The mode is read at each check: the same element and selector compare
@@ -329,7 +329,6 @@ test "a token list two elements share: one element's class changes, the other's 
 
     // classList changes go through the attribute: b's list follows b only.
     const list = try interfaces.Element.get_classList(b);
-    defer runtime.gc.onObjectFreed(list);
     try testing.expect(try interfaces.DOMTokenList.call_toggle(list, str("w"), no_force));
     var class_b = (try interfaces.Element.call_getAttribute(b, str("class"))).?;
     defer class_b.deinit(page.ctx.allocator);
@@ -486,7 +485,6 @@ test "classList reads the value's tokens; its changes serialize the set and writ
     const el = try page.child("span");
     try Page.set(el, "class", "a  b a");
     const list = try interfaces.Element.get_classList(el);
-    defer runtime.gc.onObjectFreed(list);
     try testing.expectEqual(@as(u32, 2), try interfaces.DOMTokenList.get_length(list));
     try testing.expect(try interfaces.DOMTokenList.call_contains(list, str("b")));
     try testing.expect(!try interfaces.DOMTokenList.call_contains(list, str("a b")));
@@ -532,7 +530,6 @@ test "relList and part read their own attribute's tokens the same way" {
     const link = try page.child("a");
     try Page.set(link, "rel", "noopener  NoReferrer noopener");
     const rel = try interfaces.HTMLAnchorElement.get_relList(link);
-    defer runtime.gc.onObjectFreed(rel);
     try testing.expectEqual(@as(u32, 2), try interfaces.DOMTokenList.get_length(rel));
     try testing.expect(try interfaces.DOMTokenList.call_contains(rel, str("NoReferrer")));
     try testing.expect(!try interfaces.DOMTokenList.call_contains(rel, str("noreferrer")));
