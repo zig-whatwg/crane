@@ -114,9 +114,22 @@ const snapshot_only_flags = "--hash-seed=0 --predictable";
 /// eval cache answers `new Function(...)` by source text alone, with the
 /// first caller's base URL and nonce. -Dv8-compilation-cache leaves the flag
 /// out, for measurement only.
+///
+/// `measurement_v8_flags` come last: nothing in a default build.
 pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm" ++
     (if (compilation_cache_measurement) "" else " --no-compilation-cache") ++
-    (if (build_options.jitless) " --jitless" else "");
+    (if (build_options.jitless) " --jitless" else "") ++
+    (if (measurement_v8_flags.len != 0) " " ++ measurement_v8_flags else "");
+
+/// V8 flags a measurement build adds (-Dv8-extra-flags="<flags>"; empty in
+/// every default build, which tests/v8/v8_flags_test.zig pins). V8 freezes its
+/// flags when it starts, so a flag that changes or traces the collector
+/// (--trace-gc, --max-semi-space-size) has to be in the set V8 starts with:
+/// the route is a build option, as Chromium's is a switch a developer passes
+/// (--js-flags, applied in gin/v8_initializer.cc before V8 starts) - never an
+/// environment variable the product reads. V8::SetFlagsFromString stops at
+/// the first flag it does not know, so they come after the product's.
+pub const measurement_v8_flags: []const u8 = build_options.v8_extra_flags;
 
 /// Whether this is a measurement build that starts V8 WITH its compilation
 /// cache (-Dv8-compilation-cache; off by default).

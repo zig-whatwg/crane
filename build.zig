@@ -3216,6 +3216,17 @@ pub fn build(b: *std.Build) void {
     ) orelse false;
     build_options.addOption(bool, "v8_compilation_cache", v8_compilation_cache);
 
+    // -Dv8-extra-flags="<flags>": V8 flags a MEASUREMENT build starts V8 with, after the product's (lane v8up
+    // b5: the collector's cadence and the young generation's size cannot be read or changed any other way -
+    // V8 freezes its flags when it starts). Empty by default, pinned by tests/v8/v8_flags_test.zig; never an
+    // environment variable. Chromium's route is the --js-flags switch (gin/v8_initializer.cc).
+    const v8_extra_flags = b.option(
+        []const u8,
+        "v8-extra-flags",
+        "V8 flags appended to the set V8 starts with (a measurement route; default none), e.g. \"--trace-gc --max-semi-space-size=8\"",
+    ) orelse "";
+    build_options.addOption([]const u8, "v8_extra_flags", std.mem.trim(u8, v8_extra_flags, " "));
+
     build_options.addOption([]const u8, "engine_name", engine_choice);
     build_options.addOption(bool, "has_snapshot_support", std.mem.eql(u8, engine_choice, "v8"));
     build_options.addOption(bool, "has_isolate_per_thread", std.mem.eql(u8, engine_choice, "v8"));
