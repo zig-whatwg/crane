@@ -2328,8 +2328,14 @@ class CranePlatform final : public Platform {
     ThreadIsolatedAllocator* GetThreadIsolatedAllocator() override {
         return made_before_threads_ ? backend_->GetThreadIsolatedAllocator() : nullptr;
     }
+    /// V8 15.7's zero segment (v8-platform.h: the process's segment from
+    /// address 0, read-only or no access, never reused): the backend's answer,
+    /// as every other question is forwarded - libplatform answers 0 unless
+    /// PartitionAlloc reserved one (S7, tmp/plans/v8-update-plan.md 2.2).
+    size_t GetZeroSegmentSize() override { return backend_->GetZeroSegmentSize(); }
     void OnCriticalMemoryPressure() override { backend_->OnCriticalMemoryPressure(); }
     int NumberOfWorkerThreads() override { return backend_->NumberOfWorkerThreads(); }
+    std::unique_ptr<ScopedBoostablePriority> CreateBoostablePriorityScope() override { return backend_->CreateBoostablePriorityScope(); }
     std::shared_ptr<TaskRunner> GetForegroundTaskRunner(Isolate*, TaskPriority) override;
     bool IdleTasksEnabled(Isolate* isolate) override { return backend_->IdleTasksEnabled(isolate); }
     std::unique_ptr<ScopedBlockingCall> CreateBlockingScope(BlockingType type) override { return backend_->CreateBlockingScope(type); }
@@ -2352,17 +2358,17 @@ class CranePlatform final : public Platform {
                                            const SourceLocation& location) override {
         return backend_->CreateJob(priority, std::move(job), location);
     }
+    // The backend's public entry points, which reach its Impl overrides with
+    // the priority (the Call*OnWorkerThread forms are deprecated in 15.7,
+    // "Use PostTaskOnWorkerThread instead", and the delayed one dropped the
+    // priority).
     void PostTaskOnWorkerThreadImpl(TaskPriority priority, std::unique_ptr<Task> task,
                                     const SourceLocation& location) override {
-        switch (priority) {
-            case TaskPriority::kBestEffort: backend_->CallLowPriorityTaskOnWorkerThread(std::move(task), location); break;
-            case TaskPriority::kUserVisible: backend_->CallOnWorkerThread(std::move(task), location); break;
-            case TaskPriority::kUserBlocking: backend_->CallBlockingTaskOnWorkerThread(std::move(task), location); break;
-        }
+        backend_->PostTaskOnWorkerThread(priority, std::move(task), location);
     }
-    void PostDelayedTaskOnWorkerThreadImpl(TaskPriority, std::unique_ptr<Task> task,
+    void PostDelayedTaskOnWorkerThreadImpl(TaskPriority priority, std::unique_ptr<Task> task,
                                            double delay, const SourceLocation& location) override {
-        backend_->CallDelayedOnWorkerThread(std::move(task), delay, location);
+        backend_->PostDelayedTaskOnWorkerThread(priority, std::move(task), delay, location);
     }
  private:
     std::unique_ptr<Platform> backend_;
