@@ -19,6 +19,10 @@
 //!   fw_matrix summary <journal.jsonl> ...
 //!       per suite: pages, tests run / passed / failed / errored / excluded
 //!       as rendering / not run; every failure with its first assertion
+//!   fw_matrix report --journals=<dir> --out=<dir> [--assets=<url>]
+//!       the matrix page and a page per framework, from every journal.jsonl
+//!       one or two levels below <dir> (report.zig); --assets is where the
+//!       WPT site's site.css is, relative to <out> (default "../")
 //!   fw_matrix serve --frameworks-dir=<dir> --suite=<id> [--port=<n>]
 //!       a suite's tree alone, for a person to open in a browser
 //!
@@ -37,9 +41,10 @@ pub const generated = @import("generated.zig");
 pub const server = @import("server.zig");
 pub const fetch = @import("fetch.zig");
 pub const run = @import("run.zig");
+pub const report = @import("report.zig");
 
 const usage =
-    \\usage: fw_matrix check|fetch|run|summary|serve [options]
+    \\usage: fw_matrix check|fetch|run|summary|report|serve [options]
     \\       (tools/fw_matrix/main.zig lists every option)
     \\
 ;
@@ -149,6 +154,9 @@ pub fn main(init: std.process.Init) !void {
     } else if (std.mem.eql(u8, cmd, "summary")) {
         if (args.positional.items.len == 0) fail("summary: name one or more journals", .{});
         try summarize(arena, io, args.positional.items);
+    } else if (std.mem.eql(u8, cmd, "report")) {
+        const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
+        try writeReport(arena, io, m, args.get("excluded-dir") orelse default_excluded, args.need("journals"), args.need("out"), .{ .assets = args.get("assets") orelse "../" });
     } else if (std.mem.eql(u8, cmd, "serve")) {
         const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
         const s = manifest.find(m, args.need("suite")) orelse fail("no suite {s} in the manifest", .{args.need("suite")});
@@ -261,7 +269,68 @@ fn summaryFor(arena: Allocator, suites: *std.ArrayList(SuiteSummary), suite: []c
     return &suites.items[suites.items.len - 1];
 }
 
+/// Every journal.jsonl one or two directories below `dir`.
+fn findJournals(arena: Allocator, io: Io, dir: []const u8) ![]const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    var d = try Io.Dir.cwd().openDir(io, dir, .{ .iterate = true });
+    defer d.close(io);
+    var walker = try d.walk(arena);
+    defer walker.deinit();
+    while (try walker.next(io)) |e| {
+        if (e.kind != .file or !std.mem.eql(u8, e.basename, "journal.jsonl")) continue;
+        const depth = std.mem.count(u8, e.path, "/");
+        if (depth < 1 or depth > 2) continue;
+        try out.append(arena, try std.fmt.allocPrint(arena, "{s}/{s}", .{ dir, e.path }));
+    }
+    std.mem.sort([]const u8, out.items, {}, struct {
+        fn lt(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.order(u8, a, b) == .lt;
+        }
+    }.lt);
+    return out.items;
+}
+
+fn writeReport(arena: Allocator, io: Io, m: manifest.Manifest, excluded_dir: []const u8, journals_dir: []const u8, out_dir: []const u8, o: report.Options) !void {
+    var journals: std.ArrayList(journal.Journal) = .empty;
+    for (try findJournals(arena, io, journals_dir)) |path| {
+        const bytes = Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(1 << 30)) catch |err| fail("{s}: {t}", .{ path, err });
+        var failure: journal.Failure = .{};
+        try journals.append(arena, journal.parseJournal(arena, bytes, &failure) catch |err| fail("{s}:{d}: {t}", .{ path, failure.line, err }));
+    }
+    var files: std.ArrayList([]const exclusions.Entry) = .empty;
+    for (m.suites) |s| {
+        const path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ excluded_dir, s.excluded });
+        const text = Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(16 << 20)) catch |err| fail("{s}: {t}", .{ path, err });
+        var pf: exclusions.ParseFailure = .{};
+        const entries = exclusions.parse(arena, text, &pf) catch |err| fail("{s}:{d}: {t}", .{ path, pf.line, err });
+        var fe: std.ArrayList(exclusions.Entry) = .empty;
+        for (entries) |e| if (e.file) try fe.append(arena, e);
+        try files.append(arena, fe.items);
+    }
+    const suites = try report.collect(arena, m, journals.items, files.items);
+    try Io.Dir.cwd().createDirPath(io, out_dir);
+    var index: Io.Writer.Allocating = .init(arena);
+    try report.writeIndex(&index.writer, suites, o);
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/index.html", .{out_dir}), .data = index.written() });
+    var written: usize = 1;
+    for (suites, 0..) |s, i| {
+        var seen = false;
+        for (suites[0..i]) |o2| if (std.mem.eql(u8, o2.suite.framework, s.suite.framework)) {
+            seen = true;
+        };
+        if (seen) continue;
+        const dir = try std.fmt.allocPrint(arena, "{s}/{s}", .{ out_dir, s.suite.framework });
+        try Io.Dir.cwd().createDirPath(io, dir);
+        var page: Io.Writer.Allocating = .init(arena);
+        try report.writeSuites(&page.writer, s.suite.framework, suites, o);
+        try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/index.html", .{dir}), .data = page.written() });
+        written += 1;
+    }
+    std.debug.print("fw_matrix: report: {d} journal(s), {d} page(s) written to {s}\n", .{ journals.items.len, written, out_dir });
+}
+
 test {
+    _ = report;
     _ = journal;
     _ = exclusions;
     _ = manifest;

@@ -11,3 +11,597 @@
 kind   = needs-node-build
 why    = its iframe page loads test/data/core/jquery-iterability-transpiled.js, which `npm run babel:tests` (Node: Babel) writes from jquery-iterability-transpiled-es6.js; the tag does not carry it
 source = test/unit/core.js:1524
+
+# ---------------------------------------------------------------------------------------------------------------
+# NOT RUN, ruling R4: needs jQuery's own test server. The page's URLs test/data/mock.php?action=<a> are answered by
+# the project's server middleware (test/middleware-mockserver.cjs, 29 actions; test/data/mock.php the same in PHP),
+# which is not built yet. Each entry is a test whose own call requests mock.php (or opens a test/data page that
+# does: core/dynamic_ready.html, event/syncReady.html, event/interactiveReady.html, ajax/unreleasedXHR.html); `why`
+# quotes the line. Found by reading every test's call at the tag (a request in a loop's data belongs to the tests the
+# loop defines), names as QUnit registered them in this Crane (1,148 tests defined).
+# ---------------------------------------------------------------------------------------------------------------
+
+[ajax: XMLHttpRequest - Attempt to block tests because of dangling XHR requests (IE)]
+kind   = needs-server
+why    = the test page ajax/unreleasedXHR.html, which requests mock.php needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 33: "ajax/unreleasedXHR.html",
+source = test/unit/ajax.js:31
+
+[ajax: jQuery.ajax() - custom attributes for script tag - Same Domain]
+kind   = needs-server
+why    = its request to mock.php?action=script needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 84: xhr = jQuery.ajax( url( "mock.php?action=script" ), options );
+source = test/unit/ajax.js:75
+
+[ajax: jQuery.ajax() - custom attributes for script tag - Cross Domain]
+kind   = needs-server
+why    = its request to mock.php?action=script needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 84: xhr = jQuery.ajax( url( "mock.php?action=script" ), options );
+source = test/unit/ajax.js:75
+
+[ajax: jQuery.ajax() - headers for script transport - Same Domain]
+kind   = needs-server
+why    = its request to mock.php?action=script needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 113: return jQuery.ajax( url( "mock.php?action=script&callback=corsCallback" ), options );
+source = test/unit/ajax.js:101
+
+[ajax: jQuery.ajax() - headers for script transport - Cross Domain]
+kind   = needs-server
+why    = its request to mock.php?action=script needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 113: return jQuery.ajax( url( "mock.php?action=script&callback=corsCallback" ), options );
+source = test/unit/ajax.js:101
+
+[ajax: jQuery.ajax() - scriptAttrs winning over headers - Same Domain]
+kind   = needs-server
+why    = its request to mock.php?action=script needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 139: xhr = jQuery.ajax( url( "mock.php?action=script&callback=corsCallback" ), options );
+source = test/unit/ajax.js:125
+
+[ajax: jQuery.ajax() - scriptAttrs winning over headers - Cross Domain]
+kind   = needs-server
+why    = its request to mock.php?action=script needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 139: xhr = jQuery.ajax( url( "mock.php?action=script&callback=corsCallback" ), options );
+source = test/unit/ajax.js:125
+
+[ajax: jQuery.ajax() - execute JS when dataType option is provided]
+kind   = needs-server
+why    = its request to mock.php?action=script needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 161: return jQuery.ajax( url( "mock.php?action=script&header=ecma" ), options );
+source = test/unit/ajax.js:154
+
+[ajax: jQuery.ajax() - do not execute JS (gh-2432, gh-4822)  - Same Domain]
+kind   = needs-server
+why    = its request to mock.php?action=script needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 176: url: url( "mock.php?action=script&header" ),
+source = test/unit/ajax.js:174
+
+[ajax: jQuery.ajax() - do not execute JS (gh-2432, gh-4822)  - Cross Domain]
+kind   = needs-server
+why    = its request to mock.php?action=script needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 176: url: url( "mock.php?action=script&header" ),
+source = test/unit/ajax.js:174
+
+[ajax: jQuery.ajax() - error callbacks]
+kind   = needs-server
+why    = its request to mock.php?action=wait needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 228: url: url( "mock.php?action=wait&wait=5" ),
+source = test/unit/ajax.js:225
+
+[ajax: jQuery.ajax() - textStatus and errorThrown values]
+kind   = needs-server
+why    = its request to mock.php?action=wait needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 246: url: url( "mock.php?action=wait&wait=5" ),
+source = test/unit/ajax.js:244
+
+[ajax: jQuery.ajax() - responseText on error]
+kind   = needs-server
+why    = its request to mock.php?action=error needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 269: url: url( "mock.php?action=error" ),
+source = test/unit/ajax.js:267
+
+[ajax: jQuery.ajax() - retry with jQuery.ajax( this )]
+kind   = needs-server
+why    = its request to mock.php?action=error needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 282: url: url( "mock.php?action=error" ),
+source = test/unit/ajax.js:276
+
+[ajax: jQuery.ajax() - headers]
+kind   = needs-server
+why    = its request to mock.php?action=headers needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 316: url: url( "mock.php?action=headers&keys=siMPle|SometHing-elsE|OthEr|Nullable|undefined|Emp
+source = test/unit/ajax.js:309
+
+[ajax: jQuery.ajax() - Accept header]
+kind   = needs-server
+why    = its request to mock.php?action=headers needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 354: url: url( "mock.php?action=headers&keys=accept" ),
+source = test/unit/ajax.js:352
+
+[ajax: jQuery.ajax() - contentType]
+kind   = needs-server
+why    = its request to mock.php?action=headers needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 370: url: url( "mock.php?action=headers&keys=content-type" ),
+source = test/unit/ajax.js:367
+
+[ajax: jQuery.ajax() - abort]
+kind   = needs-server
+why    = its request to mock.php?action=wait needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 589: url: url( "mock.php?action=wait&wait=5" ),
+source = test/unit/ajax.js:586
+
+[ajax: jQuery.ajax() - native abort]
+kind   = needs-server
+why    = its request to mock.php?action=wait needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 607: url: url( "mock.php?action=wait&wait=1" ),
+source = test/unit/ajax.js:605
+
+[ajax: jQuery.ajax() - native timeout]
+kind   = needs-server
+why    = its request to mock.php?action=wait needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 626: url: url( "mock.php?action=wait&wait=1" ),
+source = test/unit/ajax.js:624
+
+[ajax: trac-15118 - jQuery.ajax() - function without jQuery.event]
+kind   = needs-server
+why    = its request to mock.php?action=json needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 695: url: url( "mock.php?action=json" ),
+source = test/unit/ajax.js:692
+
+[ajax: jQuery.ajax() - xml: non-namespace elements inside namespaced elements (over JSONP)]
+kind   = needs-server
+why    = its request to mock.php?action=xmlOverJsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 796: url: url( "mock.php?action=xmlOverJsonp" ),
+source = test/unit/ajax.js:794
+
+[ajax: jQuery.ajax() - dataType html]
+kind   = needs-server
+why    = its request to mock.php?action=testHTML needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 873: url: url( "mock.php?action=testHTML&baseURL=" + baseURL ),
+source = test/unit/ajax.js:866
+
+[ajax: jQuery.ajax() - do execute scripts if JSONP from unsuccessful responses]
+kind   = needs-server
+why    = its request to mock.php?action=errorWithScript needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 887: url: url( "mock.php?action=errorWithScript" ),
+source = test/unit/ajax.js:883
+
+[ajax: jQuery.ajax() - do not execute scripts from unsuccessful responses (gh-4250)]
+kind   = needs-server
+why    = its request to mock.php?action=errorWithScript needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 945: url: url( "mock.php?action=errorWithScript&withScriptContentType" )
+source = test/unit/ajax.js:897
+
+[ajax: jQuery.ajax(), jQuery.get[Script|JSON](), jQuery.post(), pass-through request object]
+kind   = needs-server
+why    = its request to mock.php?action=testbar needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1066: assert.ok( jQuery.getScript( url( "mock.php?action=testbar" ), success ), "script" );
+source = test/unit/ajax.js:1042
+
+[ajax: jQuery.ajax() - JSONP - Query String (?n) - Same Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1137: url: baseURL + "mock.php?action=jsonp&callback=?",
+source = test/unit/ajax.js:1134
+
+[ajax: jQuery.ajax() - JSONP - Query String (?n) - Cross Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1137: url: baseURL + "mock.php?action=jsonp&callback=?",
+source = test/unit/ajax.js:1134
+
+[ajax: jQuery.ajax() - JSONP - Explicit callback param - Same Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1182: url: baseURL + "mock.php?action=jsonp",
+source = test/unit/ajax.js:1171
+
+[ajax: jQuery.ajax() - JSONP - Explicit callback param - Cross Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1182: url: baseURL + "mock.php?action=jsonp",
+source = test/unit/ajax.js:1171
+
+[ajax: jQuery.ajax() - JSONP - Callback in data - Same Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1245: url: baseURL + "mock.php?action=jsonp",
+source = test/unit/ajax.js:1242
+
+[ajax: jQuery.ajax() - JSONP - Callback in data - Cross Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1245: url: baseURL + "mock.php?action=jsonp",
+source = test/unit/ajax.js:1242
+
+[ajax: jQuery.ajax() - JSONP - POST - Same Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1269: url: baseURL + "mock.php?action=jsonp",
+source = test/unit/ajax.js:1265
+
+[ajax: jQuery.ajax() - JSONP - POST - Cross Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1269: url: baseURL + "mock.php?action=jsonp",
+source = test/unit/ajax.js:1265
+
+[ajax: jQuery.ajax() - JSONP - Same Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1302: url: baseURL + "mock.php?action=jsonp",
+source = test/unit/ajax.js:1299
+
+[ajax: jQuery.ajax() - JSONP - Cross Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1302: url: baseURL + "mock.php?action=jsonp",
+source = test/unit/ajax.js:1299
+
+[ajax: jQuery.ajax() - no JSONP auto-promotion - Same Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1334: url: baseURL + "mock.php?action=jsonp",
+source = test/unit/ajax.js:1331
+
+[ajax: jQuery.ajax() - no JSONP auto-promotion - Cross Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1334: url: baseURL + "mock.php?action=jsonp",
+source = test/unit/ajax.js:1331
+
+[ajax: jQuery.ajax() - JSON - no ? replacement - Same Domain]
+kind   = needs-server
+why    = its request to mock.php?action=json needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1385: url: baseURL + "mock.php?action=json&callback=?",
+source = test/unit/ajax.js:1382
+
+[ajax: jQuery.ajax() - JSON - no ? replacement - Cross Domain]
+kind   = needs-server
+why    = its request to mock.php?action=json needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1385: url: baseURL + "mock.php?action=json&callback=?",
+source = test/unit/ajax.js:1382
+
+[ajax: jQuery.ajax() - script, CSP script-src compat (gh-3969)]
+kind   = needs-server
+why    = its request to mock.php?action=cspAjaxScript needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1450: "mock.php?action=cspAjaxScript",
+source = test/unit/ajax.js:1448
+
+[ajax: jQuery.ajax() - script, Remote]
+kind   = needs-server
+why    = its request to mock.php?action=testbar needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1464: url: url( "mock.php?action=testbar" ),
+source = test/unit/ajax.js:1459
+
+[ajax: jQuery.ajax() - script, Remote with POST]
+kind   = needs-server
+why    = its request to mock.php?action=testbar needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1477: url: url( "mock.php?action=testbar" ),
+source = test/unit/ajax.js:1472
+
+[ajax: jQuery.ajax() - script, Remote with scheme-less URL]
+kind   = needs-server
+why    = its request to mock.php?action=testbar needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1495: url: url( "mock.php?action=testbar" ),
+source = test/unit/ajax.js:1490
+
+[ajax: jQuery.ajax() - JSON by content-type]
+kind   = needs-server
+why    = its request to mock.php?action=json needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1517: url: baseURL + "mock.php?action=json",
+source = test/unit/ajax.js:1514
+
+[ajax: jQuery.ajax() - JSON by content-type disabled with options]
+kind   = needs-server
+why    = its request to mock.php?action=json needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1556: url: url( "mock.php?action=json" ),
+source = test/unit/ajax.js:1553
+
+[ajax: jQuery.ajax() - simple get]
+kind   = needs-server
+why    = its request to mock.php?action=name needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1605: url: url( "mock.php?action=name&name=foo" ),
+source = test/unit/ajax.js:1602
+
+[ajax: jQuery.ajax() - simple post]
+kind   = needs-server
+why    = its request to mock.php?action=name needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1615: url: url( "mock.php?action=name" ),
+source = test/unit/ajax.js:1612
+
+[ajax: jQuery.ajax() - data option - empty bodies for non-GET requests]
+kind   = needs-server
+why    = its request to mock.php?action=echoData needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1625: url: baseURL + "mock.php?action=echoData",
+source = test/unit/ajax.js:1623
+
+[ajax: jQuery.ajax() - atom+xml]
+kind   = needs-server
+why    = its request to mock.php?action=atom needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1895: url: url( "mock.php?action=atom" ),
+source = test/unit/ajax.js:1893
+
+[ajax: jQuery.ajax() - statusText]
+kind   = needs-server
+why    = its request to mock.php?action=status needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1905: jQuery.ajax( url( "mock.php?action=status&code=200&text=Hello" ) ).done( function( _, stat
+source = test/unit/ajax.js:1902
+
+[ajax: jQuery.ajax() - transitive conversions]
+kind   = needs-server
+why    = its request to mock.php?action=json needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2023: url: url( "mock.php?action=json" ),
+source = test/unit/ajax.js:2020
+
+[ajax: jQuery.ajax() - overrideMimeType]
+kind   = needs-server
+why    = its request to mock.php?action=json needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2059: url: url( "mock.php?action=json" ),
+source = test/unit/ajax.js:2056
+
+[ajax: jQuery.ajax() - empty json gets to error callback instead of success callback.]
+kind   = needs-server
+why    = its request to mock.php?action=echoData needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2079: url: url( "mock.php?action=echoData" ),
+source = test/unit/ajax.js:2077
+
+[ajax: trac-2806 - jQuery.ajax() - data option - evaluate function values]
+kind   = needs-server
+why    = its request to mock.php?action=echoQuery needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2115: url: baseURL + "mock.php?action=echoQuery",
+source = test/unit/ajax.js:2113
+
+[ajax: trac-7578 - jQuery.ajax() - JSONP - default for cache option - Same Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2147: url: baseURL + "mock.php?action=jsonp",
+source = test/unit/ajax.js:2145
+
+[ajax: trac-7578 - jQuery.ajax() - JSONP - default for cache option - Cross Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2147: url: baseURL + "mock.php?action=jsonp",
+source = test/unit/ajax.js:2145
+
+[ajax: trac-8205 - jQuery.ajax() - JSONP - re-use callbacks name - Same Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2200: url: baseURL + "mock.php?action=jsonp",
+source = test/unit/ajax.js:2198
+
+[ajax: trac-8205 - jQuery.ajax() - JSONP - re-use callbacks name - Cross Domain]
+kind   = needs-server
+why    = its request to mock.php?action=jsonp needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2200: url: baseURL + "mock.php?action=jsonp",
+source = test/unit/ajax.js:2198
+
+[ajax: trac-11151 - jQuery.ajax() - parse error body]
+kind   = needs-server
+why    = its request to mock.php?action=error needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2282: url: url( "mock.php?action=error&json=1" ),
+source = test/unit/ajax.js:2280
+
+[ajax: trac-13292 - jQuery.ajax() - converter is bypassed for 204 requests]
+kind   = needs-server
+why    = its request to mock.php?action=status needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2401: url: baseURL + "mock.php?action=status&code=204&text=No+Content",
+source = test/unit/ajax.js:2399
+
+[ajax: trac-13922 - jQuery.ajax() - converter is bypassed for HEAD requests]
+kind   = needs-server
+why    = its request to mock.php?action=json needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2435: url: baseURL + "mock.php?action=json",
+source = test/unit/ajax.js:2433
+
+[ajax: trac-14683 - jQuery.ajax() - Exceptions thrown synchronously by xhr.send should be caught]
+kind   = needs-server
+why    = its request to mock.php?action=echoData needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2475: url: baseURL + "mock.php?action=echoData",
+source = test/unit/ajax.js:2473
+
+[ajax: gh-2587 - when content-type not xml, but looks like one]
+kind   = needs-server
+why    = its request to mock.php?action=contentType needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2504: url: url( "mock.php?action=contentType" ),
+source = test/unit/ajax.js:2502
+
+[ajax: gh-2587 - when content-type not json, but looks like one]
+kind   = needs-server
+why    = its request to mock.php?action=contentType needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2538: url: url( "mock.php?action=contentType" ),
+source = test/unit/ajax.js:2536
+
+[ajax: gh-2587 - when content-type not html, but looks like one]
+kind   = needs-server
+why    = its request to mock.php?action=contentType needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2555: url: url( "mock.php?action=contentType" ),
+source = test/unit/ajax.js:2553
+
+[ajax: gh-2587 - when content-type not javascript, but looks like one]
+kind   = needs-server
+why    = its request to mock.php?action=contentType needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2572: url: url( "mock.php?action=contentType" ),
+source = test/unit/ajax.js:2570
+
+[ajax: gh-2587 - when content-type not ecmascript, but looks like one]
+kind   = needs-server
+why    = its request to mock.php?action=contentType needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2589: url: url( "mock.php?action=contentType" ),
+source = test/unit/ajax.js:2587
+
+[ajax: jQuery.ajaxSetup()]
+kind   = needs-server
+why    = its request to mock.php?action=name needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2634: url: url( "mock.php?action=name&name=foo" ),
+source = test/unit/ajax.js:2630
+
+[ajax: jQuery.ajaxSetup({ timeout: Number }) - with global timeout]
+kind   = needs-server
+why    = its request to mock.php?action=wait needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2667: url: url( "mock.php?action=wait&wait=5" ),
+source = test/unit/ajax.js:2643
+
+[ajax: jQuery.ajaxSetup({ timeout: Number }) with localtimeout]
+kind   = needs-server
+why    = its request to mock.php?action=wait needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2682: url: url( "mock.php?action=wait&wait=1" ),
+source = test/unit/ajax.js:2673
+
+[ajax: trac-11264 - domManip() - no side effect because of ajaxSetup or global events]
+kind   = needs-server
+why    = its request to mock.php?action=script needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2707: jQuery( "#qunit-fixture" ).append( "<script src='" + baseURL + "mock.php?action=script'></
+source = test/unit/ajax.js:2696
+
+[ajax: jQuery#load() - always use GET method even if overridden through ajaxSetup (trac-11264)]
+kind   = needs-server
+why    = its request to mock.php?action=echoMethod needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2722: jQuery( "#qunit-fixture" ).load( baseURL + "mock.php?action=echoMethod", function( method 
+source = test/unit/ajax.js:2712
+
+[ajax: jQuery#load() - should resolve with correct context]
+kind   = needs-server
+why    = its request to mock.php?action=echoMethod needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2739: ps.load( baseURL + "mock.php?action=echoMethod", function() {
+source = test/unit/ajax.js:2729
+
+[ajax: trac-8277 - jQuery.get( String, Function ) - data in ajaxSettings]
+kind   = needs-server
+why    = its request to mock.php?action=echoQuery needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2779: jQuery.get( url( "mock.php?action=echoQuery" ), function( data ) {
+source = test/unit/ajax.js:2773
+
+[ajax: jQuery.get( String, null, String ) - dataType with null callback (gh-4989)]
+kind   = needs-server
+why    = its request to mock.php?action=json needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2790: jQuery.get( url( "mock.php?action=json&header" ), null, "json" )
+source = test/unit/ajax.js:2785
+
+[ajax: jQuery.get( String, null-ish, null-ish, String ) - dataType with null/undefined  data & callback]
+kind   = needs-server
+why    = its request to mock.php?action=json needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2818: jQuery.get( url( "mock.php?action=json&header" ), data, success, "json" )
+source = test/unit/ajax.js:2805
+
+[ajax: jQuery.getJSON( String, Hash, Function ) - JSON array]
+kind   = needs-server
+why    = its request to mock.php?action=json needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2842: url( "mock.php?action=json" ),
+source = test/unit/ajax.js:2838
+
+[ajax: jQuery.getJSON( String, Function ) - JSON object]
+kind   = needs-server
+why    = its request to mock.php?action=json needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2860: jQuery.getJSON( url( "mock.php?action=json" ), function( json ) {
+source = test/unit/ajax.js:2857
+
+[ajax: jQuery.getJSON( String, Function ) - JSON object with absolute url to local content]
+kind   = needs-server
+why    = its request to mock.php?action=json needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2872: var absoluteUrl = url( "mock.php?action=json" );
+source = test/unit/ajax.js:2869
+
+[ajax: jQuery.getScript( String, Function ) - with callback]
+kind   = needs-server
+why    = its request to mock.php?action=testbar needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2902: jQuery.getScript( url( "mock.php?action=testbar" ), function() {
+source = test/unit/ajax.js:2896
+
+[ajax: jQuery.getScript( String, Function ) - no callback]
+kind   = needs-server
+why    = its request to mock.php?action=testbar needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2912: jQuery.getScript( url( "mock.php?action=testbar" ) ).done( assert.async() );
+source = test/unit/ajax.js:2909
+
+[ajax: trac-8082 - jQuery.getScript( String, Function ) - source as responseText]
+kind   = needs-server
+why    = its request to mock.php?action=testbar needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2920: jQuery.getScript( url( "mock.php?action=testbar" ), function( data, _, jqXHR ) {
+source = test/unit/ajax.js:2915
+
+[ajax: jQuery.getScript( Object ) - with callback]
+kind   = needs-server
+why    = its request to mock.php?action=testbar needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2932: url: url( "mock.php?action=testbar" ),
+source = test/unit/ajax.js:2926
+
+[ajax: jQuery.getScript( Object ) - no callback]
+kind   = needs-server
+why    = its request to mock.php?action=testbar needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2943: jQuery.getScript( { url: url( "mock.php?action=testbar" ) } ).done( assert.async() );
+source = test/unit/ajax.js:2940
+
+[ajax: jQuery.fn.load( String, Function ) - check scripts]
+kind   = needs-server
+why    = its request to mock.php?action=testHTML needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3044: jQuery( "#first" ).load( url( "mock.php?action=testHTML&baseURL=" + baseURL ), function() 
+source = test/unit/ajax.js:3032
+
+[ajax: jQuery.fn.load( String, Object, Function )]
+kind   = needs-server
+why    = its request to mock.php?action=echoHtml needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3082: jQuery( "<div></div>" ).load( url( "mock.php?action=echoHtml" ), {
+source = test/unit/ajax.js:3079
+
+[ajax: jQuery.fn.load( String, String, Function )]
+kind   = needs-server
+why    = its request to mock.php?action=echoHtml needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3096: jQuery( "<div></div>" ).load( url( "mock.php?action=echoHtml" ), "foo=3&bar=ok", function(
+source = test/unit/ajax.js:3092
+
+[ajax: jQuery.fn.load() - callbacks get the correct parameters]
+kind   = needs-server
+why    = its request to mock.php?action=echoQuery needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3123: url: baseURL + "mock.php?action=echoQuery&arg=pop"
+source = test/unit/ajax.js:3104
+
+[ajax: trac-10524 - jQuery.fn.load() - data specified in ajaxSettings is merged in]
+kind   = needs-server
+why    = its request to mock.php?action=echoQuery needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3172: jQuery( "#foo" ).load( baseURL + "mock.php?action=echoQuery", data );
+source = test/unit/ajax.js:3160
+
+[ajax: jQuery.post() - data]
+kind   = needs-server
+why    = its request to mock.php?action=xml needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3187: url( "mock.php?action=xml" ),
+source = test/unit/ajax.js:3181
+
+[ajax: jQuery.post( String, Hash, Function ) - simple with xml]
+kind   = needs-server
+why    = its request to mock.php?action=xml needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3220: url( "mock.php?action=xml" ),
+source = test/unit/ajax.js:3214
+
+[ajax: jQuery[get|post]( options ) - simple with xml]
+kind   = needs-server
+why    = its request to mock.php?action=xml needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3249: url: url( "mock.php?action=xml" ),
+source = test/unit/ajax.js:3242
+
+[ajax: jQuery.ajax() - FormData]
+kind   = needs-server
+why    = its request to mock.php?action=formData needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3278: url: url( "mock.php?action=formData" ),
+source = test/unit/ajax.js:3272
+
+[ajax: jQuery.ajax() - URLSearchParams]
+kind   = needs-server
+why    = its request to mock.php?action=name needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3293: url: url( "mock.php?action=name" ),
+source = test/unit/ajax.js:3288
+
+[ajax: jQuery.ajax() - Blob]
+kind   = needs-server
+why    = its request to mock.php?action=name needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3306: url: url( "mock.php?action=name" ),
+source = test/unit/ajax.js:3302
+
+[ajax: jQuery.ajax() - non-plain object]
+kind   = needs-server
+why    = its request to mock.php?action=name needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3317: url: url( "mock.php?action=name" ),
+source = test/unit/ajax.js:3315
+
+[ajax: jQuery.ajax() - non-plain object with processData: true]
+kind   = needs-server
+why    = its request to mock.php?action=name needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3328: url: url( "mock.php?action=name" ),
+source = test/unit/ajax.js:3326
+
+[attributes: Basic TrustedScriptURL support (gh-4948)]
+kind   = needs-server
+why    = its request to mock.php?action=trustedTypesAttributes needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1888: "mock.php?action=trustedTypesAttributes",
+source = test/unit/attributes.js:1886
+
+[basic: ajax]
+kind   = needs-server
+why    = its request to mock.php?action=name needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 11: url: url( "mock.php?action=name&name=foo" ),
+source = test/unit/basic.js:4
+
+[core: globalEval execution after script injection (trac-7862)]
+kind   = needs-server
+why    = its request to mock.php?action=wait needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 193: script.src = baseURL + "mock.php?action=wait&wait=2&script=1";
+source = test/unit/core.js:187
+
+[core: document ready when jQuery loaded asynchronously (trac-13655)]
+kind   = needs-server
+why    = the test page core/dynamic_ready.html, which requests mock.php needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1480: "core/dynamic_ready.html",
+source = test/unit/core.js:1478
+
+[event: jQuery.ready uses interactive]
+kind   = needs-server
+why    = the test page event/interactiveReady.html, which requests mock.php needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2808: "event/interactiveReady.html",
+source = test/unit/event.js:2806
+
+[event: jQuery.ready synchronous load with long loading subresources]
+kind   = needs-server
+why    = the test page event/syncReady.html, which requests mock.php needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2838: "event/syncReady.html",
+source = test/unit/event.js:2836
+
+[manipulation: script evaluation (trac-11795)]
+kind   = needs-server
+why    = its request to mock.php?action=testbar needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2674: jQuery( "#qunit-fixture" ).append( "<script src='" + url( "mock.php?action=testbar" ) + "'
+source = test/unit/manipulation.js:2628
+
+[manipulation: Ignore content from unsuccessful responses (gh-4126)]
+kind   = needs-server
+why    = its request to mock.php?action=error needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3053: "<script src='" + url( "mock.php?action=error" ) + "'></script>" );
+source = test/unit/manipulation.js:3043
+
+[manipulation: Check if CSP nonce is preserved]
+kind   = needs-server
+why    = its request to mock.php?action=cspNonce needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3064: "mock.php?action=cspNonce",
+source = test/unit/manipulation.js:3062
+
+[manipulation: Check if CSP nonce is preserved for external scripts with src attribute]
+kind   = needs-server
+why    = its request to mock.php?action=cspNonce needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3079: "mock.php?action=cspNonce&test=external",
+source = test/unit/manipulation.js:3077
+
+[manipulation: jQuery.globalEval supports nonce]
+kind   = needs-server
+why    = its request to mock.php?action=cspNonce needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3097: "mock.php?action=cspNonce&test=globaleval",
+source = test/unit/manipulation.js:3095
+
+[manipulation: Basic TrustedHTML support (gh-4409)]
+kind   = needs-server
+why    = its request to mock.php?action=trustedHtml needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 3177: "mock.php?action=trustedHtml",
+source = test/unit/manipulation.js:3175
+
+[support: Check CSP (https://developer.mozilla.org/en-US/docs/Security/CSP) restrictions]
+kind   = needs-server
+why    = its request to mock.php?action=cspFrame needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 42: "mock.php?action=cspFrame",
+source = test/unit/support.js:40
+
+[ajax: jQuery.ajax() - If-Modified-Since support (cache)]
+kind   = needs-server
+why    = its request to mock.php?action=ims needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1832: url: "mock.php?action=ims" (the loop's data, line 1829-1836)
+source = test/unit/ajax.js:1840
+
+[ajax: jQuery.ajax() - If-Modified-Since support (no cache)]
+kind   = needs-server
+why    = its request to mock.php?action=ims needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1832: url: "mock.php?action=ims" (the loop's data, line 1829-1836)
+source = test/unit/ajax.js:1840
+
+[ajax: jQuery.ajax() - Etag support (cache)]
+kind   = needs-server
+why    = its request to mock.php?action=etag needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1835: url: "mock.php?action=etag" (the loop's data, line 1829-1836)
+source = test/unit/ajax.js:1840
+
+[ajax: jQuery.ajax() - Etag support (no cache)]
+kind   = needs-server
+why    = its request to mock.php?action=etag needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 1835: url: "mock.php?action=etag" (the loop's data, line 1829-1836)
+source = test/unit/ajax.js:1840
+
+[ajax: trac-12004 - jQuery.ajax() - method is an alias of type - method set globally]
+kind   = needs-server
+why    = its request to mock.php?action=echoData needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2346: url: url( "mock.php?action=echoData" ) (the loop's request helper)
+source = test/unit/ajax.js:2361
+
+[ajax: trac-12004 - jQuery.ajax() - method is an alias of type - type set globally]
+kind   = needs-server
+why    = its request to mock.php?action=echoData needs jQuery's test server (test/middleware-mockserver.cjs / test/data/mock.php: ruling R4, not built); line 2346: url: url( "mock.php?action=echoData" ) (the loop's request helper)
+source = test/unit/ajax.js:2361
