@@ -2681,6 +2681,98 @@ test "protocol: notifyMemoryPressure critical collects what a realm that ended h
     protocol.notifyMemoryPressure(agent, .moderate);
 }
 
+/// The agent's full collections so far (ffi.v8_Debug_FullGCPauses).
+fn fullCollections() u64 {
+    var count: u64 = 0;
+    var max_us: u64 = 0;
+    var p95_us: u64 = 0;
+    ffi.v8_Debug_FullGCPauses(test_isolate.?, &count, &max_us, &p95_us);
+    return count;
+}
+
+test "protocol: notifyMemoryPressure moderate starts a collection the loop's next turns finish" {
+    // Blink sends V8 one signal for memory pressure, Isolate::
+    // MemoryPressureNotification (content/renderer/
+    // blink_isolates_pressure_listener.cc OnReleaseMemory ->
+    // blink::MemoryPressureNotificationToAllIsolates). At kModerate V8 starts
+    // an incremental collection that reduces the footprint
+    // (Heap::CheckMemoryPressure), and its marking job finishes it in
+    // foreground tasks - the event loop's engine-task step. Crane sent
+    // ContextDisposedNotification here, which starts no collection at all.
+    defer test_agent.close();
+    _ = try realm();
+    const agent: *protocol.Agent = @ptrCast(test_isolate.?);
+    const isolate = test_isolate.?;
+    // Nothing of an earlier collection is under way.
+    ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    while (ffi.v8_Platform_PumpMessageLoop(isolate)) {}
+    const before = fullCollections();
+
+    protocol.notifyMemoryPressure(agent, .moderate);
+    // It returns without having collected: moderate is not a pause.
+    try std.testing.expectEqual(before, fullCollections());
+
+    // The loop turns: V8's own tasks run, as the event loop runs them.
+    var turns: usize = 0;
+    while (fullCollections() == before and turns < 2_000_000) : (turns += 1) {
+        if (!ffi.v8_Platform_PumpMessageLoop(isolate)) std.Thread.yield() catch {};
+    }
+    if (fullCollections() == before) {
+        std.debug.print("no full collection {d} loop turns after a moderate memory-pressure notice\n", .{turns});
+        return error.ModeratePressureStartedNoCollection;
+    }
+}
+
+test "protocol: notifyMemoryPressure critical is V8's memory-pressure collection, not rounds of low-memory ones" {
+    // Isolate::MemoryPressureNotification(kCritical), as Blink sends it: on
+    // the isolate's thread V8 collects everything before it returns, and a
+    // second time only when the first left much to free (15.7 src/heap/
+    // heap.cc Heap::CollectGarbageOnMemoryPressure). Crane sent three
+    // LowMemoryNotifications instead - each at least two full collections
+    // (Heap::CollectAllAvailableGarbage, kMinNumberOfAttempts) - which no
+    // browser does when a page goes or memory is short.
+    defer test_agent.close();
+    _ = try realm();
+    const agent: *protocol.Agent = @ptrCast(test_isolate.?);
+    ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
+    const before = fullCollections();
+    protocol.notifyMemoryPressure(agent, .critical);
+    const collections = fullCollections() - before;
+    if (collections < 1 or collections > 2) {
+        std.debug.print("{d} full collections for one critical memory-pressure notice (V8's answer is 1, or 2 when much is left)\n", .{collections});
+        return error.CriticalPressureIsNotOneNotice;
+    }
+}
+
+test "protocol: a page's end tells V8 a main frame's context went, its frame's end a child's" {
+    // Blink's V8GCForContextDispose::NotifyContextDisposed (bindings/core/v8/
+    // v8_gc_for_context_dispose.cc), from LocalWindowProxy::DisposeContext:
+    // ContextDisposedNotification(is_main_frame ? kNoDependants :
+    // kSomeDependants). V8 takes its allocation limits back to their initial
+    // values and tells its memory reducer only for the first - a page went -
+    // and runs a young collection by task for the second. Crane said "some
+    // dependants" for every realm.
+    defer test_agent.close();
+    var host: WindowHost = .{};
+    const page = try windowRealm(&host, false, .new_window_proxy);
+    var frame_realm: FrameRealm = .{ .parent = page };
+    const frame = try frame_realm.make();
+    var main_before: u64 = 0;
+    var child_before: u64 = 0;
+    ffi.v8_Debug_ContextDisposals(test_isolate.?, &main_before, &child_before);
+
+    // The frame's navigable is destroyed, then the page goes: the frame's
+    // realm ends with its page at the latest.
+    protocol.destroyWindowRealm(frame, .navigable_destroyed);
+    protocol.destroyWindowRealm(page, .global_detached);
+
+    var main_after: u64 = 0;
+    var child_after: u64 = 0;
+    ffi.v8_Debug_ContextDisposals(test_isolate.?, &main_after, &child_after);
+    try std.testing.expectEqual(@as(u64, 1), main_after - main_before);
+    try std.testing.expectEqual(@as(u64, 1), child_after - child_before);
+}
+
 test "protocol: the entry and incumbent realms are the innermost prepared realm" {
     defer test_agent.close();
     // Two realms made here: the context manager names a realm by where its
