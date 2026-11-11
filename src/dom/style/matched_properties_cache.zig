@@ -272,6 +272,28 @@ test "a key keeps at most per_key entries and the cache at most limit" {
 
 const per_key_test_styles = MatchedPropertiesCache.per_key + 3;
 
+test "a full key keeps the entries it has: a later style of that key is not kept (WebKit's maxEntriesPerHash)" {
+    const allocator = testing.allocator;
+    const cache = try MatchedPropertiesCache.create(allocator);
+    defer cache.destroy();
+    const root = try styleOf(allocator, null, "");
+    defer root.destroy();
+    var buffer: [64]u8 = undefined;
+    // The first per_key styles fill the key; the next ones (each with a value
+    // of its own) find no entry to share with and are not kept.
+    for (0..per_key_test_styles) |k| {
+        const s = try styleOf(allocator, root, try std.fmt.bufPrint(&buffer, "margin-left: {d}px", .{k + 1}));
+        defer s.destroy();
+        cache.share(1, 1, s);
+    }
+    try testing.expectEqual(@as(u32, MatchedPropertiesCache.per_key), cache.entries);
+    // So the first style's values are still there to share.
+    const again = try styleOf(allocator, root, "margin-left: 1px");
+    defer again.destroy();
+    cache.share(1, 1, again);
+    try testing.expectEqual(@as(usize, 0), again.groupsHeldAlone());
+}
+
 test "sharing under allocation failure leaves the style's own groups" {
     const allocator = testing.allocator;
     // The cache itself is the first allocation; its bucket the second.
