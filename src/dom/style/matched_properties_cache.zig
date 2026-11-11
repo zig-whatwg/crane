@@ -287,11 +287,20 @@ test "a full key keeps the entries it has: a later style of that key is not kept
         cache.share(1, 1, s);
     }
     try testing.expectEqual(@as(u32, MatchedPropertiesCache.per_key), cache.entries);
-    // So the first style's values are still there to share.
+    // The entries are the first per_key styles' (1px to 4px), in order.
+    const bucket = cache.buckets.getPtr(1).?;
+    for (bucket.items[0..bucket.len], 1..) |entry, px| {
+        try testing.expectEqual(@as(f64, @floatFromInt(px)), entry.holder.get(.margin_left).length.value);
+    }
+    // So the first style's values are still there to share, and sharing them
+    // replaces no entry.
     const again = try styleOf(allocator, root, "margin-left: 1px");
     defer again.destroy();
+    const first = bucket.items[0].holder;
     cache.share(1, 1, again);
-    try testing.expectEqual(@as(usize, 0), again.groupsHeldAlone());
+    try testing.expect(cache.buckets.getPtr(1).?.items[0].holder == first);
+    const g = css.computed_style.groups.location[@backingInt(css.properties.Longhand.margin_left)].group;
+    try testing.expect(again.slots[g] == first.slots[g]);
 }
 
 test "sharing under allocation failure leaves the style's own groups" {
