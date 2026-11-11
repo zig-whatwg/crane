@@ -71,6 +71,19 @@
 //! 4. everything, with the Document's style engine (StyleEngine.deinit).
 //! The entries hold values, never a node, a realm or a live declaration block.
 //!
+//! Admission (lane style1 b5; design 3.6 item 9). A rule's block is one
+//! object for every element it matches; an own block's content may be held
+//! by one element only (a style attribute that positions one row). Kept, such
+//! a style costs an entry and its share of a prune and serves no hit. So from
+//! `prune_target` entries on - where each entry added brings the next prune
+//! nearer - a resolution with an own block whose content key has no entry
+//! gets one on that key's second sighting (`admits`: the cache-on-second-hit
+//! rule of a bounded cache; TinyLFU's doorkeeper). Below the target every
+//! resolution is kept as it comes. Neither browser has the rule: Blink keeps
+//! every cacheable resolution and declines only an inline set modified after
+//! it was hashed (MatchResult::AddMatchedProperties); it decides which
+//! entries exist, never what a hit holds.
+//!
 //! One per Document's StyleEngine, used on its Browser's window-agent thread
 //! only, as the groups it holds are (css/computed_style.zig, "Storage").
 
@@ -148,7 +161,8 @@ pub const Lookup = struct {
     /// without that block's content (`shapeOf`), where `add` also adopts
     /// and keeps an adoption-only entry, so elements whose own blocks
     /// differ still share equal groups and records (b3's convergence) and
-    /// their children still find one key.
+    /// their children still find one key. Set, it also marks the resolution
+    /// as one with an own block for admission (`admits`).
     shape: ?u64 = null,
     generation: u64,
     matched: []const Matched = &.{},
@@ -182,10 +196,17 @@ pub const MatchedPropertiesCache = struct {
     /// Where each group last compared unequal in an adoption scan
     /// (ComputedStyle.DifferenceHints).
     difference_hints: css.computed_style.DifferenceHints = @splat(0),
+    /// The content keys of own-block resolutions that were given no entry
+    /// (`admits`), one tag per slot; null until the cache first holds
+    /// `prune_target` entries, released with the entries (`clear`).
+    seen: ?*[seen_slots]u32 = null,
 
     pub const per_key = 4;
     pub const limit = 500;
     pub const prune_target = 300;
+    /// Sightings remembered: about the cache's own size, so a content that
+    /// comes again while an entry of it would still be held is recognised.
+    pub const seen_slots = 256;
 
     const Entry = struct {
         holder: *ComputedStyle,
@@ -247,11 +268,37 @@ pub const MatchedPropertiesCache = struct {
         }
     }
 
-    /// Release every entry.
+    /// Release every entry, and the sightings kept for admission.
     pub fn clear(self: *MatchedPropertiesCache) void {
         for (self.buckets.values()) |*bucket| for (bucket.items[0..bucket.len]) |entry| self.release(entry);
         self.buckets.clearRetainingCapacity();
         self.entries = 0;
+        if (self.seen) |seen| self.allocator.destroy(seen);
+        self.seen = null;
+    }
+
+    /// Whether a resolution with an own block, whose content key has no
+    /// entry, is given one. With room - fewer than `prune_target` entries:
+    /// nothing is pruned for it - always. From there on, at its key's second
+    /// sighting: the first leaves the key's tag in `seen` (direct-mapped by
+    /// the key's low bits; the tag is its high 32 bits, never 0) and no
+    /// entry, so a content one element holds costs a tag, and one that
+    /// repeats costs one cascade more. A tag another key overwrote, or one
+    /// that collides, delays or admits an entry and nothing else: a hit
+    /// still compares content. Out of memory for the table: no entry.
+    fn admits(self: *MatchedPropertiesCache, key: u64) bool {
+        if (self.entries < prune_target) return true;
+        const seen = self.seen orelse made: {
+            const table = self.allocator.create([seen_slots]u32) catch return false;
+            table.* = @splat(0);
+            self.seen = table;
+            break :made table;
+        };
+        const slot = &seen[@as(usize, @truncate(key % seen_slots))];
+        const tag = @as(u32, @truncate(key >> 32)) | 1;
+        if (slot.* == tag) return true;
+        slot.* = tag;
+        return false;
     }
 
     fn tick(self: *MatchedPropertiesCache) u32 {
@@ -310,6 +357,11 @@ pub const MatchedPropertiesCache = struct {
         };
         self.enter(lookup.generation);
         const cacheable = if (dependencies) |d| d.cacheable() and lookup.parent != null else false;
+        const found = self.buckets.getPtr(lookup.key);
+        // Admission: an own block's content that has no entry (so nothing to
+        // adopt from under this key either) gets one with room, or on its
+        // second sighting (`admits`).
+        if (found == null and lookup.shape != null and !self.admits(lookup.key)) return;
         // Adoption, the most recent entry first (Blink's Find scans
         // backwards): every group and custom property record the cascade
         // made that holds an entry's values becomes the entry's. The scan
@@ -320,7 +372,6 @@ pub const MatchedPropertiesCache = struct {
         // they differed before (a sibling-index() width, an inline margin).
         var scan = style.adoption();
         var custom_alone = style.customHeldAlone();
-        const found = self.buckets.getPtr(lookup.key);
         if (found) |bucket| {
             var i = bucket.len;
             while (i > 0 and (scan.pending.mask != 0 or custom_alone)) {
@@ -1285,11 +1336,6 @@ test "from the prune target on, an own block's content is kept from its second s
     var other: Scene = undefined;
     try other.init("font-size: 20px", "display: grid; margin-left: 7px");
     defer other.deinit();
-    var under_root = other.lookup(root);
-    var deps: css.cascade.Dependencies = .{};
-    const style = try css.cascade.cascade(.{ .allocator = allocator, .parent = root, .dependencies = &deps }, &other.matched);
-    defer style.destroy();
-    cache.add(under_root, deps, style);
-    under_root = other.lookup(root);
-    try testing.expect(cache.find(under_root) != null);
+    (try other.miss(cache, root)).destroy();
+    try testing.expect(cache.find(other.lookup(root)) != null);
 }
