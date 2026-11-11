@@ -194,6 +194,9 @@ pub const Watchdog = struct {
     }
 
     fn loop(self: *Watchdog) void {
+        // This thread's alternate signal stack, for a stack overflow's report (platform 6.4).
+        const signal_stack = @import("platform").attachSignalStack();
+        defer @import("platform").detachSignalStack(signal_stack);
         var progress: Progress = .{
             .size = watchedSize(self.journal_path, self.heartbeat_path),
             .at_ms = clock.monotonicMillis(),
@@ -298,6 +301,9 @@ pub const SelfWatchdog = struct {
     }
 
     fn loop(self: *SelfWatchdog) void {
+        // This thread's alternate signal stack, for a stack overflow's report (platform 6.4).
+        const signal_stack = @import("platform").attachSignalStack();
+        defer @import("platform").detachSignalStack(signal_stack);
         var progress: Progress = .{
             .size = self.progress.load(.acquire),
             .at_ms = clock.monotonicMillis(),

@@ -485,6 +485,9 @@ const SlotRun = struct {
     failure: ?anyerror = null,
 
     fn entry(self: *SlotRun) void {
+        // This thread's alternate signal stack, for a stack overflow's report (platform 6.4).
+        const signal_stack = @import("platform").attachSignalStack();
+        defer @import("platform").detachSignalStack(signal_stack);
         self.loop() catch |err| {
             self.failure = err;
         };

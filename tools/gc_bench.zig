@@ -58,6 +58,13 @@ pub const std_options: std.Options = .{
     // The browser logs heavily at debug and info; this tool's output is a table and
     // must stay readable. Warnings and errors still come through.
     .log_level = .warn,
+    // No thread-local signal stack: Zig std's default (`signal_stack_size`,
+    // 1 << 18) is a 256 KB thread-local array, which every thread that touches
+    // any thread-local pays for - V8's worker threads included, which never use
+    // it. The platform maps each thread's alternate stack instead
+    // (platform.attachSignalStack, src/platform/kit/posix/signal_stack.zig);
+    // build.zig's thread-local block check (tools/thread_local_size.zig) holds it.
+    .signal_stack_size = null,
 };
 
 /// Wraps an allocator and tracks bytes currently outstanding.
@@ -316,6 +323,9 @@ fn takeSample(cycle: usize) Sample {
 /// they arrive on `std.process.Init`, which also carries the gpa and a
 /// process-lifetime arena.
 pub fn main(init: std.process.Init) !void {
+    // The main thread's alternate signal stack, for the life of the process
+    // (platform 6.4): std_options sets std's own off.
+    _ = @import("platform").attachSignalStack();
     // First, before any thread exists: the engine's per-process state that
     // only threads created after it inherit (V8's thread isolation key on
     // x86-64 Linux; docs/engine-protocol.md 4.1).

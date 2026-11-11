@@ -100,6 +100,9 @@ pub const WorkerThread = struct {
     }
 
     fn main(self: *WorkerThread) void {
+        // This thread's alternate signal stack, for a stack overflow's report (platform 6.4).
+        const signal_stack = @import("platform").attachSignalStack();
+        defer @import("platform").detachSignalStack(signal_stack);
         const link = self.link;
         const loop_made = blk: {
             self.loop = WorkerEventLoop.init(self.allocator, link) catch break :blk false;

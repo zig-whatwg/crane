@@ -411,6 +411,9 @@ pub const Load = struct {
     threads: []std.Thread = &.{},
 
     fn spin(self: *Load) void {
+        // This thread's alternate signal stack, for a stack overflow's report (platform 6.4).
+        const signal_stack = @import("platform").attachSignalStack();
+        defer @import("platform").detachSignalStack(signal_stack);
         var x: u64 = 0;
         while (!self.stop_flag.load(.monotonic)) {
             x +%= 0x9E3779B97F4A7C15;

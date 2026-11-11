@@ -108,6 +108,9 @@ pub const ScriptDeadline = struct {
     }
 
     fn loop(self: *ScriptDeadline) void {
+        // This thread's alternate signal stack, for a stack overflow's report (platform 6.4).
+        const signal_stack = @import("platform").attachSignalStack();
+        defer @import("platform").detachSignalStack(signal_stack);
         while (!self.done.load(.acquire)) {
             clock.sleep(self.poll_ms * std.time.ns_per_ms);
             const now = clock.monotonicMillis();

@@ -4332,6 +4332,35 @@ pub fn build(b: *std.Build) void {
             // dp1_local_datetime_test.zig checks against localtime_r through the
             // <time.h> module kit/posix imports (addCImport: one per graph).
             .{ .name = "c_time", .module = testing_graph.c_time },
+            // tls1_stack_overflow_test.zig runs the stack-overflow fixture
+            // (tests/platform/stack_overflow_fixture.zig): a program set up
+            // as Crane's roots are - no signal stack from std, the platform's
+            // own alternate stack (kit/posix/signal_stack.zig, compiled in as
+            // it is) - in the two modes whose builds report a stack overflow:
+            // ReleaseSafe (the release console, the production runner) and
+            // Debug (the bug-finding runner's Crane modules).
+            .{ .name = "stack_overflow_fixtures", .module = stack_overflow_fixtures: {
+                const options = b.addOptions();
+                for ([_]std.builtin.OptimizeMode{ .ReleaseSafe, .Debug }) |mode| {
+                    const fixture = b.addExecutable(.{
+                        .name = b.fmt("stack_overflow_fixture_{t}", .{mode}),
+                        .root_module = b.createModule(.{
+                            .root_source_file = b.path("tests/platform/stack_overflow_fixture.zig"),
+                            .target = target,
+                            .optimize = mode,
+                            .link_libc = true,
+                            .imports = &.{.{ .name = "signal_stack", .module = b.createModule(.{
+                                .root_source_file = b.path("src/platform/kit/posix/signal_stack.zig"),
+                                .target = target,
+                                .optimize = mode,
+                                .link_libc = true,
+                            }) }},
+                        }),
+                    });
+                    options.addOptionPath(if (mode == .Debug) "debug" else "release_safe", fixture.getEmittedBin());
+                }
+                break :stack_overflow_fixtures options.createModule();
+            } },
         };
         addTestFilesFromDir(b, test_step, "tests/platform", target, &platform_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add platform test files: {}\n", .{err});
@@ -8464,6 +8493,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     compression_mod.addImport("platform", platform_mod);
     fetch_mod.addImport("platform", platform_mod);
     dom_mod.addImport("platform", platform_mod);
+    storage_mod.addImport("platform", platform_mod);
     // A Browser's network context keeps its connection share in kit/curl,
     // and fetch's transfers and WebSocket's handshakes take the Browser's
     // network options (proxy, TLS, user agent) from it.
