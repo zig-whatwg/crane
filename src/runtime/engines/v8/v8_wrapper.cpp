@@ -14964,6 +14964,14 @@ bool v8_Context_IsCodeGenerationFromStringsAllowed(Global<Context>* context) {
 // the adaptation made it read twice - the shim's read, then V8's through the
 // Proxy, which forwarded every key but `index` (wpt wasm/jsapi/memory/
 // constructor.any.js and table/constructor.any.js "Order of evaluation").
+// The JSPI Suspending adaptation is gone too (lane v8up b3d): V8 13.1 left JSPI
+// "create a suspending function" step 3.15 to it (a Proxy around the callable
+// whose apply trap ran PromiseResolve with the import realm's intrinsics); V8
+// 15.7 runs the step itself (turboshaft wasm-wrappers.h BuildSuspend,
+// PromiseResolve with the importing instance's native context), so the
+// adaptation resolved twice, and a promise returned from another realm was
+// assimilated by the import's realm first (tests/v8/wj1_wasm_constructor_test
+// "resolves through the promising realm's intrinsics": the evidence).
 extern "C" {
 
 static Local<Private> wasmIntrinsicPrototypesKey(Isolate* isolate) {
@@ -14981,7 +14989,7 @@ enum WasmPreparationSlot : uint32_t {
     kWasmConstruct, kWasmGet, kWasmApply, kWasmProxy, kWasmTypeError, kWasmObject,
     kWasmDefine, kWasmOwnKeys, kWasmDescriptor, kWasmSetPrototype, kWasmPrototype,
     kWasmFunctionPrototype, kWasmBind, kWasmHasInstanceKey, kWasmHasInstance, kWasmSlice,
-    kWasmPromise, kWasmPromiseResolve, kWasmPreparationSize,
+    kWasmPreparationSize,
 };
 
 static bool ensureWasmAdapters(Local<Context> context);
@@ -15118,7 +15126,7 @@ static void WasmConstructorConstruct(const FunctionCallbackInfo<Value>& info) {
     // `address` itself since 13.3 (see the section comment).
     Local<Object> made;
     if (!original->NewInstance(context, static_cast<int>(args.size()), args.data()).ToLocal(&made)) return;
-    // Index 7 is Exception; 5/6 hold the JSPI Promise intrinsics.
+    // Index 7 is Exception (5/6 held 13.1's JSPI Promise intrinsics: empty).
     if (index == 7 && !wasmCaptureExceptionStack(context, made)) return;
     // WebIDL step 9. The native constructor makes the Wasm internal slots;
     // only its externally observable prototype needs adapting.
@@ -15138,73 +15146,6 @@ static void WasmGlobalValueSet(const FunctionCallbackInfo<Value>& info) {
     Local<Value> result;
     if (!info.DataV2().As<Value>().As<Function>()->Call(isolate->GetCurrentContext(), info.This(), 1, &argument).ToLocal(&result)) return;
     info.GetReturnValue().Set(result);
-}
-
-static void WasmSuspendingApply(const FunctionCallbackInfo<Value>& info) {
-    Isolate* isolate = info.GetIsolate();
-    Local<Context> context = isolate->GetCurrentContext();
-    Local<Function> target = info[0].As<Function>();
-    Local<Context> import_realm;
-    if (!wasmConstructorRealm(isolate, target).ToLocal(&import_realm)) return;
-    if (!ensureWasmAdapters(import_realm)) return;
-    Local<Value> intrinsics_value;
-    if (!import_realm->Global()->GetPrivate(import_realm, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics_value)) return;
-    if (!intrinsics_value->IsArray()) {
-        isolate->ThrowException(Exception::TypeError(
-            String::NewFromUtf8Literal(isolate, "WebAssembly import realm is not initialized")));
-        return;
-    }
-    Local<Array> intrinsics = intrinsics_value.As<Array>();
-    Local<Value> promise_constructor, promise_resolve;
-    if (!intrinsics->Get(import_realm, 5).ToLocal(&promise_constructor) ||
-        !intrinsics->Get(import_realm, 6).ToLocal(&promise_resolve)) return;
-    Local<Array> arguments = info[2].As<Array>();
-    std::vector<Local<Value>> args;
-    args.reserve(arguments->Length());
-    for (uint32_t i = 0; i < arguments->Length(); ++i) {
-        Local<Value> value;
-        if (!arguments->Get(context, i).ToLocal(&value)) return;
-        args.push_back(value);
-    }
-    // JSPI "create a suspending function" 3.10/3.14: preserve the receiver,
-    // argument list and abrupt completion. An apply trap exposes the actual
-    // receiver; a plain native Function callback would box it as info.This().
-    Local<Value> result;
-    if (!target->Call(context, info[1], static_cast<int>(args.size()), args.data()).ToLocal(&result)) return;
-    // Step 3.15: intrinsic PromiseResolve in the import's realm. Capturing
-    // both intrinsics preserves same-constructor Promise identity, including
-    // when script replaces Promise or Promise.resolve. Resolver::New would
-    // instead allocate a new promise and assimilate the original.
-    Local<Value> promise;
-    if (!promise_resolve.As<Function>()->Call(import_realm, promise_constructor, 1, &result).ToLocal(&promise)) return;
-    info.GetReturnValue().Set(promise);
-}
-
-static void WasmSuspendingConstruct(const FunctionCallbackInfo<Value>& info) {
-    Isolate* isolate = info.GetIsolate();
-    Local<Context> context = isolate->GetCurrentContext();
-    Local<Function> original = info[0].As<Function>();
-    Local<Array> arguments = info[1].As<Array>();
-    std::vector<Local<Value>> args;
-    args.reserve(arguments->Length());
-    for (uint32_t i = 0; i < arguments->Length(); ++i) {
-        Local<Value> value;
-        if (!arguments->Get(context, i).ToLocal(&value)) return;
-        args.push_back(value);
-    }
-    if (!args.empty() && args[0]->IsFunction() && !args[0].As<Function>()->GetScriptOrigin().Options().IsWasm()) {
-        Local<Proxy> callable;
-        if (!Proxy::New(context, args[0].As<Object>(), info.DataV2().As<Value>().As<Object>()).ToLocal(&callable)) return;
-        args[0] = callable;
-    }
-    // V8 13.1.203 wasm-js.cc:2393-2397 rejects native wasm exports here.
-    // Do not hide their identity behind a Proxy and bypass that check.
-    // Step 3.15 is emulated only for JS callables. Step 3.5 (the pre-call active-suspender check) and catchable
-    // SuspendError still require V8 support: wrappers.cc 1166-1228 and
-    // runtime-wasm.cc 143-159, 329-332 expose no public suspension hook.
-    Local<Object> made;
-    if (!original->NewInstance(context, static_cast<int>(args.size()), args.data()).ToLocal(&made)) return;
-    info.GetReturnValue().Set(made);
 }
 
 // Materialize only on a namespace read or an indirect use of this realm's
@@ -15283,17 +15224,14 @@ static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparat
         if (!fast_factory.As<Function>()->Call(context, Undefined(isolate), 3, factory_args).ToLocal(&replacement) || !replacement->IsFunction()) return false;
         replacements[i] = replacement.As<Function>();
     }
-    Local<Value> promise_constructor, promise_resolve;
-    if (!preparation->Get(context, kWasmPromise).ToLocal(&promise_constructor) ||
-        !preparation->Get(context, kWasmPromiseResolve).ToLocal(&promise_resolve)) return false;
     // The private JS constructor is embedding machinery, not the script
     // responsible for a CSP violation. Retain its unforgeable script ID for
     // running-script attribution below, without retaining a native handle.
     // Slots 10/11 also serve a cloned Module/Memory's lazy constructor. They
     // must not consult the mutable namespace after initialization.
-    // Slot 8 held V8 13.1's address descriptor factory: kept empty, so the
-    // slots after it keep their indices.
-    Local<Value> intrinsic_values[] = {prototypes[0], prototypes[1], prototypes[2], prototypes[3], prototypes[4], promise_constructor, promise_resolve, prototypes[5], Undefined(isolate),
+    // Slots 5/6 held V8 13.1's JSPI Promise intrinsics and slot 8 its address
+    // descriptor factory: kept empty, so the slots after them keep their indices.
+    Local<Value> intrinsic_values[] = {prototypes[0], prototypes[1], prototypes[2], prototypes[3], prototypes[4], Undefined(isolate), Undefined(isolate), prototypes[5], Undefined(isolate),
         Integer::New(isolate, fast_script->GetUnboundScript()->ScriptId()), replacements[0], replacements[2]};
     Local<Array> intrinsics = Array::New(isolate, intrinsic_values, 12);
     if (!intrinsics->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
@@ -15353,30 +15291,6 @@ static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparat
     stack_descriptor.set_enumerable(true);
     stack_descriptor.set_configurable(true);
     if (!exception_prototype->DefineProperty(context, String::NewFromUtf8Literal(isolate, "stack"), stack_descriptor).FromMaybe(false)) return false;
-
-    // JSPI is optional in this V8 build (disabled under --jitless).
-    Local<String> suspending_name = String::NewFromUtf8Literal(isolate, "Suspending");
-    Local<Value> suspending;
-    if (!wasm->Get(context, suspending_name).ToLocal(&suspending)) return false;
-    if (!suspending->IsFunction()) return true;
-    Local<Function> apply;
-    if (!Function::New(context, WasmSuspendingApply, {}, 3, ConstructorBehavior::kThrow).ToLocal(&apply)) return false;
-    Local<Object> apply_handler = Object::New(isolate);
-    if (!apply_handler->SetPrototype(context, Null(isolate)).FromMaybe(false) ||
-        !apply_handler->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "apply"), apply).FromMaybe(false) ||
-        !apply_handler->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
-    Local<Function> construct;
-    if (!Function::New(context, WasmSuspendingConstruct, apply_handler, 3, ConstructorBehavior::kThrow).ToLocal(&construct)) return false;
-    Local<Object> construct_handler = Object::New(isolate);
-    if (!construct_handler->SetPrototype(context, Null(isolate)).FromMaybe(false) ||
-        !construct_handler->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "construct"), construct).FromMaybe(false) ||
-        !construct_handler->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
-    Local<Proxy> suspending_adapter;
-    if (!Proxy::New(context, suspending.As<Object>(), construct_handler).ToLocal(&suspending_adapter)) return false;
-    Local<Value> suspending_prototype;
-    if (!suspending.As<Object>()->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&suspending_prototype) || !suspending_prototype->IsObject()) return false;
-    if (!suspending_prototype.As<Object>()->DefineOwnProperty(context, String::NewFromUtf8Literal(isolate, "constructor"), suspending_adapter, DontEnum).FromMaybe(false) ||
-        !wasm->DefineOwnProperty(context, suspending_name, suspending_adapter, DontEnum).FromMaybe(false)) return false;
     return true;
 }
 
@@ -15447,7 +15361,7 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
             String::NewFromUtf8(isolate, name, NewStringType::kInternalized).ToLocalChecked()).ToLocal(value);
     };
     // Capture function references now, not mutable helper objects to inspect
-    // on first access. PromiseResolve must likewise predate script tampering.
+    // on first access.
     if (!get(global, "WebAssembly", &values[kWasmNamespace]) || !values[kWasmNamespace]->IsObject() ||
         !get(global, "Reflect", &reflect) ||
         !get(reflect, "construct", &values[kWasmConstruct]) ||
@@ -15468,9 +15382,7 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
         !get(symbol, "hasInstance", &values[kWasmHasInstanceKey]) ||
         !values[kWasmFunctionPrototype].As<Object>()->Get(context, values[kWasmHasInstanceKey]).ToLocal(&values[kWasmHasInstance]) ||
         !get(global, "Array", &array) || !get(array, "prototype", &array_prototype) ||
-        !get(array_prototype, "slice", &values[kWasmSlice]) ||
-        !get(global, "Promise", &values[kWasmPromise]) ||
-        !get(values[kWasmPromise], "resolve", &values[kWasmPromiseResolve])) return;
+        !get(array_prototype, "slice", &values[kWasmSlice])) return;
     Local<Array> preparation = Array::New(isolate, values, kWasmPreparationSize);
     if (!preparation->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false) ||
         !global->SetPrivate(context, wasmPreparationKey(isolate), preparation).FromMaybe(false)) return;
