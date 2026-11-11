@@ -4386,7 +4386,8 @@ pub fn throwDOMException(
 /// Throw a new DOMException named `name` with `message`, made in `context`'s
 /// realm (newDOMExceptionFromContext) - the realm WebIDL names, which for a
 /// cross-origin error is the caller's: throwing there lets the caller's
-/// try/catch catch it. A plain Error named so when V8 refused.
+/// try/catch catch it. A plain Error named so when V8 refused, or when
+/// `context` is no realm the engine hosts (newDOMExceptionFromContext).
 pub fn throwDOMExceptionFromContext(
     isolate: *v8.Isolate,
     context: *v8.Context,
@@ -4433,7 +4434,8 @@ fn isQuotaExceededError(name: []const u8) bool {
 /// A new DOMException named `name` with `message`, made by `context`'s
 /// DOMException constructor - the value an algorithm rejects a promise with,
 /// or stores as an abort reason, where throwDOMExceptionFromContext throws it.
-/// Owned; null only if V8 refused (the constructor threw).
+/// Owned; null if `context` is no realm the engine hosts (below) or V8
+/// refused (the constructor threw).
 ///
 /// WebIDL "create a DOMException" in a realm uses that realm's interface
 /// object, never a property of its global: script may have replaced or
@@ -4447,12 +4449,28 @@ fn isQuotaExceededError(name: []const u8) bool {
 /// constructor, V8PerContextData::ConstructorForType; here the realm's
 /// instance of the DOMException template (materializeInterfaceObject, which
 /// every path that makes the interface object takes).
+///
+/// Only in a realm the engine hosts - a context with its record in the
+/// context manager, as newQuotaExceededError requires - and null in any
+/// other context: Blink's V8ThrowDOMException::CreateOrEmpty wraps in
+/// ScriptState::ForCurrentRealm, which exists only for a context Blink made
+/// (its V8PerContextData). A bare context has no WebIDL realm, so no
+/// DOMException interface object; constructing the template's instance
+/// there ran the binding's constructor, whose
+/// context_manager.getOrCreateWithIsolate MADE a record for the context -
+/// a strong Global<Context> and an event loop, kept until the agent ends -
+/// so one DOMException thrown in a context kept it alive (lane v8up b3i;
+/// tests/v8/page_realm_operations_test.zig "an exception thrown in a realm
+/// does not keep that realm alive"). A navigated-away realm keeps its record
+/// while script reaches it (protocol_realms.detach), so its errors stay its
+/// own DOMExceptions.
 pub fn newDOMExceptionFromContext(
     isolate: *v8.Isolate,
     context: *v8.Context,
     name: []const u8,
     message: []const u8,
 ) ?*v8.Value {
+    if (@import("context_manager.zig").get(context) == null) return null;
     // The derived interface (WebIDL 2.8.3), not a DOMException named so.
     if (isQuotaExceededError(name)) {
         if (newQuotaExceededError(isolate, context, message)) |exception| return exception;

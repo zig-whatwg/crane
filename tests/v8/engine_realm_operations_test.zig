@@ -96,17 +96,24 @@ test "a task and a synchronous step run inside the realm" {
 test "a DOMException is created as an owned value and released" {
     defer test_agent.close();
     const ctx = try realm();
-    // With no DOMException constructor in the realm, creation fails - it is
-    // reported, not papered over.
-    try runScript("delete globalThis.DOMException;");
+    // With no DOMException interface object in the realm, creation fails - it
+    // is reported, not papered over. This file's realm is a runtime record
+    // over a bare context, which the engine hosts no realm in (no record in
+    // its context manager), so it has none (conversions.newDOMExceptionFromContext).
     try std.testing.expectError(error.OperationFailed, v8.engine.v8CreateDOMException(ctx, "AbortError", "aborted"));
 
-    // The realm's constructor makes it: `new DOMException(message, name)`.
-    try runScript("globalThis.DOMException = class { constructor(m, n) { this.message = m; this.name = n; } };");
+    // In a realm the engine hosts, the realm's OWN DOMException - WebIDL
+    // "create a DOMException" in the realm, from its interface object - even
+    // when script deleted the global's `DOMException` and then replaced it:
+    // never a property of the global (lane v8up b3e; probe
+    // tmp/probes/v8up-oldwin3/: Chrome 157, Firefox 159 and Safari 27 throw
+    // the realm's own).
+    _ = try v8.context_manager.getOrCreate(test_context.?, std.heap.page_allocator);
+    try runScript("delete globalThis.DOMException;");
     const made = try v8.engine.v8CreateDOMException(ctx, "AbortError", "aborted");
     defer v8.engine.v8ReleaseValue(made);
     try std.testing.expect(made == .handle);
-    try std.testing.expect(made == .handle);
+    try runScript("globalThis.DOMException = class { constructor(m, n) { this.message = m; this.name = n; } };");
 
     // Put it where script can look at it.
     const context = test_context.?;
@@ -116,6 +123,7 @@ test "a DOMException is created as an owned value and released" {
     defer ffi.v8_String_Dispose(key);
     _ = ffi.v8_Object_Set(global, context, @ptrCast(key), @ptrCast(@alignCast(made.handle.ptr)));
     try std.testing.expectEqual(@as(i32, 1), try globalInt("globalThis.made.name === 'AbortError' && globalThis.made.message === 'aborted' ? 1 : 0"));
+    try std.testing.expectEqual(@as(i32, 1), try globalInt("Object.prototype.toString.call(globalThis.made) === '[object DOMException]' && globalThis.made instanceof Error && !(globalThis.made instanceof globalThis.DOMException) && globalThis.made.code === 20 ? 1 : 0"));
 
     // Release takes any value, owned or not.
     v8.engine.v8ReleaseValue(.undefined);

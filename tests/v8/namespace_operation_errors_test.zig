@@ -12,8 +12,9 @@
 //! leaves script's own exception pending, as the interface binding does
 //! (docs/lessons/architecture-a-pending-script-exception-is-not-a-new-host-error.md).
 //!
-//! Each test runs on a thread of its own with its own isolate: the
-//! directory's other files may have left theirs entered.
+//! Each test runs on a thread of its own with its own agent
+//! (test_process.TestAgent): the directory's other files may have left
+//! theirs entered.
 
 const std = @import("std");
 const v8 = @import("v8");
@@ -77,17 +78,14 @@ fn evalIn(isolate: *ffi.Isolate, context: *ffi.Context, source: []const u8) ![]c
 const Check = struct { source: []const u8, expected: []const u8 };
 
 fn runChecks(checks: []const Check) !void {
-    test_process.start();
-    const isolate = ffi.v8_Isolate_New() orelse return error.NoIsolate;
-    defer ffi.v8_Isolate_Dispose(isolate);
-    ffi.v8_Isolate_Enter(isolate);
-    defer ffi.v8_Isolate_Exit(isolate);
-    const scope = ffi.v8_HandleScope_New(isolate) orelse return error.NoScope;
-    defer ffi.v8_HandleScope_Dispose(scope);
-    const context = ffi.v8_Context_New(isolate) orelse return error.NoContext;
-    defer ffi.v8_Context_Dispose(context);
-    ffi.v8_Context_Enter(context);
-    defer ffi.v8_Context_Exit(context);
+    var agent: test_process.TestAgent = .{};
+    defer agent.close();
+    const isolate = try agent.open(.{});
+    const context = agent.context.?;
+    // A realm the engine hosts (its record in the context manager, ended
+    // with the agent): only there is a DOMException made - the realm's own,
+    // from its interface object (conversions.newDOMExceptionFromContext).
+    _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
     FailingBinding.registerGlobal(isolate, context, "Failing");
 
     for (checks) |check| {
@@ -112,17 +110,18 @@ fn onThread(checks: []const Check) !void {
     try result;
 }
 
-/// `outcome(expr)`: "threw <name>" or "returned <typeof> <value>". A bare
-/// context has no DOMException; a stand-in with the WebIDL constructor's
-/// shape (message, name) is what conv.throwDOMExceptionFromContext
-/// constructs, as it would construct the realm's own.
+/// `outcome(expr)`: "threw <name>" or "returned <typeof> <value>". A
+/// DOMException is known by its class string (WebIDL 3.7.4: the interface
+/// prototype object's @@toStringTag), for conv.throwDOMExceptionFromContext
+/// makes the realm's own from its interface object, never from the global's
+/// `DOMException` property (lane v8up b3e: Chrome 157, Firefox 159 and
+/// Safari 27 throw the realm's own however script replaced the property) -
+/// and this realm's global has none. A plain Error named so (the fallback)
+/// is no DOMException here.
 const outcome =
-    \\if (typeof DOMException === 'undefined')
-    \\  globalThis.DOMException = class DOMException extends Error {
-    \\    constructor(message, name) { super(message); this.name = name; } };
     \\function outcome(f) {
     \\  try { const v = f(); return 'returned ' + typeof v + ' ' + String(v); }
-    \\  catch (e) { return 'threw ' + (e instanceof DOMException ? 'DOMException ' + e.name
+    \\  catch (e) { return 'threw ' + (Object.prototype.toString.call(e) === '[object DOMException]' ? 'DOMException ' + e.name
     \\                                  : e instanceof TypeError ? 'TypeError ' + e.message : String(e)); }
     \\}
 ;

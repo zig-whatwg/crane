@@ -441,8 +441,6 @@ test "every conversions throw helper leaves no handle behind" {
     defer test_agent.close();
     _ = try realm();
     const isolate = test_isolate.?;
-    // throwDOMException constructs through the realm's DOMException.
-    _ = try run("globalThis.DOMException = class { constructor(m, n) { this.message = m; this.name = n; } };");
 
     // What one handle costs in V8's count.
     const handle_bytes = blk: {
@@ -458,21 +456,52 @@ test "every conversions throw helper leaves no handle behind" {
     // V8 may take a handle of its own once along the way - one appeared, once,
     // over 32 throwDOMException calls - so a quarter of a handle a throw is the
     // line.
+    //
+    // The count is read after a collection. The DOMException helpers make
+    // this realm's own DOMException (conversions.newDOMExceptionFromContext:
+    // its interface object, as every browser does - lane v8up b3e), a
+    // platform object, and the realm's wrapper cache holds its wrapper through
+    // a WEAK handle until the collector takes it, as it holds every wrapper
+    // (wrapper_cache.armWeak) - one handle a throw before a collection
+    // (chat2 and server1, lane v8up b3h: "dom_exception: global handles 128 ->
+    // 1152 bytes over 32 throws (32 bytes a handle)"), none after. A handle
+    // that survives the collection is the leak this test is for.
     const rounds = 32;
     var leaked = false;
     inline for (comptime std.meta.fieldNames(Thrower.Kind), @typeInfo(Thrower.Kind).@"enum".field_values) |field_name, field_value| {
         var thrower: Thrower = .{ .context = test_context.?, .kind = @fromBackingInt(@intCast(field_value)) };
         // The first call may make what every later one reuses.
         try thrower.throwAndCatch();
-        const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const before = collectedGlobalHandleBytes(isolate);
         for (0..rounds) |_| try thrower.throwAndCatch();
-        const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const after = collectedGlobalHandleBytes(isolate);
         if (after -| before >= handle_bytes * rounds / 4) {
             std.debug.print("{s}: global handles {d} -> {d} bytes over {d} throws ({d} bytes a handle)\n", .{ field_name, before, after, rounds, handle_bytes });
             leaked = true;
         }
     }
     if (leaked) return error.HandlesLeaked;
+
+    // What was counted is the realm's own DOMException, not the fallback's
+    // plain Error: this realm is one the engine hosts.
+    var thrower: Thrower = .{ .context = test_context.?, .kind = .dom_exception };
+    var thrown: ?*ffi.Value = null;
+    if (!ffi.v8_RunCatching(isolate, Thrower.body, &thrower, &thrown)) return error.DidNotThrow;
+    const value = thrown orelse return error.NothingThrown;
+    defer ffi.v8_Value_Dispose(value);
+    const global = ffi.v8_Context_Global(test_context.?) orelse return error.NoGlobal;
+    defer ffi.v8_Object_Dispose(global);
+    const key = ffi.v8_String_NewFromUtf8(isolate, "thrown", 6) orelse return error.StringFailed;
+    defer ffi.v8_String_Dispose(key);
+    _ = ffi.v8_Object_Set(global, test_context.?, @ptrCast(key), value);
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt("Object.prototype.toString.call(thrown) === '[object DOMException]' && thrown.name === 'NotFoundError' && thrown.message === 'not found' ? 1 : 0"));
+}
+
+/// V8's global handle count after a full collection: what nothing but a
+/// leak keeps (a weak handle whose object the collector took is gone).
+fn collectedGlobalHandleBytes(isolate: *ffi.Isolate) usize {
+    ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    return ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
 }
 
 test "an exception thrown in a realm does not keep that realm alive" {
@@ -486,7 +515,10 @@ test "an exception thrown in a realm does not keep that realm alive" {
     try std.testing.expectEqual(baseline, liveContexts());
 
     // Every helper throws in it - the DOMException ones through the fallback,
-    // for this realm has no DOMException - and everything thrown is released.
+    // for a context the engine hosts no realm in has no DOMException (making
+    // one ran its constructor binding, which made a realm record for the
+    // context and kept it alive: lane v8up b3i) - and everything thrown is
+    // released.
     const other = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
     inline for (@typeInfo(Thrower.Kind).@"enum".field_values) |field_value| {
         var thrower: Thrower = .{ .context = other, .kind = @fromBackingInt(@intCast(field_value)) };
