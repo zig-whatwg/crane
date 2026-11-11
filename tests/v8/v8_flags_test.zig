@@ -94,6 +94,36 @@ test "V8 starts without its compilation cache unless the measurement switch turn
     try std.testing.expect(runtime_has);
 }
 
+test "a default build starts V8 with the product's flags only; -Dv8-extra-flags is the measurement route" {
+    // Lane v8up b5: measuring V8's collector (young-generation size,
+    // --trace-gc cadence) needs V8 flags in a console and a gc_bench, and V8
+    // freezes its flags when it starts. The route is a BUILD option, as
+    // Chromium's is a command-line switch a developer passes (--js-flags,
+    // gin/v8_initializer.cc): -Dv8-extra-flags="<flags>" appends them to both
+    // sets. It is never an environment variable the product reads, and a
+    // default build - this test's - carries nothing from it.
+    try std.testing.expect(@hasDecl(loader, "measurement_v8_flags"));
+    const extra: []const u8 = if (@hasDecl(loader, "measurement_v8_flags")) loader.measurement_v8_flags else "";
+    if (extra.len != 0) {
+        // A measurement build: its flags are last in both sets, verbatim.
+        try std.testing.expect(std.mem.endsWith(u8, loader.RUNTIME_V8_FLAGS, extra));
+        try std.testing.expect(std.mem.endsWith(u8, loader.SNAPSHOT_V8_FLAGS, extra));
+        return error.SkipZigTest; // the default is pinned by the default build
+    }
+    // An allowlist: a flag that reaches the product's set from anywhere else
+    // fails here by name.
+    var it = std.mem.tokenizeScalar(u8, loader.RUNTIME_V8_FLAGS, ' ');
+    while (it.next()) |flag| {
+        const known = for ([_][]const u8{ "--harmony-shadow-realm", "--no-compilation-cache", "--jitless" }) |product| {
+            if (std.mem.eql(u8, flag, product)) break true;
+        } else false;
+        if (!known) {
+            std.log.err("a default build starts V8 with '{s}', which is not one of the product's flags", .{flag});
+            return error.UnexpectedRuntimeFlag;
+        }
+    }
+}
+
 test "neither set is empty or ends in a stray separator" {
     // `SNAPSHOT_V8_FLAGS` is built by concatenating two strings with a space. A
     // trailing or doubled separator is the kind of thing V8 accepts silently while
