@@ -1459,6 +1459,55 @@ test "A3: a clone shares its source's block - an element's own list becomes shar
     try std.testing.expectEqual(@as(usize, 2), copy.getAttributeCount());
 }
 
+/// A parser run and what follows it, on an allocator that fails: 258 parsed
+/// elements with one set (the block fills, and the cache replaces it), 14
+/// with sets of their own (the cache's table grows twice), then a clone, a
+/// clone of the full block, and two writers' copies. Whatever fails, every
+/// reference, block and table is let go.
+fn testRunUnderFailure(allocator: std.mem.Allocator) !void {
+    var scope = runtime.BrowserScope.init(allocator);
+    defer scope.deinit();
+    var cache: SharingCache = .{};
+    defer cache.deinit();
+    var elements: [258 + 14]ElementData = undefined;
+    var made: usize = 0;
+    defer for (elements[0..made]) |*data| data.deinit(&scope);
+    for (&elements, 0..) |*data, i| {
+        data.* = ElementData.init();
+        made += 1;
+        // As Element's setParsedAttributesHook: the entries' references are
+        // the caller's until the list takes them.
+        var entries: [2]Entry = undefined;
+        var interned: usize = 0;
+        errdefer for (entries[0..interned]) |entry| ElementData.releaseEntry(&scope, entry);
+        var href: [8]u8 = undefined;
+        const own = i >= 258;
+        for ([_][]const u8{ "class", "href" }, [_][]const u8{ "row", if (own) try std.fmt.bufPrint(&href, "#{d}", .{i}) else "#" }) |name, value| {
+            const name_id = try attribute_names.intern(&scope, null, null, name);
+            const value_id = attribute_values.intern(&scope, value) catch |err| {
+                attribute_names.release(&scope, name_id);
+                return err;
+            };
+            entries[interned] = .{ .name = name_id, .value = value_id };
+            interned += 1;
+        }
+        try data.adoptEntries(&scope, &entries, &cache);
+        interned = 0;
+    }
+    // The first block is full (254 elements; the cache moved on): a clone of
+    // one of its holders takes the 255th place, the next gets a copy.
+    var clones: [2]ElementData = .{ ElementData.init(), ElementData.init() };
+    defer for (&clones) |*data| data.deinit(&scope);
+    for (&clones) |*data| try data.shareFrom(&scope, &elements[0]);
+    // A writer's copy of a shared block, with the append's own growth.
+    try testAppend(&scope, &elements[1], null, null, "title", "t");
+    try elements[2].reserve(&scope, 3);
+}
+
+test "A3: an allocation failure in a share, the cache's growth, a copy on write or a clone leaves nothing behind" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, testRunUnderFailure, .{});
+}
+
 test "an entry is 8 bytes with no pointer, and a one-attribute element pays one 16-byte block" {
     try std.testing.expectEqual(@as(usize, 8), @sizeOf(Entry));
     try std.testing.expectEqual(@as(usize, 8), @sizeOf(AttributeList));
