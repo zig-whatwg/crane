@@ -3509,6 +3509,78 @@ size_t v8_test_CppgcMemberSize() {
 
 }  // extern "C" - the cppgc registry's declaration below is C++
 
+// ----------------------------------------------------------------------------
+// CraneWrappable: the adapter's one base for every C++ object V8 holds by a
+// CppHeap pointer - Object::WrapGlobal (a realm's global: GlobalAnchor),
+// Object::Wrap (a node's wrapper: lane wr1's NodeAnchor; every other platform
+// object's: lane wrap1's PlatformAnchor). Lane v8up b3b, item 1;
+// tmp/plans/v8-global-object-design.md 3.1, tmp/plans/object-wrap-design.md
+// 3.6; the contract the three kinds share is written out in
+// tmp/plans/lane-v8up-handoff.md ("CraneWrappable CONTRACT").
+//
+// It carries NO data. What V8 needs is v8::Object::Wrappable's vptr (Wrap
+// takes a Wrappable*, v8-object.h; cppgc's NameProvider makes it virtual) and
+// a Trace; each kind lays out its own fields after it, so a NodeAnchor pays
+// for no field it does not use (instance_ + generation_ in the base would make
+// wr1's 24 B NodeAnchor 40 B, +16 B per wrapped node). Blink's ScriptWrappable
+// is the same shape: the vptr, then the object's own members.
+//
+// Lifetime (the contract): MakeGarbageCollected on the isolate's CppHeap; OWNED
+// by that heap, never freed by Zig, alive while a JS object holds its CppHeap
+// pointer or a cppgc Member/Persistent reaches it. The virtual destructor is
+// its finalizer: it runs at cppgc's sweep on the agent's thread (and in
+// cppgc::subtle::FreeUnreferencedObject), touches no V8 API and no engine
+// state - Zig bookkeeping only; engine work it implies is queued to a task.
+// The Zig instance a kind points at keeps Zig's lifetime: Zig calls the
+// kind's clear() before it frees the instance (one write severs every JS
+// object that points at the anchor).
+// ----------------------------------------------------------------------------
+
+/// The tags (v8-sandbox.h: V8's embedder range is [kFirstEmbedderWrappableTag,
+/// kLastEmbedderWrappableTag] = [1, 0x6eff], and a parent's range must hold
+/// exactly its subclasses' tags). Object::Unwrap with a kind's range is V8's
+/// type check; the base range answers "a Crane anchor of any kind".
+namespace crane_tags {
+constexpr uint16_t kCraneWrappableFirst = 0x0001;
+constexpr uint16_t kCraneWrappableLast = 0x00ff;
+/// A realm's global (Window, WorkerGlobalScope, a worklet's, ShadowRealm's).
+constexpr uint16_t kGlobalAnchor = 0x0001;
+/// A node's wrapper (lane wr1; it may split this range by node kind).
+constexpr uint16_t kNodeAnchorFirst = 0x0002;
+constexpr uint16_t kNodeAnchorLast = 0x007f;
+/// Every other platform object's wrapper (lane wrap1, design 3.4).
+constexpr uint16_t kPlatformAnchorFirst = 0x0080;
+constexpr uint16_t kPlatformAnchorLast = 0x00ff;
+
+static_assert(kCraneWrappableFirst >= static_cast<uint16_t>(CppHeapPointerTag::kFirstEmbedderWrappableTag) &&
+                  kCraneWrappableLast <= static_cast<uint16_t>(CppHeapPointerTag::kLastEmbedderWrappableTag),
+              "Crane's anchors use V8's embedder Wrappable tag range only");
+static_assert(kGlobalAnchor == kCraneWrappableFirst && kGlobalAnchor < kNodeAnchorFirst &&
+                  kNodeAnchorLast + 1 == kPlatformAnchorFirst && kPlatformAnchorLast == kCraneWrappableLast,
+              "the three kinds tile the base range: GlobalAnchor 1, NodeAnchor [2, 0x7f], PlatformAnchor [0x80, 0xff]");
+
+constexpr CppHeapPointerTag tag(uint16_t value) { return static_cast<CppHeapPointerTag>(value); }
+[[maybe_unused]] constexpr CppHeapPointerTagRange kCraneWrappableRange{tag(kCraneWrappableFirst), tag(kCraneWrappableLast)};
+[[maybe_unused]] constexpr CppHeapPointerTagRange kNodeAnchorRange{tag(kNodeAnchorFirst), tag(kNodeAnchorLast)};
+[[maybe_unused]] constexpr CppHeapPointerTagRange kPlatformAnchorRange{tag(kPlatformAnchorFirst), tag(kPlatformAnchorLast)};
+}  // namespace crane_tags
+
+class CraneWrappable : public v8::Object::Wrappable {
+ public:
+    /// What the anchor keeps alive: per kind (a global's retained values, a
+    /// node's tree, a platform object's keeps). The base keeps nothing.
+    void Trace(cppgc::Visitor* visitor) const override { v8::Object::Wrappable::Trace(visitor); }
+    const char* GetHumanReadableName() const override { return "Crane anchor"; }
+
+ protected:
+    CraneWrappable() = default;
+};
+
+// The base is Wrappable's vptr and nothing else (the contract: no data fields).
+static_assert(sizeof(CraneWrappable) == sizeof(void*), "CraneWrappable carries no data: each kind lays out its own fields");
+static_assert(!std::is_trivially_destructible_v<CraneWrappable>,
+              "a Wrappable is a NameProvider: cppgc finalizes it (its destructor is the anchor's finalizer)");
+
 // cppgc's own registry of the process's live C++ heaps: every heap registers
 // in its constructor and unregisters in its destructor (13.1.203
 // src/heap/cppgc/process-heap.h and process-heap.cc, HeapRegistry::Subscription).
