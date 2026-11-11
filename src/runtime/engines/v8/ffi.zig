@@ -2782,6 +2782,13 @@ pub extern fn v8_Debug_QueuedFinalizers(isolate: *Isolate) usize;
 /// pumps with `v8_Platform_PumpMessageLoop`.
 pub extern fn v8_Debug_PumpMessageLoopHoldingFinalizers(isolate: *Isolate) bool;
 
+/// A full collection WITHOUT the agent's safe point after it - V8's own
+/// collection of last resort (Heap::CollectAllAvailableGarbage), whose second
+/// pass runs before it returns: what it found dead stays queued. For tests of
+/// the finalizer queue only; the engine collects with
+/// `v8_Isolate_RequestGarbageCollection`.
+pub extern fn v8_Debug_CollectHoldingFinalizers(isolate: *Isolate) void;
+
 // ---- Node wrappers in the node's own slot (the wrapper redesign's P2;
 // node_wrappers.zig, v8_wrapper.cpp "Node wrappers in the node's own slot") ----
 

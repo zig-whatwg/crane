@@ -533,3 +533,57 @@ test "an agent that ends with finalizers queued runs each once while it is alive
     testing.allocator.free(armed);
     freed = true;
 }
+
+// A collection the adapter did not force. V8 collects by itself, in the middle
+// of whatever allocated, when an allocation fails: Heap::CollectAllAvailableGarbage
+// (15.7 src/heap/heap-allocator.cc, the last resort before a fatal
+// out-of-memory), and that collection runs its second pass BEFORE it returns
+// (src/handles/global-handles.cc PostGarbageCollectionProcessing:
+// kGCCallbackFlagCollectAllAvailableGarbage). The adapter is not on the stack
+// to run the queue, so the finalizers wait where every by-task collection's
+// do - on their agent - for its next safe point. The queue is bounded by what
+// has died: a record joins it once, when its wrapper dies, and a later
+// collection finds nothing of it to hand over again.
+test "finalizers of a synchronous second pass the adapter did not force wait for the agent's next safe point, each queued once" {
+    defer test_agent.close();
+    const e = try env();
+    const baseline = ffi.v8_Debug_LiveWeakCallbackData();
+    try openQueueProbe(e, true);
+    defer closeQueueProbe();
+
+    var armed: [4]Armed = .{ .{ .index = 0 }, .{ .index = 1 }, .{ .index = 2 }, .{ .index = 3 } };
+    for (armed[0..3]) |*a| try armForQueue(e, a);
+
+    // V8's own collection of last resort: both passes run inside it, under
+    // DisallowJavascriptExecution and DisallowJSObjectModification.
+    ffi.v8_Debug_CollectHoldingFinalizers(e.isolate);
+    try testing.expectEqual(@as(usize, 3), queue_probe.?.unlinks);
+    // Nothing of Zig's ran inside the collection - a finalizer's write there
+    // is V8's fatal "Check failed: AllowJSObjectModification::IsAllowed".
+    try testing.expectEqual(@as(usize, 0), queue_probe.?.finalizes);
+    try testing.expectEqual(@as(usize, 3), ffi.v8_Debug_QueuedFinalizers(e.isolate));
+    try testing.expect(!ffi.v8_Object_Has(e.context, queue_probe.?.target, "f0"));
+
+    // A second one, with no pump between them (one long task): the three are
+    // not handed over again, and the one that died since joins behind them.
+    try armForQueue(e, &armed[3]);
+    ffi.v8_Debug_CollectHoldingFinalizers(e.isolate);
+    try testing.expectEqual(@as(usize, 4), queue_probe.?.unlinks);
+    try testing.expectEqual(@as(usize, 0), queue_probe.?.finalizes);
+    try testing.expectEqual(@as(usize, 4), ffi.v8_Debug_QueuedFinalizers(e.isolate));
+
+    // The next safe point - the pump after the task that was running - runs
+    // each once: the first collection's in the order its second pass handed
+    // them over (the reverse of its first pass's), then the second's.
+    try testing.expect(ffi.v8_Platform_PumpMessageLoop(e.isolate));
+    try testing.expectEqual(@as(usize, 4), queue_probe.?.finalizes);
+    var handed_over: [4]u8 = undefined;
+    for (handed_over[0..3], 0..) |*index, i| index.* = queue_probe.?.unlink_order[2 - i];
+    handed_over[3] = queue_probe.?.unlink_order[3];
+    try testing.expectEqualSlices(u8, &handed_over, queue_probe.?.finalize_order[0..4]);
+    try testing.expect(!queue_probe.?.write_failed);
+    inline for (.{ "f0", "f1", "f2", "f3" }) |name| try testing.expect(ffi.v8_Object_Has(e.context, queue_probe.?.target, name));
+    for (armed) |a| try testing.expect(a.handle == null);
+    try testing.expectEqual(@as(usize, 0), ffi.v8_Debug_QueuedFinalizers(e.isolate));
+    try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
+}

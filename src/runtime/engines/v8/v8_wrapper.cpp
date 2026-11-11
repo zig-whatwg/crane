@@ -2630,6 +2630,22 @@ extern "C" bool v8_Debug_PumpMessageLoopHoldingFinalizers(Isolate* isolate) {
                                      platform::MessageLoopBehavior::kDoNotWait);
 }
 
+/// A full collection WITHOUT the agent's safe point after it: the collection
+/// V8 runs by itself when an allocation fails - Heap::CollectAllAvailableGarbage,
+/// which is both Isolate::LowMemoryNotification (15.7 src/api/api.cc) and the
+/// last resort of a failed allocation (src/heap/heap-allocator.cc,
+/// AllocateRawWithRetryOrFailSlowPath: GarbageCollectionReason::kLastResort).
+/// It runs its second pass before it returns (kGCCallbackFlagCollectAllAvailableGarbage,
+/// src/handles/global-handles.cc PostGarbageCollectionProcessing), in the
+/// middle of whatever allocated, and the adapter is not there to run the
+/// queue: what it found dead stays queued (v8_Debug_QueuedFinalizers) until
+/// the agent's next safe point. For tests of the queue only - the engine
+/// collects with v8_Isolate_RequestGarbageCollection.
+extern "C" void v8_Debug_CollectHoldingFinalizers(Isolate* isolate) {
+    if (!isolate) return;
+    isolate->LowMemoryNotification();
+}
+
 /// End V8 for the process: it cannot start again (v8_Platform_Start answers
 /// kPlatformDisposed). After every isolate is disposed, from one thread.
 void v8_Platform_Dispose() {
