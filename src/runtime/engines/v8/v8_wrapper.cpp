@@ -2631,12 +2631,13 @@ extern "C" bool v8_Debug_PumpMessageLoopHoldingFinalizers(Isolate* isolate) {
 }
 
 /// A full collection WITHOUT the agent's safe point after it: the collection
-/// V8 runs by itself when an allocation fails - Heap::CollectAllAvailableGarbage,
-/// which is both Isolate::LowMemoryNotification (15.7 src/api/api.cc) and the
-/// last resort of a failed allocation (src/heap/heap-allocator.cc,
-/// AllocateRawWithRetryOrFailSlowPath: GarbageCollectionReason::kLastResort).
-/// It runs its second pass before it returns (kGCCallbackFlagCollectAllAvailableGarbage,
-/// src/handles/global-handles.cc PostGarbageCollectionProcessing), in the
+/// V8 runs by itself when an allocation fails - Heap::CollectAllAvailableGarbage
+/// (15.7.112.43 src/heap/heap.cc:1295-1330), which is both
+/// Isolate::LowMemoryNotification (src/api/api.cc:10868-10875) and the last
+/// resort of a failed allocation (src/heap/heap-allocator.cc:201-218, called
+/// at :528 before the fatal "CALL_AND_RETRY_LAST" at :537). It runs its second
+/// pass before it returns (kGCCallbackFlagCollectAllAvailableGarbage,
+/// src/handles/global-handles.cc:881-889), in the
 /// middle of whatever allocated, and the adapter is not there to run the
 /// queue: what it found dead stays queued (v8_Debug_QueuedFinalizers) until
 /// the agent's next safe point. For tests of the queue only - the engine
@@ -2973,6 +2974,12 @@ static void queueFinalizer(Isolate* isolate, WeakCallbackData* data) {
 ///     built on them promise what was found dead is finalized when they
 ///     return (engine.requestGarbageCollection, notifyMemoryPressure) - as a
 ///     browser's test-only gc() finalizes before it returns.
+///   * v8_ExternalMemoryAccounter_Update, after V8 returns: the host's
+///     external-memory report, made only at the agent's own safe points
+///     (external_memory.zig) once its figure moved 128 KB. It is the safe
+///     point INSIDE a task: finalizers queued by a second pass V8 ran by
+///     itself - a pending pass run at the start of the next collection, an
+///     allocation's last resort - run here, not a task later at the pump.
 /// A teardown hold (engine.deferTeardowns) is the Zig finalizer's own
 /// business: it lists its entry for the hold's last resume, as before.
 ///
@@ -4194,6 +4201,25 @@ ExternalMemoryAccounter* v8_ExternalMemoryAccounter_New() {
 
 void v8_ExternalMemoryAccounter_Update(ExternalMemoryAccounter* accounter, Isolate* isolate, int64_t change_in_bytes) {
     accounter->Update(isolate, change_in_bytes);
+    // The agent's safe point inside a task (`runQueuedFinalizers`). The report
+    // is made only where a collection it starts meets no DOM frame below
+    // (external_memory.zig: the binding exit to script at DOM-algorithm depth
+    // zero, the microtask checkpoint), and V8's collector is off the stack
+    // once it returns. What runs here: the finalizers V8's second passes
+    // queued since the last safe point. In one long task those are the
+    // passes V8 runs by itself: a collection's second pass is a posted task
+    // (15.7.112.43 src/handles/global-handles.cc:892-901) - the collections
+    // this very report runs included, Heap::UpdateExternalMemory's
+    // CollectGarbageWithRetry passes no callback flags (src/heap/heap.cc:
+    // 7021-7038, 2132) - and the next collection runs the pending pass first
+    // when that task has not run (heap.cc:1509-1511, "Ensure that all
+    // pending phantom callbacks are invoked"), in the middle of an
+    // allocation. That is where the finalizers of a script that makes and
+    // drops objects in one loop used to run. Without this they all waited
+    // for the pump, a task away, and each kept its native state until then
+    // (300,000 dropped Events in one loop: 392 MB at the loop's end instead
+    // of 168 MB, lane v8up b6).
+    runQueuedFinalizers(isolate);
 }
 
 void v8_ExternalMemoryAccounter_Delete(ExternalMemoryAccounter* accounter, Isolate* isolate, uint64_t reported) {

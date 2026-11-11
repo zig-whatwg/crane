@@ -536,9 +536,9 @@ test "an agent that ends with finalizers queued runs each once while it is alive
 
 // A collection the adapter did not force. V8 collects by itself, in the middle
 // of whatever allocated, when an allocation fails: Heap::CollectAllAvailableGarbage
-// (15.7 src/heap/heap-allocator.cc, the last resort before a fatal
-// out-of-memory), and that collection runs its second pass BEFORE it returns
-// (src/handles/global-handles.cc PostGarbageCollectionProcessing:
+// (15.7.112.43 src/heap/heap-allocator.cc:201-218 and :528, the last resort
+// before the fatal out-of-memory at :537), and that collection runs its
+// second pass BEFORE it returns (src/handles/global-handles.cc:881-889:
 // kGCCallbackFlagCollectAllAvailableGarbage). The adapter is not on the stack
 // to run the queue, so the finalizers wait where every by-task collection's
 // do - on their agent - for its next safe point. The queue is bounded by what
@@ -583,6 +583,68 @@ test "finalizers of a synchronous second pass the adapter did not force wait for
     try testing.expectEqualSlices(u8, &handed_over, queue_probe.?.finalize_order[0..4]);
     try testing.expect(!queue_probe.?.write_failed);
     inline for (.{ "f0", "f1", "f2", "f3" }) |name| try testing.expect(ffi.v8_Object_Has(e.context, queue_probe.?.target, name));
+    for (armed) |a| try testing.expect(a.handle == null);
+    try testing.expectEqual(@as(usize, 0), ffi.v8_Debug_QueuedFinalizers(e.isolate));
+    try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
+}
+
+// One long task. A collection V8 runs by itself posts its second pass as a
+// task (15.7.112.43 src/handles/global-handles.cc:892-901), and when the next
+// collection begins before that task has run, V8 runs the pending pass first,
+// right there (src/heap/heap.cc:1509-1511, Heap::CollectGarbage: "Ensure that
+// all pending phantom callbacks are invoked"), under the same two scopes
+// (heap.cc:1470-1477; global-handles.cc:746-747). A script
+// that makes and drops objects in one loop never reaches the pump, so that is
+// where its dead wrappers' finalizers ran: one collection late, in the middle
+// of an allocation. They may not run there (the pass is under V8's scopes), and
+// the pump is a task away - 300,000 dropped Events in one loop peaked at 392 MB
+// instead of 168 MB while every finalizer waited for it.
+//
+// The agent has a safe point inside the task: the host's external-memory
+// report (external_memory.zig - the binding exit back into script at
+// DOM-algorithm depth zero and the microtask checkpoint, Blink's
+// V8GCController::reportDOMMemoryUsageToV8 point; made once the host's figure
+// moved 128 KB), which is where a collection the report starts meets no DOM
+// frame. What V8's second passes queued since the last safe point runs when a
+// report returns.
+test "finalizers a collection of V8's own queued inside one task run at the agent's next external-memory report, without a pump" {
+    defer test_agent.close();
+    const e = try env();
+    const baseline = ffi.v8_Debug_LiveWeakCallbackData();
+    try openQueueProbe(e, true);
+    defer closeQueueProbe();
+    const accounter = ffi.v8_ExternalMemoryAccounter_New() orelse return error.OutOfMemory;
+    var reported: u64 = 0;
+    // V8's count goes back to what it was before the test reported anything.
+    defer ffi.v8_ExternalMemoryAccounter_Delete(accounter, e.isolate, reported);
+
+    var armed: [2]Armed = .{ .{ .index = 0 }, .{ .index = 1 } };
+    for (&armed) |*a| try armForQueue(e, a);
+
+    // Native memory the host says its objects hold, 256 MB a report, and
+    // never a pump or a forced collection: a report that overshoots V8's
+    // limits by a large margin collects before it returns (heap.cc:7021-7038
+    // Heap::UpdateExternalMemory; its first pass unlinks the two), that
+    // collection's second pass is a posted task (CollectGarbageWithRetry
+    // passes no callback flags, heap.cc:2132), and the next collection -
+    // inside a later report - runs it at its start.
+    const step: i64 = 256 << 20;
+    var reports: usize = 0;
+    var collected_at: usize = 0;
+    while (queue_probe.?.finalizes < armed.len and reports < 64) {
+        ffi.v8_ExternalMemoryAccounter_Update(accounter, e.isolate, step);
+        reported += @intCast(step);
+        reports += 1;
+        if (collected_at == 0 and queue_probe.?.unlinks == armed.len) collected_at = reports;
+    }
+    if (queue_probe.?.finalizes != armed.len) {
+        std.debug.print("after {d} reports of 256 MB: {d} of {d} unlinked (inside report {d}), {d} finalizers run, {d} queued\n", .{ reports, queue_probe.?.unlinks, armed.len, collected_at, queue_probe.?.finalizes, ffi.v8_Debug_QueuedFinalizers(e.isolate) });
+    }
+    // Both ran when a report returned, their engine work done outside the
+    // collection, and nothing waits for the pump.
+    try testing.expectEqual(armed.len, queue_probe.?.finalizes);
+    try testing.expect(!queue_probe.?.write_failed);
+    inline for (.{ "f0", "f1" }) |name| try testing.expect(ffi.v8_Object_Has(e.context, queue_probe.?.target, name));
     for (armed) |a| try testing.expect(a.handle == null);
     try testing.expectEqual(@as(usize, 0), ffi.v8_Debug_QueuedFinalizers(e.isolate));
     try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
