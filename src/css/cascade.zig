@@ -423,6 +423,20 @@ fn appliesTo(pseudo: ?[]const u8) ?*const LonghandSet {
     return null;
 }
 
+/// Position 4 §3.4: "User agents must have the following rule in their UA
+/// stylesheet: `* { overlay: none !important; }`" - so "the overlay property
+/// cannot be set by authors or users", and the UA sets `overlay: auto` "via
+/// another UA-!important rule" while an element is in the top layer. Only
+/// that origin's important declarations, and the transition origin above
+/// every important one (Cascade 5 §6.2), can beat the universal rule: any
+/// other declaration of overlay is never a candidate, which is exactly that
+/// rule's effect without a declaration every element would match. (Blink
+/// dropped its universal rule too, OverlayGlobalRuleRemoval: html.css
+/// `dialog:modal, [popover]:popover-open { overlay: auto !important }`.)
+fn overlaySettable(origin: Origin, important: bool) bool {
+    return (origin == .user_agent and important) or origin == .transition;
+}
+
 /// The caller finishes appending matched batches before this call, and
 /// keeps the slice and declaration blocks immutable until cascade returns.
 /// Like Blink's MatchResult/CascadeMap, candidates refer back to their
@@ -437,6 +451,7 @@ pub fn collectCandidates(allocator: Allocator, matched: []const Matched, applies
         var it = m.block.typed();
         while (it.next()) |d| {
             if (applies) |set| if (!set.contains(d.longhand)) continue;
+            if (d.longhand == .overlay and !overlaySettable(m.source.origin, d.important)) continue;
             try candidates.append(allocator, .{
                 .decl = d,
                 .priority = priority(m.source, d.important),
@@ -1834,6 +1849,38 @@ const Builder = struct {
             const selected = try @import("font_system.zig").compute(self.ctx.allocator, self.ctx.system_fonts, v.font_system, l);
             defer selected.release();
             return self.computeValue(l, selected, source);
+        }
+        switch (l) {
+            // Viewport 1 §3.1: "as specified, but with <percentage>
+            // converted to the equivalent <number>". normal and 0 compute to
+            // 1 in all three browsers (zoom-computed.html 13/13, wpt.fyi
+            // 2026-11-11): golden rule 2. A calc() computes first and
+            // returns here as its number.
+            .zoom => switch (v) {
+                .keyword => return .{ .number = 1 },
+                .number => |n| return .{ .number = if (n == 0) 1 else n },
+                .length => |len| return .{ .number = if (len.value == 0) 1 else len.value / 100 },
+                else => {},
+            },
+            // Text Size Adjust 1 §2. Chrome, the one browser shipping the
+            // unprefixed property, computes none to 100%
+            // (text-size-adjust-computed.html 6/6): golden rule 2.
+            .text_size_adjust => if (v.isKeyword(.none)) return .{ .length = Length.percent(100) },
+            // Compat §3.4.6.3: <line-width> computes to an absolute length.
+            // Chrome and Safari make thin, medium and thick 1/48, 3/48 and
+            // 5/48 of the font size (Blink StyleBuilderConverter::
+            // ConvertTextStrokeWidth, WebKit's convertTextStrokeWidth: the
+            // border widths as ems); Firefox uses the border's 1, 3 and 5px.
+            // Golden rule 2: the majority.
+            ._webkit_text_stroke_width => if (v == .keyword) {
+                const lines: f64 = switch (v.keyword) {
+                    .thin => 1,
+                    .thick => 5,
+                    else => 3,
+                };
+                return Value.px(lines / 48 * self.fontSize());
+            },
+            else => {},
         }
         if (v == .box_numeric) return .{ .box_numeric = try v.box_numeric.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         // Gaps 1 §§4.1-4.3: each value as a plain value of `l` computes.

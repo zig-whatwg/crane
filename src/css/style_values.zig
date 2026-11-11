@@ -420,6 +420,48 @@ pub const Keyword = enum(u16) {
     optimizelegibility,
     geometricprecision,
 
+    // Compositing 1 §3.2 <blend-mode> (normal and overlay are shared) and
+    // Compositing 2 §3.2's plus-lighter.
+    multiply,
+    screen,
+    darken,
+    lighten,
+    color_dodge,
+    color_burn,
+    hard_light,
+    soft_light,
+    difference,
+    exclusion,
+    hue,
+    saturation,
+    color,
+    luminosity,
+    plus_lighter,
+    // Color Adjustment 1 §§3.1, 4.
+    economy,
+    exact,
+    preserve_parent_color,
+    // Masking 1 §6.2 clip-rule.
+    nonzero,
+    evenodd,
+    // Overscroll 1 §2.
+    chain,
+    // Ruby 1 §§4.1, 5.1.
+    spaces,
+    space_between,
+    space_around,
+    // Filter Effects 1 §17.7: sRGB and linearRGB, which all three browsers
+    // serialize lowercase.
+    srgb,
+    linearrgb,
+    // Sizing 4 §5 frame-sizing.
+    content_width,
+    content_height,
+    content_inline_size,
+    content_block_size,
+    // View Transitions 2 §11.3 view-transition-name.
+    match_element,
+
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
         return switch (self) {
