@@ -502,12 +502,13 @@ pub const Table = struct {
         if (bytes.len == 0) return .empty;
         const key: BytesKey = .{ .bytes = bytes, .hash = hashOf(bytes) };
         if (self.records.getKeyAdapted(key, KeyAdapter{ .ids = &self.ids })) |slot| {
-            const id = self.idAt(slot);
+            // One read of the record: its count and its id's flags.
             const value: *Value = self.recordAt(slot);
             // A parked record comes back: out of the ring, with its id.
             if (value.references == 0) self.unpark(slot, value);
-            self.retain(id);
-            return id;
+            if (value.references == std.math.maxInt(u32)) @panic("an attribute value record's count overflowed");
+            value.references += 1;
+            return ValueId.of(slot, self.ids.generation(slot), value.flags());
         }
         self.tombstones.beforeInsert(&self.records, self.context());
         try self.records.ensureUnusedCapacityContext(self.allocator, 1, self.context());
