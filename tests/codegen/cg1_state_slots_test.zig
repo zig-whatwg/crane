@@ -63,7 +63,7 @@ test "an interface whose impl stores no attribute in its State keeps no slot; on
     defer buffer.deinit();
     try writer.writeGeneratedState(&buffer.writer, try p.attributes("Event"), "EventImpl", &p.model.type_registry, .{ .slots = slots });
     const out = buffer.written();
-    try testing.expect(contains(out, "type: runtime.DOMString = undefined,"));
+    try testing.expect(contains(out, "@\"type\": runtime.DOMString = undefined,"));
     try testing.expect(contains(out, "bubbles: bool = undefined,"));
     try testing.expect(!contains(out, "target:"));
     try testing.expect(!contains(out, "isTrusted:"));
