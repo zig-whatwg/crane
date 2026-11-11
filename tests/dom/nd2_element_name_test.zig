@@ -392,19 +392,26 @@ fn tableCount(scope: *runtime.BrowserScope) usize {
     return table.count();
 }
 
-/// A page whose Browser's allocator counts what it holds.
+/// A page whose Browser's allocator counts what it holds, over the churn
+/// tests' allocator (`poisoning.ChurnAllocator`: poisoned frees and the leak
+/// check, no stack traces - std.testing.allocator's capture at every
+/// allocation and free was 95% of this churn's time on macOS).
 const CountedPage = struct {
+    churn: @import("root").poisoning.ChurnAllocator,
     counting: std.testing.FailingAllocator,
     page: Page,
 
-    /// In place, as Page.
-    fn open(self: *CountedPage) !void {
-        self.counting = std.testing.FailingAllocator.init(testing.allocator, .{});
+    /// In place, as Page: the allocators point into it.
+    fn open(self: *CountedPage, name: []const u8) !void {
+        self.churn = .init(name);
+        self.counting = std.testing.FailingAllocator.init(self.churn.allocator(), .{});
         try self.page.openWith(self.counting.allocator());
     }
 
-    fn close(self: *CountedPage) void {
+    /// The page's end, then the churn allocator's leak check.
+    fn close(self: *CountedPage) !void {
         self.page.close();
+        try self.churn.deinit();
     }
 
     /// The bytes the Browser's allocator handed out and has not had back.
@@ -428,10 +435,11 @@ fn churn(page: *Page, first: usize, end: usize, shape: Shape) !void {
     }
 }
 
-fn expectFlat(shape: Shape) !void {
+fn expectFlat(comptime shape: Shape) !void {
     var counted: CountedPage = undefined;
-    try counted.open();
-    defer counted.close();
+    try counted.open("nd2_element_name_test: a million " ++ @tagName(shape) ++ " names");
+    var closed = false;
+    defer if (!closed) counted.close() catch {};
     const page = &counted.page;
 
     const names_at_start = tableCount(&page.scope);
@@ -451,6 +459,8 @@ fn expectFlat(shape: Shape) !void {
     try testing.expectEqual(names_at_start, names_at_end);
     try testing.expect(live_end <= live_warm + 64 * 1024);
     try testing.expect(arena_end <= arena_warm + 64 * 1024);
+    closed = true;
+    try counted.close();
 }
 
 test "a million createElement('x-' + i), each dropped, leave the Browser's name table and memory where they started" {

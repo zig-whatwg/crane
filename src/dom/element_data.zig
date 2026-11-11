@@ -346,8 +346,16 @@ pub const AttributeList = struct {
     /// tables, or "": the values' table alone, the names' too only past a
     /// saturated index.
     fn valueAt(self: *AttributeList, view: View, values: ?*const attribute_values.Table, index: u8, comptime static: NameId) []const u8 {
-        const position = (if (index == saturated_index) self.find(view.tables(), index, static) else self.find(.{}, index, static)) orelse return "";
-        return attribute_values.bytesIn(values, self.items()[position].value);
+        return attribute_values.bytesIn(values, self.valueIdAt(view, index, static));
+    }
+
+    /// The value id of the attribute `index` finds, or .empty: no table read
+    /// at all, the names' only past a saturated index.
+    inline fn valueIdAt(self: *AttributeList, view: View, index: u8, comptime static: NameId) ValueId {
+        if (index == no_index) return .empty;
+        if (index != saturated_index) return self.items()[index].value;
+        const position = self.find(view.tables(), index, static) orelse return .empty;
+        return self.items()[position].value;
     }
 
     /// The attribute just appended at `position` is the id or class
@@ -693,6 +701,24 @@ pub const View = struct {
         return list.valueAt(self, values orelse self.valuesTable(), list.class_index, class_name);
     }
 
+    /// The class attribute's value in no namespace as its record's id, or
+    /// .empty: what a class read takes the value's token list from
+    /// (attribute_values.Table.hasToken / classNames; lane nd2 batch 3). No
+    /// table load - the id itself says whether the value is one token.
+    pub inline fn classId(self: View) ValueId {
+        const list = self.data.attrs orelse return .empty;
+        return list.valueIdAt(self, list.class_index, class_name);
+    }
+
+    /// The value of the attribute whose namespace is `namespace_uri` and
+    /// local name is `local_name` as its record's id - .empty for the empty
+    /// value - or null when there is no such attribute: a DOMTokenList's
+    /// read of its attribute.
+    pub fn findValueId(self: View, namespace_uri: ?[]const u8, local_name: []const u8) ?ValueId {
+        const index = self.indexOfAttribute(namespace_uri, local_name) orelse return null;
+        return self.data.stored()[index].value;
+    }
+
     /// The number of attributes in the list.
     pub fn getAttributeCount(self: View) usize {
         return self.data.getAttributeCount();
@@ -822,6 +848,103 @@ pub fn getAttributeValue(data: View, local_name: []const u8, namespace: ?[]const
 pub fn hasAttribute(data: View, local_name: []const u8) bool {
     return data.indexOfAttribute(null, local_name) != null;
 }
+
+/// The classes getElementsByClassName looks for - DOM 4.2.6 "the list of
+/// elements with class names classNames": classNames run through the
+/// ordered set parser - as ids of one Browser's attribute values, read once
+/// per refill of its collection, then compared with each element's class
+/// tokens by id (lane nd2 batch 3; Blink's ClassCollection keeps its names
+/// as a SpaceSplitString and asks ClassNames().ContainsAll()). In quirks
+/// mode both sides are the ASCII lowercase (Blink's ClassCollection
+/// constructor folds the names; "the comparisons for the classes must be
+/// done in an ASCII case-insensitive manner"). A name kept as bytes (one too
+/// long for an id), more names than `inline_count`, or no memory for a token
+/// list: the byte compare, for the whole set.
+pub const ClassSet = struct {
+    const inline_count = 8;
+
+    table: ?*attribute_values.Table = null,
+    /// The table's `operand_frees` when the ids were read: they stay
+    /// valid while it has not moved.
+    frees: u64 = 0,
+    ids: [inline_count]ValueId = undefined,
+    len: usize = 0,
+    /// Compare bytes: `text`'s tokens against each element's class value.
+    bytes: bool = false,
+    text: []const u8,
+    quirks: bool,
+
+    /// The set for `class_names` (borrowed for the set's life) in the
+    /// Browser `scope`, for a document in quirks mode or not. The caller
+    /// handles the empty set (DOM: an empty collection).
+    pub fn init(scope: *runtime.BrowserScope, class_names: []const u8, quirks: bool) ClassSet {
+        var set: ClassSet = .{ .text = class_names, .quirks = quirks };
+        // No values table: no element of this Browser has a class.
+        const table = attribute_values.classTable(scope) orelse return set;
+        set.table = table;
+        // A later name's release can free an earlier name's record (a ring
+        // eviction that cascades through freed token lists), which moves
+        // `operand_frees`: ids read across that are not trusted, and the
+        // names are read again - their records parked now, so a second
+        // pass frees nothing - or compared as bytes.
+        for (0..2) |_| {
+            const before = table.operand_frees;
+            set.len = 0;
+            var it = std.mem.tokenizeAny(u8, class_names, ascii_whitespace);
+            while (it.next()) |name| {
+                if (set.len == inline_count) return set.byBytes();
+                const id = (table.operandOf(name, quirks) catch return set.byBytes()) orelse return set.byBytes();
+                set.ids[set.len] = id;
+                set.len += 1;
+            }
+            if (table.operand_frees == before) {
+                set.frees = before;
+                return set;
+            }
+        }
+        return set.byBytes();
+    }
+
+    fn byBytes(self: ClassSet) ClassSet {
+        var set = self;
+        set.bytes = true;
+        return set;
+    }
+
+    /// Whether every class of the set is one of `data`'s classes.
+    pub fn matches(self: *ClassSet, data: View) bool {
+        if (self.bytes) return self.matchesBytes(data);
+        const id = data.classId();
+        if (id == .empty) return false;
+        const table = self.table orelse return false;
+        if (table.operand_frees != self.frees) {
+            self.bytes = true;
+            return self.matchesBytes(data);
+        }
+        for (self.ids[0..self.len]) |wanted| {
+            const found = (if (self.quirks) table.hasFoldedToken(id, wanted) else table.hasToken(id, wanted)) catch return self.matchesBytes(data);
+            if (!found) return false;
+        }
+        return true;
+    }
+
+    fn matchesBytes(self: *const ClassSet, data: View) bool {
+        const classes = data.classValue();
+        if (classes.len == 0) return false;
+        var names = std.mem.tokenizeAny(u8, self.text, ascii_whitespace);
+        while (names.next()) |name| {
+            var tokens = std.mem.tokenizeAny(u8, classes, ascii_whitespace);
+            const found = while (tokens.next()) |token| {
+                if (if (self.quirks) std.ascii.eqlIgnoreCase(token, name) else std.mem.eql(u8, token, name)) break true;
+            } else false;
+            if (!found) return false;
+        }
+        return true;
+    }
+};
+
+/// Infra's ASCII whitespace: TAB, LF, FF, CR, SPACE (not VT).
+const ascii_whitespace = "\t\n\x0C\r ";
 
 /// `element`'s view made from its data, with its Browser (`ofInstance`: the
 /// slab header its Instance sits in - ElementData itself has no route to it,

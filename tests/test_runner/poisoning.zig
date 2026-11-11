@@ -198,6 +198,53 @@ pub fn DebugAllocator(comptime config: std.heap.DebugAllocatorConfig) type {
     };
 }
 
+/// The stack frames a `ChurnAllocator` records per allocation: none. Set it
+/// to 7 (std.testing.allocator's) and rerun one test alone to see where each
+/// block a churn test leaked was allocated; `ChurnAllocator.deinit` says so
+/// when it finds one.
+pub const churn_stack_trace_frames: usize = 0;
+
+/// The allocator for a CHURN test - one that allocates and frees 100,000
+/// times or more in a loop to show memory stays flat - in place of
+/// std.testing.allocator (tests/AGENTS.md, "Tests come first"). That one
+/// captures 7 frames at every allocation and every free, and on aarch64
+/// macOS the capture runs the DWARF self-unwinder frame by frame: a `sample`
+/// of the million-createElement churn on chat2 (lane nd2 batch 3,
+/// 2026-11-11) put 9,880 of its 10,394 samples (95%) under
+/// SafeAllocator.captureStackTrace - 148 s there, 213 s on chat.local, 27 s
+/// on server1, against the launcher's 300 s. This is `DebugAllocator`
+/// (poisoned frees, the leak check) recording no stack traces
+/// (`churn_stack_trace_frames`), named after its test so a leak it finds
+/// says which test to rerun with frames.
+///
+/// Like `DebugAllocator`, it must not move once `allocator()` has been
+/// called.
+pub const ChurnAllocator = struct {
+    debug: DebugAllocator(.{ .stack_trace_frames = churn_stack_trace_frames }) = .init,
+    /// The test, for the leak report.
+    name: []const u8,
+
+    pub fn init(name: []const u8) ChurnAllocator {
+        return .{ .name = name };
+    }
+
+    pub fn allocator(self: *ChurnAllocator) Allocator {
+        return self.debug.allocator();
+    }
+
+    /// The leak check: error.Leaked when anything is still live, after the
+    /// DebugAllocator's own report of each block.
+    pub fn deinit(self: *ChurnAllocator) error{Leaked}!void {
+        if (self.debug.deinit() == .ok) return;
+        if (churn_stack_trace_frames == 0) {
+            std.log.err("{s}: leaked (each block listed above, without stack traces); to see where each was allocated, set churn_stack_trace_frames to 7 in tests/test_runner/poisoning.zig and rerun this test alone", .{self.name});
+        } else {
+            std.log.err("{s}: leaked (each block listed above, with its stack trace)", .{self.name});
+        }
+        return error.Leaked;
+    }
+};
+
 /// Whether this process poisons: under the Crane test runner, its
 /// `poison_frees` - decided once in its `main` from `CRANE_POISON_FREES`,
 /// before the first test and the first thread, and only read after, so a
@@ -352,6 +399,17 @@ test "a test's DebugAllocator: a block shrunk in place has its tail poisoned, an
     a.free(block[0..40]);
     a.destroy(kept);
     try testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
+test "a churn allocator records no stack traces, checks for leaks and names its test" {
+    try testing.expectEqual(@as(usize, 0), churn_stack_trace_frames);
+    var churn = ChurnAllocator.init("poisoning: a churn allocator");
+    const a = churn.allocator();
+    for (0..100_000) |i| {
+        const block = try a.alloc(u8, 1 + i % 64);
+        a.free(block);
+    }
+    try churn.deinit();
 }
 
 test "a test's DebugAllocator: allocations from many threads, each freed on another" {
