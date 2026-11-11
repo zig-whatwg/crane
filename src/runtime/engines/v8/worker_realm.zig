@@ -368,20 +368,23 @@ pub fn bindGlobalScope(comptime Interface: type, isolate: *ffi.Isolate, context:
     return instance;
 }
 
-/// Point internal field 0 of the global proxy, and of the global object
-/// behind it, at `instance` - or at nothing, before the instance is freed.
+/// Point internal field 0 of the global proxy at `instance` - or at nothing,
+/// before the instance is freed.
+///
+/// Only the proxy: on V8 >= 14 a callback for a property of an attached
+/// global gets the global PROXY as its holder and receiver (V8 3d66b2bdda7,
+/// crbug.com/333672197), so nothing reads the hidden global object's field,
+/// and no API reaches that object any more - the V1 GetPrototype that wrote
+/// it here answers Object.getPrototypeOf on 15.7, the
+/// WorkerGlobalScope.prototype, which has no internal field ("Internal field
+/// out of bounds": design 2.1's RED, 42 tests/v8 crashes in worker and
+/// worklet realms).
 pub fn bindGlobalFields(context: *ffi.Context, instance: ?*runtime.Instance) void {
     const global = ffi.v8_Context_Global(context) orelse return;
     defer ffi.v8_Object_Dispose(global);
-    // [wrap_tracking]: the global objects reach the instance from here.
+    // [wrap_tracking]: the global object reaches the instance from here.
     if (instance) |bound| runtime.instance_lifecycle.markWrapped(bound);
     ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(instance));
-    // The V1 GetPrototype on a global proxy is V8's from_javascript=false
-    // path: it returns the hidden JSGlobalObject, not what script sees.
-    const inner_val = ffi.v8_Object_GetPrototype(global) orelse return;
-    defer ffi.v8_Value_Dispose(inner_val);
-    const inner = helpers.asObject(inner_val) orelse return;
-    ffi.v8_Object_SetAlignedPointerInInternalField(inner, 0, @ptrCast(instance));
 }
 
 /// Make `Interface`.prototype - the global scope interface's - the global
