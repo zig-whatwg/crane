@@ -8768,53 +8768,20 @@ fn getFunctionRealmWithDepth(func: *v8.Value, isolate: *v8.Isolate, depth: u32) 
 /// Per WebIDL spec and WPT tests (DOMException-custom-bindings.any.js):
 /// "If the implementation has a stack property on normal errors, it also does on DOMExceptions"
 ///
-/// This function compiles and runs a small JS snippet that uses Error.captureStackTrace
-/// (V8-specific) to capture the current stack trace and assign it to the DOMException.
+/// v8::Exception::CaptureStackTrace on the new instance, in its constructor's
+/// realm - Blink's V8ThrowDOMException::AttachStackProperty. It replaced a
+/// script that set the instance as a global property through
+/// `Context::Global()` and read it back by name: in a realm whose WindowProxy
+/// went on, that global is the NEW Window's, so the script threw a
+/// ReferenceError, the instance had no stack, and the property stayed on the
+/// new Window (lane v8up b3e; tests/v8/v8up_old_realm_members_test.zig).
 pub fn captureDOMExceptionStack(
     this_obj: *v8.Object,
     isolate: *v8.Isolate,
     v8_context: *v8.Context,
 ) void {
-    // Use Error.captureStackTrace if available (V8/Node.js specific)
-    // This creates a proper stack trace on the target object
-    //
-    // We pass 'this_obj' as a temporary global variable for the script to use
-    // Every handle below is an owned Global, and each is released here: the
-    // global object, the script and its completion value. v8_Object_Set and
-    // v8_Script_Run read them as Locals and keep nothing. Kept, they were three
-    // Globals per DOMException - the global object is the whole page, and
-    // the script is bound to the realm - so every page that made or threw
-    // one stayed alive for the life of the process.
-    const global = v8.v8_Context_Global(v8_context) orelse return;
-    defer v8.v8_Object_Dispose(global);
-
-    // Store the DOMException object as a temporary global for the script to access
-    const temp_key = v8.v8_String_NewFromUtf8(isolate, "__domex_stack_target__", 22) orelse return;
-    defer v8.v8_String_Dispose(temp_key);
-    _ = v8.v8_Object_Set(global, v8_context, @ptrCast(temp_key), @ptrCast(this_obj));
-
-    // Compile and run a script that captures the stack trace
-    // This handles the case where Error.captureStackTrace may not exist
-    const script_src =
-        \\(function() {
-        \\  if (typeof Error.captureStackTrace === 'function') {
-        \\    Error.captureStackTrace(__domex_stack_target__, DOMException);
-        \\  } else {
-        \\    // Fallback: create an Error and copy its stack
-        \\    var e = new Error();
-        \\    if (e.stack !== undefined) {
-        \\      __domex_stack_target__.stack = e.stack;
-        \\    }
-        \\  }
-        \\  // Clean up temporary global
-        \\  delete __domex_stack_target__;
-        \\})();
-    ;
-    const source = v8.v8_String_NewFromUtf8(isolate, script_src.ptr, @intCast(script_src.len)) orelse return;
-    defer v8.v8_String_Dispose(source);
-    const script = v8.v8_Script_Compile(v8_context, source) orelse return;
-    defer v8.v8_Script_Dispose(script);
-    if (v8.v8_Script_Run(v8_context, script)) |result| v8.v8_Value_Dispose(result);
+    _ = isolate;
+    _ = v8.v8_Exception_CaptureStackTrace(v8_context, this_obj);
 }
 
 // ============================================================================

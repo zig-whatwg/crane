@@ -70,7 +70,7 @@ pub fn lazyConstructorGetter(
     // property is on (design 2.3 gap a; RED 966f3a99eb5).
     const holder = info.getHolder() orelse return;
     defer v8.v8_Object_Dispose(holder);
-    const context = @import("realm_global.zig").receiverRealm(isolate, holder) orelse return;
+    const context = @import("realm_global.zig").receiverRealm(isolate, holder, .native) orelse return;
     defer v8.v8_Context_Dispose(context);
 
     var name_buf: [256]u8 = undefined;

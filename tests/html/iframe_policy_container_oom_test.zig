@@ -39,6 +39,25 @@
 //! And a contentWindow read while memory is still out, after each failing
 //! round of a srcdoc re-navigation (`sweepContentWindow`).
 //!
+//! Lane v8up b3e: that sweep used to REQUIRE a round that left the frame
+//! with no Window (`NoRoundLeftTheFrameWithoutAWindow`), as proof that it
+//! reached the out-of-memory path the null fallback was for. That state was
+//! the bug: a navigation whose new realm could not be made released the
+//! navigable's realm while its browsing context still answered the old
+//! Window as active, kept (or, out of memory again, ended) the old realm,
+//! and the next navigation's abort made a DOMException in the ended realm
+//! ("a platform object made in a realm no Browser owns": FAIL on chat2,
+//! FLAKY on server1). The fix keeps the old realm and Window - the
+//! navigation fails, the old document stays - so the sweep now counts that
+//! path itself (IFrameIntegration.realm_replacements_failed, at least one
+//! round) and asserts more each round: the frame answers a Window, never
+//! null; script reads it with memory to spare; and the frame navigates
+//! again after the first such round and after the sweep. A round whose new
+//! realm failed after the engine handed the WindowProxy on (V8 cannot attach
+//! a detached global again) leaves script no Window through the proxy (a
+//! SecurityError on member reads): the frame must then recover on its next
+//! navigation.
+//!
 //! Lane leaks5 saw the frames stop navigating partway through these sweeps
 //! - the srcdoc frame from failing allocation 102, the javascript: frame
 //! from 91 - and took it for a navigable wedged by out of memory. Lane nav1
@@ -324,32 +343,129 @@ fn sweepContentWindow(rounds: usize) !void {
     const owned = try page.evaluateScript(Navigation.srcdoc.frame());
     defer owned.release();
     const iframe = engine.convertToPlatformObject(realm, owned.value) orelse return error.NoIframe;
+    // Its browsing context and navigable, which live as long as the element.
+    const first_window = (try interfaces.HTMLIFrameElement.get_contentWindow(iframe)) orelse return error.NoWindow;
+    const bc = dom.browser_state.browsingContextOf(first_window) orelse return error.NoBrowsingContext;
+    const integration = dom.navigables.integrationOf(@ptrCast(bc)) orelse return error.NoNavigable;
 
     var round: usize = 0;
-    var none_found: usize = 0;
+    var replacements_failed: usize = 0;
+    var proxy_handed_on: usize = 0;
     while (round < rounds) : (round += 1) {
+        // "Allowed to perform a navigation" (200 per 10 s) would stop the
+        // sweep's navigations partway (lane nav1): not this test's.
+        bc.navigation_rate_count = 0;
+        const failed_before = integration.realm_replacements_failed;
         failing.has_induced_failure = false;
         failing.fail_index = failing.alloc_index + round;
         page.runScript(Navigation.srcdoc.script()) catch {};
         _ = browser.runEventLoopBlocking(50) catch {};
         const induced = failing.has_induced_failure;
-        // Still out of memory: what the frame answers now.
+        // Still out of memory: what the frame answers now - a Window, never
+        // null and never its WindowProxy struct. A navigation that failed
+        // left the frame on the Window it had.
         const window = interfaces.HTMLIFrameElement.get_contentWindow(iframe) catch null;
         failing.fail_index = std.math.maxInt(usize);
-        if (window) |w| {
-            if (!std.mem.eql(u8, w.vtable.name, "Window")) {
-                std.debug.print("failing allocation {d}: contentWindow answered something that is not a Window\n", .{round});
-                return error.NotAWindow;
+        const w = window orelse {
+            std.debug.print("failing allocation {d}: the frame answers no Window\n", .{round});
+            return error.FrameLeftWithoutAWindow;
+        };
+        if (!std.mem.eql(u8, w.vtable.name, "Window")) {
+            std.debug.print("failing allocation {d}: contentWindow answered something that is not a Window\n", .{round});
+            return error.NotAWindow;
+        }
+        const replacement_failed = integration.realm_replacements_failed != failed_before;
+        if (replacement_failed) replacements_failed += 1;
+        // No realm is ended while the browsing context answers its Window as
+        // its active window.
+        if (bc.getActiveWindow()) |raw_active| {
+            const active: *runtime.Instance = @ptrCast(@alignCast(raw_active));
+            if (runtime.instance_lifecycle.isCleanupStarted(active)) {
+                std.debug.print("failing allocation {d}: the active window's realm was ended\n", .{round});
+                return error.ActiveWindowEnded;
             }
-        } else none_found += 1;
+        }
+        // With memory to spare: the Window works - script reads its document.
+        if (!try frameWindowWorks(page, realm)) {
+            // Only a round whose new realm failed AFTER the engine handed
+            // the WindowProxy on (window_proxy_of detaches the old global
+            // before the new context is made, and V8 cannot attach it
+            // again): the frame keeps its old realm and Window, which its
+            // own script still reaches, but the proxy reaches no Window
+            // until the next navigation. That navigation must complete and
+            // give script a Window that works.
+            if (!replacement_failed) {
+                std.debug.print("failing allocation {d}: the frame's Window does not answer script\n", .{round});
+                return error.WindowDoesNotWork;
+            }
+            // What script observes then, exactly: a proxy with no global,
+            // whose member reads throw a SecurityError.
+            if (!try frameProxyHasNoGlobal(page, realm)) {
+                std.debug.print("failing allocation {d}: the handed-on proxy is not one with no global (a SecurityError on member reads)\n", .{round});
+                return error.UnexpectedProxyState;
+            }
+            proxy_handed_on += 1;
+            try navigatesWithMemoryToSpare(browser, page, iframe, bc);
+            if (!try frameWindowWorks(page, realm)) {
+                std.debug.print("failing allocation {d}: the frame's next Window does not answer script\n", .{round});
+                return error.WindowDoesNotWork;
+            }
+        } else if (replacement_failed and replacements_failed == 1) {
+            // The first round whose new realm could not be made: the frame
+            // is on its old realm, and a navigation with memory to spare
+            // completes.
+            try navigatesWithMemoryToSpare(browser, page, iframe, bc);
+        }
         if (!induced) break;
     }
-    // The sweep reached the state the fallback was for: a navigable with no
-    // window to answer.
-    if (none_found == 0) return error.NoRoundLeftTheFrameWithoutAWindow;
+    // The sweep reached the path it is for: a round whose new realm could
+    // not be made. (It used to require a round that left the frame with no
+    // Window at all - the state that path made, which was itself the bug.)
+    // At least one round of each kind: a new realm that failed before the
+    // WindowProxy hand-on, and one that failed after it.
+    if (replacements_failed == proxy_handed_on) return error.NoRoundFailedBeforeTheHandOn;
+    if (proxy_handed_on == 0) return error.NoRoundFailedAfterTheHandOn;
+    std.log.info("rounds whose new realm could not be made: {d}, of which after the WindowProxy hand-on: {d}", .{ replacements_failed, proxy_handed_on });
+    // And after the whole sweep, the frame still navigates.
+    try navigatesWithMemoryToSpare(browser, page, iframe, bc);
 }
 
-test "an iframe's contentWindow out of memory after a failed navigation is null or a Window, never its WindowProxy struct" {
+/// Whether script in the page reads the frame's Window: its document's body.
+fn frameWindowWorks(page: anytype, realm: runtime.Context) !bool {
+    const owned = try page.evaluateScript("(() => { try { const w = document.getElementById('s').contentWindow; return w !== null && w.document !== undefined && w.document.body !== undefined; } catch (e) { return false; } })()");
+    defer owned.release();
+    return engine.toBoolean(realm, owned.value);
+}
+
+/// Whether script sees the frame's WindowProxy with no global behind it as
+/// it does today (server1, lane v8up b3e): an object, whose member reads
+/// throw a SecurityError - the access check finds no Window behind the
+/// proxy and refuses (cross_origin.zig) - and nothing else.
+fn frameProxyHasNoGlobal(page: anytype, realm: runtime.Context) !bool {
+    const owned = try page.evaluateScript("(() => { const w = document.getElementById('s').contentWindow; if (w === null || typeof w !== 'object') return false; try { w.document; return false; } catch (e) { return e instanceof DOMException && e.name === 'SecurityError'; } })()");
+    defer owned.release();
+    return engine.toBoolean(realm, owned.value);
+}
+
+/// The srcdoc frame navigates with memory to spare: it shows a new document
+/// within two seconds.
+fn navigatesWithMemoryToSpare(browser: anytype, page: anytype, iframe: *runtime.Instance, bc: anytype) !void {
+    bc.navigation_rate_count = 0;
+    const before_window = (try interfaces.HTMLIFrameElement.get_contentWindow(iframe)) orelse return error.NoWindow;
+    const before = interfaces.Window.get_document(before_window) catch null;
+    const before_generation: u64 = if (before) |d| runtime.SlabAllocator.generationOf(d) else 0;
+    try page.runScript(Navigation.srcdoc.script());
+    for (0..40) |_| {
+        _ = try browser.runEventLoopBlocking(50);
+        const window = (try interfaces.HTMLIFrameElement.get_contentWindow(iframe)) orelse continue;
+        const now = interfaces.Window.get_document(window) catch continue;
+        if (now != before or runtime.SlabAllocator.generationOf(now) != before_generation) return;
+    }
+    std.debug.print("the frame did not navigate with memory to spare after a failed round\n", .{});
+    return error.NothingNavigated;
+}
+
+test "an iframe's contentWindow out of memory after a failed navigation is its Window, never its WindowProxy struct, and the frame navigates again" {
     const Run = struct {
         fn run(failure: *?anyerror) void {
             sweepContentWindow(4000) catch |err| {

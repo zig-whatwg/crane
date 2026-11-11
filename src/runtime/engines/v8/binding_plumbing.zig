@@ -797,7 +797,7 @@ fn throwIfTooFewArguments(self: *const Operation, info: *const v8.FunctionCallba
 /// Window, or a worker's or worklet's global scope for their own [Global]
 /// members. Null: none - "Illegal invocation".
 pub fn windowOf(isolate: *v8.Isolate, receiver: *v8.Object) ?*anyopaque {
-    return @ptrCast(realm_global.globalOfReceiver(isolate, receiver));
+    return @ptrCast(realm_global.globalOfReceiver(isolate, receiver, .member));
 }
 
 /// Whether `instance` is a Window - a realm's global platform object, which

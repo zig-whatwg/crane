@@ -6762,11 +6762,30 @@ fn replaceRealm(integration: *IFrameIntegration, new_origin: html_core.Origin) b
     // is a new one, with a WindowProxy of its own ("obtain a browsing
     // context to use for a navigation response" step 10).
     const switched = integration.next_new_window_proxy;
-    const old_data = integration.releaseCurrentRealm() orelse return false;
+    const kept = integration.currentRealm();
+    _ = integration.releaseCurrentRealm() orelse return false;
     if (attachRealm(integration, parent, browsing_context, origin_copy, if (switched) .new_window_proxy else .{ .window_proxy_of = old }, secure_context, allocator) == null) {
-        // No new realm: the old one ends with the integration, as every
-        // replaced realm once did.
-        integration.keepRetiredRealm(old_data) catch engine.destroyWindowRealm(old, .global_detached);
+        // No new realm - out of memory, which HTML does not let "create and
+        // initialize a Document object" step 7 ("create a new realm") do:
+        // the navigation fails before its document exists, as one whose
+        // response makes no document, and the navigable keeps its active
+        // document, its active window and that Window's realm, so every
+        // invariant the spec states still holds. The old realm is the
+        // integration's again and NOTHING ends it: a realm is never ended
+        // while a browsing context answers its Window as its active window.
+        // It used to be kept as retired (or, when that append ran out of
+        // memory too, ended) while the browsing context still answered its
+        // Window: the next navigation's abort made a DOMException in the
+        // ended realm and panicked ("a platform object made in a realm no
+        // Browser owns"), and the navigable, with no realm, never navigated
+        // again. The new Window, when one was made before the failure, was
+        // set as the browsing context's active window (FrameWindow.create):
+        // the old one is active again. If the engine had already handed the
+        // WindowProxy on (window_proxy_of detaches the old global first), the
+        // old Window keeps its realm but the proxy no longer reaches it:
+        // V8 has no way to attach a global to a context again.
+        integration.restoreCurrentRealm(kept);
+        if (old_window) |window| browsing_context.setActiveWindow(@ptrCast(window));
         return false;
     }
     // The popups the old Window opened move with the navigable (lane

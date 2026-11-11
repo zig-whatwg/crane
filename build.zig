@@ -1404,6 +1404,7 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
     if (launch.sanitize_thread) {
         run.addArg("--sanitize-thread");
         run.addPrefixedFileArg("--tsan-suppressions=", b.path("tools/test_launcher/tsan_suppressions.txt"));
+        run.setEnvironmentVariable("TSAN_OPTIONS", tsan_v8_options);
         for (config.tsan_skip) |skip| {
             run.addArg(b.fmt("--tsan-skip={s}", .{skip.name}));
             run.addArg(b.fmt("--tsan-skip-reason={s}", .{skip.reason}));
@@ -1707,6 +1708,7 @@ fn addTestVerifyIn(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
         // slow one, and a race needs no repetition to be seen.
         run.addArgs(&.{ "--verify-batched=1", "--verify-alone=0", "--sanitize-thread" });
         run.addPrefixedFileArg("--tsan-suppressions=", b.path("tools/test_launcher/tsan_suppressions.txt"));
+        run.setEnvironmentVariable("TSAN_OPTIONS", tsan_v8_options);
     }
     if (launch.many_browsers) run.addArg("--many-browsers");
     // The row's names (tsan_skip, alone, slow), with the member's prefix.
@@ -1739,8 +1741,9 @@ fn finishTestVerify(b: *std.Build, v: *TestVerify) void {
 /// reject the option, and they stay uninstrumented, as do the C libraries
 /// this build links as separate artifacts - brotli, the image codecs,
 /// nghttp2 - which are not modules of the graph) - and never the V8
-/// prebuilt, which is an archive. The C++ of a Crane module
-/// (v8_wrapper.cpp) is instrumented with it. Run at the end of `build`,
+/// prebuilt, which is an archive. The C++ of a Crane module is instrumented
+/// with it - except v8_wrapper.cpp, compiled apart against Chromium's libc++
+/// (addV8Source, V8Link.wrapper_apart). Run at the end of `build`,
 /// when every import is in place. A module the tests share with another
 /// artifact of the same build is instrumented there too.
 ///
@@ -1748,6 +1751,25 @@ fn finishTestVerify(b: *std.Build, v: *TestVerify) void {
 /// the calls it intercepts (pthread, malloc): a race inside V8 is not seen,
 /// and V8's own atomics can make a report a false positive - suppressed
 /// only when proven, in tools/test_launcher/tsan_suppressions.txt.
+/// The TSAN_OPTIONS every ThreadSanitizer run adds for V8 15.7 (the launcher
+/// puts them after its own, tools/test_launcher/child.zig tsanOptions; the
+/// snapshot generator's run gets them too). V8 15.7's v8::base::Mutex is an
+/// absl::Mutex (src/base/platform/mutex.h), which synchronizes with futexes
+/// and atomics in uninstrumented code, so ThreadSanitizer sees none of V8's
+/// own locking - only V8's calls into the runtime's interceptors (memcpy,
+/// operator new/delete, free) - and reported every V8-internal handoff as a
+/// race (the first -Dsanitize-thread run on 15.7, server1, lane v8up b3e: 336
+/// reports in the snapshot generator, all in V8's DefaultWorkerThreadsTaskRunner
+/// and heap). 13.1's base::Mutex was a pthread mutex, which TSAN intercepts.
+/// `ignore_interceptors_accesses` drops the interceptors' reads and writes:
+/// uninstrumented code then makes no access TSAN sees, and Crane's own
+/// instrumented accesses are all still checked - a race between two Zig
+/// writes is still a crash (the verify run's deliberate race, b3e). What it
+/// gives up: a race whose one side is a libc free or memcpy that Zig code
+/// called on c_allocator memory (std.testing.allocator's poisoning writes are
+/// instrumented and still count).
+const tsan_v8_options = "ignore_interceptors_accesses=1";
+
 fn instrumentForThreadSanitizer(b: *std.Build, launch: *const TestLaunch) void {
     var seen: std.AutoHashMapUnmanaged(*std.Build.Module, void) = .empty;
     var stack: std.ArrayList(*std.Build.Module) = .empty;
@@ -2212,6 +2234,10 @@ const V8Link = struct {
     frameworks: []const []const u8 = &.{},
     /// system-libs.txt's `-lX` entries.
     system_libs: []const []const u8 = &.{},
+    /// -Dsanitize-thread with an archive built against Chromium's libc++: the
+    /// V8-facing C++ (v8_wrapper.cpp) is compiled apart, as a static library
+    /// of its own, uninstrumented (`addV8Source`).
+    wrapper_apart: bool = false,
 };
 
 /// The V8Link for `archives`: for an archive built against Chromium's libc++,
@@ -2256,7 +2282,51 @@ fn noV8Archive(path: []const u8, err: anyerror) noreturn {
 /// the C library's and <cstdio> would find its <stdio.h> instead of libc++'s
 /// (scripts/build-v8-15.7.sh, step_smoke). Then V8's include/. Zig's own
 /// libc++ only for 13.1: with 15.7 the binary holds Chromium's, alone.
+///
+/// -Dsanitize-thread (`V8Link.wrapper_apart`) with such an archive: Zig links
+/// its ThreadSanitizer runtime with its own libc++ (std::__1) into every
+/// compilation that has an instrumented module, and puts that libc++'s -D
+/// macros and -isystem directories on every C++ file the compilation builds -
+/// against Chromium's libc++ headers v8_wrapper.cpp is compiled with
+/// ("_LIBCPP_ABI_NAMESPACE macro redefined"; errno and FP_NAN undeclared).
+/// So the wrapper is its own compilation: a static library with no
+/// instrumented module and no Zig libc++ - built exactly as without the
+/// sanitizer, Chromium's libc++ alone (std::__Cr) - linked into the
+/// artifact, where the two libc++ coexist by inline namespace. V8's archive
+/// and Chromium's libc++ are uninstrumented too. Chromium's own TSAN builds
+/// instrument everything, libc++ and V8 included (build/config/sanitizers/
+/// BUILD.gn, use_custom_libcxx with is_tsan), because they look for races in
+/// V8 and Blink; verify mode looks for races in Crane's Zig code, which stays
+/// instrumented (instrumentForThreadSanitizer). What this gives up: races
+/// inside v8_wrapper.cpp itself, which 13.1's build instrumented, and its
+/// UBSan checks in the sanitizer build (sanitize_c off for the library: the
+/// UBSan runtime would be a second one beside the artifact's). On Linux the
+/// runtime and Chromium's libc++abi both define the __cxa_guard functions:
+/// CRANE_V8_WRAPPER_APART_FOR_TSAN gives v8_wrapper.cpp weak ones that keep
+/// libc++abi's from being linked, so the runtime's win (see there).
 fn addV8Source(builder: *std.Build, module: *std.Build.Module, v8: V8Link, extra: []const []const u8) void {
+    if (v8.wrapper_apart and v8.archives.chromium != null) {
+        const wrapper = builder.addLibrary(.{
+            .name = "v8_wrapper",
+            .linkage = .static,
+            .root_module = builder.createModule(.{
+                .target = module.resolved_target,
+                .optimize = module.optimize orelse .Debug,
+                .link_libc = true,
+                .sanitize_c = .off,
+            }),
+        });
+        const flags = std.mem.concat(builder.allocator, []const u8, &.{ extra, &.{"-DCRANE_V8_WRAPPER_APART_FOR_TSAN=1"} }) catch @panic("OOM");
+        addV8SourceTo(builder, wrapper.root_module, v8, flags);
+        module.linkLibrary(wrapper);
+        module.link_libc = true;
+        return;
+    }
+    addV8SourceTo(builder, module, v8, extra);
+}
+
+/// `addV8Source`'s compile of v8_wrapper.cpp into `module`.
+fn addV8SourceTo(builder: *std.Build, module: *std.Build.Module, v8: V8Link, extra: []const []const u8) void {
     module.addCSourceFile(.{
         .file = builder.path("src/runtime/engines/v8/v8_wrapper.cpp"),
         .flags = v8WrapperFlags(builder, v8, module.resolved_target.?.result.os.tag, extra),
@@ -2945,7 +3015,17 @@ pub fn build(b: *std.Build) void {
     const ios_sdk_option = b.option([]const u8, "ios-sdk", "The iPhoneOS SDK root for an aarch64-ios build (default: xcrun --sdk iphoneos)");
     const ios_sdk: ?[]const u8 = if (target.result.os.tag == .ios) iosSdkPath(b) else null;
 
+    // -Dsanitize-thread, read before any artifact links V8: under it the V8
+    // wrapper is compiled apart (V8Link.wrapper_apart, addV8Source).
+    const sanitize_thread_option = b.option(bool, "sanitize-thread", "Build every test executable with ThreadSanitizer (Crane's own modules; not the C libraries, the V8 prebuilt or the V8 wrapper) and run it so a race crashes its test (TSAN_OPTIONS=halt_on_error=1)") orelse false;
     const v8 = loadV8Link(b, v8_selected);
+    // What the test executables and the snapshot generator link: the same V8,
+    // with the wrapper compiled apart under -Dsanitize-thread. Never the
+    // production artifacts' (wpt_runner, repl, gc_bench: checkLinkedC holds
+    // every C library they link to their modes).
+    var v8_tests_link = v8;
+    v8_tests_link.wrapper_apart = sanitize_thread_option;
+    const v8_tests = v8_tests_link;
     const v8_monolith_path = v8.archives.monolith;
 
     // ========================================================================
@@ -3003,7 +3083,7 @@ pub fn build(b: *std.Build) void {
             "test-file",
             "Build and run only this tests/**/*_test.zig file, as its own executable (with -Dspec=<its directory's spec>)",
         ),
-        .v8 = v8,
+        .v8 = v8_tests,
     };
 
     // WHATWG TestUtils Standard - Build-time gating
@@ -3492,7 +3572,7 @@ pub fn build(b: *std.Build) void {
                     },
                 }),
             });
-            linkV8(b, many_fixture.root_module, v8);
+            linkV8(b, many_fixture.root_module, v8_tests);
             _ = useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, .per_test, &.{}, true, test_log_level);
             launcher_fixture_options.addOptionPath("many_browsers_path", many_fixture.getEmittedBin());
         }
@@ -3520,7 +3600,7 @@ pub fn build(b: *std.Build) void {
             .seed = b.option([]const u8, "launch-seed", "The launcher's seed: digest (default: from each test executable's bytes, printed; unchanged suites stay cached), random (fresh every run, never cached), or a value") orelse "digest",
             .timeout = b.option(u32, "launch-timeout", "Per-test timeout in seconds (default 300; tests build.zig lists as slow get 4x)") orelse 300,
             .shuffle = b.option(bool, "launch-shuffle", "true: shuffle every suite's order and batches from the seed; false: index order everywhere (default: each suite's suite_configs row, mostly shuffled)"),
-            .sanitize_thread = b.option(bool, "sanitize-thread", "Build every test executable with ThreadSanitizer (Crane's own modules; not the C libraries or the V8 prebuilt) and run it so a race crashes its test (TSAN_OPTIONS=halt_on_error=1)") orelse false,
+            .sanitize_thread = sanitize_thread_option,
             .many_browsers = many_browsers,
             .log_level = test_log_level,
             .browser_module = testing_graph.browser,
@@ -3538,7 +3618,7 @@ pub fn build(b: *std.Build) void {
     const test_binaries = b.option(TestBinaries, "test-binaries", "How `test` compiles tests/<dir>/: dirs (an executable each, the default: a test-file change rebuilds one directory) or v8 (ONE executable for the directories that link V8: for cold full gates)") orelse .dirs;
     if (test_binaries == .v8 and test_selection.file == null) {
         const one = b.allocator.create(OneBinary) catch @panic("OOM");
-        one.* = .{ .step = test_step, .v8 = v8 };
+        one.* = .{ .step = test_step, .v8 = v8_tests };
         test_selection.one = one;
     }
     test_selection.suite_dirs = suite_dirs: {
@@ -4062,7 +4142,7 @@ pub fn build(b: *std.Build) void {
     // tests/browser/ is a directory suite of its own, run by the separate
     // `test-browser` step (below), not by `test`.
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "browser")) {
-        const browser_tests = addModuleTestWithV8(b, testing_graph.browser, target, v8);
+        const browser_tests = addModuleTestWithV8(b, testing_graph.browser, target, v8_tests);
         const run_browser_tests = addSuiteRun(b, launch, browser_tests, "src-browser", null);
         test_step.dependOn(&run_browser_tests.step);
     }
@@ -5175,7 +5255,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // The V8 wrapper, V8's archives and their C++ runtime (-Dv8).
-    linkV8(b, snapshot_gen_exe.root_module, v8);
+    linkV8(b, snapshot_gen_exe.root_module, v8_tests);
 
     // A ReleaseSafe generator (-Dsnapshot-generator-optimize) over the
     // Debug-built C libraries links the full UBSan runtime they call into.
@@ -5220,6 +5300,13 @@ pub fn build(b: *std.Build) void {
     // file argument, so the run is cached on the generator's hash), passed
     // to tests/v8 by path (`test_snapshot_options` above).
     const gen_test_snapshot = b.addRunArtifact(snapshot_gen_exe);
+    // Under -Dsanitize-thread the generator shares instrumented modules with
+    // the tests: it runs with the options V8 15.7 needs (tsan_v8_options).
+    if (sanitize_thread_option) {
+        gen_test_snapshot.setEnvironmentVariable("TSAN_OPTIONS", tsan_v8_options);
+        gen_snapshot.setEnvironmentVariable("TSAN_OPTIONS", tsan_v8_options);
+        run_snapshot_gen.setEnvironmentVariable("TSAN_OPTIONS", tsan_v8_options);
+    }
     test_snapshot_options.addOptionPath("path", gen_test_snapshot.addOutputFileArg("whatwg_snapshot.bin"));
 
     // ========================================================================
@@ -5572,7 +5659,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "cookiestore", .module = testing_graph.cookiestore },
             .{ .name = "permissions", .module = testing_graph.permissions },
         };
-        _ = addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", null, target, &command_test_imports, true, launch, v8);
+        _ = addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", null, target, &command_test_imports, true, launch, v8_tests);
     }
 
     // The WPT runner's two builds (build_mode.zig `RunnerBuild`, the graphs

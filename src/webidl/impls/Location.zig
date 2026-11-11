@@ -150,13 +150,39 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// Helper to get URL from internal state
 /// HTML §7.10.1: "A Location object's url is its relevant Document's URL,
 /// if this Location object's relevant Document is non-null, and about:blank
-/// otherwise." The record parsed at construction (about:blank) is the
-/// fallback when the Window has no live browsing context; otherwise the
-/// active document's URL wins, including changes made by history.pushState.
+/// otherwise" - with no relevant Document, its Window's Document's URL, as
+/// the browsers do (urlDocumentWithoutRelevantDocument). The record parsed at
+/// construction (about:blank) is the fallback when there is neither;
+/// otherwise the document's URL wins, including changes made by
+/// history.pushState.
 fn getURL(instance: *runtime.Instance) ?*url_record.URLRecord {
     const internal = getInternal(instance) orelse return null;
     refreshFromDocument(internal);
     return internal.url;
+}
+
+/// The Document whose URL a Location with NO relevant Document reports: its
+/// Window's associated Document, when it has one. HTML says about:blank
+/// ("url ... about:blank otherwise"): a Window whose navigable navigated away,
+/// or whose frame was removed, has a destroyed Document, and "destroy a
+/// Document" step 6 set that Document's browsing context - so the Window's -
+/// to null. The browsers read the Window's Document instead (golden rule 2,
+/// the majority; the integrator's ruling, 2026-11-11): probe
+/// tmp/probes/v8up-oldwin3/ (v3 and v4: Chrome 157.0, Firefox 159.0,
+/// Safari 27.0), a Location kept from a frame's first document, read after
+/// the frame navigated - href, toString, origin, protocol, host, pathname,
+/// search: Chrome and Safari the OLD document's URL, Firefox the new one; and
+/// a removed frame's Location: Chrome and Safari its document's URL, Firefox
+/// "". Blink's Location::Url reads its DOMWindow's document. Only the URL
+/// changes: the href setter, assign, replace, reload and the component
+/// setters still begin "if this's relevant Document is null, then return" -
+/// in Chrome and Safari none of them navigates the frame from such a
+/// Location (Firefox's do: its old Location follows the docshell), and
+/// ancestorOrigins is the empty list in all three.
+fn urlDocumentWithoutRelevantDocument(internal: *InternalState) ?*runtime.Instance {
+    const window = internal.window orelse return null;
+    if (window.stateAs(interfaces.Window.State) == null) return null;
+    return interfaces.Window.get_document(window) catch null;
 }
 
 /// HTML's relevant Document: the relevant Window's browsing context's
@@ -190,7 +216,7 @@ fn checkGetter(instance: *runtime.Instance) !void {
 /// from the one it was parsed from. Every failure leaves the previous record
 /// in place: an unreadable document URL is not a reason to report a wrong one.
 fn refreshFromDocument(internal: *InternalState) void {
-    const document = relevantDocument(internal);
+    const document = relevantDocument(internal) orelse urlDocumentWithoutRelevantDocument(internal);
     // The interface getter clones into the DOCUMENT's context allocator, so
     // that is what frees it (AGENTS.md, "Interface getters clone").
     const doc_url = if (document) |doc| interfaces.Document.get_URL(doc) catch return else "about:blank";

@@ -928,7 +928,7 @@ pub fn windowIndexedPropertyGetter(
     // NEW Window behind the reused proxy (design 2.3 gap b).
     const this_obj = info.getHolder() orelse return .kNo;
     defer v8.v8_Object_Dispose(this_obj);
-    const instance = @import("realm_global.zig").globalOfReceiver(isolate, this_obj) orelse return .kNo;
+    const instance = @import("realm_global.zig").globalOfReceiver(isolate, this_obj, .native) orelse return .kNo;
 
     // HTML 7.2.3.1 WindowProxy [[GetOwnProperty]] step 2: index is in the
     // Window's document-tree child navigables, and the result is the
@@ -1012,7 +1012,7 @@ pub fn windowIndexedPropertyQuery(
     // THE Window-receiver rule, as the getter's.
     const this_obj = info.getHolder() orelse return .kNo;
     defer v8.v8_Object_Dispose(this_obj);
-    const instance = @import("realm_global.zig").globalOfReceiver(info.getIsolate(), this_obj) orelse return .kNo;
+    const instance = @import("realm_global.zig").globalOfReceiver(info.getIsolate(), this_obj, .native) orelse return .kNo;
 
     // Check if this index is valid
     const length = @import("interfaces").Window.get_length(instance) catch return .kNo;
@@ -1044,7 +1044,7 @@ pub fn windowIndexedPropertyEnumerator(
     // THE Window-receiver rule, as the getter's.
     const this_obj = info.getHolder() orelse return;
     defer v8.v8_Object_Dispose(this_obj);
-    const length: u32 = if (@import("realm_global.zig").globalOfReceiver(isolate, this_obj)) |instance|
+    const length: u32 = if (@import("realm_global.zig").globalOfReceiver(isolate, this_obj, .native)) |instance|
         @import("interfaces").Window.get_length(instance) catch 0
     else
         0;

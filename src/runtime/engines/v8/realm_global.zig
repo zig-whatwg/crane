@@ -101,10 +101,10 @@ pub fn retainedStore(realm: runtime.Context) ?*ffi.Value {
 ///    after DetachGlobal is the reused proxy. What V8 15.7 hands Crane for such a use: a FunctionTemplate
 ///    member gets This() = the reused proxy - its realm's Global() - and runs in the holder's creation
 ///    context, the OLD one (objects.cc 1660 SaveAndSwitchContext); a native accessor or interceptor gets
-///    Holder() = V8's detached COPY of the proxy, with empty fields and a contextless map
-///    (Isolate::DetachGlobal's global_proxy_for_api, V8 32fd863235d; GetHolderForApi,
-///    api-callbacks-inl.h 283-291) and runs in the caller's context, the OLD one. Both are "the current
-///    realm's Window" here.
+///    Holder() = V8's detached COPY of the proxy, with empty fields and no creation context or the old
+///    one (Isolate::DetachGlobal's global_proxy_for_api, V8 32fd863235d; GetHolderForApi,
+///    api-callbacks-inl.h 283-291; `isDetachedGlobalCopy`) and runs in the caller's context, the OLD one.
+///    Both are "the current realm's Window" here.
 ///    KNOWN DEVIATION (integrator 2026-11-11 01:05 UTC; pinned by
 ///    tests/wpt/crane/v8up-old-realm-explicit-getter-deviation.html): `oldGetter.call(window)` from the
 ///    old realm reads the OLD Window here; the spec and all three browsers (Chrome 156.0.8078.76,
@@ -117,10 +117,41 @@ pub fn retainedStore(realm: runtime.Context) ?*ffi.Value {
 ///    another's window - acts on the Window that proxy names now: its realm's (the receiver is the global
 ///    proxy of its own creation context).
 /// 3. Anything else - Object.create(Window.prototype), a plain object - is no Window.
-pub fn receiverRealm(isolate: *ffi.Isolate, receiver: *ffi.Object) ?*ffi.Context {
+///
+/// `callback` says which object `receiver` is and which context the callback runs in, because V8 differs:
+/// - `.member`: a FunctionTemplate accessor or method (every IDL attribute and operation). V8 runs it in
+///   the HOLDER's creation context (objects.cc SaveAndSwitchContext; a method call in its function's), so
+///   the current realm is the realm whose global object the member was found on - for a contextual use in
+///   a navigated-away realm, that realm, whose Global() is the reused proxy, This(): steps 1-3 as above.
+/// - `.native`: a native accessor or interceptor on the global (a lazy interface object, the indexed
+///   interceptor), given Holder(). V8 does NOT switch contexts for it: the current realm is the CALLER's,
+///   which says nothing about whose global the property is on. A navigated-away realm reading
+///   `window.DOMParser` reaches the NEW realm's lazy property with Holder() = the reused proxy, and its own
+///   context's Global() is that same proxy, so step 1 took the new global's property for the old realm's,
+///   and V8 stored the old realm's interface object on the new global (lane v8up b3e,
+///   tests/v8/v8up_old_realm_members_test.zig). So the holder decides: an attached proxy is its creation
+///   context's (the realm it is attached to), V8's detached copy is the old realm's - its creation context
+///   when it kept one (`isDetachedGlobalCopy`), else the current realm, which for the copy is the old one.
+pub fn receiverRealm(isolate: *ffi.Isolate, receiver: *ffi.Object, callback: Callback) ?*ffi.Context {
     const current = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return null;
+    if (callback == .native) {
+        const own = ffi.v8_Object_GetCreationContext(receiver) orelse {
+            // A contextless object: V8's detached copy, met in the old realm's own read.
+            if (isDetachedGlobalCopy(current, receiver)) return current;
+            ffi.v8_Context_Dispose(current);
+            return null;
+        };
+        // The proxy attached to its realm, or the copy that kept the old realm as its creation context.
+        if (isGlobalOf(own, receiver) or isDetachedGlobalCopy(own, receiver)) {
+            ffi.v8_Context_Dispose(current);
+            return own;
+        }
+        ffi.v8_Context_Dispose(own);
+        ffi.v8_Context_Dispose(current);
+        return null;
+    }
     // 1. The current realm's own global proxy, or V8's detached copy of it.
-    if (isGlobalOf(current, receiver) or isDetachedGlobalCopy(receiver)) return current;
+    if (isGlobalOf(current, receiver) or isDetachedGlobalCopy(current, receiver)) return current;
     ffi.v8_Context_Dispose(current);
     // 2. Another realm's global proxy.
     const own = ffi.v8_Object_GetCreationContext(receiver) orelse return null;
@@ -130,11 +161,14 @@ pub fn receiverRealm(isolate: *ffi.Isolate, receiver: *ffi.Object) ?*ffi.Context
     return null;
 }
 
+/// Which callback `receiverRealm` answers for (see there).
+pub const Callback = enum { member, native };
+
 /// The global object `receiver` resolves to under `receiverRealm`'s rule - a Window, or a worker's or a
 /// worklet's global scope for their [Global] members - or null: the receiver is no realm's global, or its
 /// realm has none any more (ended - its global object was freed).
-pub fn globalOfReceiver(isolate: *ffi.Isolate, receiver: *ffi.Object) ?*runtime.Instance {
-    const context = receiverRealm(isolate, receiver) orelse return null;
+pub fn globalOfReceiver(isolate: *ffi.Isolate, receiver: *ffi.Object, callback: Callback) ?*runtime.Instance {
+    const context = receiverRealm(isolate, receiver, callback) orelse return null;
     defer ffi.v8_Context_Dispose(context);
     return context_manager.globalObjectForContext(context);
 }
@@ -146,16 +180,25 @@ fn isGlobalOf(context: *ffi.Context, object: *ffi.Object) bool {
     return ffi.v8_Value_StrictEquals(@ptrCast(object), @ptrCast(global));
 }
 
-/// Whether `object` is the copy of a global proxy V8 makes at DetachGlobal and hands a detached context's
-/// native accessors and interceptors as Holder() (Isolate::DetachGlobal, src/execution/isolate.cc
-/// 8010-8038 at 15.7.112.43): the proxy's map, so its internal field count, but every field empty and no
-/// creation context - DetachGlobal makes the shared map contextless. A live proxy, attached or not, has a
-/// creation context; a proxy whose Window was freed (a removed frame's, severed) has one too, so it is
-/// never taken for the current realm's.
-fn isDetachedGlobalCopy(object: *ffi.Object) bool {
+/// Whether `object` is the copy of `current`'s global proxy V8 makes at DetachGlobal and hands a detached
+/// context's native accessors and interceptors as Holder() (Isolate::DetachGlobal, src/execution/isolate.cc
+/// 8010-8038 at 15.7.112.43; JSGlobalObject::global_proxy_for_api, i::GetHolderForApi): the proxy's map, so
+/// its internal field count, with every field empty, and as creation context either none or `current`.
+/// Which of the two depends on the map the copy kept: DetachGlobal copies the proxy, then
+/// JSObject::ForceSetPrototype(proxy, null) gives the PROXY a new map and only that one is made contextless
+/// (meta map, null constructor) - so the copy keeps the old map, whose meta map names the old native context
+/// (JSReceiver::GetCreationContext reads the meta map's native context). A page's frame realm showed that
+/// (lane v8up b3e, a V8UPDIAG print in the lazy interface getter: creation context present, field 0 empty,
+/// not the context's Global()), and its first read of a lazy interface object was undefined - Chrome 157's
+/// answer too, by the same V8 mechanism; Firefox 159 and Safari 27 give the old realm's (probe
+/// tmp/probes/v8up-oldwin3/; the majority, the integrator's ruling). A live proxy, attached or not, has
+/// its Window in field 0; a proxy whose Window was freed (a removed frame's, severed) is never `current`'s
+/// copy unless its own realm is current, where step 1 already answered.
+fn isDetachedGlobalCopy(current: *ffi.Context, object: *ffi.Object) bool {
     if (ffi.v8_Object_InternalFieldCount(object) < 1) return false;
     if (ffi.v8_Object_GetAlignedPointerFromInternalField(object, 0) != null) return false;
     const context = ffi.v8_Object_GetCreationContext(object) orelse return true;
-    ffi.v8_Context_Dispose(context);
-    return false;
+    defer ffi.v8_Context_Dispose(context);
+    const own = ffi.v8_Context_GetRawAddress(context) orelse return false;
+    return own == ffi.v8_Context_GetRawAddress(current);
 }

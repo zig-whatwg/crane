@@ -418,6 +418,11 @@ pub const IFrameIntegration = struct {
     /// Engine contexts of earlier content navigables; see `RetiredRealm`.
     retired_realms: std.ArrayListUnmanaged(RetiredRealm) = .empty,
 
+    /// How many navigations' new realm could not be made (out of memory),
+    /// each of which left the navigable on its old realm, Window and document
+    /// (`restoreCurrentRealm`). A count, for the out-of-memory tests.
+    realm_replacements_failed: u32 = 0,
+
     /// The engine's "navigate" for this navigable, set with its context, for
     /// callers that have no engine access (window.open()'s navigation).
     navigate_callback: ?*const fn (*IFrameIntegration, []const u8, NavigateRequest) void = null,
@@ -853,11 +858,34 @@ pub const IFrameIntegration = struct {
         return data;
     }
 
-    /// Keep a realm `releaseCurrentRealm` handed out until the integration
-    /// goes (`retired_realms`): for a replacement that could not be made.
-    pub fn keepRetiredRealm(self: *IFrameIntegration, data: *anyopaque) IFrameError!void {
-        const destroy = self.retired_realm_destroy orelse return IFrameError.ContextCreationFailed;
-        self.retired_realms.append(self.allocator, .{ .data = data, .destroy = destroy }) catch return IFrameError.OutOfMemory;
+    /// The realm `releaseCurrentRealm` takes off the integration, whole, for
+    /// `restoreCurrentRealm`.
+    pub const CurrentRealm = struct {
+        engine_context: ?*anyopaque,
+        realm: ?*anyopaque,
+        context_cleanup_data: ?*anyopaque,
+        runtime_context: ?*anyopaque,
+    };
+
+    /// The integration's current realm, as `restoreCurrentRealm` puts it back.
+    pub fn currentRealm(self: *const IFrameIntegration) CurrentRealm {
+        return .{
+            .engine_context = self.engine_context,
+            .realm = self.realm,
+            .context_cleanup_data = self.context_cleanup_data,
+            .runtime_context = self.runtime_context,
+        };
+    }
+
+    /// Undo `releaseCurrentRealm`: a navigation whose new realm could not be
+    /// made leaves the navigable on the realm it had (HTMLIFrameElement
+    /// replaceRealm), which nothing ended.
+    pub fn restoreCurrentRealm(self: *IFrameIntegration, kept: CurrentRealm) void {
+        self.engine_context = kept.engine_context;
+        self.realm = kept.realm;
+        self.context_cleanup_data = kept.context_cleanup_data;
+        self.runtime_context = kept.runtime_context;
+        self.realm_replacements_failed +|= 1;
     }
 
     /// Make sure the realm the next document goes in is the right one: see

@@ -2142,6 +2142,10 @@ pub extern fn v8_Exception_SyntaxErrorInContext(context: *Context, message: *Str
 /// Create Error in a specific context (for cross-realm errors).
 pub extern fn v8_Exception_ErrorInContext(context: *Context, message: *String) ?*Value;
 
+/// A `stack` own property on `object` from the current stack, in `context`'s realm
+/// (v8::Exception::CaptureStackTrace; Blink V8ThrowDOMException::AttachStackProperty). Both borrowed.
+pub extern fn v8_Exception_CaptureStackTrace(context: *Context, object: *Object) bool;
+
 /// Get the creation context of an object's prototype.
 /// This walks up the prototype chain to find the context where the method/property
 /// was defined, which is needed for cross-realm error handling.

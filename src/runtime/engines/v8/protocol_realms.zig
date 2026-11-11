@@ -237,6 +237,15 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
             state.context_entered = true;
         }
     };
+    // ORDER (lane v8up b3e): the hand-on below - handOn and Context::DetachGlobal of the old realm - comes
+    // BEFORE every fallible step that follows (the context, the realm record, the host's Window, its
+    // binding, the realm state and lists), because V8's Context::New / FromSnapshot take a global proxy only
+    // once it is detached, and V8 has no API that attaches a global to a context again. So a failure after
+    // this point (out of memory) leaves the old realm alive and its Window active - the host keeps them
+    // (HTMLIFrameElement replaceRealm) - but its WindowProxy reaching no Window until the next realm made
+    // around it: script sees a proxy with no global (member reads throw a SecurityError: the access check finds
+    // no Window behind it). Failure-atomic creation (every
+    // fallible allocation before the detach) is queued as its own realm-lifetime work (the v8up handoff).
     switch (options.global_this) {
         .new_window_proxy => {},
         .window_proxy_of => |old| {

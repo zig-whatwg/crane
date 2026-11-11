@@ -47,6 +47,24 @@
 
 using namespace v8;
 
+#if defined(CRANE_V8_WRAPPER_APART_FOR_TSAN) && defined(__linux__)
+// -Dsanitize-thread on Linux (build.zig addV8Source, V8Link.wrapper_apart): the test executable links Zig's
+// static ThreadSanitizer runtime, whose interceptors DEFINE __cxa_guard_acquire/release/abort
+// (tsan_interceptors_posix.cpp: it models a function-local static's one-time initialization as a lock), and
+// Chromium's libc++_chromium.a, whose libc++abi member cxa_guard.o defines them too. The archive comes first on
+// the link line, so V8's and this file's references loaded cxa_guard.o, and the runtime's interceptor object
+// then made them duplicate symbols (ld.lld, lane v8up b3e). These WEAK definitions are what those references
+// resolve to while the archives are read - a defined symbol loads no archive member, so cxa_guard.o is never
+// loaded - and the runtime's strong definitions replace them in the final link, which is what Zig's own libc++
+// build gets under TSAN: the runtime's guards. They are never called (a TSAN build always links the runtime);
+// if one ever is, it traps. macOS links the runtime as a dylib, which defines nothing in the executable.
+extern "C" {
+__attribute__((weak)) int __cxa_guard_acquire(uint64_t*) { __builtin_trap(); }
+__attribute__((weak)) void __cxa_guard_release(uint64_t*) { __builtin_trap(); }
+__attribute__((weak)) void __cxa_guard_abort(uint64_t*) { __builtin_trap(); }
+}
+#endif
+
 // A native step that is not a script call - engine bookkeeping, a realm's
 // properties being defined, a promise resolved from a task, a value
 // serialized - entered from native code with no script on the stack. Under
@@ -6644,6 +6662,18 @@ Global<Value>* v8_Exception_ErrorInContext(Global<Context>* context, Global<Stri
     
     Local<Value> exception = Exception::Error(msg);
     return trackHandle(new Global<Value>(isolate, exception));
+}
+
+/// A `stack` own property on `object` from the stack as it is now (v8::Exception::CaptureStackTrace), in
+/// `context`'s realm: a DOMException's, as Blink's V8ThrowDOMException::AttachStackProperty gives one. Reads
+/// no global property and runs no script, so it works in a realm whose WindowProxy went on to a new Window
+/// (lane v8up b3e). False when V8 refused.
+bool v8_Exception_CaptureStackTrace(Global<Context>* context, Global<Object>* object) {
+    if (!context || !object) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    return Exception::CaptureStackTrace(ctx, object->Get(isolate)).FromMaybe(false);
 }
 
 /// Get the holder object from FunctionCallbackInfo.
