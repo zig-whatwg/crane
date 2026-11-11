@@ -510,7 +510,9 @@ pub const EngineOptions = struct {
 pub const MemoryPressure = enum {
     /// Collect what is cheap to find, when convenient.
     moderate,
-    /// Collect everything that can be collected, now: a page was let go.
+    /// Collect everything that can be collected, before returning: the
+    /// system is short of memory (a browser's critical memory pressure) -
+    /// or, from Crane's Browser today, a page was let go.
     critical,
 };
 
