@@ -120,15 +120,44 @@ pub const ValueId = enum(u32) {
         return self == .empty or @backingInt(self) & lowercase_bit != 0;
     }
 
-    /// The two flags of `bytes` (one pass, at a record's creation).
+    /// The two flags of `bytes`, at a record's creation: 16 bytes a step,
+    /// as masks OR-ed together and reduced once (a byte-by-byte loop cost a
+    /// new 300-B value ~4,300 instructions - the cost pair's matches-churn
+    /// row, 2026-11-11; this is under one instruction a byte). A value
+    /// under 16 bytes is read through a zero-padded copy (a zero byte is
+    /// neither whitespace nor upper case), the last partial step through an
+    /// overlapping load (OR-ing a byte twice changes nothing).
     fn flagsOf(bytes: []const u8) u32 {
-        var one_token = bytes.len != 0;
-        var lowercase = true;
-        for (bytes) |c| {
-            if (isAsciiWhitespace(c)) one_token = false;
-            if (c >= 'A' and c <= 'Z') lowercase = false;
+        const V = @Vector(16, u8);
+        var whitespace: V = @splat(0);
+        var upper: V = @splat(0);
+        if (bytes.len < 16) {
+            var padded: [16]u8 = @splat(0);
+            @memcpy(padded[0..bytes.len], bytes);
+            scan(padded, &whitespace, &upper);
+        } else {
+            var at: usize = 0;
+            while (at + 16 <= bytes.len) : (at += 16) scan(bytes[at..][0..16].*, &whitespace, &upper);
+            if (at != bytes.len) scan(bytes[bytes.len - 16 ..][0..16].*, &whitespace, &upper);
         }
+        const one_token = bytes.len != 0 and @reduce(.Or, whitespace) == 0;
+        const lowercase = @reduce(.Or, upper) == 0;
         return (if (one_token) one_token_bit else 0) | (if (lowercase) lowercase_bit else 0);
+    }
+
+    /// OR into the masks 0xFF for each of `chunk`'s bytes that is Infra's
+    /// ASCII whitespace (SPACE, or 0x09-0x0D but VT 0x0B) or an ASCII upper
+    /// case letter.
+    inline fn scan(chunk: [16]u8, whitespace: *@Vector(16, u8), upper: *@Vector(16, u8)) void {
+        const V = @Vector(16, u8);
+        const v: V = chunk;
+        const ones: V = @splat(0xFF);
+        const zeros: V = @splat(0);
+        const space = @select(u8, v == @as(V, @splat(' ')), ones, zeros);
+        const controls = @select(u8, (v -% @as(V, @splat(0x09))) < @as(V, @splat(5)), ones, zeros);
+        const vt = @select(u8, v == @as(V, @splat(0x0B)), ones, zeros);
+        whitespace.* |= space | (controls & ~vt);
+        upper.* |= @select(u8, (v -% @as(V, @splat('A'))) < @as(V, @splat(26)), ones, zeros);
     }
 };
 
@@ -1056,6 +1085,31 @@ test "a value's id says whether it is one token and whether it has an upper-case
     }
     try std.testing.expect(ValueId.empty.isLowercase());
     try std.testing.expect(!ValueId.empty.isOneToken());
+}
+
+test "a value's flags agree with a byte-by-byte reading at every length and position, VT and the tail included" {
+    const specials = [_]u8{ ' ', '\t', '\n', 0x0B, 0x0C, '\r', 'A', 'Z', '@', '[', 0x08, 0x0E, 0x00, 0xC9 };
+    var buffer: [70]u8 = undefined;
+    for (0..buffer.len + 1) |len| {
+        @memset(buffer[0..len], 'q');
+        try std.testing.expectEqual(reference(buffer[0..len]), ValueId.flagsOf(buffer[0..len]));
+        for (0..len) |at| for (specials) |c| {
+            @memset(buffer[0..len], 'q');
+            buffer[at] = c;
+            try std.testing.expectEqual(reference(buffer[0..len]), ValueId.flagsOf(buffer[0..len]));
+        };
+    }
+}
+
+/// The flags by the definition: Infra's ASCII whitespace, ASCII upper case.
+fn reference(bytes: []const u8) u32 {
+    var one_token = bytes.len != 0;
+    var lowercase = true;
+    for (bytes) |c| {
+        if (isAsciiWhitespace(c)) one_token = false;
+        if (c >= 'A' and c <= 'Z') lowercase = false;
+    }
+    return (if (one_token) ValueId.one_token_bit else 0) | (if (lowercase) ValueId.lowercase_bit else 0);
 }
 
 test "a value is split once by DOM's ordered set parser; its tokens are counted records, let go with it" {
