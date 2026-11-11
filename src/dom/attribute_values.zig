@@ -300,15 +300,15 @@ const BytesKey = struct {
 };
 
 const KeyAdapter = struct {
-    ids: *const attribute_names.IdSlots(Value),
+    table: *const Table,
     pub fn hash(_: KeyAdapter, key: BytesKey) u64 {
         return key.hash;
     }
     /// Inline: run on every probed slot of every attribute write; out of
     /// line it cost a call, a frame and two reloads a probe (the cost pair,
-    /// 2026-11-11).
+    /// 2026-11-11). Its read of the record is counted (`Table.recordAt`).
     pub inline fn eql(adapter: KeyAdapter, key: BytesKey, slot: u32) bool {
-        const value = adapter.ids.get(slot);
+        const value = adapter.table.recordAt(slot);
         return value.len() == key.bytes.len and std.mem.eql(u8, value.bytes(), key.bytes);
     }
 };
@@ -500,7 +500,7 @@ pub const Table = struct {
     pub fn find(self: *const Table, bytes: []const u8) ?ValueId {
         if (bytes.len == 0) return .empty;
         const key: BytesKey = .{ .bytes = bytes, .hash = hashOf(bytes) };
-        const slot = self.records.getKeyAdapted(key, KeyAdapter{ .ids = &self.ids }) orelse return null;
+        const slot = self.records.getKeyAdapted(key, KeyAdapter{ .table = self }) orelse return null;
         return self.idAt(slot);
     }
 
@@ -521,7 +521,7 @@ pub const Table = struct {
     pub fn intern(self: *Table, bytes: []const u8) error{OutOfMemory}!ValueId {
         if (bytes.len == 0) return .empty;
         const key: BytesKey = .{ .bytes = bytes, .hash = hashOf(bytes) };
-        if (self.records.getKeyAdapted(key, KeyAdapter{ .ids = &self.ids })) |slot| {
+        if (self.records.getKeyAdapted(key, KeyAdapter{ .table = self })) |slot| {
             // One read of the record: its count and its id's flags.
             const value: *Value = self.recordAt(slot);
             // A parked record comes back: out of the ring, with its id.
@@ -536,7 +536,7 @@ pub const Table = struct {
         errdefer destroy(self.allocator, value);
         const slot = try self.ids.take(self.allocator, value, ValueId.limit);
         // Placed by the hash already computed: one pass over the bytes.
-        const placed = self.records.getOrPutAssumeCapacityAdapted(key, KeyAdapter{ .ids = &self.ids });
+        const placed = self.records.getOrPutAssumeCapacityAdapted(key, KeyAdapter{ .table = self });
         if (debug_checks and placed.found_existing) @panic("an attribute value record interned twice");
         placed.key_ptr.* = slot;
         self.bytes_held += value.blockSize();
@@ -1017,6 +1017,10 @@ test "a parked record comes back with its id and a count of one, and leaves the 
 }
 
 test "a found value is read by its slot once: no second read for its id's flags or its count" {
+    // The one read is the lookup's compare: the found path takes its count
+    // and its id's flags from the record the compare read, not from its slot
+    // again (a second read after eqlBytes reloads the slot array with its
+    // checks: ~10 instructions an attribute write, the cost pair 2026-11-11).
     if (!debug_checks) return error.SkipZigTest;
     var scope = runtime.BrowserScope.init(std.testing.allocator);
     defer scope.deinit();
