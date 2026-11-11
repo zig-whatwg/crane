@@ -4904,6 +4904,9 @@ pub fn build(b: *std.Build) void {
         .{ .name = "host", .module = host_mod },
         // main's first step: engine.initializeBeforeThreadCreation.
         .{ .name = "engine", .module = engine_mod },
+        // main attaches the main thread's alternate signal stack
+        // (platform.attachSignalStack: std_options sets std's own off).
+        .{ .name = "platform", .module = platform_mod },
     };
     for (crane_exe_imports) |import| crane_exe.root_module.addImport(import.name, import.module);
 
