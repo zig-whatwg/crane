@@ -139,3 +139,73 @@ test "2.6: a realm's count queuing strategy size function is kept by its global 
     const kept = ffi.v8_Object_GetPrivateRef(proxy, key.ptr, key.len) orelse return error.NotKeptByTheGlobalObject;
     ffi.v8_Value_Dispose(kept);
 }
+
+/// A frame's Window realm, made inside its parent's script as HTML makes a navigable's (protocol.runInRealm):
+/// a realm with a parent gets its interface objects lazily (global_constructor_handler), as the snapshot's do.
+const FrameRealm = struct {
+    agent: *protocol.Agent,
+    parent: runtime.Context,
+    global_this: protocol.GlobalThis = .new_window_proxy,
+    made: ?runtime.Context = null,
+    failed: ?anyerror = null,
+
+    fn make(self: *FrameRealm) !runtime.Context {
+        try protocol.runInRealm(self.parent, steps, self);
+        if (self.failed) |err| return err;
+        return self.made.?;
+    }
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *FrameRealm = @ptrCast(@alignCast(data.?));
+        self.made = protocol.createWindowRealm(&.{
+            .agent = self.agent,
+            .allocator = std.heap.c_allocator,
+            .from_snapshot = false,
+            .timer = null,
+            .origin = "https://v8up.test",
+            .global_this = self.global_this,
+            .parent = self.parent,
+            .create_global_object = WindowHost.createGlobalObject,
+        }) catch |err| {
+            self.failed = err;
+            return;
+        };
+    }
+};
+
+test "2.3 gap (b3b): a lazy interface object read contextually by a frame realm whose WindowProxy went on is that realm's" {
+    // A native data property on the global (the lazy interface objects, SetLazyDataProperty) gets V8's detached
+    // copy of the proxy as Holder() for a contextual read in a detached context (GetHolderForApi,
+    // api-callbacks-inl.h): contextless, so lazyConstructorGetter's GetCreationContext(holder) fails and the read
+    // answered undefined. The spec's answer is the old realm's interface object (its global's own property).
+    test_process.start();
+    const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
+    defer protocol.destroyAgent(agent);
+    const parent = try windowRealm(agent, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
+
+    var old_frame: FrameRealm = .{ .agent = agent, .parent = parent };
+    const old = try old_frame.make();
+    {
+        // Nothing reads DOMParser in the old realm before the navigation: its lazy property is untouched.
+        const reader = try evalOwned(old, "(function (source) { return eval(source); })");
+        defer reader.release();
+        const parent_global = try evalOwned(parent, "globalThis");
+        defer parent_global.release();
+        try protocol.setProperty(parent, parent_global.value, "reader", reader.value);
+    }
+    var new_frame: FrameRealm = .{ .agent = agent, .parent = parent, .global_this = .{ .window_proxy_of = old } };
+    const new = try new_frame.make();
+    defer protocol.destroyWindowRealm(new, .global_detached);
+    protocol.destroyWindowRealm(old, .global_detached);
+
+    try expectOk(parent,
+        \\const failures = [];
+        \\function check(name, got, want) { if (got !== want) failures.push(name + ": " + String(got)); }
+        \\check("typeof DOMParser, read contextually first in the old realm", reader("typeof DOMParser"), "function");
+        \\check("it is the old realm's, not the new Window's", reader("DOMParser !== window.DOMParser"), true);
+        \\check("and read again, the same object", reader("DOMParser === DOMParser"), true);
+        \\failures.join("; ") || "ok"
+    );
+    try expectOk(parent, "delete globalThis.reader ? 'ok' : 'not deleted'");
+}
