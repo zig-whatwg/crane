@@ -385,19 +385,13 @@ fn setGlobalPrototypeToWindow(isolate: *v8.ffi.Isolate, context: *v8.ffi.Context
         return;
     };
 
-    // Set global's prototype to Window.prototype
-    // Use SetPrototypeV2 which is the proper API for global objects
-    const result = v8.ffi.v8_Object_SetPrototypeV2(global, context, window_proto);
-    if (result) {
+    // Set global's prototype to Window.prototype: Object.setPrototypeOf on
+    // the global proxy (V8 >= 14's SetPrototype; the V1 call that once
+    // reached the hidden global object is gone, crbug.com/333672197, so the
+    // "old API" retry this had is the same call - design 2.7).
+    if (v8.ffi.v8_Object_SetPrototypeV2(global, context, window_proto)) {
         log(allocator, io, "  SUCCESS: global.__proto__ = Window.prototype\\n", .{});
     } else {
-        log(allocator, io, "  WARNING: SetPrototypeV2 returned false - trying old API...\\n", .{});
-        // Fallback to old API
-        const old_result = v8.ffi.v8_Object_SetPrototype(global, context, window_proto);
-        if (old_result) {
-            log(allocator, io, "  SUCCESS (old API): global.__proto__ = Window.prototype\\n", .{});
-        } else {
-            log(allocator, io, "  ERROR: Both SetPrototypeV2 and SetPrototype failed!\\n", .{});
-        }
+        log(allocator, io, "  ERROR: SetPrototype on the global proxy failed\\n", .{});
     }
 }
