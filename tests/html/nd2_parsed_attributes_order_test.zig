@@ -73,6 +73,14 @@ fn loadPage(browser: *browser_mod.Browser, html: []const u8) !void {
     try waitFor(browser, "document.readyState === 'complete'");
 }
 
+/// `source` answers true; a failure names it (the checks run on a thread of
+/// their own, so the test's error trace does not reach the line).
+fn check(browser: *browser_mod.Browser, source: []const u8) !void {
+    if (try truthy(browser, source)) return;
+    std.debug.print("\nA3 order: not true: {s}\n", .{source});
+    return error.TestUnexpectedResult;
+}
+
 /// The platform object `source` evaluates to. Script must keep it alive (the
 /// document holds it): the instance is borrowed from its wrapper.
 fn instanceOf(browser: *browser_mod.Browser, source: []const u8) !*runtime.Instance {
@@ -104,10 +112,10 @@ fn constructorSetsAnAttributeBeforeTheTokens() !void {
         "</script><input id=made is=nd-input title=t></body>");
     // The token's attributes were appended, not dropped: the element is found
     // by its id, and it is the customized built-in.
-    try testing.expect(try truthy(browser, "document.getElementById('made') instanceof NdInput"));
+    try check(browser, "document.getElementById('made') instanceof NdInput");
     // The constructor's attribute first, then the token's, in the token's
     // order - each appended, none lost.
-    try testing.expect(try truthy(browser, "Array.from(document.querySelector('input').attributes, a => a.name + '=' + a.value).join() === 'foo=bar,id=made,is=nd-input,title=t'"));
+    try check(browser, "Array.from(document.querySelector('input').attributes, a => a.name + '=' + a.value).join() === 'foo=bar,id=made,is=nd-input,title=t'");
 }
 
 test "A3 order: a customized built-in whose constructor sets an attribute keeps it and gets its token's attributes" {
@@ -125,10 +133,10 @@ fn parsedHiddenInputKeepsItsValueAttribute() !void {
     try loadPage(browser, "<!doctype html><body>" ++
         "<input id=a type=hidden value=\"a&#10;b\">" ++
         "<input id=b value=\"a&#10;b\" type=hidden></body>");
-    try testing.expect(try truthy(browser, "document.getElementById('a').getAttribute('value') === 'a\\nb'"));
-    try testing.expect(try truthy(browser, "document.getElementById('a').value === 'a\\nb'"));
-    try testing.expect(try truthy(browser, "document.getElementById('b').getAttribute('value') === 'a\\nb'"));
-    try testing.expect(try truthy(browser, "document.getElementById('b').value === 'a\\nb'"));
+    try check(browser, "document.getElementById('a').getAttribute('value') === 'a\\nb'");
+    try check(browser, "document.getElementById('a').value === 'a\\nb'");
+    try check(browser, "document.getElementById('b').getAttribute('value') === 'a\\nb'");
+    try check(browser, "document.getElementById('b').value === 'a\\nb'");
 }
 
 test "A3 order: a parsed hidden input keeps its value attribute as written" {
@@ -140,15 +148,18 @@ fn clonedHiddenInputKeepsItsValueAttribute() !void {
     defer browser.deinit();
     try loadPage(browser, "<!doctype html><body><input id=h type=hidden value=first></body>");
     // clone.html's step: a hidden input's value IS its attribute.
-    try testing.expect(try truthy(browser, "(() => {" ++
+    try check(browser, "(() => {" ++
         "  const h = document.getElementById('h');" ++
         "  h.value = 'CHANGED\\nCHANGED';" ++
         "  globalThis.copy = h.cloneNode(true);" ++
         "  return copy.getAttribute('value') === 'CHANGED\\nCHANGED' && copy.value === 'CHANGED\\nCHANGED'" ++
         "    && h.getAttribute('value') === 'CHANGED\\nCHANGED';" ++
-        "})()"));
+        "})()");
     // The copy shares its source's block: nothing wrote it.
-    try testing.expect(try blockOf(browser, "copy") == try blockOf(browser, "document.getElementById('h')"));
+    if (try blockOf(browser, "copy") != try blockOf(browser, "document.getElementById('h')")) {
+        std.debug.print("\nA3 order: the cloned hidden input does not share its source's block\n", .{});
+        return error.TestUnexpectedResult;
+    }
 }
 
 test "A3 order: a cloned hidden input keeps its value attribute and shares its source's block" {
@@ -161,15 +172,21 @@ fn parsedDefaultModeInputsShare() !void {
     // Two equal attribute sets a state: the default mode (hidden, submit) and
     // the default/on mode (checkbox). A type change that writes the value
     // attribute copies the element's block; none may.
+    // The control (class k): two equal sets on elements with no change step
+    // that writes - what the helper and the holder count read when nothing
+    // is wrong.
     try loadPage(browser, "<!doctype html><body>" ++
+        "<p class=k title=tok></p><p class=k title=tok></p>" ++
         "<input class=h type=hidden value=tok><input class=h type=hidden value=tok>" ++
         "<input class=s type=submit value=Save><input class=s type=submit value=Save>" ++
         "<input class=c type=checkbox value=yes><input class=c type=checkbox value=yes></body>");
-    inline for (.{ "h", "s", "c" }) |class| {
+    inline for (.{ "k", "h", "s", "c" }) |class| {
         const first = try blockOf(browser, "document.getElementsByClassName('" ++ class ++ "')[0]");
         const second = try blockOf(browser, "document.getElementsByClassName('" ++ class ++ "')[1]");
-        try testing.expect(first == second);
-        try testing.expectEqual(@as(u8, 2), first.holders);
+        if (first != second or first.holders != 2) {
+            std.debug.print("\nA3 order: class {s}: the two elements {s}, the first's block has {d} holder(s)\n", .{ class, if (first == second) "share a block" else "hold two blocks", first.holders });
+            return error.TestUnexpectedResult;
+        }
     }
 }
 
