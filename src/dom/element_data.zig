@@ -814,23 +814,54 @@ pub const ElementData = struct {
 pub const SharingCache = struct {
     /// The Browser whose tables the blocks' ids are, set by the first share.
     scope: ?*runtime.BrowserScope = null,
-    /// Open addressing, linear probing; a power of two long.
-    slots: []?*const AttributeList = &.{},
-    hashes: []u32 = &.{},
+    /// How many blocks the table holds.
     count: usize = 0,
+    /// The table of a run with more than `inline_len * 3 / 4` distinct sets:
+    /// open addressing, linear probing, a power of two long. Empty while the
+    /// run's table is the inline one.
+    heap_slots: []?*const AttributeList = &.{},
+    heap_hashes: []u32 = &.{},
+    /// The table every run starts with, in the cache itself: most runs are a
+    /// fragment of a few elements (`el.innerHTML = '<b class=x>..</b>'`),
+    /// and a table from the allocator cost such a parse two allocations and
+    /// two frees - 1.8% of its instructions (lane nd2 batch 4, the cost
+    /// pair's tiny-fragment rows, 2026-11-11). Blink's cache is a HashMap
+    /// its Document keeps, so its fragments never pay for one either.
+    inline_slots: [inline_len]?*const AttributeList = @splat(null),
+    inline_hashes: [inline_len]u32 = @splat(0),
+
+    const inline_len = 16;
+
+    inline fn slots(self: *SharingCache) []?*const AttributeList {
+        return if (self.heap_slots.len != 0) self.heap_slots else &self.inline_slots;
+    }
+
+    inline fn hashes(self: *SharingCache) []u32 {
+        return if (self.heap_slots.len != 0) self.heap_hashes else &self.inline_hashes;
+    }
 
     /// Let go of the cache's holder on every block (a block no element holds
     /// any more is freed) and free the table.
     pub fn deinit(self: *SharingCache) void {
         const scope = self.scope orelse return;
-        for (self.slots) |slot| if (slot) |list| list.drop(scope);
-        scope.allocator.free(self.slots);
-        scope.allocator.free(self.hashes);
+        for (self.slots()) |slot| if (slot) |list| list.drop(scope);
+        scope.allocator.free(self.heap_slots);
+        scope.allocator.free(self.heap_hashes);
         self.* = .{};
     }
 
+    /// The slot hash of `entries`: their ids mixed as integers (an entry is
+    /// a name id and a value id, 8 bytes). The hash only picks the slot -
+    /// equality is the content - so it need not be a byte hash's quality:
+    /// a multiply and a fold per entry.
     fn hashOf(entries: []const Entry) u32 {
-        return @truncate(std.hash.Wyhash.hash(0, std.mem.sliceAsBytes(entries)));
+        var hash: u64 = entries.len;
+        for (entries) |entry| {
+            const bits: u64 = @bitCast(std.mem.asBytes(&entry).*);
+            hash = (hash ^ bits) *% 0x9E3779B97F4A7C15;
+            hash ^= hash >> 32;
+        }
+        return @truncate(hash);
     }
 
     fn sameEntries(list: *const AttributeList, entries: []const Entry) bool {
@@ -846,45 +877,51 @@ pub const SharingCache = struct {
         std.debug.assert(entries.len != 0);
         std.debug.assert(self.scope == null or self.scope == scope);
         self.scope = scope;
-        if ((self.count + 1) * 4 > self.slots.len * 3) try self.grow(scope);
+        if ((self.count + 1) * 4 > self.slots().len * 3) try self.grow(scope);
+        const table = self.slots();
+        const table_hashes = self.hashes();
         const hash = hashOf(entries);
-        const mask = self.slots.len - 1;
+        const mask = table.len - 1;
         var at: usize = hash & mask;
-        while (self.slots[at]) |list| : (at = (at + 1) & mask) {
-            if (self.hashes[at] != hash or !sameEntries(list, entries)) continue;
+        while (table[at]) |list| : (at = (at + 1) & mask) {
+            if (table_hashes[at] != hash or !sameEntries(list, entries)) continue;
             if (list.hold()) {
                 for (entries) |entry| ElementData.releaseEntry(scope, entry);
                 return list;
             }
             const fresh = try AttributeList.createShared(scope, entries, 2);
-            self.slots[at] = fresh;
+            table[at] = fresh;
             list.drop(scope);
             return fresh;
         }
         const fresh = try AttributeList.createShared(scope, entries, 2);
-        self.slots[at] = fresh;
-        self.hashes[at] = hash;
+        table[at] = fresh;
+        table_hashes[at] = hash;
         self.count += 1;
         return fresh;
     }
 
-    fn grow(self: *SharingCache, scope: *runtime.BrowserScope) error{OutOfMemory}!void {
-        const len = if (self.slots.len == 0) 16 else self.slots.len * 2;
-        const slots = try scope.allocator.alloc(?*const AttributeList, len);
-        errdefer scope.allocator.free(slots);
-        const hashes = try scope.allocator.alloc(u32, len);
-        @memset(slots, null);
-        for (self.slots, self.hashes) |slot, hash| {
+    /// A table four times as long, from the allocator: a run with many
+    /// distinct sets grows it few times (16 -> 64 -> 256 -> 1,024).
+    noinline fn grow(self: *SharingCache, scope: *runtime.BrowserScope) error{OutOfMemory}!void {
+        const old_slots = self.slots();
+        const old_hashes = self.hashes();
+        const len = old_slots.len * 4;
+        const new_slots = try scope.allocator.alloc(?*const AttributeList, len);
+        errdefer scope.allocator.free(new_slots);
+        const new_hashes = try scope.allocator.alloc(u32, len);
+        @memset(new_slots, null);
+        for (old_slots, old_hashes) |slot, hash| {
             const list = slot orelse continue;
             var at: usize = hash & (len - 1);
-            while (slots[at] != null) at = (at + 1) & (len - 1);
-            slots[at] = list;
-            hashes[at] = hash;
+            while (new_slots[at] != null) at = (at + 1) & (len - 1);
+            new_slots[at] = list;
+            new_hashes[at] = hash;
         }
-        scope.allocator.free(self.slots);
-        scope.allocator.free(self.hashes);
-        self.slots = slots;
-        self.hashes = hashes;
+        scope.allocator.free(self.heap_slots);
+        scope.allocator.free(self.heap_hashes);
+        self.heap_slots = new_slots;
+        self.heap_hashes = new_hashes;
     }
 };
 
@@ -1460,8 +1497,9 @@ test "A3: a clone shares its source's block - an element's own list becomes shar
 }
 
 /// A parser run and what follows it, on an allocator that fails: 258 parsed
-/// elements with one set (the block fills, and the cache replaces it), 14
-/// with sets of their own (the cache's table grows twice), then a clone, a
+/// elements with one set (the block fills, and the cache replaces it), 50
+/// with sets of their own (the cache's table leaves the cache for the
+/// allocator at its 13th set and grows again at its 49th), then a clone, a
 /// clone of the full block, and two writers' copies. Whatever fails, every
 /// reference, block and table is let go.
 fn testRunUnderFailure(allocator: std.mem.Allocator) !void {
@@ -1469,7 +1507,7 @@ fn testRunUnderFailure(allocator: std.mem.Allocator) !void {
     defer scope.deinit();
     var cache: SharingCache = .{};
     defer cache.deinit();
-    var elements: [258 + 14]ElementData = undefined;
+    var elements: [258 + 50]ElementData = undefined;
     var made: usize = 0;
     defer for (elements[0..made]) |*data| data.deinit(&scope);
     for (&elements, 0..) |*data, i| {
@@ -1502,6 +1540,38 @@ fn testRunUnderFailure(allocator: std.mem.Allocator) !void {
     // A writer's copy of a shared block, with the append's own growth.
     try testAppend(&scope, &elements[1], null, null, "title", "t");
     try elements[2].reserve(&scope, 3);
+}
+
+test "A3: a run of up to twelve distinct sets allocates no table; the thirteenth moves it to the allocator, and every block is still found" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    var cache: SharingCache = .{};
+    defer cache.deinit();
+    var elements: [40]ElementData = undefined;
+    var made: usize = 0;
+    defer for (elements[0..made]) |*data| data.deinit(&scope);
+    var value: [8]u8 = undefined;
+    for (elements[0..12], 0..) |*data, i| {
+        data.* = try testParsed(&scope, &cache, &.{"href"}, &.{try std.fmt.bufPrint(&value, "#{d}", .{i})});
+        made += 1;
+    }
+    // Twelve blocks, in the cache's own table.
+    try std.testing.expectEqual(@as(usize, 12), cache.count);
+    try std.testing.expectEqual(@as(usize, 0), cache.heap_slots.len);
+    for (elements[12..20], 12..) |*data, i| {
+        data.* = try testParsed(&scope, &cache, &.{"href"}, &.{try std.fmt.bufPrint(&value, "#{d}", .{i})});
+        made += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 64), cache.heap_slots.len);
+    try std.testing.expectEqual(@as(usize, 20), cache.count);
+    // Every set made before and after the move is found again: one block each.
+    for (elements[20..40], 0..) |*data, i| {
+        data.* = try testParsed(&scope, &cache, &.{"href"}, &.{try std.fmt.bufPrint(&value, "#{d}", .{i})});
+        made += 1;
+        try std.testing.expect(data.attrs.? == elements[i].attrs.?);
+        try std.testing.expectEqual(@as(u8, 3), data.attrs.?.holders);
+    }
+    try std.testing.expectEqual(@as(usize, 20), cache.count);
 }
 
 test "A3: an allocation failure in a share, the cache's growth, a copy on write or a clone leaves nothing behind" {

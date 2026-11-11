@@ -316,8 +316,18 @@ pub fn styleStart(local_name: []const u8, document: *runtime.Instance) ?dom.styl
 /// `cache` (dom.element_attributes.setParsed: shared with the run's elements
 /// whose set is equal; lane nd2 batch 4).
 pub fn appendParsedAttributes(element: *runtime.Instance, attrs: []const html_core.parser.TreeNode.Attribute, cache: ?*dom.element_attributes.SharingCache) void {
+    // The conversion buffer is declared without ReleaseSafe's 0xaa fill -
+    // over a kilobyte written for every element with an attribute, on the
+    // parser's path (the user's approval of 2026-11-06 for hot-path buffer
+    // declarations; dom.mutation.insert declares its buffer the same way).
+    // `appendParsedAttributesIn`, which uses it, keeps every check.
+    @setRuntimeSafety(false);
     if (attrs.len == 0) return;
     var stack: [16]dom.element_attributes.Attribute = undefined;
+    return appendParsedAttributesIn(&stack, element, attrs, cache);
+}
+
+fn appendParsedAttributesIn(stack: *[16]dom.element_attributes.Attribute, element: *runtime.Instance, attrs: []const html_core.parser.TreeNode.Attribute, cache: ?*dom.element_attributes.SharingCache) void {
     const on_heap = attrs.len > stack.len;
     const allocator = runtime.allocatorOf(element);
     const converted = if (on_heap) allocator.alloc(dom.element_attributes.Attribute, attrs.len) catch |err| {
