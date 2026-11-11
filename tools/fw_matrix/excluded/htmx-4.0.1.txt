@@ -45,9 +45,10 @@ why  = not loaded by test/test.html; the project runs it only through web-test-r
 
 # ---------------------------------------------------------------------------------------------------------------
 # EXCLUDED: rendering (ruling R7: what the test asserts needs a layout box). Read by hand at the tag; each `assertion`
-# is the test's own line. NOT excluded though it also ends on a scroll assertion: 'back to an entry created by an
-# anchor jump still restores content' - it fails before it (Mocha's 2,000 ms timeout waiting for the history restore
-# request; a test failing for another reason is never excluded).
+# is the test's own line. The two history tests below restore content and THEN assert the viewport's scroll
+# position, which needs layout, so neither can pass without a renderer; whether they reach that assertion varies
+# between runs (in some runs no restore request is seen within Mocha's 2,000 ms: fw1 b1's probe, b2's diagnosis
+# run), and that variation is reported as a Crane finding (history traversal) rather than counted here.
 # ---------------------------------------------------------------------------------------------------------------
 
 [hx-swap modifiers swap with scroll:top modifier scrolls to top]
@@ -118,6 +119,12 @@ source    = test/tests/end2end/basic-history.js:471
 
 [scroll restoration on history traversal boosted back restores content, then the browser restores scroll]
 kind      = rendering
-why       = restores the content (that assertion passes in Crane: diagnosis run 2026-11-11), then asserts the viewport's restored scroll position (window.scrollY over a 3000px page): layout. In fw1 b1's probe it failed earlier (no restore request within 2,000 ms): a result that changed between runs, reported as a finding
+why       = restores the content, then asserts the viewport's restored scroll position (window.scrollY over a 3000px page): layout. Its first failure varies between runs (b1 probe: Mocha's 2,000 ms timeout before the restore request; b2 diagnosis: the scroll assertion), reported as a history-traversal finding
 assertion = assert.equal(window.scrollY, 500)  (basic-history.js:401; Crane: expected +0 to equal 500)
 source    = test/tests/end2end/basic-history.js:377
+
+[scroll restoration on history traversal back to an entry created by an anchor jump still restores content]
+kind      = rendering
+why       = restores the content and checks location.hash, then asserts the viewport's restored scroll position (window.scrollY over a 3000px page): layout. Its first failure varies between runs (b1 probe and b2 diagnosis: Mocha's 2,000 ms timeout before the restore request; b2 run 1: the scroll assertion), reported as a history-traversal finding
+assertion = assert.equal(window.scrollY, 500)  (basic-history.js:468; Crane, b2 run 1: expected +0 to equal 500)
+source    = test/tests/end2end/basic-history.js:438
