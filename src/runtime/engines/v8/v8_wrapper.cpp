@@ -2728,6 +2728,12 @@ struct IsolateData {
     /// installGCPauseRecorder adds after Isolate::Initialize write it, with
     /// this record as their data until the record goes after Dispose.
     GCPauses gc_pauses;
+    /// How many context disposals this isolate was told of, by what V8 was
+    /// told about dependants (v8_Isolate_ContextDisposedNotification): [0] a
+    /// main frame's context (kNoDependants), [1] a child frame's
+    /// (kSomeDependants). Written on the isolate's thread; a diagnostic the
+    /// tests read (v8_Debug_ContextDisposals).
+    uint64_t context_disposals[2] = {0, 0};
     /// The agent's C++ heap (newAgentCppHeap) until V8 takes it: handed to
     /// V8 as CreateParams::cpp_heap and attached from Isolate::Initialize on,
     /// after which V8 OWNS it ("V8 takes ownership of the CppHeap passed this
@@ -4235,24 +4241,60 @@ void v8_Context_DetachGlobal(Global<Context>* context) {
     local_context->DetachGlobal();
 }
 
-/// Notify V8 that a context has been disposed.
+/// Tell V8 a context was disposed, and whether it had dependants - Blink's
+/// V8GCForContextDispose::NotifyContextDisposed (third_party/blink/renderer/
+/// bindings/core/v8/v8_gc_for_context_dispose.cc, Chromium 157.0.8103.51),
+/// which LocalWindowProxy::DisposeContext calls after it detached the global
+/// and exited the context:
 ///
-/// Per Chrome's LocalWindowProxy::DisposeContext, this is called after detaching
-/// the global and exiting the context to hint to V8's garbage collector that
-/// a context is no longer needed. This helps V8 clean up context-associated
-/// objects more eagerly.
+///     isolate->ContextDisposedNotification(
+///         is_main_frame ? v8::ContextDependants::kNoDependants
+///                       : v8::ContextDependants::kSomeDependants);
 ///
-/// @param isolate - The V8 isolate
-/// @param force_gc - If true, perform a full GC immediately (for testing)
-/// @return int - Result from V8 (number of disposed contexts in queue)
-int v8_Isolate_ContextDisposedNotification(Isolate* isolate, bool force_gc) {
-    if (!isolate) return 0;
-    // V8 >= 14: the bool overload (deprecated) was `dependant_context` - true
-    // meant kSomeDependants, which is what Crane passed as `force_gc` (15.7
-    // api.cc: the enum overload calls the bool one with
-    // `dependants == kSomeDependants`); its count was never read.
-    isolate->ContextDisposedNotification(force_gc ? ContextDependants::kSomeDependants : ContextDependants::kNoDependants);
-    return 0;
+/// What V8 15.7 does with it (src/heap/heap.cc Heap::NotifyContextDisposed):
+/// kNoDependants - a page went - forgets the survival statistics, takes the
+/// allocation limits back to their initial values and tells the memory
+/// reducer there may be garbage; kSomeDependants - a frame of a page that
+/// lives on - posts a task that runs a young collection unless one ran since.
+/// Neither collects anything here.
+///
+/// @param has_dependants - false for a main frame's context, true for a child
+///     frame's.
+void v8_Isolate_ContextDisposedNotification(Isolate* isolate, bool has_dependants) {
+    if (!isolate) return;
+    if (IsolateData* record = isolateData(isolate)) ++record->context_disposals[has_dependants ? 1 : 0];
+    isolate->ContextDisposedNotification(has_dependants ? ContextDependants::kSomeDependants : ContextDependants::kNoDependants);
+}
+
+/// `isolate`'s context disposals so far, by what V8 was told
+/// (IsolateData::context_disposals): 0 for a null isolate or one this file
+/// did not make. On the isolate's thread.
+extern "C" void v8_Debug_ContextDisposals(Isolate* isolate, uint64_t* main_frame, uint64_t* child_frame) {
+    *main_frame = 0;
+    *child_frame = 0;
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    *main_frame = record->context_disposals[0];
+    *child_frame = record->context_disposals[1];
+}
+
+/// Tell V8 how short of memory the system is - Isolate::
+/// MemoryPressureNotification, the one signal Blink sends for it
+/// (content/renderer/blink_isolates_pressure_listener.cc OnReleaseMemory ->
+/// blink::MemoryPressureNotificationToAllIsolates; Blink's MemoryPurgeManager
+/// reaches the same call through a critical pressure notice when a renderer
+/// has been in the background). `level`: 0 none, 1 moderate, 2 critical
+/// (v8::MemoryPressureLevel; ffi.zig MemoryPressureLevel). On the isolate's
+/// thread V8 answers at once (15.7 src/heap/heap.cc Heap::CheckMemoryPressure):
+/// moderate starts an incremental collection that reduces the footprint,
+/// which its marking job finishes in foreground tasks; critical drops its
+/// caches and collects everything now, a second time when the first left
+/// much to free (CollectGarbageOnMemoryPressure).
+void v8_Isolate_MemoryPressureNotification(Isolate* isolate, int level) {
+    if (!isolate) return;
+    isolate->MemoryPressureNotification(level >= 2 ? MemoryPressureLevel::kCritical
+                                        : level == 1 ? MemoryPressureLevel::kModerate
+                                                     : MemoryPressureLevel::kNone);
 }
 
 Global<Object>* v8_Context_Global(Global<Context>* context) {

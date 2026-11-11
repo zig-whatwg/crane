@@ -1080,10 +1080,24 @@ pub extern fn v8_Context_Exit(context: *Context) void;
 /// the link between the context and its global proxy.
 pub extern fn v8_Context_DetachGlobal(context: *Context) void;
 
-/// Notify V8 that a context has been disposed.
-/// Per Chrome's LocalWindowProxy::DisposeContext, this hints to V8's GC that
-/// a context is no longer needed.
-pub extern fn v8_Isolate_ContextDisposedNotification(isolate: *Isolate, force_gc: bool) c_int;
+/// Isolate::ContextDisposedNotification, as Blink sends it when a frame's
+/// context goes (V8GCForContextDispose::NotifyContextDisposed):
+/// `has_dependants` is false for a main frame's context (kNoDependants: V8
+/// resets its allocation limits and tells its memory reducer) and true for a
+/// child frame's (kSomeDependants: a young collection by task). It collects
+/// nothing by itself.
+pub extern fn v8_Isolate_ContextDisposedNotification(isolate: *Isolate, has_dependants: bool) void;
+/// `isolate`'s context disposals so far, by what V8 was told: a main frame's
+/// (no dependants) and a child frame's. A diagnostic for tests; 0 for an
+/// isolate the adapter did not make.
+pub extern fn v8_Debug_ContextDisposals(isolate: ?*Isolate, main_frame: *u64, child_frame: *u64) void;
+/// v8::MemoryPressureLevel.
+pub const MemoryPressureLevel = enum(c_int) { none = 0, moderate = 1, critical = 2 };
+/// Isolate::MemoryPressureNotification, the signal Blink sends when the
+/// system is short of memory (BlinkIsolatesPressureListener::OnReleaseMemory):
+/// on the isolate's thread, moderate starts an incremental collection that
+/// reduces the footprint, and critical collects everything before it returns.
+pub extern fn v8_Isolate_MemoryPressureNotification(isolate: *Isolate, level: MemoryPressureLevel) void;
 
 pub extern fn v8_Context_Global(context: *Context) ?*Object;
 /// The context's registry key: a never-reused id kept in its embedder data,

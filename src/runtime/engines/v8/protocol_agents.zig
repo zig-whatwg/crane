@@ -901,7 +901,7 @@ pub fn notifyMemoryPressure(agent: *Agent, level: engine.MemoryPressure) void {
             ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
             if (queue) |q| q.drainAll();
         },
-        .moderate => _ = ffi.v8_Isolate_ContextDisposedNotification(entered.isolate, false),
+        .moderate => ffi.v8_Isolate_ContextDisposedNotification(entered.isolate, false),
     }
 }
 

@@ -773,7 +773,7 @@ test "the interfaces defined on a realm without the snapshot keep none of its ha
             ffi.v8_Context_Enter(context);
             v8.interface_bindings.initializeBindingsWithGlobalTemplate(i, context);
             ffi.v8_Context_Exit(context);
-            _ = ffi.v8_Isolate_ContextDisposedNotification(i, true);
+            ffi.v8_Isolate_ContextDisposedNotification(i, true);
             ffi.v8_Context_Dispose(context);
         }
     };

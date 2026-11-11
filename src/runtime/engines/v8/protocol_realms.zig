@@ -1041,7 +1041,7 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
     }
     // 4. Tell V8 a context is garbage (forced: sequential pages must not pile
     // up), and release the handle - a detached realm's weak arm with it.
-    _ = ffi.v8_Isolate_ContextDisposedNotification(isolate, true);
+    ffi.v8_Isolate_ContextDisposedNotification(isolate, true);
     ffi.v8_Context_Dispose(context);
     if (state) |s| if (s.entered_isolate) ffi.v8_Isolate_Exit(isolate);
     // 5. The Window's storage goes back to its Browser's slab: its teardown
