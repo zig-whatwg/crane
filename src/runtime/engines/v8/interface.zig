@@ -3694,7 +3694,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (special.named_properties_in_own_keys) namedPropertyEnumerator else null,
                     namedPropertyDefiner,
                     namedPropertyDescriptor,
-                    if (named_properties_mask) .kOnlyInterceptStrings else .kNonMaskingAndOnlyInterceptStrings,
+                    if (named_properties_mask or named_setter_masks) .kOnlyInterceptStrings else .kNonMaskingAndOnlyInterceptStrings,
                 );
             }
             // Named properties and no indexed ones: an array index is a
@@ -5798,6 +5798,27 @@ pub fn V8Interface(comptime Interface: type) type {
         /// algorithm's step 3, and a masking interceptor), or CSS's.
         const named_properties_mask = special.legacy_override_built_ins or is_css_style_declaration;
 
+        /// Whether a named SETTER makes the named interceptor masking where
+        /// visibility alone would not (no [LegacyOverrideBuiltIns]): WebIDL
+        /// 3.9.2 [[Set]] step 1.2 sends every String to the named setter and
+        /// 3.9.3 [[DefineOwnProperty]] step 2.2 every name O has no own
+        /// property for, whatever the prototype chain has. V8 15.7
+        /// (fa6c1824b06, "[lookup] Support own property lookup in
+        /// non-masking interceptors", bug 483413086) no longer consults a
+        /// non-masking interceptor in an OWN lookup for a name the prototype
+        /// chain has: the definer the legacy proxy's [[Set]] trap reaches
+        /// through DefineProperty never ran for `localStorage.key = v`, and
+        /// V8 made an own data property. A masking interceptor is consulted
+        /// in every lookup; its getter then runs the whole visibility
+        /// algorithm (namedGet), as [LegacyOverrideBuiltIns]'s does, and its
+        /// query, descriptor and deleter already did. Golden rule 2, no newer
+        /// spec involved: Firefox 159 and Safari 27.2 call the named setter
+        /// (webstorage/set.window.html 16/20 each, its "data property on
+        /// prototype" subtests passing), Chrome 157 makes the own property
+        /// (8/20, those failing) - the majority, and the spec. Storage is the
+        /// one interface this reaches: DOMStringMap masks already, and the CSS
+        /// declarations' named properties are Crane's CSS attributes.
+        const named_setter_masks = has_named_setter and !named_properties_mask and !special.crane_css_properties;
 
         /// A property key's text as a DOMString holds it: WTF-8 (WriteUtf8
         /// without REPLACE_INVALID_UTF8 keeps a lone surrogate as its three
@@ -6036,7 +6057,8 @@ pub fn V8Interface(comptime Interface: type) type {
         /// LegacyPlatformObjectGetOwnProperty step 2, for [[Get]]: the value
         /// of a named property the visibility algorithm (3.9.7) finds visible.
         /// What V8 has already answered decides which steps are asked here:
-        ///   - a non-masking interceptor (no [LegacyOverrideBuiltIns]) is
+        ///   - a non-masking interceptor (no [LegacyOverrideBuiltIns], no named
+        ///     setter: `named_setter_masks`) is
         ///     consulted only once O's own properties and its prototype chain
         ///     have no P - steps 2 and 4-6 - so it asks step 1;
         ///   - a masking one is consulted BEFORE O's own properties
@@ -6052,7 +6074,7 @@ pub fn V8Interface(comptime Interface: type) type {
         fn namedGet(info: *const v8.PropertyCallbackInfo, key: []const u8, comptime whole_visibility: bool) v8.Intercepted {
             if (comptime !has_named_getter) return .kNo;
             const instance = holderInstance(info) orelse return .kNo;
-            if (whole_visibility or (comptime special.legacy_override_built_ins and !is_css_style_declaration)) {
+            if (whole_visibility or (comptime (special.legacy_override_built_ins or named_setter_masks) and !is_css_style_declaration)) {
                 // isVisible stops at step 1 for an unsupported name: the
                 // own-property question is asked only of a supported one.
                 if (!isVisible(instance, info, key)) return .kNo;
