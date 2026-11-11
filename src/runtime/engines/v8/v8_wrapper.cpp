@@ -7577,6 +7577,20 @@ void v8_ObjectTemplate_SetAccessorPropertyChecked(
     );
 }
 
+// v8::Intercepted as V8 defines it, for the Zig side's pin (ffi.Intercepted;
+// tests/v8/v8up_interceptor_contract_test.zig). The Zig callbacks return the
+// enum by value, so its width and both constants must be V8's: V8 8f35dec9947
+// (2026-01-30, "[ic] Introduce CallNamedInterceptorGetter builtin", in 15.7)
+// redefined it from `uint8_t { kNo = 0, kYes = 1 }` to
+// `uint32_t { kNo = 1, kYes = 0 }`, and a header compile cannot see a Zig enum.
+uint32_t v8_Intercepted_Value(bool yes) {
+    return static_cast<uint32_t>(yes ? Intercepted::kYes : Intercepted::kNo);
+}
+
+size_t v8_Intercepted_Size() {
+    return sizeof(Intercepted);
+}
+
 // ObjectTemplate - set named property handler (intercepts all property access)
 // Using V8's callback types - these use the modern Intercepted return type
 void v8_ObjectTemplate_SetNamedPropertyHandler(

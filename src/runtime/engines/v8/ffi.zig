@@ -629,6 +629,11 @@ pub const Intercepted = enum(u8) {
     kYes = 1,
 };
 
+/// V8's own v8::Intercepted: the value of kYes (`yes`) or kNo, and the enum's
+/// size - the pin for `Intercepted` above (v8_wrapper.cpp).
+pub extern fn v8_Intercepted_Value(yes: bool) u32;
+pub extern fn v8_Intercepted_Size() usize;
+
 /// Indexed property query callback for Object.getOwnPropertyDescriptor attribute queries
 /// Should return property attributes (None=0, ReadOnly=1, DontEnum=2, DontDelete=4)
 /// Return value via info.GetReturnValue().Set(v8::Integer::New(isolate, attributes))
