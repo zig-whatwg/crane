@@ -5774,6 +5774,60 @@ pub fn build(b: *std.Build) void {
     addTestVerify(b, launch, ubsan_symbols_tests, "tools-ubsan_symbols", "tools", &.{"ubsan_symbols.zig"});
 
     // ========================================================================
+    // The thread-local block check
+    // ========================================================================
+    // tools/thread_local_size.zig reads how many bytes of thread-local
+    // storage a built binary's image carries - a per-THREAD cost: macOS
+    // allocates the image's whole block for a thread on its first touch of
+    // any thread-local, glibc with every thread - and its largest
+    // thread-local symbols. The end of build() runs it on the same three
+    // binaries as the UBSan-symbol check, as part of their own steps,
+    // against tools/thread_local_size_budget.txt, which only goes down
+    // (`zig build thread-local-size -- --budget=<file> --lower=<bytes>`).
+    // Its tests read real objects: one C source compiled for ELF and for
+    // Mach-O, with a 65,536-byte thread-local array and without.
+    const thread_local_fixture_source = b.addWriteFiles().add("thread_local_fixture.c",
+        \\#ifdef CRANE_FIXTURE_PLAIN
+        \\#define CRANE_FIXTURE_STORAGE
+        \\#else
+        \\#define CRANE_FIXTURE_STORAGE _Thread_local
+        \\#endif
+        \\CRANE_FIXTURE_STORAGE char crane_fixture_big[65536];
+        \\CRANE_FIXTURE_STORAGE int crane_fixture_small = 7;
+        \\char *crane_fixture_touch(void) { crane_fixture_small += 1; return crane_fixture_big; }
+        \\
+    );
+    const thread_local_fixtures = b.addOptions();
+    for ([_]struct { []const u8, []const u8 }{ .{ "elf", "x86_64-linux-none" }, .{ "mach_o", "aarch64-macos-none" } }) |format| {
+        const fixture_target = b.resolveTargetQuery(std.Target.Query.parse(.{ .arch_os_abi = format[1] }) catch @panic("fixture target"));
+        for ([_]struct { []const u8, []const []const u8 }{ .{ "", &.{} }, .{ "_plain", &.{"-DCRANE_FIXTURE_PLAIN"} } }) |variant| {
+            const object = b.addObject(.{
+                .name = b.fmt("thread_local_fixture_{s}{s}", .{ format[0], variant[0] }),
+                .root_module = b.createModule(.{ .target = fixture_target, .optimize = .ReleaseSafe }),
+            });
+            object.root_module.addCSourceFile(.{ .file = thread_local_fixture_source, .flags = variant[1] });
+            thread_local_fixtures.addOptionPath(b.fmt("{s}{s}", .{ format[0], variant[0] }), object.getEmittedBin());
+        }
+    }
+    const thread_local_size_module = b.createModule(.{
+        .root_source_file = b.path("tools/thread_local_size.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    thread_local_size_module.addOptions("thread_local_fixtures", thread_local_fixtures);
+    const thread_local_size_exe = b.addExecutable(.{ .name = "thread_local_size", .root_module = thread_local_size_module });
+    const thread_local_size_tests = b.addTest(.{ .root_module = thread_local_size_module });
+    test_step.dependOn(&addSuiteRun(b, launch, thread_local_size_tests, "tools-thread_local_size", null).step);
+    // Verify mode for its tests, which live in the tool:
+    // -Dverify-files=tools/thread_local_size.zig.
+    addTestVerify(b, launch, thread_local_size_tests, "tools-thread_local_size", "tools", &.{"thread_local_size.zig"});
+    const thread_local_size_run = b.addRunArtifact(thread_local_size_exe);
+    thread_local_size_run.has_side_effects = true;
+    thread_local_size_run.setCwd(b.path("."));
+    thread_local_size_run.addPassthruArgs();
+    b.step("thread-local-size", "Report a binary's thread-local block and its largest thread-local symbols (-- [--budget=tools/thread_local_size_budget.txt] <binary>; -- --budget=<file> --lower=<bytes> records a lower budget)").dependOn(&thread_local_size_run.step);
+
+    // ========================================================================
     // PERFORMANCE: the benchmark suite's runner and /performance/ (tools/perf_bench/)
     // ========================================================================
     // tools/perf_bench serves tests/perf/ (the engine-neutral workload
@@ -6869,6 +6923,16 @@ pub fn build(b: *std.Build) void {
         // is shown when it fails.
         check.expectExitCode(0);
         step.dependOn(&check.step);
+        // And its thread-local block is within the budget
+        // (tools/thread_local_size.zig): what every thread of the build pays
+        // for touching a thread-local. The budget is a file argument, so a
+        // changed budget reruns the check.
+        const thread_local_check = b.addRunArtifact(thread_local_size_exe);
+        thread_local_check.addPrefixedFileArg("--budget=", b.path("tools/thread_local_size_budget.txt"));
+        thread_local_check.addArg(b.fmt("--name={s}", .{checked.exe.name}));
+        thread_local_check.addFileArg(checked.exe.getEmittedBin());
+        thread_local_check.expectExitCode(0);
+        step.dependOn(&thread_local_check.step);
     };
 }
 
