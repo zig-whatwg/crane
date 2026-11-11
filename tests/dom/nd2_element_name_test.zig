@@ -442,7 +442,7 @@ fn churn(page: *Page, first: usize, end: usize, shape: Shape) !void {
     }
 }
 
-fn expectFlat(shape: Shape) !void {
+fn expectFlat(comptime shape: Shape) !void {
     var counted: CountedPage = undefined;
     try counted.open("nd2_element_name_test: a million " ++ @tagName(shape) ++ " names");
     var closed = false;
