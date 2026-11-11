@@ -672,8 +672,8 @@ pub const DeclarationBlock = struct {
     /// in specified order."
     pub fn setCssText(self: *DeclarationBlock, options: properties.ParseOptions, text: []const u8) Allocator.Error!void {
         var parsed = try parseInContext(options, text, self.context);
+        // clear() resets the content hash.
         self.clear();
-        self.contentChanged();
         self.entries.deinit(self.allocator);
         self.entries = parsed.entries;
         self.custom_count = parsed.custom_count;
