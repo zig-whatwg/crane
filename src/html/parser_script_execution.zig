@@ -311,6 +311,39 @@ pub fn styleStart(local_name: []const u8, document: *runtime.Instance) ?dom.styl
     return .{ .line = at.line, .column = at.column };
 }
 
+/// HTML 13.2.6.1 "create an element for a token": "Append each attribute in
+/// the given token to element" - at once, the list from the parser run's
+/// `cache` (dom.element_attributes.setParsed: shared with the run's elements
+/// whose set is equal; lane nd2 batch 4).
+pub fn appendParsedAttributes(element: *runtime.Instance, attrs: []const html_core.parser.TreeNode.Attribute, cache: ?*dom.element_attributes.SharingCache) void {
+    // The conversion buffer is declared without ReleaseSafe's 0xaa fill -
+    // over a kilobyte written for every element with an attribute, on the
+    // parser's path (the user's approval of 2026-11-06 for hot-path buffer
+    // declarations; dom.mutation.insert declares its buffer the same way).
+    // `appendParsedAttributesIn`, which uses it, keeps every check.
+    @setRuntimeSafety(false);
+    if (attrs.len == 0) return;
+    var stack: [16]dom.element_attributes.Attribute = undefined;
+    return appendParsedAttributesIn(&stack, element, attrs, cache);
+}
+
+fn appendParsedAttributesIn(stack: *[16]dom.element_attributes.Attribute, element: *runtime.Instance, attrs: []const html_core.parser.TreeNode.Attribute, cache: ?*dom.element_attributes.SharingCache) void {
+    const on_heap = attrs.len > stack.len;
+    const allocator = runtime.allocatorOf(element);
+    const converted = if (on_heap) allocator.alloc(dom.element_attributes.Attribute, attrs.len) catch |err| {
+        log.debug("parser attributes not appended: {}", .{err});
+        return;
+    } else stack[0..attrs.len];
+    defer if (on_heap) allocator.free(converted);
+    for (attrs, converted) |attr, *out| out.* = .{
+        .namespace = if (attr.namespace) |ns| ns.uri() else null,
+        .prefix = attr.prefix,
+        .local_name = attr.name,
+        .value = attr.value,
+    };
+    dom.element_attributes.setParsed(element, converted, cache) catch |err| log.debug("parser attributes not appended: {}", .{err});
+}
+
 pub fn appendParsedAttribute(element: *runtime.Instance, attr: html_core.parser.TreeNode.Attribute) void {
     dom.element_attributes.append(element, .{
         .namespace = if (attr.namespace) |ns| ns.uri() else null,
@@ -768,6 +801,11 @@ pub const DomTreeAdapter = struct {
     rescuer: ?Rescuer = null,
     /// The patching templates' counted holds (`PatchHold`); usually empty.
     patch_holds: std.ArrayListUnmanaged(PatchHold) = .empty,
+    /// This parse's shared attribute blocks (dom.element_data.SharingCache):
+    /// one per distinct attribute set, for this parser run only - freed in
+    /// `deinit`, which every path the parser ends by reaches (its last
+    /// reference: finished, aborted by document.open, stopped).
+    attribute_blocks: dom.element_attributes.SharingCache = .{},
     /// What the node being created can have done (`mustCheckWrapper`); set by
     /// the create step, consumed by onNodeCreated.
     last_creation: ?Creation = null,
@@ -821,6 +859,7 @@ pub const DomTreeAdapter = struct {
         self.pending.deinit(self.allocator);
         for (self.patch_holds.items) |*held| held.release();
         self.patch_holds.deinit(self.allocator);
+        self.attribute_blocks.deinit();
     }
 
     /// Hold `patch`'s live target and markers counted (see `PatchHold`),
@@ -1159,8 +1198,7 @@ pub const DomTreeAdapter = struct {
             dom.finish_parsing_children.createdByParser(element, local_name);
         }
 
-        dom.element_attributes.reserve(element, tree_node.attributes.toSlice().len);
-        for (tree_node.attributes.toSlice()) |attr| appendParsedAttribute(element, attr);
+        appendParsedAttributes(element, tree_node.attributes.toSlice(), &self.attribute_blocks);
 
         // HTML 4.2.7 records the token's stylesheet relationship and enabled
         // state at creation, before its post-connection steps start a fetch.
