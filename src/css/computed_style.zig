@@ -202,17 +202,33 @@ fn heldEqual(x: Value, y: Value) bool {
 /// Whether group `g`'s values at `a` and `b` are the same computed values,
 /// slot by slot: identical, or - for a value the cascade allocated, such as
 /// a font-family list or a color substituted from var() - equal (Value.eql).
-/// What adoption shares on: no reader can tell the two apart. Counts the
-/// values it compares into `compared`.
+/// What adoption shares on: no reader can tell the two apart. The value at
+/// `hints[g]` - where the group last compared unequal - is compared first,
+/// and an unequal value found now becomes the hint; counts the values it
+/// compares into `compared`.
 fn groupValuesEqual(g: usize, a: [*]const Value, b: [*]const Value, hints: *DifferenceHints, compared: *u32) bool {
-    _ = hints;
     const n = groups.lengths[g];
-    for (0..n) |i| if (!identical(a[i], b[i]) and !heldEqual(a[i], b[i])) {
-        compared.* += @intCast(i + 1);
-        return false;
-    };
-    compared.* += n;
+    const h: usize = if (hints[g] < n) hints[g] else 0;
+    var k: u32 = 0;
+    defer compared.* += k;
+    if (h != 0) {
+        k += 1;
+        if (!valuesEqual(a[h], b[h])) return false;
+    }
+    for (0..n) |i| {
+        if (h != 0 and i == h) continue;
+        k += 1;
+        if (!valuesEqual(a[i], b[i])) {
+            hints[g] = @intCast(i);
+            return false;
+        }
+    }
     return true;
+}
+
+/// One value of groupValuesEqual.
+inline fn valuesEqual(x: Value, y: Value) bool {
+    return identical(x, y) or heldEqual(x, y);
 }
 
 /// Where a value lives in a style: its group, and its index in the group.
@@ -379,16 +395,17 @@ pub const ComputedStyle = struct {
     }
 
     /// adoptEqualGroups as one step of `scan`, which a matched-properties
-    /// cache runs over the entries of a key, most recent first.
+    /// cache runs over the entries of a key, most recent first: only the
+    /// groups the scan has not adopted yet are compared - a group shared
+    /// already (the parent's inherited group, or one adopted from an earlier
+    /// entry) saves nothing by moving, so a group is adopted at most once -
+    /// each starting at the value where it last differed (`hints`).
     pub fn adoptEqualGroupsIn(self: *ComputedStyle, from: *const ComputedStyle, scan: *Adoption, hints: *DifferenceHints) usize {
         var adopted: usize = 0;
-        var it = self.held.iterator(.{});
+        var it = scan.pending.iterator(.{});
         while (it.next()) |g| {
             if (!from.held.isSet(g) or self.slots[g] == from.slots[g]) continue;
             const mine = Group.of(self.slots[g]);
-            // A group shared already (the parent's inherited group, or one
-            // adopted before) saves nothing by moving.
-            if (mine.refs != 1) continue;
             if (!groupValuesEqual(g, self.slots[g], from.slots[g], hints, &scan.compared)) continue;
             Group.of(from.slots[g]).refs += 1;
             self.slots[g] = from.slots[g];

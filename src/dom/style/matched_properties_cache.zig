@@ -285,22 +285,36 @@ pub const MatchedPropertiesCache = struct {
         const cacheable = if (dependencies) |d| d.cacheable() and lookup.parent != null else false;
         // Adoption, the most recent entry first (Blink's Find scans
         // backwards): every group and custom property record the cascade
-        // made that holds an entry's values becomes the entry's.
-        if (self.buckets.getPtr(lookup.key)) |bucket| {
-            var scan = style.adoption();
+        // made that holds an entry's values becomes the entry's. The scan
+        // is bounded by what is left to share (lane style1 b4): a group
+        // adopted from one entry is compared with no other, and one that no
+        // entry holds equal is compared first at the value where its group
+        // last differed - one value per entry when elements differ where
+        // they differed before (a sibling-index() width, an inline margin).
+        var scan = style.adoption();
+        var custom_alone = style.customHeldAlone();
+        const found = self.buckets.getPtr(lookup.key);
+        if (found) |bucket| {
             var i = bucket.len;
-            while (i > 0 and (style.groupsHeldAlone() != 0 or style.customHeldAlone())) {
+            while (i > 0 and (scan.pending.mask != 0 or custom_alone)) {
                 i -= 1;
                 const entry = &bucket.items[i];
-                if (style.adoptEqualGroupsIn(entry.holder, &scan, &self.difference_hints) + style.adoptEqualCustom(entry.holder) != 0) entry.last_used = self.tick();
+                var adopted = style.adoptEqualGroupsIn(entry.holder, &scan, &self.difference_hints);
+                if (custom_alone) {
+                    adopted += style.adoptEqualCustom(entry.holder);
+                    custom_alone = style.customHeldAlone();
+                }
+                if (adopted != 0) entry.last_used = self.tick();
             }
             self.adoption_compares +%= scan.compared;
         }
         // Nothing of its own left to share and no hit to serve: not kept.
-        if (!cacheable and style.groupsHeldAlone() == 0 and !style.customHeldAlone()) return;
-        const gop = self.buckets.getOrPut(self.allocator, lookup.key) catch return;
-        if (!gop.found_existing) gop.value_ptr.* = .{};
-        const bucket = gop.value_ptr;
+        if (!cacheable and scan.pending.mask == 0 and !custom_alone) return;
+        const bucket = found orelse made: {
+            const gop = self.buckets.getOrPut(self.allocator, lookup.key) catch return;
+            gop.value_ptr.* = .{};
+            break :made gop.value_ptr;
+        };
         // A full key keeps the entries it has (WebKit's
         // MatchedDeclarationsCache::add appends only below
         // maxEntriesPerHash). The key carries the parent's record and
