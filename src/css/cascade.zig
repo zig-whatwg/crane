@@ -112,6 +112,12 @@ pub const Source = struct {
     order: u32 = 0,
     /// A style attribute's declarations.
     element_attached: bool = false,
+    /// A block of the element's own - its style attribute's, a
+    /// presentational hint its element state keeps - rather than a rule's:
+    /// its owner rewrites it in place and a freed element's state hands its
+    /// memory on, so the matched-properties cache keys and compares it by
+    /// content, never by address (lane style1 b5).
+    per_element: bool = false,
     /// Shadow-including tree context depth (batch 2; 0 is the document).
     tree_depth: u16 = 0,
     /// Whether this declaration may use Values 5 tree-counting inputs.
