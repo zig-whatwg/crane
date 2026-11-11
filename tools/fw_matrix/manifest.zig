@@ -257,7 +257,7 @@ test "validate refuses a bad checksum, a path out of the tree, plain http and du
     for (cases) |c| {
         const bad = try std.mem.replaceOwned(u8, a, sample, c[0], c[1]);
         try testing.expect(!std.mem.eql(u8, bad, sample));
-        const z = try a.dupeZ(u8, bad);
+        const z = try a.dupeSentinel(u8, bad, 0);
         var f: Failure = .{};
         try testing.expectError(c[2], parse(testing.allocator, a, z, &f));
         try testing.expectEqualStrings("jquery-qunit", f.suite);

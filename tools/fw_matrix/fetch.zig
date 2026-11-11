@@ -256,23 +256,64 @@ pub fn fetchSuite(gpa: Allocator, io: Io, frameworks_dir: []const u8, f: manifes
 
 const testing = std.testing;
 
-fn tarGz(gpa: Allocator, entries: []const [2][]const u8) ![]u8 {
+/// One ustar header block (POSIX.1-1988: name, mode, uid, gid, size, mtime,
+/// checksum, typeflag, magic), written by hand so the tests do not read
+/// archives through the code that wrote them.
+fn ustarHeader(out: *Io.Writer, name: []const u8, size: usize, typeflag: u8) !void {
+    var h: [512]u8 = @splat(0);
+    @memcpy(h[0..name.len], name);
+    _ = try std.fmt.bufPrint(h[100..108], "{o:0>7}", .{@as(u32, 0o644)});
+    _ = try std.fmt.bufPrint(h[108..116], "{o:0>7}", .{@as(u32, 0)});
+    _ = try std.fmt.bufPrint(h[116..124], "{o:0>7}", .{@as(u32, 0)});
+    _ = try std.fmt.bufPrint(h[124..136], "{o:0>11}", .{size});
+    _ = try std.fmt.bufPrint(h[136..148], "{o:0>11}", .{@as(u32, 0)});
+    h[156] = typeflag;
+    @memcpy(h[257..263], "ustar\x00");
+    @memcpy(h[263..265], "00");
+    @memset(h[148..156], ' ');
+    var sum: u32 = 0;
+    for (h) |b| sum += b;
+    _ = try std.fmt.bufPrint(h[148..155], "{o:0>6}", .{sum});
+    h[154] = 0;
+    try out.writeAll(&h);
+}
+
+const TarEntry = struct { path: []const u8, content: []const u8 = "" };
+
+/// A gzip'd tar of `entries` (a path ending in '/' a directory).
+fn tarGz(gpa: Allocator, entries: []const TarEntry) ![]u8 {
     var tar_out: Io.Writer.Allocating = .init(gpa);
     defer tar_out.deinit();
-    var w: std.tar.Writer = .{ .underlying_writer = &tar_out.writer };
+    const w = &tar_out.writer;
     for (entries) |e| {
-        if (e[0][e[0].len - 1] == '/') try w.writeDir(e[0][0 .. e[0].len - 1], .{}) else try w.writeFileBytes(e[0], e[1], .{});
+        const dir = std.mem.endsWith(u8, e.path, "/");
+        try ustarHeader(w, e.path, if (dir) 0 else e.content.len, if (dir) '5' else '0');
+        if (!dir) {
+            try w.writeAll(e.content);
+            const pad = (512 - e.content.len % 512) % 512;
+            try w.splatByteAll(0, pad);
+        }
     }
-    try w.finishPedantically();
+    try w.splatByteAll(0, 1024);
+    // gzip (RFC 1952) of DEFLATE stored blocks (RFC 1951 BTYPE 00), written
+    // by hand: the tests read archives through no code that wrote them.
+    const data = tar_out.written();
     var out: Io.Writer.Allocating = .init(gpa);
     errdefer out.deinit();
-    const window = try gpa.alloc(u8, std.compress.flate.max_window_len);
-    defer gpa.free(window);
-    const c = try gpa.create(std.compress.flate.Compress);
-    defer gpa.destroy(c);
-    c.* = try .init(&out.writer, window, .gzip, .default);
-    try c.writer.writeAll(tar_out.written());
-    try c.finish();
+    try out.writer.writeAll(&.{ 0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff });
+    var at: usize = 0;
+    while (true) {
+        const n = @min(data.len - at, 65535);
+        const last = at + n == data.len;
+        try out.writer.writeByte(if (last) 1 else 0);
+        try out.writer.writeInt(u16, @intCast(n), .little);
+        try out.writer.writeInt(u16, ~@as(u16, @intCast(n)), .little);
+        try out.writer.writeAll(data[at..][0..n]);
+        at += n;
+        if (last) break;
+    }
+    try out.writer.writeInt(u32, std.hash.Crc32.hash(data), .little);
+    try out.writer.writeInt(u32, @truncate(data.len), .little);
     return out.toOwnedSlice();
 }
 
@@ -287,13 +328,13 @@ test "checksums: sha256 hex and npm's sha512 integrity; a mismatch is refused" {
 }
 
 test "extractTree: the top directory stripped, skip paths left out" {
-    const tgz = try tarGz(testing.allocator, &.{
-        .{ "htmx-4.0.1/", "" },
-        .{ "htmx-4.0.1/src/htmx.js", "var htmx;" },
-        .{ "htmx-4.0.1/test/test.html", "<!doctype html>" },
-        .{ "htmx-4.0.1/www/index.html", "site" },
-        .{ "htmx-4.0.1/www/big/x.bin", "x" },
-        .{ "htmx-4.0.1/wwwx.txt", "kept" },
+    const tgz = try tarGz(testing.allocator, &[_]TarEntry{
+        .{ .path = "htmx-4.0.1/", .content = "" },
+        .{ .path = "htmx-4.0.1/src/htmx.js", .content = "var htmx;" },
+        .{ .path = "htmx-4.0.1/test/test.html", .content = "<!doctype html>" },
+        .{ .path = "htmx-4.0.1/www/index.html", .content = "site" },
+        .{ .path = "htmx-4.0.1/www/big/x.bin", .content = "x" },
+        .{ .path = "htmx-4.0.1/wwwx.txt", .content = "kept" },
     });
     defer testing.allocator.free(tgz);
     var tmp = testing.tmpDir(.{});
@@ -310,10 +351,10 @@ test "extractTree: the top directory stripped, skip paths left out" {
 }
 
 test "extractFiles: the mapped files only; a missing one fails" {
-    const tgz = try tarGz(testing.allocator, &.{
-        .{ "package/qunit/qunit.js", "QUnit" },
-        .{ "package/qunit/qunit.css", "css" },
-        .{ "package/LICENSE.txt", "MIT" },
+    const tgz = try tarGz(testing.allocator, &[_]TarEntry{
+        .{ .path = "package/qunit/qunit.js", .content = "QUnit" },
+        .{ .path = "package/qunit/qunit.css", .content = "css" },
+        .{ .path = "package/LICENSE.txt", .content = "MIT" },
     });
     defer testing.allocator.free(tgz);
     var tmp = testing.tmpDir(.{});

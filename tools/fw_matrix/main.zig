@@ -166,7 +166,7 @@ pub fn main(init: std.process.Init) !void {
 
 fn loadManifest(gpa: Allocator, arena: Allocator, io: Io, path: []const u8) !manifest.Manifest {
     const bytes = Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(1 << 20)) catch |err| fail("{s}: {t}", .{ path, err });
-    const z = try arena.dupeZ(u8, bytes);
+    const z = try arena.dupeSentinel(u8, bytes, 0);
     var f: manifest.Failure = .{};
     return manifest.parse(gpa, arena, z, &f) catch |err| {
         if (err == error.ParseZon) f.diagnostics.log(path);

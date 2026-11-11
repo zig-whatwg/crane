@@ -42,7 +42,7 @@ const journal = @import("journal.zig");
 
 pub const marker = "CRANE-FW-RESULT ";
 
-pub const Reader = enum { qunit, mocha };
+pub const Reader = @import("exclusions.zig").Reader;
 
 const qunit_wait =
     \\await new Promise((resolve) => {

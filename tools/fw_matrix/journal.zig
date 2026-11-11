@@ -312,7 +312,7 @@ pub const Counts = struct {
     }
 
     pub fn merge(c: *Counts, o: Counts) void {
-        inline for (std.meta.fields(Counts)) |f| @field(c, f.name) += @field(o, f.name);
+        inline for (comptime std.meta.fieldNames(Counts)) |name| @field(c, name) += @field(o, name);
     }
 };
 
