@@ -75,13 +75,6 @@ pub const PermissionsPolicyViolationReportBody = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            featureId: runtime.DOMString = undefined,
-            sourceFile: ?runtime.DOMString = null,
-            lineNumber: ?i32 = null,
-            columnNumber: ?i32 = null,
-            disposition: runtime.DOMString = undefined,
-            allowAttribute: ?runtime.DOMString = null,
-            srcAttribute: ?runtime.DOMString = null,
             _internal: ?*PermissionsPolicyViolationReportBodyImpl.InternalState = null,
         },
     );

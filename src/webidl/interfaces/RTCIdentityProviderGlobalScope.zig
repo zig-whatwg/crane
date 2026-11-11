@@ -107,7 +107,6 @@ pub const RTCIdentityProviderGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            rtcIdentityProvider: *runtime.Instance = undefined,
             _internal: ?*RTCIdentityProviderGlobalScopeImpl.InternalState = null,
         },
     );

@@ -60,9 +60,6 @@ pub const DeviceMotionEventRotationRate = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            alpha: ?f64 = null,
-            beta: ?f64 = null,
-            gamma: ?f64 = null,
             _internal: ?*DeviceMotionEventRotationRateImpl.InternalState = null,
         },
     );

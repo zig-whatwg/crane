@@ -70,7 +70,6 @@ pub const XRBodySpace = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            jointName: enums.XRBodyJoint = undefined,
             _internal: ?*XRBodySpaceImpl.InternalState = null,
         },
     );

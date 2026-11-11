@@ -94,7 +94,6 @@ pub const WheelEvent = struct {
             deltaY: f64 = undefined,
             deltaZ: f64 = undefined,
             deltaMode: u32 = undefined,
-            momentum: bool = undefined,
             _internal: ?*WheelEventImpl.InternalState = null,
         },
     );

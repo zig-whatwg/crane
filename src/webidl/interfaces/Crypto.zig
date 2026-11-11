@@ -75,7 +75,6 @@ pub const Crypto = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            subtle: *runtime.Instance = undefined,
             _internal: ?*CryptoImpl.InternalState = null,
         },
     );

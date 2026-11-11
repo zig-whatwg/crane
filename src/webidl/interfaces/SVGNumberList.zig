@@ -82,8 +82,6 @@ pub const SVGNumberList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
-            numberOfItems: u32 = undefined,
             _internal: ?*SVGNumberListImpl.InternalState = null,
         },
     );

@@ -76,9 +76,6 @@ pub const CSSColor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            colorSpace: typedefs.CSSKeywordish = undefined,
-            channels: runtime.JSValue = undefined,
-            alpha: typedefs.CSSNumberish = undefined,
             _internal: ?*CSSColorImpl.InternalState = null,
         },
     );

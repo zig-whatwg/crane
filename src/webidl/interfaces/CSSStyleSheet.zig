@@ -44,6 +44,13 @@ pub const CSSStyleSheet = struct {
             .{ "rules", "get_rules", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "cssRules",
+            "rules",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "insertRule", "call_insertRule", 1 },
@@ -84,9 +91,6 @@ pub const CSSStyleSheet = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ownerRule: ?*runtime.Instance = null,
-            cssRules: *runtime.Instance = undefined,
-            rules: *runtime.Instance = undefined,
             cached_cssRules: ?*runtime.Instance = null,
             cached_rules: ?*runtime.Instance = null,
             _internal: ?*CSSStyleSheetImpl.InternalState = null,

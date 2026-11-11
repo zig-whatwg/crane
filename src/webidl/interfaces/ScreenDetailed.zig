@@ -75,14 +75,6 @@ pub const ScreenDetailed = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            availLeft: i32 = undefined,
-            availTop: i32 = undefined,
-            left: i32 = undefined,
-            top: i32 = undefined,
-            isPrimary: bool = undefined,
-            isInternal: bool = undefined,
-            devicePixelRatio: f32 = undefined,
-            label: runtime.DOMString = undefined,
             _internal: ?*ScreenDetailedImpl.InternalState = null,
         },
     );

@@ -53,8 +53,6 @@ pub const CanvasImageSmoothing = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            imageSmoothingEnabled: bool = undefined,
-            imageSmoothingQuality: enums.ImageSmoothingQuality = undefined,
             _internal: ?*CanvasImageSmoothingImpl.InternalState = null,
         },
     );

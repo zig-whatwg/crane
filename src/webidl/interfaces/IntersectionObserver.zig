@@ -81,13 +81,8 @@ pub const IntersectionObserver = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            root: ?union(enum) {
-                Element: Element,
-                Document: Document,
-            } = null,
             rootMargin: runtime.DOMString = undefined,
             scrollMargin: runtime.DOMString = undefined,
-            thresholds: runtime.JSValue = undefined,
             delay: i32 = undefined,
             trackVisibility: bool = undefined,
             _internal: ?*IntersectionObserverImpl.InternalState = null,

@@ -61,9 +61,6 @@ pub const ChapterInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            title: runtime.DOMString = undefined,
-            startTime: f64 = undefined,
-            artwork: runtime.JSValue = undefined,
             cached_artwork: ?runtime.JSValue = null,
             _internal: ?*ChapterInformationImpl.InternalState = null,
         },

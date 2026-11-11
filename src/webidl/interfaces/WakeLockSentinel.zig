@@ -82,9 +82,6 @@ pub const WakeLockSentinel = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            released: bool = undefined,
-            type: enums.WakeLockType = undefined,
-            onrelease: typedefs.EventHandler = undefined,
             _internal: ?*WakeLockSentinelImpl.InternalState = null,
         },
     );

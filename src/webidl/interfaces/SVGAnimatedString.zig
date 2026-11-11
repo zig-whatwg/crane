@@ -59,11 +59,6 @@ pub const SVGAnimatedString = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            baseVal: union(enum) {
-                DOMString: runtime.DOMString,
-                TrustedScriptURL: TrustedScriptURL,
-            } = undefined,
-            animVal: runtime.DOMString = undefined,
             _internal: ?*SVGAnimatedStringImpl.InternalState = null,
         },
     );

@@ -73,8 +73,6 @@ pub const DataCue = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: runtime.JSValue = undefined,
-            type: runtime.DOMString = undefined,
             _internal: ?*DataCueImpl.InternalState = null,
         },
     );

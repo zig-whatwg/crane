@@ -58,8 +58,6 @@ pub const Baseline = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            value: f64 = undefined,
             _internal: ?*BaselineImpl.InternalState = null,
         },
     );

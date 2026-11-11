@@ -74,7 +74,6 @@ pub const XRBoundedReferenceSpace = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            boundsGeometry: runtime.JSValue = undefined,
             _internal: ?*XRBoundedReferenceSpaceImpl.InternalState = null,
         },
     );

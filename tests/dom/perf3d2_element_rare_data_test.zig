@@ -130,17 +130,8 @@ test "HTMLElement's InternalState is empty: every field it kept is rare data" {
     try expectSize(HTMLElementState, 0);
 }
 
-test "a div's one block is 248 bytes: 736 less Element's 176 and HTMLElement's 88 (D2), perf2 b7's 8, the registry association's 40 and the slottable state's 64 (E1), nd2 N2's and N3's 48 each, and lis1 N5's 16" {
-    // perf2 b7 (merged after D2): EventTarget's current event (8) is a
-    // Window's, in Window's state now. lis1 N5: EventTarget's 24 one pointer.
-    const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 248);
-    const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
-    if (held - @sizeOf(S) >= 16) {
-        std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });
-        return error.NotExactSize;
-    }
-}
+// A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig
+// (lane cg1; lesson testing-a-total-pinned-in-six-files-moves-in-six-files.md).
 
 test "the rare data is one sparse block, made only for the elements that use it: 16 bytes for one field" {
     if (comptime !has_rare) return error.NoRareData;

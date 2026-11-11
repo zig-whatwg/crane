@@ -101,12 +101,6 @@ pub const HIDDevice = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            oninputreport: typedefs.EventHandler = undefined,
-            opened: bool = undefined,
-            vendorId: u16 = undefined,
-            productId: u16 = undefined,
-            productName: runtime.DOMString = undefined,
-            collections: runtime.JSValue = undefined,
             _internal: ?*HIDDeviceImpl.InternalState = null,
         },
     );

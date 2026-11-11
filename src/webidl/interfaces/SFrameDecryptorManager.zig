@@ -59,7 +59,6 @@ pub const SFrameDecryptorManager = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onerror: typedefs.EventHandler = undefined,
             _internal: ?*SFrameDecryptorManagerImpl.InternalState = null,
         },
     );

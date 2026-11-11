@@ -101,11 +101,6 @@ pub const AnalyserNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            fftSize: u32 = undefined,
-            frequencyBinCount: u32 = undefined,
-            minDecibels: f64 = undefined,
-            maxDecibels: f64 = undefined,
-            smoothingTimeConstant: f64 = undefined,
             _internal: ?*AnalyserNodeImpl.InternalState = null,
         },
     );

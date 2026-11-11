@@ -106,7 +106,6 @@ pub const GPUCommandEncoder = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            label: runtime.USVString = undefined,
             _internal: ?*GPUCommandEncoderImpl.InternalState = null,
         },
     );

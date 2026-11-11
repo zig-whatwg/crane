@@ -68,12 +68,6 @@ pub const AnimationTrigger = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            timeline: *runtime.Instance = undefined,
-            behavior: enums.AnimationTriggerBehavior = undefined,
-            activationRangeStart: runtime.JSValue = undefined,
-            activationRangeEnd: runtime.JSValue = undefined,
-            activeRangeStart: runtime.JSValue = undefined,
-            activeRangeEnd: runtime.JSValue = undefined,
             _internal: ?*AnimationTriggerImpl.InternalState = null,
         },
     );

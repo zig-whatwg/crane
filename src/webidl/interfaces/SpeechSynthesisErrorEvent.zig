@@ -71,7 +71,6 @@ pub const SpeechSynthesisErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"error": enums.SpeechSynthesisErrorCode = undefined,
             _internal: ?*SpeechSynthesisErrorEventImpl.InternalState = null,
         },
     );

@@ -58,7 +58,6 @@ pub const NavigatorML = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ml: *runtime.Instance = undefined,
             cached_ml: ?*runtime.Instance = null,
             _internal: ?*NavigatorMLImpl.InternalState = null,
         },

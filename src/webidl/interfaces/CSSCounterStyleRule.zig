@@ -79,17 +79,6 @@ pub const CSSCounterStyleRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.CSSOMString = undefined,
-            system: typedefs.CSSOMString = undefined,
-            symbols: typedefs.CSSOMString = undefined,
-            additiveSymbols: typedefs.CSSOMString = undefined,
-            negative: typedefs.CSSOMString = undefined,
-            prefix: typedefs.CSSOMString = undefined,
-            suffix: typedefs.CSSOMString = undefined,
-            range: typedefs.CSSOMString = undefined,
-            pad: typedefs.CSSOMString = undefined,
-            speakAs: typedefs.CSSOMString = undefined,
-            fallback: typedefs.CSSOMString = undefined,
             _internal: ?*CSSCounterStyleRuleImpl.InternalState = null,
         },
     );

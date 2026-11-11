@@ -68,7 +68,6 @@ pub const ContentVisibilityAutoStateChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            skipped: bool = undefined,
             _internal: ?*ContentVisibilityAutoStateChangeEventImpl.InternalState = null,
         },
     );

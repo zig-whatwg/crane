@@ -53,8 +53,6 @@ pub const NavigatorLanguage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            language: runtime.DOMString = undefined,
-            languages: runtime.JSValue = undefined,
             _internal: ?*NavigatorLanguageImpl.InternalState = null,
         },
     );

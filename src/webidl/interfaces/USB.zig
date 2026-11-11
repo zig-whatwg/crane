@@ -88,8 +88,6 @@ pub const USB = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onconnect: typedefs.EventHandler = undefined,
-            ondisconnect: typedefs.EventHandler = undefined,
             _internal: ?*USBImpl.InternalState = null,
         },
     );

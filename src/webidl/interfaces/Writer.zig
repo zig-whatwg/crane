@@ -100,14 +100,6 @@ pub const Writer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sharedContext: runtime.DOMString = undefined,
-            tone: enums.WriterTone = undefined,
-            format: enums.WriterFormat = undefined,
-            length: enums.WriterLength = undefined,
-            expectedInputLanguages: ?runtime.JSValue = null,
-            expectedContextLanguages: ?runtime.JSValue = null,
-            outputLanguage: ?runtime.DOMString = null,
-            inputQuota: f64 = undefined,
             _internal: ?*WriterImpl.InternalState = null,
         },
     );

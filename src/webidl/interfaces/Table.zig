@@ -66,7 +66,6 @@ pub const Table = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: typedefs.AddressValue = undefined,
             _internal: ?*TableImpl.InternalState = null,
         },
     );

@@ -77,8 +77,6 @@ pub const PortalHost = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onmessage: typedefs.EventHandler = undefined,
-            onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*PortalHostImpl.InternalState = null,
         },
     );

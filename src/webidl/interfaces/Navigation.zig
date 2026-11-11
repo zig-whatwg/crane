@@ -111,15 +111,6 @@ pub const Navigation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            currentEntry: ?*runtime.Instance = null,
-            transition: ?*runtime.Instance = null,
-            activation: ?*runtime.Instance = null,
-            canGoBack: bool = undefined,
-            canGoForward: bool = undefined,
-            onnavigate: typedefs.EventHandler = undefined,
-            onnavigatesuccess: typedefs.EventHandler = undefined,
-            onnavigateerror: typedefs.EventHandler = undefined,
-            oncurrententrychange: typedefs.EventHandler = undefined,
             _internal: ?*NavigationImpl.InternalState = null,
         },
     );

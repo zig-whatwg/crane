@@ -67,10 +67,6 @@ pub const FontData = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            postscriptName: runtime.USVString = undefined,
-            fullName: runtime.USVString = undefined,
-            family: runtime.USVString = undefined,
-            style: runtime.USVString = undefined,
             _internal: ?*FontDataImpl.InternalState = null,
         },
     );

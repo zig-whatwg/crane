@@ -75,7 +75,6 @@ pub const TextEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: runtime.DOMString = undefined,
             _internal: ?*TextEventImpl.InternalState = null,
         },
     );

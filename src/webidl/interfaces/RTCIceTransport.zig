@@ -124,15 +124,6 @@ pub const RTCIceTransport = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            role: enums.RTCIceRole = undefined,
-            component: enums.RTCIceComponent = undefined,
-            state: enums.RTCIceTransportState = undefined,
-            gatheringState: enums.RTCIceGathererState = undefined,
-            onstatechange: typedefs.EventHandler = undefined,
-            ongatheringstatechange: typedefs.EventHandler = undefined,
-            onselectedcandidatepairchange: typedefs.EventHandler = undefined,
-            onerror: typedefs.EventHandler = undefined,
-            onicecandidate: typedefs.EventHandler = undefined,
             _internal: ?*RTCIceTransportImpl.InternalState = null,
         },
     );

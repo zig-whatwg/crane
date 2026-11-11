@@ -63,6 +63,12 @@ pub const XMLHttpRequest = struct {
             .{ "responseXML", "get_responseXML", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "upload",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "open", "call_open", 2 },
@@ -134,18 +140,6 @@ pub const XMLHttpRequest = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onreadystatechange: typedefs.EventHandler = undefined,
-            readyState: u16 = undefined,
-            timeout: u32 = undefined,
-            withCredentials: bool = undefined,
-            upload: *runtime.Instance = undefined,
-            responseURL: runtime.USVString = undefined,
-            status: u16 = undefined,
-            statusText: runtime.ByteString = undefined,
-            responseType: enums.XMLHttpRequestResponseType = undefined,
-            response: runtime.JSValue = undefined,
-            responseText: runtime.USVString = undefined,
-            responseXML: ?*runtime.Instance = null,
             cached_upload: ?*runtime.Instance = null,
             _internal: ?*XMLHttpRequestImpl.InternalState = null,
         },

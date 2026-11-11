@@ -40,6 +40,12 @@ pub const XRSessionEvent = struct {
             .{ "session", "get_session", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "session",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -70,7 +76,6 @@ pub const XRSessionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            session: *runtime.Instance = undefined,
             cached_session: ?*runtime.Instance = null,
             _internal: ?*XRSessionEventImpl.InternalState = null,
         },

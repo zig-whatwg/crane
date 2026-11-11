@@ -83,9 +83,6 @@ pub const BroadcastChannel = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            onmessage: typedefs.EventHandler = undefined,
-            onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*BroadcastChannelImpl.InternalState = null,
         },
     );

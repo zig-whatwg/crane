@@ -87,9 +87,6 @@ pub const Translator = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sourceLanguage: runtime.DOMString = undefined,
-            targetLanguage: runtime.DOMString = undefined,
-            inputQuota: f64 = undefined,
             _internal: ?*TranslatorImpl.InternalState = null,
         },
     );

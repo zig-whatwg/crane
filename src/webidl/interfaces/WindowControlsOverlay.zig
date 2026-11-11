@@ -77,8 +77,6 @@ pub const WindowControlsOverlay = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            visible: bool = undefined,
-            ongeometrychange: typedefs.EventHandler = undefined,
             _internal: ?*WindowControlsOverlayImpl.InternalState = null,
         },
     );

@@ -55,8 +55,6 @@ pub const BluetoothDeviceEventHandlers = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onadvertisementreceived: typedefs.EventHandler = undefined,
-            ongattserverdisconnected: typedefs.EventHandler = undefined,
             _internal: ?*BluetoothDeviceEventHandlersImpl.InternalState = null,
         },
     );

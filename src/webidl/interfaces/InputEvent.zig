@@ -85,10 +85,6 @@ pub const InputEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: ?runtime.USVString = null,
-            isComposing: bool = undefined,
-            inputType: runtime.DOMString = undefined,
-            dataTransfer: ?*runtime.Instance = null,
             _internal: ?*InputEventImpl.InternalState = null,
         },
     );

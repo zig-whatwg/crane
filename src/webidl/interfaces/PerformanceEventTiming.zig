@@ -74,12 +74,6 @@ pub const PerformanceEventTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            processingStart: typedefs.DOMHighResTimeStamp = undefined,
-            processingEnd: typedefs.DOMHighResTimeStamp = undefined,
-            cancelable: bool = undefined,
-            target: ?*runtime.Instance = null,
-            targetSelector: runtime.DOMString = undefined,
-            interactionId: u64 = undefined,
             _internal: ?*PerformanceEventTimingImpl.InternalState = null,
         },
     );

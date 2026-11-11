@@ -72,8 +72,6 @@ pub const SpeechRecognitionErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"error": enums.SpeechRecognitionErrorCode = undefined,
-            message: runtime.DOMString = undefined,
             _internal: ?*SpeechRecognitionErrorEventImpl.InternalState = null,
         },
     );

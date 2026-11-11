@@ -80,10 +80,6 @@ pub const FederatedCredential = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            provider: runtime.USVString = undefined,
-            protocol: ?runtime.DOMString = null,
-            name: runtime.USVString = undefined,
-            iconURL: runtime.USVString = undefined,
             _internal: ?*FederatedCredentialImpl.InternalState = null,
         },
     );

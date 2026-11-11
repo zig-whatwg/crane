@@ -79,9 +79,6 @@ pub const PasswordCredential = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            password: runtime.USVString = undefined,
-            name: runtime.USVString = undefined,
-            iconURL: runtime.USVString = undefined,
             _internal: ?*PasswordCredentialImpl.InternalState = null,
         },
     );

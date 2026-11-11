@@ -81,10 +81,6 @@ pub const PerformanceSoftNavigation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            navigationType: enums.NavigationType = undefined,
-            interactionId: u64 = undefined,
-            paintTime: typedefs.DOMHighResTimeStamp = undefined,
-            presentationTime: ?typedefs.DOMHighResTimeStamp = null,
             _internal: ?*PerformanceSoftNavigationImpl.InternalState = null,
         },
     );

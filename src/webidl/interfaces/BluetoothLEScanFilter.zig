@@ -69,11 +69,6 @@ pub const BluetoothLEScanFilter = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: ?runtime.DOMString = null,
-            namePrefix: ?runtime.DOMString = null,
-            services: runtime.JSValue = undefined,
-            manufacturerData: *runtime.Instance = undefined,
-            serviceData: *runtime.Instance = undefined,
             _internal: ?*BluetoothLEScanFilterImpl.InternalState = null,
         },
     );

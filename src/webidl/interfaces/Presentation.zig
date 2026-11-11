@@ -60,8 +60,6 @@ pub const Presentation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            defaultRequest: ?*runtime.Instance = null,
-            receiver: ?*runtime.Instance = null,
             _internal: ?*PresentationImpl.InternalState = null,
         },
     );

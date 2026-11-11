@@ -58,7 +58,6 @@ pub const NDEFMessage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            records: runtime.JSValue = undefined,
             _internal: ?*NDEFMessageImpl.InternalState = null,
         },
     );

@@ -69,7 +69,6 @@ pub const InstallResultEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            result: enums.InstallResult = undefined,
             _internal: ?*InstallResultEventImpl.InternalState = null,
         },
     );

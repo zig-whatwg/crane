@@ -71,10 +71,6 @@ pub const ConnectionAllowlistViolationReport = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            url: runtime.USVString = undefined,
-            connection: runtime.USVString = undefined,
-            allowlist: runtime.JSValue = undefined,
-            disposition: enums.ConnectionAllowlistDisposition = undefined,
             _internal: ?*ConnectionAllowlistViolationReportImpl.InternalState = null,
         },
     );

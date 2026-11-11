@@ -65,10 +65,6 @@ pub const CSSFontPaletteValuesRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.CSSOMString = undefined,
-            fontFamily: typedefs.CSSOMString = undefined,
-            basePalette: typedefs.CSSOMString = undefined,
-            overrideColors: typedefs.CSSOMString = undefined,
             _internal: ?*CSSFontPaletteValuesRuleImpl.InternalState = null,
         },
     );

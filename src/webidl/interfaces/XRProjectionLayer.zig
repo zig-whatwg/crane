@@ -83,12 +83,6 @@ pub const XRProjectionLayer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            textureWidth: u32 = undefined,
-            textureHeight: u32 = undefined,
-            textureArrayLength: u32 = undefined,
-            ignoreDepthValues: bool = undefined,
-            fixedFoveation: ?f32 = null,
-            deltaPose: ?*runtime.Instance = null,
             _internal: ?*XRProjectionLayerImpl.InternalState = null,
         },
     );

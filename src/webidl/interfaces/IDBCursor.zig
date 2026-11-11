@@ -42,6 +42,12 @@ pub const IDBCursor = struct {
             .{ "request", "get_request", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "request",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "advance", "call_advance", 1 },
@@ -82,14 +88,6 @@ pub const IDBCursor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            source: union(enum) {
-                IDBObjectStore: IDBObjectStore,
-                IDBIndex: IDBIndex,
-            } = undefined,
-            direction: enums.IDBCursorDirection = undefined,
-            key: runtime.JSValue = undefined,
-            primaryKey: runtime.JSValue = undefined,
-            request: *runtime.Instance = undefined,
             cached_request: ?*runtime.Instance = null,
             _internal: ?*IDBCursorImpl.InternalState = null,
         },

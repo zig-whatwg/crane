@@ -75,8 +75,6 @@ pub const TimeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            view: ?typedefs.WindowProxy = null,
-            detail: i32 = undefined,
             _internal: ?*TimeEventImpl.InternalState = null,
         },
     );

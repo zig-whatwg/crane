@@ -58,8 +58,6 @@ pub const SpeechGrammar = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            src: runtime.DOMString = undefined,
-            weight: f32 = undefined,
             _internal: ?*SpeechGrammarImpl.InternalState = null,
         },
     );

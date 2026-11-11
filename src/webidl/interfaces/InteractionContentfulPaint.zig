@@ -78,10 +78,6 @@ pub const InteractionContentfulPaint = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            largestContentfulPaint: *runtime.Instance = undefined,
-            interactionId: u64 = undefined,
-            paintTime: typedefs.DOMHighResTimeStamp = undefined,
-            presentationTime: ?typedefs.DOMHighResTimeStamp = null,
             _internal: ?*InteractionContentfulPaintImpl.InternalState = null,
         },
     );

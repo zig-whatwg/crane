@@ -89,7 +89,6 @@ pub const AudioScheduledSourceNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onended: typedefs.EventHandler = undefined,
             _internal: ?*AudioScheduledSourceNodeImpl.InternalState = null,
         },
     );

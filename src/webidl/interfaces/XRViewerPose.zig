@@ -61,7 +61,6 @@ pub const XRViewerPose = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            views: runtime.JSValue = undefined,
             cached_views: ?runtime.JSValue = null,
             _internal: ?*XRViewerPoseImpl.InternalState = null,
         },

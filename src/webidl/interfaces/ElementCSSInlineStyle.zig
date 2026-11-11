@@ -60,8 +60,6 @@ pub const ElementCSSInlineStyle = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            style: *runtime.Instance = undefined,
-            attributeStyleMap: *runtime.Instance = undefined,
             cached_style: ?*runtime.Instance = null,
             cached_attributeStyleMap: ?*runtime.Instance = null,
             _internal: ?*ElementCSSInlineStyleImpl.InternalState = null,
