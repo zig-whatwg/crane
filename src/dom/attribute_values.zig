@@ -870,12 +870,22 @@ fn destroyClassNames(allocator: std.mem.Allocator, names: *ClassNames) void {
 pub fn intern(scope: *runtime.BrowserScope, bytes: []const u8) error{OutOfMemory}!ValueId {
     if (bytes.len == 0) return .empty;
     element_name.checkOwnerThread(scope);
-    const table = try scope.table(.attribute_values, Table);
-    // Inlined: this is every attribute write's call. Batch 3's class reads
-    // gave Table.intern three more callers and the compiler stopped inlining
-    // it here, so each write paid a second frame and stack check (~35
-    // instructions; the cost pair's setter row, 2026-11-11).
-    return @call(.always_inline, Table.intern, .{ table, bytes });
+    // Every attribute write's call, kept small enough to need no frame: the
+    // table is made out of line (`firstTable`), so this is a load and a jump
+    // to Table.intern. Batch 3's class reads gave Table.intern three more
+    // callers and the compiler stopped inlining it here; with the table's
+    // making inlined too, each write paid two frames and two stack checks
+    // (~35 instructions; the cost pair's setter row, 2026-11-11). Forcing
+    // Table.intern inline here instead copied its body, and the copies' new
+    // callers pushed the lookup and the unpark out of line in both.
+    const table = scope.existingTable(.attribute_values, Table) orelse try firstTable(scope);
+    return table.intern(bytes);
+}
+
+/// `scope`'s values table, made on its first value: out of line, as it runs
+/// once per Browser (`intern`).
+noinline fn firstTable(scope: *runtime.BrowserScope) error{OutOfMemory}!*Table {
+    return scope.table(.attribute_values, Table);
 }
 
 /// One more reference to `id` in `scope`'s table.
@@ -891,8 +901,7 @@ pub fn release(scope: *runtime.BrowserScope, id: ValueId) void {
     if (id == .empty) return;
     const table = scope.existingTable(.attribute_values, Table) orelse return;
     element_name.checkOwnerThread(scope);
-    // Inlined, as `intern`: every attribute write's other call.
-    @call(.always_inline, Table.release, .{ table, id });
+    table.release(id);
 }
 
 /// `scope`'s table, if it has made one: what a reader decodes ids with.
