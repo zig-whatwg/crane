@@ -93,10 +93,12 @@ test "rows whose cascade reads their own place among their siblings run it every
 fn ownBlocksMiss() !void {
     const page = try helpers.Page.open();
     defer page.close();
-    // A style attribute is a block of the element's own: no lookup.
+    // A style attribute is a block of the element's own, looked up by its
+    // content since lane style1 b5 (Blink CSSPropertyValueSet::ComputeHash):
+    // 100 equal attributes, one cascade.
     try rows(page, 100, "style=\"margin-top: 3px\"");
     const c = counters(page);
-    try testing.expectEqual(@as(u32, 0), c.hits);
+    try testing.expect(c.hits >= 99);
     try page.run(
         \\const list = document.getElementById('list');
         \\for (const e of list.children) if (getComputedStyle(e).marginTop !== '3px') throw new Error(getComputedStyle(e).marginTop);
@@ -108,7 +110,7 @@ fn ownBlocksMiss() !void {
     );
 }
 
-test "rows with a style attribute run the cascade every time" {
+test "rows with equal style attributes hit, and a style attribute changed in place reads its new value" {
     if (comptime !implemented()) return error.SkipNotImplemented;
     try helpers.onFreshThread(ownBlocksMiss);
 }
