@@ -213,6 +213,16 @@ pub const Value = extern struct {
         return self.len_and_flags & ValueId.flag_bits;
     }
 
+    /// Whether a class read can give it a ClassNames: not when it is ONE
+    /// token with no upper-case letter - its classes are itself and its
+    /// fold is itself, so a list would hold nothing (`makeClassNames` is
+    /// never asked for one). A plain attribute write (`el.id = 'x'`,
+    /// `data-k`) then parks, revives and frees its record with no lookup of
+    /// the lists (the cost pair's setter and set/get rows, 2026-11-11).
+    inline fn mayHaveClassNames(self: *const Value) bool {
+        return self.flags() != ValueId.flag_bits;
+    }
+
     /// Its bytes, borrowed while it is counted.
     pub inline fn bytes(self: *const Value) []const u8 {
         const base: [*]const u8 = @ptrCast(self);
@@ -577,6 +587,7 @@ pub const Table = struct {
     /// record's ClassNames never change (only a counted record is read as
     /// classes: `classNames`), so parking and unparking agree.
     fn parkedSize(self: *const Table, slot: u32, value: *const Value) usize {
+        if (!value.mayHaveClassNames()) return value.blockSize();
         const names = self.classNamesAt(slot) orelse return value.blockSize();
         return value.blockSize() + ClassNames.blockSize(names.len);
     }
@@ -594,7 +605,7 @@ pub const Table = struct {
     /// records, against a table that no longer has this one.
     fn free(self: *Table, slot: u32, value: *Value) void {
         if (debug_checks and value.references != 0) @panic("a counted attribute value record freed");
-        const names = self.takeClassNames(slot);
+        const names = if (value.mayHaveClassNames()) self.takeClassNames(slot) else null;
         if (slot < self.operand_slots.bit_length and self.operand_slots.isSet(slot)) {
             // A class selector's cached id named this record: every such id
             // is stale from now on (`operand_frees`).
@@ -658,6 +669,11 @@ pub const Table = struct {
         // Only a counted record is read as classes (an element's value, a
         // DOMTokenList's own): a parked record's size must not change.
         if (debug_checks and value.references == 0) @panic("a class read of a value no attribute holds");
+        // Checked in every build: park, revive and free skip the lists of a
+        // value that may have none (`Value.mayHaveClassNames`), so a list
+        // made for one would outlive its record. Every caller asks only for
+        // a value of several tokens or with an upper-case letter.
+        if (!value.mayHaveClassNames()) @panic("a token list asked for a lowercase one-token value");
         if (slot >= self.class_names.items.len) try self.class_names.appendNTimes(self.allocator, null, slot + 1 - self.class_names.items.len);
         self.class_scans += 1;
 
@@ -875,7 +891,8 @@ pub fn release(scope: *runtime.BrowserScope, id: ValueId) void {
     if (id == .empty) return;
     const table = scope.existingTable(.attribute_values, Table) orelse return;
     element_name.checkOwnerThread(scope);
-    table.release(id);
+    // Inlined, as `intern`: every attribute write's other call.
+    @call(.always_inline, Table.release, .{ table, id });
 }
 
 /// `scope`'s table, if it has made one: what a reader decodes ids with.
