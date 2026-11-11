@@ -1072,11 +1072,6 @@ pub extern fn v8_Context_DetachGlobal(context: *Context) void;
 /// a context is no longer needed.
 pub extern fn v8_Isolate_ContextDisposedNotification(isolate: *Isolate, force_gc: bool) c_int;
 
-/// Get the real global object (not the global proxy) from a context.
-/// V8 uses a split global architecture: the global proxy is what JavaScript sees,
-/// but the real global object (with internal fields) is its prototype.
-pub extern fn v8_Context_GetRealGlobal(context: *Context) ?*Object;
-
 pub extern fn v8_Context_Global(context: *Context) ?*Object;
 /// The context's registry key: a never-reused id kept in its embedder data,
 /// stable across compacting GCs (despite the name, not an address - see the

@@ -1112,10 +1112,15 @@ pub fn functionRealm(value: JSValue) ?Context {
 /// Blink's GetCachedSizeFunction (core/streams/queuing_strategy_common.cc):
 /// the function is kept under a private symbol on the realm's global - an
 /// edge the collector traces from the global, never a root - so a realm
-/// whose navigable is gone is still collected with it. Here the global
-/// OBJECT holds it, not the global proxy: a WindowProxy a navigation hands
-/// on to a later realm would carry the old realm's function into the new
-/// one. Function::New with ConstructorBehavior::kThrow
+/// whose navigable is gone is still collected with it. Stored, as Blink
+/// stores it, through the realm's global PROXY (`context->Global()`): V8
+/// puts a private symbol set on an attached JSGlobalProxy on its global
+/// OBJECT (LookupIterator::GetStoreTarget, lookup-inl.h), and a read through
+/// the proxy finds it there - so a WindowProxy a navigation hands on reaches
+/// the new realm's global object and never carries the old realm's function
+/// into the new one. (V8 >= 14 gives no other path to the global object: the
+/// V1 GetPrototype that did is Object.getPrototypeOf now, crbug.com/333672197,
+/// and answered Window.prototype - design 2.6.) Function::New with ConstructorBehavior::kThrow
 /// (v8_Function_NewWithData): no [[Construct]] and no "prototype", and not
 /// cached in the context's template instantiation cache. OWNED: a hold of
 /// the function.
@@ -1124,7 +1129,7 @@ pub fn globalBuiltinFunction(realm: Context, key: []const u8, function_name: []c
     defer entered.leave();
     const isolate = entered.isolate;
     const context = entered.context();
-    const global = ffi.v8_Context_GetRealGlobal(context) orelse return error.OperationFailed;
+    const global = ffi.v8_Context_Global(context) orelse return error.OperationFailed;
     defer ffi.v8_Object_Dispose(global);
     // The function made for `key` before: the global object keeps it.
     if (ffi.v8_Object_GetPrivateRef(global, key.ptr, @intCast(key.len))) |made| return support.owned(made);

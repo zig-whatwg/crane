@@ -3918,36 +3918,6 @@ int v8_Isolate_ContextDisposedNotification(Isolate* isolate, bool force_gc) {
     return isolate->ContextDisposedNotification(force_gc);
 }
 
-/// Get the real global object (not the global proxy) from a context.
-///
-/// V8 uses a split global architecture: the global proxy is what JavaScript sees
-/// as `globalThis`, but the real global object (with internal fields) is its
-/// prototype. This function returns the real global object.
-///
-/// Per Chrome's V8BindingDesign: The global proxy has 0 internal fields.
-/// Internal fields are set on the real global object (prototype of proxy).
-///
-/// @param context - The context to get real global from
-/// @return Global<Object>* - The real global object (caller owns), or nullptr
-Global<Object>* v8_Context_GetRealGlobal(Global<Context>* context) {
-    if (!context) return nullptr;
-
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Context> local_context = context->Get(isolate);
-
-    // Get the global proxy
-    Local<Object> global_proxy = local_context->Global();
-
-    // Get the prototype, which is the real global object
-    Local<Value> proto = global_proxy->GetPrototype();
-    if (proto.IsEmpty() || !proto->IsObject()) {
-        return nullptr;
-    }
-
-    return trackHandle(new Global<Object>(isolate, proto.As<Object>()));
-}
-
 Global<Object>* v8_Context_Global(Global<Context>* context) {
     g_obj_src[2].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = Isolate::GetCurrent();
