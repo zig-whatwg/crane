@@ -1,0 +1,12 @@
+# Debugging: An enum that crosses the FFI is pinned against the engine's own values by a test
+
+**Date**: 2026-11-11
+**Lesson**: A Zig copy of a C++ enum returned by value across the C ABI compiles against any version of the engine, so an engine that renumbers the enum breaks every callback that returns it, silently.
+
+**Why**: V8 8f35dec9947 (2026-01-30, "[ic] Introduce CallNamedInterceptorGetter builtin", in 15.7.112.43) redefined `v8::Intercepted` from 13.1's `enum class Intercepted : uint8_t { kNo = 0, kYes = 1 }` to `enum class Intercepted : uint32_t { kNo = 1, kYes = 0 }`, so that kNo is the IC's kNotInterceptedSentinel, which must look like a HeapObject. Every Zig interceptor callback returned `ffi.Intercepted`, a Zig `enum(u8) { kNo = 0, kYes = 1 }`. No compile sees a Zig enum against a C++ header: the C++ side declares the callback types, Zig passes function pointers, and both compile.
+
+**What Happened**: In lane v8up's port to V8 15.7, about 280 tests/v8 cases failed with "Cannot read properties of undefined (reading 'createHTMLDocument')" and "doc.createElement is not a function". A probe showed `new Document()` had Document.prototype as its prototype and the getter worked through `.call(d)`, yet `d.implementation` read undefined. Document has a masking named interceptor ([LegacyOverrideBuiltIns]), which V8 consults before the prototype chain. Its "not mine" (Zig's kNo, 0) was V8's kYes: "intercepted, value undefined". Every real answer (Zig's kYes, 1) was V8's kNo, so named and indexed getters answered nothing. The design batch first suspected the global-object model and the legacy-object proxy.
+
+**Fix**: `ffi.Intercepted` is now `enum(u32) { kNo = 1, kYes = 0 }`, the one definition every Zig interceptor returns. v8_wrapper.cpp exports `v8_Intercepted_Value(yes)` and `v8_Intercepted_Size()`, and tests/v8/v8up_interceptor_contract_test.zig pins the Zig enum's width and both constants against them, then goes through a masking named, a non-masking named and an indexed interceptor with a hit and a miss each (RED 9bff0e785df, fix 343a376e416).
+
+**Takeaway**: **Every enum or struct that crosses the FFI by value gets a test that compares it with the engine's own definition, read through an export: a renumbered engine enum compiles everywhere and inverts behaviour at run time.** When an upgrade breaks a whole family of behaviours at once (all named properties, all property misses), check the ABI of the callback's return type before the algorithm.
