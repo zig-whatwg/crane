@@ -492,19 +492,17 @@ fn makeClassNames(collection: *runtime.Instance, root: *runtime.Instance, class_
 /// the comparison is made.
 ///
 /// The walk follows the tree's own links and reads each element's classes in
-/// place (dom.element_data's `classValue`: DOM's "classes" come from the
-/// class attribute in no namespace, read from the attribute list through the
-/// index its header keeps - lane nd2 N3 - as the class selector reads them), and the wanted classes are the
-/// set's tokens, split once per refill. Through the Node and Element
-/// interfaces, a refill of a 3,000-element document read four state-table
-/// lookups and an attribute scan per node: 97% of a getElementsByClassName
-/// call (lane perf2's profile).
+/// place, as the class selector does: the wanted classes are ids of the
+/// Browser's attribute values, read once per refill, and each element's
+/// class value's token list - split once per distinct value - is compared by
+/// id (dom.element_data.ClassSet; lane nd2 batch 3). Through the Node and
+/// Element interfaces, a refill of a 3,000-element document read four
+/// state-table lookups and an attribute scan per node: 97% of a
+/// getElementsByClassName call (lane perf2's profile).
 fn refillClassNames(collection: *runtime.Instance, root: *runtime.Instance) bool {
     const internal = getInternal(collection) orelse return false;
     const class_names = if (internal.filter_class) |c| c.asSlice() else return false;
-    const quirks = isQuirksMode(root);
-    var wanted: WantedClasses = .{};
-    wanted.split(class_names);
+    var wanted = dom.element_data.ClassSet.init(runtime.BrowserScope.ofInstance(root), class_names, isQuirksMode(root));
 
     // Tree order over root's descendants (root itself is not one).
     const root_base = dom.instance_bridge.getNodeBase(@ptrCast(root)) orelse return false;
@@ -513,60 +511,11 @@ fn refillClassNames(collection: *runtime.Instance, root: *runtime.Instance) bool
         if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
         const element = instanceOfBase(node) orelse continue;
         const data = dom.element_data.of(element) orelse continue;
-        if (!wanted.allIn(data.classValue(), quirks)) continue;
+        if (!wanted.matches(data)) continue;
         addElement(collection, element) catch return false;
     }
     return true;
 }
-
-/// The class names' tokens (the ordered set parser's pieces), split once:
-/// up to `inline_count` kept, more read from the text again per element.
-const WantedClasses = struct {
-    const inline_count = 8;
-    names: [inline_count][]const u8 = undefined,
-    len: usize = 0,
-    /// More tokens than fit: `allIn` splits `text` for each element.
-    overflow: bool = false,
-    text: []const u8 = "",
-
-    fn split(self: *WantedClasses, class_names: []const u8) void {
-        self.text = class_names;
-        var it = std.mem.tokenizeAny(u8, class_names, ascii_whitespace);
-        while (it.next()) |name| {
-            if (self.len == inline_count) {
-                self.overflow = true;
-                return;
-            }
-            self.names[self.len] = name;
-            self.len += 1;
-        }
-    }
-
-    /// Whether every wanted class is one of `classes` (an element's class
-    /// attribute value).
-    fn allIn(self: *const WantedClasses, classes: []const u8, quirks: bool) bool {
-        if (classes.len == 0) return false;
-        if (self.overflow) {
-            var it = std.mem.tokenizeAny(u8, self.text, ascii_whitespace);
-            while (it.next()) |name| if (!hasClass(classes, name, quirks)) return false;
-            return true;
-        }
-        for (self.names[0..self.len]) |name| if (!hasClass(classes, name, quirks)) return false;
-        return true;
-    }
-};
-
-fn hasClass(classes: []const u8, name: []const u8, quirks: bool) bool {
-    var it = std.mem.tokenizeAny(u8, classes, ascii_whitespace);
-    while (it.next()) |class| {
-        const same = if (quirks) std.ascii.eqlIgnoreCase(class, name) else std.mem.eql(u8, class, name);
-        if (same) return true;
-    }
-    return false;
-}
-
-/// Infra's ASCII whitespace: TAB, LF, FF, CR, SPACE (not VT).
-const ascii_whitespace = "\t\n\x0C\r ";
 
 /// Whether `root`'s node document is in quirks mode: its compatMode is
 /// "BackCompat" exactly when its mode is "quirks".

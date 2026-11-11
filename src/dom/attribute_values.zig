@@ -73,21 +73,33 @@ const element_name = @import("element_name.zig");
 const debug_checks = builtin.mode == .debug;
 
 /// An attribute value: 0 for the empty string, else a counted reference to
-/// a record of its Browser's table. In a Debug build bits 24-31 are its
-/// slot's generation.
+/// a record of its Browser's table.
+///
+/// Bits 30 and 31 are two facts of the value's bytes, so one record always
+/// has one id and a class check reads them with no table load (lane nd2
+/// batch 3): bit 31, the value is ONE token - not empty, no ASCII whitespace
+/// - so its classes are itself (Blink's SpaceSplitString::Data::CreateVector
+/// pushes the source atom itself when one token spans the string; WebKit's
+/// TokenAtomStringInitializer reuses the key string the same way); bit 30,
+/// it has no ASCII upper-case letter, so it is its own ASCII lowercase
+/// (Blink's ContainsNoAsciiUpper, which SetClassFoldingCase checks before
+/// folding). In a Debug build bits 22-29 are its slot's generation.
 pub const ValueId = enum(u32) {
     empty = 0,
     _,
 
-    const generation_shift = 24;
-    const index_bits: u32 = if (debug_checks) generation_shift else 32;
-    const index_mask: u32 = if (debug_checks) (@as(u32, 1) << index_bits) - 1 else std.math.maxInt(u32);
+    const one_token_bit: u32 = 1 << 31;
+    const lowercase_bit: u32 = 1 << 30;
+    const flag_bits: u32 = one_token_bit | lowercase_bit;
+    const generation_shift = 22;
+    const index_bits: u32 = if (debug_checks) generation_shift else 30;
+    const index_mask: u32 = (@as(u32, 1) << index_bits) - 1;
     /// The slots a table may hold (slot + 1 must fit the index bits).
     pub const limit: usize = index_mask - 1;
 
-    fn of(slot_index: u32, slot_generation: u8) ValueId {
+    fn of(slot_index: u32, slot_generation: u8, flags: u32) ValueId {
         const stamp: u32 = if (debug_checks) @as(u32, slot_generation) << generation_shift else 0;
-        return @fromBackingInt(@intCast(stamp | (slot_index + 1)));
+        return @fromBackingInt(@intCast(flags | stamp | (slot_index + 1)));
     }
 
     fn slot(self: ValueId) u32 {
@@ -95,9 +107,41 @@ pub const ValueId = enum(u32) {
     }
 
     fn generation(self: ValueId) u8 {
-        return if (debug_checks) @intCast(@backingInt(self) >> generation_shift) else 0;
+        return if (debug_checks) @truncate(@backingInt(self) >> generation_shift) else 0;
+    }
+
+    /// The value is one token: its classes are itself.
+    pub inline fn isOneToken(self: ValueId) bool {
+        return @backingInt(self) & one_token_bit != 0;
+    }
+
+    /// The value has no ASCII upper-case letter (the empty value included).
+    pub inline fn isLowercase(self: ValueId) bool {
+        return self == .empty or @backingInt(self) & lowercase_bit != 0;
+    }
+
+    /// The two flags of `bytes` (one pass, at a record's creation).
+    fn flagsOf(bytes: []const u8) u32 {
+        var one_token = bytes.len != 0;
+        var lowercase = true;
+        for (bytes) |c| {
+            if (isAsciiWhitespace(c)) one_token = false;
+            if (c >= 'A' and c <= 'Z') lowercase = false;
+        }
+        return (if (one_token) one_token_bit else 0) | (if (lowercase) lowercase_bit else 0);
     }
 };
+
+/// Infra's ASCII whitespace: TAB, LF, FF, CR, SPACE - not VT (lesson
+/// spec-compliance-infra-ascii-whitespace-is-not-std-ascii-iswhitespace).
+fn isAsciiWhitespace(c: u8) bool {
+    return c == ' ' or c == '\t' or c == '\n' or c == '\r' or c == 0x0C;
+}
+
+/// The longest value a record holds: its length shares 32 bits with its
+/// id's two flags. A longer one is error.OutOfMemory, as one past 4 GiB
+/// was before.
+pub const max_value_bytes: usize = (1 << 30) - 1;
 
 /// One value: this 8-byte header, then its bytes, in one block. Its id and
 /// hash are not kept: the map is keyed by slot and hashes a record's bytes
@@ -110,21 +154,74 @@ pub const Value = extern struct {
     /// (`Hold`). Written only by its table, on its Browser's window agent's
     /// thread.
     references: u32,
-    /// Its length in bytes.
-    len: u32,
+    /// Its length in bytes (bits 0-29) and its id's two flags (bits 30-31,
+    /// `ValueId`'s).
+    len_and_flags: u32,
 
     comptime {
         std.debug.assert(@sizeOf(Value) == 8);
     }
 
+    /// Its length in bytes.
+    pub inline fn len(self: *const Value) u32 {
+        return self.len_and_flags & ~ValueId.flag_bits;
+    }
+
+    fn flags(self: *const Value) u32 {
+        return self.len_and_flags & ValueId.flag_bits;
+    }
+
     /// Its bytes, borrowed while it is counted.
     pub inline fn bytes(self: *const Value) []const u8 {
         const base: [*]const u8 = @ptrCast(self);
-        return base[@sizeOf(Value)..][0..self.len];
+        return base[@sizeOf(Value)..][0..self.len()];
     }
 
     fn blockSize(self: *const Value) usize {
-        return @sizeOf(Value) + self.len;
+        return @sizeOf(Value) + self.len();
+    }
+};
+
+/// What class reads make of a value, once: Blink's SpaceSplitString::Data
+/// (core/dom/space_split_string.{h,cc}, one per AtomicString in a shared
+/// map) and WebKit's SpaceSplitStringData (Source/WebCore/dom/
+/// SpaceSplitString.{h,cpp}, one per AtomString in spaceSplitStringTable).
+/// Here it is the value record's own: its table keeps it by the record's
+/// slot (`Table.class_names`), makes it on the record's first class read -
+/// the class selector, classList, getElementsByClassName - and frees it with
+/// the record; a parked record keeps it, so a value the ring revives comes
+/// back with its tokens.
+///
+/// Its tokens are DOM's ordered set parser over the value (split on ASCII
+/// whitespace, each token once, in first-seen order: Blink's CreateVector
+/// with its HashSet past the second token), each a COUNTED reference to that
+/// token's own record - the same table, as Blink's tokens are AtomicStrings
+/// of the AtomicStringTable its values are. A one-token value has none
+/// (`ValueId.isOneToken`: its token is itself). After a quirks-mode read it
+/// also counts the record of the value ASCII-lowercased (Blink's
+/// ElementData::SetClassFoldingCase, WebKit's ShouldFoldCase::Yes), whose
+/// own tokens are the folded ones.
+pub const ClassNames = extern struct {
+    /// How many tokens follow.
+    len: u32,
+    /// The ASCII-lowercase value's record, counted; .empty until a
+    /// quirks-mode read needs it (a value with no upper-case letter is its
+    /// own).
+    folded: ValueId,
+
+    comptime {
+        std.debug.assert(@sizeOf(ClassNames) == 8);
+    }
+
+    /// The tokens, each a counted one-token record.
+    pub fn tokens(self: *const ClassNames) []const ValueId {
+        const base: [*]const u8 = @ptrCast(self);
+        const first: [*]const ValueId = @ptrCast(@alignCast(base + @sizeOf(ClassNames)));
+        return first[0..self.len];
+    }
+
+    fn blockSize(len: usize) usize {
+        return @sizeOf(ClassNames) + len * @sizeOf(ValueId);
     }
 };
 
@@ -157,7 +254,7 @@ const KeyAdapter = struct {
     }
     pub fn eql(adapter: KeyAdapter, key: BytesKey, slot: u32) bool {
         const value = adapter.ids.get(slot);
-        return value.len == key.bytes.len and std.mem.eql(u8, value.bytes(), key.bytes);
+        return value.len() == key.bytes.len and std.mem.eql(u8, value.bytes(), key.bytes);
     }
 };
 
@@ -178,12 +275,27 @@ pub const Table = struct {
     /// still in the map, for a value that comes back (oldest first). See
     /// `Parking`.
     parked: Parking = .{},
-    /// Measurements (lane nd2 batch 3): the passes class reads made over
-    /// class values' bytes, the token lists alive, and the frees of records a
-    /// class selector's operand named.
+    /// Each record's ClassNames by its slot, made on its first class read
+    /// (null: none yet). Grown on demand to the highest slot read; a freed
+    /// record's goes with it.
+    class_names: std.ArrayListUnmanaged(?*ClassNames) = .empty,
+    /// The slots whose record a class selector's operand names (a compiled
+    /// selector keeps the id with no count: `operandOf`). A set bit is
+    /// cleared, and `operand_frees` moves, when that record is freed.
+    operand_slots: std.DynamicBitSetUnmanaged = .{},
+    /// How many records a class selector's operand named were freed: a
+    /// selector's cached id is valid while this has not moved since it was
+    /// read. 64 bits, never reset and never narrowed - a wrap would make a
+    /// stale id look valid. Only those records move it, so the values a
+    /// page churns (style, data-*, aria writes, freed at once past the
+    /// ring's per-record cap) leave every selector's ids valid.
+    operand_frees: u64 = 0,
+    /// Measurements: the passes class reads made over class values' bytes
+    /// (a split, or a byte compare), and the ClassNames alive and their
+    /// bytes.
     class_scans: usize = 0,
     class_lists: usize = 0,
-    operand_frees: u64 = 0,
+    class_bytes: usize = 0,
 
     const Map = std.HashMapUnmanaged(u32, void, SlotContext, 80);
 
@@ -281,6 +393,10 @@ pub const Table = struct {
     pub fn deinit(self: *Table) void {
         var keys = self.records.keyIterator();
         while (keys.next()) |slot| destroy(self.allocator, self.ids.get(slot.*));
+        // Every record is gone: the lists' references with them.
+        for (self.class_names.items) |names| if (names) |n| destroyClassNames(self.allocator, n);
+        self.class_names.deinit(self.allocator);
+        self.operand_slots.deinit(self.allocator);
         self.records.deinit(self.allocator);
         self.ids.deinit(self.allocator);
     }
@@ -318,7 +434,12 @@ pub const Table = struct {
         if (bytes.len == 0) return .empty;
         const key: BytesKey = .{ .bytes = bytes, .hash = hashOf(bytes) };
         const slot = self.records.getKeyAdapted(key, KeyAdapter{ .ids = &self.ids }) orelse return null;
-        return ValueId.of(slot, self.ids.generation(slot));
+        return self.idAt(slot);
+    }
+
+    /// The id of the record in `slot`.
+    inline fn idAt(self: *const Table, slot: u32) ValueId {
+        return ValueId.of(slot, self.ids.generation(slot), self.ids.get(slot).flags());
     }
 
     /// `id`'s bytes.
@@ -334,7 +455,7 @@ pub const Table = struct {
         if (bytes.len == 0) return .empty;
         const key: BytesKey = .{ .bytes = bytes, .hash = hashOf(bytes) };
         if (self.records.getKeyAdapted(key, KeyAdapter{ .ids = &self.ids })) |slot| {
-            const id = ValueId.of(slot, self.ids.generation(slot));
+            const id = self.idAt(slot);
             const value: *Value = @constCast(self.ids.get(slot));
             // A parked record comes back: out of the ring, with its id.
             if (value.references == 0) self.unpark(slot, value);
@@ -351,7 +472,7 @@ pub const Table = struct {
         if (debug_checks and placed.found_existing) @panic("an attribute value record interned twice");
         placed.key_ptr.* = slot;
         self.bytes_held += value.blockSize();
-        return ValueId.of(slot, self.ids.generation(slot));
+        return ValueId.of(slot, self.ids.generation(slot), value.flags());
     }
 
     /// One more reference to `id` (none for .empty), checked for overflow in
@@ -375,14 +496,18 @@ pub const Table = struct {
     }
 
     /// A record whose count reached zero: parked, or freed now when it is
-    /// too big to wait. A full ring frees its oldest first (`Parking`).
+    /// too big to wait. A full ring frees its oldest first (`Parking`). A
+    /// record's size here is its block and its ClassNames' (which it keeps
+    /// while parked), so the ring's bounds hold both.
     fn park(self: *Table, slot: u32, value: *Value) void {
-        const size = value.blockSize();
+        const size = self.parkedSize(slot, value);
         if (size > Parking.max_record_bytes) return self.free(slot, value);
+        // A freed record's list releases its tokens, which can park (and
+        // evict) in turn: the loop re-reads the ring each time round.
         while (self.parked.len == Parking.max_records or self.parked.bytes + size > Parking.max_bytes) {
             const oldest = self.parked.removeAt(0);
             const evicted: *Value = @constCast(self.ids.get(oldest));
-            self.parked.bytes -= evicted.blockSize();
+            self.parked.bytes -= self.parkedSize(oldest, evicted);
             self.free(oldest, evicted);
         }
         self.parked.slots[self.parked.len] = slot;
@@ -390,23 +515,213 @@ pub const Table = struct {
         self.parked.bytes += size;
     }
 
+    /// What a parked record weighs: its block and its ClassNames. A parked
+    /// record's ClassNames never change (only a counted record is read as
+    /// classes: `classNames`), so parking and unparking agree.
+    fn parkedSize(self: *const Table, slot: u32, value: *const Value) usize {
+        const names = self.classNamesAt(slot) orelse return value.blockSize();
+        return value.blockSize() + ClassNames.blockSize(names.len);
+    }
+
     /// A parked record an intern found: out of the ring.
     fn unpark(self: *Table, slot: u32, value: *const Value) void {
         const index = self.parked.indexOf(slot) orelse @panic("an attribute value record with no reference was not parked");
         _ = self.parked.removeAt(index);
-        self.parked.bytes -= value.blockSize();
+        self.parked.bytes -= self.parkedSize(slot, value);
     }
 
     /// Free a record with no reference: out of the map (which hashes its
-    /// bytes to find its slot) first, then the slot, then the block.
+    /// bytes to find its slot) first, then the slot, then the block - and
+    /// then its ClassNames, whose tokens' releases may park or free other
+    /// records, against a table that no longer has this one.
     fn free(self: *Table, slot: u32, value: *Value) void {
         if (debug_checks and value.references != 0) @panic("a counted attribute value record freed");
+        const names = self.takeClassNames(slot);
+        if (slot < self.operand_slots.bit_length and self.operand_slots.isSet(slot)) {
+            // A class selector's cached id named this record: every such id
+            // is stale from now on (`operand_frees`).
+            self.operand_slots.unset(slot);
+            self.operand_frees +%= 1;
+        }
         const removed = self.records.removeContext(slot, self.context());
         if (debug_checks and !removed) @panic("a released attribute value record was not in its Browser's table");
         self.ids.give(slot);
         self.bytes_held -= value.blockSize();
         destroy(self.allocator, value);
         self.afterRemove();
+        if (names) |n| self.releaseClassNames(n);
+    }
+
+    // ------------------------------------------------------------------
+    // Class reads (lane nd2 batch 3)
+    // ------------------------------------------------------------------
+
+    /// `slot`'s ClassNames, if a class read made them.
+    inline fn classNamesAt(self: *const Table, slot: u32) ?*ClassNames {
+        if (slot >= self.class_names.items.len) return null;
+        return self.class_names.items[slot];
+    }
+
+    /// Take `slot`'s ClassNames out of the table (its record is going).
+    fn takeClassNames(self: *Table, slot: u32) ?*ClassNames {
+        const names = self.classNamesAt(slot) orelse return null;
+        self.class_names.items[slot] = null;
+        self.class_lists -= 1;
+        self.class_bytes -= ClassNames.blockSize(names.len);
+        return names;
+    }
+
+    /// Let go of a ClassNames' references and free it.
+    fn releaseClassNames(self: *Table, names: *ClassNames) void {
+        // The block is out of the table: the releases (which can free other
+        // records and their lists) never reach it.
+        for (names.tokens()) |token| self.release(token);
+        self.release(names.folded);
+        destroyClassNames(self.allocator, names);
+    }
+
+    /// The ClassNames of value `id` (a counted record), made on its first
+    /// class read: Blink's SpaceSplitString::Data::Create, WebKit's
+    /// SpaceSplitStringData::create - the value split once, whatever reads it
+    /// after.
+    pub fn classNames(self: *Table, id: ValueId) error{OutOfMemory}!*const ClassNames {
+        if (self.classNamesAt(id.slot())) |names| return names;
+        return self.makeClassNames(id);
+    }
+
+    /// DOM's ordered set parser over `id`'s bytes ("split on ASCII
+    /// whitespace", then each token appended unless the set has it), every
+    /// token interned. Interning never frees a record, so the bytes being
+    /// split - the record's own - stay put throughout.
+    fn makeClassNames(self: *Table, id: ValueId) error{OutOfMemory}!*ClassNames {
+        const slot = id.slot();
+        const value = self.get(id);
+        // Only a counted record is read as classes (an element's value, a
+        // DOMTokenList's own): a parked record's size must not change.
+        if (debug_checks and value.references == 0) @panic("a class read of a value no attribute holds");
+        if (slot >= self.class_names.items.len) try self.class_names.appendNTimes(self.allocator, null, slot + 1 - self.class_names.items.len);
+        self.class_scans += 1;
+
+        var tokens: std.ArrayListUnmanaged(ValueId) = .empty;
+        defer tokens.deinit(self.allocator);
+        errdefer for (tokens.items) |token| self.release(token);
+        // Past `small_set` tokens a set finds the duplicates (Blink's
+        // CreateVector keeps a HashSet once a second distinct token comes),
+        // so a value of n tokens splits in O(n).
+        const small_set = 8;
+        var seen: std.AutoHashMapUnmanaged(ValueId, void) = .empty;
+        defer seen.deinit(self.allocator);
+        if (!id.isOneToken()) {
+            var it = std.mem.tokenizeAny(u8, value.bytes(), " \t\n\r\x0C");
+            while (it.next()) |text| {
+                const token = try self.intern(text);
+                const duplicate = if (tokens.items.len < small_set)
+                    std.mem.indexOfScalar(ValueId, tokens.items, token) != null
+                else blk: {
+                    if (seen.count() == 0) for (tokens.items) |t| try seen.put(self.allocator, t, {});
+                    break :blk (try seen.getOrPut(self.allocator, token)).found_existing;
+                };
+                if (duplicate) {
+                    self.release(token);
+                    continue;
+                }
+                tokens.append(self.allocator, token) catch |err| {
+                    self.release(token);
+                    return err;
+                };
+            }
+        }
+        const size = ClassNames.blockSize(tokens.items.len);
+        const memory = self.allocator.rawAlloc(size, .of(ClassNames), @returnAddress()) orelse return error.OutOfMemory;
+        const names: *ClassNames = @ptrCast(@alignCast(memory));
+        names.* = .{ .len = @intCast(tokens.items.len), .folded = .empty };
+        @memcpy(@constCast(names.tokens()), tokens.items);
+        tokens.clearRetainingCapacity();
+        self.class_names.items[slot] = names;
+        self.class_lists += 1;
+        self.class_bytes += size;
+        return names;
+    }
+
+    /// Whether value `id`'s classes include `token` - a one-token record's
+    /// id (or .empty, which no class is). id == id: a one-token value is its
+    /// own class, any other value's are its list's (Blink's
+    /// Data::Contains, a scan of the vector).
+    pub fn hasToken(self: *Table, id: ValueId, token: ValueId) error{OutOfMemory}!bool {
+        if (id == token) return id != .empty;
+        if (id.isOneToken() or id == .empty) return false;
+        const names = try self.classNames(id);
+        return std.mem.indexOfScalar(ValueId, names.tokens(), token) != null;
+    }
+
+    /// `hasToken` in a quirks-mode document: `folded_token` is the class
+    /// name ASCII-lowercased (`operandOf(.., true)`), compared with the
+    /// tokens of `id` ASCII-lowercased (`foldedOf`) - Blink's
+    /// SetClassFoldingCase and CSSSelector::SetValue(value,
+    /// match_lower_case), then the same identity compare.
+    pub fn hasFoldedToken(self: *Table, id: ValueId, folded_token: ValueId) error{OutOfMemory}!bool {
+        if (id == .empty) return false;
+        return self.hasToken(try self.foldedOf(id), folded_token);
+    }
+
+    /// The record of `id`'s value ASCII-lowercased: itself when it has no
+    /// upper-case letter, else made on the first quirks-mode read and
+    /// counted by `id`'s ClassNames (Blink's ContainsNoAsciiUpper check,
+    /// then ToAsciiLower).
+    pub fn foldedOf(self: *Table, id: ValueId) error{OutOfMemory}!ValueId {
+        if (id.isLowercase()) return id;
+        const names: *ClassNames = @constCast(try self.classNames(id));
+        if (names.folded != .empty) return names.folded;
+        var buffer: [256]u8 = undefined;
+        var scratch: std.heap.BufferFirstAllocator = .init(&buffer, self.allocator);
+        const allocator = scratch.allocator();
+        const bytes = self.get(id).bytes();
+        const lower = try allocator.alloc(u8, bytes.len);
+        defer allocator.free(lower);
+        _ = std.ascii.lowerString(lower, bytes);
+        // Interning never frees, so `names` stays this record's.
+        names.folded = try self.intern(lower);
+        return names.folded;
+    }
+
+    /// A class name's id for a check of many elements' tokens (a class
+    /// selector's operand, getElementsByClassName's names), with NO count
+    /// kept - .empty when the name can be no token (empty, or holding ASCII
+    /// whitespace: Blink's token vector never holds such a name, so `.a\ b`
+    /// matches no element), null when it cannot be kept as an id (too long
+    /// to wait in the ring: compare bytes). `folded` (quirks mode): the name
+    /// ASCII-lowercased.
+    ///
+    /// The record is made if it is missing and then released: parked when no
+    /// attribute has it - so a token list made later finds this record and
+    /// this id - and marked (`operand_slots`), so its free moves
+    /// `operand_frees`. A caller keeps the id only while `operand_frees` has
+    /// not moved; a caller that reads no other record's value in between
+    /// (getElementsByClassName's refill) may use it at once.
+    pub fn operandOf(self: *Table, name: []const u8, folded: bool) error{OutOfMemory}!?ValueId {
+        if (name.len == 0) return .empty;
+        const flags = ValueId.flagsOf(name);
+        if (flags & ValueId.one_token_bit == 0) return .empty;
+        // Past the ring's per-record cap the record would be freed at its
+        // release (room left for a ClassNames block a one-token record can
+        // have: its folded record's link).
+        if (@sizeOf(Value) + name.len + @sizeOf(ClassNames) > Parking.max_record_bytes) return null;
+        var buffer: [Parking.max_record_bytes]u8 = undefined;
+        const text = if (folded and flags & ValueId.lowercase_bit == 0) std.ascii.lowerString(buffer[0..name.len], name) else name;
+        const id = try self.intern(text);
+        const slot = id.slot();
+        if (slot >= self.operand_slots.bit_length) {
+            self.operand_slots.resize(self.allocator, @max(slot + 1, self.operand_slots.bit_length * 2), false) catch |err| {
+                self.release(id);
+                return err;
+            };
+        }
+        self.operand_slots.set(slot);
+        // Parked (a one-token record has no ClassNames, so it fits the
+        // per-record cap checked above) or still counted elsewhere: it
+        // stays until a free moves `operand_frees`.
+        self.release(id);
+        return id;
     }
 
     /// The map after a removal (dom.element_name.Table's rule: WTF's
@@ -442,11 +757,11 @@ pub const Table = struct {
 /// entry point (written in full at once; Z5). Its one reference is the
 /// caller's.
 fn create(allocator: std.mem.Allocator, bytes: []const u8) error{OutOfMemory}!*Value {
-    if (bytes.len > std.math.maxInt(u32) - @sizeOf(Value)) return error.OutOfMemory;
+    if (bytes.len > max_value_bytes) return error.OutOfMemory;
     const total = @sizeOf(Value) + bytes.len;
     const memory = allocator.rawAlloc(total, .of(Value), @returnAddress()) orelse return error.OutOfMemory;
     const value: *Value = @ptrCast(@alignCast(memory));
-    value.* = .{ .references = 1, .len = @intCast(bytes.len) };
+    value.* = .{ .references = 1, .len_and_flags = @as(u32, @intCast(bytes.len)) | ValueId.flagsOf(bytes) };
     @memcpy(memory[@sizeOf(Value)..total], bytes);
     return value;
 }
@@ -458,6 +773,15 @@ fn destroy(allocator: std.mem.Allocator, value: *const Value) void {
     const memory = block[0..value.blockSize()];
     if (debug_checks) @memset(memory, 0xAA);
     allocator.rawFree(memory, .of(Value), @returnAddress());
+}
+
+/// Free a ClassNames block (its references let go already, or every record
+/// gone with the table); Debug poisons it.
+fn destroyClassNames(allocator: std.mem.Allocator, names: *ClassNames) void {
+    const block: [*]u8 = @ptrCast(names);
+    const memory = block[0..ClassNames.blockSize(names.len)];
+    if (debug_checks) @memset(memory, 0xAA);
+    allocator.rawFree(memory, .of(ClassNames), @returnAddress());
 }
 
 // ============================================================================
@@ -492,6 +816,19 @@ pub fn release(scope: *runtime.BrowserScope, id: ValueId) void {
 /// `scope`'s table, if it has made one: what a reader decodes ids with.
 pub fn tableOf(scope: *runtime.BrowserScope) ?*const Table {
     return scope.existingTable(.attribute_values, Table);
+}
+
+/// `scope`'s table for a CLASS read (the class selector, classList,
+/// getElementsByClassName), if it has made one - writable, because a class
+/// read makes a value's ClassNames on its first read (`Table.classNames`)
+/// and a class name's record (`Table.operandOf`): a cache Blink's and
+/// WebKit's class reads fill the same way (SpaceSplitString::Data::Create
+/// inserts into its shared map). Only on the Browser's window agent's
+/// thread, as every table write.
+pub fn classTable(scope: *runtime.BrowserScope) ?*Table {
+    const table = scope.existingTable(.attribute_values, Table) orelse return null;
+    element_name.checkOwnerThread(scope);
+    return table;
 }
 
 /// `id`'s bytes in `table` ("" for .empty; any other id needs the table its
@@ -535,7 +872,7 @@ fn expectParkingSound(table: *const Table) !void {
     for (table.parked.slots[0..table.parked.len]) |slot| {
         const value = table.ids.get(slot);
         try std.testing.expectEqual(@as(u32, 0), value.references);
-        bytes += value.blockSize();
+        bytes += table.parkedSize(slot, value);
     }
     try std.testing.expectEqual(bytes, table.parkedBytes());
     try std.testing.expect(table.parkedRecords() <= Table.Parking.max_records);
@@ -656,4 +993,188 @@ test "values that come and go keep ids dense and the map small" {
     for (live) |id| release(&scope, id);
     try std.testing.expectEqual(@as(usize, 0), table.liveCount());
     try expectParkingSound(table);
+}
+
+// ----------------------------------------------------------------------------
+// Class reads (lane nd2 batch 3)
+// ----------------------------------------------------------------------------
+
+/// The live ClassNames bytes add up, and the counters agree with the slots.
+fn expectClassNamesSound(table: *const Table) !void {
+    var lists: usize = 0;
+    var bytes: usize = 0;
+    for (table.class_names.items, 0..) |names, slot| {
+        const n = names orelse continue;
+        try std.testing.expect(table.ids.isLive(@intCast(slot)));
+        for (n.tokens()) |token| {
+            try std.testing.expect(token.isOneToken());
+            try std.testing.expect(table.get(token).references > 0);
+        }
+        lists += 1;
+        bytes += ClassNames.blockSize(n.len);
+    }
+    try std.testing.expectEqual(lists, table.class_lists);
+    try std.testing.expectEqual(bytes, table.class_bytes);
+}
+
+test "a value's id says whether it is one token and whether it has an upper-case letter" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    const cases = [_]struct { []const u8, bool, bool }{
+        .{ "card", true, true },
+        .{ "Card", true, false },
+        .{ "a b", false, true },
+        .{ " a", false, true },
+        .{ "a\x0Bb", true, true }, // VT is no ASCII whitespace
+        .{ "a\x0Cb", false, true },
+        .{ "\t", false, true },
+        .{ "\u{C9}cole", true, true }, // only ASCII letters are upper case here
+    };
+    for (cases) |case| {
+        const id = try intern(&scope, case[0]);
+        defer release(&scope, id);
+        try std.testing.expectEqual(case[1], id.isOneToken());
+        try std.testing.expectEqual(case[2], id.isLowercase());
+        try std.testing.expectEqualStrings(case[0], tableOf(&scope).?.bytesOf(id));
+        // The same record, the same id, flags and all.
+        try std.testing.expectEqual(id, tableOf(&scope).?.find(case[0]).?);
+    }
+    try std.testing.expect(ValueId.empty.isLowercase());
+    try std.testing.expect(!ValueId.empty.isOneToken());
+}
+
+test "a value is split once by DOM's ordered set parser; its tokens are counted records, let go with it" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    const id = try intern(&scope, " b\ta b\n\x0Cc\r a ");
+    const table = (classTable(&scope)).?;
+    const names = try table.classNames(id);
+    try std.testing.expectEqual(@as(usize, 3), names.tokens().len);
+    for (names.tokens(), [_][]const u8{ "b", "a", "c" }) |token, want| try std.testing.expectEqualStrings(want, table.bytesOf(token));
+    try std.testing.expectEqual(@as(usize, 1), table.class_scans);
+    // Read again: the same block, no new pass.
+    try std.testing.expectEqual(names, try table.classNames(id));
+    try std.testing.expectEqual(@as(usize, 1), table.class_scans);
+    try std.testing.expect(try table.hasToken(id, table.find("a").?));
+    try std.testing.expect(!try table.hasToken(id, table.find(" b\ta b\n\x0Cc\r a ").?));
+    try std.testing.expect(!try table.hasToken(id, .empty));
+    // The value and its three tokens are counted.
+    try std.testing.expectEqual(@as(usize, 4), table.liveCount());
+    try expectClassNamesSound(table);
+    // Its last release parks it with its list; the tokens stay counted.
+    release(&scope, id);
+    try std.testing.expectEqual(@as(usize, 3), table.liveCount());
+    try std.testing.expectEqual(@as(usize, 1), table.class_lists);
+    try expectParkingSound(table);
+    try expectClassNamesSound(table);
+}
+
+test "a value of only whitespace has no tokens; a one-token value is its own" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    const blank = try intern(&scope, " \t ");
+    defer release(&scope, blank);
+    const one = try intern(&scope, "solo");
+    defer release(&scope, one);
+    const table = (classTable(&scope)).?;
+    try std.testing.expectEqual(@as(usize, 0), (try table.classNames(blank)).tokens().len);
+    try std.testing.expect(try table.hasToken(one, one));
+    try std.testing.expect(!try table.hasToken(blank, one));
+    // A one-token value needs no list for an identical-to read.
+    try std.testing.expectEqual(@as(usize, 1), table.class_lists);
+}
+
+test "quirks reads: the folded record is made once, counted by the value's list" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    const id = try intern(&scope, "Foo BAR baz");
+    const table = (classTable(&scope)).?;
+    const foo = (try table.operandOf("FOO", true)).?;
+    try std.testing.expectEqualStrings("foo", table.bytesOf(foo));
+    try std.testing.expect(try table.hasFoldedToken(id, foo));
+    try std.testing.expect(try table.hasFoldedToken(id, (try table.operandOf("bar", true)).?));
+    try std.testing.expect(!try table.hasToken(id, (try table.operandOf("foo", false)).?));
+    const folded = try table.foldedOf(id);
+    try std.testing.expectEqualStrings("foo bar baz", table.bytesOf(folded));
+    try std.testing.expectEqual(folded, try table.foldedOf(id));
+    // A lowercase value is its own fold.
+    try std.testing.expectEqual(folded, try table.foldedOf(folded));
+    try expectClassNamesSound(table);
+    release(&scope, id);
+    try expectParkingSound(table);
+}
+
+test "a class name with whitespace is no operand; one too long to park is compared as bytes" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    const keep = try intern(&scope, "x");
+    defer release(&scope, keep);
+    const table = (classTable(&scope)).?;
+    try std.testing.expectEqual(ValueId.empty, (try table.operandOf("a b", false)).?);
+    try std.testing.expectEqual(ValueId.empty, (try table.operandOf("", false)).?);
+    var long: [Table.Parking.max_record_bytes]u8 = undefined;
+    @memset(&long, 'q');
+    try std.testing.expect((try table.operandOf(&long, false)) == null);
+    // A short name's record stays (parked) after the call.
+    const id = (try table.operandOf("short", false)).?;
+    try std.testing.expectEqual(id, table.find("short").?);
+}
+
+test "freeing a record an operand names moves operand_frees; freeing any other does not" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    const keep = try intern(&scope, "x");
+    defer release(&scope, keep);
+    const table = (classTable(&scope)).?;
+    const name = (try table.operandOf("named", false)).?;
+    _ = name;
+    // A long value freed at its release is no operand.
+    var long: [400]u8 = undefined;
+    @memset(&long, 'L');
+    release(&scope, try intern(&scope, &long));
+    try std.testing.expectEqual(@as(u64, 0), table.operand_frees);
+    // Fill the ring until "named" is evicted.
+    var buffer: [24]u8 = undefined;
+    var i: usize = 0;
+    while (table.find("named") != null) : (i += 1) release(&scope, try intern(&scope, try std.fmt.bufPrint(&buffer, "v{d}", .{i})));
+    try std.testing.expectEqual(@as(u64, 1), table.operand_frees);
+    try expectParkingSound(table);
+}
+
+test "a value of 20,000 tokens, most of them repeats, splits into its distinct tokens" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    var text: std.ArrayListUnmanaged(u8) = .empty;
+    defer text.deinit(std.testing.allocator);
+    for (0..20_000) |i| {
+        var buffer: [16]u8 = undefined;
+        try text.appendSlice(std.testing.allocator, try std.fmt.bufPrint(&buffer, "t{d} ", .{i % 500}));
+    }
+    const id = try intern(&scope, text.items);
+    defer release(&scope, id);
+    const table = (classTable(&scope)).?;
+    const names = try table.classNames(id);
+    try std.testing.expectEqual(@as(usize, 500), names.tokens().len);
+    try std.testing.expectEqualStrings("t499", table.bytesOf(names.tokens()[499]));
+    try expectClassNamesSound(table);
+}
+
+test "a freed record's list lets its tokens go, and a cascade through the ring keeps it sound" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    const table = blk: {
+        const k = try intern(&scope, "k");
+        release(&scope, k);
+        break :blk (classTable(&scope)).?;
+    };
+    // 300 parked values, each with a list of four tokens of its own.
+    var buffer: [64]u8 = undefined;
+    for (0..300) |i| {
+        const id = try intern(&scope, try std.fmt.bufPrint(&buffer, "a{d} b{d} c{d} d{d}", .{ i, i, i, i }));
+        _ = try table.classNames(id);
+        release(&scope, id);
+        try expectParkingSound(table);
+    }
+    try expectClassNamesSound(table);
+    try std.testing.expect(table.parkedRecords() <= Table.Parking.max_records);
 }
