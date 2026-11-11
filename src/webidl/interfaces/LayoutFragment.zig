@@ -66,12 +66,6 @@ pub const LayoutFragment = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            inlineSize: f64 = undefined,
-            blockSize: f64 = undefined,
-            inlineOffset: f64 = undefined,
-            blockOffset: f64 = undefined,
-            data: runtime.JSValue = undefined,
-            breakToken: ?*runtime.Instance = null,
             _internal: ?*LayoutFragmentImpl.InternalState = null,
         },
     );

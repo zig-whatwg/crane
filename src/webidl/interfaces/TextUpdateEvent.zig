@@ -76,11 +76,6 @@ pub const TextUpdateEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            updateRangeStart: u32 = undefined,
-            updateRangeEnd: u32 = undefined,
-            text: runtime.DOMString = undefined,
-            selectionStart: u32 = undefined,
-            selectionEnd: u32 = undefined,
             _internal: ?*TextUpdateEventImpl.InternalState = null,
         },
     );

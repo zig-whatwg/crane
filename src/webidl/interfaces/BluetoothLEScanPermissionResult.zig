@@ -73,7 +73,6 @@ pub const BluetoothLEScanPermissionResult = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            scans: runtime.JSValue = undefined,
             _internal: ?*BluetoothLEScanPermissionResultImpl.InternalState = null,
         },
     );

@@ -70,7 +70,6 @@ pub const TrustedTypePolicy = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
             _internal: ?*TrustedTypePolicyImpl.InternalState = null,
         },
     );

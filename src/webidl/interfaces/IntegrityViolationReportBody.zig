@@ -68,10 +68,6 @@ pub const IntegrityViolationReportBody = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            documentURL: runtime.USVString = undefined,
-            blockedURL: runtime.USVString = undefined,
-            destination: runtime.USVString = undefined,
-            reportOnly: bool = undefined,
             _internal: ?*IntegrityViolationReportBodyImpl.InternalState = null,
         },
     );

@@ -71,8 +71,6 @@ pub const CommandEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            source: ?*runtime.Instance = null,
-            command: runtime.DOMString = undefined,
             _internal: ?*CommandEventImpl.InternalState = null,
         },
     );

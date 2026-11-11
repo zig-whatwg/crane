@@ -67,10 +67,6 @@ pub const CryptoKey = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: enums.KeyType = undefined,
-            extractable: bool = undefined,
-            algorithm: runtime.JSValue = undefined,
-            usages: runtime.JSValue = undefined,
             _internal: ?*CryptoKeyImpl.InternalState = null,
         },
     );

@@ -57,6 +57,12 @@ pub const IDBTransaction = struct {
             .{ "onerror", "get_onerror", "set_onerror" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "db",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "objectStore", "call_objectStore", 1 },
@@ -101,14 +107,6 @@ pub const IDBTransaction = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            objectStoreNames: *runtime.Instance = undefined,
-            mode: enums.IDBTransactionMode = undefined,
-            durability: enums.IDBTransactionDurability = undefined,
-            db: *runtime.Instance = undefined,
-            @"error": ?*runtime.Instance = null,
-            onabort: typedefs.EventHandler = undefined,
-            oncomplete: typedefs.EventHandler = undefined,
-            onerror: typedefs.EventHandler = undefined,
             cached_db: ?*runtime.Instance = null,
             _internal: ?*IDBTransactionImpl.InternalState = null,
         },

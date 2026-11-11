@@ -51,7 +51,6 @@ pub const CanvasFilters = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            filter: runtime.DOMString = undefined,
             _internal: ?*CanvasFiltersImpl.InternalState = null,
         },
     );

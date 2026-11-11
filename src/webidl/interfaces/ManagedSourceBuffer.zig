@@ -83,7 +83,6 @@ pub const ManagedSourceBuffer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onbufferedchange: typedefs.EventHandler = undefined,
             _internal: ?*ManagedSourceBufferImpl.InternalState = null,
         },
     );

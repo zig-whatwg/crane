@@ -74,10 +74,6 @@ pub const CORPViolationReportBody = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            disposition: runtime.DOMString = undefined,
-            type: runtime.DOMString = undefined,
-            blockedURL: runtime.USVString = undefined,
-            destination: enums.RequestDestination = undefined,
             _internal: ?*CORPViolationReportBodyImpl.InternalState = null,
         },
     );

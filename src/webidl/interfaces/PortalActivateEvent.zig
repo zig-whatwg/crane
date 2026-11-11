@@ -73,7 +73,6 @@ pub const PortalActivateEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: runtime.JSValue = undefined,
             _internal: ?*PortalActivateEventImpl.InternalState = null,
         },
     );

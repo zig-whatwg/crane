@@ -69,10 +69,6 @@ pub const VisibilityStateEntry = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            entryType: runtime.DOMString = undefined,
-            startTime: typedefs.DOMHighResTimeStamp = undefined,
-            duration: u32 = undefined,
             _internal: ?*VisibilityStateEntryImpl.InternalState = null,
         },
     );

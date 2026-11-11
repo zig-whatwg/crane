@@ -72,7 +72,6 @@ pub const FocusEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            relatedTarget: ?*runtime.Instance = null,
             _internal: ?*FocusEventImpl.InternalState = null,
         },
     );

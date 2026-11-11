@@ -69,7 +69,6 @@ pub const SubmitEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            submitter: ?*runtime.Instance = null,
             _internal: ?*SubmitEventImpl.InternalState = null,
         },
     );

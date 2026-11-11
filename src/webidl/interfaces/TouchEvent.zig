@@ -89,13 +89,6 @@ pub const TouchEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            touches: *runtime.Instance = undefined,
-            targetTouches: *runtime.Instance = undefined,
-            changedTouches: *runtime.Instance = undefined,
-            altKey: bool = undefined,
-            metaKey: bool = undefined,
-            ctrlKey: bool = undefined,
-            shiftKey: bool = undefined,
             _internal: ?*TouchEventImpl.InternalState = null,
         },
     );

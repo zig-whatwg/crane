@@ -69,7 +69,6 @@ pub const CaptureActionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            action: enums.CaptureAction = undefined,
             _internal: ?*CaptureActionEventImpl.InternalState = null,
         },
     );

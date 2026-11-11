@@ -67,9 +67,6 @@ pub const TextEncoderStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            encoding: runtime.DOMString = undefined,
-            readable: *runtime.Instance = undefined,
-            writable: *runtime.Instance = undefined,
             _internal: ?*TextEncoderStreamImpl.InternalState = null,
         },
     );

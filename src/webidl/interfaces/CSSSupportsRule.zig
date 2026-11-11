@@ -64,7 +64,6 @@ pub const CSSSupportsRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            matches: bool = undefined,
             _internal: ?*CSSSupportsRuleImpl.InternalState = null,
         },
     );

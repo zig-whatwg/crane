@@ -64,8 +64,6 @@ pub const CSSParserBlock = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            body: runtime.JSValue = undefined,
             _internal: ?*CSSParserBlockImpl.InternalState = null,
         },
     );

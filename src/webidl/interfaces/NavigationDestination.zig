@@ -69,11 +69,6 @@ pub const NavigationDestination = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            url: runtime.USVString = undefined,
-            key: runtime.DOMString = undefined,
-            id: runtime.DOMString = undefined,
-            index: i64 = undefined,
-            sameDocument: bool = undefined,
             _internal: ?*NavigationDestinationImpl.InternalState = null,
         },
     );

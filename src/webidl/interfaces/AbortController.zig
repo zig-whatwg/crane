@@ -32,6 +32,12 @@ pub const AbortController = struct {
             .{ "signal", "get_signal", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "signal",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "abort", "call_abort", 0 },
@@ -60,7 +66,6 @@ pub const AbortController = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            signal: *runtime.Instance = undefined,
             cached_signal: ?*runtime.Instance = null,
             _internal: ?*AbortControllerImpl.InternalState = null,
         },

@@ -51,7 +51,6 @@ pub const NavigatorNetworkInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            connection: *runtime.Instance = undefined,
             cached_connection: ?*runtime.Instance = null,
             _internal: ?*NavigatorNetworkInformationImpl.InternalState = null,
         },

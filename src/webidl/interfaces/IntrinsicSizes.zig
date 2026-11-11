@@ -57,8 +57,6 @@ pub const IntrinsicSizes = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            minContentSize: f64 = undefined,
-            maxContentSize: f64 = undefined,
             _internal: ?*IntrinsicSizesImpl.InternalState = null,
         },
     );

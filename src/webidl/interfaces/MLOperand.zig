@@ -62,8 +62,6 @@ pub const MLOperand = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dataType: enums.MLOperandDataType = undefined,
-            shape: runtime.JSValue = undefined,
             _internal: ?*MLOperandImpl.InternalState = null,
         },
     );

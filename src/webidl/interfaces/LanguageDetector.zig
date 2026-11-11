@@ -82,8 +82,6 @@ pub const LanguageDetector = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            expectedInputLanguages: ?runtime.JSValue = null,
-            inputQuota: f64 = undefined,
             _internal: ?*LanguageDetectorImpl.InternalState = null,
         },
     );

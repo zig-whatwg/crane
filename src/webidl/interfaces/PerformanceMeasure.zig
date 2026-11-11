@@ -64,7 +64,6 @@ pub const PerformanceMeasure = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            detail: runtime.JSValue = undefined,
             _internal: ?*PerformanceMeasureImpl.InternalState = null,
         },
     );

@@ -89,8 +89,6 @@ pub const CSSTransformValue = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
-            is2D: bool = undefined,
             _internal: ?*CSSTransformValueImpl.InternalState = null,
         },
     );

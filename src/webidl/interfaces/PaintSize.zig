@@ -57,8 +57,6 @@ pub const PaintSize = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            width: f64 = undefined,
-            height: f64 = undefined,
             _internal: ?*PaintSizeImpl.InternalState = null,
         },
     );

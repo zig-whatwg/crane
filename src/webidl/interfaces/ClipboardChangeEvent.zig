@@ -70,8 +70,6 @@ pub const ClipboardChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            types: runtime.JSValue = undefined,
-            changeId: runtime.JSValue = undefined,
             _internal: ?*ClipboardChangeEventImpl.InternalState = null,
         },
     );

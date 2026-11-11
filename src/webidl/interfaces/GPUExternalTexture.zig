@@ -63,7 +63,6 @@ pub const GPUExternalTexture = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            label: runtime.USVString = undefined,
             _internal: ?*GPUExternalTextureImpl.InternalState = null,
         },
     );

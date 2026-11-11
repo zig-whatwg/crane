@@ -72,12 +72,6 @@ pub const NDEFRecord = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            recordType: runtime.USVString = undefined,
-            mediaType: ?runtime.USVString = null,
-            id: ?runtime.USVString = null,
-            data: ?runtime.DataView = null,
-            encoding: ?runtime.USVString = null,
-            lang: ?runtime.USVString = null,
             _internal: ?*NDEFRecordImpl.InternalState = null,
         },
     );

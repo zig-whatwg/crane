@@ -50,7 +50,6 @@ pub const NavigatorAutomationInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            webdriver: bool = undefined,
             _internal: ?*NavigatorAutomationInformationImpl.InternalState = null,
         },
     );

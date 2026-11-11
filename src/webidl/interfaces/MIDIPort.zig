@@ -97,14 +97,6 @@ pub const MIDIPort = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
-            manufacturer: ?runtime.DOMString = null,
-            name: ?runtime.DOMString = null,
-            type: enums.MIDIPortType = undefined,
-            version: ?runtime.DOMString = null,
-            state: enums.MIDIPortDeviceState = undefined,
-            connection: enums.MIDIPortConnectionState = undefined,
-            onstatechange: typedefs.EventHandler = undefined,
             _internal: ?*MIDIPortImpl.InternalState = null,
         },
     );

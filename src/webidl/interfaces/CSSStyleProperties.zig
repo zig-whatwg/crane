@@ -75,7 +75,6 @@ pub const CSSStyleProperties = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cssFloat: typedefs.CSSOMString = undefined,
             _internal: ?*CSSStylePropertiesImpl.InternalState = null,
         },
     );

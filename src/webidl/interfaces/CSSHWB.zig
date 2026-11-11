@@ -77,10 +77,6 @@ pub const CSSHWB = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            h: *runtime.Instance = undefined,
-            w: typedefs.CSSNumberish = undefined,
-            b: typedefs.CSSNumberish = undefined,
-            alpha: typedefs.CSSNumberish = undefined,
             _internal: ?*CSSHWBImpl.InternalState = null,
         },
     );

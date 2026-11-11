@@ -80,18 +80,6 @@ pub const TextMetrics = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            width: f64 = undefined,
-            actualBoundingBoxLeft: f64 = undefined,
-            actualBoundingBoxRight: f64 = undefined,
-            fontBoundingBoxAscent: f64 = undefined,
-            fontBoundingBoxDescent: f64 = undefined,
-            actualBoundingBoxAscent: f64 = undefined,
-            actualBoundingBoxDescent: f64 = undefined,
-            emHeightAscent: f64 = undefined,
-            emHeightDescent: f64 = undefined,
-            hangingBaseline: f64 = undefined,
-            alphabeticBaseline: f64 = undefined,
-            ideographicBaseline: f64 = undefined,
             _internal: ?*TextMetricsImpl.InternalState = null,
         },
     );

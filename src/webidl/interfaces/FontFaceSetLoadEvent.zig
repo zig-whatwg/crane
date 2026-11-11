@@ -73,7 +73,6 @@ pub const FontFaceSetLoadEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            fontfaces: runtime.JSValue = undefined,
             cached_fontfaces: ?runtime.JSValue = null,
             _internal: ?*FontFaceSetLoadEventImpl.InternalState = null,
         },

@@ -81,9 +81,6 @@ pub const TrustedTypePolicyFactory = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            emptyHTML: *runtime.Instance = undefined,
-            emptyScript: *runtime.Instance = undefined,
-            defaultPolicy: ?*runtime.Instance = null,
             _internal: ?*TrustedTypePolicyFactoryImpl.InternalState = null,
         },
     );

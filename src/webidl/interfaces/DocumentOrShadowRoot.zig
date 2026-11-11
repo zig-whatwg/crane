@@ -77,13 +77,6 @@ pub const DocumentOrShadowRoot = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            customElementRegistry: ?*runtime.Instance = null,
-            styleSheets: *runtime.Instance = undefined,
-            adoptedStyleSheets: runtime.JSValue = undefined,
-            fullscreenElement: ?*runtime.Instance = null,
-            activeElement: ?*runtime.Instance = null,
-            pictureInPictureElement: ?*runtime.Instance = null,
-            pointerLockElement: ?*runtime.Instance = null,
             cached_styleSheets: ?*runtime.Instance = null,
             _internal: ?*DocumentOrShadowRootImpl.InternalState = null,
         },

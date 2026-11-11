@@ -89,10 +89,6 @@ pub const RTCRtpSender = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            track: ?*runtime.Instance = null,
-            transport: ?*runtime.Instance = null,
-            transform: ?typedefs.RTCRtpSenderTransform = null,
-            dtmf: ?*runtime.Instance = null,
             _internal: ?*RTCRtpSenderImpl.InternalState = null,
         },
     );

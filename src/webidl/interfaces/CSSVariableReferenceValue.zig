@@ -64,8 +64,6 @@ pub const CSSVariableReferenceValue = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            variable: runtime.USVString = undefined,
-            fallback: ?*runtime.Instance = null,
             _internal: ?*CSSVariableReferenceValueImpl.InternalState = null,
         },
     );

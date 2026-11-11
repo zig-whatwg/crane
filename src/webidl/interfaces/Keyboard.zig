@@ -80,7 +80,6 @@ pub const Keyboard = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onlayoutchange: typedefs.EventHandler = undefined,
             _internal: ?*KeyboardImpl.InternalState = null,
         },
     );

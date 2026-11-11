@@ -74,9 +74,6 @@ pub const PictureInPictureWindow = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            width: i32 = undefined,
-            height: i32 = undefined,
-            onresize: typedefs.EventHandler = undefined,
             _internal: ?*PictureInPictureWindowImpl.InternalState = null,
         },
     );

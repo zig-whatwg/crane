@@ -62,7 +62,6 @@ pub const XRCPUDepthInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: runtime.ArrayBuffer = undefined,
             cached_data: ?runtime.JSValue = null,
             _internal: ?*XRCPUDepthInformationImpl.InternalState = null,
         },

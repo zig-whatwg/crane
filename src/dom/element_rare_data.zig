@@ -44,8 +44,9 @@
 //!   generation that proves it at the element's teardown) 32.
 //! - Field order is use (Z8; framework-pages.md note 3): classList at bit 0
 //!   and style at bit 1 need no popcount (LLVM folds bit 0 to nothing and
-//!   bit 1 to an AND). classList's [SameObject] cache is still the generated
-//!   State's; bit 0 is reserved for it (N1).
+//!   bit 1 to an AND). classList's [SameObject] cache and the other
+//!   family-wide ones left the generated State for this block in N1 (lane
+//!   cg1): the generated getters reach them through dom.same_object_cache.
 //! - A slot holds a pointer or a scalar, copied when the block grows. Every
 //!   multi-word field is a block of its own that the slot points at (the
 //!   Attr node list, the slottable state, the registry association, the
@@ -86,9 +87,10 @@ const slot_helpers = @import("slot_helpers.zig");
 
 /// The fields, one presence bit each, in the order of their use.
 pub const Field = enum(u5) {
-    /// classList's [SameObject] DOMTokenList. RESERVED: the generated
-    /// State's `cached_classList` moves here in N1 (the grid reads it 58,137
-    /// times in 20 screens: bit 0, no popcount).
+    /// classList's [SameObject] DOMTokenList (Blink's kClassList): the
+    /// generated getter's cache (dom.same_object_cache's element accessors;
+    /// lane cg1, N1). The grid reads it 58,137 times in 20 screens: bit 0,
+    /// no popcount.
     class_list = 0,
     /// HTMLElement: element.style's CSSStyleProperties ([SameObject];
     /// Blink's kCssomWrapper), with its generation below.
@@ -128,12 +130,36 @@ pub const Field = enum(u5) {
     /// HTMLElement: the ElementInternals attachInternals() made (Blink's
     /// kElementInternals).
     element_internals,
+
+    // The generated [SameObject] getters' caches (lane cg1, N1: they left
+    // every element's generated State, 8 bytes each). Each holds the object
+    // its impl made, owned by the object's wrapper and traced from the
+    // element (dom.same_object_cache): nothing here frees it. After rare1's
+    // fields, by measured use (framework-pages.md table E: dataset on
+    // load-app, none of the rest on any page).
+    /// HTMLOrSVGOrMathMLElement's dataset DOMStringMap (Blink's kDataset).
+    dataset,
+    /// ParentNode's children HTMLCollection of an element (Blink's
+    /// NodeListsNodeData).
+    children,
+    /// Element's part DOMTokenList (Blink's kPart).
+    part,
+    /// ElementCSSInlineStyle's attributeStyleMap (Blink's kCssomMapWrapper).
+    attribute_style_map,
+    /// ElementCSSInlineStyle's style object of an element whose impl does
+    /// not keep it (SVGElement, MathMLElement): the generated cache's, owned
+    /// by its wrapper - never HTMLElement's `style`, which the element keeps
+    /// and frees whole.
+    inline_style,
+    /// SVGElement's className SVGAnimatedString.
+    svg_class_name,
 };
 
 /// What each field's slot holds.
 pub fn Value(comptime field: Field) type {
     return switch (field) {
         .class_list, .style, .named_node_map, .shadow_root, .element_internals => *runtime.Instance,
+        .dataset, .children, .part, .attribute_style_map, .inline_style, .svg_class_name => *runtime.Instance,
         .style_generation, .named_node_map_generation, .shadow_root_generation => u64,
         .attr_nodes => *element_data.AttrNodeList,
         .custom_element_definition => *custom_elements.Definition,

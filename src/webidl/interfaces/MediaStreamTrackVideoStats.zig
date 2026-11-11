@@ -66,9 +66,6 @@ pub const MediaStreamTrackVideoStats = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            deliveredFrames: u64 = undefined,
-            discardedFrames: u64 = undefined,
-            totalFrames: u64 = undefined,
             _internal: ?*MediaStreamTrackVideoStatsImpl.InternalState = null,
         },
     );

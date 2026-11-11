@@ -56,7 +56,6 @@ pub const AudioWorkletProcessor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            port: *runtime.Instance = undefined,
             _internal: ?*AudioWorkletProcessorImpl.InternalState = null,
         },
     );

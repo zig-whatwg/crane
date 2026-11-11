@@ -121,7 +121,6 @@ pub const Range = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            commonAncestorContainer: *runtime.Instance = undefined,
             _internal: ?*RangeImpl.InternalState = null,
         },
     );

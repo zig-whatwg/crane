@@ -78,7 +78,6 @@ pub const CompositionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: runtime.USVString = undefined,
             _internal: ?*CompositionEventImpl.InternalState = null,
         },
     );

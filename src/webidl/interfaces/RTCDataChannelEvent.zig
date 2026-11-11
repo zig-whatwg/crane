@@ -69,7 +69,6 @@ pub const RTCDataChannelEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            channel: *runtime.Instance = undefined,
             _internal: ?*RTCDataChannelEventImpl.InternalState = null,
         },
     );

@@ -74,6 +74,15 @@ pub const ServiceWorkerRegistration = struct {
             .{ "pushManager", "get_pushManager", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "navigationPreload",
+            "index",
+            "cookies",
+            "paymentManager",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "update", "call_update", 0 },
@@ -138,20 +147,6 @@ pub const ServiceWorkerRegistration = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            installing: ?*runtime.Instance = null,
-            waiting: ?*runtime.Instance = null,
-            active: ?*runtime.Instance = null,
-            navigationPreload: *runtime.Instance = undefined,
-            scope: runtime.USVString = undefined,
-            updateViaCache: enums.ServiceWorkerUpdateViaCache = undefined,
-            onupdatefound: typedefs.EventHandler = undefined,
-            backgroundFetch: *runtime.Instance = undefined,
-            sync: *runtime.Instance = undefined,
-            index: *runtime.Instance = undefined,
-            cookies: *runtime.Instance = undefined,
-            periodicSync: *runtime.Instance = undefined,
-            paymentManager: *runtime.Instance = undefined,
-            pushManager: *runtime.Instance = undefined,
             cached_navigationPreload: ?*runtime.Instance = null,
             cached_index: ?*runtime.Instance = null,
             cached_cookies: ?*runtime.Instance = null,

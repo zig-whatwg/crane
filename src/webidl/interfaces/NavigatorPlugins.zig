@@ -60,9 +60,6 @@ pub const NavigatorPlugins = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            plugins: *runtime.Instance = undefined,
-            mimeTypes: *runtime.Instance = undefined,
-            pdfViewerEnabled: bool = undefined,
             cached_plugins: ?*runtime.Instance = null,
             cached_mimeTypes: ?*runtime.Instance = null,
             _internal: ?*NavigatorPluginsImpl.InternalState = null,

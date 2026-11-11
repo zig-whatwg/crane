@@ -75,17 +75,6 @@ pub const ValidityState = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            valueMissing: bool = undefined,
-            typeMismatch: bool = undefined,
-            patternMismatch: bool = undefined,
-            tooLong: bool = undefined,
-            tooShort: bool = undefined,
-            rangeUnderflow: bool = undefined,
-            rangeOverflow: bool = undefined,
-            stepMismatch: bool = undefined,
-            badInput: bool = undefined,
-            customError: bool = undefined,
-            valid: bool = undefined,
             _internal: ?*ValidityStateImpl.InternalState = null,
         },
     );

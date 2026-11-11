@@ -75,7 +75,6 @@ pub const AmbientLightSensor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            illuminance: ?f64 = null,
             _internal: ?*AmbientLightSensorImpl.InternalState = null,
         },
     );

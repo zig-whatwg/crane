@@ -80,16 +80,8 @@ test "Element's InternalState keeps no 40-byte registry association: a one-byte 
     try expectSize(ElementState, 40);
 }
 
-test "a div's one block is 248 bytes: 472 less perf2 b7's 8, the association (40), the slottable state (64), nd2 N2's and N3's 48 each and lis1 N5's 16" {
-    const S = interfaces.HTMLDivElement.State;
-    // lis1 N5: EventTarget's 24 became one pointer to a listener block (8).
-    try expectSize(S, 248);
-    const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
-    if (held - @sizeOf(S) >= 16) {
-        std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });
-        return error.NotExactSize;
-    }
-}
+// A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig
+// (lane cg1; lesson testing-a-total-pinned-in-six-files-moves-in-six-files.md).
 
 test "the rare data keeps the association for a registry that is not the node document's, in a block of its own" {
     if (comptime !has_rare_registry) return error.NoRareRegistry;

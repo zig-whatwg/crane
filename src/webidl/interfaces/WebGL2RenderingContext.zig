@@ -1129,15 +1129,6 @@ pub const WebGL2RenderingContext = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            canvas: union(enum) {
-                HTMLCanvasElement: HTMLCanvasElement,
-                OffscreenCanvas: OffscreenCanvas,
-            } = undefined,
-            drawingBufferWidth: typedefs.GLsizei = undefined,
-            drawingBufferHeight: typedefs.GLsizei = undefined,
-            drawingBufferFormat: typedefs.GLenum = undefined,
-            drawingBufferColorSpace: enums.PredefinedColorSpace = undefined,
-            unpackColorSpace: enums.PredefinedColorSpace = undefined,
             _internal: ?*WebGL2RenderingContextImpl.InternalState = null,
         },
     );

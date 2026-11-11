@@ -91,9 +91,6 @@ pub const AudioWorkletNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            parameters: *runtime.Instance = undefined,
-            port: *runtime.Instance = undefined,
-            onprocessorerror: typedefs.EventHandler = undefined,
             _internal: ?*AudioWorkletNodeImpl.InternalState = null,
         },
     );

@@ -82,11 +82,6 @@ pub const StorageEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            key: ?runtime.DOMString = null,
-            oldValue: ?runtime.DOMString = null,
-            newValue: ?runtime.DOMString = null,
-            url: runtime.USVString = undefined,
-            storageArea: ?*runtime.Instance = null,
             _internal: ?*StorageEventImpl.InternalState = null,
         },
     );

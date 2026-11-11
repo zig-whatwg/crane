@@ -69,8 +69,6 @@ pub const Subscriber = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            active: bool = undefined,
-            signal: *runtime.Instance = undefined,
             _internal: ?*SubscriberImpl.InternalState = null,
         },
     );
