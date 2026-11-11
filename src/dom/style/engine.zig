@@ -1445,19 +1445,20 @@ fn cascadeOrHit(res: *Resolution, ctx: css.cascade.Context, pseudo: ?[]const u8)
     const cache = res.engine.matchedPropertiesCache() orelse return css.cascade.cascade(ctx, res.matched.items);
     var lookup: matched_properties_cache.Lookup = .{
         .key = matched_properties_cache.keyOf(res.matched.items, pseudo, ctx.parent),
+        .shape = if (res.own_blocks) matched_properties_cache.shapeOf(res.matched.items, pseudo, ctx.parent) else null,
         .generation = res.key.generation,
         .matched = res.matched.items,
         .parent = ctx.parent,
         .inputs = .of(ctx),
     };
     // What no entry can stand for (design 3.2): the root and a select or its
-    // picker (WebKit isCacheable: the document element, base appearance), a
-    // pseudo-element outside ::before/::after/::marker, and a resolution that
-    // matched a block of the element's own, whose address says nothing once
-    // its element is gone.
+    // picker (WebKit isCacheable: the document element, base appearance) and
+    // a pseudo-element outside ::before/::after/::marker. A resolution that
+    // matched a block of the element's own is looked up by that block's
+    // content (design 3.6; Blink MatchResult::AddMatchedProperties).
     const pseudo_slot = matched_properties_cache.Pseudo.of(pseudo);
     const cacheable = ctx.parent != null and !ctx.is_root and ctx.appearance_support == .none and
-        pseudo_slot != null and !res.own_blocks;
+        pseudo_slot != null;
     if (cacheable) {
         lookup.pseudo = pseudo_slot.?;
         if (cache.find(lookup)) |held| {
@@ -1861,11 +1862,11 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
         try matchContents(res, &matcher, element, keys, ua.hints, pseudo, is_html, quirks, .{ .origin = .presentational_hint, .tree_scope = .{ .serial = own_scope } }, null, .zero);
     }
     if (background_eligible) if (try resource_loading.backgroundHint(element, state, background)) |hint| {
-        try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .tree_scope = .{ .serial = own_scope } } });
+        try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .per_element = true, .tree_scope = .{ .serial = own_scope } } });
         res.own_blocks = true;
     };
     if (font_eligible) if (try font_hints.fontHint(state, font_attributes)) |hint| {
-        try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint } });
+        try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .per_element = true } });
         res.own_blocks = true;
     };
 
@@ -1957,7 +1958,7 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
         const n = ns.?;
         if (std.mem.eql(u8, n, html_namespace) or std.mem.eql(u8, n, svg_namespace) or std.mem.eql(u8, n, mathml_namespace)) {
             if (try inlineBlock(element, state, quirks)) |block| {
-                try res.matched.append(res.allocator, .{ .block = block, .source = .{ .origin = .author, .element_attached = true, .tree_depth = own_depth, .tree_scope = .{ .serial = own_scope } } });
+                try res.matched.append(res.allocator, .{ .block = block, .source = .{ .origin = .author, .element_attached = true, .per_element = true, .tree_depth = own_depth, .tree_scope = .{ .serial = own_scope } } });
                 res.own_blocks = true;
             }
         }

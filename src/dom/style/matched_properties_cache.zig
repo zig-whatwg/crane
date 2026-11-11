@@ -17,9 +17,12 @@
 //!   a rule's block is stable for the engine generation the cache was filled
 //!   under, and every change to sheets, rules, media, environment variables,
 //!   registrations or page color schemes moves the generation and clears the
-//!   cache). The engine never looks up a resolution that matched a block of
-//!   the element's own - its style attribute, its presentational hints -
-//!   whose address another element can reuse;
+//!   cache). A block of the element's own - its style attribute's, its
+//!   presentational hints' (Source.per_element) - is compared by CONTENT
+//!   with the entry's snapshot of the one it was made with
+//!   (DeclarationBlock.interchangeable; Blink CorrespondsTo compares sets
+//!   with CSSPropertyValueSet::Equals): its owner rewrites it in place and
+//!   its address passes to the next element (lane style1 b5);
 //! - pseudo-element is the element's;
 //! - Context scalars (the root's metrics, the viewport, the color schemes,
 //!   the registrations) are the element's;
@@ -43,7 +46,8 @@
 //! equal elements hold the same objects, as a hit's would.
 //!
 //! The key (`keyOf`) is only where to look: each matched block - a rule's by
-//! address, a style attribute's by the property names it declares - with its
+//! address, an element's own by its content hash (DeclarationBlock.
+//! contentHash; Blink's key mixes CSSPropertyValueSet::GetHash) - with its
 //! Source, the pseudo-element, and the parent's custom property record and
 //! inherited groups by address. A collision or a reused address costs a
 //! compare, never a value.
@@ -52,8 +56,10 @@
 //! hold-comes-with-the-step-that-ends-it). Each entry holds a
 //! ComputedStyle.clone of its style - one reference on each of its groups and
 //! records - and, when it can serve a hit, a clone of its parent's style (so a
-//! group address it compares cannot be freed and reused) and a copy of its
-//! matched list. Released, entry and all:
+//! group address it compares cannot be freed and reused), a copy of its
+//! matched list and a snapshot of each own block in it (each declaration's
+//! value retained: the owner's later writes change nothing the entry
+//! holds). Released, entry and all:
 //! 1. every entry when the engine's generation moves: Blink's
 //!    StyleResolver::InvalidateMatchedPropertiesCache and
 //!    ClearViewportDependent, WebKit's invalidate and
@@ -63,7 +69,7 @@
 //!    300);
 //! 3. a full key takes no more entries (WebKit maxEntriesPerHash = 4);
 //! 4. everything, with the Document's style engine (StyleEngine.deinit).
-//! The entries hold values, never a node, a realm or a declaration block.
+//! The entries hold values, never a node, a realm or a live declaration block.
 //!
 //! One per Document's StyleEngine, used on its Browser's window-agent thread
 //! only, as the groups it holds are (css/computed_style.zig, "Storage").
@@ -138,6 +144,12 @@ pub const Inputs = struct {
 /// One resolution, as the cache sees it.
 pub const Lookup = struct {
     key: u64,
+    /// For a resolution that matched a block of the element's own: its key
+    /// without that block's content (`shapeOf`), where `add` also adopts
+    /// and keeps an adoption-only entry, so elements whose own blocks
+    /// differ still share equal groups and records (b3's convergence) and
+    /// their children still find one key.
+    shape: ?u64 = null,
     generation: u64,
     matched: []const Matched = &.{},
     pseudo: Pseudo = .none,
@@ -187,8 +199,11 @@ pub const MatchedPropertiesCache = struct {
     const Correspondence = struct {
         /// The parent's style when the entry was made, held (a clone).
         parent: *ComputedStyle,
-        /// The matched list, copied.
+        /// The matched list, copied; an own block's entry points into `own`.
         matched: []Matched,
+        /// A snapshot of each own block of the matched list, in order
+        /// (DeclarationBlock.snapshot).
+        own: []css.declarations.DeclarationBlock = &.{},
         pseudo: Pseudo,
         inputs: Inputs,
         /// The cascade took a non-inherited value from the parent.
@@ -225,6 +240,8 @@ pub const MatchedPropertiesCache = struct {
         entry.holder.destroy();
         if (entry.hit) |hit| {
             hit.parent.destroy();
+            for (hit.own) |*block| block.deinit();
+            self.allocator.free(hit.own);
             self.allocator.free(hit.matched);
             self.allocator.destroy(hit);
         }
@@ -281,6 +298,16 @@ pub const MatchedPropertiesCache = struct {
     /// while the key has room. Never fails: running out of memory only
     /// leaves `style` holding its own groups and the cache without it.
     pub fn add(self: *MatchedPropertiesCache, lookup: Lookup, dependencies: ?css.cascade.Dependencies, style: *ComputedStyle) void {
+        // A resolution with an own block: first adopt among the elements
+        // whose own blocks have the same shape, whatever their content (the
+        // path every such resolution took before lane style1 b5, when it was
+        // never looked up), then key it by content below.
+        if (lookup.shape) |shape| if (shape != lookup.key) {
+            var by_shape = lookup;
+            by_shape.key = shape;
+            by_shape.shape = null;
+            self.add(by_shape, null, style);
+        };
         self.enter(lookup.generation);
         const cacheable = if (dependencies) |d| d.cacheable() and lookup.parent != null else false;
         // Adoption, the most recent entry first (Blink's Find scans
@@ -343,8 +370,20 @@ pub const MatchedPropertiesCache = struct {
         errdefer self.allocator.destroy(hit);
         const matched = try self.allocator.dupe(Matched, lookup.matched);
         errdefer self.allocator.free(matched);
+        var own_count: usize = 0;
+        for (lookup.matched) |m| own_count += @intFromBool(m.source.per_element);
+        const own = try self.allocator.alloc(css.declarations.DeclarationBlock, own_count);
+        errdefer self.allocator.free(own);
+        var made: usize = 0;
+        errdefer for (own[0..made]) |*block| block.deinit();
+        for (matched) |*m| if (m.source.per_element) {
+            own[made] = try m.block.snapshot(self.allocator);
+            m.block = &own[made];
+            made += 1;
+        };
         hit.* = .{
             .parent = try lookup.parent.?.clone(self.allocator),
+            .own = own,
             .matched = matched,
             .pseudo = lookup.pseudo,
             .inputs = lookup.inputs,
@@ -393,7 +432,11 @@ fn corresponds(hit: *MatchedPropertiesCache.Correspondence, lookup: Lookup, pare
     if (hit.pseudo != lookup.pseudo or !hit.inputs.eql(lookup.inputs)) return false;
     if (hit.matched.len != lookup.matched.len) return false;
     for (hit.matched, lookup.matched) |a, b| {
-        if (a.block != b.block or !std.meta.eql(a.source, b.source)) return false;
+        if (!std.meta.eql(a.source, b.source)) return false;
+        // An element's own block: by content, against the entry's snapshot.
+        if (a.source.per_element) {
+            if (!a.block.interchangeable(b.block)) return false;
+        } else if (a.block != b.block) return false;
     }
     return parentCorresponds(hit, parent);
 }
@@ -481,8 +524,8 @@ pub fn differenceFromCascade(ctx: css.cascade.Context, matched: []const Matched,
 }
 
 /// The cache key of an element's matched declarations (in cascade order) for
-/// `pseudo` under `parent`: each block - a rule's by address, a style
-/// attribute's by the names it declares - with its Source, and the parent's
+/// `pseudo` under `parent`: each block - a rule's by address, an element's
+/// own by its content hash - with its Source, and the parent's
 /// custom property record and inherited groups by address (WebKit's
 /// MatchedDeclarationsCache::computeHash hashes &inheritedCustomProperties;
 /// Blink's key hashes the parent's inherited variables and inherited fields).
@@ -492,15 +535,31 @@ pub fn differenceFromCascade(ctx: css.cascade.Context, matched: []const Matched,
 /// steps per block (it runs at every resolution): the key only says where to
 /// look, and a collision costs a compare, never a value.
 pub fn keyOf(matched: []const Matched, pseudo: ?[]const u8, parent: ?*const ComputedStyle) u64 {
+    return keyFor(.content, matched, pseudo, parent);
+}
+
+/// keyOf with each element's own block reduced to its shape: a style
+/// attribute's by the names it declares, a presentational hint's by address
+/// (the key such resolutions had before lane style1 b5). Lookup.shape.
+pub fn shapeOf(matched: []const Matched, pseudo: ?[]const u8, parent: ?*const ComputedStyle) u64 {
+    return keyFor(.shape, matched, pseudo, parent);
+}
+
+fn keyFor(comptime own: enum { content, shape }, matched: []const Matched, pseudo: ?[]const u8, parent: ?*const ComputedStyle) u64 {
     var h: u64 = 0x5354594c4531;
     if (pseudo) |p| h = mix(h, std.hash.Wyhash.hash(0, p));
     for (matched) |*m| {
         const s = &m.source;
-        if (s.element_attached) {
-            for (m.block.entries.items) |*entry| h = mix(h, std.hash.Wyhash.hash(1, entry.name()));
-        } else h = mix(h, @intFromPtr(m.block));
+        switch (own) {
+            .content => h = mix(h, if (s.per_element) m.block.contentHash() else @intFromPtr(m.block)),
+            .shape => if (s.element_attached) {
+                for (m.block.entries.items) |*entry| h = mix(h, std.hash.Wyhash.hash(1, entry.name()));
+            } else {
+                h = mix(h, @intFromPtr(m.block));
+            },
+        }
         h = mix(h, (@as(u64, @backingInt(s.origin)) << 56) | (@as(u64, s.layer) << 40) | (@as(u64, s.tree_depth) << 24) |
-            (@as(u64, @intFromBool(s.element_attached)) << 1) | @intFromBool(s.tree_count_allowed));
+            (@as(u64, @intFromBool(s.per_element)) << 2) | (@as(u64, @intFromBool(s.element_attached)) << 1) | @intFromBool(s.tree_count_allowed));
         h = mix(h, (@as(u64, s.order) << 32) ^ (@as(u64, s.specificity.a) << 20) ^ (@as(u64, s.specificity.b) << 10) ^ s.specificity.c);
         h = mix(h, s.tree_scope.serial);
     }
@@ -1055,4 +1114,94 @@ test "adoption compares a group no entry holds equal once per entry, at the valu
     cache.add(.{ .key = 1, .generation = 1 }, null, again);
     try testing.expect(again.slots[surround] == styles[1].slots[surround]);
     try testing.expectEqual(@as(usize, 0), again.groupsHeldAlone());
+}
+
+// ---------------------------------------------------------------------------
+// Lane style1 b5: an element's own blocks, keyed and compared by content.
+// ---------------------------------------------------------------------------
+
+const own_source: css.cascade.Source = .{ .origin = .author, .element_attached = true, .per_element = true };
+
+/// A lookup of one own block under `parent`, with `key` (null: its keyOf).
+fn ownLookup(matched: *const [1]Matched, parent: *const ComputedStyle, key: ?u64) Lookup {
+    return .{ .key = key orelse keyOf(matched, null, parent), .generation = 1, .matched = matched, .parent = parent };
+}
+
+fn ownMiss(cache: *MatchedPropertiesCache, matched: *const [1]Matched, parent: *const ComputedStyle, key: ?u64) !*ComputedStyle {
+    var deps: css.cascade.Dependencies = .{};
+    const style = try css.cascade.cascade(.{ .allocator = testing.allocator, .parent = parent, .dependencies = &deps }, matched);
+    cache.add(ownLookup(matched, parent, key), deps, style);
+    return style;
+}
+
+test "an own block corresponds by content: an equal block another element holds hits, and the owner's rewrite in place changes nothing the entry holds" {
+    const cache = try MatchedPropertiesCache.create(testing.allocator);
+    defer cache.destroy();
+    var root = try rootStyle("font-size: 20px");
+    defer root.block.deinit();
+    defer root.style.destroy();
+    var a = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, "margin-left: 3px");
+    defer a.deinit();
+    var b = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, "margin-left:3px");
+    defer b.deinit();
+    const ma = [1]Matched{.{ .block = &a, .source = own_source }};
+    const mb = [1]Matched{.{ .block = &b, .source = own_source }};
+    const first = try ownMiss(cache, &ma, root.style, null);
+    defer first.destroy();
+    try testing.expectEqual(keyOf(&ma, null, root.style), keyOf(&mb, null, root.style));
+    const held = cache.find(ownLookup(&mb, root.style, null)) orelse return error.ExpectedHit;
+    try testing.expect(held.firstDifference(first) == null);
+    // a's block rewritten in place (CSSOM setProperty): same address, new
+    // content, the hash reset.
+    const old_key = keyOf(&ma, null, root.style);
+    try testing.expect(try a.setProperty(.{ .allocator = testing.allocator }, "margin-left", "9px", ""));
+    try testing.expect(keyOf(&ma, null, root.style) != old_key);
+    // b still finds the entry a made, with a's old content ...
+    try testing.expect(cache.find(ownLookup(&mb, root.style, null)) != null);
+    // ... and a, looked up where its old content was, corresponds no more.
+    try testing.expect(cache.find(ownLookup(&ma, root.style, old_key)) == null);
+    try testing.expectEqual(@as(u32, 2), cache.hits);
+}
+
+test "under one key, own blocks that differ in importance, value, a url()'s base or a pending value's base do not correspond" {
+    const Resolver = struct {
+        prefix: []const u8,
+        fn resolve(context: *const anyopaque, allocator: Allocator, raw: []const u8) ?[]u8 {
+            const self: *const @This() = @ptrCast(@alignCast(context));
+            return std.mem.concat(allocator, u8, &.{ self.prefix, raw }) catch null;
+        }
+    };
+    const Case = struct { a: []const u8, b: []const u8, base_b: []const u8 = "https://one.test/" };
+    const cases = [_]Case{
+        .{ .a = "margin-left: 3px", .b = "margin-left: 3px !important" },
+        .{ .a = "margin-left: 3px", .b = "margin-left: 4px" },
+        .{ .a = "--a: 1px", .b = "--a: 2px" },
+        .{ .a = "background-image: url(./a.png)", .b = "background-image: url(./a.png)", .base_b = "https://two.test/" },
+        .{ .a = "--u: url(./a.png); background-image: var(--u)", .b = "--u: url(./a.png); background-image: var(--u)", .base_b = "https://two.test/" },
+    };
+    var root = try rootStyle("font-size: 20px");
+    defer root.block.deinit();
+    defer root.style.destroy();
+    for (cases) |case| {
+        const cache = try MatchedPropertiesCache.create(testing.allocator);
+        defer cache.destroy();
+        var blocks: [2]css.declarations.DeclarationBlock = undefined;
+        for (&blocks, [_][]const u8{ case.a, case.b }, [_][]const u8{ "https://one.test/", case.base_b }) |*block, text, base| {
+            const resolver: Resolver = .{ .prefix = base };
+            const source = try css.style_values.ResourceSource.create(testing.allocator, .{ .base_url = base });
+            defer source.unref();
+            block.* = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator, .resource_source = source, .url_resolver = .{ .context = &resolver, .resolve = Resolver.resolve } }, text);
+        }
+        defer for (&blocks) |*block| block.deinit();
+        const ma = [1]Matched{.{ .block = &blocks[0], .source = own_source }};
+        const mb = [1]Matched{.{ .block = &blocks[1], .source = own_source }};
+        const first = try ownMiss(cache, &ma, root.style, 7);
+        defer first.destroy();
+        // The same block content, the same key: a hit (the entry is there).
+        try testing.expect(cache.find(ownLookup(&ma, root.style, 7)) != null);
+        if (cache.find(ownLookup(&mb, root.style, 7)) != null) {
+            std.debug.print("\n'{s}' under {s} corresponded to '{s}'\n", .{ case.b, case.base_b, case.a });
+            return error.TestUnexpectedResult;
+        }
+    }
 }

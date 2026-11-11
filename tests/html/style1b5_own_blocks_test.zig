@@ -14,10 +14,24 @@ const dom = @import("dom");
 const helpers = @import("edges_node_holders_helpers.zig");
 
 fn hits(page: helpers.Page) u32 {
+    return counters(page).hits;
+}
+
+/// The document's cache counters: lookups answered and not.
+fn counters(page: helpers.Page) struct { hits: u32, misses: u32 } {
     const document = page.browser.current_context.?.document_instance.?;
-    const engine = dom.style.engine.engineOf(document) orelse return 0;
-    const cache = engine.matched_properties orelse return 0;
-    return cache.hits;
+    const engine = dom.style.engine.engineOf(document) orelse return .{ .hits = 0, .misses = 0 };
+    const cache = engine.matched_properties orelse return .{ .hits = 0, .misses = 0 };
+    return .{ .hits = cache.hits, .misses = cache.misses };
+}
+
+/// Run `source` and expect every lookup it makes to hit (at least one).
+fn expectOnlyHits(page: helpers.Page, source: []const u8) !void {
+    const before = counters(page);
+    try page.run(source);
+    const after = counters(page);
+    try testing.expectEqual(before.misses, after.misses);
+    try testing.expect(after.hits > before.hits);
 }
 
 const rows_css =
@@ -64,12 +78,10 @@ fn equalAttributesHit() !void {
         \\list.append(a, b);
         \\if (getComputedStyle(a).opacity !== '0.6') throw new Error('a ' + getComputedStyle(a).opacity);
     );
-    const before_b = hits(page);
-    try page.run(
-        \\const b = document.getElementById('list').lastChild;
-        \\if (getComputedStyle(b).opacity !== '0.6') throw new Error('b ' + getComputedStyle(b).opacity);
+    try expectOnlyHits(page,
+        \\{ const b = document.getElementById('list').lastChild;
+        \\  if (getComputedStyle(b).opacity !== '0.6') throw new Error('b ' + getComputedStyle(b).opacity); }
     );
-    try testing.expectEqual(@as(u32, 1), hits(page) - before_b);
 }
 
 test "elements with equal style attributes hit, whatever the spelling" {
@@ -182,14 +194,12 @@ fn cssomWriteRekeys() !void {
     );
     // y's block now holds x's content: its next resolution finds x's entry
     // only under a hash computed again after the write.
-    const before = hits(page);
-    try page.run(
+    try expectOnlyHits(page,
         \\style1b5Y.style.color = 'blue';
         \\if (getComputedStyle(style1b5Y).color !== 'rgb(0, 0, 255)') throw new Error('y blue ' + getComputedStyle(style1b5Y).color);
     );
-    try testing.expectEqual(@as(u32, 1), hits(page) - before);
-    // Typed OM writes the same block.
-    const before_typed = hits(page);
+    // Typed OM and removeProperty write the same block (a stale hash after
+    // any of these writes panics the Debug check in contentHash) ...
     try page.run(
         \\style1b5Y.attributeStyleMap.set('color', 'red');
         \\if (getComputedStyle(style1b5Y).color !== 'rgb(255, 0, 0)') throw new Error('y typed ' + getComputedStyle(style1b5Y).color);
@@ -197,13 +207,12 @@ fn cssomWriteRekeys() !void {
         \\if (getComputedStyle(z).color !== 'rgb(255, 0, 0)') throw new Error('z');
         \\style1b5Y.style.removeProperty('color');
         \\if (getComputedStyle(style1b5Y).color !== 'rgb(0, 0, 0)') throw new Error('y removed ' + getComputedStyle(style1b5Y).color);
+    );
+    // ... and the cssText setter: y then holds x's content again.
+    try expectOnlyHits(page,
         \\style1b5Y.style.cssText = 'color: blue';
         \\if (getComputedStyle(style1b5Y).color !== 'rgb(0, 0, 255)') throw new Error('y cssText ' + getComputedStyle(style1b5Y).color);
     );
-    // y after cssText hit x's entry (z may hit y's typed one, when Typed OM's
-    // red and the parser's are one value); a stale hash after any of these
-    // writes panics the Debug check in keyOf first.
-    try testing.expect(hits(page) - before_typed >= 1);
 }
 
 test "a CSSOM or Typed OM write to a style attribute keys the block by its new content" {
