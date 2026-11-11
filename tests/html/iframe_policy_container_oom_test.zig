@@ -453,10 +453,21 @@ const CountingAllocator = struct {
         "/impls/Performance.zig:",
     };
 
-    /// Whether a block allocated at `frames` is of a known leak kind: its
-    /// stack, symbolized, passes through one of `known_leak_kinds`.
-    fn isKnownLeak(frames: [site_frames]usize) bool {
+    /// The list is CLOSED: a block of any other kind fails the sweep, until
+    /// its kind is added here by name, with its round's failure stack in the
+    /// commit that adds it (the integrator's ruling, lane v8up b3i).
+    ///
+    /// The known leak kind a block allocated at `frames` is of - the index in
+    /// `known_leak_kinds` of the first its stack, symbolized, passes through -
+    /// or null.
+    fn knownLeakKind(frames: [site_frames]usize) ?usize {
         return stackPassesThrough(frames, &known_leak_kinds);
+    }
+
+    /// `known_leak_kinds[i]`'s interface name ("/impls/X.zig:" -> "X").
+    fn kindName(i: usize) []const u8 {
+        const kind = known_leak_kinds[i];
+        return kind["/impls/".len .. kind.len - ".zig:".len];
     }
 
     /// Whether round `round`'s induced allocation failure was the queued
@@ -465,12 +476,12 @@ const CountingAllocator = struct {
     /// wrapInstanceAsV8Object -> WrapperCache.set).
     fn failedInTraceChild(self: *const CountingAllocator, round: u32) bool {
         const failed = self.failures.get(round) orelse return false;
-        return stackPassesThrough(failed, &.{"/protocol_tracing.zig:"});
+        return stackPassesThrough(failed, &.{"/protocol_tracing.zig:"}) != null;
     }
 
-    /// Whether the stack `frames`, symbolized, passes through a file named
-    /// by one of `needles`.
-    fn stackPassesThrough(frames: [site_frames]usize, needles: []const []const u8) bool {
+    /// The index of the first of `needles` (file names) the stack `frames`,
+    /// symbolized, passes through, or null.
+    fn stackPassesThrough(frames: [site_frames]usize, needles: []const []const u8) ?usize {
         var len: usize = 0;
         while (len < site_frames and frames[len] != 0) len += 1;
         var addresses = frames;
@@ -478,13 +489,18 @@ const CountingAllocator = struct {
         var writer: std.Io.Writer = .fixed(&buffer);
         std.debug.writeStackTrace(&.{ .return_addresses = addresses[0..len], .skipped = .none }, .{ .writer = &writer, .mode = .no_color }) catch {};
         const text = writer.buffered();
-        for (needles) |needle| {
-            if (std.mem.indexOf(u8, text, needle) != null) return true;
+        for (needles, 0..) |needle, i| {
+            if (std.mem.indexOf(u8, text, needle) != null) return i;
         }
-        return false;
+        return null;
     }
 
-    const Summary = struct { known: usize = 0, unknown: usize = 0 };
+    const Summary = struct {
+        known: usize = 0,
+        unknown: usize = 0,
+        /// The known blocks by kind, `known_leak_kinds`' order.
+        by_kind: [known_leak_kinds.len]usize = @splat(0),
+    };
 
     /// Print the live blocks' allocation sites (every round's, or only
     /// `only_round`'s), grouped by stack, the most blocks first: each
@@ -524,10 +540,16 @@ const CountingAllocator = struct {
             // Of the queued leak: a known kind, allocated in rounds whose
             // induced failure was the wrap of a traced child (a group's first
             // and last round both).
-            const known = classify and isKnownLeak(group.frames) and
-                self.failedInTraceChild(group.first_round) and self.failedInTraceChild(group.last_round);
+            const kind: ?usize = if (!classify) null else if (knownLeakKind(group.frames)) |k|
+                (if (self.failedInTraceChild(group.first_round) and self.failedInTraceChild(group.last_round)) k else null)
+            else
+                null;
+            const known = kind != null;
             if (classify) {
-                if (known) summary.known += group.count else summary.unknown += group.count;
+                if (kind) |k| {
+                    summary.known += group.count;
+                    summary.by_kind[k] += group.count;
+                } else summary.unknown += group.count;
             }
             if (i >= max and (!classify or known)) continue;
             std.debug.print("site {d}: {d} blocks, {d} bytes, rounds {d}-{d}{s}\n", .{ i, group.count, group.bytes, group.first_round, group.last_round, if (!classify) "" else if (known) " (known: the traceChild wrap-failure leak)" else " (NOT a known leak kind)" });
@@ -613,10 +635,17 @@ fn sweepContentWindow(rounds: usize) !void {
     const start = counting.live();
     try sweepContentWindowOn(&counting, rounds);
     const end = counting.live();
-    if (end.count == start.count and end.bytes == start.bytes) return;
-    std.debug.print("the sweep's Browser, torn down, still holds {d} blocks ({d} bytes) of c_allocator; it held {d} ({d}) before Browser.init\n", .{ end.count, end.bytes, start.count, start.bytes });
-    const summary = counting.printSites(null, 16, true);
-    std.debug.print("of them: {d} blocks of the known traceChild wrap-failure leak, {d} of no known kind or cause\n", .{ summary.known, summary.unknown });
+    var summary: CountingAllocator.Summary = .{};
+    if (end.count != start.count or end.bytes != start.bytes) {
+        std.debug.print("the sweep's Browser, torn down, still holds {d} blocks ({d} bytes) of c_allocator; it held {d} ({d}) before Browser.init\n", .{ end.count, end.bytes, start.count, start.bytes });
+        summary = counting.printSites(null, 16, true);
+    }
+    // Every run, pass or fail: what the queued leak was allowed to leave, by
+    // kind - not capped, so the debt shows in the log (the integrator's
+    // ruling, lane v8up b3i).
+    std.debug.print("allowed: {d} blocks of the queued traceChild wrap-failure leak (", .{summary.known});
+    for (summary.by_kind, 0..) |count, i| std.debug.print("{s}{s} {d}", .{ if (i == 0) "" else ", ", CountingAllocator.kindName(i), count });
+    std.debug.print("); {d} of no known kind or cause\n", .{summary.unknown});
     if (summary.unknown > 0) return error.BrowserLeftMemory;
 }
 
