@@ -1455,6 +1455,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             // `by_cloning`: the style attribute's change steps skip their CSP
             // check for a copied attribute, as all three browsers do (Element).
             var index: usize = 0;
+            dom_module.element_attributes.reserve(copy, dom_module.element_attributes.count(node));
             while (dom_module.element_attributes.at(node, index)) |attribute| : (index += 1) {
                 var copied = attribute;
                 copied.by_cloning = true;

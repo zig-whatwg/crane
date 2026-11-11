@@ -902,6 +902,7 @@ fn createElementNode(
     };
 
     // "Append each attribute in the given token to element."
+    dom.element_attributes.reserve(element, tree_node.attributes.toSlice().len);
     for (tree_node.attributes.toSlice()) |attr| parser_script_execution.appendParsedAttribute(element, attr);
 
     // Step 15, deferred to the end of the conversion: a form keeps its DOM

@@ -391,6 +391,7 @@ pub const DomTreeAdapter = struct {
             parser_script_execution.recordStartPosition(element, self.document);
         }
         // "Append each attribute in the given token to element."
+        dom.element_attributes.reserve(element, tree_node.attributes.toSlice().len);
         for (tree_node.attributes.toSlice()) |attr| parser_script_execution.appendParsedAttribute(element, attr);
 
         // Capture the token's stylesheet state before connection. A style
