@@ -36,14 +36,17 @@
 //! A hit's style is a clone of the entry's holder: its groups, records and
 //! header flags, adjusted already (Blink stores the adjusted style).
 //!
-//! A miss runs the cascade; `add` then shares every group the new style
-//! holds alone whose values are identical to an entry's of the same key
-//! (ComputedStyle.adoptIdenticalGroups, lane style1 b1) and keeps the style
-//! while the key has room.
+//! A miss runs the cascade; `add` then shares every group and custom
+//! property record the new style holds alone whose values equal an entry's
+//! of the same key (ComputedStyle.adoptEqualGroups and adoptEqualCustom,
+//! lanes style1 b1 and b3) and keeps the style while the key has room; a
+//! style that can serve hits replaces a full key's least recently used
+//! entry. So equal elements hold the same objects, as a hit's would.
 //!
 //! The key (`keyOf`) is only where to look: each matched block - a rule's by
 //! address, a style attribute's by the property names it declares - with its
-//! Source, and the pseudo-element. A collision or a reused address costs a
+//! Source, the pseudo-element, and the parent's custom property record and
+//! inherited groups by address. A collision or a reused address costs a
 //! compare, never a value.
 //!
 //! Holds and the steps that end them (lesson architecture-a-browsers-strong-
@@ -59,7 +62,9 @@
 //! 2. the least recently used beyond `limit` entries, down to `prune_target`
 //!    (Blink CleanMatchedPropertiesCache: kCacheLimit 500, kPruneCacheTarget
 //!    300);
-//! 3. a full key takes no more entries (WebKit maxEntriesPerHash = 4);
+//! 3. a full key (4: WebKit maxEntriesPerHash) replaces its least recently
+//!    used entry with a style that can serve hits, and takes no style kept
+//!    only for adoption;
 //! 4. everything, with the Document's style engine (StyleEngine.deinit).
 //! The entries hold values, never a node, a realm or a declaration block.
 //!
@@ -262,24 +267,39 @@ pub const MatchedPropertiesCache = struct {
     pub fn add(self: *MatchedPropertiesCache, lookup: Lookup, dependencies: ?css.cascade.Dependencies, style: *ComputedStyle) void {
         self.enter(lookup.generation);
         const cacheable = if (dependencies) |d| d.cacheable() and lookup.parent != null else false;
-        if (!cacheable and style.groupsHeldAlone() == 0) return;
+        // Adoption, the most recent entry first (Blink's Find scans
+        // backwards): every group and custom property record the cascade
+        // made that holds an entry's values becomes the entry's.
+        if (self.buckets.getPtr(lookup.key)) |bucket| {
+            var i = bucket.len;
+            while (i > 0 and (style.groupsHeldAlone() != 0 or style.customHeldAlone())) {
+                i -= 1;
+                const entry = &bucket.items[i];
+                if (style.adoptEqualGroups(entry.holder) + style.adoptEqualCustom(entry.holder) != 0) entry.last_used = self.tick();
+            }
+        }
+        // Nothing of its own left to share and no hit to serve: not kept.
+        if (!cacheable and style.groupsHeldAlone() == 0 and !style.customHeldAlone()) return;
         const gop = self.buckets.getOrPut(self.allocator, lookup.key) catch return;
         if (!gop.found_existing) gop.value_ptr.* = .{};
         const bucket = gop.value_ptr;
-        // The most recent first (Blink's Find scans backwards).
-        var i = bucket.len;
-        while (i > 0 and style.groupsHeldAlone() != 0) {
-            i -= 1;
-            const entry = &bucket.items[i];
-            if (style.adoptIdenticalGroups(entry.holder) != 0) entry.last_used = self.tick();
-        }
-        // A full key keeps the entries it has (WebKit's
-        // MatchedDeclarationsCache::add appends only below
-        // maxEntriesPerHash): a style whose own group no entry matches - a
-        // per-element value - would otherwise replace an entry on every
-        // resolution, a clone made and a holder destroyed each time.
-        if (bucket.len == per_key or (!cacheable and style.groupsHeldAlone() == 0)) {
-            if (bucket.len == 0) _ = self.buckets.swapRemove(lookup.key);
+        if (bucket.len == per_key) {
+            // A full key: a style that can serve hits replaces the key's least
+            // recently used entry (Blink appends to the hash's entries and
+            // drops the least recently used beyond kCacheLimit; WebKit keeps
+            // maxEntriesPerHash and skips). The key carries the parent's
+            // record and inherited groups, so a full key means four parents
+            // with those, differing in what only explicit inheritance or the
+            // adjustments read. One kept only for adoption replaces nothing:
+            // a per-element value would replace an entry on every resolution.
+            if (!cacheable) return;
+            var oldest: usize = 0;
+            for (bucket.items[0..bucket.len], 0..) |entry, k| if (entry.last_used < bucket.items[oldest].last_used) {
+                oldest = k;
+            };
+            const entry = self.makeEntry(lookup, dependencies.?.parent_non_inherited, style) catch return;
+            self.release(bucket.items[oldest]);
+            bucket.items[oldest] = entry;
             return;
         }
         const entry = self.makeEntry(lookup, if (cacheable) dependencies.?.parent_non_inherited else null, style) catch {
@@ -415,11 +435,17 @@ pub fn differenceFromCascade(ctx: css.cascade.Context, matched: []const Matched,
 }
 
 /// The cache key of an element's matched declarations (in cascade order) for
-/// `pseudo`: each block - a rule's by address, a style attribute's by the
-/// names it declares - with its Source. A few multiply-rotate steps per block
-/// (it runs at every resolution): the key only says where to look, and a
-/// collision costs a compare, never a value.
-pub fn keyOf(matched: []const Matched, pseudo: ?[]const u8) u64 {
+/// `pseudo` under `parent`: each block - a rule's by address, a style
+/// attribute's by the names it declares - with its Source, and the parent's
+/// custom property record and inherited groups by address (WebKit's
+/// MatchedDeclarationsCache::computeHash hashes &inheritedCustomProperties;
+/// Blink's key hashes the parent's inherited variables and inherited fields).
+/// Equal parents hold the same objects - a hit hands an element the entry's,
+/// a miss adopts an entry's equal ones (`add`) - so a key finds the entries
+/// made under parents with the same inherited data. A few multiply-rotate
+/// steps per block (it runs at every resolution): the key only says where to
+/// look, and a collision costs a compare, never a value.
+pub fn keyOf(matched: []const Matched, pseudo: ?[]const u8, parent: ?*const ComputedStyle) u64 {
     var h: u64 = 0x5354594c4531;
     if (pseudo) |p| h = mix(h, std.hash.Wyhash.hash(0, p));
     for (matched) |*m| {
@@ -432,6 +458,11 @@ pub fn keyOf(matched: []const Matched, pseudo: ?[]const u8) u64 {
         h = mix(h, (@as(u64, s.order) << 32) ^ (@as(u64, s.specificity.a) << 20) ^ (@as(u64, s.specificity.b) << 10) ^ s.specificity.c);
         h = mix(h, s.tree_scope.serial);
     }
+    const p = parent orelse return h;
+    h = mix(h, @intFromPtr(p.custom));
+    inline for (0..css.computed_style.groups.count) |g| if (comptime css.computed_style.groups.inherited[g]) {
+        h = mix(h, @intFromPtr(p.slots[g]));
+    };
     return h;
 }
 
@@ -501,7 +532,7 @@ test "a key keeps at most per_key entries and the cache at most limit" {
 
 const per_key_test_styles = MatchedPropertiesCache.per_key + 3;
 
-test "a full key keeps the entries it has: a later style of that key is not kept (WebKit's maxEntriesPerHash)" {
+test "a full key takes no style kept only for adoption (WebKit's maxEntriesPerHash)" {
     const allocator = testing.allocator;
     const cache = try MatchedPropertiesCache.create(allocator);
     defer cache.destroy();
@@ -577,7 +608,7 @@ const Scene = struct {
     }
 
     fn lookup(self: *const Scene, parent: *const ComputedStyle) Lookup {
-        return .{ .key = keyOf(&self.matched, null), .generation = 1, .matched = &self.matched, .parent = parent };
+        return .{ .key = keyOf(&self.matched, null, parent), .generation = 1, .matched = &self.matched, .parent = parent };
     }
 
     /// The child's cascade under `parent`, recorded, then kept by `cache`.
@@ -607,12 +638,18 @@ test "a kept style stands for the next cascade of the same declarations under an
     const held = cache.find(scene.lookup(scene.parent)) orelse return error.ExpectedHit;
     try testing.expectEqual(@as(u32, 1), cache.hits);
     try testing.expect(held.firstDifference(first) == null);
-    // A cousin: another parent object with the same inherited values (its
-    // own groups, not shared) is the same parent to the cache.
+    // A cousin: another parent object with the same inherited values. Held
+    // in groups of its own it has another key (the key carries the parent's
+    // groups by address: equal parents converge on one group by adoption
+    // and hits, lane style1 b3) ...
     var cousin = try rootStyle("font-size: 20px; color: blue");
     defer cousin.block.deinit();
     defer cousin.style.destroy();
-    try testing.expect(cache.find(scene.lookup(cousin.style)) != null);
+    try testing.expect(cache.find(scene.lookup(cousin.style)) == null);
+    // ... but under the same key it corresponds: the same parent to the cache.
+    var same_key = scene.lookup(cousin.style);
+    same_key.key = scene.lookup(scene.parent).key;
+    try testing.expect(cache.find(same_key) != null);
     // The self-check agrees with the hit.
     try testing.expect(try differenceFromCascade(.{ .allocator = testing.allocator, .parent = cousin.style }, &scene.matched, held) == null);
 }
@@ -748,7 +785,7 @@ test "the matched declarations, their sources, the pseudo-element and the contex
     try testing.expect(cache.find(scene.lookup(scene.parent)) != null);
 }
 
-test "a new generation forgets every entry; a key keeps at most per_key styles that serve hits" {
+test "a new generation forgets every entry; parents with other inherited groups have keys of their own" {
     const cache = try MatchedPropertiesCache.create(testing.allocator);
     defer cache.destroy();
     var scene: Scene = undefined;
@@ -760,7 +797,9 @@ test "a new generation forgets every entry; a key keeps at most per_key styles t
     lookup.generation = 2;
     try testing.expect(cache.find(lookup) == null);
     try testing.expectEqual(@as(u32, 0), cache.entries);
-    // Parents with font sizes 1..7px: each a miss, the key full at four.
+    // Parents with font sizes 1..7px: each a miss, each its own key (the
+    // parent's inherited groups are in the key; an entry's parent copy holds
+    // its group, so no later parent reuses the address).
     for (1..8) |px| {
         var buffer: [32]u8 = undefined;
         var parent = try rootStyle(try std.fmt.bufPrint(&buffer, "font-size: {d}px", .{px}));
@@ -774,7 +813,8 @@ test "a new generation forgets every entry; a key keeps at most per_key styles t
         defer style.destroy();
         cache.add(lookup, deps, style);
     }
-    try testing.expectEqual(@as(u32, MatchedPropertiesCache.per_key), cache.entries);
+    try testing.expectEqual(@as(u32, 7), cache.entries);
+    try testing.expectEqual(@as(usize, 7), cache.buckets.count());
 }
 
 test "an entry that serves hits is kept whole under allocation failure, or not at all" {
@@ -793,4 +833,91 @@ test "an entry that serves hits is kept whole under allocation failure, or not a
         const hit = cache.find(scene.lookup(scene.parent));
         try testing.expect((hit != null) == (cache.entries == 1));
     }
+}
+
+// ---------------------------------------------------------------------------
+// Lane style1 b3: the parent in the key, a full key's replacement, and
+// adoption of equal records.
+// ---------------------------------------------------------------------------
+
+test "the key carries the parent's custom property record and inherited groups by address" {
+    var scene: Scene = undefined;
+    try scene.init("font-size: 20px; --w: 3px", "margin-left: 1em");
+    defer scene.deinit();
+    // A clone holds the same objects: the same key.
+    const twin = try scene.parent.clone(testing.allocator);
+    defer twin.destroy();
+    try testing.expectEqual(keyOf(&scene.matched, null, scene.parent), keyOf(&scene.matched, null, twin));
+    // Another font group, another record: other keys.
+    var other = try rootStyle("font-size: 21px; --w: 3px");
+    defer other.block.deinit();
+    defer other.style.destroy();
+    try testing.expect(keyOf(&scene.matched, null, scene.parent) != keyOf(&scene.matched, null, other.style));
+    var record = try rootStyle("font-size: 20px; --w: 4px");
+    defer record.block.deinit();
+    defer record.style.destroy();
+    // The same groups with another record: another key.
+    const swapped = try scene.parent.clone(testing.allocator);
+    defer swapped.destroy();
+    swapped.custom.?.release();
+    record.style.custom.?.retain();
+    swapped.custom = record.style.custom;
+    try testing.expect(keyOf(&scene.matched, null, scene.parent) != keyOf(&scene.matched, null, swapped));
+}
+
+test "a full key replaces its least recently used entry with a style that can serve hits" {
+    const cache = try MatchedPropertiesCache.create(testing.allocator);
+    defer cache.destroy();
+    // Parents that differ only in a non-inherited value, read by explicit
+    // inheritance: one key, every lookup a miss on the others' entries.
+    var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, "margin-left: inherit");
+    defer block.deinit();
+    const matched = [_]Matched{.{ .block = &block, .source = .{ .origin = .author, .order = 3 } }};
+    var parents: [MatchedPropertiesCache.per_key + 1]@TypeOf(try rootStyle("")) = undefined;
+    for (&parents, 0..) |*p, k| {
+        var buffer: [32]u8 = undefined;
+        p.* = try rootStyle(try std.fmt.bufPrint(&buffer, "margin-left: {d}px", .{k + 1}));
+    }
+    defer for (&parents) |*p| {
+        p.style.destroy();
+        p.block.deinit();
+    };
+    const key = keyOf(&matched, null, parents[0].style);
+    for (parents) |p| try testing.expectEqual(key, keyOf(&matched, null, p.style));
+    for (parents) |p| {
+        const lookup: Lookup = .{ .key = key, .generation = 1, .matched = &matched, .parent = p.style };
+        try testing.expect(cache.find(lookup) == null);
+        var deps: css.cascade.Dependencies = .{};
+        const style = try css.cascade.cascade(.{ .allocator = testing.allocator, .parent = p.style, .dependencies = &deps }, &matched);
+        defer style.destroy();
+        try testing.expect(deps.parent_non_inherited);
+        cache.add(lookup, deps, style);
+    }
+    // Still four entries: the fifth replaced the first (least recently used).
+    try testing.expectEqual(@as(u32, MatchedPropertiesCache.per_key), cache.entries);
+    const last: Lookup = .{ .key = key, .generation = 1, .matched = &matched, .parent = parents[MatchedPropertiesCache.per_key].style };
+    const held = cache.find(last) orelse return error.ExpectedHit;
+    try testing.expectEqual(@as(f64, @floatFromInt(MatchedPropertiesCache.per_key + 1)), held.get(.margin_left).length.value);
+    const first: Lookup = .{ .key = key, .generation = 1, .matched = &matched, .parent = parents[0].style };
+    try testing.expect(cache.find(first) == null);
+}
+
+test "a miss holds the record an entry made when its values are equal, and the groups whose values are equal" {
+    const cache = try MatchedPropertiesCache.create(testing.allocator);
+    defer cache.destroy();
+    var scene: Scene = undefined;
+    try scene.init("--ff: Georgia, serif", "--a: 3px; --b: calc(var(--a) * 2); font-family: var(--ff); margin-left: 2px");
+    defer scene.deinit();
+    const first = try scene.miss(cache, scene.parent);
+    defer first.destroy();
+    // An element that is not looked up (a block of its own, say) runs the
+    // cascade again: its new record and font group become the entry's.
+    const second = try css.cascade.cascade(.{ .allocator = testing.allocator, .parent = scene.parent }, &scene.matched);
+    defer second.destroy();
+    try testing.expect(second.custom != first.custom);
+    cache.add(scene.lookup(scene.parent), null, second);
+    try testing.expect(second.custom == first.custom);
+    const font = css.computed_style.groups.location[@backingInt(Longhand.font_family)].group;
+    try testing.expect(second.slots[font] == first.slots[font]);
+    try testing.expect(second.firstDifference(first) == null);
 }

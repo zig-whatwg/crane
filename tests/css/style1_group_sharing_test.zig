@@ -6,9 +6,10 @@
 //!   (Blink's MatchedPropertiesCache keeps `CloneStyle()`, WebKit's
 //!   MatchedDeclarationsCache `ComputedStyle::clonePtr`: "the ComputedStyle in
 //!   the cache is really just a holder for the substructures").
-//! - `adoptIdenticalGroups(from)`: each group a style holds alone whose values
-//!   are identical to `from`'s is replaced by `from`'s, shared. No value a
-//!   reader can see changes.
+//! - `adoptEqualGroups(from)`: each group a style holds alone whose values
+//!   are identical (or, since lane style1 b3, Value.eql-equal: a value the
+//!   cascade allocated) to `from`'s is replaced by `from`'s, shared. No value
+//!   a reader can see changes.
 //!
 //! RED at 01edfb83b0a: neither function exists.
 const std = @import("std");
@@ -21,7 +22,7 @@ const DeclarationBlock = css.declarations.DeclarationBlock;
 const Longhand = css.properties.Longhand;
 
 fn implemented() bool {
-    return @hasDecl(ComputedStyle, "clone") and @hasDecl(ComputedStyle, "adoptIdenticalGroups") and @hasDecl(ComputedStyle, "groupsHeldAlone");
+    return @hasDecl(ComputedStyle, "clone") and @hasDecl(ComputedStyle, "adoptEqualGroups") and @hasDecl(ComputedStyle, "groupsHeldAlone");
 }
 
 /// The style of a child of `parent` (the root when null) whose one author
@@ -62,7 +63,7 @@ test "two siblings that write the same values share every group they wrote" {
     for (probes, 0..) |l, i| before[i] = try serialized(b, l);
     defer for (before) |s| testing.allocator.free(s);
 
-    try testing.expectEqual(alone_before, b.adoptIdenticalGroups(a));
+    try testing.expectEqual(alone_before, b.adoptEqualGroups(a));
     try testing.expectEqual(@as(usize, 0), b.groupsHeldAlone());
     try testing.expectEqual(@as(usize, 0), a.groupsHeldAlone());
     for ([_]usize{ groupOf(.display), groupOf(.margin_left), groupOf(.border_top_width), groupOf(.background_color), groupOf(.color) }) |g| {
@@ -76,7 +77,7 @@ test "two siblings that write the same values share every group they wrote" {
         try testing.expectEqualStrings(before[i], now);
     }
     // A second adoption shares nothing more.
-    try testing.expectEqual(@as(usize, 0), b.adoptIdenticalGroups(a));
+    try testing.expectEqual(@as(usize, 0), b.adoptEqualGroups(a));
 }
 
 test "a group whose values differ in one slot stays the style's own" {
@@ -89,7 +90,7 @@ test "a group whose values differ in one slot stays the style's own" {
     const b = try styleOf(allocator, root, "margin-left: 3px; margin-top: 2px; display: block");
     defer b.destroy();
     // display's group is identical; the margins' differ in margin-top.
-    try testing.expectEqual(@as(usize, 1), b.adoptIdenticalGroups(a));
+    try testing.expectEqual(@as(usize, 1), b.adoptEqualGroups(a));
     try testing.expect(a.slots[groupOf(.display)] == b.slots[groupOf(.display)]);
     try testing.expect(a.slots[groupOf(.margin_top)] != b.slots[groupOf(.margin_top)]);
     const top = try serialized(b, .margin_top);
@@ -109,7 +110,7 @@ test "an em length shares only under parents with the same font size" {
     defer a.destroy();
     const b = try styleOf(allocator, big, "margin-left: 2em");
     defer b.destroy();
-    try testing.expectEqual(@as(usize, 0), b.adoptIdenticalGroups(a));
+    try testing.expectEqual(@as(usize, 0), b.adoptEqualGroups(a));
     const left = try serialized(b, .margin_left);
     defer testing.allocator.free(left);
     try testing.expectEqualStrings("40px", left);
@@ -130,7 +131,7 @@ test "a holder keeps the groups after the style it was made from is gone, and fr
     // the test if any group outlives the last of them, or is freed twice).
     const b = try styleOf(allocator, root, "--x: 1; " ++ block_text);
     defer b.destroy();
-    try testing.expect(b.adoptIdenticalGroups(holder) >= 5);
+    try testing.expect(b.adoptEqualGroups(holder) >= 5);
     holder.destroy();
     const left = try serialized(b, .margin_left);
     defer testing.allocator.free(left);
@@ -147,4 +148,57 @@ test "sharing never allocates, and a failed clone leaves the style's references 
     var failing = testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
     try testing.expectError(error.OutOfMemory, a.clone(failing.allocator()));
     try testing.expectEqual(@as(u32, 1), computed.Group.of(a.slots[groupOf(.margin_left)]).refs);
+}
+
+// Lane style1 b3: values the cascade allocates per element (a font-family
+// list, through var()) are equal but not identical; adoption shares them by
+// Value.eql, and a write after adoption copies the shared group first.
+test "groups whose values are equal but not identical are shared; a later write copies, never writes through" {
+    const allocator = testing.allocator;
+    const root = try styleOf(allocator, null, "--ff: Georgia, serif");
+    defer root.destroy();
+    const text = "font-family: var(--ff); margin-left: 3px";
+    const a = try styleOf(allocator, root, text);
+    defer a.destroy();
+    const b = try styleOf(allocator, root, text);
+    defer b.destroy();
+    const font = computed.groups.location[@backingInt(Longhand.font_family)].group;
+    // Each cascade substituted var(--ff) and allocated its own list.
+    try testing.expect(a.slots[font] != b.slots[font]);
+    try testing.expect(!computed.identical(a.get(.font_family), b.get(.font_family)));
+    try testing.expect(a.get(.font_family).eql(b.get(.font_family)));
+    try testing.expect(b.adoptEqualGroups(a) >= 1);
+    try testing.expect(a.slots[font] == b.slots[font]);
+    // Copy on write: b's next write to that group copies it; a keeps its value.
+    try testing.expectEqual(font, computed.groups.location[@backingInt(Longhand.font_weight)].group);
+    const weight = a.get(.font_weight);
+    try b.set(.font_weight, .{ .number = 701 });
+    try testing.expect(a.slots[font] != b.slots[font]);
+    try testing.expect(a.get(.font_weight).eql(weight));
+    try testing.expect(b.get(.font_weight).eql(.{ .number = 701 }));
+    try testing.expect(a.get(.font_family).eql(b.get(.font_family)));
+}
+
+test "a custom property record held alone and equal to another's is shared; a different value is not" {
+    const allocator = testing.allocator;
+    const root = try styleOf(allocator, null, "--x: 1px");
+    defer root.destroy();
+    const a = try styleOf(allocator, root, "--a: 3px; --b: calc(var(--a) * 2)");
+    defer a.destroy();
+    const b = try styleOf(allocator, root, "--a: 3px; --b: calc(var(--a) * 2)");
+    defer b.destroy();
+    const c = try styleOf(allocator, root, "--a: 4px; --b: calc(var(--a) * 2)");
+    defer c.destroy();
+    try testing.expect(a.custom != b.custom);
+    try testing.expectEqual(@as(usize, 1), b.adoptEqualCustom(a));
+    try testing.expect(a.custom == b.custom);
+    try testing.expectEqual(@as(u32, 2), a.custom.?.refs);
+    try testing.expectEqual(@as(usize, 0), c.adoptEqualCustom(a));
+    try testing.expect(c.custom != a.custom);
+    try testing.expect(!c.customValue("--b").?.eql(a.customValue("--b").?));
+    // A record shared already (its parent's) is never swapped.
+    const d = try styleOf(allocator, root, "margin-left: 1px");
+    defer d.destroy();
+    try testing.expect(d.custom == root.custom);
+    try testing.expectEqual(@as(usize, 0), d.adoptEqualCustom(a));
 }

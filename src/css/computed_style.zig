@@ -188,6 +188,15 @@ fn same(comptime T: type, a: T, b: T) bool {
     };
 }
 
+/// Whether group `g`'s values at `a` and `b` are the same computed values,
+/// slot by slot: identical, or - for a value the cascade allocated, such as
+/// a font-family list or a color substituted from var() - equal (Value.eql).
+/// What adoption shares on: no reader can tell the two apart.
+fn groupValuesEqual(g: usize, a: [*]const Value, b: [*]const Value) bool {
+    for (a[0..groups.lengths[g]], b[0..groups.lengths[g]]) |x, y| if (!identical(x, y) and !x.eql(y)) return false;
+    return true;
+}
+
 /// Whether group `g`'s values at `a` and `b` are identical, slot by slot.
 fn groupValuesIdentical(g: usize, a: [*]const Value, b: [*]const Value) bool {
     for (a[0..groups.lengths[g]], b[0..groups.lengths[g]]) |x, y| if (!identical(x, y)) return false;
@@ -308,16 +317,18 @@ pub const ComputedStyle = struct {
     }
 
     /// Share `from`'s groups where they hold this style's values: each group
-    /// this style holds alone whose every value is identical to the one
-    /// `from` holds for that group is released, and `from`'s is held in its
-    /// place (one more reference). No value a reader can see changes - the
-    /// slots read the same tags, addresses and bits (`identical`) - so a
-    /// style that writes the same values as another stops paying for its own
-    /// copy (Blink's MatchedPropertiesCache hit "allows us to reuse subgroups
-    /// of ComputedStyle so that we use less RAM", core/css/resolver/
+    /// this style holds alone whose every value equals the one `from` holds
+    /// for that group (`groupValuesEqual`: identical, or Value.eql for a value
+    /// the cascade allocated) is released, and `from`'s is held in its place
+    /// (one more reference). No value a reader can see changes, so a style
+    /// that computes the same values as another stops paying for its own copy
+    /// (Blink's MatchedPropertiesCache hit "allows us to reuse subgroups of
+    /// ComputedStyle so that we use less RAM", core/css/resolver/
     /// style_resolver.cc; WebKit copyNonInheritedFrom on a
-    /// MatchedDeclarationsCache hit). Returns how many groups it shared.
-    pub fn adoptIdenticalGroups(self: *ComputedStyle, from: *const ComputedStyle) usize {
+    /// MatchedDeclarationsCache hit) - and its children see the same group
+    /// address as the children of every equal element, which is what the
+    /// matched-properties cache keys on. Returns how many groups it shared.
+    pub fn adoptEqualGroups(self: *ComputedStyle, from: *const ComputedStyle) usize {
         var adopted: usize = 0;
         var it = self.held.iterator(.{});
         while (it.next()) |g| {
@@ -326,13 +337,42 @@ pub const ComputedStyle = struct {
             // A group shared already (the parent's inherited group, or one
             // adopted before) saves nothing by moving.
             if (mine.refs != 1) continue;
-            if (!groupValuesIdentical(g, self.slots[g], from.slots[g])) continue;
+            if (!groupValuesEqual(g, self.slots[g], from.slots[g])) continue;
             Group.of(from.slots[g]).refs += 1;
             self.slots[g] = from.slots[g];
             mine.release();
             adopted += 1;
         }
         return adopted;
+    }
+
+    /// Share `from`'s custom property records where they hold this style's
+    /// values: a record this style holds alone (its cascade made it) that
+    /// CustomProperties.eql calls equal to `from`'s is released and `from`'s
+    /// held instead - so elements that declare the same custom properties
+    /// hold one record, as a cache hit's would (Blink StyleVariables::
+    /// operator== rewrites two equal tries to one pointer; WebKit
+    /// deduplicateCustomProperties). Returns how many records it shared.
+    pub fn adoptEqualCustom(self: *ComputedStyle, from: *const ComputedStyle) usize {
+        return @as(usize, @intFromBool(adoptRecord(&self.custom, from.custom))) + @intFromBool(adoptRecord(&self.custom_own, from.custom_own));
+    }
+
+    fn adoptRecord(slot: *?*custom_properties.CustomProperties, from: ?*custom_properties.CustomProperties) bool {
+        const mine = slot.* orelse return false;
+        const other = from orelse return false;
+        if (mine == other or mine.refs != 1) return false;
+        if (!custom_properties.CustomProperties.eql(mine, other)) return false;
+        other.retain();
+        mine.release();
+        slot.* = other;
+        return true;
+    }
+
+    /// A custom property record this style holds alone.
+    pub fn customHeldAlone(self: *const ComputedStyle) bool {
+        if (self.custom) |c| if (c.refs == 1) return true;
+        if (self.custom_own) |c| if (c.refs == 1) return true;
+        return false;
     }
 
     /// The groups this style holds that no other style holds: what it pays

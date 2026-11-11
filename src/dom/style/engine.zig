@@ -1444,7 +1444,7 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
 fn cascadeOrHit(res: *Resolution, ctx: css.cascade.Context, pseudo: ?[]const u8) Error!*ComputedStyle {
     const cache = res.engine.matchedPropertiesCache() orelse return css.cascade.cascade(ctx, res.matched.items);
     var lookup: matched_properties_cache.Lookup = .{
-        .key = matched_properties_cache.keyOf(res.matched.items, pseudo),
+        .key = matched_properties_cache.keyOf(res.matched.items, pseudo, ctx.parent),
         .generation = res.key.generation,
         .matched = res.matched.items,
         .parent = ctx.parent,
@@ -1471,6 +1471,11 @@ fn cascadeOrHit(res: *Resolution, ctx: css.cascade.Context, pseudo: ?[]const u8)
     if (cacheable) recording.dependencies = &dependencies;
     const style = try css.cascade.cascade(recording, res.matched.items);
     cache.add(lookup, if (cacheable) dependencies else null, style);
+    // Debug builds: the style adoption left (its groups and records maybe an
+    // entry's now) reads what the cascade computed. With the check on every
+    // hit, every style - so every parent a key and a correspondence read -
+    // is checked.
+    if (comptime builtin.mode == .debug) missCheck(ctx, res.matched.items, style);
     return style;
 }
 
@@ -1485,6 +1490,21 @@ fn selfCheck(ctx: css.cascade.Context, matched: []const Matched, style: *const C
         .custom => |name| std.debug.panic("matched-properties cache hit differs from the cascade in custom property {s}", .{name}),
         .flags => std.debug.panic("matched-properties cache hit differs from the cascade in its header flags", .{}),
         .uncacheable => |deps| std.debug.panic("matched-properties cache hit for a cascade that reads its element's own inputs: {any}", .{deps}),
+    };
+}
+
+/// Debug builds: a missed style after adoption (`add` may have replaced its
+/// groups and custom property records with an entry's equal ones) against
+/// the cascade run again - every longhand (Value.eql), every custom property
+/// by name through the readers, the header flags. Unlike a hit, a miss may
+/// read inputs of its own.
+fn missCheck(ctx: css.cascade.Context, matched: []const Matched, style: *const ComputedStyle) void {
+    const difference = matched_properties_cache.differenceFromCascade(ctx, matched, style) catch return;
+    if (difference) |d| switch (d) {
+        .longhand => |l| std.debug.panic("matched-properties cache adoption changed {s}", .{@tagName(l)}),
+        .custom => |name| std.debug.panic("matched-properties cache adoption changed custom property {s}", .{name}),
+        .flags => std.debug.panic("matched-properties cache adoption changed the header flags", .{}),
+        .uncacheable => {},
     };
 }
 
