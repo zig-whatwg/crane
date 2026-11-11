@@ -440,10 +440,19 @@ pub const Table = struct {
             return null;
         }
 
+        /// Take out the record at `index`; the younger ones move down one,
+        /// in order. One range check covers the shift (every index in it is
+        /// under `len`, so under `max_records`): the slice copy it replaces
+        /// paid a dozen bounds checks even when nothing moved - reviving the
+        /// newest record, an `el.id = 'x' / 'y'` toggle (the cost pair's
+        /// setter row, 2026-11-11).
         fn removeAt(self: *Parking, index: usize) u32 {
+            const len = self.len;
+            if (index >= len or len > max_records) @panic("an attribute value ring index out of range");
             const slot = self.slots[index];
-            std.mem.copyForwards(u32, self.slots[index .. self.len - 1], self.slots[index + 1 .. self.len]);
-            self.len -= 1;
+            var at = index + 1;
+            while (at < len) : (at += 1) self.slots[at - 1] = self.slots[at];
+            self.len = len - 1;
             return slot;
         }
     };
@@ -1091,6 +1100,23 @@ test "a value that is its own classes and its own fold never looks for a token l
     release(&scope, try intern(&scope, "X"));
     try std.testing.expect(table.class_names_reads > reads);
     try expectParkingSound(table);
+}
+
+test "the ring takes a record out at its front, middle or end and keeps the rest in order" {
+    var ring: Table.Parking = .{};
+    for (0..5) |i| {
+        ring.slots[i] = @intCast(10 + i);
+        ring.len += 1;
+    }
+    try std.testing.expectEqual(@as(u32, 14), ring.removeAt(4)); // the newest
+    try std.testing.expectEqual(@as(u32, 10), ring.removeAt(0)); // the oldest
+    try std.testing.expectEqual(@as(u32, 12), ring.removeAt(1));
+    try std.testing.expectEqualSlices(u32, &.{ 11, 13 }, ring.slots[0..ring.len]);
+    try std.testing.expectEqual(@as(?usize, 1), ring.indexOf(13));
+    try std.testing.expectEqual(@as(?usize, null), ring.indexOf(12));
+    _ = ring.removeAt(0);
+    _ = ring.removeAt(0);
+    try std.testing.expectEqual(@as(usize, 0), ring.len);
 }
 
 test "a value id's slot ignores its flags and generation" {
