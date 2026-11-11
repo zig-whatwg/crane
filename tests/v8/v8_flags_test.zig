@@ -76,18 +76,22 @@ test "jitless, when built in, appears in both sets" {
     try std.testing.expectEqual(runtime_has, snapshot_has);
 }
 
-test "V8's compilation cache stays on unless the measurement switch is built in" {
-    // Lane v8up b4: -Dv8-no-compilation-cache adds --no-compilation-cache (build.zig
-    // says what it measures). Like --jitless it must be the same at snapshot
-    // generation and at run time, and a default build - this test's - must not
-    // carry it: Chrome runs V8 with the cache on, and turning it off is a ruling
-    // that needs its measured cost first.
+test "V8 starts without its compilation cache unless the measurement switch turns it back on" {
+    // The user's ruling, 2026-11-11 (lane v8up b4; build.zig has the evidence):
+    // V8 15.7's eval cache answers `new Function(...)` by source text alone, so
+    // a second script's Function imports with the first script's base URL and
+    // nonce. A default build - this test's - must carry --no-compilation-cache,
+    // the same at snapshot generation and at run time; only a measurement build
+    // (-Dv8-compilation-cache) leaves it out.
     const runtime_has = std.mem.indexOf(u8, loader.RUNTIME_V8_FLAGS, "--no-compilation-cache") != null;
     const snapshot_has = std.mem.indexOf(u8, loader.SNAPSHOT_V8_FLAGS, "--no-compilation-cache") != null;
     try std.testing.expectEqual(runtime_has, snapshot_has);
-    try std.testing.expectEqual(loader.no_compilation_cache, runtime_has);
-    if (loader.no_compilation_cache) return error.SkipZigTest; // a measurement build
-    try std.testing.expect(!runtime_has);
+    const measurement = @hasDecl(loader, "compilation_cache_measurement") and loader.compilation_cache_measurement;
+    if (measurement) {
+        try std.testing.expect(!runtime_has);
+        return error.SkipZigTest; // a measurement build: the default is pinned by the default build
+    }
+    try std.testing.expect(runtime_has);
 }
 
 test "neither set is empty or ends in a stray separator" {

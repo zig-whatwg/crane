@@ -3192,19 +3192,29 @@ pub fn build(b: *std.Build) void {
     ) orelse jitless_default;
     build_options.addOption(bool, "jitless", jitless);
 
-    // A MEASUREMENT switch, off by default (lane v8up b4, 2026-11-11; the integrator's request): start V8 with
-    // --no-compilation-cache. V8 15.7's eval cache serves `new Function(...)` and eval by source text alone
-    // (EvalCacheKey: source, outer function, language mode, position - no host-defined options) and stores a
-    // compile on its FIRST sighting (13.1: on its second), so a Function built from the same text by a second
-    // script imports with the FIRST script's base URL and nonce (WPT dynamic-import/code-cache-base-url.html,
-    // code-cache-nonce.html; Chrome 157 fails them, Firefox and Safari pass). The flag turns off the script
-    // cache too - 15.7 has no narrower one - so its cost is measured before anyone turns it on.
-    const v8_no_compilation_cache = b.option(
+    // Crane starts V8 WITHOUT its compilation cache (the user's ruling, 2026-11-11 16:12 UTC; lane v8up b4).
+    // V8 15.7's eval cache serves `new Function(...)` and eval by source text alone (EvalCacheKey: source, outer
+    // function, language mode, position - no host-defined options; compiler.cc LookupEval) and stores a compile
+    // on its FIRST sighting (13.1: on its second, behind a dummy entry), so a Function built from the same text
+    // by a second script imports with the FIRST script's base URL and nonce. WPT
+    // html/semantics/scripting-1/the-script-element/module/dynamic-import/code-cache-base-url.html ("beta -
+    // Function", "gamma - Function") and code-cache-nonce.html ("Second" and "Third dynamic import should use
+    // nonce=...") fail that way in Chrome 157 and pass in Firefox 160 and Safari 27.2 (wpt.fyi stable runs of
+    // 2026-11-11): golden rule 2, the majority and the spec. V8 15.7's public API has nothing narrower than the
+    // flag (ScriptCompiler::CompileOptions has no cache bypass; Isolate::ClearCachesForTesting is test-only;
+    // compilation-cache.h IsEnabledScriptAndEval reads v8_flags.compilation_cache), and the flag turns off the
+    // script cache too. Measured before the ruling, flag against no flag at 7ebd08c5001: all 9 subtests of the
+    // two files pass x3; the perf suite x5 on chat.local: time 0.9998, memory 0.9987; WPT dom/nodes + html/dom,
+    // 522 files x3 on server1: summed per-file time 0.997. It costs nothing today because every script carries
+    // its own host-defined options, so V8's script cache never hits across scripts in Crane.
+    // -Dv8-compilation-cache turns the cache back on, for measurement only (tmp/plans/feature-queue.md says
+    // when to re-measure).
+    const v8_compilation_cache = b.option(
         bool,
-        "v8-no-compilation-cache",
-        "Start V8 with --no-compilation-cache (a measurement switch; default off = Chrome's configuration)",
+        "v8-compilation-cache",
+        "Start V8 WITH its compilation cache (a measurement switch; default off: the cache answers Function() with another script's base URL and nonce)",
     ) orelse false;
-    build_options.addOption(bool, "v8_no_compilation_cache", v8_no_compilation_cache);
+    build_options.addOption(bool, "v8_compilation_cache", v8_compilation_cache);
 
     build_options.addOption([]const u8, "engine_name", engine_choice);
     build_options.addOption(bool, "has_snapshot_support", std.mem.eql(u8, engine_choice, "v8"));

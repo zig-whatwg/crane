@@ -109,16 +109,18 @@ const snapshot_only_flags = "--hash-seed=0 --predictable";
 /// killed; interpreter-only is the only way to run at all. It is a build-time
 /// decision rather than runtime because it must be set before V8 initializes.
 ///
-/// `--no-compilation-cache` is appended only by the measurement switch
-/// -Dv8-no-compilation-cache (build.zig says what it measures); the default
-/// build leaves V8's compilation cache on, as Chrome does.
+/// `--no-compilation-cache`: Crane starts V8 without its compilation cache
+/// (the user's ruling, 2026-11-11; build.zig has the evidence): V8 15.7's
+/// eval cache answers `new Function(...)` by source text alone, with the
+/// first caller's base URL and nonce. -Dv8-compilation-cache leaves the flag
+/// out, for measurement only.
 pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm" ++
-    (if (build_options.jitless) " --jitless" else "") ++
-    (if (no_compilation_cache) " --no-compilation-cache" else "");
+    (if (compilation_cache_measurement) "" else " --no-compilation-cache") ++
+    (if (build_options.jitless) " --jitless" else "");
 
-/// Whether this build starts V8 without its compilation cache
-/// (-Dv8-no-compilation-cache; off by default).
-pub const no_compilation_cache = build_options.v8_no_compilation_cache;
+/// Whether this is a measurement build that starts V8 WITH its compilation
+/// cache (-Dv8-compilation-cache; off by default).
+pub const compilation_cache_measurement = build_options.v8_compilation_cache;
 
 /// Initialize V8 platform with proper flags for snapshot support.
 /// This MUST be called instead of v8_Platform_Initialize() when using snapshots.
