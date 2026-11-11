@@ -178,6 +178,12 @@ pub const Table = struct {
     /// still in the map, for a value that comes back (oldest first). See
     /// `Parking`.
     parked: Parking = .{},
+    /// Measurements (lane nd2 batch 3): the passes class reads made over
+    /// class values' bytes, the token lists alive, and the frees of records a
+    /// class selector's operand named.
+    class_scans: usize = 0,
+    class_lists: usize = 0,
+    operand_frees: u64 = 0,
 
     const Map = std.HashMapUnmanaged(u32, void, SlotContext, 80);
 
@@ -304,6 +310,15 @@ pub const Table = struct {
         const slot = id.slot();
         if (debug_checks and self.ids.generation(slot) != id.generation()) @panic("a stale attribute value id");
         return self.ids.get(slot);
+    }
+
+    /// The id of `bytes`' record, parked or counted, without a reference;
+    /// null when there is none (and .empty for "").
+    pub fn find(self: *const Table, bytes: []const u8) ?ValueId {
+        if (bytes.len == 0) return .empty;
+        const key: BytesKey = .{ .bytes = bytes, .hash = hashOf(bytes) };
+        const slot = self.records.getKeyAdapted(key, KeyAdapter{ .ids = &self.ids }) orelse return null;
+        return ValueId.of(slot, self.ids.generation(slot));
     }
 
     /// `id`'s bytes.

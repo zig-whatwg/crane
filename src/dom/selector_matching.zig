@@ -958,7 +958,12 @@ const Matcher = struct {
     /// Selectors 4 6.6: one of the element's classes (its class attribute
     /// split on ASCII whitespace) is `name`.
     fn hasClass(self: *const Matcher, data: ElementData, name: []const u8) bool {
-        return classListHas(data.classValue(), name, self.quirks);
+        const classes = data.classValue();
+        // A pass over the class value's bytes (the batch-3 red counter).
+        if (@import("builtin").mode == .debug and classes.len > 0) {
+            if (data.scope.existingTable(.attribute_values, @import("attribute_values.zig").Table)) |table| table.class_scans += 1;
+        }
+        return classListHas(classes, name, self.quirks);
     }
 
     fn idIs(self: *const Matcher, data: ElementData, id: []const u8) bool {
