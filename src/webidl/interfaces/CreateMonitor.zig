@@ -71,7 +71,6 @@ pub const CreateMonitor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ondownloadprogress: typedefs.EventHandler = undefined,
             _internal: ?*CreateMonitorImpl.InternalState = null,
         },
     );

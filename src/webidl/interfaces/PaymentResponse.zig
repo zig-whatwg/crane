@@ -99,15 +99,6 @@ pub const PaymentResponse = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            requestId: runtime.DOMString = undefined,
-            methodName: runtime.DOMString = undefined,
-            details: runtime.JSValue = undefined,
-            shippingAddress: ?*runtime.Instance = null,
-            shippingOption: ?runtime.DOMString = null,
-            payerName: ?runtime.DOMString = null,
-            payerEmail: ?runtime.DOMString = null,
-            payerPhone: ?runtime.DOMString = null,
-            onpayerdetailchange: typedefs.EventHandler = undefined,
             _internal: ?*PaymentResponseImpl.InternalState = null,
         },
     );

@@ -62,7 +62,6 @@ pub const ReadableStreamBYOBRequest = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            view: ?runtime.Uint8Array = null,
             _internal: ?*ReadableStreamBYOBRequestImpl.InternalState = null,
         },
     );

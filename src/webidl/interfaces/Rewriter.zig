@@ -100,14 +100,6 @@ pub const Rewriter = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sharedContext: runtime.DOMString = undefined,
-            tone: enums.RewriterTone = undefined,
-            format: enums.RewriterFormat = undefined,
-            length: enums.RewriterLength = undefined,
-            expectedInputLanguages: ?runtime.JSValue = null,
-            expectedContextLanguages: ?runtime.JSValue = null,
-            outputLanguage: ?runtime.DOMString = null,
-            inputQuota: f64 = undefined,
             _internal: ?*RewriterImpl.InternalState = null,
         },
     );

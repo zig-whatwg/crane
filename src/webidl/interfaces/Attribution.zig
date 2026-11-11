@@ -80,7 +80,6 @@ pub const Attribution = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            aggregationServices: *runtime.Instance = undefined,
             _internal: ?*AttributionImpl.InternalState = null,
         },
     );

@@ -65,10 +65,6 @@ pub const CSSColorProfileRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.CSSOMString = undefined,
-            src: typedefs.CSSOMString = undefined,
-            renderingIntent: typedefs.CSSOMString = undefined,
-            components: typedefs.CSSOMString = undefined,
             _internal: ?*CSSColorProfileRuleImpl.InternalState = null,
         },
     );

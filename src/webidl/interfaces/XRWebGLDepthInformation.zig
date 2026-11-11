@@ -38,6 +38,12 @@ pub const XRWebGLDepthInformation = struct {
             .{ "imageIndex", "get_imageIndex", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "texture",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -64,9 +70,6 @@ pub const XRWebGLDepthInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            texture: *runtime.Instance = undefined,
-            textureType: enums.XRTextureType = undefined,
-            imageIndex: ?u32 = null,
             cached_texture: ?*runtime.Instance = null,
             _internal: ?*XRWebGLDepthInformationImpl.InternalState = null,
         },

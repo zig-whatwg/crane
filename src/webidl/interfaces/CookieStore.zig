@@ -94,7 +94,6 @@ pub const CookieStore = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onchange: typedefs.EventHandler = undefined,
             _internal: ?*CookieStoreImpl.InternalState = null,
         },
     );

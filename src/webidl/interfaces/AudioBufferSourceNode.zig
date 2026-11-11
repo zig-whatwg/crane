@@ -101,12 +101,6 @@ pub const AudioBufferSourceNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            buffer: ?*runtime.Instance = null,
-            playbackRate: *runtime.Instance = undefined,
-            detune: *runtime.Instance = undefined,
-            loop: bool = undefined,
-            loopStart: f64 = undefined,
-            loopEnd: f64 = undefined,
             _internal: ?*AudioBufferSourceNodeImpl.InternalState = null,
         },
     );

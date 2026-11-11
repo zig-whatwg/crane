@@ -72,7 +72,6 @@ pub const CSSFunctionDescriptors = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            result: typedefs.CSSOMString = undefined,
             _internal: ?*CSSFunctionDescriptorsImpl.InternalState = null,
         },
     );

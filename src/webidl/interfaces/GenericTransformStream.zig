@@ -54,8 +54,6 @@ pub const GenericTransformStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            readable: *runtime.Instance = undefined,
-            writable: *runtime.Instance = undefined,
             _internal: ?*GenericTransformStreamImpl.InternalState = null,
         },
     );

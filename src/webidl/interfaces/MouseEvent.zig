@@ -130,7 +130,6 @@ pub const MouseEvent = struct {
             metaKey: bool = undefined,
             button: i16 = undefined,
             buttons: u16 = undefined,
-            relatedTarget: ?*runtime.Instance = null,
             pageX: f64 = undefined,
             pageY: f64 = undefined,
             x: f64 = undefined,

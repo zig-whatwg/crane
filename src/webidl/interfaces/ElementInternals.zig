@@ -105,6 +105,12 @@ pub const ElementInternals = struct {
             .{ "ariaValueText", "get_ariaValueText", "set_ariaValueText" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "states",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setFormValue", "call_setFormValue", 1 },
@@ -197,15 +203,7 @@ pub const ElementInternals = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            shadowRoot: ?*runtime.Instance = null,
-            form: ?*runtime.Instance = null,
-            willValidate: bool = undefined,
-            validity: *runtime.Instance = undefined,
-            validationMessage: runtime.DOMString = undefined,
-            labels: *runtime.Instance = undefined,
-            states: *runtime.Instance = undefined,
             role: ?runtime.DOMString = null,
-            ariaActiveDescendantElement: ?*runtime.Instance = null,
             ariaAtomic: ?runtime.DOMString = null,
             ariaAutoComplete: ?runtime.DOMString = null,
             ariaBrailleLabel: ?runtime.DOMString = null,
@@ -216,28 +214,21 @@ pub const ElementInternals = struct {
             ariaColIndex: ?runtime.DOMString = null,
             ariaColIndexText: ?runtime.DOMString = null,
             ariaColSpan: ?runtime.DOMString = null,
-            ariaControlsElements: ?runtime.JSValue = null,
             ariaCurrent: ?runtime.DOMString = null,
-            ariaDescribedByElements: ?runtime.JSValue = null,
             ariaDescription: ?runtime.DOMString = null,
-            ariaDetailsElements: ?runtime.JSValue = null,
             ariaDisabled: ?runtime.DOMString = null,
-            ariaErrorMessageElements: ?runtime.JSValue = null,
             ariaExpanded: ?runtime.DOMString = null,
-            ariaFlowToElements: ?runtime.JSValue = null,
             ariaHasPopup: ?runtime.DOMString = null,
             ariaHidden: ?runtime.DOMString = null,
             ariaInvalid: ?runtime.DOMString = null,
             ariaKeyShortcuts: ?runtime.DOMString = null,
             ariaLabel: ?runtime.DOMString = null,
-            ariaLabelledByElements: ?runtime.JSValue = null,
             ariaLevel: ?runtime.DOMString = null,
             ariaLive: ?runtime.DOMString = null,
             ariaModal: ?runtime.DOMString = null,
             ariaMultiLine: ?runtime.DOMString = null,
             ariaMultiSelectable: ?runtime.DOMString = null,
             ariaOrientation: ?runtime.DOMString = null,
-            ariaOwnsElements: ?runtime.JSValue = null,
             ariaPlaceholder: ?runtime.DOMString = null,
             ariaPosInSet: ?runtime.DOMString = null,
             ariaPressed: ?runtime.DOMString = null,

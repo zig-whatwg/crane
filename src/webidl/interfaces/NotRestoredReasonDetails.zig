@@ -60,7 +60,6 @@ pub const NotRestoredReasonDetails = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            reason: runtime.DOMString = undefined,
             _internal: ?*NotRestoredReasonDetailsImpl.InternalState = null,
         },
     );

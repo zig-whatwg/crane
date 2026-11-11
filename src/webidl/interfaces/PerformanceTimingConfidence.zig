@@ -62,8 +62,6 @@ pub const PerformanceTimingConfidence = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            randomizedTriggerRate: f64 = undefined,
-            value: enums.PerformanceTimingConfidenceValue = undefined,
             _internal: ?*PerformanceTimingConfidenceImpl.InternalState = null,
         },
     );

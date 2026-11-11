@@ -56,6 +56,12 @@ pub const MediaSource = struct {
             .{ "onsourceclose", "get_onsourceclose", "set_onsourceclose" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "handle",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "addSourceBuffer", "call_addSourceBuffer", 1 },
@@ -119,14 +125,6 @@ pub const MediaSource = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            handle: *runtime.Instance = undefined,
-            sourceBuffers: *runtime.Instance = undefined,
-            activeSourceBuffers: *runtime.Instance = undefined,
-            readyState: enums.ReadyState = undefined,
-            duration: f64 = undefined,
-            onsourceopen: typedefs.EventHandler = undefined,
-            onsourceended: typedefs.EventHandler = undefined,
-            onsourceclose: typedefs.EventHandler = undefined,
             cached_handle: ?*runtime.Instance = null,
             _internal: ?*MediaSourceImpl.InternalState = null,
         },

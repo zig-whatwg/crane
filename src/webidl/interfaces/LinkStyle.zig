@@ -51,7 +51,6 @@ pub const LinkStyle = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sheet: ?*runtime.Instance = null,
             _internal: ?*LinkStyleImpl.InternalState = null,
         },
     );

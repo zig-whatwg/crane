@@ -51,7 +51,6 @@ pub const AbstractWorker = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onerror: typedefs.EventHandler = undefined,
             _internal: ?*AbstractWorkerImpl.InternalState = null,
         },
     );

@@ -43,6 +43,12 @@ pub const XRInputSourcesChangeEvent = struct {
             .{ "removed", "get_removed", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "session",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -75,9 +81,6 @@ pub const XRInputSourcesChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            session: *runtime.Instance = undefined,
-            added: runtime.JSValue = undefined,
-            removed: runtime.JSValue = undefined,
             cached_session: ?*runtime.Instance = null,
             cached_added: ?runtime.JSValue = null,
             cached_removed: ?runtime.JSValue = null,

@@ -45,6 +45,12 @@ pub const XRVisibilityMaskChangeEvent = struct {
             .{ "indices", "get_indices", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "session",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -79,11 +85,6 @@ pub const XRVisibilityMaskChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            session: *runtime.Instance = undefined,
-            eye: enums.XREye = undefined,
-            index: u32 = undefined,
-            vertices: runtime.Float32Array = undefined,
-            indices: runtime.Uint32Array = undefined,
             cached_session: ?*runtime.Instance = null,
             cached_vertices: ?runtime.JSValue = null,
             cached_indices: ?runtime.JSValue = null,

@@ -80,10 +80,6 @@ pub const Plugin = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            description: runtime.DOMString = undefined,
-            filename: runtime.DOMString = undefined,
-            length: u32 = undefined,
             _internal: ?*PluginImpl.InternalState = null,
         },
     );

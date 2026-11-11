@@ -249,6 +249,14 @@ pub const HTMLElement = struct {
             .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "style",
+            "attributeStyleMap",
+            "dataset",
+        };
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
@@ -544,9 +552,6 @@ pub const HTMLElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cached_style: ?*runtime.Instance = null,
-            cached_attributeStyleMap: ?*runtime.Instance = null,
-            cached_dataset: ?*runtime.Instance = null,
             _internal: ?*HTMLElementImpl.InternalState = null,
         },
     );
@@ -914,7 +919,7 @@ pub const HTMLElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLElementImpl, "deinit") and @hasDecl(HTMLElementImpl, "deinitOwn")) @compileError("HTMLElementImpl defines both deinit and deinitOwn");
-        @import("dom").same_object_cache.end(State, instance);
+        @import("dom").same_object_cache.endElement(instance, &.{ .{ .field = .attribute_style_map, .attribute = "attributeStyleMap" }, .{ .field = .dataset, .attribute = "dataset" } });
         if (comptime @hasDecl(HTMLElementImpl, "deinit")) return HTMLElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLElementImpl, "deinitOwn")) HTMLElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -1263,15 +1268,7 @@ pub const HTMLElement = struct {
 
     /// Extended attributes: [SameObject], [PutForwards=cssText]
     pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_style) |cached| {
-            return cached;
-        }
-        const value = try HTMLElementImpl.get_style(instance);
-        state.own.cached_style = value;
-        @import("dom").same_object_cache.made(instance, value, "style");
-        return value;
+        return try HTMLElementImpl.get_style(instance);
     }
 
     /// Extended attributes: [SameObject], [PutForwards=cssText]
@@ -1287,14 +1284,13 @@ pub const HTMLElement = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_attributeStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_attributeStyleMap) |cached| {
+        // [SameObject] - Return the instance the element's rare data keeps
+        if (@import("dom").same_object_cache.elementGet(instance, .attribute_style_map)) |cached| {
             return cached;
         }
+        try @import("dom").same_object_cache.elementReserve(instance, .attribute_style_map);
         const value = try HTMLElementImpl.get_attributeStyleMap(instance);
-        state.own.cached_attributeStyleMap = value;
-        @import("dom").same_object_cache.made(instance, value, "attributeStyleMap");
+        @import("dom").same_object_cache.elementMade(instance, .attribute_style_map, value, "attributeStyleMap");
         return value;
     }
 
@@ -1678,14 +1674,13 @@ pub const HTMLElement = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_dataset(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_dataset) |cached| {
+        // [SameObject] - Return the instance the element's rare data keeps
+        if (@import("dom").same_object_cache.elementGet(instance, .dataset)) |cached| {
             return cached;
         }
+        try @import("dom").same_object_cache.elementReserve(instance, .dataset);
         const value = try HTMLElementImpl.get_dataset(instance);
-        state.own.cached_dataset = value;
-        @import("dom").same_object_cache.made(instance, value, "dataset");
+        @import("dom").same_object_cache.elementMade(instance, .dataset, value, "dataset");
         return value;
     }
 

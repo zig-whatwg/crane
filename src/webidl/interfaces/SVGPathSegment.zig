@@ -59,8 +59,6 @@ pub const SVGPathSegment = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: runtime.DOMString = undefined,
-            values: runtime.JSValue = undefined,
             _internal: ?*SVGPathSegmentImpl.InternalState = null,
         },
     );

@@ -91,12 +91,6 @@ pub const Sensor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            activated: bool = undefined,
-            hasReading: bool = undefined,
-            timestamp: ?typedefs.DOMHighResTimeStamp = null,
-            onreading: typedefs.EventHandler = undefined,
-            onactivate: typedefs.EventHandler = undefined,
-            onerror: typedefs.EventHandler = undefined,
             _internal: ?*SensorImpl.InternalState = null,
         },
     );

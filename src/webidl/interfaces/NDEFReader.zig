@@ -85,8 +85,6 @@ pub const NDEFReader = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onreading: typedefs.EventHandler = undefined,
-            onreadingerror: typedefs.EventHandler = undefined,
             _internal: ?*NDEFReaderImpl.InternalState = null,
         },
     );

@@ -68,7 +68,6 @@ pub const RadioNodeList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: runtime.DOMString = undefined,
             _internal: ?*RadioNodeListImpl.InternalState = null,
         },
     );

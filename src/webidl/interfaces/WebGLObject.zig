@@ -59,7 +59,6 @@ pub const WebGLObject = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            label: runtime.USVString = undefined,
             _internal: ?*WebGLObjectImpl.InternalState = null,
         },
     );

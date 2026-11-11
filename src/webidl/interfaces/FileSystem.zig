@@ -59,8 +59,6 @@ pub const FileSystem = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.USVString = undefined,
-            root: *runtime.Instance = undefined,
             _internal: ?*FileSystemImpl.InternalState = null,
         },
     );

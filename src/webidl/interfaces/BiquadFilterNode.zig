@@ -96,11 +96,6 @@ pub const BiquadFilterNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: enums.BiquadFilterType = undefined,
-            frequency: *runtime.Instance = undefined,
-            detune: *runtime.Instance = undefined,
-            Q: *runtime.Instance = undefined,
-            gain: *runtime.Instance = undefined,
             _internal: ?*BiquadFilterNodeImpl.InternalState = null,
         },
     );

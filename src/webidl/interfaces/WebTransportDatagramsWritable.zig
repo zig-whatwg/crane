@@ -71,8 +71,6 @@ pub const WebTransportDatagramsWritable = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sendGroup: ?*runtime.Instance = null,
-            sendOrder: i64 = undefined,
             _internal: ?*WebTransportDatagramsWritableImpl.InternalState = null,
         },
     );

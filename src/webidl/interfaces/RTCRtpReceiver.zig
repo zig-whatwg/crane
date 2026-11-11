@@ -87,10 +87,6 @@ pub const RTCRtpReceiver = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            track: *runtime.Instance = undefined,
-            transport: ?*runtime.Instance = null,
-            jitterBufferTarget: ?typedefs.DOMHighResTimeStamp = null,
-            transform: ?typedefs.RTCRtpReceiverTransform = null,
             _internal: ?*RTCRtpReceiverImpl.InternalState = null,
         },
     );

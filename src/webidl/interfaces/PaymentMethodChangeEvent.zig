@@ -74,8 +74,6 @@ pub const PaymentMethodChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            methodName: runtime.DOMString = undefined,
-            methodDetails: ?runtime.JSValue = null,
             _internal: ?*PaymentMethodChangeEventImpl.InternalState = null,
         },
     );

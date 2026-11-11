@@ -50,7 +50,6 @@ pub const GlobalPrivacyControl = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            globalPrivacyControl: bool = undefined,
             _internal: ?*GlobalPrivacyControlImpl.InternalState = null,
         },
     );

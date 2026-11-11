@@ -67,7 +67,6 @@ pub const CSSSkewX = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ax: *runtime.Instance = undefined,
             _internal: ?*CSSSkewXImpl.InternalState = null,
         },
     );

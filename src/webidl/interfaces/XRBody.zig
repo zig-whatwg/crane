@@ -67,7 +67,6 @@ pub const XRBody = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            size: u32 = undefined,
             _internal: ?*XRBodyImpl.InternalState = null,
         },
     );

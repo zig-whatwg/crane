@@ -74,11 +74,6 @@ pub const InterventionReportBody = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
-            message: runtime.DOMString = undefined,
-            sourceFile: ?runtime.DOMString = null,
-            lineNumber: ?u32 = null,
-            columnNumber: ?u32 = null,
             _internal: ?*InterventionReportBodyImpl.InternalState = null,
         },
     );

@@ -65,10 +65,6 @@ pub const ImageTrack = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            animated: bool = undefined,
-            frameCount: u32 = undefined,
-            repetitionCount: f32 = undefined,
-            selected: bool = undefined,
             _internal: ?*ImageTrackImpl.InternalState = null,
         },
     );

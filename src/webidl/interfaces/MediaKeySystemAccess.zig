@@ -65,7 +65,6 @@ pub const MediaKeySystemAccess = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            keySystem: runtime.DOMString = undefined,
             _internal: ?*MediaKeySystemAccessImpl.InternalState = null,
         },
     );

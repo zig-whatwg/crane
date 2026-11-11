@@ -60,7 +60,6 @@ pub const WritableStreamDefaultController = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            signal: *runtime.Instance = undefined,
             _internal: ?*WritableStreamDefaultControllerImpl.InternalState = null,
         },
     );

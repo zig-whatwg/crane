@@ -86,13 +86,6 @@ pub const XMLHttpRequestEventTarget = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onloadstart: typedefs.EventHandler = undefined,
-            onprogress: typedefs.EventHandler = undefined,
-            onabort: typedefs.EventHandler = undefined,
-            onerror: typedefs.EventHandler = undefined,
-            onload: typedefs.EventHandler = undefined,
-            ontimeout: typedefs.EventHandler = undefined,
-            onloadend: typedefs.EventHandler = undefined,
             _internal: ?*XMLHttpRequestEventTargetImpl.InternalState = null,
         },
     );

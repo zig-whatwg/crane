@@ -67,8 +67,6 @@ pub const Credential = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.USVString = undefined,
-            type: runtime.DOMString = undefined,
             _internal: ?*CredentialImpl.InternalState = null,
         },
     );

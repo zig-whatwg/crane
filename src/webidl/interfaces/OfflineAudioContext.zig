@@ -127,8 +127,6 @@ pub const OfflineAudioContext = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: ?u32 = null,
-            oncomplete: typedefs.EventHandler = undefined,
             _internal: ?*OfflineAudioContextImpl.InternalState = null,
         },
     );

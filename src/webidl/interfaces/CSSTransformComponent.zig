@@ -68,7 +68,6 @@ pub const CSSTransformComponent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            is2D: bool = undefined,
             _internal: ?*CSSTransformComponentImpl.InternalState = null,
         },
     );

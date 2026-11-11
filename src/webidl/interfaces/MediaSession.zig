@@ -74,8 +74,6 @@ pub const MediaSession = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            metadata: ?*runtime.Instance = null,
-            playbackState: enums.MediaSessionPlaybackState = undefined,
             _internal: ?*MediaSessionImpl.InternalState = null,
         },
     );

@@ -74,8 +74,6 @@ pub const XRLightProbe = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            probeSpace: *runtime.Instance = undefined,
-            onreflectionchange: typedefs.EventHandler = undefined,
             _internal: ?*XRLightProbeImpl.InternalState = null,
         },
     );

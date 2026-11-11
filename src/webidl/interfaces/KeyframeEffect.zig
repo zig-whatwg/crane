@@ -86,10 +86,6 @@ pub const KeyframeEffect = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            target: ?*runtime.Instance = null,
-            pseudoElement: ?typedefs.CSSOMString = null,
-            composite: enums.CompositeOperation = undefined,
-            iterationComposite: enums.IterationCompositeOperation = undefined,
             _internal: ?*KeyframeEffectImpl.InternalState = null,
         },
     );

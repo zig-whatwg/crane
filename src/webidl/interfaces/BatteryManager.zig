@@ -85,14 +85,6 @@ pub const BatteryManager = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            charging: bool = undefined,
-            chargingTime: f64 = undefined,
-            dischargingTime: f64 = undefined,
-            level: f64 = undefined,
-            onchargingchange: typedefs.EventHandler = undefined,
-            onchargingtimechange: typedefs.EventHandler = undefined,
-            ondischargingtimechange: typedefs.EventHandler = undefined,
-            onlevelchange: typedefs.EventHandler = undefined,
             _internal: ?*BatteryManagerImpl.InternalState = null,
         },
     );

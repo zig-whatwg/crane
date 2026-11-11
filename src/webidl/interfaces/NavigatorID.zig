@@ -81,16 +81,6 @@ pub const NavigatorID = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            appCodeName: runtime.DOMString = undefined,
-            appName: runtime.DOMString = undefined,
-            appVersion: runtime.DOMString = undefined,
-            platform: runtime.DOMString = undefined,
-            product: runtime.DOMString = undefined,
-            productSub: runtime.DOMString = undefined,
-            userAgent: runtime.DOMString = undefined,
-            vendor: runtime.DOMString = undefined,
-            vendorSub: runtime.DOMString = undefined,
-            oscpu: runtime.DOMString = undefined,
             _internal: ?*NavigatorIDImpl.InternalState = null,
         },
     );

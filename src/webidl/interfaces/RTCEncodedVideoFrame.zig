@@ -68,8 +68,6 @@ pub const RTCEncodedVideoFrame = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: enums.EncodedVideoChunkType = undefined,
-            data: runtime.ArrayBuffer = undefined,
             _internal: ?*RTCEncodedVideoFrameImpl.InternalState = null,
         },
     );

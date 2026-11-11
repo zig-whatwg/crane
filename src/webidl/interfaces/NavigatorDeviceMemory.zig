@@ -59,7 +59,6 @@ pub const NavigatorDeviceMemory = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            deviceMemory: f64 = undefined,
             _internal: ?*NavigatorDeviceMemoryImpl.InternalState = null,
         },
     );

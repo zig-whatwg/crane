@@ -83,7 +83,6 @@ pub const DelayNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            delayTime: *runtime.Instance = undefined,
             _internal: ?*DelayNodeImpl.InternalState = null,
         },
     );

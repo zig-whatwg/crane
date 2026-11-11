@@ -116,16 +116,6 @@ pub const BluetoothDevice = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
-            name: ?runtime.DOMString = null,
-            gatt: ?*runtime.Instance = null,
-            watchingAdvertisements: bool = undefined,
-            onadvertisementreceived: typedefs.EventHandler = undefined,
-            ongattserverdisconnected: typedefs.EventHandler = undefined,
-            oncharacteristicvaluechanged: typedefs.EventHandler = undefined,
-            onserviceadded: typedefs.EventHandler = undefined,
-            onservicechanged: typedefs.EventHandler = undefined,
-            onserviceremoved: typedefs.EventHandler = undefined,
             _internal: ?*BluetoothDeviceImpl.InternalState = null,
         },
     );

@@ -91,9 +91,6 @@ pub const CaptureController = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            oncapturedmousechange: typedefs.EventHandler = undefined,
-            zoomLevel: ?i32 = null,
-            onzoomlevelchange: typedefs.EventHandler = undefined,
             _internal: ?*CaptureControllerImpl.InternalState = null,
         },
     );

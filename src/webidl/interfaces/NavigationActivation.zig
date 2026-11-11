@@ -61,9 +61,6 @@ pub const NavigationActivation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            from: ?*runtime.Instance = null,
-            entry: *runtime.Instance = undefined,
-            navigationType: enums.NavigationType = undefined,
             _internal: ?*NavigationActivationImpl.InternalState = null,
         },
     );

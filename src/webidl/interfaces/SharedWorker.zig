@@ -78,8 +78,6 @@ pub const SharedWorker = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            port: *runtime.Instance = undefined,
-            onerror: typedefs.EventHandler = undefined,
             _internal: ?*SharedWorkerImpl.InternalState = null,
         },
     );

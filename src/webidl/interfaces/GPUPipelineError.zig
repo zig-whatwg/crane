@@ -65,7 +65,6 @@ pub const GPUPipelineError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            reason: enums.GPUPipelineErrorReason = undefined,
             _internal: ?*GPUPipelineErrorImpl.InternalState = null,
         },
     );

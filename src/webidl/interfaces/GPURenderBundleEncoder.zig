@@ -111,7 +111,6 @@ pub const GPURenderBundleEncoder = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            label: runtime.USVString = undefined,
             _internal: ?*GPURenderBundleEncoderImpl.InternalState = null,
         },
     );

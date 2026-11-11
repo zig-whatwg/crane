@@ -42,6 +42,14 @@ pub const GPUAdapter = struct {
             .{ "info", "get_info", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "features",
+            "limits",
+            "info",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "requestDevice", "call_requestDevice", 0 },
@@ -72,9 +80,6 @@ pub const GPUAdapter = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            features: *runtime.Instance = undefined,
-            limits: *runtime.Instance = undefined,
-            info: *runtime.Instance = undefined,
             cached_features: ?*runtime.Instance = null,
             cached_limits: ?*runtime.Instance = null,
             cached_info: ?*runtime.Instance = null,

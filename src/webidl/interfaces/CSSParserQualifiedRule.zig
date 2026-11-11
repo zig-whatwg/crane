@@ -66,8 +66,6 @@ pub const CSSParserQualifiedRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            prelude: runtime.JSValue = undefined,
-            body: runtime.JSValue = undefined,
             _internal: ?*CSSParserQualifiedRuleImpl.InternalState = null,
         },
     );

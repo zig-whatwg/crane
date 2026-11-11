@@ -70,9 +70,6 @@ pub const GroupEffect = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            children: *runtime.Instance = undefined,
-            firstChild: ?*runtime.Instance = null,
-            lastChild: ?*runtime.Instance = null,
             _internal: ?*GroupEffectImpl.InternalState = null,
         },
     );

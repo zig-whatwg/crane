@@ -96,12 +96,6 @@ pub const EventSource = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            url: runtime.USVString = undefined,
-            withCredentials: bool = undefined,
-            readyState: u16 = undefined,
-            onopen: typedefs.EventHandler = undefined,
-            onmessage: typedefs.EventHandler = undefined,
-            onerror: typedefs.EventHandler = undefined,
             _internal: ?*EventSourceImpl.InternalState = null,
         },
     );

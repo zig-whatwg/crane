@@ -73,8 +73,6 @@ pub const NotificationEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            notification: *runtime.Instance = undefined,
-            action: runtime.DOMString = undefined,
             _internal: ?*NotificationEventImpl.InternalState = null,
         },
     );

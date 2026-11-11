@@ -63,7 +63,6 @@ pub const GPUSampler = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            label: runtime.USVString = undefined,
             _internal: ?*GPUSamplerImpl.InternalState = null,
         },
     );

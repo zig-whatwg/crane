@@ -72,10 +72,6 @@ pub const EncodedVideoChunk = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: enums.EncodedVideoChunkType = undefined,
-            timestamp: i64 = undefined,
-            duration: ?u64 = null,
-            byteLength: u32 = undefined,
             _internal: ?*EncodedVideoChunkImpl.InternalState = null,
         },
     );

@@ -86,7 +86,6 @@ pub const CSSMathProduct = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            values: *runtime.Instance = undefined,
             _internal: ?*CSSMathProductImpl.InternalState = null,
         },
     );

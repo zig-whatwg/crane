@@ -64,10 +64,6 @@ pub const TextFormat = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            rangeStart: u32 = undefined,
-            rangeEnd: u32 = undefined,
-            underlineStyle: enums.UnderlineStyle = undefined,
-            underlineThickness: enums.UnderlineThickness = undefined,
             _internal: ?*TextFormatImpl.InternalState = null,
         },
     );

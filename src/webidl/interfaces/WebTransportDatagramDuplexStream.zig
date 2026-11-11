@@ -76,12 +76,6 @@ pub const WebTransportDatagramDuplexStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            readable: *runtime.Instance = undefined,
-            maxDatagramSize: u32 = undefined,
-            incomingMaxAge: ?f64 = null,
-            outgoingMaxAge: ?f64 = null,
-            incomingMaxBufferedDatagrams: u32 = undefined,
-            outgoingMaxBufferedDatagrams: u32 = undefined,
             _internal: ?*WebTransportDatagramDuplexStreamImpl.InternalState = null,
         },
     );

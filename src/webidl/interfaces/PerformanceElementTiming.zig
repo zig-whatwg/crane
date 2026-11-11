@@ -94,17 +94,6 @@ pub const PerformanceElementTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            renderTime: typedefs.DOMHighResTimeStamp = undefined,
-            loadTime: typedefs.DOMHighResTimeStamp = undefined,
-            intersectionRect: *runtime.Instance = undefined,
-            identifier: runtime.DOMString = undefined,
-            naturalWidth: u32 = undefined,
-            naturalHeight: u32 = undefined,
-            id: runtime.DOMString = undefined,
-            element: ?*runtime.Instance = null,
-            url: runtime.USVString = undefined,
-            paintTime: typedefs.DOMHighResTimeStamp = undefined,
-            presentationTime: ?typedefs.DOMHighResTimeStamp = null,
             _internal: ?*PerformanceElementTimingImpl.InternalState = null,
         },
     );

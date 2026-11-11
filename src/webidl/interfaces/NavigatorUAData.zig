@@ -72,9 +72,6 @@ pub const NavigatorUAData = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            brands: runtime.JSValue = undefined,
-            mobile: bool = undefined,
-            platform: runtime.DOMString = undefined,
             _internal: ?*NavigatorUADataImpl.InternalState = null,
         },
     );

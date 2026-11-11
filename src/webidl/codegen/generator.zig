@@ -1810,6 +1810,7 @@ fn generateInterfaceFile(
         own_overload_ops.items, // Every overload, for each method's `length`
         &special,
         setlike_member, // Setlike declaration if present (and implemented)
+        type_registry, // Meta.same_object_attributes: which getters return an engine value
     );
     // HTML 3.2.3: an [HTMLConstructor] constructor's steps are HTML's.
     try writer.writeHTMLConstructor(w, own_constructors.items);
@@ -1830,7 +1831,19 @@ fn generateInterfaceFile(
         (if (writer.implKeepsAttributeStorage(model, interface.name)) .impl else .state)
     else
         .state;
-    try writer.writeGeneratedState(w, own_attrs.items, impl_name, type_registry, .{ .attribute_storage = attribute_storage });
+    // An element's family-wide [SameObject] caches live in its rare data
+    // (writer.sameObjectPlace; lane cg1, N1).
+    const same_object_owner: writer.SameObjectOwner = .{
+        .interface_name = interface.name,
+        .element = if (ir) |model| isElementInterface(model, interface.name) else false,
+    };
+    try writer.writeGeneratedState(w, own_attrs.items, impl_name, type_registry, .{
+        .attribute_storage = attribute_storage,
+        // Only the slots its impl stores attributes in (writer.stateSlotsOf;
+        // lane cg1, step 2).
+        .slots = if (ir != null) writer.stateSlotsOf(interface.name) else null,
+        .owner = same_object_owner,
+    });
 
     // Generate constant getters (static functions returning const values)
     // Only generate OWN constants - inherited constants accessed via parent vtable
@@ -1859,11 +1872,14 @@ fn generateInterfaceFile(
     }
 
     // The construction and destruction chain (a mixin's: its hooks alone).
+    const element_rare_caches = try writer.elementRareCaches(allocator, own_attrs.items, same_object_owner);
+    defer allocator.free(element_rare_caches);
     try writer.writeLifecycleFunctions(w, impl_name, .{
         .interface_name = interface.name,
         .has_parent = base_info.is_interface,
         .is_mixin = interface.mixin,
-        .same_object_caches = writer.cachesSameObject(own_attrs.items),
+        .same_object_caches = writer.cachesSameObject(own_attrs.items, same_object_owner),
+        .element_rare_caches = element_rare_caches,
     });
 
     // HTML 2.7.1: a [Serializable] interface publishes its impl's steps.
@@ -1898,6 +1914,7 @@ fn generateInterfaceFile(
     try writer.writeDelegateFunctions(w, impl_name, type_reg, own_attrs.items, own_ops.items, own_overload_ops.items, .{
         .reflect_on_element = if (ir) |ir_ptr| reflectsOnElement(ir_ptr, interface.name) else false,
         .model = ir,
+        .owner = same_object_owner,
     });
     if (base_info.is_interface) {
         try special_operations.writeInherited(w, &special, base_info.inheritance.?, own_ops.items, own_attrs.items, all_attrs.items);

@@ -55,7 +55,6 @@ pub const BarProp = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            visible: bool = undefined,
             _internal: ?*BarPropImpl.InternalState = null,
         },
     );

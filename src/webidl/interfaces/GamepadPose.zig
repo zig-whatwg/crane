@@ -69,14 +69,6 @@ pub const GamepadPose = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            hasOrientation: bool = undefined,
-            hasPosition: bool = undefined,
-            position: ?runtime.Float32Array = null,
-            linearVelocity: ?runtime.Float32Array = null,
-            linearAcceleration: ?runtime.Float32Array = null,
-            orientation: ?runtime.Float32Array = null,
-            angularVelocity: ?runtime.Float32Array = null,
-            angularAcceleration: ?runtime.Float32Array = null,
             _internal: ?*GamepadPoseImpl.InternalState = null,
         },
     );

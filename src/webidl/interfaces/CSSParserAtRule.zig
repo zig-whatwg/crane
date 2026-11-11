@@ -68,9 +68,6 @@ pub const CSSParserAtRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            prelude: runtime.JSValue = undefined,
-            body: ?runtime.JSValue = null,
             _internal: ?*CSSParserAtRuleImpl.InternalState = null,
         },
     );

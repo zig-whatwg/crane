@@ -73,10 +73,6 @@ pub const GPUCanvasContext = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            canvas: union(enum) {
-                HTMLCanvasElement: HTMLCanvasElement,
-                OffscreenCanvas: OffscreenCanvas,
-            } = undefined,
             _internal: ?*GPUCanvasContextImpl.InternalState = null,
         },
     );

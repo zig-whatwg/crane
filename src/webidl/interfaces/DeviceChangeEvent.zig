@@ -71,8 +71,6 @@ pub const DeviceChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            devices: runtime.JSValue = undefined,
-            userInsertedDevices: runtime.JSValue = undefined,
             cached_devices: ?runtime.JSValue = null,
             cached_userInsertedDevices: ?runtime.JSValue = null,
             _internal: ?*DeviceChangeEventImpl.InternalState = null,

@@ -72,8 +72,6 @@ pub const Body = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            body: ?*runtime.Instance = null,
-            bodyUsed: bool = undefined,
             _internal: ?*BodyImpl.InternalState = null,
         },
     );

@@ -79,9 +79,6 @@ pub const XRCubeLayer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            space: *runtime.Instance = undefined,
-            orientation: *runtime.Instance = undefined,
-            onredraw: typedefs.EventHandler = undefined,
             _internal: ?*XRCubeLayerImpl.InternalState = null,
         },
     );

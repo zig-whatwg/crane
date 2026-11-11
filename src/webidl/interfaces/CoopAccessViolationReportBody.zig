@@ -77,14 +77,6 @@ pub const CoopAccessViolationReportBody = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sourceFile: ?runtime.DOMString = null,
-            lineNumber: ?u32 = null,
-            columnNumber: ?u32 = null,
-            type: runtime.DOMString = undefined,
-            property: runtime.DOMString = undefined,
-            openeeURL: ?runtime.DOMString = null,
-            openerURL: ?runtime.DOMString = null,
-            otherDocumentURL: ?runtime.DOMString = null,
             _internal: ?*CoopAccessViolationReportBodyImpl.InternalState = null,
         },
     );

@@ -65,8 +65,6 @@ pub const CSSParserDeclaration = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            body: runtime.JSValue = undefined,
             _internal: ?*CSSParserDeclarationImpl.InternalState = null,
         },
     );

@@ -62,7 +62,6 @@ pub const DelegatedInkTrailPresenter = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            presentationArea: ?*runtime.Instance = null,
             _internal: ?*DelegatedInkTrailPresenterImpl.InternalState = null,
         },
     );

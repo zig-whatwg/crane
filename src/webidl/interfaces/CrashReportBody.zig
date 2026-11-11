@@ -72,11 +72,6 @@ pub const CrashReportBody = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            reason: runtime.DOMString = undefined,
-            stack: runtime.DOMString = undefined,
-            is_top_level: bool = undefined,
-            visibility_state: enums.DocumentVisibilityState = undefined,
-            crash_report_api: runtime.JSValue = undefined,
             _internal: ?*CrashReportBodyImpl.InternalState = null,
         },
     );

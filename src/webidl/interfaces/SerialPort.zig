@@ -102,11 +102,6 @@ pub const SerialPort = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onconnect: typedefs.EventHandler = undefined,
-            ondisconnect: typedefs.EventHandler = undefined,
-            connected: bool = undefined,
-            readable: ?*runtime.Instance = null,
-            writable: ?*runtime.Instance = null,
             _internal: ?*SerialPortImpl.InternalState = null,
         },
     );

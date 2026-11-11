@@ -80,10 +80,6 @@ pub const IDBKeyRange = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            lower: runtime.JSValue = undefined,
-            upper: runtime.JSValue = undefined,
-            lowerOpen: bool = undefined,
-            upperOpen: bool = undefined,
             _internal: ?*IDBKeyRangeImpl.InternalState = null,
         },
     );

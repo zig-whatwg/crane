@@ -103,15 +103,6 @@ pub const Summarizer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sharedContext: runtime.DOMString = undefined,
-            type: enums.SummarizerType = undefined,
-            format: enums.SummarizerFormat = undefined,
-            length: enums.SummarizerLength = undefined,
-            preference: enums.PerformancePreference = undefined,
-            expectedInputLanguages: ?runtime.JSValue = null,
-            expectedContextLanguages: ?runtime.JSValue = null,
-            outputLanguage: ?runtime.DOMString = null,
-            inputQuota: f64 = undefined,
             _internal: ?*SummarizerImpl.InternalState = null,
         },
     );

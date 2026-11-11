@@ -74,8 +74,6 @@ pub const PresentationConnectionList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            connections: runtime.JSValue = undefined,
-            onconnectionavailable: typedefs.EventHandler = undefined,
             _internal: ?*PresentationConnectionListImpl.InternalState = null,
         },
     );
