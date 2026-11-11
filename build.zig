@@ -4357,7 +4357,7 @@ pub fn build(b: *std.Build) void {
                             }) }},
                         }),
                     });
-                    options.addOptionPath(if (mode == .Debug) "debug" else "release_safe", fixture.getEmittedBin());
+                    options.addOptionPath(if (mode == .debug) "debug" else "release_safe", fixture.getEmittedBin());
                 }
                 break :stack_overflow_fixtures options.createModule();
             } },
