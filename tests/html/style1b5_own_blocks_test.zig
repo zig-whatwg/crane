@@ -274,11 +274,17 @@ fn uniqueAttributesFlood() !void {
     const cache = dom.style.engine.engineOf(document).?.matched_properties.?;
     const Cache = @TypeOf(cache.*);
     std.debug.print("\nSTYLE1B5 1,000 unique style attributes: entries {d} hits {d} misses {d}\n", .{ cache.entries, cache.hits, cache.misses });
-    // Past the prune target a content no other element holds gets no entry
-    // (design 3.6 item 9): the cache is not churned by them ...
-    try testing.expect(cache.entries <= Cache.prune_target + 2 * Cache.per_key);
-    // ... a content that repeats is kept from its second sighting: two
-    // cascades, then a hit ...
+    // The cache fills to its limit and stays there: a content no other
+    // element holds does not get the entry that would force a prune
+    // (design 3.6 item 9) ...
+    try testing.expectEqual(@as(u32, Cache.limit), cache.entries);
+    // ... so the first row's entry is still there after the 999 that came
+    // after it ...
+    try expectOnlyHits(page,
+        \\if (getComputedStyle(again).marginTop !== '0px') throw new Error('again ' + getComputedStyle(again).marginTop);
+    );
+    // ... and a content that repeats is kept from its second sighting: two
+    // cascades, then a hit.
     const before = counters(page);
     try page.run(
         \\for (const e of repeats) if (getComputedStyle(e).marginTop !== '5000px') throw new Error('repeat ' + getComputedStyle(e).marginTop);
@@ -286,13 +292,8 @@ fn uniqueAttributesFlood() !void {
     const after = counters(page);
     try testing.expectEqual(before.misses + 2, after.misses);
     try testing.expectEqual(before.hits + 1, after.hits);
-    // ... and the first row's entry, made while the cache had room, was
-    // never pruned for the rows that came after it.
-    try expectOnlyHits(page,
-        \\if (getComputedStyle(again).marginTop !== '0px') throw new Error('again ' + getComputedStyle(again).marginTop);
-    );
 }
 
-test "style attributes no other element holds do not churn the cache; one that repeats is kept from its second sighting" {
+test "style attributes no other element holds do not prune the cache; one that repeats is kept from its second sighting" {
     try helpers.onFreshThread(uniqueAttributesFlood);
 }
