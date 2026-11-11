@@ -107,6 +107,21 @@ const Page = struct {
     }
 };
 
+/// A DOMTokenList of `el`'s `name` attribute that the test owns: made and
+/// associated as the reflection does (dom.reflection's getTokenList, through
+/// dom.token_lists), so the test frees it (`runtime.gc.onObjectFreed`). The
+/// [SameObject] getters (`classList`, `relList`) hand out the list the
+/// element's State caches, which an engine-less page never collects: a test
+/// that freed it would leave the cache dangling (lesson
+/// architecture-a-getter-that-returns-a-kept-object-breaks-callers-that-free-it),
+/// and one that kept it would leak it.
+fn tokenList(el: *runtime.Instance, name: []const u8) !*runtime.Instance {
+    const list = try interfaces.DOMTokenList.init(el.ctx.allocator, el.ctx);
+    errdefer interfaces.DOMTokenList.deinit(list);
+    try dom.token_lists.associate(list, el, name);
+    return list;
+}
+
 /// `el`'s classList, as its tokens and its value, for a comparison.
 const Tokens = struct {
     items: [16][]u8 = undefined,
@@ -114,9 +129,8 @@ const Tokens = struct {
     value: []u8 = &.{},
 
     fn read(el: *runtime.Instance, page: *Page) !Tokens {
-        // [SameObject]: the element keeps it (never freed here: lesson
-        // architecture-a-getter-that-returns-a-kept-object-breaks-callers-that-free-it).
-        const list = try interfaces.Element.get_classList(el);
+        const list = try tokenList(el, "class");
+        defer runtime.gc.onObjectFreed(list);
         var self: Tokens = .{};
         const n = try interfaces.DOMTokenList.get_length(list);
         for (0..n) |i| {
@@ -293,7 +307,8 @@ test "in quirks mode classes compare ASCII case-insensitively: both sides lowerc
     var tokens = try Tokens.read(a, &page);
     defer tokens.deinit();
     try tokens.expect(&.{ "Foo", "bar" });
-    const list = try interfaces.Element.get_classList(a);
+    const list = try tokenList(a, "class");
+    defer runtime.gc.onObjectFreed(list);
     try testing.expect(!try interfaces.DOMTokenList.call_contains(list, str("foo")));
     try testing.expect(try interfaces.DOMTokenList.call_contains(list, str("Foo")));
     // The mode is read at each check: the same element and selector compare
@@ -328,7 +343,8 @@ test "a token list two elements share: one element's class changes, the other's 
     try testing.expect(!try Page.matches(b, ".z"));
 
     // classList changes go through the attribute: b's list follows b only.
-    const list = try interfaces.Element.get_classList(b);
+    const list = try tokenList(b, "class");
+    defer runtime.gc.onObjectFreed(list);
     try testing.expect(try interfaces.DOMTokenList.call_toggle(list, str("w"), no_force));
     var class_b = (try interfaces.Element.call_getAttribute(b, str("class"))).?;
     defer class_b.deinit(page.ctx.allocator);
@@ -484,7 +500,8 @@ test "classList reads the value's tokens; its changes serialize the set and writ
     defer page.close();
     const el = try page.child("span");
     try Page.set(el, "class", "a  b a");
-    const list = try interfaces.Element.get_classList(el);
+    const list = try tokenList(el, "class");
+    defer runtime.gc.onObjectFreed(list);
     try testing.expectEqual(@as(u32, 2), try interfaces.DOMTokenList.get_length(list));
     try testing.expect(try interfaces.DOMTokenList.call_contains(list, str("b")));
     try testing.expect(!try interfaces.DOMTokenList.call_contains(list, str("a b")));
@@ -523,13 +540,14 @@ test "classList reads the value's tokens; its changes serialize the set and writ
     try testing.expect((try interfaces.Element.call_getAttribute(el, str("class"))) == null);
 }
 
-test "relList and part read their own attribute's tokens the same way" {
+test "a token list of another attribute (rel) reads its value's tokens the same way" {
     var page: Page = undefined;
     try page.open(testing.allocator, .no_quirks);
     defer page.close();
     const link = try page.child("a");
     try Page.set(link, "rel", "noopener  NoReferrer noopener");
-    const rel = try interfaces.HTMLAnchorElement.get_relList(link);
+    const rel = try tokenList(link, "rel");
+    defer runtime.gc.onObjectFreed(rel);
     try testing.expectEqual(@as(u32, 2), try interfaces.DOMTokenList.get_length(rel));
     try testing.expect(try interfaces.DOMTokenList.call_contains(rel, str("NoReferrer")));
     try testing.expect(!try interfaces.DOMTokenList.call_contains(rel, str("noreferrer")));
@@ -537,4 +555,29 @@ test "relList and part read their own attribute's tokens the same way" {
     try Page.set(link, "class", "noopener  NoReferrer noopener");
     try testing.expect(try Page.matches(link, ".NoReferrer"));
     try testing.expectEqual(@as(usize, 1), page.table().class_lists);
+}
+
+test "a token list with no element yet holds its own value; association lets it go" {
+    var page: Page = undefined;
+    try page.open(testing.allocator, .no_quirks);
+    defer page.close();
+    const el = try page.child("span");
+    try Page.set(el, "class", "from attribute");
+    const list = try interfaces.DOMTokenList.init(el.ctx.allocator, el.ctx);
+    defer runtime.gc.onObjectFreed(list);
+    // Element's getters set a new list's value before associating it.
+    try interfaces.DOMTokenList.set_value(list, str("x  y x"));
+    try testing.expectEqual(@as(u32, 2), try interfaces.DOMTokenList.get_length(list));
+    var value = try interfaces.DOMTokenList.get_value(list);
+    try testing.expectEqualStrings("x y", value.asSlice());
+    value.deinit(page.ctx.allocator);
+    try testing.expect(try interfaces.DOMTokenList.call_toggle(list, str("z"), no_force));
+    try testing.expectEqual(@as(u32, 3), try interfaces.DOMTokenList.get_length(list));
+    const own = page.table().find("x y z").?;
+    try testing.expect(page.table().get(own).references > 0);
+    // Associated: the set is the attribute's, and the own value is let go.
+    try dom.token_lists.associate(list, el, "class");
+    try testing.expectEqual(@as(u32, 2), try interfaces.DOMTokenList.get_length(list));
+    try testing.expect(try interfaces.DOMTokenList.call_contains(list, str("attribute")));
+    try testing.expectEqual(@as(u32, 0), page.table().get(own).references);
 }
