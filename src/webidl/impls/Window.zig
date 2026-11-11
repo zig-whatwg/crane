@@ -1511,6 +1511,16 @@ fn navigableOf(instance: *runtime.Instance, internal: *InternalState) ?*Browsing
     if (bc.getActiveWindow()) |active| {
         if (active != @as(*anyopaque, @ptrCast(instance))) return null;
     }
+    // A Window whose associated Document was destroyed has no navigable:
+    // "destroy a document" step 6 sets the document's browsing context to
+    // null. So a frame inside a removed frame - its navigable still listed,
+    // detached from the removed one - answers parent null at once
+    // (html/semantics/embedded-content/the-iframe-element/iframe-
+    // synchronously-discard.html: Chrome 157, Firefox 160 and Safari 27.2
+    // pass; Blink's Frame::Detach detaches the whole subtree synchronously).
+    if (internal.document) |document| {
+        if (@import("dom").document_activity.activity(document, runtime.SlabAllocator.generationOf(document)) == .gone) return null;
+    }
     return bc;
 }
 
