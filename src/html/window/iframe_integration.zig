@@ -423,6 +423,21 @@ pub const IFrameIntegration = struct {
     /// (`restoreCurrentRealm`). A count, for the out-of-memory tests.
     realm_replacements_failed: u32 = 0,
 
+    /// A realm replacement `realm_for_document_callback` made that has not
+    /// settled yet: the realm it replaced, whole, and that realm's Window.
+    /// They are kept until the new realm's Window has its associated Document
+    /// (HTML "create and initialize a Document object" step 10), and then
+    /// ended. A navigation that stops before that point goes back to them.
+    /// The engine settles it (HTMLIFrameElement settleRealmReplacement)
+    /// before the caller of `realmForDocument` returns.
+    pending_realm_replacement: ?PendingRealmReplacement = null,
+
+    /// How many navigations stopped after their new realm was made and
+    /// before its Window had a document. Each one left the navigable on its
+    /// old realm, Window and document; `realm_replacements_failed` counts
+    /// them too. A count, for the out-of-memory tests.
+    realm_replacements_abandoned: u32 = 0,
+
     /// The engine's "navigate" for this navigable, set with its context, for
     /// callers that have no engine access (window.open()'s navigation).
     navigate_callback: ?*const fn (*IFrameIntegration, []const u8, NavigateRequest) void = null,
@@ -867,6 +882,18 @@ pub const IFrameIntegration = struct {
         runtime_context: ?*anyopaque,
     };
 
+    /// See `pending_realm_replacement`.
+    pub const PendingRealmReplacement = struct {
+        /// The replaced realm, as `restoreCurrentRealm` puts it back.
+        kept: CurrentRealm,
+        /// Its Window: the browsing context's active window until the new one has
+        /// its document.
+        window: ?*anyopaque,
+        /// The new realm has a WindowProxy of its own: there was a browsing
+        /// context group switch.
+        switched: bool,
+    };
+
     /// The integration's current realm, as `restoreCurrentRealm` puts it back.
     pub fn currentRealm(self: *const IFrameIntegration) CurrentRealm {
         return .{
@@ -891,7 +918,9 @@ pub const IFrameIntegration = struct {
     /// Make sure the realm the next document goes in is the right one: see
     /// `realm_for_document_callback`. Called before the document is
     /// committed, while the recorded document origin is still the active
-    /// document's.
+    /// document's. A new realm it makes stays pending until the document
+    /// exists (`pending_realm_replacement`), so the caller settles it before
+    /// returning.
     pub fn realmForDocument(self: *IFrameIntegration, new_origin: Origin) IFrameError!void {
         const decide = self.realm_for_document_callback orelse return;
         if (!decide(self, new_origin)) return IFrameError.ContextCreationFailed;
