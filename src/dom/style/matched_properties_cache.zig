@@ -131,24 +131,20 @@ pub const MatchedPropertiesCache = struct {
             if (style.adoptIdenticalGroups(entry.holder) != 0) entry.last_used = self.tick();
             if (style.groupsHeldAlone() == 0) return;
         }
-        // A group no entry holds: keep this style for the next element.
+        // A group no entry holds: keep this style for the next element, while
+        // the key has room. A full key keeps the entries it has (WebKit's
+        // MatchedDeclarationsCache::add appends only below maxEntriesPerHash):
+        // a style whose own group no entry matches - a per-element value, as a
+        // transition's lists are - would otherwise replace an entry on every
+        // resolution, a clone made and a holder destroyed each time.
+        if (bucket.len == per_key) return;
         const holder = style.clone(self.allocator) catch {
             if (bucket.len == 0) _ = self.buckets.swapRemove(key);
             return;
         };
-        const made: Entry = .{ .holder = holder, .last_used = self.tick() };
-        if (bucket.len < per_key) {
-            bucket.items[bucket.len] = made;
-            bucket.len += 1;
-            self.entries += 1;
-        } else {
-            var oldest: usize = 0;
-            for (bucket.items[1..], 1..) |entry, k| {
-                if (entry.last_used < bucket.items[oldest].last_used) oldest = k;
-            }
-            bucket.items[oldest].holder.destroy();
-            bucket.items[oldest] = made;
-        }
+        bucket.items[bucket.len] = .{ .holder = holder, .last_used = self.tick() };
+        bucket.len += 1;
+        self.entries += 1;
         if (self.entries > limit) self.prune();
     }
 
@@ -190,24 +186,27 @@ pub const MatchedPropertiesCache = struct {
 
 /// The cache key of an element's matched declarations (in cascade order) for
 /// `pseudo`: each block - a rule's by address, a style attribute's by the
-/// names it declares - with its Source.
+/// names it declares - with its Source. A few multiply-rotate steps per block
+/// (it runs at every resolution): the key only says where to look, and a
+/// collision costs a compare, never a value.
 pub fn keyOf(matched: []const Matched, pseudo: ?[]const u8) u64 {
-    var h = std.hash.Wyhash.init(0x5354594c4531);
-    if (pseudo) |p| h.update(p);
-    h.update(&.{0});
+    var h: u64 = 0x5354594c4531;
+    if (pseudo) |p| h = mix(h, std.hash.Wyhash.hash(0, p));
     for (matched) |*m| {
-        if (m.source.element_attached) {
-            for (m.block.entries.items) |*entry| {
-                h.update(entry.name());
-                h.update(&.{0});
-            }
-        } else {
-            const address = @intFromPtr(m.block);
-            h.update(std.mem.asBytes(&address));
-        }
-        std.hash.autoHashStrat(&h, m.source, .Shallow);
+        const s = &m.source;
+        if (s.element_attached) {
+            for (m.block.entries.items) |*entry| h = mix(h, std.hash.Wyhash.hash(1, entry.name()));
+        } else h = mix(h, @intFromPtr(m.block));
+        h = mix(h, (@as(u64, @backingInt(s.origin)) << 56) | (@as(u64, s.layer) << 40) | (@as(u64, s.tree_depth) << 24) |
+            (@as(u64, @intFromBool(s.element_attached)) << 1) | @intFromBool(s.tree_count_allowed));
+        h = mix(h, (@as(u64, s.order) << 32) ^ (@as(u64, s.specificity.a) << 20) ^ (@as(u64, s.specificity.b) << 10) ^ s.specificity.c);
+        h = mix(h, s.tree_scope.serial);
     }
-    return h.final();
+    return h;
+}
+
+fn mix(h: u64, x: u64) u64 {
+    return std.math.rotl(u64, (h ^ x) *% 0x9E3779B97F4A7C15, 29);
 }
 
 const testing = std.testing;
