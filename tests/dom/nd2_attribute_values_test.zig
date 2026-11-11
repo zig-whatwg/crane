@@ -218,7 +218,7 @@ test "a value changed in a loop keeps one record alive, and a data-* name dies w
     try testing.expectEqual(@as(usize, 0), page.names());
 }
 
-test "a clone takes references to its source's records, and its list is exactly as long" {
+test "a clone shares its source's list (lane nd2 batch 4), and no new record" {
     var page: Page = undefined;
     try page.open(testing.allocator);
     defer page.close();
@@ -229,8 +229,11 @@ test "a clone takes references to its source's records, and its list is exactly 
     // Script's appends grew the source 1, 4, 8.
     try testing.expectEqual(@as(usize, 8), dom.element_data.of(el).?.data.attrs.?.capacity());
     const clone = try interfaces.Node.call_cloneNode(el, .{ .was_passed = true, .value = false });
-    // The clone reserved five: exact (oss R16), and no new record.
-    try testing.expectEqual(@as(usize, 5), dom.element_data.of(clone).?.data.attrs.?.capacity());
+    // The clone holds the source's block - the source's own list became a
+    // shared one in place (plan-v2 A3) - and no new record.
+    const block = dom.element_data.of(el).?.data.attrs.?;
+    try testing.expect(dom.element_data.of(clone).?.data.attrs.? == block);
+    try testing.expectEqual(@as(u8, 2), block.holders);
     try testing.expectEqual(@as(usize, 1), page.values());
     try testing.expectEqual(@as(usize, 2), page.names());
     const view = dom.element_data.of(clone).?;
@@ -239,8 +242,8 @@ test "a clone takes references to its source's records, and its list is exactly 
         try testing.expectEqualStrings(name, entry.local_name);
         try testing.expectEqualStrings("shared value", entry.value);
     }
-    // The source and the clone hold one value record and one record per
-    // data-* name: the source's removal leaves the clone's.
+    // The source's first removal copies the list (copy on write), taking
+    // references on the records: the clone keeps the block and its records.
     for (attrs) |name| try Page.remove(el, name);
     try testing.expectEqual(@as(usize, 1), page.values());
     try testing.expectEqual(@as(usize, 2), page.names());

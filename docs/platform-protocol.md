@@ -162,6 +162,7 @@ The types are the ownership rule, as in the engine protocol.
 | `MediaDecoder`, `Codec`, `CaptureSource`, `AudioOutput`, `DeviceHandle`, `SensorHandle` | Capability objects, OWNED by Crane from a successful open until its close call. |
 | `FileToken` | A file the user picked (6.10.3), OWNED until `releasePickedFile`. |
 | `Thread` | OWNED by the spawner until `joinThread`. |
+| `SignalStack` | OWNED by the thread that attached it until `detachSignalStack`; handle 0: none was made. |
 | Returned slices | Allocated with the allocator the caller passed; the caller's. |
 
 ## 3. Per-Browser state
@@ -360,6 +361,8 @@ today; a lane that implements the capability flips the constant.
 |---|---|---|---|
 | `spawnThread` | `(options: ThreadOptions, entry: *const fn (?*anyopaque) callconv(.c) void, context: ?*anyopaque) Error!Thread` | any | `ThreadOptions{ name, stack_size, qos }` [thread_qos for qos]. Worker agents, IndexedDB's workers, a C embedder's Browser thread (decision 13). |
 | `joinThread` | `(thread: Thread) void` | any | |
+| `attachSignalStack` | `() SignalStack` | any | Gives the calling thread an alternate signal stack (POSIX sigaltstack): where the process's fault handler runs when the thread's own stack ran out, so a stack overflow is reported instead of ending the process silently. OWNED until `detachSignalStack`; handle 0 when the thread keeps one it already has (at least as large) or the platform has none. Every `spawnThread` thread has one; this is for a thread the platform did not start - a root's main thread (first statement of `main`; the root sets `std_options.signal_stack_size = null`, because std's own stack is a 256 KB thread-local every thread that touches a thread-local pays for), a host's own threads, and the worker and IndexedDB threads until they move to `spawnThread`. kit/posix maps it with a guard page each side, as Crashpad's `InitializeSignalStackForThread` does; never thread-local storage. A thread nobody attached (the JavaScript engine's own worker threads) has none, as before: a stack overflow there ends the process without a report. |
+| `detachSignalStack` | `(stack: SignalStack) void` | the thread that attached it | Before that thread ends. Handle 0: nothing. |
 
 Mutexes, conditions, futexes, atomics, `std.Thread.yield` and thread ids stay std - synchronisation,
 not platform policy.

@@ -4332,6 +4332,35 @@ pub fn build(b: *std.Build) void {
             // dp1_local_datetime_test.zig checks against localtime_r through the
             // <time.h> module kit/posix imports (addCImport: one per graph).
             .{ .name = "c_time", .module = testing_graph.c_time },
+            // tls1_stack_overflow_test.zig runs the stack-overflow fixture
+            // (tests/platform/stack_overflow_fixture.zig): a program set up
+            // as Crane's roots are - no signal stack from std, the platform's
+            // own alternate stack (kit/posix/signal_stack.zig, compiled in as
+            // it is) - in the two modes whose builds report a stack overflow:
+            // ReleaseSafe (the release console, the production runner) and
+            // Debug (the bug-finding runner's Crane modules).
+            .{ .name = "stack_overflow_fixtures", .module = stack_overflow_fixtures: {
+                const options = b.addOptions();
+                for ([_]std.builtin.OptimizeMode{ .ReleaseSafe, .Debug }) |mode| {
+                    const fixture = b.addExecutable(.{
+                        .name = b.fmt("stack_overflow_fixture_{t}", .{mode}),
+                        .root_module = b.createModule(.{
+                            .root_source_file = b.path("tests/platform/stack_overflow_fixture.zig"),
+                            .target = target,
+                            .optimize = mode,
+                            .link_libc = true,
+                            .imports = &.{.{ .name = "signal_stack", .module = b.createModule(.{
+                                .root_source_file = b.path("src/platform/kit/posix/signal_stack.zig"),
+                                .target = target,
+                                .optimize = mode,
+                                .link_libc = true,
+                            }) }},
+                        }),
+                    });
+                    options.addOptionPath(if (mode == .debug) "debug" else "release_safe", fixture.getEmittedBin());
+                }
+                break :stack_overflow_fixtures options.createModule();
+            } },
         };
         addTestFilesFromDir(b, test_step, "tests/platform", target, &platform_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add platform test files: {}\n", .{err});
@@ -4875,6 +4904,9 @@ pub fn build(b: *std.Build) void {
         .{ .name = "host", .module = host_mod },
         // main's first step: engine.initializeBeforeThreadCreation.
         .{ .name = "engine", .module = engine_mod },
+        // main attaches the main thread's alternate signal stack
+        // (platform.attachSignalStack: std_options sets std's own off).
+        .{ .name = "platform", .module = platform_mod },
     };
     for (crane_exe_imports) |import| crane_exe.root_module.addImport(import.name, import.module);
 
@@ -5772,6 +5804,60 @@ pub fn build(b: *std.Build) void {
     // Verify mode for its tests, which live in the tool:
     // -Dverify-files=tools/ubsan_symbols.zig.
     addTestVerify(b, launch, ubsan_symbols_tests, "tools-ubsan_symbols", "tools", &.{"ubsan_symbols.zig"});
+
+    // ========================================================================
+    // The thread-local block check
+    // ========================================================================
+    // tools/thread_local_size.zig reads how many bytes of thread-local
+    // storage a built binary's image carries - a per-THREAD cost: macOS
+    // allocates the image's whole block for a thread on its first touch of
+    // any thread-local, glibc with every thread - and its largest
+    // thread-local symbols. The end of build() runs it on the same three
+    // binaries as the UBSan-symbol check, as part of their own steps,
+    // against tools/thread_local_size_budget.txt, which only goes down
+    // (`zig build thread-local-size -- --budget=<file> --lower=<bytes>`).
+    // Its tests read real objects: one C source compiled for ELF and for
+    // Mach-O, with a 65,536-byte thread-local array and without.
+    const thread_local_fixture_source = b.addWriteFiles().add("thread_local_fixture.c",
+        \\#ifdef CRANE_FIXTURE_PLAIN
+        \\#define CRANE_FIXTURE_STORAGE
+        \\#else
+        \\#define CRANE_FIXTURE_STORAGE _Thread_local
+        \\#endif
+        \\CRANE_FIXTURE_STORAGE char crane_fixture_big[65536];
+        \\CRANE_FIXTURE_STORAGE int crane_fixture_small = 7;
+        \\char *crane_fixture_touch(void) { crane_fixture_small += 1; return crane_fixture_big; }
+        \\
+    );
+    const thread_local_fixtures = b.addOptions();
+    for ([_]struct { []const u8, []const u8 }{ .{ "elf", "x86_64-linux-none" }, .{ "mach_o", "aarch64-macos-none" } }) |format| {
+        const fixture_target = b.resolveTargetQuery(std.Target.Query.parse(.{ .arch_os_abi = format[1] }) catch @panic("fixture target"));
+        for ([_]struct { []const u8, []const []const u8 }{ .{ "", &.{} }, .{ "_plain", &.{"-DCRANE_FIXTURE_PLAIN"} } }) |variant| {
+            const object = b.addObject(.{
+                .name = b.fmt("thread_local_fixture_{s}{s}", .{ format[0], variant[0] }),
+                .root_module = b.createModule(.{ .target = fixture_target, .optimize = .ReleaseSafe }),
+            });
+            object.root_module.addCSourceFile(.{ .file = thread_local_fixture_source, .flags = variant[1] });
+            thread_local_fixtures.addOptionPath(b.fmt("{s}{s}", .{ format[0], variant[0] }), object.getEmittedBin());
+        }
+    }
+    const thread_local_size_module = b.createModule(.{
+        .root_source_file = b.path("tools/thread_local_size.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    thread_local_size_module.addOptions("thread_local_fixtures", thread_local_fixtures);
+    const thread_local_size_exe = b.addExecutable(.{ .name = "thread_local_size", .root_module = thread_local_size_module });
+    const thread_local_size_tests = b.addTest(.{ .root_module = thread_local_size_module });
+    test_step.dependOn(&addSuiteRun(b, launch, thread_local_size_tests, "tools-thread_local_size", null).step);
+    // Verify mode for its tests, which live in the tool:
+    // -Dverify-files=tools/thread_local_size.zig.
+    addTestVerify(b, launch, thread_local_size_tests, "tools-thread_local_size", "tools", &.{"thread_local_size.zig"});
+    const thread_local_size_run = b.addRunArtifact(thread_local_size_exe);
+    thread_local_size_run.has_side_effects = true;
+    thread_local_size_run.setCwd(b.path("."));
+    thread_local_size_run.addPassthruArgs();
+    b.step("thread-local-size", "Report a binary's thread-local block and its largest thread-local symbols (-- [--budget=tools/thread_local_size_budget.txt] <binary>; -- --budget=<file> --lower=<bytes> records a lower budget)").dependOn(&thread_local_size_run.step);
 
     // ========================================================================
     // PERFORMANCE: the benchmark suite's runner and /performance/ (tools/perf_bench/)
@@ -6908,6 +6994,16 @@ pub fn build(b: *std.Build) void {
         // is shown when it fails.
         check.expectExitCode(0);
         step.dependOn(&check.step);
+        // And its thread-local block is within the budget
+        // (tools/thread_local_size.zig): what every thread of the build pays
+        // for touching a thread-local. The budget is a file argument, so a
+        // changed budget reruns the check.
+        const thread_local_check = b.addRunArtifact(thread_local_size_exe);
+        thread_local_check.addPrefixedFileArg("--budget=", b.path("tools/thread_local_size_budget.txt"));
+        thread_local_check.addArg(b.fmt("--name={s}", .{checked.exe.name}));
+        thread_local_check.addFileArg(checked.exe.getEmittedBin());
+        thread_local_check.expectExitCode(0);
+        step.dependOn(&thread_local_check.step);
     };
 }
 
@@ -8439,6 +8535,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     compression_mod.addImport("platform", platform_mod);
     fetch_mod.addImport("platform", platform_mod);
     dom_mod.addImport("platform", platform_mod);
+    storage_mod.addImport("platform", platform_mod);
     // A Browser's network context keeps its connection share in kit/curl,
     // and fetch's transfers and WebSocket's handshakes take the Browser's
     // network options (proxy, TLS, user agent) from it.

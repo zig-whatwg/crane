@@ -253,7 +253,8 @@ pub fn installHooks() void {
         .remove = &removeAttributeHook,
         .node_at = &attrNodeAtHook,
         .existing_node_at = &existingAttrNodeAtHook,
-        .reserve = &reserveAttributesHook,
+        .set_parsed = &setParsedAttributesHook,
+        .clone_from = &cloneAttributesHook,
     });
     // The list, the ID and classes and the qualified name, read in place by
     // the tree's own algorithms (the selector matcher, getElementById, the
@@ -1209,12 +1210,14 @@ fn changeAttribute(instance: *runtime.Instance, internal: *InternalState, index:
     if (index >= internal.data.getAttributeCount()) return error.InvalidStateError;
     const scope = runtime.BrowserScope.ofInstance(instance);
     const new_value = try dom.attribute_values.intern(scope, value);
+    errdefer dom.attribute_values.release(scope, new_value);
 
     // Step 1: "Let oldValue be attribute's value." Step 2: "Set attribute's
     // value to value." The list takes the new value's reference and hands
     // back the old one's, which this step keeps until the change steps below
-    // have read it - and re-derived the ID and classes from the list.
-    const old_value = internal.data.setValueAt(index, new_value);
+    // have read it - and re-derived the ID and classes from the list. A
+    // shared list is copied first (dom.element_data.ElementData.writable).
+    const old_value = try internal.data.setValueAt(scope, index, new_value);
     defer dom.attribute_values.release(scope, old_value);
     // The attribute's name and new value are HELD across the change steps,
     // which can run script that changes or removes this attribute (the image
@@ -1280,13 +1283,14 @@ fn appendAttribute(
 /// DOM "remove an attribute" - the one at `index`.
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-remove
-fn removeAttributeAt(instance: *runtime.Instance, internal: *InternalState, index: usize) void {
+fn removeAttributeAt(instance: *runtime.Instance, internal: *InternalState, index: usize) error{OutOfMemory}!void {
     const scope = runtime.BrowserScope.ofInstance(instance);
     // Steps 1 and 2: "Let element be attribute's element. Remove attribute
     // from element's attribute list." The removed entry's references - its
     // name's and its value's - are this step's until the changes below have
-    // read them (they can run script).
-    const entry = internal.data.takeAttributeAt(scope, index);
+    // read them (they can run script). A shared list is copied first, which
+    // can fail (out of memory): then nothing is removed.
+    const entry = try internal.data.takeAttributeAt(scope, index);
     defer ElementData.releaseEntry(scope, entry);
     const tables = AttributeTables.of(scope);
     const name = tables.name(entry.name);
@@ -1340,7 +1344,9 @@ fn removeAttributeByNamespaceAndLocalName(instance: *runtime.Instance, namespace
     const ns: ?[]const u8 = if (namespace) |n| (if (n.len == 0) null else n) else null;
     // Step 2: "If attr is non-null, then remove attr."
     const index = attrsOf(instance, internal).indexOfAttribute(ns, local_name) orelse return;
-    removeAttributeAt(instance, internal, index);
+    // This step has no failure: out of memory copying a shared list, the
+    // attribute stays (logged).
+    removeAttributeAt(instance, internal, index) catch |err| std.log.scoped(.element).warn("attribute {s} not removed: {}", .{ local_name, err });
 }
 
 /// DOM "remove an attribute by name": the first attribute whose qualified
@@ -1357,7 +1363,7 @@ fn removeAttributeByName(instance: *runtime.Instance, qualified_name: []const u8
     // qualifiedName and element."
     // Step 2: "If attr is non-null, then remove attr."
     const index = attrsOf(instance, internal).indexOfQualifiedName(name.slice) orelse return;
-    removeAttributeAt(instance, internal, index);
+    try removeAttributeAt(instance, internal, index);
 }
 
 /// `dom.node_creation.setElementNames` / `setElementQualifiedNames`: DOM
@@ -1379,11 +1385,96 @@ fn attributeAtHook(element: *runtime.Instance, index: usize) ?dom.element_attrib
     };
 }
 
-/// `dom.element_attributes.reserve`: room for `more` attributes, exactly
-/// (parse and clone). Out of memory, the appends grow the list.
-fn reserveAttributesHook(element: *runtime.Instance, more: usize) void {
-    const internal = getInternal(element) orelse return;
-    internal.data.reserve(runtime.allocatorOf(element), more) catch {};
+/// Attribute changes for the attributes just set by the parser or a clone:
+/// "handle attribute changes" for each of `entries`, in order, with a null
+/// old value. Each entry's records are HELD from before the first step to
+/// the end of its own (the steps can run script that changes the list).
+fn handleSetAttributes(instance: *runtime.Instance, internal: *InternalState, scope: *runtime.BrowserScope, entries: []const AttributeEntryIds, by_cloning: bool) void {
+    for (entries) |entry| ElementData.retainEntry(scope, entry);
+    const tables = AttributeTables.of(scope);
+    for (entries) |entry| {
+        defer ElementData.releaseEntry(scope, entry);
+        const record = tables.name(entry.name);
+        // A style attribute a clone copies skips its CSP check (see
+        // styleAttributeChangeSteps).
+        internal.appending_clone = by_cloning and record.namespace_uri == null and std.mem.eql(u8, record.local_name, "style");
+        defer internal.appending_clone = false;
+        handleAttributeChanges(instance, record.namespace_uri, record.local_name, null, tables.value(entry.value));
+    }
+}
+
+/// `dom.element_attributes.setParsed`: HTML "create an element for a
+/// token"'s "Append each attribute in the given token to element", at once:
+/// the ids interned, the list taken from the parser's `cache` (shared with
+/// the parse's elements whose set is equal), then "handle attribute changes"
+/// for each attribute in order - Blink's Element::ParserSetAttributes and
+/// WebKit's Element::parserSetAttributes, whose change steps also see the
+/// whole token's list.
+fn setParsedAttributesHook(element: *runtime.Instance, attributes: []const dom.element_attributes.Attribute, cache: ?*dom.element_attributes.SharingCache) dom.element_attributes.Error!void {
+    const internal = getInternal(element) orelse return error.InvalidStateError;
+    if (attributes.len == 0) return;
+    // An element that already has attributes takes the token's one by one:
+    // "Append each attribute in the given token to element" exactly as
+    // written (and as main did). It has them when script ran inside "create
+    // an element": a customized built-in is upgraded synchronously there, so
+    // its constructor's setAttribute comes before this step (custom-elements/
+    // customized-built-in-constructor-exceptions.html, "Make sure customized
+    // <input> element that sets attributes doesnt crash"). Blink takes the
+    // same two paths, read in source 2026-11-11: HTMLConstructionSite::
+    // CreateElement, under `will_execute_script = definition &&
+    // !is_parsing_fragment_`, loops `element->setAttribute(attribute.
+    // GetName(), attribute.Value())` - "We don't use setAttributes here
+    // because the custom element constructor may have manipulated
+    // attributes." - and calls SetAttributes(element, token) otherwise. Blink
+    // SETS where the spec and this append: they differ only for a name the
+    // constructor also set, which is main's behaviour and not this step's to
+    // change.
+    if (internal.data.getAttributeCount() != 0) {
+        for (attributes) |attribute| {
+            try appendAttribute(element, internal, attribute.namespace, attribute.prefix, attribute.local_name, attribute.value);
+        }
+        return;
+    }
+    const scope = runtime.BrowserScope.ofInstance(element);
+    var stack: [16]AttributeEntryIds = undefined;
+    const on_heap = attributes.len > stack.len;
+    const entries = if (on_heap) try scope.allocator.alloc(AttributeEntryIds, attributes.len) else stack[0..attributes.len];
+    defer if (on_heap) scope.allocator.free(entries);
+    var made: usize = 0;
+    errdefer for (entries[0..made]) |entry| ElementData.releaseEntry(scope, entry);
+    for (attributes, entries) |attribute, *entry| {
+        const name = try dom.attribute_names.intern(scope, attribute.namespace, attribute.prefix, attribute.local_name);
+        const value = dom.attribute_values.intern(scope, attribute.value) catch |err| {
+            dom.attribute_names.release(scope, name);
+            return err;
+        };
+        entry.* = .{ .name = name, .value = value };
+        made += 1;
+    }
+    try internal.data.adoptEntries(scope, entries, cache);
+    made = 0;
+    handleSetAttributes(element, internal, scope, entries, false);
+}
+
+/// `dom.element_attributes.cloneFrom`: DOM "clone a single node" step 3 -
+/// `copy`'s list is `node`'s, shared (dom.element_data.ElementData.
+/// shareFrom: Blink's Element::CloneAttributesFrom, WebKit's Element::
+/// cloneAttributesFromElement), then "handle attribute changes" for each
+/// attribute as a copied one.
+fn cloneAttributesHook(copy: *runtime.Instance, node: *runtime.Instance) dom.element_attributes.Error!void {
+    const internal = getInternal(copy) orelse return error.InvalidStateError;
+    const source = getInternal(node) orelse return error.InvalidStateError;
+    if (internal.data.getAttributeCount() != 0) return error.InvalidStateError;
+    const scope = runtime.BrowserScope.ofInstance(copy);
+    try internal.data.shareFrom(scope, &source.data);
+    const count = internal.data.getAttributeCount();
+    if (count == 0) return;
+    var stack: [16]AttributeEntryIds = undefined;
+    const on_heap = count > stack.len;
+    const entries = if (on_heap) try scope.allocator.alloc(AttributeEntryIds, count) else stack[0..count];
+    defer if (on_heap) scope.allocator.free(entries);
+    for (entries, 0..) |*entry, i| entry.* = internal.data.storedAt(i).?;
+    handleSetAttributes(copy, internal, scope, entries, true);
 }
 
 /// `dom.element_attributes.count`.
@@ -2084,13 +2175,16 @@ fn replaceAttributeAt(instance: *runtime.Instance, internal: *InternalState, ind
         try dom.attribute_names.intern(scope, old_name.namespace_uri, prefix, old_name.local_name);
     errdefer if (new_name != old_entry.name) dom.attribute_names.release(scope, new_name);
     const new_value = try dom.attribute_values.intern(scope, value);
+    errdefer dom.attribute_values.release(scope, new_value);
 
     // Step 2: "Replace oldAttribute by newAttribute in element's attribute
     // list." Steps 3 to 5 move the element from one Attr node to the other.
     // The list takes the new ids' references and hands back the old ones',
-    // which this step keeps until the change steps below have read them.
-    const old_value = internal.data.setValueAt(index, new_value);
-    const replaced_name: ?dom.element_data.NameId = if (new_name != old_entry.name) internal.data.setNameAt(index, new_name) else null;
+    // which this step keeps until the change steps below have read them. A
+    // shared list is copied by the first write; the second writes the
+    // element's own list, which cannot fail.
+    const old_value = try internal.data.setValueAt(scope, index, new_value);
+    const replaced_name: ?dom.element_data.NameId = if (new_name != old_entry.name) (internal.data.setNameAt(scope, index, new_name) catch unreachable) else null;
     defer {
         dom.attribute_values.release(scope, old_value);
         if (replaced_name) |name| dom.attribute_names.release(scope, name);
@@ -2315,7 +2409,7 @@ pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Inst
     if (!found) return error.NotFoundError;
 
     // Step 2: "Remove attr." - which sets attr's element to null.
-    removeAttributeAt(instance, internal, index);
+    try removeAttributeAt(instance, internal, index);
 
     // Step 3: "Return attr."
     return attr;
@@ -2502,7 +2596,7 @@ pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: runtime.
     // attribute given qualifiedName and this, and then return false." The
     // attribute that removes is the one step 3 found.
     if (!force.was_passed or !force.value) {
-        removeAttributeAt(instance, internal, index);
+        try removeAttributeAt(instance, internal, index);
         return false;
     }
 
