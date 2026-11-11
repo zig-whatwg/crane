@@ -996,6 +996,36 @@ test "a found value is read by its slot once: no second read for its id's flags 
     table.release(back);
 }
 
+test "an attribute write's lookup compares keys inline: no call per probed slot" {
+    // The cost pair's setter and set/get rows (lane nd2 batch 3, 2026-11-11:
+    // +72 and +69 instructions an op against batch 2): once batch 3's class
+    // reads gave the adapted lookup more callers, the compiler kept
+    // KeyAdapter.eql out of line - a call, a frame and two reloads of the
+    // slot array on every probed slot. Batch 2's console inlined it.
+    const convention = @typeInfo(@TypeOf(KeyAdapter.eql)).@"fn".attrs.@"callconv";
+    try std.testing.expect(std.meta.activeTag(convention) == .@"inline");
+}
+
+test "a value id's slot ignores its flags and generation" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    // Every flag combination: one token and lowercase, one token with an
+    // upper-case letter, several tokens, several with an upper-case letter.
+    const values = [_][]const u8{ "x", "X", "x y", "X y" };
+    var ids: [values.len]ValueId = undefined;
+    for (values, &ids) |text, *id| id.* = try intern(&scope, text);
+    defer for (ids) |id| release(&scope, id);
+    const table = tableOf(&scope).?;
+    for (values, ids) |text, id| {
+        try std.testing.expectEqualStrings(text, table.bytesOf(id));
+        try std.testing.expectEqual(id, table.find(text).?);
+    }
+    try std.testing.expect(ids[0].isOneToken() and ids[0].isLowercase());
+    try std.testing.expect(ids[1].isOneToken() and !ids[1].isLowercase());
+    try std.testing.expect(!ids[2].isOneToken() and ids[2].isLowercase());
+    try std.testing.expect(!ids[3].isOneToken() and !ids[3].isLowercase());
+}
+
 test "a million distinct values end at the table's size plus at most the ring" {
     // The churn tests' allocator (tests/test_runner/poisoning.zig
     // ChurnAllocator: poisoned frees and the leak check, no stack traces):
