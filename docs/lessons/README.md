@@ -1070,6 +1070,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [MallocStackLogging=lite adds eight bytes to every block it records](testing-malloc-stack-logging-lite-adds-eight-bytes-to-every-block.md) - A stack-logging run tells you how many blocks and from where, not how big they are: under lite logging a 32-byte block reads 48.
 - [A passing cost test prints nothing - record the green numbers on purpose](testing-a-passing-cost-test-prints-nothing-record-the-green-numbers-on-purpose.md) - The launcher shows a test's output only when it does not pass: print every case before failing, and plan how the green figures will be seen.
 - [A total pinned in six files moves in six files](testing-a-total-pinned-in-six-files-moves-in-six-files.md) - Pin the level you changed; pin a total in one place only - a sum pinned in every batch's file breaks in all of them at once.
+- [A footprint after GC can be bimodal - count the modes over ten runs before blaming a change](testing-a-footprint-after-gc-can-be-bimodal-count-the-modes.md) - Equal allocated bytes with different fragmentation is a mode, not a regression: count how often each side lands in the high mode over ten runs before blaming the change.
 
 ### Debugging
 - [Profile a hot path before optimizing the structure the design names](debugging-profile-a-hot-path-before-optimizing-the-structure-the-design-names.md) - Profile the workload the bar measures before rebuilding the structure the design suspects; look for terms that grow with the session, wherever they live.
