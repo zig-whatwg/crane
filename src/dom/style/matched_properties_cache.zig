@@ -74,18 +74,20 @@
 //! Admission (lane style1 b5; design 3.6 item 9). A rule's block is one
 //! object for every element it matches; an own block's content may be held
 //! by one element only (a style attribute that positions one row). Kept, such
-//! a style costs an entry and serves no hit, and at the cache's limit it
-//! costs a prune - the 200 least recently used entries - as well. So at
-//! `limit` entries, where the next entry forces that prune, a resolution with
-//! an own block whose content key has no entry gets one on that key's second
-//! sighting (`admits`: the cache-on-second-hit rule of a bounded cache,
-//! consulted as TinyLFU's doorkeeper is, only when admitting evicts). Below
-//! the limit every resolution is kept as it comes: the band between the
-//! prune target and the limit is where a page's cache lives (the AG Grid
-//! page holds about 440 entries; with the rule applied from the prune target
-//! it lost 7,987 of 1,188,349 hits). Neither browser has the rule: Blink
-//! keeps every cacheable resolution and declines only an inline set modified
-//! after it was hashed (MatchResult::AddMatchedProperties); it decides which
+//! a style costs an entry and its share of a prune, and serves no hit. Every
+//! resolution is kept as it comes - as both browsers keep theirs - until a
+//! prune shows that the page's own blocks do not repeat: with at least
+//! `own_evidence` own-block entries in the cache, fewer than one in
+//! `own_served_share` having answered a lookup (`weigh`). From that prune
+//! to the next, a resolution with an own block whose content key has no
+//! entry gets one on that key's second sighting (`admits`: the
+//! cache-on-second-hit rule of a bounded cache; TinyLFU's doorkeeper). The
+//! evidence is what the entries did, not how many there are: a rule tied to
+//! the entry count either applied to a page whose cache lives between the
+//! prune target and the limit (the AG Grid page: 7,987 of 1,188,349 hits
+//! lost) or gave the places each prune freed to the next unique blocks.
+//! Neither browser has the rule: Blink declines only an inline set modified
+//! after it was hashed (MatchResult::AddMatchedProperties). It decides which
 //! entries exist, never what a hit holds.
 //!
 //! One per Document's StyleEngine, used on its Browser's window-agent thread
@@ -200,9 +202,11 @@ pub const MatchedPropertiesCache = struct {
     /// Where each group last compared unequal in an adoption scan
     /// (ComputedStyle.DifferenceHints).
     difference_hints: css.computed_style.DifferenceHints = @splat(0),
+    /// The last prune found own-block entries serving no hit (`weigh`): an
+    /// own block's content is kept from its second sighting (`admits`).
+    second_sighting: bool = false,
     /// The content keys of own-block resolutions that were given no entry
-    /// (`admits`), one tag per slot; null until the cache is first at its
-    /// limit, released with the entries (`clear`).
+    /// (`admits`), one tag per slot; held only while `second_sighting`.
     seen: ?*[seen_slots]u32 = null,
 
     pub const per_key = 4;
@@ -211,6 +215,11 @@ pub const MatchedPropertiesCache = struct {
     /// Sightings remembered: about the cache's own size, so a content that
     /// comes again while an entry of it would still be held is recognised.
     pub const seen_slots = 256;
+    /// Own-block entries a prune must find before it concludes anything
+    /// about them, and the share of them that must have answered a lookup
+    /// (one in this many) for first sightings to stay kept.
+    pub const own_evidence = limit / 4;
+    pub const own_served_share = 8;
 
     const Entry = struct {
         holder: *ComputedStyle,
@@ -229,6 +238,8 @@ pub const MatchedPropertiesCache = struct {
         /// A snapshot of each own block of the matched list, in order
         /// (DeclarationBlock.snapshot).
         own: []css.declarations.DeclarationBlock = &.{},
+        /// The entry answered a lookup (what a prune weighs, `weigh`).
+        served: bool = false,
         pseudo: Pseudo,
         inputs: Inputs,
         /// The cascade took a non-inherited value from the parent.
@@ -277,21 +288,42 @@ pub const MatchedPropertiesCache = struct {
         for (self.buckets.values()) |*bucket| for (bucket.items[0..bucket.len]) |entry| self.release(entry);
         self.buckets.clearRetainingCapacity();
         self.entries = 0;
+        self.keepFirstSightings();
+    }
+
+    /// Every resolution is kept as it comes (the state a cache starts in).
+    fn keepFirstSightings(self: *MatchedPropertiesCache) void {
+        self.second_sighting = false;
         if (self.seen) |seen| self.allocator.destroy(seen);
         self.seen = null;
     }
 
+    /// What a prune found, before it released anything: `own` entries made
+    /// for a resolution with an own block, `served` of them having answered
+    /// a lookup. Enough of them with almost none serving says the page's
+    /// own blocks do not repeat while an entry lasts (2,000 rows each with
+    /// a position of its own): until the next prune, such a content is kept
+    /// from its second sighting. Anything else - they serve, or they are
+    /// too few to tell - keeps every resolution as it comes.
+    fn weigh(self: *MatchedPropertiesCache, own: u32, served: u32) void {
+        if (own >= own_evidence and served * own_served_share < own) {
+            self.second_sighting = true;
+        } else {
+            self.keepFirstSightings();
+        }
+    }
+
     /// Whether a resolution with an own block, whose content key has no
-    /// entry, is given one. With room - fewer than `limit` entries: nothing
-    /// is pruned for it - always. At the limit, at its key's second
-    /// sighting: the first leaves the key's tag in `seen` (direct-mapped by
-    /// the key's low bits; the tag is its high 32 bits, never 0) and no
-    /// entry, so a content one element holds costs a tag, and one that
-    /// repeats costs one cascade more. A tag another key overwrote, or one
-    /// that collides, delays or admits an entry and nothing else: a hit
-    /// still compares content. Out of memory for the table: no entry.
+    /// entry, is given one: always, unless the last prune found own-block
+    /// entries serving no hit (`weigh`); then at its key's second sighting.
+    /// The first leaves the key's tag in `seen` (direct-mapped by the key's
+    /// low bits; the tag is its high 32 bits, never 0) and no entry, so a
+    /// content one element holds costs a tag, and one that repeats costs
+    /// one cascade more. A tag another key overwrote, or one that collides,
+    /// delays or admits an entry and nothing else: a hit still compares
+    /// content. Out of memory for the table: no entry.
     fn admits(self: *MatchedPropertiesCache, key: u64) bool {
-        if (self.entries < limit) return true;
+        if (!self.second_sighting) return true;
         const seen = self.seen orelse made: {
             const table = self.allocator.create([seen_slots]u32) catch return false;
             table.* = @splat(0);
@@ -333,6 +365,7 @@ pub const MatchedPropertiesCache = struct {
                 self.correspondences +%= 1;
                 if (!corresponds(hit, lookup, parent)) continue;
                 entry.last_used = self.tick();
+                hit.served = true;
                 self.hits +%= 1;
                 return entry.holder;
             }
@@ -363,8 +396,9 @@ pub const MatchedPropertiesCache = struct {
         const cacheable = if (dependencies) |d| d.cacheable() and lookup.parent != null else false;
         const found = self.buckets.getPtr(lookup.key);
         // Admission: an own block's content that has no entry (so nothing to
-        // adopt from under this key either) gets one with room, or on its
-        // second sighting (`admits`).
+        // adopt from under this key either) gets one - on its second
+        // sighting when the last prune found such entries serving no hit
+        // (`admits`).
         if (found == null and lookup.shape != null and !self.admits(lookup.key)) return;
         // Adoption, the most recent entry first (Blink's Find scans
         // backwards): every group and custom property record the cascade
@@ -452,13 +486,20 @@ pub const MatchedPropertiesCache = struct {
     fn prune(self: *MatchedPropertiesCache) void {
         var stamps: std.ArrayList(u32) = .empty;
         defer stamps.deinit(self.allocator);
+        var own: u32 = 0;
+        var served: u32 = 0;
         for (self.buckets.values()) |*bucket| for (bucket.items[0..bucket.len]) |entry| {
             stamps.append(self.allocator, entry.last_used) catch {
                 // No room to rank them: release everything instead.
                 self.clear();
                 return;
             };
+            if (entry.hit) |hit| if (hit.own.len != 0) {
+                own += 1;
+                served += @intFromBool(hit.served);
+            };
         };
+        self.weigh(own, served);
         if (stamps.items.len <= prune_target) return;
         std.mem.sortUnstable(u32, stamps.items, {}, std.sort.asc(u32));
         const cutoff = stamps.items[stamps.items.len - prune_target - 1];
