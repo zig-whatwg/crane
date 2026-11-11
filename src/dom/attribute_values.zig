@@ -344,6 +344,9 @@ pub const Table = struct {
     /// Debug: the records read by their slot (`recordAt`), for the tests
     /// that pin how many reads a step takes.
     slot_reads: if (debug_checks) usize else void = if (debug_checks) 0 else {},
+    /// Debug: the lookups of a slot's ClassNames (`classNamesAt`), for the
+    /// tests that pin which steps look.
+    class_names_reads: if (debug_checks) usize else void = if (debug_checks) 0 else {},
 
     const Map = std.HashMapUnmanaged(u32, void, SlotContext, 80);
 
@@ -613,6 +616,7 @@ pub const Table = struct {
 
     /// `slot`'s ClassNames, if a class read made them.
     inline fn classNamesAt(self: *const Table, slot: u32) ?*ClassNames {
+        if (debug_checks) @constCast(self).class_names_reads += 1;
         if (slot >= self.class_names.items.len) return null;
         return self.class_names.items[slot];
     }
@@ -1015,6 +1019,42 @@ test "an attribute write's lookup compares keys inline: no call per probed slot"
     // slot array on every probed slot. Batch 2's console inlined it.
     const convention = @typeInfo(@TypeOf(KeyAdapter.eql)).@"fn".attrs.@"callconv";
     try std.testing.expect(std.meta.activeTag(convention) == .@"inline");
+}
+
+test "a value that is its own classes and its own fold never looks for a token list" {
+    if (!debug_checks) return error.SkipZigTest;
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    // A token list made for another value first, so the lists' array is
+    // longer than the slots below: a lookup would read it.
+    const classes = try intern(&scope, "a b");
+    defer release(&scope, classes);
+    const table = classTable(&scope).?;
+    _ = try table.classNames(classes);
+    try std.testing.expect(table.class_names.items.len > 0);
+    // el.id = 'x' / 'y': a release parks, an intern unparks - neither has a
+    // list to weigh (a lowercase one-token value has none: `makeClassNames`).
+    const x = try intern(&scope, "x");
+    var reads = table.class_names_reads;
+    release(&scope, x);
+    const back = try intern(&scope, "x");
+    try std.testing.expectEqual(x, back);
+    release(&scope, back);
+    try std.testing.expectEqual(reads, table.class_names_reads);
+    // A value over the ring's cap is freed at its release: no list to take.
+    const long: [Table.Parking.max_record_bytes + 1]u8 = @splat('z');
+    reads = table.class_names_reads;
+    release(&scope, try intern(&scope, &long));
+    try std.testing.expect(table.find(&long) == null);
+    try std.testing.expectEqual(reads, table.class_names_reads);
+    // Control: a value with an upper-case letter can have a list (its
+    // folded record's), so its ring trips look.
+    const upper = try intern(&scope, "X");
+    reads = table.class_names_reads;
+    release(&scope, upper);
+    release(&scope, try intern(&scope, "X"));
+    try std.testing.expect(table.class_names_reads > reads);
+    try expectParkingSound(table);
 }
 
 test "a value id's slot ignores its flags and generation" {
