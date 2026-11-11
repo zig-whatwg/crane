@@ -567,7 +567,7 @@ pub fn release(scope: *runtime.BrowserScope, record: *const ElementName) void {
 /// end). A scope no agent has claimed (an engine-less test's, a Browser's
 /// last sweep after its agent let go) is not checked, as its DOM memory is
 /// not (ExternalMemory.checkThread).
-fn checkOwnerThread(scope: *runtime.BrowserScope) void {
+pub fn checkOwnerThread(scope: *runtime.BrowserScope) void {
     if (comptime !debug_checks or @TypeOf(scope.dom_memory.thread) == void) return;
     const owner = scope.dom_memory.thread orelse return;
     if (owner != std.Thread.getCurrentId()) @panic("a Browser's element names were used on a thread other than its window agent's");

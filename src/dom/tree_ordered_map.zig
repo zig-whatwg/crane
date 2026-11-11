@@ -112,7 +112,7 @@ const Facts = struct {
 /// The HTML elements a name attribute can make a named element or object.
 const NamedType = enum { other, embed, form, iframe, img, object };
 
-fn namedTypeOf(data: *const element_data.ElementData) NamedType {
+fn namedTypeOf(data: element_data.View) NamedType {
     if (!data.name.isHtml()) return .other;
     const local = data.localName();
     // Local names are case-sensitive: an HTML element made as "IMG" by
@@ -123,7 +123,7 @@ fn namedTypeOf(data: *const element_data.ElementData) NamedType {
     return .other;
 }
 
-fn factsOfData(data: *const element_data.ElementData) Facts {
+fn factsOfData(data: element_data.View) Facts {
     const named_type = namedTypeOf(data);
     const name: []const u8 = if (named_type == .other) "" else if (element_data.getAttributeByNamespaceAndLocalName(data, null, "name")) |attribute| attribute.value else "";
     return .{ .named_type = named_type, .id = data.idValue(), .name = name };
@@ -605,7 +605,7 @@ pub const OldName = union(enum) {
 /// out of its tree scope's maps as they hold it - its current ID, and
 /// `old_name` or its current name. Null when it is in no tree scope. `data`
 /// is the element's own (Element passes it: no lookup).
-pub fn beginChange(element: *runtime.Instance, data: *const element_data.ElementData, old_name: OldName) ?Change {
+pub fn beginChange(element: *runtime.Instance, data: element_data.View, old_name: OldName) ?Change {
     var facts = factsOfData(data);
     switch (old_name) {
         .id_was => |value| facts.id = value,
@@ -627,7 +627,7 @@ pub fn beginChange(element: *runtime.Instance, data: *const element_data.Element
 }
 
 /// After `element`'s ID or name changed: put it back as it is now.
-pub fn endChange(data: *const element_data.ElementData, change: ?Change) void {
+pub fn endChange(data: element_data.View, change: ?Change) void {
     const taken = change orelse return;
     if (taken.maps.degraded) return;
     const facts = factsOfData(data);

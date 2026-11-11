@@ -152,6 +152,7 @@ const Builder = struct {
             // cloned to.
             if (!self.options.scripting) dom.script_elements.markAlreadyStarted(element);
         }
+        dom.element_attributes.reserve(element, attributes.len);
         for (attributes) |attr| {
             dom.element_attributes.append(element, .{
                 .namespace = attr.name.namespace,

@@ -38,7 +38,9 @@ const element_data = dom.element_data;
 const ElementData = element_data.ElementData;
 
 /// Whether D1's out-of-line list is in this build.
-const out_of_line = @hasDecl(element_data, "Attribute");
+/// Whether the list is out of line: its entries a type of their own (lane
+/// perf3 D1's `Attribute`, lane nd2 batch 2's 8-byte `Entry`).
+const out_of_line = @hasDecl(element_data, "Attribute") or @hasDecl(element_data, "Entry");
 
 fn str(text: []const u8) runtime.DOMString {
     return runtime.DOMString.initInterned(text);
@@ -78,17 +80,20 @@ test "the std and runtime parts the pins count are the sizes they were pinned wi
     try testing.expectEqual(@as(usize, 16), @sizeOf(?[]const u8));
 }
 
-test "an Attribute is 24 bytes: its name record's address and its value" {
+test "an attribute is an 8-byte entry: a name id and a value id, its records shared" {
     if (comptime !out_of_line) {
         std.debug.print("\nElementData still keeps its attributes inline ({d} bytes)\n", .{@sizeOf(ElementData)});
         return error.AttributesStillInline;
     } else {
-        // Blink's and WebKit's are 16: their value is an 8-byte atom. The name
-        // record is static for a known name and the attribute's own otherwise.
-        try expectSize(element_data.Attribute, 24);
-        try testing.expect(@FieldType(element_data.Attribute, "name") == *const element_data.QualifiedName);
-        try testing.expect(@FieldType(element_data.Attribute, "value") == []const u8);
-        // The list's header: its length and capacity, then the attributes.
+        // Blink's and WebKit's are 16: a QualifiedName and an AtomicString,
+        // two pointers to shared records. Here the two records are u32 ids
+        // (lane nd2 batch 2: A1 + A2): dom.attribute_names, a static record
+        // for a known name and the Browser's counted one otherwise, and
+        // dom.attribute_values, the Browser's counted record of the value.
+        try expectSize(element_data.Entry, 8);
+        try testing.expect(@FieldType(element_data.Entry, "name") == element_data.NameId);
+        try testing.expect(@FieldType(element_data.Entry, "value") == element_data.ValueId);
+        // The list's header: its length and capacity, then the entries.
         try expectSize(element_data.AttributeList, 8);
     }
 }
@@ -174,7 +179,7 @@ const Page = struct {
         self.ctx.deinit();
     }
 
-    fn data(self: *Page, el: *runtime.Instance) !*const ElementData {
+    fn data(self: *Page, el: *runtime.Instance) !element_data.View {
         _ = self;
         return element_data.of(el) orelse error.NoElementData;
     }
@@ -398,21 +403,21 @@ test "known names share a static record; other names have their own; a named nam
         try interfaces.Element.call_setAttribute(page.div, str("data-x"), .{ .domstring = str("y") });
         try interfaces.Element.call_setAttributeNS(page.div, str(infra.namespaces.XLINK_NAMESPACE), str("xlink:href"), .{ .domstring = str("#a") });
         try interfaces.Element.call_setAttributeNS(page.div, str(infra.namespaces.XLINK_NAMESPACE), str("other:role"), .{ .domstring = str("r") });
-        try testing.expect(!data.storedAt(0).?.name.isOwned());
-        try testing.expect(!data.storedAt(1).?.name.isOwned());
-        try testing.expect(!data.storedAt(2).?.name.isOwned());
-        try testing.expect(data.storedAt(3).?.name.isOwned());
-        try testing.expect(!data.storedAt(4).?.name.isOwned());
+        try testing.expect(data.data.storedAt(0).?.name.isStatic());
+        try testing.expect(data.data.storedAt(1).?.name.isStatic());
+        try testing.expect(data.data.storedAt(2).?.name.isStatic());
+        try testing.expect(!data.data.storedAt(3).?.name.isStatic());
+        try testing.expect(data.data.storedAt(4).?.name.isStatic());
         // xlink:role is in the table; other:role is not, and keeps the
-        // static namespace string in its own record.
-        const other = data.storedAt(5).?.name;
-        try testing.expect(other.isOwned());
+        // static namespace string in its Browser's record.
+        const other = data.nameAt(5).?;
+        try testing.expect(!other.is_static);
         try testing.expect(other.namespace_uri.?.ptr == infra.namespaces.XLINK_NAMESPACE.ptr);
         // Two elements share the record of a known name.
         const span = try page.element("span");
         _ = try interfaces.Node.call_appendChild(page.div, span);
         try interfaces.Element.call_setAttribute(span, str("class"), .{ .domstring = str("b") });
-        try testing.expect((try page.data(span)).storedAt(0).?.name == data.storedAt(0).?.name);
+        try testing.expect((try page.data(span)).data.storedAt(0).?.name == data.data.storedAt(0).?.name);
         // A foreign element's namespace is static too.
         const svg = try interfaces.Document.call_createElementNS(page.document, str(infra.namespaces.SVG_NAMESPACE), str("svg"), .{ .was_passed = false, .value = undefined });
         _ = try interfaces.Node.call_appendChild(page.div, svg);
