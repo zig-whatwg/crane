@@ -15,12 +15,14 @@
 //! caches (interface.zig, `recordSameObjectEdge`).
 //!
 //! The edge needs the owner's wrapper to live as long as the owner. A Window's
-//! wrapper is its realm's global object - and that is where a Window's edges
-//! hang, never on its WindowProxy: a navigation hands the proxy to the next
-//! Window (createWindowRealm, `.window_proxy_of`), and a private property set
-//! through it lands on whichever global object it reaches now
-//! (LookupIterator::GetStoreTarget), where the old Window's edge in a slot
-//! would replace the new Window's.
+//! wrapper is its realm's global object, and a Window's edges hang from what
+//! that object keeps: the retained store its GlobalAnchor traces
+//! (realm_global.retainedStore; V8 >= 14 gives no handle to the global object
+//! itself, crbug.com/333672197) - never the WindowProxy: a navigation hands the
+//! proxy to the next Window (createWindowRealm, `.window_proxy_of`), and a
+//! private property set through it lands on whichever global object it
+//! reaches now (LookupIterator::GetStoreTarget), where the old Window's edge
+//! in a slot would replace the new Window's.
 //!
 //! An owner script has not seen yet gets no wrapper here (`holderOf`): its
 //! edges wait, the child held strongly, in its realm's wrapper cache, which
@@ -47,7 +49,7 @@ fn keyOf(buffer: []u8, slot: TracedSlot) ?[]const u8 {
 
 /// What an owner's edges hang from.
 const Holder = union(enum) {
-    /// A Window's global object, or an ordinary owner's wrapper: a Global
+    /// A Window's retained store, or an ordinary owner's wrapper: a Global
     /// the caller releases (v8_Global_Dispose).
     object: *ffi.Value,
     /// An owner script has not seen yet (no wrapper in its realm): its edges
@@ -62,11 +64,11 @@ const Holder = union(enum) {
 /// made here, before script has seen the owner, is what the collector would
 /// then free the owner with - a Zig-made event before its dispatch - and a
 /// constructor's `this`, cached only once the constructor returns, would
-/// replace it, edges and all. A Window's wrapper is its global object, which
-/// lives with its realm.
+/// replace it, edges and all. A Window's edges hang from its realm's retained
+/// store, which lives with its global object.
 fn holderOf(owner: *Instance) Holder {
     switch (protocol_realms.tracedEdgeHolderOfWindow(owner)) {
-        .global_object => |global| return .{ .object = global },
+        .retained_store => |store| return .{ .object = store },
         .gone => return .none,
         .not_a_realm_window => {},
     }
@@ -84,8 +86,8 @@ fn holderOf(owner: *Instance) Holder {
     return .{ .object = wrapper };
 }
 
-/// engine.traceChild: a private property on `owner`'s wrapper - its global
-/// object, for a Window - holding `child`'s wrapper, made in its relevant
+/// engine.traceChild: a private property on `owner`'s wrapper - its retained
+/// store, for a Window - holding `child`'s wrapper, made in its relevant
 /// realm if script has not seen it. An owner with no wrapper yet keeps the
 /// child strongly in its realm's wrapper cache until it gets one.
 pub fn traceChild(owner: *Instance, child: *Instance, slot: TracedSlot) void {
@@ -116,8 +118,8 @@ pub fn traceChild(owner: *Instance, child: *Instance, slot: TracedSlot) void {
     }
 }
 
-/// engine.traceValue: a private property on `owner`'s wrapper - its global
-/// object, for a Window - holding `value` (a platform object as its wrapper
+/// engine.traceValue: a private property on `owner`'s wrapper - its retained
+/// store, for a Window - holding `value` (a platform object as its wrapper
 /// in its relevant realm), in `traceChild`'s namespace. An owner with no
 /// wrapper yet keeps the value strongly in its realm's wrapper cache until it
 /// gets one, as `traceChild` does - and `tracedValue` reads it there.

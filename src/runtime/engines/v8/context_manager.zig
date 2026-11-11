@@ -107,6 +107,13 @@ pub const ContextEntry = struct {
     /// Set during createChildContext() for iframe contexts.
     window_instance: ?*runtime.Instance = null,
 
+    /// The realm global's GlobalAnchor (realm_global.attach; v8_wrapper.cpp
+    /// GlobalAnchor), as Zig's weak reference to it: cleared before the
+    /// realm's global instance is freed (removeContextByKey) and disposed
+    /// when the entry is retired. Null for a realm whose global was never
+    /// attached, and once retired.
+    global_anchor: ?*v8.GlobalAnchorRef = null,
+
     // The realm's document URL lives on its runtime context
     // (runtime_ctx.document_url): realm state, not engine state.
 
@@ -265,10 +272,9 @@ fn endRealms(state: *Realms, queue: ?*runtime.gc.DeferredTeardown) void {
         }
         var it = state.contexts.iterator();
         const kv = it.next().?;
-        const entry = kv.value_ptr.*;
-        // A context handle the entry does not own is its maker's, which may
-        // have let it go: the entry's Window is found without it.
-        removeContextByKey(kv.key_ptr.*, if (entry.owns_v8_ctx) entry.v8_ctx else null);
+        // Never through the context handle, which may be its maker's and
+        // let go: the entry knows its Window and its global's anchor.
+        removeContextByKey(kv.key_ptr.*);
     }
 
     // What the realms' ends left garbage - a node a platform object their
@@ -404,64 +410,6 @@ pub fn getOrCreateWithExternalEventLoop(
     return &entry.runtime_ctx;
 }
 
-/// Bind a Window instance to an existing context's global object.
-/// This enables `frames[0]` to work by:
-/// 1. Creating a Window runtime.Instance
-/// 2. Binding it to the V8 global object's internal fields
-/// 3. Storing the Window in the context entry for browsing context linking
-///
-/// Call this after getOrCreateWithExternalEventLoop() to enable cross-realm features.
-///
-/// Returns the created Window instance.
-pub fn bindWindowToContext(v8_ctx: *v8.Context, isolate: *v8.Isolate, allocator: std.mem.Allocator) !*runtime.Instance {
-    const state = currentRealms() orelse return error.NotInitialized;
-
-    // Get the raw V8 internal address as the key
-    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return error.InvalidContext;
-    const key = @intFromPtr(raw_addr);
-
-    // Get the context entry - must already exist from getOrCreateWithExternalEventLoop
-    const entry = state.contexts.get(key) orelse return error.ContextNotFound;
-
-    // Don't create another Window if one already exists
-    if (entry.window_instance) |existing| {
-        return existing;
-    }
-
-    // Create Window bound to global using the internal helper
-    const window_instance = try createWindowBoundToGlobal(
-        allocator,
-        &entry.runtime_ctx,
-        v8_ctx,
-        isolate,
-    );
-
-    // Store in the context entry for browsing context linking
-    entry.window_instance = window_instance;
-
-    // Create realm if it doesn't exist (e.g., context was created via getOrCreateWithExternalEventLoop)
-    // This is required for cross-realm support
-    if (entry.realm == null) {
-        const realm = try runtime.Realm.init(allocator, .{
-            .engine_realm = @ptrCast(v8_ctx),
-            .agent = @ptrCast(isolate),
-            .context_type = .window,
-            .global_object = window_instance, // Set directly since we have the Window
-        });
-        // Populate intrinsics for cross-realm support
-        _ = @import("realm_v8.zig").populateIntrinsics(realm);
-
-        // Store realm in entry and runtime context
-        entry.realm = realm;
-        entry.runtime_ctx.setRealm(realm);
-    } else {
-        // Realm already exists, just update global_object
-        entry.realm.?.setGlobalObject(window_instance);
-    }
-
-    return window_instance;
-}
-
 /// Get or create a runtime context for the given V8 context with full timer support
 ///
 /// If a runtime context already exists for this V8 context, returns it.
@@ -548,14 +496,14 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
     // Create realm for cross-realm support (only if we have an isolate)
     // Per WebIDL, every context has an associated realm with intrinsics
     // Note: global_object is set to null here and will be populated later by
-    // bindWindowToContext() when the Window instance is created
+    // the realm's creator (protocol_realms.createWindowRealm) when it binds its Window
     var realm: ?*runtime.Realm = null;
     if (isolate) |iso| {
         realm = try runtime.Realm.init(allocator, .{
             .engine_realm = @ptrCast(entry_ctx),
             .agent = @ptrCast(iso),
             .context_type = .window, // Main context is a window
-            .global_object = null, // Set by bindWindowToContext() after Window creation
+            .global_object = null, // Set by the realm's creator once it binds its global
         });
         errdefer if (realm) |r| r.deinit();
 
@@ -690,7 +638,7 @@ pub fn hydrateContextFromSnapshot(
 pub fn removeContext(v8_ctx: *v8.Context) void {
     // Use the raw V8 internal address as the key (must match getOrCreate*)
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return;
-    removeContextByKey(@intFromPtr(raw_addr), v8_ctx);
+    removeContextByKey(@intFromPtr(raw_addr));
 }
 
 /// The key `removeContextByKey` takes for `v8_ctx` - read while the context
@@ -714,10 +662,10 @@ fn deinitWindow(window: *runtime.Instance) void {
 }
 
 /// `removeContext` by the context's key (`keyOf`): the realm's Window, its
-/// wrapper cache and its realm record go, and the entry is retired. Touches
-/// the context only through `v8_ctx`, which may be null - a context the
-/// collector already took - when the entry knows its Window.
-pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
+/// wrapper cache and its realm record go, and the entry is retired. Never
+/// touches the context, which the collector may already have taken: the
+/// entry knows its Window and its global's anchor.
+pub fn removeContextByKey(key: usize) void {
     const state = currentRealms() orelse return;
     const raw_addr: ?*anyopaque = @ptrFromInt(key);
 
@@ -805,7 +753,14 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
             // HTMLIFrameElement instances are cleaned up when Node.deinit iterates children.
 
             // Clean up the Window and its DOM tree
-            const window_instance_dom = entry.window_instance orelse if (v8_ctx) |c| getWindowFromGlobalInternalField(c) else null;
+            // The realm's global instance is freed below (the Window here,
+            // a worker's global scope after the cache): its anchor lets go of
+            // it first, which severs the hidden global and WindowProperties.
+            if (entry.global_anchor) |ref| v8.v8_GlobalAnchor_Clear(ref);
+            // The Window its global was attached with - never field 0 of the
+            // context's Global(), which a navigation's reused proxy points at
+            // the NEXT realm's Window.
+            const window_instance_dom = entry.window_instance;
             if (window_instance_dom) |wi| {
                 // Remove Window from wrapper cache FIRST to prevent double-free
                 if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {
@@ -927,95 +882,6 @@ pub fn clearWrapperCaches() void {
 // ============================================================================
 // Child Context Management (Cross-Realm Support)
 // ============================================================================
-
-/// Create a Window instance bound to the V8 global object
-///
-/// This is the key function for cross-realm support. Instead of creating a
-/// separate V8 wrapper for the Window, we bind the Window instance directly
-/// to the V8 global object. This ensures that:
-///
-/// 1. `iframe.contentWindow` returns the V8 global (which has DOMRectReadOnly, etc.)
-/// 2. `iframe.contentWindow === iframe.contentWindow.window` is true
-/// 3. Cross-realm tests like `default-toJSON-cross-realm.html` work correctly
-///
-/// The binding works by:
-/// 1. Creating a Window runtime.Instance
-/// 2. Setting the V8 global's internal fields to point to the Window instance
-/// 3. Caching the V8 global as the wrapper for the Window instance
-fn createWindowBoundToGlobal(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    v8_ctx: *v8.Context,
-    isolate: *v8.Isolate,
-) !*runtime.Instance {
-    const interfaces = @import("interfaces");
-    const Window = interfaces.Window;
-    const WindowImpl = @import("impls").Window;
-    const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
-
-    // 1. Create Window instance
-    const window_instance = try Window.init(allocator, ctx);
-    errdefer Window.deinit(window_instance);
-
-    // 2. Get the V8 global object
-    const global = v8.v8_Context_Global(v8_ctx) orelse return error.GlobalNotFound;
-
-    // 3. Set the global's internal field, its only one, to our Window instance
-    v8.v8_Object_SetAlignedPointerInInternalField(
-        global,
-        0,
-        @ptrCast(window_instance),
-    );
-    // [wrap_tracking]: the global object reaches the Window from here.
-    runtime.instance_lifecycle.markWrapped(window_instance);
-
-    // 4. Store the V8 global in the Window's internal state
-    // This is the KEY change for cross-realm support:
-    // When instanceToV8 is called on this Window, it returns this global
-    // directly instead of creating a new wrapper. This makes
-    // `iframe.contentWindow.DOMRectReadOnly` work correctly.
-    WindowImpl.setBoundV8Global(window_instance, @ptrCast(global));
-
-    // 5. Set this Window as the active window of its browsing context
-    // Per HTML spec §7.4, every browsing context has an "active window" which is the
-    // Window object of its active document. This is required for frames[index] access
-    // to work, since WindowProxy [[GetOwnProperty]] calls getActiveWindow().
-    if (WindowImpl.getInternal(window_instance)) |internal| {
-        internal.browsing_context.setActiveWindow(@ptrCast(window_instance));
-    }
-
-    // 6. Also cache the V8 global as the wrapper for this Window instance
-    // This is for consistency with the wrapper cache system
-    if (ctx.getV8WrapperCacheStorage()) |cache_storage| {
-        const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-        _ = try cache.set(window_instance, global, isolate);
-    }
-
-    // 7. Set up Window-specific global properties (window, self, globalThis)
-    // Per HTML spec, browsers expose these properties on the global object:
-    // - 'window' references the global Window object
-    // - 'self' references the global object (works in both window and worker contexts)
-    // - 'globalThis' is the standard reference to the global object
-    const window_key = v8.v8_String_NewFromUtf8(isolate, "window", 6) orelse return error.StringCreationFailed;
-    defer v8.v8_String_Dispose(window_key);
-    _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(window_key), @ptrCast(global));
-
-    // `self` is [Replaceable]: its setter's one step is this [[DefineOwnProperty]]
-    // (writable, enumerable, configurable), so define it directly. A [[Set]]
-    // went through the script-facing setter, whose argument handle - here a
-    // handle to the WindowProxy - is never released, and a leaked handle to a
-    // frame's WindowProxy kept its realm, and through the realm's security
-    // token its parent page, alive after the frame was gone.
-    const self_key = v8.v8_String_NewFromUtf8(isolate, "self", 4) orelse return error.StringCreationFailed;
-    defer v8.v8_String_Dispose(self_key);
-    _ = v8.v8_Object_DefineProperty(global, v8_ctx, @ptrCast(self_key), @ptrCast(global), true, true, true);
-
-    const global_this_key = v8.v8_String_NewFromUtf8(isolate, "globalThis", 10) orelse return error.StringCreationFailed;
-    defer v8.v8_String_Dispose(global_this_key);
-    _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(global_this_key), @ptrCast(global));
-
-    return window_instance;
-}
 
 // ============================================================================
 // Window Indexed Property Handler for frames[index] access
@@ -1439,6 +1305,11 @@ fn retireEntry(state: *Realms, entry: *ContextEntry) void {
         v8.v8_Context_Dispose(entry.v8_ctx);
         entry.owns_v8_ctx = false;
     }
+    if (entry.global_anchor) |ref| {
+        v8.v8_GlobalAnchor_Clear(ref);
+        v8.v8_GlobalAnchor_Dispose(ref);
+        entry.global_anchor = null;
+    }
     entry.runtime_ctx.clearV8WrapperCacheStorage();
     entry.runtime_ctx.engine_ctx = null;
     entry.runtime_ctx.realm = null;
@@ -1559,6 +1430,34 @@ fn getWindowFromGlobalInternalField(v8_ctx: *v8.Context) ?*runtime.Instance {
     // deinits it as one.
     if (instance.stateAs(@import("interfaces").Window.State) == null) return null;
     return instance;
+}
+
+/// The GlobalAnchor reference of `v8_ctx`'s realm (ContextEntry.global_anchor),
+/// BORROWED; null when it has none or the context manager does not record it.
+pub fn globalAnchorOf(v8_ctx: *v8.Context) ?*v8.GlobalAnchorRef {
+    const state = currentRealms() orelse return null;
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
+    const entry = state.contexts.get(@intFromPtr(raw_addr)) orelse return null;
+    return entry.global_anchor;
+}
+
+/// Keep `ref` - the GlobalAnchor realm_global.attach just set on `v8_ctx`'s
+/// global - on the realm's entry, which owns it from now on. One the entry
+/// had (a second attach) is cleared and disposed; with no entry, nothing
+/// would dispose it, so it is disposed now (the anchor itself lives on with
+/// the global).
+pub fn adoptGlobalAnchor(v8_ctx: *v8.Context, ref: *v8.GlobalAnchorRef) void {
+    const entry: ?*ContextEntry = blk: {
+        const state = currentRealms() orelse break :blk null;
+        const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse break :blk null;
+        break :blk state.contexts.get(@intFromPtr(raw_addr));
+    };
+    const owner = entry orelse return v8.v8_GlobalAnchor_Dispose(ref);
+    if (owner.global_anchor) |previous| {
+        v8.v8_GlobalAnchor_Clear(previous);
+        v8.v8_GlobalAnchor_Dispose(previous);
+    }
+    owner.global_anchor = ref;
 }
 
 /// Get the V8EventLoop for a V8 context
@@ -1741,16 +1640,6 @@ pub const HydrationOptions = struct {
     network_manager: ?*anyopaque = null,
 };
 
-/// Hydration result containing created instances
-pub const WindowHydrationResult = struct {
-    /// Runtime context for the V8 context
-    runtime_ctx: runtime.Context,
-    /// Created Window instance
-    window_instance: *runtime.Instance,
-    /// Whether hydration succeeded
-    success: bool = true,
-};
-
 /// Hydration result for worker contexts
 pub const WorkerHydrationResult = struct {
     /// Runtime context for the V8 context
@@ -1758,140 +1647,6 @@ pub const WorkerHydrationResult = struct {
     /// Whether hydration succeeded
     success: bool = true,
 };
-
-/// Hydrate a V8 context as a Window context (from snapshot)
-///
-/// This function performs all post-snapshot hydration steps for Window contexts:
-/// 1. Populates Zig-side template registry (wrapInstanceAsV8Object support)
-/// 2. Reinstalls accessor callbacks on prototypes (stale after snapshot load)
-/// 3. Registers namespaces (console, WebAssembly, etc.)
-/// 4. Sets up Window prototype chain on global
-/// 5. Creates and binds Window instance to global object's internal fields
-/// 6. Registers Window with context manager for cross-realm support
-/// 7. Registers browser globals (document, navigator, location, etc.)
-/// 8. Attaches event loop for setTimeout/setInterval
-///
-/// ## Usage
-///
-/// ```zig
-/// const result = try context_manager.hydrateWindowContext(.{
-///     .isolate = isolate,
-///     .context = v8_ctx,
-///     .allocator = allocator,
-///     .timer_interface = event_loop.timerInterface(),
-///     .event_loop_interface = event_loop.eventLoop(),
-///     .namespaces_module = namespaces,
-/// });
-/// const window = result.window_instance;
-/// ```
-pub fn hydrateWindowContext(comptime namespaces_module: type, options: HydrationOptions) !WindowHydrationResult {
-    const interface_bindings = @import("interface_bindings.zig");
-    const interfaces = @import("interfaces");
-    const impls = @import("impls");
-    const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
-
-    const isolate = options.isolate;
-    const v8_ctx = options.context;
-    const allocator = options.allocator;
-
-    // 1. The context manager is the current agent's: nothing to make.
-
-    // 2. Register context with context manager for wrapper caching
-    const runtime_ctx = try getOrCreateWithExternalEventLoop(
-        v8_ctx,
-        options.timer_interface,
-        options.event_loop_interface,
-        allocator,
-    );
-
-    // 3. Set network manager on runtime context for async fetch()
-    if (options.network_manager) |nm| {
-        runtime_ctx.setNetworkManager(nm);
-    }
-
-    // 4. Populate Zig-side template registry AND reinstall constructors with fresh callbacks
-    interface_bindings.registerAllTemplatesOnly(isolate, v8_ctx, .eager);
-
-    // 5. Reinstall accessor callbacks after snapshot restore.
-    // NOTE: The optimization from whatwg-8oip3 that skipped this was WRONG.
-    // NEW ARCHITECTURE (whatwg-izjpz): On-demand template creation
-    // With minimal snapshot (only core interfaces), non-core interface templates are
-    // created fresh on-demand with all accessors correctly installed from the start.
-    // No reinstallation needed - eliminates the prototype identity bug.
-    log.debug("[HYDRATE-WINDOW] Using on-demand template architecture (no accessor reinstall needed)\n", .{});
-
-    // 6. Register namespaces (console, WebAssembly, etc.) - NOT in snapshot
-    interface_bindings.registerNamespacesGeneric(namespaces_module, isolate, v8_ctx);
-
-    // 7. Get the global object
-    const global = v8.v8_Context_Global(v8_ctx) orelse {
-        return error.NoGlobal;
-    };
-
-    // 8. Set up Window prototype chain: global → Window.prototype
-    const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6);
-    if (window_key) |wk| {
-        if (v8.v8_Object_Get(global, v8_ctx, @ptrCast(wk))) |window_ctor| {
-            const proto_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9);
-            if (proto_key) |pk| {
-                if (v8.v8_Object_Get(@ptrCast(window_ctor), v8_ctx, @ptrCast(pk))) |window_proto| {
-                    _ = v8.v8_Object_SetPrototypeV2(global, v8_ctx, window_proto);
-                }
-            }
-        }
-    }
-
-    // 9. Create Window instance
-    const Window = interfaces.Window;
-    const window_instance = try Window.init(allocator, runtime_ctx);
-    errdefer Window.deinit(window_instance);
-
-    // 10. Bind Window instance to the global object's internal field (its only one)
-    v8.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
-    // [wrap_tracking]: the global object reaches the Window from here.
-    runtime.instance_lifecycle.markWrapped(window_instance);
-
-    // 11. Bind V8 global to Window instance for cross-realm access
-    impls.Window.setBoundV8Global(window_instance, @ptrCast(global));
-
-    // 12. Register Window in wrapper cache
-    if (runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
-        const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
-        _ = try cache.set(window_instance, global, isolate);
-    }
-
-    // 13. Register Window with context manager (for getWindowForContext)
-    try setWindowForContext(v8_ctx, window_instance);
-
-    // 14. Register Window properties as own properties on global
-    interface_bindings.Window.registerPropertiesAsOwnOnObject(isolate, v8_ctx, global);
-
-    // 15. Register methods as own properties (Window's; EventTarget's are
-    //     inherited from EventTarget.prototype - see protocol_realms
-    //     bindWindowToGlobal)
-    interface_bindings.Window.registerMethodsAsOwnOnObject(isolate, v8_ctx, global);
-
-    // 16. Set self/window/frames as data properties equal to global
-    // This is critical for testharness.js compatibility: (function(global_scope){...})(self)
-    // requires that self === globalThis so that properties set on global_scope become
-    // accessible as global variables. The accessor approach returns a new handle each time
-    // which breaks object identity. Setting as data properties ensures self === globalThis.
-    if (v8.v8_String_NewFromUtf8(isolate, "self", 4)) |self_prop_key| {
-        _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(self_prop_key), @ptrCast(global));
-    }
-    if (v8.v8_String_NewFromUtf8(isolate, "window", 6)) |window_prop_key| {
-        _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(window_prop_key), @ptrCast(global));
-    }
-    if (v8.v8_String_NewFromUtf8(isolate, "frames", 6)) |frames_prop_key| {
-        _ = v8.v8_Object_Set(global, v8_ctx, @ptrCast(frames_prop_key), @ptrCast(global));
-    }
-
-    return WindowHydrationResult{
-        .runtime_ctx = runtime_ctx,
-        .window_instance = window_instance,
-        .success = true,
-    };
-}
 
 /// Hydrate a V8 context as a Worker context (from snapshot)
 ///

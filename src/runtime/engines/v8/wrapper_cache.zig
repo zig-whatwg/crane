@@ -749,13 +749,13 @@ fn syncEntry(entry: *CacheEntry) void {
 /// keeps what its cache would otherwise hold strongly.
 const retained_key = "crane:retained";
 
-/// Keep `value` by an edge from `holder`, a detached realm's global object
-/// (the hidden one, never its proxy). A no-op once the global is collected.
+/// Keep `value` by an edge from `holder`, a detached realm's retained store
+/// (which its global object keeps, never its proxy). A no-op once collected.
 pub fn retainOnGlobal(holder: *v8.Value, value: *v8.Value) void {
     v8.v8_Object_RetainInPrivateArray(holder, retained_key.ptr, retained_key.len, value);
 }
 
-/// The global object of `instance`'s realm once that realm is detached
+/// The retained store of `instance`'s realm once that realm is detached
 /// (`WrapperCache.detach`), BORROWED; null while it is attached, or with no
 /// cache. node_wrappers keeps a detached realm's kept nodes by it.
 pub fn detachedHolderOf(instance: *runtime.Instance) ?*v8.Value {
@@ -1270,9 +1270,9 @@ pub const WrapperCache = struct {
     /// 8,000 test() calls took 1.5 s instead of 0.3 s.
     prune_watermark: usize = small_deferred_map,
 
-    /// Its realm is detached (`detach`): the realm's global object - the
-    /// hidden one behind the global proxy - as a WEAK handle the cache owns,
-    /// empty once collected. Every wrapper that would be held strongly is
+    /// Its realm is detached (`detach`): the realm's retained store - which
+    /// its global object keeps through its GlobalAnchor - as a WEAK handle
+    /// the cache owns, empty once collected. Every wrapper that would be held strongly is
     /// kept by an edge from it instead (`syncEntry`).
     detached_holder: ?*v8.Value = null,
 
@@ -1471,10 +1471,12 @@ pub const WrapperCache = struct {
     /// navigable", "destroy a document"). A strong handle here would keep it
     /// forever, so each wrapper held strongly - a node in a tree, a window's
     /// Location, a streams object, pending activity - is kept from the
-    /// realm's global object instead, and so is each child waiting for its
-    /// owner's wrapper (`edges_before_wrap`). `global` is that global object
-    /// - the hidden one, never the proxy a navigation hands on - BORROWED:
-    /// the cache keeps a weak clone of it for the entries synced later.
+    /// realm's retained store instead, and so is each child waiting for its
+    /// owner's wrapper (`edges_before_wrap`). `global` is that store - which
+    /// the realm's global object keeps through its GlobalAnchor
+    /// (realm_global.retainedStore), never the proxy a navigation hands on -
+    /// BORROWED: the cache keeps a weak clone of it for the entries synced
+    /// later.
     pub fn detach(self: *Self, global: *v8.Value) void {
         if (self.detached_holder != null) return;
         const holder = v8.v8_Global_Clone(global) orelse return;
