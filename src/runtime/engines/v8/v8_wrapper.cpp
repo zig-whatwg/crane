@@ -898,19 +898,19 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
 static void WeakCallbackSecondPass(const WeakCallbackInfo<WeakCallbackData>& info) {
     WeakCallbackData* data = info.GetParameter();
     if (!data) return;
-    // RED (lane v8up b6): the finalizer still runs inside the second pass.
-    (void)&queueFinalizer;
-    if (data->handle) {
-        auto& pending = pendingFinalizers();
-        auto it = pending.find(static_cast<const void*>(data->handle));
-        if (it != pending.end() && it->second == data) pending.erase(it);
+    // Its owner cancelled it between the passes (`releaseWeakArm` cleared it
+    // and moved it to the detached set): V8 has handed it back, so it goes.
+    if (!data->finalize) {
+        {
+            std::lock_guard<std::mutex> guard(weakDataLock());
+            detachedWeakData().erase(data);
+        }
+        freeWeakData(data);
+        return;
     }
-    {
-        std::lock_guard<std::mutex> guard(weakDataLock());
-        detachedWeakData().erase(data);
-    }
-    if (data->finalize) data->finalize(data->user_data, 0);
-    freeWeakData(data);
+    // It stays in pendingFinalizers() under its handle until it runs, so its
+    // owner disposing the handle first still cancels it.
+    queueFinalizer(info.GetIsolate(), data);
 }
 
 // ============================================================================
@@ -3020,8 +3020,7 @@ extern "C" size_t v8_Debug_QueuedFinalizers(Isolate* isolate) {
 static void nodeWrapperSecondPass(const WeakCallbackInfo<void>& info) {
     IsolateData* record = isolateData(info.GetIsolate());
     // The parameter is the cell the first pass freed: not read.
-    // RED (lane v8up b6): the drain still runs inside the second pass.
-    if (record && record->node_wrappers && record->node_wrappers_drain) record->node_wrappers_drain(record->node_wrappers);
+    if (record) record->node_wrappers_collected = true;
 }
 
 /// V8's first pass for a collected node wrapper. "When first called, the
