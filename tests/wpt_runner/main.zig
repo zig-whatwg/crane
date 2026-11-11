@@ -182,6 +182,17 @@ pub const std_options: std.Options = .{
     .signal_stack_size = null,
 };
 
+/// The runner's own threads get the platform's alternate signal stack
+/// (signal_stack.zig reaches these through `@import("root")`, so the
+/// runner's std-only modules need no platform import).
+pub fn attachThreadSignalStack() usize {
+    return @import("platform").attachSignalStack().handle;
+}
+
+pub fn detachThreadSignalStack(handle: usize) void {
+    @import("platform").detachSignalStack(.{ .handle = handle });
+}
+
 fn wptLogFn(
     comptime level: std.log.Level,
     comptime scope: @TypeOf(.enum_literal),
