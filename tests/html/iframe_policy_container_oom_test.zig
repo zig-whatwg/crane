@@ -335,22 +335,68 @@ test "a new iframe's initial about:blank document never starts without its creat
 /// What the Browser holds of c_allocator: its live blocks and bytes. It sits
 /// under the FailingAllocator, so it counts only what was handed out; the
 /// Browser may allocate from more than one thread, hence the atomics.
+///
+/// It also records where each live block was allocated - a short stack, and
+/// the sweep round it was made in (`round`) - so that a leak names its sites
+/// (`printSites`). The record lives in c_allocator directly, behind a spin
+/// lock (the Browser's threads), and is not counted.
 const CountingAllocator = struct {
     live_count: std.atomic.Value(usize) = .init(0),
     live_bytes: std.atomic.Value(usize) = .init(0),
+    /// The round the test is in: each block records it.
+    round: std.atomic.Value(u32) = .init(0),
+    sites: std.AutoHashMapUnmanaged(usize, Site) = .empty,
+    sites_lock: std.atomic.Value(bool) = .init(false),
+    /// Each round's induced failure: the failing allocation's stack.
+    failures: std.AutoHashMapUnmanaged(u32, [site_frames]usize) = .empty,
+
+    /// Frames kept per block, from the caller of the allocator's interface.
+    const site_frames = 12;
+    const Site = struct { len: usize, round: u32, frames: [site_frames]usize };
 
     fn allocator(self: *CountingAllocator) std.mem.Allocator {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
+    fn deinit(self: *CountingAllocator) void {
+        self.sites.deinit(std.heap.c_allocator);
+        self.failures.deinit(std.heap.c_allocator);
+    }
+
+    /// The current round's failing allocation's stack, for `printSites`.
+    fn noteFailure(self: *CountingAllocator, trace: std.debug.StackTrace) void {
+        var frames: [site_frames]usize = @splat(0);
+        const n = @min(site_frames, trace.return_addresses.len);
+        @memcpy(frames[0..n], trace.return_addresses[0..n]);
+        self.failures.put(std.heap.c_allocator, self.round.load(.monotonic), frames) catch {};
+    }
+
     const vtable: std.mem.Allocator.VTable = .{ .alloc = alloc, .resize = resize, .remap = remap, .free = free };
     const backing = std.heap.c_allocator;
+
+    fn lockSites(self: *CountingAllocator) void {
+        while (self.sites_lock.cmpxchgWeak(false, true, .acquire, .monotonic) != null) std.atomic.spinLoopHint();
+    }
+
+    fn unlockSites(self: *CountingAllocator) void {
+        self.sites_lock.store(false, .release);
+    }
+
+    fn record(self: *CountingAllocator, address: usize, len: usize, ret_addr: usize) void {
+        var site: Site = .{ .len = len, .round = self.round.load(.monotonic), .frames = @splat(0) };
+        const trace = std.debug.captureCurrentStackTrace(.{ .first_address = ret_addr }, &site.frames);
+        if (trace.return_addresses.len == 0) site.frames[0] = ret_addr;
+        self.lockSites();
+        defer self.unlockSites();
+        self.sites.put(std.heap.c_allocator, address, site) catch {};
+    }
 
     fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
         const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
         const result = backing.rawAlloc(len, alignment, ret_addr) orelse return null;
         _ = self.live_count.fetchAdd(1, .monotonic);
         _ = self.live_bytes.fetchAdd(len, .monotonic);
+        self.record(@intFromPtr(result), len, ret_addr);
         return result;
     }
 
@@ -358,6 +404,9 @@ const CountingAllocator = struct {
         const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
         if (!backing.rawResize(memory, alignment, new_len, ret_addr)) return false;
         self.moved(memory.len, new_len);
+        self.lockSites();
+        defer self.unlockSites();
+        if (self.sites.getPtr(@intFromPtr(memory.ptr))) |site| site.len = new_len;
         return true;
     }
 
@@ -365,14 +414,112 @@ const CountingAllocator = struct {
         const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
         const result = backing.rawRemap(memory, alignment, new_len, ret_addr) orelse return null;
         self.moved(memory.len, new_len);
+        self.lockSites();
+        defer self.unlockSites();
+        if (self.sites.fetchRemove(@intFromPtr(memory.ptr))) |entry| {
+            var site = entry.value;
+            site.len = new_len;
+            self.sites.put(std.heap.c_allocator, @intFromPtr(result), site) catch {};
+        }
         return result;
     }
 
     fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
         const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        {
+            self.lockSites();
+            defer self.unlockSites();
+            _ = self.sites.remove(@intFromPtr(memory.ptr));
+        }
         backing.rawFree(memory, alignment, ret_addr);
         _ = self.live_count.fetchSub(1, .monotonic);
         _ = self.live_bytes.fetchSub(memory.len, .monotonic);
+    }
+
+    /// The kinds of block the queued traceChild wrap-failure leak leaves
+    /// (sweepContentWindow): an object handed to a traced edge whose wrapper
+    /// could not be made. Each is named by the impl file its allocation
+    /// stack passes through.
+    const known_leak_kinds = [_][]const u8{
+        "/impls/AbortController.zig:",
+        "/impls/NavigateEvent.zig:",
+        "/impls/NavigationDestination.zig:",
+        "/impls/Performance.zig:",
+    };
+
+    /// Whether a block allocated at `frames` is of a known leak kind: its
+    /// stack, symbolized, passes through one of `known_leak_kinds`.
+    fn isKnownLeak(frames: [site_frames]usize) bool {
+        var len: usize = 0;
+        while (len < site_frames and frames[len] != 0) len += 1;
+        var addresses = frames;
+        var buffer: [16 * 1024]u8 = undefined;
+        var writer: std.Io.Writer = .fixed(&buffer);
+        std.debug.writeStackTrace(&.{ .return_addresses = addresses[0..len], .skipped = .none }, .{ .writer = &writer, .mode = .no_color }) catch {};
+        const text = writer.buffered();
+        for (known_leak_kinds) |kind| {
+            if (std.mem.indexOf(u8, text, kind) != null) return true;
+        }
+        return false;
+    }
+
+    const Summary = struct { known: usize = 0, unknown: usize = 0 };
+
+    /// Print the live blocks' allocation sites (every round's, or only
+    /// `only_round`'s), grouped by stack, the most blocks first: each
+    /// group's count, bytes and rounds, then its stack (the first `max`
+    /// groups; with `classify`, every group of an unknown kind). With
+    /// `classify`, also count the blocks of a known leak kind and the rest.
+    fn printSites(self: *CountingAllocator, only_round: ?u32, max: usize, classify: bool) Summary {
+        var summary: Summary = .{};
+        const Group = struct { frames: [site_frames]usize, count: usize, bytes: usize, first_round: u32, last_round: u32 };
+        var groups: std.AutoHashMapUnmanaged([site_frames]usize, Group) = .empty;
+        defer groups.deinit(std.heap.c_allocator);
+        {
+            self.lockSites();
+            defer self.unlockSites();
+            var it = self.sites.valueIterator();
+            while (it.next()) |site| {
+                if (only_round) |r| if (site.round != r) continue;
+                const entry = groups.getOrPut(std.heap.c_allocator, site.frames) catch return summary;
+                if (!entry.found_existing) entry.value_ptr.* = .{ .frames = site.frames, .count = 0, .bytes = 0, .first_round = site.round, .last_round = site.round };
+                entry.value_ptr.count += 1;
+                entry.value_ptr.bytes += site.len;
+                entry.value_ptr.first_round = @min(entry.value_ptr.first_round, site.round);
+                entry.value_ptr.last_round = @max(entry.value_ptr.last_round, site.round);
+            }
+        }
+        var list: std.ArrayListUnmanaged(Group) = .empty;
+        defer list.deinit(std.heap.c_allocator);
+        var it = groups.valueIterator();
+        while (it.next()) |group| list.append(std.heap.c_allocator, group.*) catch return summary;
+        std.mem.sort(Group, list.items, {}, struct {
+            fn more(_: void, a: Group, b: Group) bool {
+                return if (a.count != b.count) a.count > b.count else a.bytes > b.bytes;
+            }
+        }.more);
+        std.debug.print("live blocks by allocation site ({d} sites):\n", .{list.items.len});
+        for (list.items, 0..) |group, i| {
+            const known = classify and isKnownLeak(group.frames);
+            if (classify) {
+                if (known) summary.known += group.count else summary.unknown += group.count;
+            }
+            if (i >= max and (!classify or known)) continue;
+            std.debug.print("site {d}: {d} blocks, {d} bytes, rounds {d}-{d}{s}\n", .{ i, group.count, group.bytes, group.first_round, group.last_round, if (!classify) "" else if (known) " (known: the traceChild wrap-failure leak)" else " (NOT a known leak kind)" });
+            var len: usize = 0;
+            while (len < site_frames and group.frames[len] != 0) len += 1;
+            var frames = group.frames;
+            std.debug.dumpStackTrace(&.{ .return_addresses = frames[0..len], .skipped = .none });
+            // Where round `first_round`'s allocation failed.
+            if (self.failures.get(group.first_round)) |failed| {
+                var failed_frames = failed;
+                var failed_len: usize = 0;
+                while (failed_len < site_frames and failed_frames[failed_len] != 0) failed_len += 1;
+                std.debug.print("site {d}: round {d}'s allocation failed at:\n", .{ i, group.first_round });
+                std.debug.dumpStackTrace(&.{ .return_addresses = failed_frames[0..failed_len], .skipped = .none });
+            }
+        }
+        return summary;
     }
 
     fn moved(self: *CountingAllocator, old_len: usize, new_len: usize) void {
@@ -402,25 +549,48 @@ const CountingAllocator = struct {
 /// the frame's new document stays. All of it is the Browser's until
 /// Browser.deinit. So every block the Browser took from c_allocator during
 /// the whole sweep is back when it is torn down: live count and bytes equal
-/// their values before Browser.init (zero).
+/// their values before Browser.init (zero) - but for one known, queued leak.
+///
+/// Lane v8up b3h named the 24 blocks (chat2; 26 on server1) left after the
+/// teardown with the allocation sites CountingAllocator records:
+/// - 10 (13 on server1) were LocationImpl.init's: a failed URL parse left its
+///   internal state and URL record (a new Window's Location, made under
+///   attachRealm). Fixed there with errdefers
+///   (tests/html/v8up_location_init_oom_test.zig).
+/// - The rest, 14 on chat2 and 13 on server1, are the TRACECHILD
+///   WRAP-FAILURE LEAK, queued (lane-v8up-handoff.md, "QUEUE ENTRY:
+///   traceChild drops a child whose wrap failed"; feature queue; lane wrap1).
+///   engine.traceChild wraps the child in its relevant realm, and WrapperCache.set's
+///   CacheEntry allocation fails (under protocol_tracing.traceChild ->
+///   support.relevantWrapper -> wrapInstanceAsV8Object). traceChild then
+///   returns with no edge and the child unwrapped, while its owner has handed it to the
+///   edge: nothing frees it. Four kinds of block, by the impl their
+///   allocation passes through: AbortController and NavigateEvent
+///   (Navigation's innerFire), NavigationDestination (makeDestination) and
+///   Performance (Window.settingsPerformance).
+/// So after the teardown every live block must be one of those kinds, and
+/// at most `known_leak_allowance` of them: a block from any other site
+/// fails the test with its stack (error.BrowserLeftMemory). The allowance is
+/// deleted when the queue entry is fixed, and this check is zero again.
 fn sweepContentWindow(rounds: usize) !void {
     var counting: CountingAllocator = .{};
+    defer counting.deinit();
     const start = counting.live();
     try sweepContentWindowOn(&counting, rounds);
     const end = counting.live();
-    if (end.count != start.count or end.bytes != start.bytes) {
-        std.debug.print("the sweep's Browser, torn down, still holds {d} blocks ({d} bytes) of c_allocator; it held {d} ({d}) before Browser.init\n", .{ end.count, end.bytes, start.count, start.bytes });
-        // SKIPPED, with a reason, until it is fixed. Every check of every
-        // round has passed by now. This one is open, and it is a RED: lane
-        // v8up b3g measured 24 blocks (3,852 bytes) on chat2 and 26 (4,468)
-        // on server1 left after Browser.deinit. Out-of-memory rounds of the
-        // navigation leak them somewhere not yet named. The next batch
-        // records their allocation sites, frees them, and turns this back
-        // into error.BrowserLeftMemory (lane-v8up-handoff.md,
-        // "b3h STARTS WITH").
-        return error.SkipZigTest;
-    }
+    if (end.count == start.count and end.bytes == start.bytes) return;
+    std.debug.print("the sweep's Browser, torn down, still holds {d} blocks ({d} bytes) of c_allocator; it held {d} ({d}) before Browser.init\n", .{ end.count, end.bytes, start.count, start.bytes });
+    const summary = counting.printSites(null, 16, true);
+    std.debug.print("of them: {d} blocks of the known traceChild wrap-failure leak (allowed: {d}), {d} of no known kind\n", .{ summary.known, known_leak_allowance, summary.unknown });
+    if (summary.unknown > 0 or summary.known > known_leak_allowance) return error.BrowserLeftMemory;
 }
+
+/// What the queued traceChild wrap-failure leak may leave after
+/// Browser.deinit (sweepContentWindow): the larger of the two hosts'
+/// measurements, with no margin, so the known debt can only go down -
+/// 14 on chat2 (macOS) and 13 on server1 (Linux), lane v8up b3h, after
+/// LocationImpl.init's errdefers. Deleted with the queue entry's fix.
+const known_leak_allowance: usize = 14;
 
 fn sweepContentWindowOn(counting: *CountingAllocator, rounds: usize) !void {
     var failing = std.testing.FailingAllocator.init(counting.allocator(), .{});
@@ -449,13 +619,23 @@ fn sweepContentWindowOn(counting: *CountingAllocator, rounds: usize) !void {
     // sweep). Measured by lane v8up: at most 59 blocks, at failing
     // allocation 121, on chat2 and on server1, before and after
     // settleRealmReplacement. The bound is twice that, so runaway growth
-    // fails with its round's number.
+    // fails with its round's number. What those 59 are (b3h, by allocation
+    // site): the navigation the round left in flight - its navigate record
+    // (2,328 bytes), the three policy container clones a navigation makes
+    // (the source snapshot's, "navigate" step 4; the navigation params',
+    // "determine navigation params policy container"; the history entry's),
+    // each with its CSP list's policies, the history step record
+    // (apply_history_step), and the navigate event's destination. The next
+    // round's navigation replaces that one and frees them all: at the
+    // sweep's end one block of the round is live, the round's srcdoc value
+    // in the attribute value table, which Browser.deinit frees.
     const round_growth_bound: usize = 2 * 59;
     var committed: usize = 0;
     const history_start = try historyLength(page, realm);
     var proxy_handed_on: usize = 0;
     var abandoned: usize = 0;
     while (round < rounds) : (round += 1) {
+        counting.round.store(@intCast(round + 1), .monotonic);
         // "Allowed to perform a navigation" (200 per 10 s) would stop the
         // sweep's navigations partway (lane nav1): not this test's.
         bc.navigation_rate_count = 0;
@@ -469,6 +649,7 @@ fn sweepContentWindowOn(counting: *CountingAllocator, rounds: usize) !void {
         page.runScript(Navigation.srcdoc.script()) catch {};
         _ = browser.runEventLoopBlocking(50) catch {};
         const induced = failing.has_induced_failure;
+        if (induced) counting.noteFailure(failing.getStackTrace());
         // Read with memory out still: the frame's document, through the browsing context's active window.
         const shown_after = frameDocumentStamp(iframe);
         // Still out of memory: what the frame answers now - a Window, never
@@ -571,6 +752,7 @@ fn sweepContentWindowOn(counting: *CountingAllocator, rounds: usize) !void {
     if (abandoned == 0) return error.NoRoundStoppedBeforeTheDocument;
     std.log.info("rounds whose new realm failed: {d}, of which stopped before the document: {d}", .{ replacements_failed, abandoned });
     // And after the whole sweep, the frame still navigates.
+    counting.round.store(9000, .monotonic);
     try navigatesWithMemoryToSpare(browser, page, iframe, bc);
     committed += 1;
     // Every navigation that committed replaced the frame's session history
