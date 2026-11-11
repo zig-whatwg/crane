@@ -102,8 +102,12 @@ pub const ValueId = enum(u32) {
         return @fromBackingInt(@intCast(flags | stamp | (slot_index + 1)));
     }
 
+    /// Its slot: the low bits less one. Subtracting before masking never
+    /// borrows from the flags or the generation (slot + 1 is at least 1 and
+    /// fits the index bits), and a caller that has ruled out .empty needs no
+    /// underflow check.
     fn slot(self: ValueId) u32 {
-        return (@backingInt(self) & index_mask) - 1;
+        return (@backingInt(self) - 1) & index_mask;
     }
 
     fn generation(self: ValueId) u8 {
@@ -290,7 +294,10 @@ const KeyAdapter = struct {
     pub fn hash(_: KeyAdapter, key: BytesKey) u64 {
         return key.hash;
     }
-    pub fn eql(adapter: KeyAdapter, key: BytesKey, slot: u32) bool {
+    /// Inline: run on every probed slot of every attribute write; out of
+    /// line it cost a call, a frame and two reloads a probe (the cost pair,
+    /// 2026-11-11).
+    pub inline fn eql(adapter: KeyAdapter, key: BytesKey, slot: u32) bool {
         const value = adapter.ids.get(slot);
         return value.len() == key.bytes.len and std.mem.eql(u8, value.bytes(), key.bytes);
     }
@@ -844,7 +851,11 @@ pub fn intern(scope: *runtime.BrowserScope, bytes: []const u8) error{OutOfMemory
     if (bytes.len == 0) return .empty;
     element_name.checkOwnerThread(scope);
     const table = try scope.table(.attribute_values, Table);
-    return table.intern(bytes);
+    // Inlined: this is every attribute write's call. Batch 3's class reads
+    // gave Table.intern three more callers and the compiler stopped inlining
+    // it here, so each write paid a second frame and stack check (~35
+    // instructions; the cost pair's setter row, 2026-11-11).
+    return @call(.always_inline, Table.intern, .{ table, bytes });
 }
 
 /// One more reference to `id` in `scope`'s table.
