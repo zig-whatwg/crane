@@ -360,11 +360,8 @@ fn corresponds(hit: *const MatchedPropertiesCache.Correspondence, lookup: Lookup
 /// the cascade computes under `parent`: what the cascade reads of a parent.
 fn parentCorresponds(cached: *const ComputedStyle, parent: *const ComputedStyle, non_inherited: bool) bool {
     // CSS Variables 1: var() and inherited registered properties read the
-    // parent's record - the same values, as Blink's
-    // InheritedEqualIncludingInheritedVariables compares them (WebKit's find
-    // asks for the same record: a page whose elements each declare the same
-    // custom properties would miss on every child).
-    if (!customEqual(cached.custom, parent.custom)) return false;
+    // parent's record (WebKit find: the same inheritedCustomProperties).
+    if (cached.custom != parent.custom) return false;
     // adjust() and the base-appearance bit (Blink IsCacheCompatible, WebKit
     // inBaseAppearanceSubtree).
     if (cached.in_base_appearance != parent.in_base_appearance or cached.box_context != parent.box_context) return false;
@@ -374,29 +371,9 @@ fn parentCorresponds(cached: *const ComputedStyle, parent: *const ComputedStyle,
     if (!css.computed_style.identical(cached.get(.justify_items), parent.get(.justify_items))) return false;
     if (!cached.inheritedEqual(parent)) return false;
     if (non_inherited) {
-        if (!customEqual(cached.custom_own, parent.custom_own) or !cached.nonInheritedEqual(parent)) return false;
+        if (cached.custom_own != parent.custom_own or !cached.nonInheritedEqual(parent)) return false;
     }
     return true;
-}
-
-/// Two custom property records no reader can tell apart: the same record,
-/// or records whose own entries are equal name by name and value by value
-/// (Text.eql: bytes and taint) over equal parents. Structural: two records
-/// with equal values but differently shaped chains compare unequal, which
-/// only costs a miss.
-fn customEqual(a: ?*const css.custom_properties.CustomProperties, b: ?*const css.custom_properties.CustomProperties) bool {
-    if (a == b) return true;
-    const x = a orelse return false;
-    const y = b orelse return false;
-    if (x.entries.len != y.entries.len) return false;
-    for (x.entries, y.entries) |p, q| {
-        if (!p.name.eql(q.name)) return false;
-        if (p.value == q.value) continue;
-        const pv = p.value orelse return false;
-        const qv = q.value orelse return false;
-        if (!pv.eql(qv)) return false;
-    }
-    return customEqual(x.parent, y.parent);
 }
 
 /// What tells a hit's style from the cascade it stood for.
