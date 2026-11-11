@@ -679,7 +679,7 @@ static void releaseWeakArm(Global<T>* global, WeakArmEnd end = WeakArmEnd::handl
 
     if (global->IsWeak()) {
         armed.erase(it);
-        global->ClearWeak();
+        global->template ClearWeak<void>();
         clearHandleFlag(static_cast<const void*>(global), kArmedFlag);
         freeWeakData(data);
         return;
@@ -1881,8 +1881,8 @@ static void zigReactionTrampoline(const FunctionCallbackInfo<Value>& info, bool 
     Isolate* isolate = info.GetIsolate();
     HandleScope scope(isolate);
     Local<Context> ctx = isolate->GetCurrentContext();
-    if (!info.Data()->IsArray()) return;
-    Local<Array> holder = info.Data().As<Array>();
+    if (!info.DataV2().As<Value>()->IsArray()) return;
+    Local<Array> holder = info.DataV2().As<Value>().As<Array>();
     Local<Value> data_slot;
     Local<Value> callback_slot;
     if (!holder->Get(ctx, kReactionData).ToLocal(&data_slot) || !data_slot->IsExternal()) return;
@@ -3987,7 +3987,12 @@ void v8_Context_DetachGlobal(Global<Context>* context) {
 /// @return int - Result from V8 (number of disposed contexts in queue)
 int v8_Isolate_ContextDisposedNotification(Isolate* isolate, bool force_gc) {
     if (!isolate) return 0;
-    return isolate->ContextDisposedNotification(force_gc);
+    // V8 >= 14: the bool overload (deprecated) was `dependant_context` - true
+    // meant kSomeDependants, which is what Crane passed as `force_gc` (15.7
+    // api.cc: the enum overload calls the bool one with
+    // `dependants == kSomeDependants`); its count was never read.
+    isolate->ContextDisposedNotification(force_gc ? ContextDependants::kSomeDependants : ContextDependants::kNoDependants);
+    return 0;
 }
 
 Global<Object>* v8_Context_Global(Global<Context>* context) {
@@ -6304,7 +6309,7 @@ Global<Context>* v8_Object_GetCreationContext(Global<Object>* obj) {
     HandleScope handle_scope(isolate);
     Local<Object> local_obj = obj->Get(isolate);
     
-    MaybeLocal<Context> maybe_ctx = local_obj->GetCreationContext();
+    MaybeLocal<Context> maybe_ctx = local_obj->GetCreationContext(isolate);
     if (maybe_ctx.IsEmpty()) {
         return nullptr;
     }
@@ -6483,7 +6488,7 @@ Global<Context>* v8_Object_GetPrototypeCreationContext(Global<Object>* obj) {
     Local<Object> proto = proto_val.As<Object>();
     
     // Get the prototype's creation context
-    MaybeLocal<Context> maybe_ctx = proto->GetCreationContext();
+    MaybeLocal<Context> maybe_ctx = proto->GetCreationContext(isolate);
     if (maybe_ctx.IsEmpty()) {
         return nullptr;
     }
@@ -7168,7 +7173,7 @@ bool v8_FunctionCallbackInfo_IsConstructCall(const FunctionCallbackInfo<Value>* 
 Global<Value>* v8_FunctionCallbackInfo_Data(const FunctionCallbackInfo<Value>* info) {
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
-    Local<Value> data = info->Data();
+    Local<Value> data = info->DataV2().As<Value>();
     return trackHandle(new Global<Value>(isolate, data));
 }
 
@@ -7314,7 +7319,7 @@ Global<Context>* v8_Function_GetCreationContext(Global<Function>* func) {
     HandleScope handle_scope(isolate);
     Local<Function> local_func = func->Get(isolate);
     
-    MaybeLocal<Context> maybe_ctx = local_func->GetCreationContext();
+    MaybeLocal<Context> maybe_ctx = local_func->GetCreationContext(isolate);
     if (maybe_ctx.IsEmpty()) {
         return nullptr;
     }
@@ -7743,7 +7748,7 @@ void v8_ObjectTemplate_SetNamedPropertyHandlerWithDefiner(
 // ObjectTemplate - set indexed property handler (for array-like access: obj[0], obj[1], etc.)
 void v8_ObjectTemplate_SetIndexedPropertyHandler(
     Global<ObjectTemplate>* tpl,
-    IndexedPropertyGetterCallbackV2 getter
+    IndexedPropertyGetterCallback getter
 ) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -7768,7 +7773,7 @@ using IndexedPropertyEnumeratorCallbackV2 = void (*)(const PropertyCallbackInfo<
 // ObjectTemplate - set indexed property handler with enumerator (for array-like access with Reflect.ownKeys support)
 void v8_ObjectTemplate_SetIndexedPropertyHandlerWithEnumerator(
     Global<ObjectTemplate>* tpl,
-    IndexedPropertyGetterCallbackV2 getter,
+    IndexedPropertyGetterCallback getter,
     IndexedPropertyEnumeratorCallbackV2 enumerator
 ) {
     Isolate* isolate = Isolate::GetCurrent();
@@ -7802,7 +7807,7 @@ typedef Intercepted (*InterceptedIndexedSetterCallbackFull)(
 
 void v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
     Global<ObjectTemplate>* tpl,
-    IndexedPropertyGetterCallbackV2 getter,
+    IndexedPropertyGetterCallback getter,
     InterceptedIndexedSetterCallbackFull setter,
     InterceptedIndexedQueryCallback query,
     IndexedPropertyEnumeratorCallbackV2 enumerator,
@@ -7844,10 +7849,10 @@ typedef Intercepted (*InterceptedIndexedSetterCallback)(
 // This enables proper [[DefineOwnProperty]] handling per WebIDL spec
 void v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
     Global<ObjectTemplate>* tpl,
-    IndexedPropertyGetterCallbackV2 getter,
+    IndexedPropertyGetterCallback getter,
     InterceptedIndexedSetterCallback setter,
     InterceptedIndexedQueryCallback query,
-    IndexedPropertyDeleterCallbackV2 deleter,
+    IndexedPropertyDeleterCallback deleter,
     IndexedPropertyEnumeratorCallbackV2 enumerator,
     InterceptedIndexedDefinerCallback definer,
     InterceptedIndexedDescriptorCallback descriptor
@@ -9011,7 +9016,7 @@ Global<Function>* v8_PromiseResolver_CreateResolveHandler(
         HandleScope scope(isolate);
         
         // Extract resolver from data
-        Local<External> external = Local<External>::Cast(info.Data());
+        Local<External> external = Local<External>::Cast(info.DataV2().As<Value>());
         auto* resolver = static_cast<Global<Promise::Resolver>*>(external->Value(kCraneExternalTag));
         
         // Get value argument (or undefined if no args)
@@ -9060,7 +9065,7 @@ Global<Function>* v8_PromiseResolver_CreateRejectHandler(
         HandleScope scope(isolate);
         
         // Extract resolver from data
-        Local<External> external = Local<External>::Cast(info.Data());
+        Local<External> external = Local<External>::Cast(info.DataV2().As<Value>());
         auto* resolver = static_cast<Global<Promise::Resolver>*>(external->Value(kCraneExternalTag));
         
         // Get reason argument (or undefined if no args)
@@ -9145,7 +9150,7 @@ Global<Function>* v8_CreateZigFulfillHandler(
         HandleScope scope(isolate);
         
         // Extract callback data
-        Local<External> external = Local<External>::Cast(info.Data());
+        Local<External> external = Local<External>::Cast(info.DataV2().As<Value>());
         auto* data = static_cast<ZigPromiseCallbackData*>(external->Value(kCraneExternalTag));
         
         if (data && data->fulfill_callback) {
@@ -9216,7 +9221,7 @@ Global<Function>* v8_CreateZigRejectHandler(
         HandleScope scope(isolate);
         
         // Extract callback data
-        Local<External> external = Local<External>::Cast(info.Data());
+        Local<External> external = Local<External>::Cast(info.DataV2().As<Value>());
         auto* data = static_cast<ZigPromiseCallbackData*>(external->Value(kCraneExternalTag));
         
         if (data && data->reject_callback) {
@@ -9830,7 +9835,7 @@ static void AsyncIteratorNextCallback(const FunctionCallbackInfo<Value>& info) {
     HandleScope handle_scope(isolate);
     
     // Extract iterator data from function's data (passed via External)
-    Local<Value> data_value = info.Data();
+    Local<Value> data_value = info.DataV2().As<Value>();
     if (!data_value->IsExternal()) {
         isolate->ThrowException(Exception::TypeError(
             String::NewFromUtf8Literal(isolate, "Invalid async iterator callback data")
@@ -9881,7 +9886,7 @@ static void AsyncIteratorReturnCallback(const FunctionCallbackInfo<Value>& info)
     HandleScope handle_scope(isolate);
     
     // Extract iterator data from function's data (passed via External)
-    Local<Value> data_value = info.Data();
+    Local<Value> data_value = info.DataV2().As<Value>();
     if (!data_value->IsExternal()) {
         isolate->ThrowException(Exception::TypeError(
             String::NewFromUtf8Literal(isolate, "Invalid async iterator callback data")
@@ -11694,7 +11699,7 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
     // Whether O implements an interface with a named property setter: the
     // trap's data, set when the proxy is made from the interface's
     // Meta.special_operations (template_registry.hasNamedPropertySetter).
-    const bool has_named_setter = info.Data()->IsTrue();
+    const bool has_named_setter = info.DataV2().As<Value>()->IsTrue();
     const bool via_own_setters = receiver_is_o &&
         (is_index || (property->IsString() && has_named_setter));
 
@@ -13621,7 +13626,7 @@ int v8_Module_EvaluateForProtocol(Global<Context>* context, Global<Module>* modu
 static void ProtocolDynamicImportFulfilled(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     Local<Context> context = isolate->GetCurrentContext();
-    Local<Array> data = info.Data().As<Array>();
+    Local<Array> data = info.DataV2().As<Value>().As<Array>();
     Local<Value> resolver, ns;
     if (!data->Get(context, 0).ToLocal(&resolver) || !data->Get(context, 1).ToLocal(&ns)) return;
     (void)resolver.As<Promise::Resolver>()->Resolve(context, ns);
@@ -13630,7 +13635,7 @@ static void ProtocolDynamicImportFulfilled(const FunctionCallbackInfo<Value>& in
 static void ProtocolDynamicImportRejected(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     Local<Context> context = isolate->GetCurrentContext();
-    Local<Array> data = info.Data().As<Array>();
+    Local<Array> data = info.DataV2().As<Value>().As<Array>();
     Local<Value> resolver;
     if (!data->Get(context, 0).ToLocal(&resolver)) return;
     (void)resolver.As<Promise::Resolver>()->Reject(context, info[0]);
@@ -13802,7 +13807,7 @@ static void ProtocolImportMetaResolve(const FunctionCallbackInfo<Value>& info) {
     if (!argument->ToString(context).ToLocal(&specifier)) return;
     // Step 4.2: resolve a module specifier given moduleScript and specifier.
     auto dispatch = g_protocol_import_meta_resolve.load(std::memory_order_acquire);
-    String::Utf8Value base_utf8(isolate, info.Data());
+    String::Utf8Value base_utf8(isolate, info.DataV2().As<Value>());
     String::Utf8Value specifier_utf8(isolate, specifier);
     Global<Context> realm(isolate, context);
     size_t len = 0;
@@ -14817,7 +14822,7 @@ static bool wasmCaptureExceptionStack(Local<Context> context, Local<Object> exce
 static void WasmExceptionStackGet(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     Local<Context> context = isolate->GetCurrentContext();
-    Local<Array> brand = info.Data().As<Array>();
+    Local<Array> brand = info.DataV2().As<Value>().As<Array>();
     Local<Value> is_exception, tag, ignored, stack;
     if (!brand->Get(context, 0).ToLocal(&is_exception) || !brand->Get(context, 1).ToLocal(&tag)) return;
     // The captured native is() performs the real internal-slot brand check.
@@ -14866,7 +14871,7 @@ static void WasmConstructorConstruct(const FunctionCallbackInfo<Value>& info) {
     Local<Function> original = info[0].As<Function>();
     Local<Array> arguments = info[1].As<Array>();
     Local<Object> new_target = info[2].As<Object>();
-    const uint32_t index = info.Data().As<Uint32>()->Value();
+    const uint32_t index = info.DataV2().As<Value>().As<Uint32>()->Value();
 
     // WebIDL "internally create a new object" steps 3.2-3.3: exactly one
     // Get, before any descriptor conversion; primitive values select the
@@ -14943,7 +14948,7 @@ static void WasmGlobalValueSet(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     Local<Value> argument = info[0];
     Local<Value> result;
-    if (!info.Data().As<Function>()->Call(isolate->GetCurrentContext(), info.This(), 1, &argument).ToLocal(&result)) return;
+    if (!info.DataV2().As<Value>().As<Function>()->Call(isolate->GetCurrentContext(), info.This(), 1, &argument).ToLocal(&result)) return;
     info.GetReturnValue().Set(result);
 }
 
@@ -15001,7 +15006,7 @@ static void WasmSuspendingConstruct(const FunctionCallbackInfo<Value>& info) {
     }
     if (!args.empty() && args[0]->IsFunction() && !args[0].As<Function>()->GetScriptOrigin().Options().IsWasm()) {
         Local<Proxy> callable;
-        if (!Proxy::New(context, args[0].As<Object>(), info.Data().As<Object>()).ToLocal(&callable)) return;
+        if (!Proxy::New(context, args[0].As<Object>(), info.DataV2().As<Value>().As<Object>()).ToLocal(&callable)) return;
         args[0] = callable;
     }
     // V8 13.1.203 wasm-js.cc:2393-2397 rejects native wasm exports here.
@@ -15139,7 +15144,7 @@ static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparat
     // Slots 10/11 also serve a cloned Module/Memory's lazy constructor. They
     // must not consult the mutable namespace after initialization.
     Local<Value> intrinsic_values[] = {prototypes[0], prototypes[1], prototypes[2], prototypes[3], prototypes[4], promise_constructor, promise_resolve, prototypes[5], descriptor_factory,
-        Integer::New(isolate, fast_script->GetUnboundScript()->GetId()), replacements[0], replacements[2]};
+        Integer::New(isolate, fast_script->GetUnboundScript()->ScriptId()), replacements[0], replacements[2]};
     Local<Array> intrinsics = Array::New(isolate, intrinsic_values, 12);
     if (!intrinsics->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
     if (!context->Global()->SetPrivate(context, wasmIntrinsicPrototypesKey(isolate), intrinsics).FromMaybe(false)) return false;
@@ -15237,7 +15242,7 @@ static bool ensureWasmAdapters(Local<Context> context) {
 
 static void WasmNamespaceGet(Local<Name>, const PropertyCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
-    Local<Array> preparation = info.Data().As<Array>();
+    Local<Array> preparation = info.DataV2().As<Value>().As<Array>();
     Local<Context> context;
     // A different realm (or an inheriting receiver) may perform the first
     // read. All adapters and intrinsics must belong to the namespace's realm.
@@ -15250,7 +15255,7 @@ static void WasmNamespaceGet(Local<Name>, const PropertyCallbackInfo<Value>& inf
 
 static void WasmPrototypeConstructorGet(const PropertyCallbackInfo<Value>& info, uint32_t intrinsic_index) {
     Isolate* isolate = info.GetIsolate();
-    Local<Array> preparation = info.Data().As<Array>();
+    Local<Array> preparation = info.DataV2().As<Value>().As<Array>();
     Local<Context> context;
     if (!preparation->GetCreationContext(isolate).ToLocal(&context)) return;
     Context::Scope context_scope(context);
@@ -15865,12 +15870,12 @@ MaybeLocal<Function> CrossOriginFunction(
 
     Local<Map> map;
     if (current->GetNumberOfEmbedderDataFields() > static_cast<uint32_t>(kCrossOriginFunctionsIndex)) {
-        Local<Value> slot = current->GetEmbedderData(kCrossOriginFunctionsIndex);
+        Local<Value> slot = current->GetEmbedderDataV2(kCrossOriginFunctionsIndex).As<Value>();
         if (!slot.IsEmpty() && slot->IsMap()) map = slot.As<Map>();
     }
     if (map.IsEmpty()) {
         map = Map::New(isolate);
-        current->SetEmbedderData(kCrossOriginFunctionsIndex, map);
+        current->SetEmbedderDataV2(kCrossOriginFunctionsIndex, map);
     }
     Local<Value> found;
     if (map->Get(current, key).ToLocal(&found) && found->IsFunction()) return found.As<Function>();
@@ -15935,7 +15940,7 @@ bool CrossOriginNamedChild(Isolate* isolate, Local<Object> holder, Local<Name> n
 /// [[Get]] (7.2.3.7 step 4, 7.2.4.7 step 2): CrossOriginGet.
 Intercepted CrossOriginNamedGetter(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
-    int32_t kind = CrossOriginKindOf(info.Data());
+    int32_t kind = CrossOriginKindOf(info.DataV2().As<Value>());
     Local<Context> current = isolate->GetCurrentContext();
     Local<Object> holder = info.Holder();
     size_t index = 0;
@@ -15986,7 +15991,7 @@ Intercepted CrossOriginNamedGetter(Local<Name> name, const PropertyCallbackInfo<
 /// anything else (expandos included).
 Intercepted CrossOriginNamedSetter(Local<Name> name, Local<Value> value, const PropertyCallbackInfo<Boolean>& info) {
     Isolate* isolate = info.GetIsolate();
-    int32_t kind = CrossOriginKindOf(info.Data());
+    int32_t kind = CrossOriginKindOf(info.DataV2().As<Value>());
     Local<Context> current = isolate->GetCurrentContext();
     size_t index = 0;
     const CrossOriginMember* member = FindCrossOriginMember(isolate, kind, name, &index);
@@ -16008,7 +16013,7 @@ Intercepted CrossOriginNamedSetter(Local<Name> name, Local<Value> value, const P
 /// one read-only; anything else a SecurityError.
 Intercepted CrossOriginNamedQuery(Local<Name> name, const PropertyCallbackInfo<Integer>& info) {
     Isolate* isolate = info.GetIsolate();
-    int32_t kind = CrossOriginKindOf(info.Data());
+    int32_t kind = CrossOriginKindOf(info.DataV2().As<Value>());
     if (const CrossOriginMember* member = FindCrossOriginMember(isolate, kind, name, nullptr)) {
         int attributes = PropertyAttribute::DontEnum;
         if (member->method) attributes |= PropertyAttribute::ReadOnly;
@@ -16027,7 +16032,7 @@ Intercepted CrossOriginNamedQuery(Local<Name> name, const PropertyCallbackInfo<I
 /// [[GetOwnProperty]] (7.2.3.5 steps 4-7, 7.2.4.5 steps 2-4).
 Intercepted CrossOriginNamedDescriptor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
-    int32_t kind = CrossOriginKindOf(info.Data());
+    int32_t kind = CrossOriginKindOf(info.DataV2().As<Value>());
     Local<Context> current = isolate->GetCurrentContext();
     Local<Object> holder = info.Holder();
     size_t index = 0;
@@ -16099,7 +16104,7 @@ Intercepted CrossOriginNamedDefiner(Local<Name> name, const PropertyDescriptor& 
 void CrossOriginNamedEnumerator(const PropertyCallbackInfo<Array>& info) {
     Isolate* isolate = info.GetIsolate();
     const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
-    int32_t kind = CrossOriginKindOf(info.Data());
+    int32_t kind = CrossOriginKindOf(info.DataV2().As<Value>());
     std::vector<Local<Value>> keys;
     if (dispatch) {
         const CrossOriginMember* members = kind == kCrossOriginLocation ? dispatch->location_members : dispatch->window_members;
@@ -16123,7 +16128,7 @@ void CrossOriginNamedEnumerator(const PropertyCallbackInfo<Array>& info) {
 /// cross-origin indexed property.
 Intercepted CrossOriginIndexedGetter(uint32_t index, const PropertyCallbackInfo<Value>& info) {
     const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
-    if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_at) {
+    if (CrossOriginKindOf(info.DataV2().As<Value>()) == kCrossOriginWindow && dispatch && dispatch->child_at) {
         if (dispatch->child_at(index, &info) == Intercepted::kYes) return Intercepted::kYes;
         if (info.GetIsolate()->HasPendingException()) return Intercepted::kYes;
     }
@@ -16137,7 +16142,7 @@ Intercepted CrossOriginIndexedGetter(uint32_t index, const PropertyCallbackInfo<
 Intercepted CrossOriginIndexedDescriptor(uint32_t index, const PropertyCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
-    if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_at) {
+    if (CrossOriginKindOf(info.DataV2().As<Value>()) == kCrossOriginWindow && dispatch && dispatch->child_at) {
         if (dispatch->child_at(index, &info) == Intercepted::kYes) {
             Local<Value> child = info.GetReturnValue().Get();
             info.GetReturnValue().Set(DataDescriptor(isolate, isolate->GetCurrentContext(), child, true));
@@ -16152,7 +16157,7 @@ Intercepted CrossOriginIndexedDescriptor(uint32_t index, const PropertyCallbackI
 Intercepted CrossOriginIndexedQuery(uint32_t index, const PropertyCallbackInfo<Integer>& info) {
     Isolate* isolate = info.GetIsolate();
     const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
-    if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
+    if (CrossOriginKindOf(info.DataV2().As<Value>()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
         void* window = CrossOriginPlatformObject(isolate, info.Holder());
         if (window && index < dispatch->child_count(window)) {
             info.GetReturnValue().Set(static_cast<int>(PropertyAttribute::ReadOnly));
@@ -16191,7 +16196,7 @@ void CrossOriginIndexedEnumerator(const PropertyCallbackInfo<Array>& info) {
     Isolate* isolate = info.GetIsolate();
     const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     uint32_t count = 0;
-    if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
+    if (CrossOriginKindOf(info.DataV2().As<Value>()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
         if (void* window = CrossOriginPlatformObject(isolate, info.Holder())) count = dispatch->child_count(window);
     }
     Local<Context> context = isolate->GetCurrentContext();
@@ -16605,11 +16610,11 @@ static void RefuseWasmStreaming(Isolate* isolate, CraneWasmResponseCompilation* 
 }
 
 /// Isolate::SetWasmStreamingCallback's callback: `info[0]` is what the call's
-/// source fulfilled with, `info.Data()` the Managed<WasmStreaming>.
+/// source fulfilled with, `info.DataV2().As<Value>()` the Managed<WasmStreaming>.
 static void ProtocolWasmStreamingCallback(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     HandleScope scope(isolate);
-    auto* compilation = new CraneWasmResponseCompilation{isolate, WasmStreaming::Unpack(isolate, info.Data())};
+    auto* compilation = new CraneWasmResponseCompilation{isolate, WasmStreaming::Unpack(isolate, info.DataV2().As<Value>())};
     Local<Context> context = isolate->GetCurrentContext();
     auto dispatch = g_protocol_wasm_streaming.load(std::memory_order_acquire);
     if (!dispatch || context.IsEmpty()) {
