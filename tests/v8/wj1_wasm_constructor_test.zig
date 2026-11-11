@@ -621,7 +621,11 @@ test "wasm Exception keeps constructor shape prototype ordering and native throw
         \\try {
         \\const ctor = WebAssembly.Exception;
         \\const tag = new WebAssembly.Tag({parameters:[]});
-        \\if (ctor.length !== 1 || ctor.name !== "Exception" || ctor.prototype.constructor !== ctor) return "constructor shape";
+        \\// length 2: the JS API's Exception(tag, payload, options) since 2019 and
+        \\// WPT exception/constructor.tentative.any.js "length"; Chrome 156 ships it
+        \\// (V8 15.7 too), Firefox 159 and Safari 27 still 1 - browsers behind the
+        \\// spec, golden rule 2 (probe tmp/probes/v8up-wasm-order, lane v8up b3c).
+        \\if (ctor.length !== 2 || ctor.name !== "Exception" || ctor.prototype.constructor !== ctor) return "constructor shape";
         \\const namespace = Object.getOwnPropertyDescriptor(WebAssembly,"Exception");
         \\if (!namespace.writable || namespace.enumerable || !namespace.configurable) return "namespace shape";
         \\try { ctor(tag,[]); return "no new"; } catch(e) { if (!(e instanceof TypeError)) return "no-new error"; }

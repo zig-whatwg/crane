@@ -14951,14 +14951,19 @@ bool v8_Context_IsCodeGenerationFromStringsAllowed(Global<Context>* context) {
 
 } // extern "C"
 // ---- end lane: cspenforce ----
-// ---- WebAssembly JS API adaptation for V8 13.1 ----
-// V8 13.1 reads the memory64 descriptor's old `index` spelling, not
-// `address`. It also chooses the constructor's own intrinsic prototype when
+// ---- WebAssembly JS API adaptation ----
+// V8 chooses the constructor's own intrinsic prototype when
 // NewTarget.prototype is primitive. Firefox/Safari and WebIDL instead use
 // NewTarget's realm (wpt.fyi stable runs 5195601938743296/5351410937102336/
-// 5184406099853312: proto-from-ctor-realm 45/120, 120/120, 120/120).
-// Remove the address adaptation when upgrading to V8 >= 13.3; independently
-// recheck prototype fallback, which Chrome 156 still fails.
+// 5184406099853312: proto-from-ctor-realm 45/120, 120/120, 120/120);
+// recheck prototype fallback at every V8 upgrade.
+// The memory64 `address` adaptation is gone (lane v8up b3c): V8 13.1 read the
+// descriptor's old `index` spelling, so Memory/Table descriptors went through
+// a Proxy that answered `index` with the converted `address`; V8 15.7 reads
+// `address` itself (wasm-js.cc GetAddressType, 1483-1510 at 15.7.112.43), and
+// the adaptation made it read twice - the shim's read, then V8's through the
+// Proxy, which forwarded every key but `index` (wpt wasm/jsapi/memory/
+// constructor.any.js and table/constructor.any.js "Order of evaluation").
 extern "C" {
 
 static Local<Private> wasmIntrinsicPrototypesKey(Isolate* isolate) {
@@ -15109,35 +15114,8 @@ static void WasmConstructorConstruct(const FunctionCallbackInfo<Value>& info) {
         if (!arguments->Get(context, i).ToLocal(&value)) return;
         args.push_back(value);
     }
-    // Indices 2 and 3 are Memory and Table. No other constructor takes an
-    // address descriptor. V8 still validates every other argument itself.
-    if ((index == 2 || index == 3) && !args.empty() && args[0]->IsObject()) {
-        Local<Object> descriptor = args[0].As<Object>();
-        Local<Value> address;
-        if (!descriptor->Get(context, String::NewFromUtf8Literal(isolate, "address")).ToLocal(&address)) return;
-        Local<String> address_type = String::NewFromUtf8Literal(isolate, "i32");
-        if (!address->IsUndefined()) {
-            Local<String> converted;
-            if (!address->ToString(context).ToLocal(&converted)) return;
-            if (!converted->StringEquals(String::NewFromUtf8Literal(isolate, "i32")) &&
-                !converted->StringEquals(String::NewFromUtf8Literal(isolate, "i64"))) {
-                isolate->ThrowException(Exception::TypeError(
-                    String::NewFromUtf8Literal(isolate, "Descriptor property 'address' must be 'i32' or 'i64'")));
-                return;
-            }
-            address_type = converted;
-        }
-        // WebIDL dictionary conversion 4.1.3.1 is Get(jsDict, key), with
-        // the original receiver. The captured JS factory keeps those reads
-        // inside V8, without a native callback per dictionary member.
-        Local<Value> intrinsics_value, descriptor_factory, adapted;
-        if (!context->Global()->GetPrivate(context, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics_value) ||
-            !intrinsics_value->IsArray() || !intrinsics_value.As<Array>()->Get(context, 8).ToLocal(&descriptor_factory) ||
-            !descriptor_factory->IsFunction()) return;
-        Local<Value> factory_args[] = {descriptor, address_type};
-        if (!descriptor_factory.As<Function>()->Call(context, Undefined(isolate), 2, factory_args).ToLocal(&adapted)) return;
-        args[0] = adapted;
-    }
+    // Memory's and Table's descriptors go to V8 as they are: it reads
+    // `address` itself since 13.3 (see the section comment).
     Local<Object> made;
     if (!original->NewInstance(context, static_cast<int>(args.size()), args.data()).ToLocal(&made)) return;
     // Index 7 is Exception; 5/6 hold the JSPI Promise intrinsics.
@@ -15255,11 +15233,6 @@ static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparat
     // OrdinaryHasInstance follows the hidden class, whose private forwarder
     // uses the original's immutable prototype. The exposed function has only
     // the original interface's own properties, with their exact descriptors.
-    //
-    // Memory/Table share a private empty-target descriptor Proxy. Each call
-    // saves/restores its pair, including on nested construction and throws.
-    // No caller descriptor survives an outermost call. The original receiver
-    // is used for every Get; a legacy nonconfigurable `index` is still ignored.
     Local<String> fast_source = String::NewFromUtf8Literal(isolate,
         "(function(saved) { 'use strict';"
         "const construct = saved[1], get = saved[2], apply = saved[3];"
@@ -15268,31 +15241,11 @@ static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparat
         "const setPrototype = saved[10], prototypeOf = saved[11];"
         "const functionPrototype = saved[12], bind = saved[13];"
         "const hasInstanceKey = saved[14], hasInstance = saved[15], slice = saved[16];"
-        "let currentDescriptor, currentAddress;"
-        "const descriptor = new P({__proto__:null}, {__proto__:null, get(_, key) {"
-        "return key === 'index' ? currentAddress : get(currentDescriptor, key, currentDescriptor); }});"
         "return function(target, native, kind) {"
         "const W = {[target.name]: class extends Base { constructor(a0, a1, a2) {"
         "const newTarget = new.target;"
         "if (newTarget !== W) return native(target, apply(slice, arguments, []), newTarget);"
         "const count = arguments.length;"
-        "if (kind === 2 || kind === 3) {"
-        "if (count === 0) return construct(target, arguments);"
-        "const original = a0;"
-        "if ((typeof original !== 'object' || original === null) && typeof original !== 'function') return construct(target, arguments);"
-        "let address = original.address;"
-        // Template substitution applies ToString (including Symbol rejection
-        // and the string primitive hint), unlike String(x) or '' + x.
-        "address = address === undefined ? 'i32' : `${address}`;"
-        "if (address !== 'i32' && address !== 'i64') throw new TypeErrorCtor('Invalid WebAssembly address type');"
-        "const previousDescriptor = currentDescriptor, previousAddress = currentAddress;"
-        "currentDescriptor = original; currentAddress = address;"
-        "try {"
-        "if (count === 1) return new target(descriptor);"
-        "if (count === 2) return new target(descriptor, a1);"
-        "const args = apply(slice, arguments, []); args[0] = descriptor; return construct(target, args);"
-        "} finally { currentDescriptor = previousDescriptor; currentAddress = previousAddress; }"
-        "}"
         // Exception's optional trace requires the captured-string adapter.
         // Missing/null/undefined options request no trace and need no work.
         "if (kind === 5 && count >= 3 && a2 !== undefined && a2 !== null) return native(target, apply(slice, arguments, []), replacement);"
@@ -15333,27 +15286,14 @@ static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparat
     Local<Value> promise_constructor, promise_resolve;
     if (!preparation->Get(context, kWasmPromise).ToLocal(&promise_constructor) ||
         !preparation->Get(context, kWasmPromiseResolve).ToLocal(&promise_resolve)) return false;
-    // An empty target avoids Proxy invariants from a user's nonconfigurable
-    // `index`. Both the target and handler have null prototypes; only the
-    // captured Reflect.get and Proxy intrinsics can participate after setup.
-    Local<String> descriptor_source = String::NewFromUtf8Literal(isolate,
-        "(function(get, P) { 'use strict'; return function(original, address) {"
-        "return new P({__proto__:null}, {__proto__:null, get(target, key) {"
-        "return key === 'index' ? address : get(original, key, original); }}); }; })");
-    Local<Script> descriptor_script;
-    Local<Value> descriptor_maker, descriptor_factory;
-    if (!Script::Compile(context, descriptor_source).ToLocal(&descriptor_script) ||
-        !descriptor_script->Run(context).ToLocal(&descriptor_maker) || !descriptor_maker->IsFunction()) return false;
-    Local<Value> descriptor_args[2];
-    if (!preparation->Get(context, kWasmGet).ToLocal(&descriptor_args[0]) ||
-        !preparation->Get(context, kWasmProxy).ToLocal(&descriptor_args[1])) return false;
-    if (!descriptor_maker.As<Function>()->Call(context, Undefined(isolate), 2, descriptor_args).ToLocal(&descriptor_factory) || !descriptor_factory->IsFunction()) return false;
     // The private JS constructor is embedding machinery, not the script
     // responsible for a CSP violation. Retain its unforgeable script ID for
     // running-script attribution below, without retaining a native handle.
     // Slots 10/11 also serve a cloned Module/Memory's lazy constructor. They
     // must not consult the mutable namespace after initialization.
-    Local<Value> intrinsic_values[] = {prototypes[0], prototypes[1], prototypes[2], prototypes[3], prototypes[4], promise_constructor, promise_resolve, prototypes[5], descriptor_factory,
+    // Slot 8 held V8 13.1's address descriptor factory: kept empty, so the
+    // slots after it keep their indices.
+    Local<Value> intrinsic_values[] = {prototypes[0], prototypes[1], prototypes[2], prototypes[3], prototypes[4], promise_constructor, promise_resolve, prototypes[5], Undefined(isolate),
         Integer::New(isolate, fast_script->GetUnboundScript()->ScriptId()), replacements[0], replacements[2]};
     Local<Array> intrinsics = Array::New(isolate, intrinsic_values, 12);
     if (!intrinsics->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
@@ -15386,8 +15326,11 @@ static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparat
     value_descriptor.set_configurable(configurable->IsTrue());
     if (!global_prototype->DefineProperty(context, value_name, value_descriptor).FromMaybe(false)) return false;
 
-    // Golden rule 2: Exception.length remains V8's 1. The spec's 2 dates
-    // to 2019, while Firefox/Safari still expose 1 (pinned runs above).
+    // Exception.length is V8's own: 2 since V8 15.x, the JS API's
+    // Exception(tag, payload, options) and WPT exception/constructor.tentative
+    // "length" - Chrome 156 ships it; Firefox 159 and Safari 27 still answer 1,
+    // behind the spec (golden rule 2: the spec; probe
+    // tmp/probes/v8up-wasm-order, lane v8up b3c). The replacement copies it.
     // For stack, Chrome/Firefox expose a prototype member, but disagree on
     // enumerability; Safari has no member. With no enumerability majority,
     // follow the spec's enumerable getter (exception-handling PR 218, 2022).

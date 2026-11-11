@@ -164,7 +164,7 @@ test "window realm: Table and Memory take address i64 with BigInt limits" {
     try expectEval(realm, address_i64_checks, "ok");
 }
 
-test "window realm: the address member is converted first, as an AddressType" {
+test "window realm: the address member is converted as an AddressType, in the browsers' order" {
     try setup();
     const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks });
     defer protocol.destroyAgent(agent);
@@ -181,8 +181,14 @@ test "window realm: the address member is converted first, as an AddressType" {
         \\  check(new WebAssembly.Memory({ initial: 1, address: { toString() { return "i32"; } } }).buffer.byteLength === 65536, "address is ToString'd");
         \\  check(throwsType(() => new WebAssembly.Memory({ initial: 1n, index: "i64" })), "the pre-rename `index` member is no member");
         \\
-        \\  // WebIDL dictionary members convert in lexicographic order, each
-        \\  // read then converted before the next.
+        \\  // Each member read then converted before the next. Memory: WebIDL's
+        \\  // lexicographic dictionary order, which all three browsers follow.
+        \\  // Table: `element` first, then `address` - golden rule 2, no newer
+        \\  // spec involved, the browsers split from the spec text's dictionary
+        \\  // order: Chrome 156.0 and Firefox 159.0 read element, element
+        \\  // toString, address, ...; Safari 27.0 address first (probe
+        \\  // tmp/probes/v8up-wasm-order, lane v8up b3c, 2026-11-11); the
+        \\  // majority's order is V8 15.7's own (wasm-js.cc 1530 before 1568).
         \\  const order = [];
         \\  const logged = (name, value) => ({
         \\    get() { order.push(name); return { toString() { order.push(name + " toString"); return value; }, valueOf() { order.push(name + " valueOf"); return value; } }; },
@@ -191,7 +197,7 @@ test "window realm: the address member is converted first, as an AddressType" {
         \\    maximum: logged("maximum", 2), initial: logged("initial", 1),
         \\    element: logged("element", "anyfunc"), address: logged("address", "i32"),
         \\  }));
-        \\  check(order.join() === "address,address toString,element,element toString,initial,initial valueOf,maximum,maximum valueOf", "Table order: " + order.join());
+        \\  check(order.join() === "element,element toString,address,address toString,initial,initial valueOf,maximum,maximum valueOf", "Table order: " + order.join());
         \\  order.length = 0;
         \\  new WebAssembly.Memory(Object.defineProperties({}, {
         \\    maximum: logged("maximum", 2), initial: logged("initial", 1), address: logged("address", "i32"),
@@ -201,7 +207,7 @@ test "window realm: the address member is converted first, as an AddressType" {
         \\  check(throwsType(() => new WebAssembly.Table(Object.defineProperties({}, {
         \\    element: logged("element", "anyfunc"), initial: logged("initial", 1), address: logged("address", "i65"),
         \\  }))), "a bad address throws");
-        \\  check(order.join() === "address,address toString", "a bad address throws before element is read: " + order.join());
+        \\  check(order.join() === "element,element toString,address,address toString", "a bad address throws after element, before initial is read: " + order.join());
         \\
         \\  // Not a dictionary: a TypeError, as before.
         \\  check(throwsType(() => new WebAssembly.Memory()), "no descriptor");
