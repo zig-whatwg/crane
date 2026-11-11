@@ -8,15 +8,19 @@
 //! makes and drops trees allocates almost nothing V8 sees and runs no
 //! collection at all: 650 dropped clones of an 840-node tree kept 548,150
 //! nodes, 1.7 GB, with 5 MB of V8 heap in use (lane perf1, gc_bench). Told
-//! the change, V8 counts it: past the low-water mark since its last
-//! mark-compact + 64 MB (kExternalAllocationSoftLimit) it starts incremental
-//! marking, past half its old-generation limit it collects in full, and it
-//! re-checks every 128 KB of growth (V8 13.1 src/heap/heap.cc,
-//! Heap::HandleExternalMemoryInterrupt; heap.h ExternalMemoryAccounting).
-//! Blink reported its DOM the same way before its unified heap:
-//! V8GCController::reportDOMMemoryUsageToV8 passed the change of the DOM
-//! partition's size to Isolate::AdjustAmountOfExternalAllocatedMemory after
-//! every task (Chromium 45, Source/bindings/core/v8/V8GCController.cpp).
+//! the change, V8 counts it toward its global allocation limit: every 128 KB
+//! of growth it checks the limits and, once they are reached, starts
+//! incremental marking - which advances in the marking job's task, run when
+//! the embedder pumps the platform (the event loop's engine-task step) - and
+//! it collects at once past its heap limit or when marking runs and the
+//! limit is overshot by a large margin (V8 15.7 src/heap/heap.cc,
+//! Heap::UpdateExternalMemory). Blink reported its DOM the same way before
+//! its unified heap: V8GCController::reportDOMMemoryUsageToV8 passed the
+//! change of the DOM partition's size to Isolate::
+//! AdjustAmountOfExternalAllocatedMemory after every task (Chromium 45,
+//! Source/bindings/core/v8/V8GCController.cpp); an embedder now reports
+//! through a v8::ExternalMemoryAccounter, one per reporting owner - here the
+//! agent.
 //!
 //! The safe points are the adapter's: the binding exit back into script that
 //! brings the agent's DOM-algorithm depth to zero (dom_algorithm.zig, where
@@ -40,15 +44,18 @@ const Storage = isolate_templates.IsolateTemplates;
 
 /// createAgent: the agent's figure, claimed for its thread, on its isolate,
 /// and reported at its queue's safe points (the queue's report steps, which
-/// the binding exit's check of what the queue owes reaches). A storage that
-/// cannot be made (out of memory) leaves the agent unreported - V8 then sees
-/// its own heap alone, as before.
+/// the binding exit's check of what the queue owes reaches), through the
+/// agent's ExternalMemoryAccounter. A storage or accounter that cannot be
+/// made (out of memory) leaves the agent unreported - V8 then sees its own
+/// heap alone, as before.
 pub fn install(isolate: *ffi.Isolate, memory: ?*ExternalMemory, queue: ?*runtime.gc.DeferredTeardown) void {
     const given = memory orelse return;
     const storage = isolate_templates.storageFor(isolate) orelse return;
+    const accounter = ffi.v8_ExternalMemoryAccounter_New() orelse return;
     storage.external_memory = given;
     storage.external_reported = 0;
     storage.external_isolate = isolate;
+    storage.external_accounter = accounter;
     if (queue) |q| q.report_steps = .{ .run = reportStep, .data = storage };
     given.claim(queue);
 }
@@ -65,10 +72,12 @@ fn reportStep(data: ?*anyopaque) void {
 pub fn uninstall(isolate: *ffi.Isolate) void {
     const storage = isolate_templates.getTemplateStorage(isolate) orelse return;
     const memory = storage.external_memory orelse return;
-    if (storage.external_reported != 0) {
-        _ = ffi.v8_Isolate_AdjustAmountOfExternalAllocatedMemory(isolate, -@as(i64, @intCast(storage.external_reported)));
-        storage.external_reported = 0;
+    if (storage.external_accounter) |raw| {
+        const accounter: *ffi.ExternalMemoryAccounter = @ptrCast(raw);
+        ffi.v8_ExternalMemoryAccounter_Delete(accounter, isolate, storage.external_reported);
     }
+    storage.external_reported = 0;
+    storage.external_accounter = null;
     if (memory.queue) |queue| queue.report_steps = null;
     memory.release();
     storage.external_memory = null;
@@ -100,9 +109,10 @@ noinline fn report(storage: *Storage, memory: *ExternalMemory) void {
     // The safe points run on the isolate's thread with it entered: the
     // binding's callback, the checkpoint's EnteredIsolate.
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(storage.external_isolate orelse return));
+    const accounter: *ffi.ExternalMemoryAccounter = @ptrCast(storage.external_accounter orelse return);
     const live = memory.live;
     const change = @as(i64, @intCast(live)) - @as(i64, @intCast(storage.external_reported));
     storage.external_reported = live;
     memory.markReported(live);
-    _ = ffi.v8_Isolate_AdjustAmountOfExternalAllocatedMemory(isolate, change);
+    ffi.v8_ExternalMemoryAccounter_Update(accounter, isolate, change);
 }

@@ -13,6 +13,7 @@
 #include <cassert>
 #include <chrono>
 #include <mutex>
+#include <new>
 #include <v8.h>
 #include <v8-snapshot.h>
 #include <libplatform/libplatform.h>
@@ -22,6 +23,7 @@
 // (tmp/redesign/wrapper-redesign-design.md 4.12): build.zig compiles this file
 // with the archive's cppgc defines, so these headers agree with the library.
 #include <v8-cppgc.h>
+#include <v8-external-memory-accounter.h>  // external_memory.zig: one accounter per agent
 #include <cppgc/allocation.h>
 #include <cppgc/garbage-collected.h>
 #include <cppgc/heap.h>
@@ -3953,24 +3955,41 @@ void v8_Isolate_GetHeapUsage(Isolate* isolate, size_t* used, size_t* total,
     if (external) *external = stats.external_memory();
 }
 
-// The host's native memory its objects keep alive changed (engine.AgentOptions.
-// external_memory, src/runtime/engines/v8/external_memory.zig): V8 counts it
-// toward its collection schedule - past the low-water mark since the last
-// mark-compact + 64 MB it starts incremental marking (V8 13.1 heap.cc
-// Heap::HandleExternalMemoryInterrupt), as Blink's V8GCController::
-// reportDOMMemoryUsageToV8 told it about the DOM partition (Chromium 45).
-int64_t v8_Isolate_AdjustAmountOfExternalAllocatedMemory(Isolate* isolate, int64_t change_in_bytes) {
-    return isolate->AdjustAmountOfExternalAllocatedMemory(change_in_bytes);
+// The host's native memory its objects keep alive (engine.AgentOptions.
+// external_memory, src/runtime/engines/v8/external_memory.zig): one
+// v8::ExternalMemoryAccounter per agent, the API V8 >= 13.x gives an embedder in
+// place of Isolate::AdjustAmountOfExternalAllocatedMemory (deprecated in 15.7;
+// both reach Heap::UpdateExternalMemory, api.cc 9906-9920 and 12660-12690 at
+// 15.7.112.43). V8 counts the figure toward its global allocation limit and
+// starts incremental marking once it is reached (heap.cc UpdateExternalMemory),
+// as Blink's V8GCController::reportDOMMemoryUsageToV8 told it about the DOM
+// partition (Chromium 45). The archive is built without
+// V8_ENABLE_MEMORY_ACCOUNTING_CHECKS (its v8-gn.h refuses the define), so the
+// accounter holds no state of its own: what it reports is external_memory.zig's
+// `external_reported`, which _Delete takes back.
+ExternalMemoryAccounter* v8_ExternalMemoryAccounter_New() {
+    return new (std::nothrow) ExternalMemoryAccounter();
+}
+
+void v8_ExternalMemoryAccounter_Update(ExternalMemoryAccounter* accounter, Isolate* isolate, int64_t change_in_bytes) {
+    accounter->Update(isolate, change_in_bytes);
+}
+
+void v8_ExternalMemoryAccounter_Delete(ExternalMemoryAccounter* accounter, Isolate* isolate, uint64_t reported) {
+    accounter->Decrease(isolate, static_cast<size_t>(reported));
+    delete accounter;
 }
 
 // All the external memory V8 counts toward its collections: ArrayBuffer backing
-// stores (its ArrayBufferSweeper reports them through the same accounting) and
-// what the host reported. HeapStatistics::external_memory() is the backing
-// stores alone in 13.1 (api.cc: backing_store_bytes()), so it never shows the
-// host's figure. A change of zero reads the total and starts nothing (13.1
-// api.cc: "if (change_in_bytes <= 0) return amount;").
+// stores (its ArrayBufferSweeper reports them through an accounter of its own)
+// and what the host reported. HeapStatistics::external_memory() is the backing
+// stores alone (api.cc: backing_store_bytes()), so it never shows the host's
+// figure. GetTotalAmountOfExternalAllocatedMemoryForTesting reads the same atomic
+// total (Heap::external_memory(), external_memory_total_) that 13.1's
+// AdjustAmountOfExternalAllocatedMemory(0) returned, and starts nothing; it is
+// the one public read of it at 15.7.
 size_t v8_Isolate_GetExternalMemory(Isolate* isolate) {
-    const int64_t amount = isolate->AdjustAmountOfExternalAllocatedMemory(0);
+    const int64_t amount = ExternalMemoryAccounter::GetTotalAmountOfExternalAllocatedMemoryForTesting(isolate);
     return amount < 0 ? 0 : static_cast<size_t>(amount);
 }
 

@@ -1035,15 +1035,24 @@ pub extern fn v8_Isolate_GetContextCounts(
     detached_contexts: ?*usize,
 ) void;
 pub extern fn v8_Isolate_ThrowException(isolate: *Isolate, exception: *Value) void;
-/// Isolate::AdjustAmountOfExternalAllocatedMemory: the external memory the
-/// isolate's objects keep alive changed by `change_in_bytes`; returns the
-/// new total. A rise may start incremental marking, or collect, before it
-/// returns (V8 13.1 Heap::HandleExternalMemoryInterrupt); a fall never does.
-/// On the isolate's thread, with it entered.
-pub extern fn v8_Isolate_AdjustAmountOfExternalAllocatedMemory(isolate: *Isolate, change_in_bytes: i64) i64;
+/// A v8::ExternalMemoryAccounter: one agent's report of the host memory its
+/// objects keep alive (external_memory.zig), on the C++ heap. Made with
+/// `_New`, moved with `_Update`, ended with `_Delete` (which takes back what
+/// is still reported).
+pub const ExternalMemoryAccounter = opaque {};
+pub extern fn v8_ExternalMemoryAccounter_New() ?*ExternalMemoryAccounter;
+/// ExternalMemoryAccounter::Update: the external memory the isolate's
+/// objects keep alive changed by `change_in_bytes`. A rise past V8's
+/// re-check step checks its allocation limits and may start incremental
+/// marking, or collect, before it returns (V8 15.7 Heap::UpdateExternalMemory);
+/// a fall never does. On the isolate's thread, with it entered.
+pub extern fn v8_ExternalMemoryAccounter_Update(accounter: *ExternalMemoryAccounter, isolate: *Isolate, change_in_bytes: i64) void;
+/// ExternalMemoryAccounter::Decrease of `reported` (what the accounter still
+/// reports), then the accounter freed. On the isolate's thread, entered.
+pub extern fn v8_ExternalMemoryAccounter_Delete(accounter: *ExternalMemoryAccounter, isolate: *Isolate, reported: u64) void;
 /// Every byte of external memory V8 counts toward its collections - backing
 /// stores and what the host reported (HeapStatistics' external is backing
-/// stores alone in 13.1). Starts nothing.
+/// stores alone). Starts nothing.
 pub extern fn v8_Isolate_GetExternalMemory(isolate: *Isolate) usize;
 
 // Isolate embedder data (for storing per-isolate state)
