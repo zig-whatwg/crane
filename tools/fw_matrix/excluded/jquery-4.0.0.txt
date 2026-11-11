@@ -1,0 +1,13 @@
+# jQuery 4.0.0 (tag 4.0.0, 4f2fae08f23b): the tests Crane's matrix does not run, each with its reason
+# (tools/fw_matrix/exclusions.zig documents the format; tmp/plans/framework-matrix-plan.md section 3 the rule).
+# Ids are QUnit full names, "<module>: <test name>", as QUnit's filter matches them.
+# Every entry was checked by hand against the test's source at the tag.
+
+# ---------------------------------------------------------------------------------------------------------------
+# NOT RUN: needs a file the project's Node build writes
+# ---------------------------------------------------------------------------------------------------------------
+
+[core: Iterability of jQuery objects with Symbol polyfill (gh-1693)]
+kind   = needs-node-build
+why    = its iframe page loads test/data/core/jquery-iterability-transpiled.js, which `npm run babel:tests` (Node: Babel) writes from jquery-iterability-transpiled-es6.js; the tag does not carry it
+source = test/unit/core.js:1524

@@ -1,0 +1,44 @@
+# htmx 4.0.1 (tag v4.0.1, 8d112c71624f): the tests Crane's matrix does not run, each with its reason
+# (tools/fw_matrix/exclusions.zig documents the format; tmp/plans/framework-matrix-plan.md section 3 the rule).
+# Ids are Mocha full titles (suite titles and the test title, joined by spaces), as Mocha's grep matches them.
+# Every entry was checked by hand against the test's source at the tag.
+#
+# NOT RUN, ruling R5: the files the project runs only through web-test-runner (test/web-test-runner.config.mjs,
+# `files: ['test/tests/**/*.js']`, a Node test runner with Playwright); the project's browser page test/test.html
+# loads 80 of its 88 test files and not these.
+
+[file:test/tests/attributes/hx-query.js]
+kind = node-runner-only
+why  = not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner
+
+[file:test/tests/ext/hx-csp.js]
+kind = node-runner-only
+why  = not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner
+
+[file:test/tests/ext/hx-download.js]
+kind = node-runner-only
+why  = not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner
+
+[file:test/tests/ext/hx-multipart.js]
+kind = node-runner-only
+why  = not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner
+
+[file:test/tests/unit/__determineMethodAndAction.js]
+kind = node-runner-only
+why  = not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner
+
+[file:test/tests/unit/__executeJavaScript.js]
+kind = node-runner-only
+why  = not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner
+
+[file:test/tests/unit/__resolveHistoryAction.js]
+kind = node-runner-only
+why  = not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner
+
+[file:test/tests/unit/logger.js]
+kind = node-runner-only
+why  = not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner
+
+[file:test/tests/unit/package.js]
+kind = node-runner-only
+why  = not loaded by test/test.html; the project runs it only through web-test-runner, its Node test runner
