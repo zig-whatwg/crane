@@ -39,9 +39,8 @@
 //! A miss runs the cascade; `add` then shares every group and custom
 //! property record the new style holds alone whose values equal an entry's
 //! of the same key (ComputedStyle.adoptEqualGroups and adoptEqualCustom,
-//! lanes style1 b1 and b3) and keeps the style while the key has room; a
-//! style that can serve hits replaces a full key's least recently used
-//! entry. So equal elements hold the same objects, as a hit's would.
+//! lanes style1 b1 and b3) and keeps the style while the key has room. So
+//! equal elements hold the same objects, as a hit's would.
 //!
 //! The key (`keyOf`) is only where to look: each matched block - a rule's by
 //! address, a style attribute's by the property names it declares - with its
@@ -62,9 +61,7 @@
 //! 2. the least recently used beyond `limit` entries, down to `prune_target`
 //!    (Blink CleanMatchedPropertiesCache: kCacheLimit 500, kPruneCacheTarget
 //!    300);
-//! 3. a full key (4: WebKit maxEntriesPerHash) replaces its least recently
-//!    used entry with a style that can serve hits, and takes no style kept
-//!    only for adoption;
+//! 3. a full key takes no more entries (WebKit maxEntriesPerHash = 4);
 //! 4. everything, with the Document's style engine (StyleEngine.deinit).
 //! The entries hold values, never a node, a realm or a declaration block.
 //!
@@ -283,25 +280,16 @@ pub const MatchedPropertiesCache = struct {
         const gop = self.buckets.getOrPut(self.allocator, lookup.key) catch return;
         if (!gop.found_existing) gop.value_ptr.* = .{};
         const bucket = gop.value_ptr;
-        if (bucket.len == per_key) {
-            // A full key: a style that can serve hits replaces the key's least
-            // recently used entry (Blink appends to the hash's entries and
-            // drops the least recently used beyond kCacheLimit; WebKit keeps
-            // maxEntriesPerHash and skips). The key carries the parent's
-            // record and inherited groups, so a full key means four parents
-            // with those, differing in what only explicit inheritance or the
-            // adjustments read. One kept only for adoption replaces nothing:
-            // a per-element value would replace an entry on every resolution.
-            if (!cacheable) return;
-            var oldest: usize = 0;
-            for (bucket.items[0..bucket.len], 0..) |entry, k| if (entry.last_used < bucket.items[oldest].last_used) {
-                oldest = k;
-            };
-            const entry = self.makeEntry(lookup, dependencies.?.parent_non_inherited, style) catch return;
-            self.release(bucket.items[oldest]);
-            bucket.items[oldest] = entry;
-            return;
-        }
+        // A full key keeps the entries it has (WebKit's
+        // MatchedDeclarationsCache::add appends only below
+        // maxEntriesPerHash). The key carries the parent's record and
+        // inherited groups, so a key fills only with four parents that share
+        // those and differ in what explicit inheritance or the adjustments
+        // read (no grid page key filled: census b3); replacing the least
+        // recently used there cost every such miss a clone and a release
+        // (+1,657 instructions per resolution on the all-miss full-key bench)
+        // and bought no hit on any measured page.
+        if (bucket.len == per_key) return;
         const entry = self.makeEntry(lookup, if (cacheable) dependencies.?.parent_non_inherited else null, style) catch {
             if (bucket.len == 0) _ = self.buckets.swapRemove(lookup.key);
             return;
@@ -865,7 +853,7 @@ test "the key carries the parent's custom property record and inherited groups b
     try testing.expect(keyOf(&scene.matched, null, scene.parent) != keyOf(&scene.matched, null, swapped));
 }
 
-test "a full key replaces its least recently used entry with a style that can serve hits" {
+test "a full key keeps its entries, for styles that can serve hits too: parents that share the key differ only in what explicit inheritance reads" {
     const cache = try MatchedPropertiesCache.create(testing.allocator);
     defer cache.destroy();
     // Parents that differ only in a non-inherited value, read by explicit
@@ -893,13 +881,13 @@ test "a full key replaces its least recently used entry with a style that can se
         try testing.expect(deps.parent_non_inherited);
         cache.add(lookup, deps, style);
     }
-    // Still four entries: the fifth replaced the first (least recently used).
+    // Four entries, the first four parents': the fifth is not kept.
     try testing.expectEqual(@as(u32, MatchedPropertiesCache.per_key), cache.entries);
     const last: Lookup = .{ .key = key, .generation = 1, .matched = &matched, .parent = parents[MatchedPropertiesCache.per_key].style };
-    const held = cache.find(last) orelse return error.ExpectedHit;
-    try testing.expectEqual(@as(f64, @floatFromInt(MatchedPropertiesCache.per_key + 1)), held.get(.margin_left).length.value);
+    try testing.expect(cache.find(last) == null);
     const first: Lookup = .{ .key = key, .generation = 1, .matched = &matched, .parent = parents[0].style };
-    try testing.expect(cache.find(first) == null);
+    const held = cache.find(first) orelse return error.ExpectedHit;
+    try testing.expectEqual(@as(f64, 1), held.get(.margin_left).length.value);
 }
 
 test "a miss holds the record an entry made when its values are equal, and the groups whose values are equal" {

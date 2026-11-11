@@ -193,8 +193,19 @@ fn same(comptime T: type, a: T, b: T) bool {
 /// a font-family list or a color substituted from var() - equal (Value.eql).
 /// What adoption shares on: no reader can tell the two apart.
 fn groupValuesEqual(g: usize, a: [*]const Value, b: [*]const Value) bool {
-    for (a[0..groups.lengths[g]], b[0..groups.lengths[g]]) |x, y| if (!identical(x, y) and !x.eql(y)) return false;
+    for (a[0..groups.lengths[g]], b[0..groups.lengths[g]]) |x, y| if (!identical(x, y) and !heldEqual(x, y)) return false;
     return true;
+}
+
+/// Value.eql for two values whose payload holds a reference (the only ones
+/// identical() can call different while equal); false for the rest, which
+/// identical() already compared bit for bit - so a miss pays eql only where
+/// it can find something (lane style1 b3, guard on the all-miss benches).
+fn heldEqual(x: Value, y: Value) bool {
+    if (std.meta.activeTag(x) != std.meta.activeTag(y)) return false;
+    return switch (x) {
+        inline else => |payload| if (comptime mayHoldReference(@TypeOf(payload))) x.eql(y) else false,
+    };
 }
 
 /// Whether group `g`'s values at `a` and `b` are identical, slot by slot.
