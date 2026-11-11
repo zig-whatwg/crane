@@ -1142,6 +1142,8 @@ const FrameRealm = struct {
     global_this: protocol.GlobalThis = .new_window_proxy,
     /// WindowRealmOptions.auxiliary: a popup's realm under its opener's.
     auxiliary: bool = false,
+    /// WindowRealmOptions.allocator.
+    allocator: std.mem.Allocator = std.heap.c_allocator,
     made: ?runtime.Context = null,
     failed: ?anyerror = null,
     /// The entry realm just after the frame's realm was made, still inside
@@ -1158,7 +1160,7 @@ const FrameRealm = struct {
         const self: *FrameRealm = @ptrCast(@alignCast(data.?));
         self.made = protocol.createWindowRealm(&.{
             .agent = @ptrCast(test_isolate.?),
-            .allocator = std.heap.c_allocator,
+            .allocator = self.allocator,
             .from_snapshot = false,
             .timer = null,
             .origin = "https://example.test",
@@ -1524,6 +1526,99 @@ test "protocol: a popup a frame opened outlives that frame's navigation" {
     // Adopted by the frame's new realm: it ends when that realm does.
     protocol.destroyWindowRealm(new_frame, .navigable_destroyed);
     try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(popup, NoSteps.steps, null));
+}
+
+test "protocol: a popup stays its opener's when the realm made around the opener's WindowProxy ends before the opener's document goes" {
+    // A navigation abandoned before its document exists ends only its new
+    // realm (HTMLIFrameElement settleRealmReplacement): the popups pass to
+    // the new realm when the old realm's document goes (destroyWindowRealm
+    // .global_detached), not when the new realm is made.
+    defer test_agent.close();
+    var host_page: WindowHost = .{};
+    const page = try windowRealm(&host_page, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(page, .global_detached);
+    var old_frame_realm: FrameRealm = .{ .parent = page };
+    const old_frame = try old_frame_realm.make();
+    var popup_realm: FrameRealm = .{ .parent = old_frame, .auxiliary = true };
+    const popup = try popup_realm.make();
+
+    var abandoned_realm: FrameRealm = .{ .parent = page, .global_this = .{ .window_proxy_of = old_frame } };
+    const abandoned = try abandoned_realm.make();
+    protocol.destroyWindowRealm(abandoned, .global_detached);
+    collectTwice();
+    try protocol.runTaskInRealm(popup, NoSteps.steps, null);
+    try expectEval(popup, "self === globalThis", "true");
+
+    // The next replacement commits: the popup passes to it then.
+    var next_realm: FrameRealm = .{ .parent = page, .global_this = .{ .window_proxy_of = old_frame } };
+    const next = try next_realm.make();
+    protocol.destroyWindowRealm(old_frame, .global_detached);
+    collectTwice();
+    try protocol.runTaskInRealm(popup, NoSteps.steps, null);
+    protocol.destroyWindowRealm(next, .navigable_destroyed);
+    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(popup, NoSteps.steps, null));
+}
+
+test "protocol: a realm made around a WindowProxy that runs out of memory at any allocation leaves nothing of itself, and the proxy with no global" {
+    // createWindowRealm(.window_proxy_of) hands the proxy on before its
+    // first fallible allocation (its ORDER comment): V8 builds a context
+    // around a proxy only once it is detached from its global, and cannot
+    // attach a global again. So at every failure point: the Crane
+    // allocations of the new realm (its realm record, its state) are freed, its context is gone, and script holding the proxy
+    // sees V8's one state for a proxy with no global - member reads throw
+    // TypeError "no access".
+    defer test_agent.close();
+    var host_page: WindowHost = .{};
+    const page = try windowRealm(&host_page, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(page, .global_detached);
+    var failed: usize = 0;
+    var index: usize = 0;
+    const made = while (index < 2000) : (index += 1) {
+        var old_frame_realm: FrameRealm = .{ .parent = page };
+        const old_frame = try old_frame_realm.make();
+        {
+            const frame_global = try evalOwned(old_frame, "globalThis");
+            defer frame_global.release();
+            try setGlobal(page, "w", frame_global.value);
+        }
+        const contexts_before = liveContexts();
+        var failing = std.testing.FailingAllocator.init(std.heap.c_allocator, .{ .fail_index = index });
+        var next_realm: FrameRealm = .{
+            .parent = page,
+            .global_this = .{ .window_proxy_of = old_frame },
+            // The Window itself is made with its Browser's allocator (an
+            // EventTarget made with another panics): the realm's own
+            // allocations are the ones swept.
+            .allocator = failing.allocator(),
+        };
+        if (next_realm.make()) |next| {
+            // Memory to spare: the sweep is past the last allocation.
+            protocol.destroyWindowRealm(old_frame, .global_detached);
+            try expectEval(page, "delete globalThis.w", "true");
+            break next;
+        } else |_| {}
+        failed += 1;
+        if (failing.allocated_bytes != failing.freed_bytes or failing.allocations != failing.deallocations) {
+            std.debug.print("failing allocation {d}: the realm that could not be made left {d} blocks ({d} bytes)\n", .{ index, failing.allocations - failing.deallocations, failing.allocated_bytes - failing.freed_bytes });
+            return error.FailedRealmLeftAllocations;
+        }
+        const contexts_after = liveContexts();
+        if (contexts_after > contexts_before) {
+            std.debug.print("failing allocation {d}: {d} native contexts before, {d} after the failed realm\n", .{ index, contexts_before, contexts_after });
+            return error.FailedRealmLeftContext;
+        }
+        const read = try evalString(page, "(() => { try { const d = w.document; return 'read ' + String(d); } catch (e) { return e.name + ': ' + e.message; } })()");
+        defer std.testing.allocator.free(read);
+        if (!std.mem.eql(u8, read, "TypeError: no access")) {
+            std.debug.print("failing allocation {d}: script read through the proxy: {s}\n", .{ index, read });
+            return error.ProxyNotWithoutGlobal;
+        }
+        try expectEval(page, "delete globalThis.w", "true");
+        protocol.destroyWindowRealm(old_frame, .navigable_destroyed);
+    } else return error.SweepDidNotEnd;
+    defer protocol.destroyWindowRealm(made, .navigable_destroyed);
+    // Every allocation of the realm's making failed once.
+    try std.testing.expect(failed > 0);
 }
 
 test "protocol: a destroyed navigable's realm keeps its Window while script holds its WindowProxy, and ends when it is collected" {
