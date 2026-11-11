@@ -263,11 +263,14 @@ fn cleanValueIsNotWrittenByATypeChange() !void {
         "  globalThis.seen = new MutationObserver(() => {});" ++
         "  seen.observe(i, { attributes: true });" ++
         "  i.type = 'hidden';" ++
+        // Taken here: the microtask checkpoint that ends this script
+        // delivers the queue to the observer's callback.
+        "  globalThis.changed = seen.takeRecords().map(r => r.attributeName).join();" ++
         "  globalThis.clean = i;" ++
         "  return i.getAttribute('value') === 'a\\nb';" ++
         "})()");
     try check(browser, "clean.value === 'a\\nb'");
-    try check(browser, "seen.takeRecords().map(r => r.attributeName).join() === 'type'");
+    try check(browser, "changed === 'type'");
     // Value mode -> default/on mode.
     try check(browser, "(() => {" ++
         "  const i = document.createElement('input');" ++
@@ -301,6 +304,35 @@ fn cleanValueIsNotWrittenByATypeChange() !void {
 
 test "A3 order: a type change does not write a value that only ever came from the value attribute" {
     try onFreshThread(cleanValueIsNotWrittenByATypeChange);
+}
+
+fn cleanValueIsNotRewrittenUnchanged() !void {
+    const browser = try scriptPage();
+    defer browser.deinit();
+    // Case A where the sanitization leaves the value as it is: the attribute
+    // reads the same either way, so ask an observer. It sees `type` alone; a
+    // write would add a `value` record (and copy a shared attribute block).
+    try check(browser, "(() => {" ++
+        "  const i = document.createElement('input');" ++
+        "  i.setAttribute('value', 'abc');" ++
+        "  const observer = new MutationObserver(() => {});" ++
+        "  observer.observe(i, { attributes: true });" ++
+        "  i.type = 'hidden';" ++
+        "  return observer.takeRecords().map(r => r.attributeName).join() === 'type';" ++
+        "})()");
+    // The control: a dirty value is written, and the observer sees it.
+    try check(browser, "(() => {" ++
+        "  const i = document.createElement('input');" ++
+        "  i.value = 'abc';" ++
+        "  const observer = new MutationObserver(() => {});" ++
+        "  observer.observe(i, { attributes: true });" ++
+        "  i.type = 'hidden';" ++
+        "  return observer.takeRecords().map(r => r.attributeName).join() === 'type,value';" ++
+        "})()");
+}
+
+test "A3 order: a type change does not rewrite a clean value with itself" {
+    try onFreshThread(cleanValueIsNotRewrittenUnchanged);
 }
 
 fn valueTakenByATypeChangeIsWritten() !void {
