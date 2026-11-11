@@ -928,25 +928,31 @@ test "a parked record comes back with its id and a count of one, and leaves the 
 }
 
 test "a million distinct values end at the table's size plus at most the ring" {
-    // A leak-checking, poisoning DebugAllocator with no stack traces, not
-    // std.testing.allocator: its capture of 7 frames at every allocation and
-    // free runs the DWARF self-unwinder on macOS, which made this test 73 s
-    // on chat2 against 8 s on server1 (lane nd2 batch 3; tests/dom/
-    // nd2_element_name_test.zig CountedPage has the profile).
-    var debug: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
-    defer if (debug.deinit() == .leak) @panic("a million distinct values leaked");
-    var scope = runtime.BrowserScope.init(debug.allocator());
-    defer scope.deinit();
-    const keep = try intern(&scope, "kept");
-    const table = tableOf(&scope).?;
+    // The churn tests' allocator (tests/test_runner/poisoning.zig
+    // ChurnAllocator: poisoned frees and the leak check, no stack traces):
+    // std.testing.allocator's capture at every allocation and free made this
+    // test 73 s on chat2 against 8 s on server1.
+    var churn = @import("root").poisoning.ChurnAllocator.init("attribute_values: a million distinct values");
+    errdefer churn.deinit() catch {};
+    {
+        var scope = runtime.BrowserScope.init(churn.allocator());
+        defer scope.deinit();
+        try millionDistinctValues(&scope);
+    }
+    try churn.deinit();
+}
+
+fn millionDistinctValues(scope: *runtime.BrowserScope) !void {
+    const keep = try intern(scope, "kept");
+    const table = tableOf(scope).?;
     const start = table.count();
     var buffer: [24]u8 = undefined;
-    for (0..1_000_000) |i| release(&scope, try intern(&scope, try std.fmt.bufPrint(&buffer, "value {d}", .{i})));
+    for (0..1_000_000) |i| release(scope, try intern(scope, try std.fmt.bufPrint(&buffer, "value {d}", .{i})));
     try std.testing.expect(table.count() <= start + Table.Parking.max_records);
     try std.testing.expectEqual(@as(usize, 1), table.liveCount());
     try std.testing.expect(table.ids.len() <= start + Table.Parking.max_records + 1);
     try expectParkingSound(table);
-    release(&scope, keep);
+    release(scope, keep);
 }
 
 test "the ring is bounded by bytes, and a record over the per-record cap is freed at once" {
