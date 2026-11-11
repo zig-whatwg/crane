@@ -23,8 +23,13 @@
 #                repacked as librust_v8.a, and the system libraries (system-libs.txt); d8 runs a smoke
 #     smoke      Zig compiles and links a 70-line program against the archives as Crane would (the
 #                archive's v8-gn.h, Chromium's libc++ headers and objects, no Zig libc++): `1+1`, a
-#                Temporal call, a cppgc allocation that survives a full collection
-#     install    copy everything to $CRANE_V8/$V8_TAG/ and write SHA256SUMS
+#                Temporal call, a cppgc allocation that survives a full collection - twice: linked by
+#                `zig cc` (LLD on Linux), and as a Debug Zig executable linked by Zig's own linker
+#                (-fno-lld: the self-hosted ELF linker Crane's Debug x86_64 builds use), which must run
+#                past main (ELF RELOCATIONS)
+#     install    copy everything to $CRANE_V8/$V8_TAG.new/, write and check SHA256SUMS, then swap it in;
+#                a replaced install's SHA256SUMS is kept as $CRANE_V8/$V8_TAG.SHA256SUMS.replaced-<UTC>
+#                (a pinned artifact is never rewritten in place)
 #     clean      delete the build directory (intermediates) after install; the checkout stays
 #
 # THE C++ LIBRARY. V8 15.7 refuses to build its sandbox without libc++ hardening: BUILD.gn:896
@@ -41,6 +46,19 @@
 # V8-linking artifacts link libc++_chromium.a (libc++ + libc++abi from this build) instead of Zig's
 # libc++. This is how Chrome links V8, and how rusty_v8 (Deno) does - V8, its glue and Chromium's
 # libc++ in one library. The other way, v8_enable_sandbox = false, departs from Chrome 157.
+#
+# ELF RELOCATIONS (Linux; lane v8up b3d, 2026-11-11). Chromium compiles every object with
+# `-Wa,--crel,--allow-experimental-crel` when it targets Linux with lld (build/config/compiler/BUILD.gn:673-679
+# at this tag; crbug.com/357878242): relocations in SHT_CREL sections (.crel.text, .crel.data, ...), which lld
+# reads since LLVM 19 and Chrome's own link consumes. Zig 0.17's self-hosted ELF linker - the one it uses for a
+# Debug x86_64 executable (the snapshot generator, every test binary) - does not read SHT_CREL: it copied the
+# .crel.* sections into the output as unknown sections and applied none of their relocations, so the snapshot
+# generator called address 0 from __libc_start_main (a null .init_array entry) before main. No GN argument turns
+# CREL off but use_lld = false, and `ld.lld -r` keeps an input's CREL. So on Linux this script runs every
+# compile with CCC_OVERRIDE_OPTIONS deleting that one argument (clang's driver edits its own command line by
+# this variable: clang/tools/driver/driver.cpp, "x" = remove the argument; "#" = silently): the objects carry
+# RELA relocations, which every ELF linker reads - the same code, sections and symbols. V8's sources and GN
+# files are not changed. Step `verify` fails on any .crel section left.
 #
 # GN ARGUMENTS (each a choice; the plan's section 3): out/static's 13.1.203 arguments (the same list as
 # scripts/build-v8-official.sh control_args) EXCEPT use_custom_libcxx (above), plus:
@@ -97,6 +115,9 @@ case "$(uname -s)" in
   *) echo "build-v8-15.7: unsupported host $(uname -s)" >&2; exit 1 ;;
 esac
 JOBS="${JOBS:-$NCPU}"
+# Linux: no CREL relocations in any object (see "ELF RELOCATIONS").
+[ "$HOST_OS" != linux ] || export CCC_OVERRIDE_OPTIONS='#x-Wa,--crel,--allow-experimental-crel'
+
 if command -v sha256sum > /dev/null; then SHA256=sha256sum; else SHA256="shasum -a 256"; fi
 PIDFILE="$V8_ROOT/build.pid"
 
@@ -313,7 +334,7 @@ PY
 step_verify() {
   check_stop verify
   cd "$V8/$OUT/obj"
-  local nm="$LLVM/bin/llvm-nm" a std1 cr cxx11 gnu bad=0
+  local nm="$LLVM/bin/llvm-nm" a std1 cr cxx11 gnu crel bad=0 crel_bad=0
   for a in $(archives); do
     [ -f "$a" ] || { echo "   $a: not built yet (step rust)"; continue; }
     std1=$("$nm" "$a" 2>/dev/null | grep -c 'St3__1' || true)
@@ -322,7 +343,13 @@ step_verify() {
     gnu=$("$nm" "$a" 2>/dev/null | grep -c '__gnu_cxx' || true)
     echo "   $a: std::__Cr $cr | std::__1 $std1 | std::__cxx11 $cxx11 | __gnu_cxx $gnu"
     [ "$std1" = 0 ] && [ "$cxx11" = 0 ] && [ "$gnu" = 0 ] || bad=1
+    if [ "$HOST_OS" = linux ]; then
+      crel=$("$LLVM/bin/llvm-readelf" -S -W "$a" 2> /dev/null | grep -c -E '\] \.crel\.' || true)
+      echo "   $a: CREL relocation sections $crel"
+      [ "$crel" = 0 ] || crel_bad=1
+    fi
   done
+  [ "$crel_bad" = 0 ] || die "an archive member carries CREL relocations, which Zig's ELF linker does not apply (ELF RELOCATIONS)"
   [ "$bad" = 0 ] || die "an archive names another C++ library than Chromium's std::__Cr"
   libcxx_consumer_flags > "$V8/$OUT/libcxx-flags.txt"
   log "libc++ consumer flags ($(wc -l < "$V8/$OUT/libcxx-flags.txt" | tr -d ' ') lines):"
@@ -449,6 +476,11 @@ struct Leaf final : cppgc::GarbageCollected<Leaf> {
   int value = 41;
   void Trace(cppgc::Visitor*) const {}
 };
+// Linked from a Zig main (step smoke, Zig's own linker): main renamed, with C linkage.
+#ifdef CRANE_V8_SMOKE_ZIG_MAIN
+extern "C" int crane_v8_smoke_main();
+#define main crane_v8_smoke_main
+#endif
 int main() {
   v8::V8::SetFlagsFromString("--expose-gc");
   std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
@@ -541,14 +573,36 @@ step_smoke() {
   echo "smoke binary: std::__Cr symbols $cr, std::__1/libstdc++ symbols $other" >> "$V8/$OUT/smoke.txt"
   cat "$V8/$OUT/smoke.txt"
   [ "$other" = 0 ] && [ "$cr" -gt 0 ] || die "the smoke binary holds another C++ library than Chromium's"
+  [ "$rc" = 0 ] || { rm -rf "$t"; die "the smoke test failed (rc $rc)"; }
+  # The same program as a Debug Zig executable linked by Zig's OWN linker (-fno-lld): on x86_64 Linux the
+  # one Crane's Debug builds use (the snapshot generator, the test binaries), which applies only the
+  # relocations it reads (ELF RELOCATIONS: an archive with CREL linked there called address 0 before main).
+  # The C++ main is renamed (CRANE_V8_SMOKE_ZIG_MAIN); a Zig main calls it.
+  ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" cc -x c++ -std=c++20 -fno-exceptions -fno-rtti "${flags[@]}" -DV8_GN_HEADER \
+    -DCRANE_V8_SMOKE_ZIG_MAIN -I "$inc" -c "$t/smoke.cc" -o "$t/smoke-zig.o" > "$t/compile-zig.txt" 2>&1 \
+    || { cat "$t/compile-zig.txt"; rm -rf "$t"; die "the Zig-linker smoke compile failed"; }
+  printf '%s\n' 'extern fn crane_v8_smoke_main() c_int;' \
+    'pub fn main() u8 {' '    return @intCast(crane_v8_smoke_main());' '}' > "$t/smoke_main.zig"
+  rc=0
+  ( cd "$t" && ZIG_GLOBAL_CACHE_DIR="$t/gc" "$ZIG" build-exe smoke_main.zig smoke-zig.o "$o/libv8_monolith.a" \
+      "$o/libv8_libplatform_fat.a" "$o/libv8_libbase_fat.a" "$o/libc++_chromium.a" "$o/librust_v8.a" \
+      ${extra[@]+"${extra[@]}"} -lc -O Debug -fno-lld --name smoke-zig ) > "$t/link-zig.txt" 2>&1 || rc=$?
+  [ "$rc" = 0 ] || { head -40 "$t/link-zig.txt"; rm -rf "$t"; die "the Zig-linker smoke link failed (rc $rc)"; }
+  rc=0
+  "$t/smoke-zig" > "$V8/$OUT/smoke-zig.txt" 2>&1 || rc=$?
+  echo "linked by Zig's own linker (-fno-lld, Debug): rc $rc" >> "$V8/$OUT/smoke-zig.txt"
+  cat "$V8/$OUT/smoke-zig.txt"
+  cat "$V8/$OUT/smoke-zig.txt" >> "$V8/$OUT/smoke.txt"
   rm -rf "$t"
-  [ "$rc" = 0 ] || die "the smoke test failed (rc $rc)"
-  log "smoke: passed"
+  [ "$rc" = 0 ] || die "the smoke program linked by Zig's own linker did not run (rc $rc; a signal before main means relocations it did not apply: ELF RELOCATIONS)"
+  log "smoke: passed (zig cc, and Zig's own linker)"
 }
 
 step_install() {
   check_stop install
-  [ ! -e "$DEST" ] || die "$DEST exists (remove it first, by hand)"
+  # Built beside the installed one, checked, then swapped in: a pinned artifact is never rewritten in place.
+  local FINAL="$DEST" DEST="$DEST.new"
+  rm -rf "$DEST"
   mkdir -p "$DEST/out/static/obj" "$DEST/libcxx"
   cd "$V8"
   cp $(for a in $(archives); do echo "$OUT/obj/$a"; done) "$DEST/out/static/obj/"
@@ -573,9 +627,26 @@ step_install() {
     echo "rustc: $("$V8/third_party/rust-toolchain/bin/rustc" --version)"
     echo "libc++: Chromium's (third_party/libc++ at this tag's DEPS, std::__Cr, hardened); libc++_chromium.a"
     [ "$HOST_OS" != mac ] || echo "SDK: macOS $(xcrun --sdk macosx --show-sdk-version)"
+    if [ "$HOST_OS" = linux ]; then
+      echo "relocations: RELA - every compile ran with CCC_OVERRIDE_OPTIONS='$CCC_OVERRIDE_OPTIONS', deleting the"
+      echo "  -Wa,--crel,--allow-experimental-crel Chromium adds for Linux+lld (build/config/compiler/BUILD.gn:673-679):"
+      echo "  Zig 0.17's self-hosted ELF linker does not apply SHT_CREL relocations (scripts/build-v8-15.7.sh ELF RELOCATIONS)"
+    fi
+    [ -z "${PROVENANCE_NOTE:-}" ] || echo "$PROVENANCE_NOTE"
+    [ ! -e "$FINAL/PROVENANCE" ] || echo "replaces: $(head -1 "$FINAL/PROVENANCE") (its SHA256SUMS kept beside: $(basename "$FINAL").SHA256SUMS.replaced-<UTC>)"
   } > "$DEST/PROVENANCE"
-  ( cd "$DEST" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | xargs $SHA256 > SHA256SUMS && $SHA256 -c SHA256SUMS > /dev/null )
-  log "installed to $DEST ($(du -sh "$DEST" | cut -f1)); archives: $(cd "$DEST/out/static/obj" && ls -la $(archives) | awk '{printf "%s %s; ", $NF, $5}')"
+  ( cd "$DEST" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | xargs $SHA256 > SHA256SUMS && $SHA256 -c SHA256SUMS > /dev/null ) \
+    || die "the new install's SHA256SUMS does not check"
+  if [ -e "$FINAL" ]; then
+    local kept
+    kept="$FINAL.SHA256SUMS.replaced-$(date -u +%Y%m%dT%H%M%SZ)"
+    [ ! -s "$FINAL/SHA256SUMS" ] || cp -p "$FINAL/SHA256SUMS" "$kept"
+    log "install: replacing $FINAL (its SHA256SUMS kept as $kept)"
+    rm -rf "$FINAL"
+  fi
+  mv "$DEST" "$FINAL"
+  DEST=$FINAL
+  log "installed to $DEST ($(du -sh "$DEST" | cut -f1)); SHA256SUMS sha256 $($SHA256 "$DEST/SHA256SUMS" | cut -c1-64); archives: $(cd "$DEST/out/static/obj" && ls -la $(archives) | awk '{printf "%s %s; ", $NF, $5}')"
 }
 
 step_clean() {
