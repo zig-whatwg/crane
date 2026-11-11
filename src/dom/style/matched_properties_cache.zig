@@ -74,14 +74,18 @@
 //! Admission (lane style1 b5; design 3.6 item 9). A rule's block is one
 //! object for every element it matches; an own block's content may be held
 //! by one element only (a style attribute that positions one row). Kept, such
-//! a style costs an entry and its share of a prune and serves no hit. So from
-//! `prune_target` entries on - where each entry added brings the next prune
-//! nearer - a resolution with an own block whose content key has no entry
-//! gets one on that key's second sighting (`admits`: the cache-on-second-hit
-//! rule of a bounded cache; TinyLFU's doorkeeper). Below the target every
-//! resolution is kept as it comes. Neither browser has the rule: Blink keeps
-//! every cacheable resolution and declines only an inline set modified after
-//! it was hashed (MatchResult::AddMatchedProperties); it decides which
+//! a style costs an entry and serves no hit, and at the cache's limit it
+//! costs a prune - the 200 least recently used entries - as well. So at
+//! `limit` entries, where the next entry forces that prune, a resolution with
+//! an own block whose content key has no entry gets one on that key's second
+//! sighting (`admits`: the cache-on-second-hit rule of a bounded cache,
+//! consulted as TinyLFU's doorkeeper is, only when admitting evicts). Below
+//! the limit every resolution is kept as it comes: the band between the
+//! prune target and the limit is where a page's cache lives (the AG Grid
+//! page holds about 440 entries; with the rule applied from the prune target
+//! it lost 7,987 of 1,188,349 hits). Neither browser has the rule: Blink
+//! keeps every cacheable resolution and declines only an inline set modified
+//! after it was hashed (MatchResult::AddMatchedProperties); it decides which
 //! entries exist, never what a hit holds.
 //!
 //! One per Document's StyleEngine, used on its Browser's window-agent thread
@@ -197,8 +201,8 @@ pub const MatchedPropertiesCache = struct {
     /// (ComputedStyle.DifferenceHints).
     difference_hints: css.computed_style.DifferenceHints = @splat(0),
     /// The content keys of own-block resolutions that were given no entry
-    /// (`admits`), one tag per slot; null until the cache first holds
-    /// `prune_target` entries, released with the entries (`clear`).
+    /// (`admits`), one tag per slot; null until the cache is first at its
+    /// limit, released with the entries (`clear`).
     seen: ?*[seen_slots]u32 = null,
 
     pub const per_key = 4;
@@ -278,8 +282,8 @@ pub const MatchedPropertiesCache = struct {
     }
 
     /// Whether a resolution with an own block, whose content key has no
-    /// entry, is given one. With room - fewer than `prune_target` entries:
-    /// nothing is pruned for it - always. From there on, at its key's second
+    /// entry, is given one. With room - fewer than `limit` entries: nothing
+    /// is pruned for it - always. At the limit, at its key's second
     /// sighting: the first leaves the key's tag in `seen` (direct-mapped by
     /// the key's low bits; the tag is its high 32 bits, never 0) and no
     /// entry, so a content one element holds costs a tag, and one that
@@ -287,7 +291,7 @@ pub const MatchedPropertiesCache = struct {
     /// that collides, delays or admits an entry and nothing else: a hit
     /// still compares content. Out of memory for the table: no entry.
     fn admits(self: *MatchedPropertiesCache, key: u64) bool {
-        if (self.entries < prune_target) return true;
+        if (self.entries < limit) return true;
         const seen = self.seen orelse made: {
             const table = self.allocator.create([seen_slots]u32) catch return false;
             table.* = @splat(0);

@@ -1445,7 +1445,6 @@ fn cascadeOrHit(res: *Resolution, ctx: css.cascade.Context, pseudo: ?[]const u8)
     const cache = res.engine.matchedPropertiesCache() orelse return css.cascade.cascade(ctx, res.matched.items);
     var lookup: matched_properties_cache.Lookup = .{
         .key = matched_properties_cache.keyOf(res.matched.items, pseudo, ctx.parent),
-        .shape = if (res.own_blocks) matched_properties_cache.shapeOf(res.matched.items, pseudo, ctx.parent) else null,
         .generation = res.key.generation,
         .matched = res.matched.items,
         .parent = ctx.parent,
@@ -1471,6 +1470,9 @@ fn cascadeOrHit(res: *Resolution, ctx: css.cascade.Context, pseudo: ?[]const u8)
     var recording = ctx;
     if (cacheable) recording.dependencies = &dependencies;
     const style = try css.cascade.cascade(recording, res.matched.items);
+    // A miss with an own block: `add` adopts and admits by its shape key
+    // too (a hit never reads it, so it is made here).
+    if (res.own_blocks) lookup.shape = matched_properties_cache.shapeOf(res.matched.items, pseudo, ctx.parent);
     cache.add(lookup, if (cacheable) dependencies else null, style);
     // Debug builds: the style adoption left (its groups and records maybe an
     // entry's now) reads what the cascade computed. With the check on every
