@@ -243,8 +243,9 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     // once it is detached, and V8 has no API that attaches a global to a context again. So a failure after
     // this point (out of memory) leaves the old realm alive and its Window active - the host keeps them
     // (HTMLIFrameElement replaceRealm) - but its WindowProxy reaching no Window until the next realm made
-    // around it: script sees a proxy with no global (member reads throw a SecurityError: the access check finds
-    // no Window behind it). Failure-atomic creation (every
+    // around it: script sees a proxy with no global (member reads throw V8's TypeError "no access": a detached
+    // proxy has no access-check info; the errdefer below detaches a failed context's global so that every failure
+    // point leaves this one state). Failure-atomic creation (every
     // fallible allocation before the detach) is queued as its own realm-lifetime work (the v8up handoff).
     switch (options.global_this) {
         .new_window_proxy => {},
@@ -340,6 +341,15 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     var registered = false;
     errdefer {
         if (registered) context_manager.removeContext(context);
+        // A context made around the handed-on WindowProxy holds it: detach its global, so the proxy is
+        // left with no global, as after the hand-on alone (the ORDER comment above), and script holding it
+        // never reaches this half-made global, whose realm record is gone - a call into a binding there would
+        // make platform objects in a realm no Browser owns. Blink: a failed LocalWindowProxy::Initialize
+        // disposes the context it made, and DisposeContext detaches the global of a reused frame
+        // (local_window_proxy.cc). Before this, a failure after the context was made left the proxy on the
+        // half-made global: member reads gave undefined or a SecurityError, by how far the realm got
+        // (iframe_policy_container_oom_test, failing allocation 144 on chat2 and 143 on server1).
+        if (reused_proxy != null) ffi.v8_Context_DetachGlobal(context);
         ffi.v8_Context_Exit(context);
         ffi.v8_Context_Dispose(context);
     }

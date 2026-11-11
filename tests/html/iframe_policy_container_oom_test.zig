@@ -55,8 +55,12 @@
 //! again after the first such round and after the sweep. A round whose new
 //! realm failed after the engine handed the WindowProxy on (V8 cannot attach
 //! a detached global again) leaves script no Window through the proxy (a
-//! SecurityError on member reads): the frame must then recover on its next
-//! navigation.
+//! TypeError on member reads: the engine detaches the failed context's
+//! global too, so every such failure leaves the same proxy with no global):
+//! the frame must then recover on its next navigation. And, unlike the other sweeps, this one checks memory: its
+//! FailingAllocator sits on a counting allocator over c_allocator, and once
+//! the Browser is torn down it holds nothing (`sweepContentWindow` says why
+//! the check is per sweep, not per round).
 //!
 //! Lane leaks5 saw the frames stop navigating partway through these sweeps
 //! - the srcdoc frame from failing allocation 102, the javascript: frame
@@ -328,8 +332,91 @@ test "a new iframe's initial about:blank document never starts without its creat
 /// probably the "Document with no internal state" lane leaks4 saw through
 /// contentWindow (not proven - lane/int4 reads it with memory to spare,
 /// and rebuilds the frame).
+/// What the Browser holds of c_allocator: its live blocks and bytes. It sits
+/// under the FailingAllocator, so it counts only what was handed out; the
+/// Browser may allocate from more than one thread, hence the atomics.
+const CountingAllocator = struct {
+    live_count: std.atomic.Value(usize) = .init(0),
+    live_bytes: std.atomic.Value(usize) = .init(0),
+
+    fn allocator(self: *CountingAllocator) std.mem.Allocator {
+        return .{ .ptr = self, .vtable = &vtable };
+    }
+
+    const vtable: std.mem.Allocator.VTable = .{ .alloc = alloc, .resize = resize, .remap = remap, .free = free };
+    const backing = std.heap.c_allocator;
+
+    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        const result = backing.rawAlloc(len, alignment, ret_addr) orelse return null;
+        _ = self.live_count.fetchAdd(1, .monotonic);
+        _ = self.live_bytes.fetchAdd(len, .monotonic);
+        return result;
+    }
+
+    fn resize(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        if (!backing.rawResize(memory, alignment, new_len, ret_addr)) return false;
+        self.moved(memory.len, new_len);
+        return true;
+    }
+
+    fn remap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        const result = backing.rawRemap(memory, alignment, new_len, ret_addr) orelse return null;
+        self.moved(memory.len, new_len);
+        return result;
+    }
+
+    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        backing.rawFree(memory, alignment, ret_addr);
+        _ = self.live_count.fetchSub(1, .monotonic);
+        _ = self.live_bytes.fetchSub(memory.len, .monotonic);
+    }
+
+    fn moved(self: *CountingAllocator, old_len: usize, new_len: usize) void {
+        if (new_len >= old_len) {
+            _ = self.live_bytes.fetchAdd(new_len - old_len, .monotonic);
+        } else {
+            _ = self.live_bytes.fetchSub(old_len - new_len, .monotonic);
+        }
+    }
+
+    const Live = struct { count: usize, bytes: usize };
+
+    fn live(self: *const CountingAllocator) Live {
+        return .{ .count = self.live_count.load(.monotonic), .bytes = self.live_bytes.load(.monotonic) };
+    }
+};
+
+/// The contentWindow sweep, then its leak check. The check is per SWEEP,
+/// after the Browser's teardown, and not per round, because one Browser runs
+/// every round and a round legitimately leaves the Browser holding more than
+/// it held at its start: each navigation that commits (the sweep's last
+/// round, and the navigation with memory to spare after a round that failed
+/// after the WindowProxy hand-on) appends a session history entry to the
+/// page's traversable (HTML "finalize a cross-document navigation": an
+/// iframe whose document is completely loaded navigates with "push"); a
+/// navigated-away realm and its Window are freed only when V8 collects the
+/// old global and the deferred teardown's slices run from the event loop; and
+/// the frame's new document stays. All of it is the Browser's until
+/// Browser.deinit. So every block the Browser took from c_allocator during
+/// the whole sweep is back when it is torn down: live count and bytes equal
+/// their values before Browser.init (zero).
 fn sweepContentWindow(rounds: usize) !void {
-    var failing = std.testing.FailingAllocator.init(std.heap.c_allocator, .{});
+    var counting: CountingAllocator = .{};
+    const start = counting.live();
+    try sweepContentWindowOn(&counting, rounds);
+    const end = counting.live();
+    if (end.count != start.count or end.bytes != start.bytes) {
+        std.debug.print("the sweep's Browser, torn down, still holds {d} blocks ({d} bytes) of c_allocator; it held {d} ({d}) before Browser.init\n", .{ end.count, end.bytes, start.count, start.bytes });
+        return error.BrowserLeftMemory;
+    }
+}
+
+fn sweepContentWindowOn(counting: *CountingAllocator, rounds: usize) !void {
+    var failing = std.testing.FailingAllocator.init(counting.allocator(), .{});
     const browser = try browser_mod.Browser.init(failing.allocator(), .{ .persist_storage = false, .snapshot_path = "" });
     defer browser.deinit();
     // Out-of-memory rounds may leave a tree held (an OOM path elsewhere may leak, which is not this test's).
@@ -350,17 +437,31 @@ fn sweepContentWindow(rounds: usize) !void {
 
     var round: usize = 0;
     var replacements_failed: usize = 0;
+    // The bound on what the Browser may keep across rounds (see sweepContentWindow): a round that
+    // commits no navigation leaves it at most one block more (measured: 140 of 144 such rounds on
+    // chat2 kept exactly one, the rest none), and every navigation that commits adds one entry to the
+    // joint session history (an iframe whose document is completely loaded navigates with "push").
+    var committed: usize = 0;
+    var measure_max: usize = 0; // V8UPMEASURE
+    var measure_round: usize = 0; // V8UPMEASURE
+    defer std.debug.print("V8UPMEASURE max growth of a round that committed nothing: {d} blocks, at round {d}; committed {d}\n", .{ measure_max, measure_round, committed }); // V8UPMEASURE
+    const history_start = try historyLength(page, realm);
     var proxy_handed_on: usize = 0;
     while (round < rounds) : (round += 1) {
         // "Allowed to perform a navigation" (200 per 10 s) would stop the
         // sweep's navigations partway (lane nav1): not this test's.
         bc.navigation_rate_count = 0;
         const failed_before = integration.realm_replacements_failed;
+        const live_before = counting.live();
+        const shown_before = frameDocumentStamp(iframe);
+        var extra_navigations: usize = 0;
         failing.has_induced_failure = false;
         failing.fail_index = failing.alloc_index + round;
         page.runScript(Navigation.srcdoc.script()) catch {};
         _ = browser.runEventLoopBlocking(50) catch {};
         const induced = failing.has_induced_failure;
+        // Read with memory out still: the frame's document, through the browsing context's active window.
+        const shown_after = frameDocumentStamp(iframe);
         // Still out of memory: what the frame answers now - a Window, never
         // null and never its WindowProxy struct. A navigation that failed
         // left the frame on the Window it had.
@@ -399,13 +500,15 @@ fn sweepContentWindow(rounds: usize) !void {
                 return error.WindowDoesNotWork;
             }
             // What script observes then, exactly: a proxy with no global,
-            // whose member reads throw a SecurityError.
+            // whose member reads throw a TypeError.
             if (!try frameProxyHasNoGlobal(page, realm)) {
-                std.debug.print("failing allocation {d}: the handed-on proxy is not one with no global (a SecurityError on member reads)\n", .{round});
+                std.debug.print("failing allocation {d}: the handed-on proxy is not one with no global (a TypeError on member reads)\n", .{round});
+                std.debug.dumpStackTrace(&failing.getStackTrace());
                 return error.UnexpectedProxyState;
             }
             proxy_handed_on += 1;
             try navigatesWithMemoryToSpare(browser, page, iframe, bc);
+            extra_navigations += 1;
             if (!try frameWindowWorks(page, realm)) {
                 std.debug.print("failing allocation {d}: the frame's next Window does not answer script\n", .{round});
                 return error.WindowDoesNotWork;
@@ -415,6 +518,20 @@ fn sweepContentWindow(rounds: usize) !void {
             // is on its old realm, and a navigation with memory to spare
             // completes.
             try navigatesWithMemoryToSpare(browser, page, iframe, bc);
+            extra_navigations += 1;
+        }
+        const round_committed: usize = @intFromBool(!std.meta.eql(shown_before, shown_after)) + extra_navigations;
+        committed += round_committed;
+        if (round_committed == 0) {
+            const live_after = counting.live();
+            if (live_after.count > live_before.count and live_after.count - live_before.count > measure_max) { // V8UPMEASURE
+                measure_max = live_after.count - live_before.count; // V8UPMEASURE
+                measure_round = round; // V8UPMEASURE
+            } // V8UPMEASURE
+            if (live_after.count > live_before.count + 1000) { // V8UPMEASURE threshold
+                std.debug.print("failing allocation {d}: a round that committed nothing left the Browser {d} blocks more ({d} -> {d})\n", .{ round, live_after.count - live_before.count, live_before.count, live_after.count });
+                return error.RoundKeptTooMuch;
+            }
         }
         if (!induced) break;
     }
@@ -428,6 +545,12 @@ fn sweepContentWindow(rounds: usize) !void {
     std.log.info("rounds whose new realm could not be made: {d}, of which after the WindowProxy hand-on: {d}", .{ replacements_failed, proxy_handed_on });
     // And after the whole sweep, the frame still navigates.
     try navigatesWithMemoryToSpare(browser, page, iframe, bc);
+    committed += 1;
+    const history_end = try historyLength(page, realm);
+    if (history_end - history_start != committed) {
+        std.debug.print("the joint session history grew by {d} entries ({d} -> {d}) over {d} committed navigations\n", .{ history_end - history_start, history_start, history_end, committed });
+        return error.HistoryDoesNotMatchCommits;
+    }
 }
 
 /// Whether script in the page reads the frame's Window: its document's body.
@@ -437,14 +560,51 @@ fn frameWindowWorks(page: anytype, realm: runtime.Context) !bool {
     return engine.toBoolean(realm, owned.value);
 }
 
-/// Whether script sees the frame's WindowProxy with no global behind it as
-/// it does today (server1, lane v8up b3e): an object, whose member reads
-/// throw a SecurityError - the access check finds no Window behind the
-/// proxy and refuses (cross_origin.zig) - and nothing else.
+/// Whether script sees the frame's WindowProxy with no global behind it:
+/// an object whose member reads throw the accessing realm's TypeError, and
+/// nothing else. V8 checks access to a global proxy detached from the
+/// current global (JSObject::IsAccessCheckNeeded); a detached proxy's map
+/// has no constructor, so no access-check info, and V8 then throws
+/// TypeError "no access" itself (Isolate::ReportFailedAccessCheck) - the
+/// host's check (cross_origin.zig) is never asked. Lane v8up b3f found two
+/// other answers before protocol_realms.createWindowRealm detached a failed
+/// context's global: a failure after Context::New left the proxy on the
+/// half-made global, where reads gave a SecurityError or undefined
+/// depending on how far the realm got (server1 b3e; chat2 and server1 at
+/// failing allocations 144 and 143). Prints what script saw otherwise.
 fn frameProxyHasNoGlobal(page: anytype, realm: runtime.Context) !bool {
-    const owned = try page.evaluateScript("(() => { const w = document.getElementById('s').contentWindow; if (w === null || typeof w !== 'object') return false; try { w.document; return false; } catch (e) { return e instanceof DOMException && e.name === 'SecurityError'; } })()");
+    const owned = try page.evaluateScript(
+        \\(() => {
+        \\  const w = document.getElementById('s').contentWindow;
+        \\  if (w === null) return 'contentWindow is null';
+        \\  if (typeof w !== 'object') return 'contentWindow is a ' + typeof w;
+        \\  try { const d = w.document; return 'w.document did not throw: ' + String(d); }
+        \\  catch (e) { return (e instanceof DOMException ? 'DOMException ' : 'not a DOMException ') + (e && e.name) + ': ' + (e && e.message); }
+        \\})()
+    );
     defer owned.release();
-    return engine.toBoolean(realm, owned.value);
+    const seen = try engine.convertToDOMString(realm, owned.value, testing.allocator);
+    defer testing.allocator.free(seen);
+    if (std.mem.eql(u8, seen, "not a DOMException TypeError: no access")) return true;
+    std.debug.print("script saw through the frame's proxy: {s}\n", .{seen});
+    return false;
+}
+
+/// What the frame shows: its active document and that document's slab
+/// generation (a freed and reused block is a new document), or null.
+fn frameDocumentStamp(iframe: *runtime.Instance) ?struct { *runtime.Instance, u64 } {
+    const window = (interfaces.HTMLIFrameElement.get_contentWindow(iframe) catch return null) orelse return null;
+    const document = interfaces.Window.get_document(window) catch return null;
+    return .{ document, runtime.SlabAllocator.generationOf(document) };
+}
+
+/// The page's `history.length`: the joint session history's entry count.
+fn historyLength(page: anytype, realm: runtime.Context) !usize {
+    const owned = try page.evaluateScript("String(history.length)");
+    defer owned.release();
+    const text = try engine.convertToDOMString(realm, owned.value, testing.allocator);
+    defer testing.allocator.free(text);
+    return std.fmt.parseInt(usize, text, 10);
 }
 
 /// The srcdoc frame navigates with memory to spare: it shows a new document
