@@ -68,9 +68,9 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-6ee7b5b75b04"><details><summary><span class="mark">FAIL</span><span class="sub-name">Initial about:blank is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;5a59bbb7-1c81-420c-88a0-df93ef764252&quot; but got &quot;efcea6a0-2d8d-418b-a692-82d854e16cdd&quot;</pre></details><a class="self" href="#s-6ee7b5b75b04" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-45d839f0b836"><details><summary><span class="mark">FAIL</span><span class="sub-name">Initial about:blank modified by parent is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;cc4219f5-017c-4209-98af-f714a54d8e35&quot; but got &quot;3a68ede4-caf2-4e6b-a5c1-73da7512201f&quot;</pre></details><a class="self" href="#s-45d839f0b836" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9a02e1c30911"><details><summary><span class="mark">FAIL</span><span class="sub-name">Popup initial about:blank is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;6721854a-f82e-445a-9dc4-3a6079a69381&quot; but got &quot;a6e48836-e5b1-4314-b635-29aa31b8edcb&quot;</pre></details><a class="self" href="#s-9a02e1c30911" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6ee7b5b75b04"><details><summary><span class="mark">FAIL</span><span class="sub-name">Initial about:blank is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;97844a05-d9cb-422e-a7d3-07c279aea91c&quot; but got &quot;f0f81e3d-23bf-4b06-bd36-3ccb4a3f9e1c&quot;</pre></details><a class="self" href="#s-6ee7b5b75b04" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-45d839f0b836"><details><summary><span class="mark">FAIL</span><span class="sub-name">Initial about:blank modified by parent is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;00a31b6c-4c1c-496d-b1f2-1bb9253661b9&quot; but got &quot;614127f3-1f39-49bd-8d0d-4f059c3a4dcd&quot;</pre></details><a class="self" href="#s-45d839f0b836" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9a02e1c30911"><details><summary><span class="mark">FAIL</span><span class="sub-name">Popup initial about:blank is controlled, exposed to clients.matchAll(), and matches final Client.</span></summary><pre class="msg">assert_equals: client ID values should match expected &quot;fe2233e3-57ba-446a-bf17-7d7a22eefc91&quot; but got &quot;98c918d3-c3c0-4293-9c65-f19169beb59e&quot;</pre></details><a class="self" href="#s-9a02e1c30911" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-9ca26ac04137"><details><summary><span class="mark">FAIL</span><span class="sub-name">Nested about:srcdoc is controlled and is exposed to clients.matchAll().</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of null (reading &#39;scriptURL&#39;)&quot;</pre></details><a class="self" href="#s-9ca26ac04137" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 <details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>Initial about:blank is controlled, exposed to clients.matchAll(), and final Client is not controlled by a service worker.</li><li>Simple about:blank is controlled and is exposed to clients.matchAll().</li><li>Dynamic about:blank is controlled and is exposed to clients.matchAll().</li></ol></details>
@@ -1732,7 +1732,7 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-c7d239931278"><details><summary><span class="mark">FAIL</span><span class="sub-name">Service worker controlled navigation timing</span></summary><pre class="msg">assert_greater_than: fetchStart should be marked before the Fetch event handler is called expected a number greater than 1794281504879 but got 1794281504879</pre></details><a class="self" href="#s-c7d239931278" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c7d239931278"><details><summary><span class="mark">FAIL</span><span class="sub-name">Service worker controlled navigation timing</span></summary><pre class="msg">assert_greater_than: fetchStart should be marked once the worker is activated expected a number greater than 1794401242068.125 but got 1794401242068.125</pre></details><a class="self" href="#s-c7d239931278" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </div>
@@ -2302,8 +2302,8 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-7f7231621b4c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test that timing allow check fails when service worker changes origin from same to cross origin (cors).</span></summary><pre class="msg">assert_equals: domainLookupStart and fetchStart should be the same in cross-origin request. expected 3.75 but got 0</pre></details><a class="self" href="#s-7f7231621b4c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-51b42e850b97"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test that timing allow check fails when service worker changes origin from same to cross origin (no-cors).</span></summary><pre class="msg">assert_equals: domainLookupStart and fetchStart should be the same in cross-origin request. expected 3.875 but got 0</pre></details><a class="self" href="#s-51b42e850b97" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7f7231621b4c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test that timing allow check fails when service worker changes origin from same to cross origin (cors).</span></summary><pre class="msg">assert_equals: domainLookupStart and fetchStart should be the same in cross-origin request. expected 4 but got 0</pre></details><a class="self" href="#s-7f7231621b4c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-51b42e850b97"><details><summary><span class="mark">FAIL</span><span class="sub-name">Test that timing allow check fails when service worker changes origin from same to cross origin (no-cors).</span></summary><pre class="msg">assert_equals: domainLookupStart and fetchStart should be the same in cross-origin request. expected 4 but got 0</pre></details><a class="self" href="#s-51b42e850b97" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </div>
@@ -2333,7 +2333,7 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-2459fc990a2e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Controlled resource loads</span></summary><pre class="msg">assert_greater_than_equal: Generated response expected a number greater than or equal to 11.5 but got 0</pre></details><a class="self" href="#s-2459fc990a2e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-2459fc990a2e"><details><summary><span class="mark">FAIL</span><span class="sub-name">Controlled resource loads</span></summary><pre class="msg">assert_greater_than_equal: Generated response expected a number greater than or equal to 11.875 but got 0</pre></details><a class="self" href="#s-2459fc990a2e" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 <details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Non-controlled resource loads</li></ol></details>
 </div>
