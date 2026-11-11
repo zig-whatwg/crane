@@ -440,8 +440,14 @@ const CountingAllocator = struct {
     /// (sweepContentWindow): an object handed to a traced edge whose wrapper
     /// could not be made. Each is named by the impl file its allocation
     /// stack passes through.
+    ///
+    /// CustomElementRegistry (Document.ensureGlobalRegistry, under a new
+    /// Window's setDocument) is the fifth: macOS under -Dsanitize-thread, 3
+    /// runs of 3, round 229, whose failure was WrapperCache.set under
+    /// Document.zig's traceChild (lane v8up b3i).
     const known_leak_kinds = [_][]const u8{
         "/impls/AbortController.zig:",
+        "/impls/CustomElementRegistry.zig:",
         "/impls/NavigateEvent.zig:",
         "/impls/NavigationDestination.zig:",
         "/impls/Performance.zig:",
@@ -450,6 +456,21 @@ const CountingAllocator = struct {
     /// Whether a block allocated at `frames` is of a known leak kind: its
     /// stack, symbolized, passes through one of `known_leak_kinds`.
     fn isKnownLeak(frames: [site_frames]usize) bool {
+        return stackPassesThrough(frames, &known_leak_kinds);
+    }
+
+    /// Whether round `round`'s induced allocation failure was the queued
+    /// leak's cause: the wrap of a traced child, failing under the engine's
+    /// traceChild (protocol_tracing.traceChild -> support.relevantWrapper ->
+    /// wrapInstanceAsV8Object -> WrapperCache.set).
+    fn failedInTraceChild(self: *const CountingAllocator, round: u32) bool {
+        const failed = self.failures.get(round) orelse return false;
+        return stackPassesThrough(failed, &.{"/protocol_tracing.zig:"});
+    }
+
+    /// Whether the stack `frames`, symbolized, passes through a file named
+    /// by one of `needles`.
+    fn stackPassesThrough(frames: [site_frames]usize, needles: []const []const u8) bool {
         var len: usize = 0;
         while (len < site_frames and frames[len] != 0) len += 1;
         var addresses = frames;
@@ -457,8 +478,8 @@ const CountingAllocator = struct {
         var writer: std.Io.Writer = .fixed(&buffer);
         std.debug.writeStackTrace(&.{ .return_addresses = addresses[0..len], .skipped = .none }, .{ .writer = &writer, .mode = .no_color }) catch {};
         const text = writer.buffered();
-        for (known_leak_kinds) |kind| {
-            if (std.mem.indexOf(u8, text, kind) != null) return true;
+        for (needles) |needle| {
+            if (std.mem.indexOf(u8, text, needle) != null) return true;
         }
         return false;
     }
@@ -500,7 +521,11 @@ const CountingAllocator = struct {
         }.more);
         std.debug.print("live blocks by allocation site ({d} sites):\n", .{list.items.len});
         for (list.items, 0..) |group, i| {
-            const known = classify and isKnownLeak(group.frames);
+            // Of the queued leak: a known kind, allocated in rounds whose
+            // induced failure was the wrap of a traced child (a group's first
+            // and last round both).
+            const known = classify and isKnownLeak(group.frames) and
+                self.failedInTraceChild(group.first_round) and self.failedInTraceChild(group.last_round);
             if (classify) {
                 if (known) summary.known += group.count else summary.unknown += group.count;
             }
@@ -568,10 +593,20 @@ const CountingAllocator = struct {
 ///   allocation passes through: AbortController and NavigateEvent
 ///   (Navigation's innerFire), NavigationDestination (makeDestination) and
 ///   Performance (Window.settingsPerformance).
-/// So after the teardown every live block must be one of those kinds, and
-/// at most `known_leak_allowance` of them: a block from any other site
-/// fails the test with its stack (error.BrowserLeftMemory). The allowance is
-/// deleted when the queue entry is fixed, and this check is zero again.
+/// So after the teardown every live block must be one of those kinds AND
+/// come from rounds whose induced failure was that wrap (its failure stack
+/// passes through protocol_tracing.traceChild): a block from any other site,
+/// or of a known kind left by a round that failed anywhere else, fails the
+/// test with its stack (error.BrowserLeftMemory). When the queue entry is
+/// fixed, this check is zero again.
+///
+/// Not a block count. b3h capped the known blocks at 14 (chat2's one
+/// measurement), and the count is not a constant of the tree: which rounds'
+/// failures land in a traceChild wrap depends on when collections and the
+/// deferred teardown's slices run, which allocate too. The gate at b3i's tip
+/// (chat2) left 15 in the full test run and 13-14 alone (FLAKY), 13 + the
+/// fifth kind under -Dsanitize-thread, and 13 on server1. The cause check is
+/// exact where the count was not (lane v8up b3i).
 fn sweepContentWindow(rounds: usize) !void {
     var counting: CountingAllocator = .{};
     defer counting.deinit();
@@ -581,16 +616,9 @@ fn sweepContentWindow(rounds: usize) !void {
     if (end.count == start.count and end.bytes == start.bytes) return;
     std.debug.print("the sweep's Browser, torn down, still holds {d} blocks ({d} bytes) of c_allocator; it held {d} ({d}) before Browser.init\n", .{ end.count, end.bytes, start.count, start.bytes });
     const summary = counting.printSites(null, 16, true);
-    std.debug.print("of them: {d} blocks of the known traceChild wrap-failure leak (allowed: {d}), {d} of no known kind\n", .{ summary.known, known_leak_allowance, summary.unknown });
-    if (summary.unknown > 0 or summary.known > known_leak_allowance) return error.BrowserLeftMemory;
+    std.debug.print("of them: {d} blocks of the known traceChild wrap-failure leak, {d} of no known kind or cause\n", .{ summary.known, summary.unknown });
+    if (summary.unknown > 0) return error.BrowserLeftMemory;
 }
-
-/// What the queued traceChild wrap-failure leak may leave after
-/// Browser.deinit (sweepContentWindow): the larger of the two hosts'
-/// measurements, with no margin, so the known debt can only go down -
-/// 14 on chat2 (macOS) and 13 on server1 (Linux), lane v8up b3h, after
-/// LocationImpl.init's errdefers. Deleted with the queue entry's fix.
-const known_leak_allowance: usize = 14;
 
 fn sweepContentWindowOn(counting: *CountingAllocator, rounds: usize) !void {
     var failing = std.testing.FailingAllocator.init(counting.allocator(), .{});
