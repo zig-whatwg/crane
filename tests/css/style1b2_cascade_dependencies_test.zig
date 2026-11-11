@@ -33,7 +33,6 @@ const Inputs = struct {
     system_calls: usize = 0,
     metric_calls: usize = 0,
     note: math.UnavailableNote = .{},
-    families: [1]css.font_request.Family = undefined,
 
     fn attribute(raw: *const anyopaque, _: []const u8) ?[]const u8 {
         const self: *Inputs = @ptrCast(@alignCast(@constCast(raw)));
