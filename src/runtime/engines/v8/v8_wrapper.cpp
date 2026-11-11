@@ -92,8 +92,22 @@ static constexpr EmbedderDataTypeTag kCraneEmbedderDataTag = kEmbedderDataTypeTa
 /// (V8::Initialize, FlagList::FreezeFlags). So the start and the flags it
 /// applies are taken under one lock, by whichever thread asks first.
 struct PlatformStart {
-    /// Made by the start, under `mutex`, before `started` is published.
-    std::unique_ptr<Platform> platform;
+    /// Made by the start, under `mutex`, before `started` is published, and
+    /// NEVER deleted - not by v8_Platform_Dispose, not at process exit. V8's
+    /// worker threads run until the process ends, and a task on one may post
+    /// to the platform at any time: on V8 15.7 MemoryPool's
+    /// ReleasePooledChunksTask posts its next release from a worker
+    /// (PostDelayedTaskOnWorkerThread). As a std::unique_ptr in this static
+    /// object, the platform was destroyed by exit()'s static destructors
+    /// while those threads ran: CranePlatform's backend_ went null first and
+    /// a worker's post became a call on null - the tests-v8 processes that
+    /// aborted AFTER their test passed ("member call on null pointer of type
+    /// 'v8::Platform'", v8_wrapper.cpp PostDelayedTaskOnWorkerThreadImpl; lane
+    /// v8up b3d: 21 of 1,813 in one loaded Linux run). Chrome never destroys
+    /// its platform either (gin's V8Platform is a base::LazyInstance::Leaky;
+    /// Chromium builds with -Wexit-time-destructors). Held here, it stays
+    /// reachable to leak checkers.
+    Platform* platform = nullptr;
     /// Whether V8 has started. Stored true (release) once, by the start,
     /// after V8::Initialize and after `platform` and `flags` are written;
     /// stored false only by v8_Platform_Dispose. Read without the lock
@@ -2379,7 +2393,7 @@ class CranePlatform final : public Platform {
 };
 
 static Platform* defaultPlatform() {
-    return static_cast<CranePlatform*>(g_platform.platform.get())->backend();
+    return static_cast<CranePlatform*>(g_platform.platform)->backend();
 }
 
 /// The per-isolate seed V8 asks for (defined with IsolateData, below).
@@ -2438,8 +2452,8 @@ int v8_Platform_Start(const char* flags) {
             // (v8_Platform_InitializeBeforeThreadCreation), else one made
             // here, on this thread, which hands V8 no thread-isolated
             // allocator (CranePlatform::GetThreadIsolatedAllocator).
-            if (!g_platform.platform) g_platform.platform = std::make_unique<CranePlatform>(false);
-            V8::InitializePlatform(g_platform.platform.get());
+            if (!g_platform.platform) g_platform.platform = new CranePlatform(false);
+            V8::InitializePlatform(g_platform.platform);
             // cppgc's process start, before any agent's C++ heap is made
             // (CppHeap::Create - every isolate this file makes has one,
             // IsolateData::cpp_heap): the GC info table and the cage every
@@ -2477,7 +2491,7 @@ int v8_Platform_Start(const char* flags) {
 void v8_Platform_InitializeBeforeThreadCreation() {
     std::lock_guard<std::mutex> guard(g_platform.mutex);
     if (g_platform.disposed || g_platform.platform) return;
-    g_platform.platform = std::make_unique<CranePlatform>(true);
+    g_platform.platform = new CranePlatform(true);
 }
 
 /// Whether V8 runs - or will run, once it starts - with thread isolation:
@@ -3230,7 +3244,7 @@ static std::unique_ptr<CppHeap> newAgentCppHeap() {
     CppHeapCreateParams params(std::vector<std::unique_ptr<cppgc::CustomSpaceBase>>{});
     params.marking_support = cppgc::Heap::MarkingType::kAtomic;
     params.sweeping_support = cppgc::Heap::SweepingType::kIncrementalAndConcurrent;
-    return CppHeap::Create(g_platform.platform.get(), params);
+    return CppHeap::Create(g_platform.platform, params);
 }
 
 Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options);
