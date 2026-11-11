@@ -1,0 +1,13 @@
+# The thread-local block budget (tools/thread_local_size.zig, lane tls1).
+#
+# The most bytes of thread-local storage a checked build's image may carry:
+# the production WPT runner, the bug-finding runner and the release console,
+# each read back as part of its own build step. Every thread that touches a
+# thread-local pays the image's whole block on macOS, and every thread pays
+# it at creation on Linux, so this is a per-thread cost.
+#
+# It only goes down. Never edit it by hand: after removing thread-locals,
+#   zig build thread-local-size -- --budget=tools/thread_local_size_budget.txt --lower=<bytes>
+# records the lower number and refuses a higher one. A build over the budget
+# is fixed by taking the thread-local out (the check names the largest).
+max_block_bytes 1024

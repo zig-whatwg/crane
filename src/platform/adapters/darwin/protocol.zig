@@ -162,6 +162,8 @@ pub const protocol = struct {
     pub const fillBrowserRandom = posix.fillBrowserRandom;
     pub const spawnThread = posix.spawnThread;
     pub const joinThread = posix.joinThread;
+    pub const attachSignalStack = posix.attachSignalStack;
+    pub const detachSignalStack = posix.detachSignalStack;
     // 6.11 Address space: kit/posix's, which takes this OS's own path
     // (darwin: a VM tag per label, MADV_FREE_REUSABLE / MADV_FREE_REUSE;
     // Linux: VMA names, MADV_NOHUGEPAGE on the node cage, mprotect-only

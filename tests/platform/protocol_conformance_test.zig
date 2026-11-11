@@ -76,8 +76,9 @@ test "conformance: the bound platform matches every operation" {
     // 2026-11-09 22:21 UTC) removed replacedElementBox; 228 since lane h1
     // added the address-space group (6.11: pageSize, reserveAddressSpace,
     // labelAddressSpace, commitPages, decommitPages, protectPages,
-    // releaseAddressSpace).
-    try testing.expectEqual(@as(usize, 228), count);
+    // releaseAddressSpace); 230 since lane tls1 added a thread's alternate
+    // signal stack (6.4: attachSignalStack, detachSignalStack).
+    try testing.expectEqual(@as(usize, 230), count);
 }
 
 test "address space (6.11): this platform reserves, commits, decommits and releases" {

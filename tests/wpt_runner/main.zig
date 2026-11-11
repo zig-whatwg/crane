@@ -173,7 +173,25 @@ pub const std_options: std.Options = .{
     // When debug is enabled, show all log levels including debug
     .log_level = if (wpt_options.debug_enabled) .debug else .warn,
     .logFn = wptLogFn,
+    // No thread-local signal stack: Zig std's default (`signal_stack_size`,
+    // 1 << 18) is a 256 KB thread-local array, which every thread that touches
+    // any thread-local pays for - V8's worker threads included, which never use
+    // it. The platform maps each thread's alternate stack instead
+    // (platform.attachSignalStack, src/platform/kit/posix/signal_stack.zig);
+    // build.zig's thread-local block check (tools/thread_local_size.zig) holds it.
+    .signal_stack_size = null,
 };
+
+/// The runner's own threads get the platform's alternate signal stack
+/// (signal_stack.zig reaches these through `@import("root")`, so the
+/// runner's std-only modules need no platform import).
+pub fn attachThreadSignalStack() usize {
+    return @import("platform").attachSignalStack().handle;
+}
+
+pub fn detachThreadSignalStack(handle: usize) void {
+    @import("platform").detachSignalStack(.{ .handle = handle });
+}
 
 fn wptLogFn(
     comptime level: std.log.Level,
@@ -1530,6 +1548,9 @@ fn flushOutput() void {
 /// main would do it too, but it would print a stack trace, and a run that
 /// correctly detected a regression is not a crash.
 pub fn main(init: std.process.Init) !void {
+    // The main thread's alternate signal stack, for the life of the process
+    // (platform 6.4): std_options sets std's own off.
+    _ = @import("platform").attachSignalStack();
     // First, before any thread exists - the server's, the supervisor's, a
     // Browser's: the engine's per-process state that only threads created
     // after it inherit (V8's thread isolation key on x86-64 Linux;
