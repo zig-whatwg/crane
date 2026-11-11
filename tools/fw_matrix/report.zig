@@ -46,23 +46,21 @@ pub const SuiteRuns = struct {
     file_entries: []const exclusions.Entry,
 };
 
-/// The rows a framework without a runnable suite yet shows (the user,
-/// 2026-11-11 09:57 ET: React, Vue, Svelte and Angular are measured by the
-/// prebuilt TodoMVC app against Crane's port of TodoMVC's shared app spec;
-/// tmp/plans/framework-suites-research.md A.2).
-pub const Pending = struct {
-    framework: []const u8,
-    title: []const u8,
-    own_suite: []const u8,
-    planned: []const u8,
+/// Why a TodoMVC row's framework is not measured by its own suite (the
+/// user, 2026-11-11 09:57 ET: React, Vue, Svelte and Angular are measured by
+/// the prebuilt TodoMVC app against Crane's port of TodoMVC's app spec;
+/// tmp/plans/framework-matrix-plan.md 1.3-1.6).
+pub const own_suite_needs_node = [_][2][]const u8{
+    .{ "react", "React's own tests run under Node: Jest with jsdom; its browser-run tests (react-devtools-inline, fixtures/flight, the compiler playground) assert from Node through Playwright." },
+    .{ "vue", "Vue's own tests run under Node: Vitest with jsdom; its e2e tests (36) assert from Node through Puppeteer, and its browser-mode Transition tests are compiled and driven by Vite." },
+    .{ "angular", "Angular's browser suites are TypeScript bundled by Bazel and esbuild and run by Karma or web-test-runner, all Node." },
+    .{ "svelte", "Svelte's runtime-browser samples (75) are compiled by the Svelte compiler and driven by Playwright from Node; its other suites run under jsdom." },
 };
 
-pub const pending = [_]Pending{
-    .{ .framework = "react", .title = "React", .own_suite = "React's own tests run under Node: Jest with jsdom; its browser-run tests (react-devtools-inline, fixtures/flight, the compiler playground) assert from Node through Playwright.", .planned = "the prebuilt TodoMVC app (tastejs/todomvc, React 19.2.5) against Crane's port of TodoMVC's shared app spec (29 tests)" },
-    .{ .framework = "vue", .title = "Vue", .own_suite = "Vue's own tests run under Node: Vitest with jsdom; its e2e tests (36) assert from Node through Puppeteer, and its browser-mode Transition tests are compiled and driven by Vite.", .planned = "the prebuilt TodoMVC app (tastejs/todomvc, Vue 3.5.33) against Crane's port of TodoMVC's shared app spec (29 tests)" },
-    .{ .framework = "angular", .title = "Angular", .own_suite = "Angular's browser suites are TypeScript bundled by Bazel and esbuild and run by Karma or web-test-runner, all Node.", .planned = "the prebuilt TodoMVC app (tastejs/todomvc, Angular 21.2.11) against Crane's port of TodoMVC's shared app spec (29 tests)" },
-    .{ .framework = "svelte", .title = "Svelte", .own_suite = "Svelte's runtime-browser samples (75) are compiled by the Svelte compiler and driven by Playwright from Node; its other suites run under jsdom.", .planned = "the prebuilt TodoMVC app (tastejs/todomvc, Svelte 5.55.5) against Crane's port of TodoMVC's shared app spec (29 tests)" },
-};
+/// What the TodoMVC port does not run of a test (it excludes no test):
+/// tools/fw_matrix/excluded/todomvc-port.txt says the same.
+pub const todomvc_port_note =
+    "Crane's port runs every test of TodoMVC's app spec (cypress/e2e/spec.cy.js, 29 tests) on the framework's unmodified, prebuilt TodoMVC app, driving it through DOM events as Cypress drives it. Of Cypress's own checks it does not run the parts that need layout: visibility is decided by computed style (no box, visibility, opacity) and not by size, clipping or transforms, and an action does not scroll the element into view or check that nothing covers it. Tests the spec itself skips for an app (its localStorage test for apps that keep no data there, the app's entries in tests/knownIssues.js) are reported as skipped by the app spec.";
 
 pub const statement =
     "Crane draws nothing: tests whose result depends on layout geometry or pixels are not run, and each is listed with its reason. Computed style, events, timers and animations are run. Tests that need a project's Node tooling or its own test server are not run either, and are listed with theirs.";
@@ -176,7 +174,6 @@ const style =
     \\.fw .listing td.msg pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 0.78rem/1.45 var(--mono); }
     \\.fw .meter { margin: 0.3rem 0 0; min-width: 8rem; }
     \\.fw .kind { display: block; font: 400 0.82rem/1.35 var(--sans); color: var(--ink-2); }
-    \\.fw .pending td, .fw .pending th { color: var(--ink-2); }
     \\</style>
     \\
 ;
@@ -204,8 +201,8 @@ fn suiteLabel(w: W, s: manifest.Suite) !void {
 }
 
 pub fn writeIndex(w: W, suites: []const SuiteRuns, o: Options) !void {
-    try head(w, "Crane: JS framework compatibility matrix", "The JavaScript frameworks' own browser test suites run in Crane, with rendering tests excluded and named.", o, 0);
-    try w.writeAll("<header class=\"head\">\n<h1>Crane <span class=\"h1-rest\">JS framework compatibility matrix</span></h1>\n<p class=\"subtitle\">Each framework's own browser tests, opened in Crane's console as a user opens a page, and read from the framework's own report. No Node runs at any step.</p>\n</header>\n");
+    try head(w, "Crane: JS framework compatibility matrix", "JavaScript frameworks' browser tests run in Crane, with rendering tests excluded and named.", o, 0);
+    try w.writeAll("<header class=\"head\">\n<h1>Crane <span class=\"h1-rest\">JS framework compatibility matrix</span></h1>\n<p class=\"subtitle\">Each framework's own browser tests where they run without Node; for a framework whose own suite needs Node, its unmodified, prebuilt TodoMVC app checked by Crane's port of TodoMVC's app spec. Each page is opened in Crane's console as a user opens it and read from the test framework's own report. No Node runs at any step.</p>\n</header>\n");
     try statementNote(w);
     try w.writeAll("<h2>The matrix</h2>\n<table class=\"listing\">\n<thead><tr><th>Framework</th><th class=\"n\">Run</th><th class=\"n\">Passed</th><th class=\"n\">Failed</th><th class=\"n\">Errored</th><th class=\"n\">Excluded: rendering</th><th class=\"n\">Not run</th><th class=\"n\">Pass rate</th><th>History</th></tr></thead>\n<tbody>\n");
     for (suites) |s| {
@@ -229,18 +226,96 @@ pub fn writeIndex(w: W, suites: []const SuiteRuns, o: Options) !void {
             try w.writeAll("</td></tr>\n");
         } else try w.writeAll("<td class=\"n\" colspan=\"8\">no run yet</td></tr>\n");
     }
-    for (pending) |p| {
-        try w.writeAll("<tr class=\"pending\"><th>");
-        try html.text(w, p.title);
-        try w.writeAll("<span class=\"kind\">Not run yet: ");
-        try html.text(w, p.own_suite);
-        try w.writeAll(" This row will run ");
-        try html.text(w, p.planned);
-        try w.writeAll(".</span></th><td class=\"n\" colspan=\"8\">&mdash;</td></tr>\n");
+    try w.writeAll("</tbody>\n</table>\n");
+    try w.writeAll("<p class=\"grey\">Pass rate is passed over run. Errored: due to run and never reported (the page's time ran out, or the console ended). Not run: tests needing the project's test server or its Node build, files only its Node runner loads, and tests the project or the app spec itself skips.</p>\n");
+    try writeNotRun(w, suites);
+    try w.writeAll("<footer class=\"foot\"><p>Written as HTML by <code>tools/fw_matrix</code> from its journals (<code>crane-fw/1</code>).</p></footer>\n</main>\n</body>\n</html>\n");
+}
+
+/// One kind of test not run, counted over each suite's latest run.
+const NotRunRow = struct {
+    title: []const u8,
+    files: bool = false,
+    count: *const fn (s: SuiteRuns, r: Run) u32,
+};
+
+fn countKind(r: Run, kind: journal.NotRun) u32 {
+    var n: u32 = 0;
+    for (r.tests) |t| {
+        if (t.not_run == kind) n += 1;
+    }
+    return n;
+}
+
+const not_run_rows = [_]NotRunRow{
+    .{ .title = "Excluded: rendering", .count = struct {
+        fn f(_: SuiteRuns, r: Run) u32 {
+            return countKind(r, .rendering);
+        }
+    }.f },
+    .{ .title = "Needs the project's test server", .count = struct {
+        fn f(_: SuiteRuns, r: Run) u32 {
+            return countKind(r, .needs_server);
+        }
+    }.f },
+    .{ .title = "Needs the project's Node build", .count = struct {
+        fn f(_: SuiteRuns, r: Run) u32 {
+            return countKind(r, .needs_node_build);
+        }
+    }.f },
+    .{ .title = "Files only the project's Node runner loads", .files = true, .count = struct {
+        fn f(s: SuiteRuns, _: Run) u32 {
+            return @intCast(s.file_entries.len);
+        }
+    }.f },
+    .{ .title = "Skipped by the project", .count = struct {
+        fn f(s: SuiteRuns, r: Run) u32 {
+            return if (s.suite.kind == .project) countKind(r, .project_skip) else 0;
+        }
+    }.f },
+    .{ .title = "Skipped by TodoMVC's app spec for the app", .count = struct {
+        fn f(s: SuiteRuns, r: Run) u32 {
+            return if (s.suite.kind == .todomvc_port) countKind(r, .project_skip) else 0;
+        }
+    }.f },
+};
+
+/// "What we do not run": every kind with its count over the frameworks'
+/// latest runs, and where; a kind with none is left out.
+fn writeNotRun(w: W, suites: []const SuiteRuns) !void {
+    try w.writeAll("<h2 id=\"not-run\">What we do not run</h2>\n<p>");
+    try html.text(w, statement);
+    try w.writeAll(" Each test is listed with its reason on its framework's page.</p>\n<table class=\"listing\">\n<thead><tr><th>Kind</th><th class=\"n\">Count</th><th>Where</th></tr></thead>\n<tbody>\n");
+    for (not_run_rows) |row| {
+        var total: u32 = 0;
+        for (suites) |s| if (latest(s)) |r| {
+            total += row.count(s, r);
+        };
+        if (total == 0) continue;
+        try w.writeAll("<tr><th>");
+        try html.text(w, row.title);
+        try w.print("</th><td class=\"n grey\">{d}", .{total});
+        if (row.files) try w.print(" file{s}", .{if (total == 1) "" else "s"});
+        try w.writeAll("</td><td>");
+        var first = true;
+        for (suites) |s| if (latest(s)) |r| {
+            const n = row.count(s, r);
+            if (n == 0) continue;
+            if (!first) try w.writeAll(", ");
+            first = false;
+            try html.text(w, s.suite.title);
+            try w.print(" {d}", .{n});
+        };
+        try w.writeAll("</td></tr>\n");
     }
     try w.writeAll("</tbody>\n</table>\n");
-    try w.writeAll("<p class=\"grey\">Pass rate is passed over run. Errored: due to run and never reported (the page's time ran out, or the console ended). Not run: tests needing the project's test server or its Node build, files only its Node runner loads, and tests the project itself skips.</p>\n");
-    try w.writeAll("<footer class=\"foot\"><p>Written as HTML by <code>tools/fw_matrix</code> from its journals (<code>crane-fw/1</code>).</p></footer>\n</main>\n</body>\n</html>\n");
+    var any_port = false;
+    for (suites) |s| any_port = any_port or s.suite.kind == .todomvc_port;
+    if (any_port) {
+        try w.writeAll("<p>");
+        try html.text(w, todomvc_port_note);
+        try w.writeAll("</p>\n");
+    }
 }
 
 fn statusText(s: journal.Status) []const u8 {
@@ -269,6 +344,19 @@ pub fn writeSuites(w: W, framework: []const u8, suites: []const SuiteRuns, o: Op
         try suiteLabel(w, s.suite);
         try w.writeAll(". <a href=\"../\">The matrix</a>.</p>\n</header>\n");
         try statementNote(w);
+        if (s.suite.kind == .todomvc_port) {
+            try w.writeAll("<p>");
+            for (own_suite_needs_node) |e| if (std.mem.eql(u8, e[0], s.suite.framework)) {
+                try html.text(w, e[1]);
+                try w.writeByte(' ');
+            };
+            try html.text(w, todomvc_port_note);
+            try w.writeAll(" The port: <code>tests/frameworks/todomvc/</code> in Crane; the spec: <a href=\"");
+            try html.text(w, s.suite.repository);
+            try w.writeAll("/blob/");
+            try html.text(w, s.suite.commit);
+            try w.writeAll("/cypress/e2e/spec.cy.js\"><code>cypress/e2e/spec.cy.js</code></a>.</p>\n");
+        }
         const r = latest(s) orelse {
             try w.writeAll("<p>No run yet.</p>\n");
             continue;
@@ -305,9 +393,9 @@ pub fn writeSuites(w: W, framework: []const u8, suites: []const SuiteRuns, o: Op
         }
         try w.writeAll("</tbody>\n</table>\n");
 
-        try section(w, r, "Failed and errored", .failed);
-        try section(w, r, "Excluded: rendering", .rendering);
-        try section(w, r, "Not run", .not_run);
+        try section(w, s.suite.kind, r, "Failed and errored", .failed);
+        try section(w, s.suite.kind, r, "Excluded: rendering", .rendering);
+        try section(w, s.suite.kind, r, "Not run", .not_run);
         if (s.file_entries.len > 0) {
             try w.writeAll("<h3>Files not run</h3>\n<table class=\"listing\">\n<tbody>\n");
             for (s.file_entries) |e| {
@@ -319,7 +407,7 @@ pub fn writeSuites(w: W, framework: []const u8, suites: []const SuiteRuns, o: Op
             }
             try w.writeAll("</tbody>\n</table>\n");
         }
-        try section(w, r, "Skipped by the project", .project_skip);
+        try section(w, s.suite.kind, r, if (s.suite.kind == .todomvc_port) "Skipped by TodoMVC's app spec" else "Skipped by the project", .project_skip);
 
         var any_loaded = false;
         for (r.pages) |p| for (p.loaded) |l| {
@@ -342,7 +430,7 @@ pub fn writeSuites(w: W, framework: []const u8, suites: []const SuiteRuns, o: Op
 
 const Section = enum { failed, rendering, not_run, project_skip };
 
-fn section(w: W, r: Run, title: []const u8, which: Section) !void {
+fn section(w: W, kind: journal.SuiteKind, r: Run, title: []const u8, which: Section) !void {
     var n: usize = 0;
     for (r.tests) |t| {
         const in = switch (which) {
@@ -368,7 +456,10 @@ fn section(w: W, r: Run, title: []const u8, which: Section) !void {
         try w.writeAll("</code></td><td class=\"msg\"><pre>");
         const text = switch (which) {
             .failed => t.message orelse "",
-            .project_skip => "the project skips it (QUnit.skip / Mocha pending)",
+            .project_skip => switch (kind) {
+                .project => "the project skips it (QUnit.skip / Mocha pending)",
+                .todomvc_port => "TodoMVC's app spec skips it for this app (spec.cy.js: its localStorage test for apps that keep nothing there; tests/knownIssues.js: the app's known issues)",
+            },
             else => t.reason orelse (if (t.not_run) |k| k.label() else ""),
         };
         try html.text(w, text[0..@min(text.len, 600)]);
@@ -398,7 +489,26 @@ fn sampleSuite() manifest.Suite {
     };
 }
 
-test "the matrix: a row per suite with its counts and kind, the pending rows, the statement; text escaped" {
+fn sampleTodoMvcSuite() manifest.Suite {
+    return .{
+        .id = "angular-todomvc",
+        .framework = "angular",
+        .title = "Angular",
+        .version = "21.2.11",
+        .kind = .todomvc_port,
+        .repository = "https://github.com/tastejs/todomvc",
+        .tag = "examples/angular/dist/browser",
+        .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+        .licence = "MIT",
+        .runner = "QUnit 2.24.2",
+        .reader = .qunit,
+        .source = .{ .url = "https://x", .sha256 = "b" },
+        .pages = &.{.{ .id = "todomvc", .path = "crane/todomvc/index.html?framework=angular" }},
+        .excluded = "todomvc-port.txt",
+    };
+}
+
+test "the matrix: a row per suite with its counts and kind, the statement; text escaped" {
     var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena_state.deinit();
     const a = arena_state.allocator();
@@ -427,7 +537,8 @@ test "the matrix: a row per suite with its counts and kind, the pending rows, th
     try testing.expect(std.mem.indexOf(u8, page_html, "the project&#39;s own browser suite") != null);
     try testing.expect(std.mem.indexOf(u8, page_html, "<td class=\"n\">2</td><td class=\"n\">1</td><td class=\"n fail\">1</td>") != null);
     try testing.expect(std.mem.indexOf(u8, page_html, "50.0%") != null);
-    for (pending) |p| try testing.expect(std.mem.indexOf(u8, page_html, p.title) != null);
+    // No placeholder rows: a framework is a row only through a suite.
+    try testing.expect(std.mem.indexOf(u8, page_html, "Not run yet") == null);
     try testing.expect(std.mem.indexOf(u8, page_html, "<script") == null);
 
     var fw_out: Io.Writer.Allocating = .init(a);
@@ -437,6 +548,59 @@ test "the matrix: a row per suite with its counts and kind, the pending rows, th
     try testing.expect(std.mem.indexOf(u8, fw_html, "asserts window.scrollY") != null);
     try testing.expect(std.mem.indexOf(u8, fw_html, "Crane draws nothing") != null);
     try testing.expect(std.mem.indexOf(u8, fw_html, "<b>") == null);
+}
+
+test "a TodoMVC row says it is Crane's port; what is not run is counted by kind on the matrix" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const sha: [64]u8 = @splat('a');
+    const jq: journal.TestRecord = .{ .label = "l1", .crane_commit = "c", .console_sha256 = &sha, .framework = "htmx", .version = "4.0.1", .suite = "htmx-mocha", .suite_kind = .project, .source_sha256 = &sha, .page = "test", .module = "m", .name = "n", .id = "m n", .status = .NOTRUN, .not_run = .rendering, .reason = "scrollY" };
+    var jq2 = jq;
+    jq2.id = "m n2";
+    var jq_server = jq;
+    jq_server.id = "m server";
+    jq_server.not_run = .needs_server;
+    var jq_skip = jq;
+    jq_skip.id = "m skip";
+    jq_skip.not_run = .project_skip;
+    const ng: journal.TestRecord = .{ .label = "l1", .crane_commit = "c", .console_sha256 = &sha, .framework = "angular", .version = "21.2.11", .suite = "angular-todomvc", .suite_kind = .todomvc_port, .source_sha256 = &sha, .page = "todomvc", .module = "Routing", .name = "should respect the back button", .id = "Routing: should respect the back button", .status = .NOTRUN, .not_run = .project_skip };
+    var ng_pass = ng;
+    ng_pass.id = "No Todos: starts with nothing";
+    ng_pass.status = .PASS;
+    ng_pass.not_run = null;
+    const p1: journal.PageRecord = .{ .label = "l1", .crane_commit = "c", .console_sha256 = &sha, .framework = "htmx", .version = "4.0.1", .suite = "htmx-mocha", .suite_kind = .project, .source_sha256 = &sha, .page = "test", .url = "u", .status = .OK, .wall_ms = 1000, .ran = 0, .records = 4, .exit = "exited with code 0" };
+    var p2 = p1;
+    p2.framework = "angular";
+    p2.version = "21.2.11";
+    p2.suite = "angular-todomvc";
+    p2.suite_kind = .todomvc_port;
+    p2.page = "todomvc";
+    const j: journal.Journal = .{ .tests = &.{ jq, jq2, jq_server, jq_skip, ng, ng_pass }, .pages = &.{ p1, p2 } };
+    const m: manifest.Manifest = .{ .suites = &.{ sampleSuite(), sampleTodoMvcSuite() } };
+    const file_entries = [_][]const exclusions.Entry{ &.{.{ .id = "test/a.js", .file = true, .kind = .node_runner_only, .why = "w", .line = 1 }}, &.{} };
+    const suites = try collect(a, m, &.{j}, &file_entries);
+
+    var out: Io.Writer.Allocating = .init(a);
+    try writeIndex(&out.writer, suites, .{});
+    const html_out = out.written();
+    // The user's label for the four TodoMVC rows (2026-11-11).
+    try testing.expect(std.mem.indexOf(u8, html_out, "TodoMVC; Crane&#39;s port of the app spec; the project&#39;s own suite is not runnable without Node") != null);
+    // What is not run: one row per kind, its count, and where.
+    try testing.expect(std.mem.indexOf(u8, html_out, "<h2 id=\"not-run\">What we do not run</h2>") != null);
+    try testing.expect(std.mem.indexOf(u8, html_out, "<tr><th>Excluded: rendering</th><td class=\"n grey\">2</td><td>htmx 2</td></tr>") != null);
+    try testing.expect(std.mem.indexOf(u8, html_out, "<tr><th>Needs the project&#39;s test server</th><td class=\"n grey\">1</td><td>htmx 1</td></tr>") != null);
+    try testing.expect(std.mem.indexOf(u8, html_out, "<tr><th>Files only the project&#39;s Node runner loads</th><td class=\"n grey\">1 file</td><td>htmx 1</td></tr>") != null);
+    try testing.expect(std.mem.indexOf(u8, html_out, "<tr><th>Skipped by the project</th><td class=\"n grey\">1</td><td>htmx 1</td></tr>") != null);
+    try testing.expect(std.mem.indexOf(u8, html_out, "<tr><th>Skipped by TodoMVC&#39;s app spec for the app</th><td class=\"n grey\">1</td><td>Angular 1</td></tr>") != null);
+    // A kind with nothing in it is not listed.
+    try testing.expect(std.mem.indexOf(u8, html_out, "Needs the project&#39;s Node build") == null);
+
+    var fw_out: Io.Writer.Allocating = .init(a);
+    try writeSuites(&fw_out.writer, "angular", suites, .{});
+    const fw_html = fw_out.written();
+    try testing.expect(std.mem.indexOf(u8, fw_html, "TodoMVC&#39;s app spec skips it for this app") != null);
+    try testing.expect(std.mem.indexOf(u8, fw_html, "cypress/e2e/spec.cy.js") != null);
 }
 
 test "rate: one decimal, rounded; nothing run is a dash" {
