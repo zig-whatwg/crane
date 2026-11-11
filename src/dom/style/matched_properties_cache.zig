@@ -1205,3 +1205,91 @@ test "under one key, own blocks that differ in importance, value, a url()'s base
         }
     }
 }
+
+/// ownLookup as the engine makes it for a resolution with an own block: the
+/// content key and the shape key (Lookup.shape).
+fn ownShaped(matched: *const [1]Matched, parent: *const ComputedStyle) Lookup {
+    var lookup = ownLookup(matched, parent, null);
+    lookup.shape = shapeOf(matched, null, parent);
+    return lookup;
+}
+
+fn ownShapedMiss(cache: *MatchedPropertiesCache, matched: *const [1]Matched, parent: *const ComputedStyle) !*ComputedStyle {
+    var deps: css.cascade.Dependencies = .{};
+    const style = try css.cascade.cascade(.{ .allocator = testing.allocator, .parent = parent, .dependencies = &deps }, matched);
+    cache.add(ownShaped(matched, parent), deps, style);
+    return style;
+}
+
+test "from the prune target on, an own block's content is kept from its second sighting: blocks no other element holds make no entry and prune none" {
+    const allocator = testing.allocator;
+    const cache = try MatchedPropertiesCache.create(allocator);
+    defer cache.destroy();
+    var scene: Scene = undefined;
+    try scene.init("font-size: 20px", "display: flex; color: currentcolor");
+    defer scene.deinit();
+    const root = scene.parent;
+    var buffer: [64]u8 = undefined;
+
+    // With room, an own block's content is kept at its first sighting.
+    var early = try css.declarations.DeclarationBlock.parse(.{ .allocator = allocator }, "padding-left: 1px");
+    defer early.deinit();
+    var early_twin = try css.declarations.DeclarationBlock.parse(.{ .allocator = allocator }, "padding-left: 1px");
+    defer early_twin.deinit();
+    const m_early = [1]Matched{.{ .block = &early, .source = own_source }};
+    const m_early_twin = [1]Matched{.{ .block = &early_twin, .source = own_source }};
+    (try ownShapedMiss(cache, &m_early, root)).destroy();
+    try testing.expect(cache.find(ownShaped(&m_early_twin, root)) != null);
+
+    // A rule's style that serves hits, then rules' styles up to the target.
+    (try scene.miss(cache, root)).destroy();
+    var k: usize = 0;
+    while (cache.entries < MatchedPropertiesCache.prune_target) : (k += 1) {
+        const s = try styleOf(allocator, root, try std.fmt.bufPrint(&buffer, "margin-top: {d}px", .{k + 1}));
+        defer s.destroy();
+        cache.add(.{ .key = 1000 + k, .generation = 1 }, null, s);
+    }
+
+    // 1,000 own blocks no other element holds: none gets an entry of its
+    // content (their shape key keeps its adoption-only entries, as before
+    // lane style1 b5), so nothing is pruned for them - the entries that
+    // serve hits are all still there.
+    for (0..1000) |i| {
+        var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = allocator }, try std.fmt.bufPrint(&buffer, "margin-left: {d}px", .{i + 1}));
+        defer block.deinit();
+        const matched = [1]Matched{.{ .block = &block, .source = own_source }};
+        (try ownShapedMiss(cache, &matched, root)).destroy();
+    }
+    try testing.expect(cache.entries <= MatchedPropertiesCache.prune_target + MatchedPropertiesCache.per_key);
+    try testing.expect(cache.find(scene.lookup(root)) != null);
+    try testing.expect(cache.find(ownShaped(&m_early_twin, root)) != null);
+
+    // A content that repeats: its first sighting leaves no entry, its
+    // second makes one, its third is a hit.
+    var blocks: [3]css.declarations.DeclarationBlock = undefined;
+    for (&blocks) |*b| b.* = try css.declarations.DeclarationBlock.parse(.{ .allocator = allocator }, "margin-left: 5000px");
+    defer for (&blocks) |*b| b.deinit();
+    const m0 = [1]Matched{.{ .block = &blocks[0], .source = own_source }};
+    const m1 = [1]Matched{.{ .block = &blocks[1], .source = own_source }};
+    const m2 = [1]Matched{.{ .block = &blocks[2], .source = own_source }};
+    const before = cache.entries;
+    (try ownShapedMiss(cache, &m0, root)).destroy();
+    try testing.expectEqual(before, cache.entries);
+    try testing.expect(cache.find(ownShaped(&m1, root)) == null);
+    (try ownShapedMiss(cache, &m1, root)).destroy();
+    try testing.expectEqual(before + 1, cache.entries);
+    try testing.expect(cache.find(ownShaped(&m2, root)) != null);
+
+    // A rule's style is kept at its first sighting, as before: a rule's
+    // block is one object for every element it matches.
+    var other: Scene = undefined;
+    try other.init("font-size: 20px", "display: grid; margin-left: 7px");
+    defer other.deinit();
+    var under_root = other.lookup(root);
+    var deps: css.cascade.Dependencies = .{};
+    const style = try css.cascade.cascade(.{ .allocator = allocator, .parent = root, .dependencies = &deps }, &other.matched);
+    defer style.destroy();
+    cache.add(under_root, deps, style);
+    under_root = other.lookup(root);
+    try testing.expect(cache.find(under_root) != null);
+}
