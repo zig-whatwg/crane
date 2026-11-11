@@ -19,6 +19,8 @@
 //!    attribute, sanitized for the state the element is leaving (html/
 //!    semantics/forms/the-input-element/clone.html, "Hidden field must
 //!    retain changed value."), and such an input must still share its block.
+//! 3. Which values step 1 of the type change steps does write, by script:
+//!    the predicate that keeps 2 true (section 3 below).
 //!
 //! tests/html is one executable: each test runs its Browser on a thread of
 //! its own.
@@ -192,4 +194,164 @@ fn parsedDefaultModeInputsShare() !void {
 
 test "A3 order: parsed inputs in a default or default/on state with a value attribute share their block" {
     try onFreshThread(parsedDefaultModeInputsShare);
+}
+
+// ---------------------------------------------------------------------------
+// 3. Step 1 of the type change steps, by script: which values it writes
+//
+// HTML 4.10.5 "When an input element's type attribute changes state", step 1,
+// sets the value content attribute to the element's value whenever that value
+// is not empty. Crane applies it only to a value something STORED on the
+// element (HTMLInputElement.zig typeChangeSteps has the evidence):
+//   A. a value that only ever came from the value attribute is not written
+//      back (Chrome and Safari; Firefox writes it);
+//   B. a value an earlier type change's step 2 took from the attribute is
+//      written (Safari and Firefox; Chrome does not);
+//   and a dirty value is written by all three.
+
+fn scriptPage() !*browser_mod.Browser {
+    const browser = try startBrowser();
+    errdefer browser.deinit();
+    try loadPage(browser, "<!doctype html><body></body>");
+    return browser;
+}
+
+fn dirtyValueIsWrittenByATypeChange() !void {
+    const browser = try scriptPage();
+    defer browser.deinit();
+    // The dirty value, sanitized for Text when it was set, replaces the
+    // attribute: step 1 as written.
+    try check(browser, "(() => {" ++
+        "  const i = document.createElement('input');" ++
+        "  i.setAttribute('value', 'attr');" ++
+        "  i.value = 'x\\ny';" ++
+        "  i.type = 'hidden';" ++
+        "  globalThis.dirty = i;" ++
+        "  return i.getAttribute('value') === 'xy';" ++
+        "})()");
+    try check(browser, "dirty.value === 'xy'");
+    // To a default/on state too.
+    try check(browser, "(() => {" ++
+        "  const i = document.createElement('input');" ++
+        "  i.value = 'x\\ny';" ++
+        "  i.type = 'checkbox';" ++
+        "  return i.getAttribute('value') === 'xy' && i.value === 'xy';" ++
+        "})()");
+    // "and the element's value is not the empty string": a dirty empty value
+    // leaves the attribute.
+    try check(browser, "(() => {" ++
+        "  const i = document.createElement('input');" ++
+        "  i.setAttribute('value', 'attr');" ++
+        "  i.value = '';" ++
+        "  i.type = 'hidden';" ++
+        "  return i.getAttribute('value') === 'attr';" ++
+        "})()");
+}
+
+test "A3 order: a type change writes a dirty value into the value attribute" {
+    try onFreshThread(dirtyValueIsWrittenByATypeChange);
+}
+
+fn cleanValueIsNotWrittenByATypeChange() !void {
+    const browser = try scriptPage();
+    defer browser.deinit();
+    // Case A, value mode -> default mode: the attribute is not replaced by
+    // its Text sanitization, and nothing but `type` changed.
+    try check(browser, "(() => {" ++
+        "  const i = document.createElement('input');" ++
+        "  i.setAttribute('value', 'a\\nb');" ++
+        "  globalThis.seen = new MutationObserver(() => {});" ++
+        "  seen.observe(i, { attributes: true });" ++
+        "  i.type = 'hidden';" ++
+        "  globalThis.clean = i;" ++
+        "  return i.getAttribute('value') === 'a\\nb';" ++
+        "})()");
+    try check(browser, "clean.value === 'a\\nb'");
+    try check(browser, "seen.takeRecords().map(r => r.attributeName).join() === 'type'");
+    // Value mode -> default/on mode.
+    try check(browser, "(() => {" ++
+        "  const i = document.createElement('input');" ++
+        "  i.setAttribute('value', 'a\\nb');" ++
+        "  i.type = 'checkbox';" ++
+        "  return i.getAttribute('value') === 'a\\nb' && i.value === 'a\\nb';" ++
+        "})()");
+    // The other direction, default mode -> value mode (step 2): the attribute
+    // stays as written, the value is its sanitization, and it is still clean -
+    // it follows the attribute.
+    try check(browser, "(() => {" ++
+        "  const i = document.createElement('input');" ++
+        "  i.type = 'hidden';" ++
+        "  i.setAttribute('value', 'a\\nb');" ++
+        "  i.type = 'text';" ++
+        "  globalThis.back = i;" ++
+        "  return i.getAttribute('value') === 'a\\nb' && i.value === 'ab';" ++
+        "})()");
+    try check(browser, "(back.setAttribute('value', 'c\\nd'), back.value === 'cd')");
+    // A value attribute added after step 2 ran without one was never stored:
+    // case A again.
+    try check(browser, "(() => {" ++
+        "  const i = document.createElement('input');" ++
+        "  i.type = 'hidden';" ++
+        "  i.type = 'text';" ++
+        "  i.setAttribute('value', 'a\\nb');" ++
+        "  i.type = 'hidden';" ++
+        "  return i.getAttribute('value') === 'a\\nb';" ++
+        "})()");
+}
+
+test "A3 order: a type change does not write a value that only ever came from the value attribute" {
+    try onFreshThread(cleanValueIsNotWrittenByATypeChange);
+}
+
+fn valueTakenByATypeChangeIsWritten() !void {
+    const browser = try scriptPage();
+    defer browser.deinit();
+    // Case B: default -> value -> default. Step 2 took the attribute's value;
+    // step 1 writes the element's value, sanitized for Text, as the spec says.
+    try check(browser, "(() => {" ++
+        "  const i = document.createElement('input');" ++
+        "  i.type = 'hidden';" ++
+        "  i.setAttribute('value', 'a\\nb');" ++
+        "  i.type = 'text';" ++
+        "  i.type = 'hidden';" ++
+        "  return i.getAttribute('value') === 'ab' && i.value === 'ab';" ++
+        "})()");
+    // The value written is the element's value at the change, not the one
+    // step 2 saw.
+    try check(browser, "(() => {" ++
+        "  const i = document.createElement('input');" ++
+        "  i.type = 'hidden';" ++
+        "  i.setAttribute('value', 'a\\nb');" ++
+        "  i.type = 'text';" ++
+        "  i.setAttribute('value', 'c\\nd');" ++
+        "  i.type = 'hidden';" ++
+        "  return i.getAttribute('value') === 'cd';" ++
+        "})()");
+    // A clone carries it, with the value and its dirty value flag.
+    try check(browser, "(() => {" ++
+        "  const i = document.createElement('input');" ++
+        "  i.type = 'hidden';" ++
+        "  i.setAttribute('value', 'a\\nb');" ++
+        "  i.type = 'text';" ++
+        "  const copy = i.cloneNode();" ++
+        "  copy.type = 'hidden';" ++
+        "  return copy.getAttribute('value') === 'ab' && i.getAttribute('value') === 'a\\nb';" ++
+        "})()");
+    // The reset algorithm sets the value back to the attribute's: nothing is
+    // stored any more, case A.
+    try check(browser, "(() => {" ++
+        "  const form = document.createElement('form');" ++
+        "  const i = document.createElement('input');" ++
+        "  form.append(i);" ++
+        "  i.type = 'hidden';" ++
+        "  i.setAttribute('value', 'a\\nb');" ++
+        "  i.type = 'text';" ++
+        "  form.reset();" ++
+        "  i.type = 'hidden';" ++
+        "  return i.getAttribute('value') === 'a\\nb';" ++
+        "})()");
+}
+
+test "A3 order: a type change writes a value an earlier type change took from the value attribute" {
+    try onFreshThread(valueTakenByATypeChangeIsWritten);
 }
