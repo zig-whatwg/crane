@@ -276,6 +276,16 @@ pub fn init(
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     std.log.debug("[Location.init] Created instance {*}", .{instance});
+    // Should anything below fail (out of memory), the instance's teardown
+    // (`deinit`) frees whatever its internal state holds by then, and its
+    // slot goes back. With no errdefer, a failed URL parse left the internal
+    // state and the URL record allocated for good: a navigation's new
+    // Window makes its Location (Window.get_location under attachRealm), and
+    // tests/html/iframe_policy_container_oom_test.zig found 10 such blocks
+    // live after Browser.deinit (lane v8up b3h).
+    const state = instance.getState(StateType);
+    state.own._internal = null;
+    errdefer runtime.Instance.deinit(instance);
 
     // Initialize internal state. The Window is the relevant global object -
     // the realm record's, when the realm is a Window's (a Location made after
@@ -286,17 +296,15 @@ pub fn init(
         .allocator = allocator,
         .window = relevantWindow(ctx),
     };
+    state.own._internal = internal;
 
     // Initialize with default URL (about:blank)
     // Per spec, Location's URL should be the document's URL
     // For WPT tests, we initialize to a default URL that can be updated later
     const parsed_url = try allocator.create(url_record.URLRecord);
+    errdefer allocator.destroy(parsed_url);
     parsed_url.* = try basic_parser.parse(allocator, "about:blank", null);
     internal.url = parsed_url;
-
-    // Store internal state in the instance
-    const state = instance.getState(StateType);
-    state.own._internal = internal;
 
     std.log.debug("[Location.init] Instance {*} initialized with URL {*}", .{ instance, parsed_url });
     return instance;
