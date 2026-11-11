@@ -65,11 +65,6 @@ pub const PreferenceManager = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            colorScheme: *runtime.Instance = undefined,
-            contrast: *runtime.Instance = undefined,
-            reducedMotion: *runtime.Instance = undefined,
-            reducedTransparency: *runtime.Instance = undefined,
-            reducedData: *runtime.Instance = undefined,
             _internal: ?*PreferenceManagerImpl.InternalState = null,
         },
     );

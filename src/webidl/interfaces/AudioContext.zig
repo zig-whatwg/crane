@@ -83,6 +83,12 @@ pub const AudioContext = struct {
             .{ "playbackStats", "get_playbackStats", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "playbackStats",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getOutputTimestamp", "call_getOutputTimestamp", 0 },
@@ -164,15 +170,6 @@ pub const AudioContext = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            baseLatency: f64 = undefined,
-            outputLatency: f64 = undefined,
-            sinkId: union(enum) {
-                DOMString: runtime.DOMString,
-                AudioSinkInfo: AudioSinkInfo,
-            } = undefined,
-            onsinkchange: typedefs.EventHandler = undefined,
-            onerror: typedefs.EventHandler = undefined,
-            playbackStats: *runtime.Instance = undefined,
             cached_playbackStats: ?*runtime.Instance = null,
             _internal: ?*AudioContextImpl.InternalState = null,
         },

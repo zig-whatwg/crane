@@ -55,8 +55,6 @@ pub const CredentialUserData = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.USVString = undefined,
-            iconURL: runtime.USVString = undefined,
             _internal: ?*CredentialUserDataImpl.InternalState = null,
         },
     );

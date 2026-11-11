@@ -92,7 +92,6 @@ pub const CanvasCaptureMediaStreamTrack = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            canvas: *runtime.Instance = undefined,
             _internal: ?*CanvasCaptureMediaStreamTrackImpl.InternalState = null,
         },
     );

@@ -193,6 +193,15 @@ pub const Element = struct {
             .{ "ariaValueText", "get_ariaValueText", "set_ariaValueText" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "classList",
+            "attributes",
+            "part",
+            "children",
+        };
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
@@ -474,10 +483,6 @@ pub const Element = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cached_classList: ?*runtime.Instance = null,
-            cached_attributes: ?*runtime.Instance = null,
-            cached_part: ?*runtime.Instance = null,
-            cached_children: ?*runtime.Instance = null,
             _internal: ?*ElementImpl.InternalState = null,
         },
     );
@@ -778,7 +783,7 @@ pub const Element = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(ElementImpl, "deinit") and @hasDecl(ElementImpl, "deinitOwn")) @compileError("ElementImpl defines both deinit and deinitOwn");
-        @import("dom").same_object_cache.end(State, instance);
+        @import("dom").same_object_cache.endElement(instance, &.{ .{ .field = .class_list, .attribute = "classList" }, .{ .field = .part, .attribute = "part" }, .{ .field = .children, .attribute = "children" } });
         if (comptime @hasDecl(ElementImpl, "deinit")) return ElementImpl.deinit(instance);
         if (comptime @hasDecl(ElementImpl, "deinitOwn")) ElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -839,14 +844,13 @@ pub const Element = struct {
 
     /// Extended attributes: [SameObject], [PutForwards=value]
     pub fn get_classList(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_classList) |cached| {
+        // [SameObject] - Return the instance the element's rare data keeps
+        if (@import("dom").same_object_cache.elementGet(instance, .class_list)) |cached| {
             return cached;
         }
+        try @import("dom").same_object_cache.elementReserve(instance, .class_list);
         const value = try ElementImpl.get_classList(instance);
-        state.own.cached_classList = value;
-        @import("dom").same_object_cache.made(instance, value, "classList");
+        @import("dom").same_object_cache.elementMade(instance, .class_list, value, "classList");
         return value;
     }
 
@@ -877,15 +881,7 @@ pub const Element = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_attributes(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_attributes) |cached| {
-            return cached;
-        }
-        const value = try ElementImpl.get_attributes(instance);
-        state.own.cached_attributes = value;
-        @import("dom").same_object_cache.made(instance, value, "attributes");
-        return value;
+        return try ElementImpl.get_attributes(instance);
     }
 
     pub fn get_shadowRoot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -898,14 +894,13 @@ pub const Element = struct {
 
     /// Extended attributes: [SameObject], [PutForwards=value]
     pub fn get_part(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_part) |cached| {
+        // [SameObject] - Return the instance the element's rare data keeps
+        if (@import("dom").same_object_cache.elementGet(instance, .part)) |cached| {
             return cached;
         }
+        try @import("dom").same_object_cache.elementReserve(instance, .part);
         const value = try ElementImpl.get_part(instance);
-        state.own.cached_part = value;
-        @import("dom").same_object_cache.made(instance, value, "part");
+        @import("dom").same_object_cache.elementMade(instance, .part, value, "part");
         return value;
     }
 
@@ -1042,14 +1037,13 @@ pub const Element = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_children) |cached| {
+        // [SameObject] - Return the instance the element's rare data keeps
+        if (@import("dom").same_object_cache.elementGet(instance, .children)) |cached| {
             return cached;
         }
+        try @import("dom").same_object_cache.elementReserve(instance, .children);
         const value = try mixins.ParentNode.get_children(instance);
-        state.own.cached_children = value;
-        @import("dom").same_object_cache.made(instance, value, "children");
+        @import("dom").same_object_cache.elementMade(instance, .children, value, "children");
         return value;
     }
 

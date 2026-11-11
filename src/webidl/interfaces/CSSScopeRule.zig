@@ -66,8 +66,6 @@ pub const CSSScopeRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            start: ?typedefs.CSSOMString = null,
-            end: ?typedefs.CSSOMString = null,
             _internal: ?*CSSScopeRuleImpl.InternalState = null,
         },
     );

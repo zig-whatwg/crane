@@ -58,8 +58,6 @@ pub const RTCIdentityAssertion = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            idp: runtime.DOMString = undefined,
-            name: runtime.DOMString = undefined,
             _internal: ?*RTCIdentityAssertionImpl.InternalState = null,
         },
     );

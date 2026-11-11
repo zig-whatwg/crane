@@ -145,6 +145,18 @@ pub const SVGSVGElement = struct {
             .{ "onportalactivate", "get_onportalactivate", "set_onportalactivate" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "x",
+            "y",
+            "width",
+            "height",
+            "currentTranslate",
+            "viewBox",
+            "preserveAspectRatio",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getIntersectionList", "call_getIntersectionList", 2 },

@@ -58,7 +58,6 @@ pub const NavigatorUA = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            userAgentData: *runtime.Instance = undefined,
             _internal: ?*NavigatorUAImpl.InternalState = null,
         },
     );

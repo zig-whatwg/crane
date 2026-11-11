@@ -59,8 +59,6 @@ pub const CountQueuingStrategy = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            highWaterMark: f64 = undefined,
-            size: runtime.JSValue = undefined,
             _internal: ?*CountQueuingStrategyImpl.InternalState = null,
         },
     );

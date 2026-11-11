@@ -258,12 +258,10 @@ fn StaticElementNames(comptime namespace: []const u8, comptime names: []const []
             break :blk out;
         };
 
-        const index: std.StaticStringMap(u16) = blk: {
-            @setEvalBranchQuota(200_000);
-            var kvs: [names.len]struct { []const u8, u16 } = undefined;
-            for (names, 0..) |name, i| kvs[i] = .{ name, i };
-            break :blk std.StaticStringMap(u16).initComptime(&kvs);
-        };
+        /// A comptime perfect hash: one hash and one compare per lookup
+        /// (review zig/report.md Z10: std.StaticStringMap scanned a length
+        /// bucket, 9.9 compares per HTML hit, 23 names in the longest).
+        const index = dom.attribute_names.PerfectHash(names);
 
         fn get(local_name: []const u8) ?*const ElementName {
             return &records[index.get(local_name) orelse return null];
@@ -292,39 +290,24 @@ pub fn internElementName(namespace: ?[]const u8, prefix: ?[]const u8, local_name
     };
 }
 
-/// Compile-time generated perfect hash map for tag name lookup.
-/// Maps tag name strings to their interned static pointers.
-const InternedTagMap = std.StaticStringMap([]const u8);
+/// The HTML tag names by a comptime perfect hash (dom.attribute_names
+/// .PerfectHash: one hash, one compare; review zig/report.md Z10 - the
+/// std.StaticStringMap here before scanned a length bucket).
+pub const interned_tags = dom.attribute_names.PerfectHash(&html_tag_names);
 
-/// Pre-computed tag name intern map.
-/// Built at compile time from html_tag_names array.
-pub const interned_tags: InternedTagMap = blk: {
-    var kvs: [html_tag_names.len]struct { []const u8, []const u8 } = undefined;
-    for (html_tag_names, 0..) |name, i| {
-        kvs[i] = .{ name, name };
-    }
-    break :blk InternedTagMap.initComptime(&kvs);
-};
-
-/// Lowercase version of the tag name map for case-insensitive matching.
-/// HTML tag names are case-insensitive, so "DIV" should match "div".
-const LowerInternedTagMap = std.StaticStringMap([]const u8);
-
-/// Pre-computed lowercase tag name intern map: each name in ASCII
-/// lowercase, mapped to itself, for a lookup after lowercasing the input.
-/// Not every name in html_tag_names is lowercase - "foreignObject" is not -
-/// so the keys and values are lowered here: the tokenizer's "foreignobject"
+/// The HTML tag names in ASCII lowercase, for a lookup after lowercasing the
+/// input. Not every name in html_tag_names is lowercase - "foreignObject" is
+/// not - so the keys are lowered here: the tokenizer's "foreignobject"
 /// interns too (it missed, and tree_builder's initElement copied it;
 /// appendix-nd2.md F12).
-pub const lowercase_interned_tags: LowerInternedTagMap = blk: {
+const lowercase_tag_names: [html_tag_names.len][]const u8 = blk: {
     @setEvalBranchQuota(100_000);
-    var kvs: [html_tag_names.len]struct { []const u8, []const u8 } = undefined;
-    for (html_tag_names, 0..) |name, i| {
-        const lower = lowerComptime(name);
-        kvs[i] = .{ lower, lower };
-    }
-    break :blk LowerInternedTagMap.initComptime(&kvs);
+    var out: [html_tag_names.len][]const u8 = undefined;
+    for (html_tag_names, 0..) |name, i| out[i] = lowerComptime(name);
+    break :blk out;
 };
+
+pub const lowercase_interned_tags = dom.attribute_names.PerfectHash(&lowercase_tag_names);
 
 fn lowerComptime(comptime name: []const u8) []const u8 {
     var buffer: [name.len]u8 = undefined;
@@ -349,8 +332,8 @@ fn lowerComptime(comptime name: []const u8) []const u8 {
 ///   const custom = intern("my-element");  // Returns null
 pub fn intern(tag_name: []const u8) ?[]const u8 {
     // Fast path: exact match (most common - parser typically lowercases)
-    if (interned_tags.get(tag_name)) |interned| {
-        return interned;
+    if (interned_tags.get(tag_name)) |index| {
+        return html_tag_names[index];
     }
 
     // Slow path: uppercase input needs lowercasing
@@ -362,7 +345,7 @@ pub fn intern(tag_name: []const u8) ?[]const u8 {
             lower_buf[i] = std.ascii.toLower(c);
         }
         const lower = lower_buf[0..tag_name.len];
-        return lowercase_interned_tags.get(lower);
+        return lowercase_tag_names[lowercase_interned_tags.get(lower) orelse return null];
     }
 
     // Tag name too long - definitely not a standard HTML element
@@ -374,7 +357,7 @@ pub fn intern(tag_name: []const u8) ?[]const u8 {
 /// createElement("DIV") keep "DIV" - so naming an element must not lowercase
 /// it the way the tokenizer-facing `intern` does.
 pub fn internExact(tag_name: []const u8) ?[]const u8 {
-    return interned_tags.get(tag_name);
+    return html_tag_names[interned_tags.get(tag_name) orelse return null];
 }
 
 /// Check if a tag name is a known HTML element.

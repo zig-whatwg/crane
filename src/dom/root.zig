@@ -192,9 +192,12 @@ pub const element_data = @import("element_data.zig");
 /// An element's qualified name as one shared record: static for known
 /// names, else its Browser's interned one (lane nd2 N2; Blink's QualifiedName).
 pub const element_name = @import("element_name.zig");
-/// An element's rare data - the fields few elements use, made on first use
-/// and never moved (WebKit's ElementRareData; lane perf3 D2) - with
-/// HTMLElement's part, reached through the hooks Element installs.
+pub const attribute_names = @import("attribute_names.zig");
+pub const attribute_values = @import("attribute_values.zig");
+/// An element's rare data - the fields few elements use, in one sparse block
+/// made on first use that MOVES when it grows (Blink's NodeRareData since
+/// 2026-01; lanes perf3 D2, rare1) - HTMLElement's fields included, reached
+/// through the hook Element installs.
 pub const element_rare_data = @import("element_rare_data.zig");
 /// HTML's algorithms for reflecting content attributes in IDL attributes.
 pub const reflection = @import("reflection.zig");
@@ -341,6 +344,7 @@ pub const event_handlers = @import("event_handlers.zig");
 /// Whether an event target has a listener of a type (EventTarget's step):
 /// a service worker's set of event types to handle.
 pub const event_listener_types = @import("event_listener_types.zig");
+pub const event_listener_list = @import("event_listener_list.zig");
 /// A change of an event target's listener list, told to the owner that asked
 /// (EventTarget's step; WebKit's eventListenersDidChange): an object kept
 /// while it has listeners of a type (PermissionStatus).

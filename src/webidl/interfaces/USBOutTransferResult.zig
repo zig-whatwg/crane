@@ -62,8 +62,6 @@ pub const USBOutTransferResult = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            bytesWritten: u32 = undefined,
-            status: enums.USBTransferStatus = undefined,
             _internal: ?*USBOutTransferResultImpl.InternalState = null,
         },
     );

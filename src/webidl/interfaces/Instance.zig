@@ -57,7 +57,6 @@ pub const Instance = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            exports: runtime.JSValue = undefined,
             _internal: ?*InstanceImpl.InternalState = null,
         },
     );

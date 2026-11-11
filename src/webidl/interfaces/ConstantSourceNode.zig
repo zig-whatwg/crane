@@ -87,7 +87,6 @@ pub const ConstantSourceNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            offset: *runtime.Instance = undefined,
             _internal: ?*ConstantSourceNodeImpl.InternalState = null,
         },
     );

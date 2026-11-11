@@ -65,7 +65,6 @@ pub const PerformanceMark = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            detail: runtime.JSValue = undefined,
             _internal: ?*PerformanceMarkImpl.InternalState = null,
         },
     );

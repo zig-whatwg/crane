@@ -85,7 +85,6 @@ pub const CSSAnimation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            animationName: typedefs.CSSOMString = undefined,
             _internal: ?*CSSAnimationImpl.InternalState = null,
         },
     );

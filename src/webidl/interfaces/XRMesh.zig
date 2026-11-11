@@ -38,6 +38,12 @@ pub const XRMesh = struct {
             .{ "semanticLabel", "get_semanticLabel", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "meshSpace",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -66,11 +72,6 @@ pub const XRMesh = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            meshSpace: *runtime.Instance = undefined,
-            vertices: runtime.Float32Array = undefined,
-            indices: runtime.Uint32Array = undefined,
-            lastChangedTime: typedefs.DOMHighResTimeStamp = undefined,
-            semanticLabel: ?runtime.DOMString = null,
             cached_meshSpace: ?*runtime.Instance = null,
             _internal: ?*XRMeshImpl.InternalState = null,
         },

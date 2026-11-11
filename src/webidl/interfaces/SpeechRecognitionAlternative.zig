@@ -59,8 +59,6 @@ pub const SpeechRecognitionAlternative = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            transcript: runtime.DOMString = undefined,
-            confidence: f32 = undefined,
             _internal: ?*SpeechRecognitionAlternativeImpl.InternalState = null,
         },
     );

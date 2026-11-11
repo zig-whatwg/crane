@@ -211,6 +211,14 @@ pub const MathMLElement = struct {
             .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "style",
+            "attributeStyleMap",
+            "dataset",
+        };
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
@@ -459,9 +467,6 @@ pub const MathMLElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cached_style: ?*runtime.Instance = null,
-            cached_attributeStyleMap: ?*runtime.Instance = null,
-            cached_dataset: ?*runtime.Instance = null,
             _internal: ?*MathMLElementImpl.InternalState = null,
         },
     );
@@ -768,7 +773,7 @@ pub const MathMLElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(MathMLElementImpl, "deinit") and @hasDecl(MathMLElementImpl, "deinitOwn")) @compileError("MathMLElementImpl defines both deinit and deinitOwn");
-        @import("dom").same_object_cache.end(State, instance);
+        @import("dom").same_object_cache.endElement(instance, &.{ .{ .field = .inline_style, .attribute = "style" }, .{ .field = .attribute_style_map, .attribute = "attributeStyleMap" }, .{ .field = .dataset, .attribute = "dataset" } });
         if (comptime @hasDecl(MathMLElementImpl, "deinit")) return MathMLElementImpl.deinit(instance);
         if (comptime @hasDecl(MathMLElementImpl, "deinitOwn")) MathMLElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -785,14 +790,13 @@ pub const MathMLElement = struct {
 
     /// Extended attributes: [SameObject], [PutForwards=cssText]
     pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_style) |cached| {
+        // [SameObject] - Return the instance the element's rare data keeps
+        if (@import("dom").same_object_cache.elementGet(instance, .inline_style)) |cached| {
             return cached;
         }
+        try @import("dom").same_object_cache.elementReserve(instance, .inline_style);
         const value = try MathMLElementImpl.get_style(instance);
-        state.own.cached_style = value;
-        @import("dom").same_object_cache.made(instance, value, "style");
+        @import("dom").same_object_cache.elementMade(instance, .inline_style, value, "style");
         return value;
     }
 
@@ -809,14 +813,13 @@ pub const MathMLElement = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_attributeStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_attributeStyleMap) |cached| {
+        // [SameObject] - Return the instance the element's rare data keeps
+        if (@import("dom").same_object_cache.elementGet(instance, .attribute_style_map)) |cached| {
             return cached;
         }
+        try @import("dom").same_object_cache.elementReserve(instance, .attribute_style_map);
         const value = try MathMLElementImpl.get_attributeStyleMap(instance);
-        state.own.cached_attributeStyleMap = value;
-        @import("dom").same_object_cache.made(instance, value, "attributeStyleMap");
+        @import("dom").same_object_cache.elementMade(instance, .attribute_style_map, value, "attributeStyleMap");
         return value;
     }
 
@@ -1140,14 +1143,13 @@ pub const MathMLElement = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_dataset(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_dataset) |cached| {
+        // [SameObject] - Return the instance the element's rare data keeps
+        if (@import("dom").same_object_cache.elementGet(instance, .dataset)) |cached| {
             return cached;
         }
+        try @import("dom").same_object_cache.elementReserve(instance, .dataset);
         const value = try MathMLElementImpl.get_dataset(instance);
-        state.own.cached_dataset = value;
-        @import("dom").same_object_cache.made(instance, value, "dataset");
+        @import("dom").same_object_cache.elementMade(instance, .dataset, value, "dataset");
         return value;
     }
 

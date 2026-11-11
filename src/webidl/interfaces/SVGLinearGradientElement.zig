@@ -104,6 +104,15 @@ pub const SVGLinearGradientElement = struct {
             .{ "y2", "get_y2", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "x1",
+            "y1",
+            "x2",
+            "y2",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 

@@ -77,10 +77,6 @@ pub const CSSHSL = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            h: typedefs.CSSColorAngle = undefined,
-            s: typedefs.CSSColorPercent = undefined,
-            l: typedefs.CSSColorPercent = undefined,
-            alpha: typedefs.CSSColorPercent = undefined,
             _internal: ?*CSSHSLImpl.InternalState = null,
         },
     );

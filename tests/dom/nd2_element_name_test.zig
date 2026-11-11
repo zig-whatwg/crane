@@ -43,7 +43,6 @@ const dom = @import("dom");
 const infra = @import("infra");
 
 const ElementData = dom.element_data.ElementData;
-const ElementRareData = dom.element_rare_data.ElementRareData;
 
 /// Whether N2's record is in this build.
 const has_record = @hasField(ElementData, "name");
@@ -106,11 +105,13 @@ test "ElementData names its element with one 8-byte record pointer: 64 bytes at 
     }
 }
 
-test "ElementRareData keeps no prefix: it is the name record's - 312 bytes" {
+test "the rare data keeps no prefix: it is the name record's" {
     // 344 at main b1bd4eae568: - 32 (the prefix, a ?DOMString). Blink's
-    // QualifiedName carries the prefix (QualifiedNameImpl::prefix_).
-    try expectNoFields(ElementRareData, .{"prefix"});
-    try expectSize(ElementRareData, 312);
+    // QualifiedName carries the prefix (QualifiedNameImpl::prefix_). Since
+    // lane rare1 the rare data is one sparse block with a slot per field
+    // set (tests/dom/rare1_sparse_rare_data_test.zig), and no field is the
+    // prefix.
+    try testing.expect(!@hasField(dom.element_rare_data.Field, "prefix"));
 }
 
 test "a name record is 88 bytes, its count (batch 1-fix) in what was padding" {
@@ -126,14 +127,8 @@ test "Element's InternalState is 88 bytes at N2, 40 after N3" {
     try expectSize(ElementState, 40);
 }
 
-test "a div's one block is 312 bytes at N2 (a 320-byte class), 264 after N3 (272)" {
-    // 360 at main b1bd4eae568 (a 368-byte class), less ElementData's 48.
-    const S = interfaces.HTMLDivElement.State;
-    // N3: 48 more (ElementData's ID and classes views).
-    try expectSize(S, 264);
-    const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
-    try testing.expectEqual(@as(usize, 272), held);
-}
+// A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig
+// (lane cg1; lesson testing-a-total-pinned-in-six-files-moves-in-six-files.md).
 
 // ============================================================================
 // An engine-less page
@@ -397,19 +392,26 @@ fn tableCount(scope: *runtime.BrowserScope) usize {
     return table.count();
 }
 
-/// A page whose Browser's allocator counts what it holds.
+/// A page whose Browser's allocator counts what it holds, over the churn
+/// tests' allocator (`poisoning.ChurnAllocator`: poisoned frees and the leak
+/// check, no stack traces - std.testing.allocator's capture at every
+/// allocation and free was 95% of this churn's time on macOS).
 const CountedPage = struct {
+    churn: @import("root").poisoning.ChurnAllocator,
     counting: std.testing.FailingAllocator,
     page: Page,
 
-    /// In place, as Page.
-    fn open(self: *CountedPage) !void {
-        self.counting = std.testing.FailingAllocator.init(testing.allocator, .{});
+    /// In place, as Page: the allocators point into it.
+    fn open(self: *CountedPage, name: []const u8) !void {
+        self.churn = .init(name);
+        self.counting = std.testing.FailingAllocator.init(self.churn.allocator(), .{});
         try self.page.openWith(self.counting.allocator());
     }
 
-    fn close(self: *CountedPage) void {
+    /// The page's end, then the churn allocator's leak check.
+    fn close(self: *CountedPage) !void {
         self.page.close();
+        try self.churn.deinit();
     }
 
     /// The bytes the Browser's allocator handed out and has not had back.
@@ -433,10 +435,11 @@ fn churn(page: *Page, first: usize, end: usize, shape: Shape) !void {
     }
 }
 
-fn expectFlat(shape: Shape) !void {
+fn expectFlat(comptime shape: Shape) !void {
     var counted: CountedPage = undefined;
-    try counted.open();
-    defer counted.close();
+    try counted.open("nd2_element_name_test: a million " ++ @tagName(shape) ++ " names");
+    var closed = false;
+    defer if (!closed) counted.close() catch {};
     const page = &counted.page;
 
     const names_at_start = tableCount(&page.scope);
@@ -456,6 +459,8 @@ fn expectFlat(shape: Shape) !void {
     try testing.expectEqual(names_at_start, names_at_end);
     try testing.expect(live_end <= live_warm + 64 * 1024);
     try testing.expect(arena_end <= arena_warm + 64 * 1024);
+    closed = true;
+    try counted.close();
 }
 
 test "a million createElement('x-' + i), each dropped, leave the Browser's name table and memory where they started" {

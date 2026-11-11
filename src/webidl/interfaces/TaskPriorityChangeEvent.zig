@@ -72,7 +72,6 @@ pub const TaskPriorityChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            previousPriority: enums.TaskPriority = undefined,
             _internal: ?*TaskPriorityChangeEventImpl.InternalState = null,
         },
     );

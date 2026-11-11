@@ -62,8 +62,6 @@ pub const CSSCustomMediaRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.CSSOMString = undefined,
-            query: typedefs.CustomMediaQuery = undefined,
             _internal: ?*CSSCustomMediaRuleImpl.InternalState = null,
         },
     );

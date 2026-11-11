@@ -66,7 +66,6 @@ pub const LayoutChild = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            styleMap: *runtime.Instance = undefined,
             _internal: ?*LayoutChildImpl.InternalState = null,
         },
     );

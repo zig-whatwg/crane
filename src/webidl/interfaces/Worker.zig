@@ -92,9 +92,6 @@ pub const Worker = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onerror: typedefs.EventHandler = undefined,
-            onmessage: typedefs.EventHandler = undefined,
-            onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*WorkerImpl.InternalState = null,
         },
     );

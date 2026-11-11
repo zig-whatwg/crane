@@ -72,8 +72,6 @@ pub const DataTransferItem = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            kind: runtime.DOMString = undefined,
-            type: runtime.DOMString = undefined,
             _internal: ?*DataTransferItemImpl.InternalState = null,
         },
     );

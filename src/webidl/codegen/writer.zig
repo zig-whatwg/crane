@@ -540,6 +540,9 @@ pub fn writeMetadata(
     /// The interface's setlike declaration, for `Meta.setlike`
     /// (setlike.zig); null writes none.
     setlike: ?types.Setlike,
+    /// The IR's types, for `Meta.same_object_attributes` (which getters
+    /// return an engine value); null writes none.
+    type_registry: ?*const @import("ir.zig").TypeRegistry,
 ) !void {
     _ = attributes; // Unused - we now use own_attributes for properties/lazy_properties
 
@@ -666,6 +669,9 @@ pub fn writeMetadata(
         }
     }
     try writer.writeAll("        };\n");
+
+    // [SameObject]: the binding ties these children to their owner.
+    if (!is_mixin) try writeSameObjectAttributes(writer, own_attributes, type_registry);
 
     // Generate [PutForwards] metadata for attributes with setter forwarding
     // Per WebIDL spec §4.3.10: [PutForwards=X] means setting the attribute
@@ -1708,6 +1714,12 @@ pub const AttributeStorage = enum {
 
 pub const StateOptions = struct {
     attribute_storage: AttributeStorage = .state,
+    /// With `.attribute_storage = .state`: the only attributes that get a
+    /// slot (`stateSlotsOf`); null gives every attribute one.
+    slots: ?[]const []const u8 = null,
+    /// Whose State it is: an element's family-wide [SameObject] caches live
+    /// in its rare data, not here (`sameObjectPlace`).
+    owner: SameObjectOwner = .{},
 };
 
 /// The roots of the families whose impls keep every attribute's storage
@@ -1723,9 +1735,84 @@ pub const StateOptions = struct {
 /// its family; a remaining reader is a compile error.
 const attribute_storage_family_roots = [_][]const u8{"Node"};
 
-/// Whether `interface_name` is a family root above or inherits from one,
-/// along the IR's inheritance chain (the one Meta.ParentInterface encodes):
-/// its generated State keeps no attribute slots (`AttributeStorage.impl`).
+/// The attribute slots impls store attributes in (lane cg1 batch 1, step 2):
+/// a generated State keeps these and no other. The compile proof - every
+/// slot of every interface dropped, then the runners, every test binary,
+/// test-browser, gc_bench and the console compiled, again until no error was
+/// left (Zig reports one error per function body) - named 223 slots read or
+/// written, in 47 impls and one test, on these 44 interfaces' own levels. The
+/// other 3,380 of the 3,603 generated slots (829 States, mixin modules
+/// included: 44,954 bytes of own levels) were memory each object paid and
+/// nothing read - CSSStyleProperties' cssText 24 + length 4 + parentRule 8 +
+/// cssFloat 24 of its 72 bytes, Event's srcElement, currentTarget,
+/// eventPhase and isTrusted. An IDL attribute is an accessor (WebIDL 3.7.6):
+/// its getter runs the impl's steps, which compute the value or read the
+/// impl's own storage. A read of a slot not listed here is a compile error;
+/// an impl that stores a new attribute in its State adds it here. A listed
+/// slot only written (Event's cancelBubble, written by its descendants'
+/// inits) is the impl owners' to remove with its writes.
+pub const StateSlots = struct { interface: []const u8, attributes: []const []const u8 };
+const state_storage_slots = [_]StateSlots{
+    .{ .interface = "AnimationEvent", .attributes = &.{ "animationName", "elapsedTime", "pseudoElement", "animation" } },
+    .{ .interface = "AnimationPlaybackEvent", .attributes = &.{ "currentTime", "timelineTime" } },
+    .{ .interface = "BeforeUnloadEvent", .attributes = &.{"returnValue"} },
+    .{ .interface = "CloseEvent", .attributes = &.{ "wasClean", "code", "reason" } },
+    .{ .interface = "DOMMatrixReadOnly", .attributes = &.{ "m11", "m12", "m13", "m14", "m21", "m22", "m23", "m24", "m31", "m32", "m33", "m34", "m41", "m42", "m43", "m44", "is2D" } },
+    .{ .interface = "DOMPointReadOnly", .attributes = &.{ "x", "y", "z", "w" } },
+    .{ .interface = "DOMQuad", .attributes = &.{ "p1", "p2", "p3", "p4" } },
+    .{ .interface = "DOMRectList", .attributes = &.{"length"} },
+    .{ .interface = "DOMRectReadOnly", .attributes = &.{ "x", "y", "width", "height" } },
+    .{ .interface = "DOMTokenList", .attributes = &.{ "length", "value" } },
+    .{ .interface = "ElementInternals", .attributes = &.{ "role", "ariaAtomic", "ariaAutoComplete", "ariaBrailleLabel", "ariaBrailleRoleDescription", "ariaBusy", "ariaChecked", "ariaColCount", "ariaColIndex", "ariaColIndexText", "ariaColSpan", "ariaCurrent", "ariaDescription", "ariaDisabled", "ariaExpanded", "ariaHasPopup", "ariaHidden", "ariaInvalid", "ariaKeyShortcuts", "ariaLabel", "ariaLevel", "ariaLive", "ariaModal", "ariaMultiLine", "ariaMultiSelectable", "ariaOrientation", "ariaPlaceholder", "ariaPosInSet", "ariaPressed", "ariaReadOnly", "ariaRelevant", "ariaRequired", "ariaRoleDescription", "ariaRowCount", "ariaRowIndex", "ariaRowIndexText", "ariaRowSpan", "ariaSelected", "ariaSetSize", "ariaSort", "ariaValueMax", "ariaValueMin", "ariaValueNow", "ariaValueText" } },
+    .{ .interface = "Event", .attributes = &.{ "type", "cancelBubble", "bubbles", "cancelable", "returnValue", "defaultPrevented", "composed", "timeStamp" } },
+    .{ .interface = "FetchLaterResult", .attributes = &.{"activated"} },
+    .{ .interface = "HTMLCollection", .attributes = &.{"length"} },
+    .{ .interface = "HashChangeEvent", .attributes = &.{ "oldURL", "newURL" } },
+    .{ .interface = "IntersectionObserver", .attributes = &.{ "rootMargin", "scrollMargin", "delay", "trackVisibility" } },
+    .{ .interface = "IntersectionObserverEntry", .attributes = &.{ "time", "rootBounds", "boundingClientRect", "intersectionRect", "isIntersecting", "isVisible", "intersectionRatio", "target" } },
+    .{ .interface = "MediaError", .attributes = &.{ "code", "message" } },
+    .{ .interface = "MediaQueryListEvent", .attributes = &.{ "media", "matches" } },
+    .{ .interface = "MessageChannel", .attributes = &.{ "port1", "port2" } },
+    .{ .interface = "MessageEvent", .attributes = &.{ "data", "origin", "lastEventId", "source", "ports" } },
+    .{ .interface = "MouseEvent", .attributes = &.{ "screenX", "screenY", "clientX", "clientY", "layerX", "layerY", "ctrlKey", "shiftKey", "altKey", "metaKey", "button", "buttons", "pageX", "pageY", "x", "y", "offsetX", "offsetY", "movementX", "movementY" } },
+    .{ .interface = "NamedNodeMap", .attributes = &.{"length"} },
+    .{ .interface = "NavigateEvent", .attributes = &.{ "navigationType", "destination", "canIntercept", "userInitiated", "hashChange", "signal", "formData", "downloadRequest", "info", "hasUAVisualTransition", "sourceElement" } },
+    .{ .interface = "NavigationCurrentEntryChangeEvent", .attributes = &.{ "navigationType", "from" } },
+    .{ .interface = "NavigationTransition", .attributes = &.{ "navigationType", "from", "to", "committed", "finished" } },
+    .{ .interface = "NodeList", .attributes = &.{"length"} },
+    .{ .interface = "PageRevealEvent", .attributes = &.{"viewTransition"} },
+    .{ .interface = "PageSwapEvent", .attributes = &.{ "activation", "viewTransition" } },
+    .{ .interface = "PageTransitionEvent", .attributes = &.{"persisted"} },
+    .{ .interface = "PointerEvent", .attributes = &.{ "pointerId", "width", "height", "pressure", "tangentialPressure", "tiltX", "tiltY", "twist", "altitudeAngle", "azimuthAngle", "pointerType", "isPrimary", "persistentDeviceId" } },
+    .{ .interface = "PopStateEvent", .attributes = &.{ "state", "hasUAVisualTransition" } },
+    .{ .interface = "ProgressEvent", .attributes = &.{ "lengthComputable", "loaded", "total" } },
+    .{ .interface = "QuotaExceededError", .attributes = &.{ "quota", "requested" } },
+    .{ .interface = "Request", .attributes = &.{ "signal", "body" } },
+    .{ .interface = "Response", .attributes = &.{"body"} },
+    .{ .interface = "SecurityPolicyViolationEvent", .attributes = &.{ "documentURI", "referrer", "blockedURI", "effectiveDirective", "violatedDirective", "originalPolicy", "sourceFile", "sample", "disposition", "statusCode", "lineNumber", "columnNumber" } },
+    .{ .interface = "TextDecoder", .attributes = &.{ "encoding", "fatal", "ignoreBOM" } },
+    .{ .interface = "TextEncoder", .attributes = &.{"encoding"} },
+    .{ .interface = "TimeRanges", .attributes = &.{"length"} },
+    .{ .interface = "TransitionEvent", .attributes = &.{ "propertyName", "elapsedTime", "pseudoElement", "animation" } },
+    .{ .interface = "UIEvent", .attributes = &.{ "view", "detail", "sourceCapabilities", "which" } },
+    .{ .interface = "WebSocket", .attributes = &.{ "url", "readyState", "bufferedAmount", "extensions", "protocol", "binaryType" } },
+    .{ .interface = "WheelEvent", .attributes = &.{ "deltaX", "deltaY", "deltaZ", "deltaMode" } },
+};
+
+/// The slots `interface_name`'s State keeps, or null when its impl keeps
+/// every attribute's storage itself.
+pub fn stateSlotsOf(interface_name: []const u8) ?[]const []const u8 {
+    for (state_storage_slots) |entry| {
+        if (std.mem.eql(u8, entry.interface, interface_name)) return entry.attributes;
+    }
+    return null;
+}
+
+/// Whether `interface_name`'s impl keeps every attribute's storage itself,
+/// so its generated State keeps no attribute slots (`AttributeStorage.impl`):
+/// a Node-family interface (a family root above, or one inheriting from it,
+/// along the IR's inheritance chain - the one Meta.ParentInterface encodes),
+/// and every interface `state_storage_slots` does not list.
 pub fn implKeepsAttributeStorage(model: *const ir.IR, interface_name: []const u8) bool {
     var name = interface_name;
     // A chain is a handful deep; the bound only stops a malformed cycle.
@@ -1733,10 +1820,10 @@ pub fn implKeepsAttributeStorage(model: *const ir.IR, interface_name: []const u8
         for (attribute_storage_family_roots) |root| {
             if (std.mem.eql(u8, name, root)) return true;
         }
-        const iface = model.interfaces.get(name) orelse return false;
-        name = iface.inheritance orelse return false;
+        const iface = model.interfaces.get(name) orelse break;
+        name = iface.inheritance orelse break;
     }
-    return false;
+    return stateSlotsOf(interface_name) == null;
 }
 
 /// Does this interface's impl own its event handlers, rather than storing them in
@@ -1769,11 +1856,104 @@ fn implOwnsEventHandlers(impl_name: []const u8) bool {
 /// Whether a State made from `attributes` caches a [SameObject] attribute:
 /// a `cached_<name>` field, which writeStateStruct adds for every non-static
 /// [SameObject] attribute (writeLifecycleFunctions' `same_object_caches`).
-pub fn cachesSameObject(attributes: []const types.Attribute) bool {
+/// `owner` says whose State it is: an element's family-wide caches are not
+/// in its State (`sameObjectPlace`).
+pub fn cachesSameObject(attributes: []const types.Attribute, owner: SameObjectOwner) bool {
     for (attributes) |attr| {
-        if (!attr.static and hasExtendedAttribute(attr.extAttrs, "SameObject")) return true;
+        if (!attr.static and hasExtendedAttribute(attr.extAttrs, "SameObject") and sameObjectPlace(owner, attr) == .state) return true;
     }
     return false;
+}
+
+/// The interface whose generated file caches a [SameObject] attribute, and
+/// whether it is an element interface (Element or one inheriting from it).
+pub const SameObjectOwner = struct {
+    interface_name: []const u8 = "",
+    element: bool = false,
+};
+
+/// Where an interface's [SameObject] cache lives (N1 for elements: lane cg1,
+/// batch 1; node-memory plan v2, tmp/redesign/node-memory-plan-v2.md).
+pub const SameObjectPlace = union(enum) {
+    /// `cached_<name>` in the generated State: every instance pays 8 bytes.
+    state,
+    /// The element's sparse rare block (dom.element_rare_data, lane rare1),
+    /// in this field, through dom.same_object_cache's element accessors: an
+    /// element pays for it only once it is read (16 bytes for the first
+    /// field), as Blink keeps these objects in its ElementRareDataVector.
+    element_rare: []const u8,
+    /// The impl keeps the object itself, and its edge from the owner: no
+    /// generated cache, the getter calls the impl.
+    impl,
+};
+
+/// The [SameObject] caches every element of a family carries, which go to
+/// the element's rare data: `definer` is the interface or mixin that declares
+/// the attribute, `field` its dom.element_rare_data.Field. On the framework
+/// pages (tmp/redesign/nodedata/framework-pages.md, table E) only style and,
+/// in the grid, classList (58,137 reads in 20 screens) are read at all;
+/// classList is bit 0 and HTMLElement's style bit 1, so neither read needs
+/// a popcount. Blink: ElementRareDataVector's kClassList, kPart, kDataset,
+/// kCssomWrapper and kCssomMapWrapper, and NodeListsNodeData's children
+/// collection; Ladybird's Node::RareData and Servo's ElementRareData the same.
+/// A leaf element's own [SameObject] attribute (an anchor's relList, an SVG
+/// shape's animated lengths) stays in its State: few elements carry it.
+const element_rare_caches = [_]struct { definer: []const u8, attribute: []const u8, field: []const u8 }{
+    .{ .definer = "Element", .attribute = "classList", .field = "class_list" },
+    .{ .definer = "Element", .attribute = "part", .field = "part" },
+    .{ .definer = "ParentNode", .attribute = "children", .field = "children" },
+    .{ .definer = "HTMLOrSVGOrMathMLElement", .attribute = "dataset", .field = "dataset" },
+    .{ .definer = "ElementCSSInlineStyle", .attribute = "attributeStyleMap", .field = "attribute_style_map" },
+    // SVGElement's and MathMLElement's style: their impls make the object
+    // per call and the generated cache keeps it, owned by its wrapper - not
+    // HTMLElement's kept `style`, which the element owns and frees whole.
+    .{ .definer = "ElementCSSInlineStyle", .attribute = "style", .field = "inline_style" },
+    .{ .definer = "SVGElement", .attribute = "className", .field = "svg_class_name" },
+};
+
+/// The [SameObject] objects an element's impl keeps itself, in its rare
+/// data, with their edges: a generated copy would cache the same pointer a
+/// second time. Element's NamedNodeMap (rare data's `named_node_map`, traced
+/// by its getter) and HTMLElement's inline style object (`style`, traced on
+/// hand-out and freed whole with the element).
+const impl_kept_same_object = [_]struct { interface: []const u8, attribute: []const u8 }{
+    .{ .interface = "Element", .attribute = "attributes" },
+    .{ .interface = "HTMLElement", .attribute = "style" },
+};
+
+/// Where `owner`'s [SameObject] attribute `attr` is cached.
+pub fn sameObjectPlace(owner: SameObjectOwner, attr: types.Attribute) SameObjectPlace {
+    if (!owner.element) return .state;
+    for (impl_kept_same_object) |kept| {
+        if (std.mem.eql(u8, kept.interface, owner.interface_name) and std.mem.eql(u8, kept.attribute, attr.name)) return .impl;
+    }
+    const definer = attr.mixin orelse owner.interface_name;
+    for (element_rare_caches) |cache| {
+        if (std.mem.eql(u8, cache.definer, definer) and std.mem.eql(u8, cache.attribute, attr.name)) return .{ .element_rare = cache.field };
+    }
+    return .state;
+}
+
+/// One rare-block cache of a level, for its destruction chain
+/// (dom.same_object_cache.endElement).
+pub const ElementRareCache = struct {
+    field: []const u8,
+    attribute: []const u8,
+};
+
+/// The rare-block caches among `attributes` of `owner`, in order. The caller
+/// frees the slice.
+pub fn elementRareCaches(allocator: std.mem.Allocator, attributes: []const types.Attribute, owner: SameObjectOwner) ![]ElementRareCache {
+    var list: std.ArrayList(ElementRareCache) = .empty;
+    errdefer list.deinit(allocator);
+    for (attributes) |attr| {
+        if (attr.static or !hasExtendedAttribute(attr.extAttrs, "SameObject")) continue;
+        switch (sameObjectPlace(owner, attr)) {
+            .element_rare => |field| try list.append(allocator, .{ .field = field, .attribute = attr.name }),
+            .state, .impl => {},
+        }
+    }
+    return list.toOwnedSlice(allocator);
 }
 
 /// Write consolidated State declaration
@@ -1830,6 +2010,13 @@ pub fn writeGeneratedState(
 
             // The impl keeps every attribute's storage; see implKeepsAttributeStorage.
             if (options.attribute_storage == .impl) continue;
+            // Or that of every attribute but these (stateSlotsOf).
+            if (options.slots) |slots| {
+                const kept = for (slots) |name| {
+                    if (std.mem.eql(u8, name, attr.name)) break true;
+                } else false;
+                if (!kept) continue;
+            }
 
             // Skip event-handler slots the impl owns; see implOwnsEventHandlers.
             if (implOwnsEventHandlers(impl_name) and
@@ -1946,6 +2133,10 @@ pub fn writeGeneratedState(
             // Check if this attribute has [SameObject]
             const has_same_object = hasExtendedAttribute(attr.extAttrs, "SameObject");
             if (!has_same_object) continue;
+
+            // An element's family-wide cache is in its rare data, and one
+            // its impl keeps is nowhere here (sameObjectPlace).
+            if (sameObjectPlace(options.owner, attr) != .state) continue;
 
             // Sanitize attribute name for field name (convert hyphens to underscores)
             const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
@@ -2484,6 +2675,11 @@ pub const LifecycleOptions = struct {
     /// destruction chain ends the edges its cached children may still wait
     /// on (dom.same_object_cache.end).
     same_object_caches: bool = false,
+    /// The level's [SameObject] caches in the element's rare data
+    /// (`sameObjectPlace`): the destruction chain ends their edges too
+    /// (dom.same_object_cache.endElement), before Element's teardown frees
+    /// the block.
+    element_rare_caches: []const ElementRareCache = &.{},
 };
 
 /// Write the construction and destruction chain
@@ -2626,6 +2822,14 @@ pub fn writeLifecycleFunctions(
     // First, before an impl that chains by hand returns: this level's
     // [SameObject] children are the generated layer's.
     if (options.same_object_caches) try writer.writeAll("        @import(\"dom\").same_object_cache.end(State, instance);\n");
+    if (options.element_rare_caches.len > 0) {
+        try writer.writeAll("        @import(\"dom\").same_object_cache.endElement(instance, &.{");
+        for (options.element_rare_caches, 0..) |cache, i| {
+            if (i > 0) try writer.writeAll(",");
+            try writer.print(" .{{ .field = .{s}, .attribute = \"{s}\" }}", .{ cache.field, cache.attribute });
+        }
+        try writer.writeAll(" });\n");
+    }
     try writer.print("        if (comptime @hasDecl({s}, \"deinit\")) return {s}.deinit(instance);\n", .{ impl_name, impl_name });
     try writer.print("        if (comptime @hasDecl({s}, \"deinitOwn\")) {s}.deinitOwn(instance);\n", .{ impl_name, impl_name });
     if (options.has_parent) try writer.writeAll("        Meta.ParentInterface.deinitChain(instance);\n");
@@ -5003,6 +5207,71 @@ fn capitalize(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
     return result;
 }
 
+/// The Zig type an attribute's generated getter returns (less its `?`).
+pub fn getterReturnType(attr: types.Attribute, type_registry: ?*const @import("ir.zig").TypeRegistry) []const u8 {
+    // Check if this is an interface type - if so, use *runtime.Instance
+    // A callback interface attribute returns the object that was given
+    // (NodeIterator.filter): a runtime.JSValue. Only an ARGUMENT of a
+    // callback interface type is a *runtime.CallbackWrapper.
+    const attr_type_kind = if (type_registry) |reg| reg.lookup(attr.idlType.type) else null;
+    const is_interface_type = attr_type_kind != null and attr_type_kind.? == .interface;
+    const is_callback_interface_type = attr_type_kind != null and attr_type_kind.? == .callback_interface;
+    const is_callback_function_value = isCallbackFunctionValueAttribute(attr, attr_type_kind);
+
+    const return_type = if (is_callback_interface_type or is_callback_function_value)
+        "runtime.JSValue"
+    else if (is_interface_type)
+        "*runtime.Instance"
+    else if (type_registry) |reg|
+        mapWebIDLTypeWithRegistry(attr.idlType, reg).type_name
+    else
+        mapWebIDLType(attr.idlType);
+
+    // Convert bare anyopaque to JSValue (for unresolved types)
+    if (std.mem.eql(u8, return_type, "anyopaque")) return "runtime.JSValue";
+    return return_type;
+}
+
+/// Whether the generated getter of `attr` keeps its [SameObject] value - in
+/// the State, an element's rare data, or (`SameObjectPlace.impl`) its impl:
+/// a non-static [SameObject] attribute whose value is not an engine value
+/// (an impl keeps a JSValue and returns a hold of it). The binding ties the
+/// child's wrapper to its owner's for exactly these (`Meta.same_object_attributes`).
+pub fn sameObjectCacheable(attr: types.Attribute, type_registry: ?*const @import("ir.zig").TypeRegistry) bool {
+    return !attr.static and hasExtendedAttribute(attr.extAttrs, "SameObject") and
+        !std.mem.eql(u8, getterReturnType(attr, type_registry), "runtime.JSValue");
+}
+
+/// `Meta.same_object_attributes`: the attributes whose child the binding
+/// ties to its owner (engines/v8 interface.zig `stateCachesSameObject`,
+/// binding_plumbing.recordSameObjectEdge - the per-realm edge and the edge
+/// back to the owner that keeps `el.attributes` from outliving `el`). It was
+/// read from the State's `cached_<name>` field until N1 moved an element's
+/// caches out of the State (lane cg1); the [SameObject] attribute is the
+/// source, wherever its cache lives.
+pub fn writeSameObjectAttributes(writer: anytype, own_attributes: []const types.Attribute, type_registry: ?*const @import("ir.zig").TypeRegistry) !void {
+    var any = false;
+    for (own_attributes) |attr| {
+        if (sameObjectCacheable(attr, type_registry)) {
+            any = true;
+            break;
+        }
+    }
+    if (!any) return;
+    try writer.writeAll("        \n");
+    try writer.writeAll("        /// [SameObject] attributes whose child the owner keeps (in its State, its rare\n");
+    try writer.writeAll("        /// data or its impl): the binding ties the child's wrapper to the owner's.\n");
+    try writer.writeAll("        pub const same_object_attributes = .{\n");
+    for (own_attributes) |attr| {
+        if (!sameObjectCacheable(attr, type_registry)) continue;
+        // The getter's name less `get_`, as the binding derives it.
+        try writer.writeAll("            \"");
+        try writeSanitizedName(writer, attr.name);
+        try writer.writeAll("\",\n");
+    }
+    try writer.writeAll("        };\n");
+}
+
 /// How `writeDelegateFunctions` writes one file's delegates.
 pub const DelegateOptions = struct {
     /// Cache a [SameObject] attribute's value in the file's own `State`. False
@@ -5022,6 +5291,9 @@ pub const DelegateOptions = struct {
     /// (`restricted_floats`: DOMHighResTimeStamp is a restricted double).
     /// Null only in tests that need no typedef.
     model: ?*const ir.IR = null,
+    /// Whose file it is: an element's family-wide [SameObject] caches are
+    /// read and written in its rare data (`sameObjectPlace`).
+    owner: SameObjectOwner = .{},
 };
 
 /// Whether a delegate file has a setter for `attr`: the conditions
@@ -5069,28 +5341,7 @@ pub fn writeDelegateFunctions(
 
     // Write attribute getters - ONLY for own attributes (not inherited)
     for (own_attributes) |attr| {
-        // Check if this is an interface type - if so, use *runtime.Instance
-        // A callback interface attribute returns the object that was given
-        // (NodeIterator.filter): a runtime.JSValue. Only an ARGUMENT of a
-        // callback interface type is a *runtime.CallbackWrapper.
-        const attr_type_kind = if (type_registry) |reg| reg.lookup(attr.idlType.type) else null;
-        const is_interface_type = attr_type_kind != null and attr_type_kind.? == .interface;
-        const is_callback_interface_type = attr_type_kind != null and attr_type_kind.? == .callback_interface;
-        const is_callback_function_value = isCallbackFunctionValueAttribute(attr, attr_type_kind);
-
-        var return_type = if (is_callback_interface_type or is_callback_function_value)
-            "runtime.JSValue"
-        else if (is_interface_type)
-            "*runtime.Instance"
-        else if (type_registry) |reg|
-            mapWebIDLTypeWithRegistry(attr.idlType, reg).type_name
-        else
-            mapWebIDLType(attr.idlType);
-
-        // Convert bare anyopaque to JSValue (for unresolved types)
-        if (std.mem.eql(u8, return_type, "anyopaque")) {
-            return_type = "runtime.JSValue";
-        }
+        const return_type = getterReturnType(attr, type_registry);
 
         // Check if this attribute is nullable (WebIDL T? type)
         const is_nullable = attr.idlType.nullable;
@@ -5142,8 +5393,22 @@ pub fn writeDelegateFunctions(
         // generated code cannot take a hold of its own (it never calls the
         // engine). Such an impl keeps its value and returns a hold of it
         // (engine.retainValue(...).take()) - the same object every read.
-        const caches = has_same_object and !attr.static and options.same_object_cache and
+        const cacheable = has_same_object and !attr.static and options.same_object_cache and
             !std.mem.eql(u8, return_type, "runtime.JSValue");
+        // Where the cache lives (sameObjectPlace): an element's family-wide
+        // caches in its rare data; none where the impl keeps the object.
+        const place: SameObjectPlace = if (cacheable) sameObjectPlace(options.owner, attr) else .state;
+        const caches = cacheable and place != .impl;
+        const rare_field: ?[]const u8 = if (caches) switch (place) {
+            .element_rare => |field| field,
+            .state, .impl => null,
+        } else null;
+        // A rare-block slot holds one non-null object: the cached value of a
+        // readonly attribute (a [PutForwards] setter forwards through the getter).
+        if (rare_field != null and (is_nullable or !std.mem.eql(u8, return_type, "*runtime.Instance") or !attr.readonly)) {
+            std.debug.print("codegen: {s}.{s} cannot be cached in an element's rare data (nullable, not an interface, or writable)\n", .{ options.owner.interface_name, attr.name });
+            return error.ElementRareCacheShape;
+        }
         if (inherited) |mixin| if (!caches) {
             try writer.print("    pub const {s}{s} = mixins.{s}.{s}{s};\n", .{ get_prefix, sanitized_name, mixin, get_prefix, sanitized_name });
             if (mixinModuleHasSetter(attr)) {
@@ -5173,7 +5438,26 @@ pub fn writeDelegateFunctions(
 
         // Use caching for [SameObject] attributes (all attributes here are own)
         // NOTE: Static attributes cannot use instance caching - they don't have instance state
-        if (caches) {
+        if (rare_field) |field| {
+            // [SameObject] in the element's rare data (dom.same_object_cache):
+            // its bit is given before the object is made, so that keeping it
+            // after cannot fail, and the object is kept and traced from its
+            // owner, whoever reads it first - as a State cache is.
+            try writer.writeAll("        // [SameObject] - Return the instance the element's rare data keeps\n");
+            try writer.print("        if (@import(\"dom\").same_object_cache.elementGet(instance, .{s})) |cached| {{\n", .{field});
+            try writer.writeAll("            return cached;\n");
+            try writer.writeAll("        }\n");
+            try writer.print("        try @import(\"dom\").same_object_cache.elementReserve(instance, .{s});\n", .{field});
+            if (reflect_getter) {
+                try writer.print("        const value = if (comptime @hasDecl({s}, \"get_{s}\")) try {s}.get_{s}(instance) else try reflection.get({s}, instance, ", .{ member_impl, sanitized_name, member_impl, sanitized_name, value_type });
+                try reflect.writeSpec(writer, reflection.?);
+                try writer.writeAll(");\n");
+            } else {
+                try writer.print("        const value = try {s}.get_{s}(instance);\n", .{ member_impl, sanitized_name });
+            }
+            try writer.print("        @import(\"dom\").same_object_cache.elementMade(instance, .{s}, value, \"{s}\");\n", .{ field, sanitized_name });
+            try writer.writeAll("        return value;\n");
+        } else if (caches) {
             // [SameObject] - Cache the result and return same instance every time
             try writer.writeAll("        const state = instance.getState(State);\n");
             try writer.print("        // [SameObject] - Return cached instance\n", .{});
@@ -5319,7 +5603,8 @@ pub fn writeDelegateFunctions(
                 try ce_functions.add("{s}{s}", .{ set_prefix, sanitized_name });
             }
 
-            if (caches) {
+            // (A rare-block cache is never of a writable attribute: see `rare_field`.)
+            if (caches and rare_field == null) {
                 // If [SameObject], invalidate cache on set (all attributes here are own)
                 try writer.writeAll("        const state = instance.getState(State);\n");
                 try writer.print("        state.own.cached_{s} = null; // Invalidate [SameObject] cache\n", .{sanitized_name});
@@ -6087,7 +6372,7 @@ test "writeMetadata generates Meta struct" {
 
     const writer = &buffer.writer;
 
-    try writeMetadata(writer, "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", true, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null, null);
+    try writeMetadata(writer, "Node", "https://dom.spec.whatwg.org/#interface-node", "EventTarget", true, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null, null, null);
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const Meta = struct {") != null);
@@ -6101,7 +6386,7 @@ test "writeMetadata handles no base type" {
 
     const writer = &buffer.writer;
 
-    try writeMetadata(writer, "EventTarget", null, null, false, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null, null);
+    try writeMetadata(writer, "EventTarget", null, null, false, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null, null, null);
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const BaseType = null;") != null);
@@ -6114,7 +6399,7 @@ test "writeMetadata includes mixins" {
     const writer = &buffer.writer;
 
     const mixins = [_][]const u8{"ParentNode"};
-    try writeMetadata(writer, "Node", null, null, false, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null, null);
+    try writeMetadata(writer, "Node", null, null, false, &mixins, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null, null, null);
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const MixinTypes = &.{") != null);
@@ -6131,7 +6416,7 @@ test "writeMetadata includes extended attributes" {
         .{ .name = "Exposed", .rhs = .{ .identifier = "Window" } },
         .{ .name = "LegacyUnforgeable", .rhs = null },
     };
-    try writeMetadata(writer, "Event", null, null, false, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null, null);
+    try writeMetadata(writer, "Event", null, null, false, &.{}, &ext_attrs, &.{}, &.{}, &.{}, &.{}, false, false, false, null, &.{}, null, &.{}, null, null, null);
 
     const output = buffer.written();
     try testing.expect(std.mem.indexOf(u8, output, "pub const extended_attributes = .{") != null);
@@ -6163,7 +6448,7 @@ test "writeMetadata includes legacy unforgeable properties" {
         },
     };
 
-    try writeMetadata(writer, "Event", null, null, false, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, false, null, &attrs, null, &.{}, null, null);
+    try writeMetadata(writer, "Event", null, null, false, &.{}, &.{}, &attrs, &.{}, &.{}, &.{}, false, false, false, null, &attrs, null, &.{}, null, null, null);
 
     const output = buffer.written();
 

@@ -90,10 +90,6 @@ pub const ServiceWorker = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            scriptURL: runtime.USVString = undefined,
-            state: enums.ServiceWorkerState = undefined,
-            onstatechange: typedefs.EventHandler = undefined,
-            onerror: typedefs.EventHandler = undefined,
             _internal: ?*ServiceWorkerImpl.InternalState = null,
         },
     );

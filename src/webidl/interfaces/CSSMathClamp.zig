@@ -89,9 +89,6 @@ pub const CSSMathClamp = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            lower: *runtime.Instance = undefined,
-            value: *runtime.Instance = undefined,
-            upper: *runtime.Instance = undefined,
             _internal: ?*CSSMathClampImpl.InternalState = null,
         },
     );

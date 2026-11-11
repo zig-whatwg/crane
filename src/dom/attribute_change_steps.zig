@@ -60,6 +60,15 @@ const Tables = struct {
 /// Process-wide, written once at start-up (hook.zig).
 var entries: hook.Hook(Tables) = .init(.{});
 
+/// A test's swap of the steps tables for empty ones, whose own steps it may
+/// install until the returned guard's `restore()` (Hook.overrideForTest;
+/// global_settings.zig's shape). Lane nd2 batch 2's red test needs a step
+/// that runs before another and changes the element, which no installed
+/// step does today.
+pub fn overrideForTest() @TypeOf(entries).Override {
+    return entries.overrideForTest(.{});
+}
+
 /// Install `steps` for HTML elements whose local name is `element` (a string
 /// that lives for the program). Idempotent: installing the same steps again
 /// changes nothing; installing different ones replaces them.

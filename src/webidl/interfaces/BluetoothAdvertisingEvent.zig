@@ -50,6 +50,14 @@ pub const BluetoothAdvertisingEvent = struct {
             .{ "serviceData", "get_serviceData", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "device",
+            "manufacturerData",
+            "serviceData",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -87,14 +95,6 @@ pub const BluetoothAdvertisingEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            device: *runtime.Instance = undefined,
-            uuids: runtime.JSValue = undefined,
-            name: ?runtime.DOMString = null,
-            appearance: ?u16 = null,
-            txPower: ?i8 = null,
-            rssi: ?i8 = null,
-            manufacturerData: *runtime.Instance = undefined,
-            serviceData: *runtime.Instance = undefined,
             cached_device: ?*runtime.Instance = null,
             cached_manufacturerData: ?*runtime.Instance = null,
             cached_serviceData: ?*runtime.Instance = null,

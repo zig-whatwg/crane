@@ -58,7 +58,6 @@ pub const NavigatorGPU = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            gpu: *runtime.Instance = undefined,
             cached_gpu: ?*runtime.Instance = null,
             _internal: ?*NavigatorGPUImpl.InternalState = null,
         },

@@ -67,7 +67,6 @@ pub const RdfDataset = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            defaultGraph: *runtime.Instance = undefined,
             _internal: ?*RdfDatasetImpl.InternalState = null,
         },
     );

@@ -73,6 +73,12 @@ pub const Request = struct {
             .{ "bodyUsed", "get_bodyUsed", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "headers",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "clone", "call_clone", 0 },
@@ -133,25 +139,8 @@ pub const Request = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            method: runtime.ByteString = undefined,
-            url: runtime.USVString = undefined,
-            headers: *runtime.Instance = undefined,
-            destination: enums.RequestDestination = undefined,
-            referrer: runtime.USVString = undefined,
-            referrerPolicy: enums.ReferrerPolicy = undefined,
-            mode: enums.RequestMode = undefined,
-            credentials: enums.RequestCredentials = undefined,
-            cache: enums.RequestCache = undefined,
-            redirect: enums.RequestRedirect = undefined,
-            integrity: runtime.DOMString = undefined,
-            keepalive: bool = undefined,
-            isReloadNavigation: bool = undefined,
-            isHistoryNavigation: bool = undefined,
             signal: *runtime.Instance = undefined,
-            duplex: enums.RequestDuplex = undefined,
-            targetAddressSpace: enums.IPAddressSpace = undefined,
             body: ?*runtime.Instance = null,
-            bodyUsed: bool = undefined,
             cached_headers: ?*runtime.Instance = null,
             _internal: ?*RequestImpl.InternalState = null,
         },

@@ -85,7 +85,6 @@ pub const CSSMathInvert = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: *runtime.Instance = undefined,
             _internal: ?*CSSMathInvertImpl.InternalState = null,
         },
     );

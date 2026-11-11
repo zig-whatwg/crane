@@ -61,7 +61,6 @@ pub const GPUCompilationInfo = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            messages: runtime.JSValue = undefined,
             _internal: ?*GPUCompilationInfoImpl.InternalState = null,
         },
     );

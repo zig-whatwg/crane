@@ -68,10 +68,6 @@ pub const USBEndpoint = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            endpointNumber: u8 = undefined,
-            direction: enums.USBDirection = undefined,
-            type: enums.USBEndpointType = undefined,
-            packetSize: u32 = undefined,
             _internal: ?*USBEndpointImpl.InternalState = null,
         },
     );

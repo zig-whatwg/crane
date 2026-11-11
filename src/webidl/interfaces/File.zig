@@ -78,9 +78,6 @@ pub const File = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            lastModified: i64 = undefined,
-            webkitRelativePath: runtime.USVString = undefined,
             _internal: ?*FileImpl.InternalState = null,
         },
     );

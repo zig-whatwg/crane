@@ -86,13 +86,6 @@ pub const CSSPseudoElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: typedefs.CSSOMString = undefined,
-            element: *runtime.Instance = undefined,
-            parent: union(enum) {
-                Element: Element,
-                CSSPseudoElement: CSSPseudoElement,
-            } = undefined,
-            selectorText: typedefs.CSSOMString = undefined,
             _internal: ?*CSSPseudoElementImpl.InternalState = null,
         },
     );

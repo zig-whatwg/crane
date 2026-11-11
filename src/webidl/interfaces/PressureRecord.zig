@@ -71,9 +71,6 @@ pub const PressureRecord = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            source: enums.PressureSource = undefined,
-            state: enums.PressureState = undefined,
-            time: typedefs.DOMHighResTimeStamp = undefined,
             _internal: ?*PressureRecordImpl.InternalState = null,
         },
     );

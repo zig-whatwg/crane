@@ -58,8 +58,6 @@ pub const FragmentResult = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            inlineSize: f64 = undefined,
-            blockSize: f64 = undefined,
             _internal: ?*FragmentResultImpl.InternalState = null,
         },
     );

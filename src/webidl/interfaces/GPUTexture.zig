@@ -95,19 +95,6 @@ pub const GPUTexture = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            width: typedefs.GPUIntegerCoordinateOut = undefined,
-            height: typedefs.GPUIntegerCoordinateOut = undefined,
-            depthOrArrayLayers: typedefs.GPUIntegerCoordinateOut = undefined,
-            mipLevelCount: typedefs.GPUIntegerCoordinateOut = undefined,
-            sampleCount: typedefs.GPUSize32Out = undefined,
-            dimension: enums.GPUTextureDimension = undefined,
-            format: enums.GPUTextureFormat = undefined,
-            usage: typedefs.GPUFlagsConstant = undefined,
-            textureBindingViewDimension: union(enum) {
-                GPUTextureViewDimension: GPUTextureViewDimension,
-                undefined: void,
-            } = undefined,
-            label: runtime.USVString = undefined,
             _internal: ?*GPUTextureImpl.InternalState = null,
         },
     );

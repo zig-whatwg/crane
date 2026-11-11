@@ -39,6 +39,12 @@ pub const GPU = struct {
             .{ "wgslLanguageFeatures", "get_wgslLanguageFeatures", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "wgslLanguageFeatures",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "requestAdapter", "call_requestAdapter", 0 },
@@ -69,7 +75,6 @@ pub const GPU = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            wgslLanguageFeatures: *runtime.Instance = undefined,
             cached_wgslLanguageFeatures: ?*runtime.Instance = null,
             _internal: ?*GPUImpl.InternalState = null,
         },

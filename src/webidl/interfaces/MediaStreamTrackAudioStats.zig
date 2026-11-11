@@ -71,10 +71,6 @@ pub const MediaStreamTrackAudioStats = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            latency: typedefs.DOMHighResTimeStamp = undefined,
-            averageLatency: typedefs.DOMHighResTimeStamp = undefined,
-            minimumLatency: typedefs.DOMHighResTimeStamp = undefined,
-            maximumLatency: typedefs.DOMHighResTimeStamp = undefined,
             _internal: ?*MediaStreamTrackAudioStatsImpl.InternalState = null,
         },
     );

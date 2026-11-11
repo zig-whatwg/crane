@@ -4050,6 +4050,14 @@ pub fn V8Interface(comptime Interface: type) type {
         const recordSameObjectEdge = binding_plumbing.recordSameObjectEdge;
 
         fn stateCachesSameObject(comptime field_name: []const u8) bool {
+            // The generated list (codegen `Meta.same_object_attributes`): an
+            // element's caches live in its rare data or its impl, not its
+            // State (lane cg1, N1). The State field answers for a hand-written State.
+            if (@hasDecl(Interface, "Meta") and @hasDecl(Interface.Meta, "same_object_attributes")) {
+                inline for (Interface.Meta.same_object_attributes) |attribute| {
+                    if (comptime std.mem.eql(u8, "cached_" ++ attribute, field_name)) return true;
+                }
+            }
             const S = Interface.State;
             if (@typeInfo(S) != .@"struct") return false;
             if (@hasField(S, "own") and @typeInfo(@FieldType(S, "own")) == .@"struct" and @hasField(@FieldType(S, "own"), field_name)) return true;

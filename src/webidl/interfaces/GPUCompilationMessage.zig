@@ -72,12 +72,6 @@ pub const GPUCompilationMessage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            message: runtime.DOMString = undefined,
-            type: enums.GPUCompilationMessageType = undefined,
-            lineNum: u64 = undefined,
-            linePos: u64 = undefined,
-            offset: u64 = undefined,
-            length: u64 = undefined,
             _internal: ?*GPUCompilationMessageImpl.InternalState = null,
         },
     );

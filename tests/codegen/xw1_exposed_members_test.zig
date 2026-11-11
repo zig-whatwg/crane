@@ -62,7 +62,7 @@ test "xw1 member metadata distinguishes instance and static exposure" {
     }
     var out: std.Io.Writer.Allocating = .init(testing.allocator);
     defer out.deinit();
-    try codegen.writer.writeMetadata(&out.writer, "Scope", null, null, true, &.{}, iface.extAttrs, attrs.items, ops.items, ops.items, &.{}, false, false, false, null, attrs.items, null, ops.items, null, null);
+    try codegen.writer.writeMetadata(&out.writer, "Scope", null, null, true, &.{}, iface.extAttrs, attrs.items, ops.items, ops.items, &.{}, false, false, false, null, attrs.items, null, ops.items, null, null, null);
     try testing.expect(std.mem.indexOf(u8, out.written(), "pub const exposed_members = .{") != null);
     try testing.expect(std.mem.indexOf(u8, out.written(), "pub const exposed_static_members = .{") != null);
 }

@@ -63,8 +63,6 @@ pub const CaretPosition = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            offsetNode: *runtime.Instance = undefined,
-            offset: u32 = undefined,
             _internal: ?*CaretPositionImpl.InternalState = null,
         },
     );

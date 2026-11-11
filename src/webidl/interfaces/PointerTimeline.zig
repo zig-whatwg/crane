@@ -67,8 +67,6 @@ pub const PointerTimeline = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            source: ?*runtime.Instance = null,
-            axis: enums.PointerAxis = undefined,
             _internal: ?*PointerTimelineImpl.InternalState = null,
         },
     );

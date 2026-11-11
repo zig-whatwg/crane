@@ -72,7 +72,6 @@ pub const CustomEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            detail: runtime.JSValue = undefined,
             _internal: ?*CustomEventImpl.InternalState = null,
         },
     );

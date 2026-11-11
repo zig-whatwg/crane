@@ -58,8 +58,6 @@ pub const HTMLHyperlinkElementUtils = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            href: runtime.USVString = undefined,
-            target: runtime.DOMString = undefined,
             _internal: ?*HTMLHyperlinkElementUtilsImpl.InternalState = null,
         },
     );

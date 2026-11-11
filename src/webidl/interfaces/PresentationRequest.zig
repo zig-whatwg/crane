@@ -82,7 +82,6 @@ pub const PresentationRequest = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onconnectionavailable: typedefs.EventHandler = undefined,
             _internal: ?*PresentationRequestImpl.InternalState = null,
         },
     );

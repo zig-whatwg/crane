@@ -85,7 +85,6 @@ pub const NavigatorManagedData = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onmanagedconfigurationchange: typedefs.EventHandler = undefined,
             _internal: ?*NavigatorManagedDataImpl.InternalState = null,
         },
     );

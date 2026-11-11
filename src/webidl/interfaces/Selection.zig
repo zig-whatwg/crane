@@ -110,14 +110,6 @@ pub const Selection = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            anchorNode: ?*runtime.Instance = null,
-            anchorOffset: u32 = undefined,
-            focusNode: ?*runtime.Instance = null,
-            focusOffset: u32 = undefined,
-            isCollapsed: bool = undefined,
-            rangeCount: u32 = undefined,
-            type: runtime.DOMString = undefined,
-            direction: runtime.DOMString = undefined,
             _internal: ?*SelectionImpl.InternalState = null,
         },
     );

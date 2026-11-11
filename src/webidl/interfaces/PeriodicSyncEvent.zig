@@ -70,7 +70,6 @@ pub const PeriodicSyncEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            tag: runtime.DOMString = undefined,
             _internal: ?*PeriodicSyncEventImpl.InternalState = null,
         },
     );

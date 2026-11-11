@@ -54,6 +54,12 @@ pub const Response = struct {
             .{ "bodyUsed", "get_bodyUsed", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "headers",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "clone", "call_clone", 0 },
@@ -114,15 +120,7 @@ pub const Response = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: enums.ResponseType = undefined,
-            url: runtime.USVString = undefined,
-            redirected: bool = undefined,
-            status: u16 = undefined,
-            ok: bool = undefined,
-            statusText: runtime.ByteString = undefined,
-            headers: *runtime.Instance = undefined,
             body: ?*runtime.Instance = null,
-            bodyUsed: bool = undefined,
             cached_headers: ?*runtime.Instance = null,
             _internal: ?*ResponseImpl.InternalState = null,
         },

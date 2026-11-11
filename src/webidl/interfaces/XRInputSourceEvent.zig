@@ -42,6 +42,13 @@ pub const XRInputSourceEvent = struct {
             .{ "inputSource", "get_inputSource", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "frame",
+            "inputSource",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -73,8 +80,6 @@ pub const XRInputSourceEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            frame: *runtime.Instance = undefined,
-            inputSource: *runtime.Instance = undefined,
             cached_frame: ?*runtime.Instance = null,
             cached_inputSource: ?*runtime.Instance = null,
             _internal: ?*XRInputSourceEventImpl.InternalState = null,

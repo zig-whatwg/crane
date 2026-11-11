@@ -40,6 +40,13 @@ pub const RTCRtpTransceiver = struct {
             .{ "currentDirection", "get_currentDirection", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "sender",
+            "receiver",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "stop", "call_stop", 0 },
@@ -74,11 +81,6 @@ pub const RTCRtpTransceiver = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            mid: ?runtime.DOMString = null,
-            sender: *runtime.Instance = undefined,
-            receiver: *runtime.Instance = undefined,
-            direction: enums.RTCRtpTransceiverDirection = undefined,
-            currentDirection: ?enums.RTCRtpTransceiverDirection = null,
             cached_sender: ?*runtime.Instance = null,
             cached_receiver: ?*runtime.Instance = null,
             _internal: ?*RTCRtpTransceiverImpl.InternalState = null,

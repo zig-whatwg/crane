@@ -85,12 +85,6 @@ pub const NavigationHistoryEntry = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            url: ?runtime.USVString = null,
-            key: runtime.DOMString = undefined,
-            id: runtime.DOMString = undefined,
-            index: i64 = undefined,
-            sameDocument: bool = undefined,
-            ondispose: typedefs.EventHandler = undefined,
             _internal: ?*NavigationHistoryEntryImpl.InternalState = null,
         },
     );

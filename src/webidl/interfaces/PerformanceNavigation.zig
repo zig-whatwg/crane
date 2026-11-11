@@ -69,8 +69,6 @@ pub const PerformanceNavigation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: u16 = undefined,
-            redirectCount: u16 = undefined,
             _internal: ?*PerformanceNavigationImpl.InternalState = null,
         },
     );

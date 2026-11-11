@@ -100,16 +100,6 @@ pub const VTTCue = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            region: ?*runtime.Instance = null,
-            vertical: enums.DirectionSetting = undefined,
-            snapToLines: bool = undefined,
-            line: typedefs.LineAndPositionSetting = undefined,
-            lineAlign: enums.LineAlignSetting = undefined,
-            position: typedefs.LineAndPositionSetting = undefined,
-            positionAlign: enums.PositionAlignSetting = undefined,
-            size: f64 = undefined,
-            @"align": enums.AlignSetting = undefined,
-            text: runtime.DOMString = undefined,
             _internal: ?*VTTCueImpl.InternalState = null,
         },
     );

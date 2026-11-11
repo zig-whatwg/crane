@@ -70,8 +70,6 @@ pub const CapturedMouseEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            surfaceX: i32 = undefined,
-            surfaceY: i32 = undefined,
             _internal: ?*CapturedMouseEventImpl.InternalState = null,
         },
     );

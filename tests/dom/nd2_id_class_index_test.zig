@@ -100,12 +100,8 @@ test "Element's InternalState is 40 bytes" {
     try expectSize(ElementState, 40);
 }
 
-test "a div's one block is 264 bytes, in a 272-byte class" {
-    // 312 at N2 (a 320-byte class), less ElementData's 48.
-    const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 264);
-    try testing.expectEqual(@as(usize, 272), runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S)));
-}
+// A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig
+// (lane cg1; lesson testing-a-total-pinned-in-six-files-moves-in-six-files.md).
 
 // ============================================================================
 // An engine-less page
@@ -216,7 +212,7 @@ const Page = struct {
     /// The header's indices, when N3 is in.
     fn expectIndices(el: *runtime.Instance, id_index: u8, class_index: u8) !void {
         if (comptime has_indices) {
-            const list = element_data.of(el).?.attrs.?;
+            const list = element_data.of(el).?.data.attrs.?;
             try testing.expectEqual(id_index, list.id_index);
             try testing.expectEqual(class_index, list.class_index);
         }
@@ -509,6 +505,6 @@ test "createAttribute('ID') is the ID in an HTML document (lowercased) and not i
     var id = try interfaces.Element.get_id(xml_el);
     defer id.deinit(page.ctx.allocator);
     try testing.expectEqualStrings("", id.asSlice());
-    try testing.expect(element_data.of(xml_el).?.attrs.?.id_index == AttributeList.no_index);
+    try testing.expect(element_data.of(xml_el).?.data.attrs.?.id_index == AttributeList.no_index);
     try testing.expect((try interfaces.Document.call_getElementById(xml, str("not-the-id"))) == null);
 }

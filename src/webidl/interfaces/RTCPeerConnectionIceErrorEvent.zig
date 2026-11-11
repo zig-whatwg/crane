@@ -77,11 +77,6 @@ pub const RTCPeerConnectionIceErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            address: ?runtime.DOMString = null,
-            port: ?u16 = null,
-            url: runtime.USVString = undefined,
-            errorCode: u16 = undefined,
-            errorText: runtime.USVString = undefined,
             _internal: ?*RTCPeerConnectionIceErrorEventImpl.InternalState = null,
         },
     );

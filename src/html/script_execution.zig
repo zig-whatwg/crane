@@ -1715,7 +1715,17 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
     const parser_inserted = state.parser_inserted or from_parser_end_tag;
     state.parser_inserted = false;
 
-    const href = getAttributeNS(element, null, "href") orelse getAttributeNS(element, xlink_namespace, "href");
+    // The href's value is HELD - a count on its record (dom.element_data.Hold)
+    // - for this whole algorithm: step 5 can run script (a Trusted Types
+    // default policy), which can change or remove the attribute, and the
+    // steps after it still read the value read here (lane nd2 batch 2's
+    // audit: a borrowed value across that point read freed bytes).
+    const href_hold: ?dom.element_data.Hold = if (dom.element_data.of(element)) |attributes|
+        attributes.holdAttribute(null, "href") orelse attributes.holdAttribute(xlink_namespace, "href")
+    else
+        null;
+    defer if (href_hold) |held| held.end();
+    const href: ?[]const u8 = if (href_hold) |held| held.value() else null;
 
     // Step 5 (Trusted Types 4.1.2.7, as the spec asks of SVG scripts too):
     // prepare the script text; the source is the script text. Step 6: no

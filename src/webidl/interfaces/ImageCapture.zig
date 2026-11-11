@@ -71,7 +71,6 @@ pub const ImageCapture = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            track: *runtime.Instance = undefined,
             _internal: ?*ImageCaptureImpl.InternalState = null,
         },
     );

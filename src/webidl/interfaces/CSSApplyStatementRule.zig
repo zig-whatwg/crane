@@ -63,7 +63,6 @@ pub const CSSApplyStatementRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.CSSOMString = undefined,
             _internal: ?*CSSApplyStatementRuleImpl.InternalState = null,
         },
     );

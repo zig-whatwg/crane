@@ -85,7 +85,6 @@ pub const CSSMathNegate = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: *runtime.Instance = undefined,
             _internal: ?*CSSMathNegateImpl.InternalState = null,
         },
     );
