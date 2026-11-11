@@ -64,6 +64,20 @@ const WindowRealmState = struct {
     /// The realms made with this one as their parent that have not ended:
     /// they end first when this one does.
     children: std.ArrayListUnmanaged(Context) = .empty,
+    /// A realm made around this one's WindowProxy whose replacement has not
+    /// committed yet: this realm's auxiliary children (window.open's popups)
+    /// pass to it when this realm's document goes (`destroyWindowRealm`
+    /// .global_detached, `passAuxiliaryChildren`), not when it is made - a
+    /// navigation abandoned before its document exists ends only its new
+    /// realm, and the popups stay with this one. Cleared when either ends.
+    successor: ?Context = null,
+    /// The realm whose WindowProxy this one was made around, while that
+    /// realm's auxiliary children have not passed here yet (`successor`).
+    predecessor: ?Context = null,
+    /// Room in `children` kept, from this realm's making, for the
+    /// predecessor's auxiliary children: an append of any other child
+    /// leaves it, so their pass cannot fail.
+    reserved_for_predecessor: usize = 0,
     /// The realm's Window, which the host made (create_global_object), and
     /// its slab generation then: the realm's end gives the Window's slot
     /// back only while it is still that Window's (`endRealm` step 5).
@@ -416,37 +430,45 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         .allocator = allocator,
     };
     errdefer state.children.deinit(std.heap.c_allocator);
-    // Room for what follows the proxy (below), taken before the realm is
-    // recorded: nothing fails once it is.
+    // Room for what follows the proxy (below, and E2 at the replacement's
+    // commit), taken before the realm is recorded: nothing fails once it is.
+    var auxiliary_following: usize = 0;
     if (predecessor) |old_state| {
-        var following: usize = if (old_state.parent == null) 1 else 0;
         for (old_state.children.items) |child| {
             const child_state = realms.get(child) orelse continue;
-            if (child_state.auxiliary and child_state.detached == null) following += 1;
+            if (child_state.auxiliary and child_state.detached == null) auxiliary_following += 1;
         }
+        const following = auxiliary_following + @as(usize, if (old_state.parent == null) 1 else 0);
         state.children.ensureTotalCapacity(std.heap.c_allocator, following) catch return error.OutOfMemory;
     }
     const parent_state: ?*WindowRealmState = if (options.parent) |parent| realms.get(parent) else null;
-    if (parent_state) |ps| ps.children.append(std.heap.c_allocator, realm) catch return error.OutOfMemory;
+    if (parent_state) |ps| appendChild(ps, realm) catch return error.OutOfMemory;
     errdefer if (parent_state) |ps| removeChild(ps, realm);
     realms.put(std.heap.c_allocator, realm, state) catch return error.OutOfMemory;
 
     if (predecessor) |old_state| {
         // E2: the auxiliary navigables' realms - window.open's popups - the
-        // predecessor parented follow its WindowProxy here. HTML's top-level
-        // traversables are the user agent's, not their opener's Window: a
-        // popup outlives its opener's navigation. Frames stay: they are
-        // destroyed with the predecessor's document.
-        var i = old_state.children.items.len;
-        while (i > 0) {
-            i -= 1;
-            const child = old_state.children.items[i];
-            const child_state = realms.get(child) orelse continue;
-            if (!child_state.auxiliary or child_state.detached != null) continue;
-            _ = old_state.children.swapRemove(i);
-            child_state.parent = realm;
-            state.children.appendAssumeCapacity(child);
-        }
+        // predecessor parented follow its WindowProxy here, but only once
+        // the replacement commits: the predecessor's document goes
+        // (`destroyWindowRealm` .global_detached, `passAuxiliaryChildren`).
+        // HTML's top-level traversables are the user agent's, not their
+        // opener's Window: a popup outlives its opener's navigation ("close a
+        // top-level traversable" and "discard" end it; nothing in "navigate",
+        // "create and initialize a Document object" or "unload a document"
+        // does), and a navigation abandoned before its document exists ends
+        // only its own new realm (HTMLIFrameElement settleRealmReplacement),
+        // so moving them when this realm was made let that end take them too.
+        // Frames stay: they are destroyed with the predecessor's document.
+        state.reserved_for_predecessor = auxiliary_following;
+        state.predecessor = predecessor_realm;
+        // A successor an earlier replacement left (it ended, or never
+        // committed) has let go of this predecessor already (`endRealm`);
+        // one still recorded lets go now.
+        if (old_state.successor) |earlier| if (realms.get(earlier)) |earlier_state| {
+            earlier_state.predecessor = null;
+            earlier_state.reserved_for_predecessor = 0;
+        };
+        old_state.successor = realm;
         // E1: a top-level predecessor's page is this realm now: detached by
         // its navigation (destroyWindowRealm .global_detached, as a frame's),
         // it ends when the collector takes it or when this realm ends.
@@ -507,6 +529,61 @@ fn removeChild(state: *WindowRealmState, child: Context) void {
         _ = state.children.swapRemove(i);
         return;
     }
+}
+
+/// Add `child` to `state`'s children, leaving the room kept for the
+/// predecessor's auxiliary children (`reserved_for_predecessor`).
+fn appendChild(state: *WindowRealmState, child: Context) error{OutOfMemory}!void {
+    try state.children.ensureUnusedCapacity(std.heap.c_allocator, 1 + state.reserved_for_predecessor);
+    state.children.appendAssumeCapacity(child);
+}
+
+/// E2 at a realm replacement's commit (`createWindowRealm` says why): the
+/// auxiliary children of `state`'s realm - its popups' realms - pass to the
+/// realm made around its WindowProxy, before its document's end destroys
+/// what stays (`detach`). Each pass takes the room kept for it; a popup
+/// opened after the new realm was made, when the old Window was no longer
+/// active, finds none kept, and passes only if an append succeeds.
+fn passAuxiliaryChildren(realm: Context, state: *WindowRealmState) void {
+    const successor = state.successor orelse return;
+    state.successor = null;
+    const realms = realmsOf(realm) orelse return;
+    const next = realms.get(successor) orelse return;
+    defer {
+        next.predecessor = null;
+        next.reserved_for_predecessor = 0;
+    }
+    if (next.detached != null) return;
+    var i = state.children.items.len;
+    while (i > 0) {
+        i -= 1;
+        const child = state.children.items[i];
+        const child_state = realms.get(child) orelse continue;
+        if (!child_state.auxiliary or child_state.detached != null) continue;
+        if (next.reserved_for_predecessor > 0) {
+            next.reserved_for_predecessor -= 1;
+            next.children.appendAssumeCapacity(child);
+        } else {
+            next.children.append(std.heap.c_allocator, child) catch continue;
+        }
+        _ = state.children.swapRemove(i);
+        child_state.parent = successor;
+    }
+}
+
+/// A realm ending lets go of its replacement links (`successor`,
+/// `predecessor`): an abandoned replacement's new realm ends with its
+/// predecessor's popups still the predecessor's.
+fn unlinkReplacement(realms: *WindowRealms, state: *WindowRealmState) void {
+    if (state.successor) |successor| if (realms.get(successor)) |next| {
+        next.predecessor = null;
+        next.reserved_for_predecessor = 0;
+    };
+    if (state.predecessor) |predecessor| if (realms.get(predecessor)) |previous| {
+        previous.successor = null;
+    };
+    state.successor = null;
+    state.predecessor = null;
 }
 
 /// The agent's Window interface template, made and registered - EventTarget
@@ -723,6 +800,9 @@ fn isEnding(ending_realms: ?*const EndingRealm, realm: Context) bool {
 /// with its page, whichever comes first (`endRealm`).
 pub fn destroyWindowRealm(realm: Context, how: engine.WindowRealmEnd) void {
     if (stateOf(realm)) |state| {
+        // A navigation replaced this realm's document and committed: its
+        // popups pass to the new realm first (E2, `passAuxiliaryChildren`).
+        if (how == .global_detached) passAuxiliaryChildren(realm, state);
         if (state.parent != null and state.detached == null) switch (how) {
             .navigable_destroyed => return detach(realm, state),
             .global_detached => if (state.window_proxy_handed_on) return detach(realm, state),
@@ -881,6 +961,9 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
     // removed frame's frames are destroyed navigables too.
     const realms = realmsOf(realm);
     if (stateOf(realm)) |s| {
+        // Its replacement links go first: an abandoned replacement's new
+        // realm ends with its predecessor's popups still the predecessor's.
+        if (realms) |r| unlinkReplacement(r, s);
         while (s.children.pop()) |child| endRealm(child, how);
         s.children.deinit(std.heap.c_allocator);
     }
