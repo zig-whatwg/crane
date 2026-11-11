@@ -301,6 +301,12 @@ const BytesKey = struct {
 
 const KeyAdapter = struct {
     table: *const Table,
+    /// Where `eql` leaves the record it found equal: the found path takes
+    /// its count and its id's flags from there, with no second read of the
+    /// slot (after eqlBytes the compiler must reload the slot array and
+    /// check it again: ~10 instructions an attribute write, the cost pair
+    /// 2026-11-11).
+    found: *?*Value,
     pub fn hash(_: KeyAdapter, key: BytesKey) u64 {
         return key.hash;
     }
@@ -309,7 +315,9 @@ const KeyAdapter = struct {
     /// 2026-11-11). Its read of the record is counted (`Table.recordAt`).
     pub inline fn eql(adapter: KeyAdapter, key: BytesKey, slot: u32) bool {
         const value = adapter.table.recordAt(slot);
-        return value.len() == key.bytes.len and std.mem.eql(u8, value.bytes(), key.bytes);
+        if (value.len() != key.bytes.len or !std.mem.eql(u8, value.bytes(), key.bytes)) return false;
+        adapter.found.* = value;
+        return true;
     }
 };
 
@@ -500,13 +508,9 @@ pub const Table = struct {
     pub fn find(self: *const Table, bytes: []const u8) ?ValueId {
         if (bytes.len == 0) return .empty;
         const key: BytesKey = .{ .bytes = bytes, .hash = hashOf(bytes) };
-        const slot = self.records.getKeyAdapted(key, KeyAdapter{ .table = self }) orelse return null;
-        return self.idAt(slot);
-    }
-
-    /// The id of the record in `slot`.
-    inline fn idAt(self: *const Table, slot: u32) ValueId {
-        return ValueId.of(slot, self.ids.generation(slot), self.recordAt(slot).flags());
+        var found: ?*Value = null;
+        const slot = self.records.getKeyAdapted(key, KeyAdapter{ .table = self, .found = &found }) orelse return null;
+        return ValueId.of(slot, self.ids.generation(slot), found.?.flags());
     }
 
     /// `id`'s bytes.
@@ -521,9 +525,11 @@ pub const Table = struct {
     pub fn intern(self: *Table, bytes: []const u8) error{OutOfMemory}!ValueId {
         if (bytes.len == 0) return .empty;
         const key: BytesKey = .{ .bytes = bytes, .hash = hashOf(bytes) };
-        if (self.records.getKeyAdapted(key, KeyAdapter{ .table = self })) |slot| {
-            // One read of the record: its count and its id's flags.
-            const value: *Value = self.recordAt(slot);
+        var found: ?*Value = null;
+        if (self.records.getKeyAdapted(key, KeyAdapter{ .table = self, .found = &found })) |slot| {
+            // One read of the record - the compare's: its count and its id's
+            // flags.
+            const value: *Value = found.?;
             // A parked record comes back: out of the ring, with its id.
             if (value.references == 0) self.unpark(slot, value);
             if (value.references == std.math.maxInt(u32)) @panic("an attribute value record's count overflowed");
@@ -536,7 +542,7 @@ pub const Table = struct {
         errdefer destroy(self.allocator, value);
         const slot = try self.ids.take(self.allocator, value, ValueId.limit);
         // Placed by the hash already computed: one pass over the bytes.
-        const placed = self.records.getOrPutAssumeCapacityAdapted(key, KeyAdapter{ .table = self });
+        const placed = self.records.getOrPutAssumeCapacityAdapted(key, KeyAdapter{ .table = self, .found = &found });
         if (debug_checks and placed.found_existing) @panic("an attribute value record interned twice");
         placed.key_ptr.* = slot;
         self.bytes_held += value.blockSize();
