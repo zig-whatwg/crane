@@ -193,6 +193,15 @@ pub const MatchedPropertiesCache = struct {
         inputs: Inputs,
         /// The cascade took a non-inherited value from the parent.
         parent_non_inherited: bool,
+        /// The parent value that rejected the last lookup this entry did not
+        /// stand for (null: none yet), compared before every other check:
+        /// a lookup whose parent holds another value there is rejected in a
+        /// few instructions instead of a full correspondence (lane style1
+        /// b4: a lookup that missed a full key ran four, down to the
+        /// parent's non-inherited values). The compare is one the
+        /// correspondence makes, so it orders the checks and never decides
+        /// one: no hit is hidden.
+        rejected_at: ?css.computed_style.Place = null,
     };
 
     const Bucket = struct {
@@ -245,19 +254,21 @@ pub const MatchedPropertiesCache = struct {
     /// recent entry first.
     pub fn find(self: *MatchedPropertiesCache, lookup: Lookup) ?*const ComputedStyle {
         self.enter(lookup.generation);
-        if (self.buckets.getPtr(lookup.key)) |bucket| {
+        // No parent (the root): no entry stands for it.
+        if (lookup.parent) |parent| if (self.buckets.getPtr(lookup.key)) |bucket| {
             var i = bucket.len;
             while (i > 0) {
                 i -= 1;
                 const entry = &bucket.items[i];
                 const hit = entry.hit orelse continue;
+                if (hit.rejected_at) |place| if (!hit.parent.identicalAt(parent, place)) continue;
                 self.correspondences +%= 1;
-                if (!corresponds(hit, lookup)) continue;
+                if (!corresponds(hit, lookup, parent)) continue;
                 entry.last_used = self.tick();
                 self.hits +%= 1;
                 return entry.holder;
             }
-        }
+        };
         self.misses +%= 1;
         return null;
     }
@@ -364,19 +375,26 @@ pub const MatchedPropertiesCache = struct {
     }
 };
 
-fn corresponds(hit: *const MatchedPropertiesCache.Correspondence, lookup: Lookup) bool {
+fn corresponds(hit: *MatchedPropertiesCache.Correspondence, lookup: Lookup, parent: *const ComputedStyle) bool {
     if (hit.pseudo != lookup.pseudo or !hit.inputs.eql(lookup.inputs)) return false;
     if (hit.matched.len != lookup.matched.len) return false;
     for (hit.matched, lookup.matched) |a, b| {
         if (a.block != b.block or !std.meta.eql(a.source, b.source)) return false;
     }
-    const parent = lookup.parent orelse return false;
-    return parentCorresponds(hit.parent, parent, hit.parent_non_inherited);
+    return parentCorresponds(hit, parent);
 }
 
-/// Whether a style computed under `cached` (the entry's parent) is the one
-/// the cascade computes under `parent`: what the cascade reads of a parent.
-fn parentCorresponds(cached: *const ComputedStyle, parent: *const ComputedStyle, non_inherited: bool) bool {
+/// Where justify-items lives in a style.
+const justify_items: css.computed_style.Place = blk: {
+    const location = css.computed_style.groups.location[@backingInt(Longhand.justify_items)];
+    break :blk .{ .group = location.group, .index = location.index };
+};
+
+/// Whether a style computed under the entry's parent is the one the cascade
+/// computes under `parent`: what the cascade reads of a parent. A parent
+/// value that differs is kept as the entry's `rejected_at`.
+fn parentCorresponds(hit: *MatchedPropertiesCache.Correspondence, parent: *const ComputedStyle) bool {
+    const cached = hit.parent;
     // CSS Variables 1: var() and inherited registered properties read the
     // parent's record (WebKit find: the same inheritedCustomProperties).
     if (cached.custom != parent.custom) return false;
@@ -386,12 +404,20 @@ fn parentCorresponds(cached: *const ComputedStyle, parent: *const ComputedStyle,
     if (css.cascade.blockifiesChildren(cached) != css.cascade.blockifiesChildren(parent)) return false;
     // Align 3 7.1: every element's justify-items `legacy` reads its parent's
     // (Blink IsCacheCompatible: the parent's JustifyItems).
-    if (!css.computed_style.identical(cached.get(.justify_items), parent.get(.justify_items))) return false;
-    if (!cached.inheritedEqual(parent)) return false;
-    if (non_inherited) {
-        if (cached.custom_own != parent.custom_own or !cached.nonInheritedEqual(parent)) return false;
+    if (!cached.identicalAt(parent, justify_items)) return rejectedAt(hit, justify_items);
+    // Blink InheritedEqual, then - under explicit inheritance - the
+    // non-inherited values too (HasExplicitInheritance + NonInheritedEqual).
+    if (cached.firstUnidentical(parent, .inherited)) |place| return rejectedAt(hit, place);
+    if (hit.parent_non_inherited) {
+        if (cached.custom_own != parent.custom_own) return false;
+        if (cached.firstUnidentical(parent, .non_inherited)) |place| return rejectedAt(hit, place);
     }
     return true;
+}
+
+fn rejectedAt(hit: *MatchedPropertiesCache.Correspondence, place: css.computed_style.Place) bool {
+    hit.rejected_at = place;
+    return false;
 }
 
 /// What tells a hit's style from the cascade it stood for.
