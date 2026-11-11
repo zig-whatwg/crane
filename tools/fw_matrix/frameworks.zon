@@ -158,5 +158,174 @@
             },
             .excluded = "htmx-4.0.1.txt",
         },
+        // React, Vue, Svelte and Angular (the user, 2026-11-11 09:57 ET): no
+        // suite of theirs runs without Node, so each row is the framework's
+        // UNMODIFIED, PREBUILT TodoMVC app - the built output committed in
+        // tastejs/todomvc at ff43b02e59df - checked by Crane's in-page port of
+        // TodoMVC's app spec (cypress/e2e/spec.cy.js, 29 tests), the page in
+        // tests/frameworks/todomvc/ served beside the tree (`overlay`). The
+        // tree is the repository's tarball, served from its root as the
+        // project's own test server serves it (tests/server.js:
+        // express.static(repoRoot)); QUnit is the copy pinned for jQuery.
+        // Versions: each app's package-lock.json, and the bundle's own
+        // version string where it carries one.
+        .{
+            .id = "react-todomvc",
+            .framework = "react",
+            .title = "React",
+            .version = "19.2.5",
+            .kind = .todomvc_port,
+            .repository = "https://github.com/tastejs/todomvc",
+            .tag = "examples/react/dist",
+            .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+            .licence = "MIT",
+            .runner = "QUnit 2.24.2",
+            .reader = .qunit,
+            .source = .{
+                .url = "https://codeload.github.com/tastejs/todomvc/tar.gz/ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+                .sha256 = "22fd7c5251b636773561cc0ab606896f48c8dbcad80e79b427989bfc0e134718",
+                // Another example's installed node_modules (50 MB); no page
+                // loads them.
+                .skip = .{"examples/typescript-react/node_modules"},
+            },
+            .dependencies = .{
+                .{
+                    .name = "qunit",
+                    .version = "2.24.2",
+                    .url = "https://registry.npmjs.org/qunit/-/qunit-2.24.2.tgz",
+                    .sha256 = "0bb099b1f142144e552e15d3d7025d5ec8a87773fa38ba4415b5d5e5bfe1d667",
+                    .integrity = "sha512-dWlYs+Q9AIDT3eHKgkpEpWrSjHjqTJNCAJr1tUo5bQuDMzlZvaqCz1bNZhqzNu41ibkIQ7b50S9y6IMlrrUfNQ==",
+                    .files = .{
+                        .{ .from = "package/qunit/qunit.js", .to = "external/qunit/qunit.js" },
+                        .{ .from = "package/qunit/qunit.css", .to = "external/qunit/qunit.css" },
+                        .{ .from = "package/LICENSE.txt", .to = "external/qunit/LICENSE.txt" },
+                    },
+                },
+            },
+            .overlay = .{.{ .prefix = "crane/todomvc", .dir = "tests/frameworks/todomvc" }},
+            .pages = .{
+                .{ .id = "todomvc", .path = "crane/todomvc/index.html?framework=react" },
+            },
+            .excluded = "todomvc-port.txt",
+            .page_budget_s = 300,
+            .page_stall_s = 60,
+        },
+        .{
+            .id = "vue-todomvc",
+            .framework = "vue",
+            .title = "Vue",
+            .version = "3.5.33",
+            .kind = .todomvc_port,
+            .repository = "https://github.com/tastejs/todomvc",
+            .tag = "examples/vue/dist",
+            .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+            .licence = "MIT",
+            .runner = "QUnit 2.24.2",
+            .reader = .qunit,
+            .source = .{
+                .url = "https://codeload.github.com/tastejs/todomvc/tar.gz/ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+                .sha256 = "22fd7c5251b636773561cc0ab606896f48c8dbcad80e79b427989bfc0e134718",
+                .skip = .{"examples/typescript-react/node_modules"},
+            },
+            .dependencies = .{
+                .{
+                    .name = "qunit",
+                    .version = "2.24.2",
+                    .url = "https://registry.npmjs.org/qunit/-/qunit-2.24.2.tgz",
+                    .sha256 = "0bb099b1f142144e552e15d3d7025d5ec8a87773fa38ba4415b5d5e5bfe1d667",
+                    .integrity = "sha512-dWlYs+Q9AIDT3eHKgkpEpWrSjHjqTJNCAJr1tUo5bQuDMzlZvaqCz1bNZhqzNu41ibkIQ7b50S9y6IMlrrUfNQ==",
+                    .files = .{
+                        .{ .from = "package/qunit/qunit.js", .to = "external/qunit/qunit.js" },
+                        .{ .from = "package/qunit/qunit.css", .to = "external/qunit/qunit.css" },
+                        .{ .from = "package/LICENSE.txt", .to = "external/qunit/LICENSE.txt" },
+                    },
+                },
+            },
+            .overlay = .{.{ .prefix = "crane/todomvc", .dir = "tests/frameworks/todomvc" }},
+            .pages = .{
+                .{ .id = "todomvc", .path = "crane/todomvc/index.html?framework=vue" },
+            },
+            .excluded = "todomvc-port.txt",
+            .page_budget_s = 300,
+            .page_stall_s = 60,
+        },
+        .{
+            .id = "svelte-todomvc",
+            .framework = "svelte",
+            .title = "Svelte",
+            .version = "5.55.5",
+            .kind = .todomvc_port,
+            .repository = "https://github.com/tastejs/todomvc",
+            .tag = "examples/svelte/dist",
+            .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+            .licence = "MIT",
+            .runner = "QUnit 2.24.2",
+            .reader = .qunit,
+            .source = .{
+                .url = "https://codeload.github.com/tastejs/todomvc/tar.gz/ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+                .sha256 = "22fd7c5251b636773561cc0ab606896f48c8dbcad80e79b427989bfc0e134718",
+                .skip = .{"examples/typescript-react/node_modules"},
+            },
+            .dependencies = .{
+                .{
+                    .name = "qunit",
+                    .version = "2.24.2",
+                    .url = "https://registry.npmjs.org/qunit/-/qunit-2.24.2.tgz",
+                    .sha256 = "0bb099b1f142144e552e15d3d7025d5ec8a87773fa38ba4415b5d5e5bfe1d667",
+                    .integrity = "sha512-dWlYs+Q9AIDT3eHKgkpEpWrSjHjqTJNCAJr1tUo5bQuDMzlZvaqCz1bNZhqzNu41ibkIQ7b50S9y6IMlrrUfNQ==",
+                    .files = .{
+                        .{ .from = "package/qunit/qunit.js", .to = "external/qunit/qunit.js" },
+                        .{ .from = "package/qunit/qunit.css", .to = "external/qunit/qunit.css" },
+                        .{ .from = "package/LICENSE.txt", .to = "external/qunit/LICENSE.txt" },
+                    },
+                },
+            },
+            .overlay = .{.{ .prefix = "crane/todomvc", .dir = "tests/frameworks/todomvc" }},
+            .pages = .{
+                .{ .id = "todomvc", .path = "crane/todomvc/index.html?framework=svelte" },
+            },
+            .excluded = "todomvc-port.txt",
+            .page_budget_s = 300,
+            .page_stall_s = 60,
+        },
+        .{
+            .id = "angular-todomvc",
+            .framework = "angular",
+            .title = "Angular",
+            .version = "21.2.11",
+            .kind = .todomvc_port,
+            .repository = "https://github.com/tastejs/todomvc",
+            .tag = "examples/angular/dist/browser",
+            .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+            .licence = "MIT",
+            .runner = "QUnit 2.24.2",
+            .reader = .qunit,
+            .source = .{
+                .url = "https://codeload.github.com/tastejs/todomvc/tar.gz/ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+                .sha256 = "22fd7c5251b636773561cc0ab606896f48c8dbcad80e79b427989bfc0e134718",
+                .skip = .{"examples/typescript-react/node_modules"},
+            },
+            .dependencies = .{
+                .{
+                    .name = "qunit",
+                    .version = "2.24.2",
+                    .url = "https://registry.npmjs.org/qunit/-/qunit-2.24.2.tgz",
+                    .sha256 = "0bb099b1f142144e552e15d3d7025d5ec8a87773fa38ba4415b5d5e5bfe1d667",
+                    .integrity = "sha512-dWlYs+Q9AIDT3eHKgkpEpWrSjHjqTJNCAJr1tUo5bQuDMzlZvaqCz1bNZhqzNu41ibkIQ7b50S9y6IMlrrUfNQ==",
+                    .files = .{
+                        .{ .from = "package/qunit/qunit.js", .to = "external/qunit/qunit.js" },
+                        .{ .from = "package/qunit/qunit.css", .to = "external/qunit/qunit.css" },
+                        .{ .from = "package/LICENSE.txt", .to = "external/qunit/LICENSE.txt" },
+                    },
+                },
+            },
+            .overlay = .{.{ .prefix = "crane/todomvc", .dir = "tests/frameworks/todomvc" }},
+            .pages = .{
+                .{ .id = "todomvc", .path = "crane/todomvc/index.html?framework=angular" },
+            },
+            .excluded = "todomvc-port.txt",
+            .page_budget_s = 300,
+            .page_stall_s = 60,
+        },
     },
 }
