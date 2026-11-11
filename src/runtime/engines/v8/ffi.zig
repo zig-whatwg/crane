@@ -621,12 +621,19 @@ pub const IndexedPropertyEnumeratorCallback = *const fn (
     info: *const PropertyCallbackInfo,
 ) callconv(.c) void;
 
-/// V8 Intercepted enum - indicates whether a property interceptor handled the request
-/// kNo (0) = not intercepted, continue normal lookup
-/// kYes (1) = intercepted, use the return value
-pub const Intercepted = enum(u8) {
-    kNo = 0,
-    kYes = 1,
+/// V8's v8::Intercepted, which every interceptor callback returns by value:
+/// kNo = not intercepted, V8 continues the ordinary lookup; kYes = intercepted,
+/// the return value (or the exception) is the answer. V8's own definition at
+/// 15.7 (include/v8-template.h): `enum class Intercepted : uint32_t { kNo = 1,
+/// kYes = 0 }` - V8 8f35dec9947 (2026-01-30) changed it from 13.1's
+/// `uint8_t { kNo = 0, kYes = 1 }` so that kNo is the IC's
+/// kNotInterceptedSentinel. With 13.1's values every "not mine" read as
+/// "intercepted, undefined" (`new Document().implementation` was undefined
+/// behind Document's masking named interceptor). Pinned against V8's by
+/// v8_Intercepted_Value / _Size (tests/v8/v8up_interceptor_contract_test.zig).
+pub const Intercepted = enum(u32) {
+    kNo = 1,
+    kYes = 0,
 };
 
 /// V8's own v8::Intercepted: the value of kYes (`yes`) or kNo, and the enum's
