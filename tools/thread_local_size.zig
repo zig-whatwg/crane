@@ -40,13 +40,60 @@
 //! 64-bit little-endian Mach-O and ELF, as tools/ubsan_symbols.zig reads.
 
 const std = @import("std");
-const object_file = @import("ubsan_symbols.zig");
 const stdout_stream = @import("stdout_stream.zig");
 const Allocator = std.mem.Allocator;
 
-pub const Reader = object_file.Reader;
-pub const MemoryReader = object_file.MemoryReader;
-pub const FileReader = object_file.FileReader;
+// The readers below are tools/ubsan_symbols.zig's, repeated: importing that
+// file would compile its tests into this tool's test executable (a file's
+// tests belong to every module that imports it), and they need its fixtures.
+
+/// Reads `buffer.len` bytes at `offset` of a binary.
+pub const Reader = struct {
+    context: *const anyopaque,
+    readAtFn: *const fn (context: *const anyopaque, offset: u64, buffer: []u8) anyerror!void,
+};
+
+/// A binary held in memory (the tests' synthetic ones).
+pub const MemoryReader = struct {
+    bytes: []const u8,
+
+    pub fn reader(self: *const MemoryReader) Reader {
+        return .{ .context = self, .readAtFn = readAtMemory };
+    }
+
+    fn readAtMemory(context: *const anyopaque, offset: u64, buffer: []u8) anyerror!void {
+        const self: *const MemoryReader = @ptrCast(@alignCast(context));
+        if (offset > self.bytes.len or self.bytes.len - offset < buffer.len) return error.Truncated;
+        const start: usize = @intCast(offset);
+        @memcpy(buffer, self.bytes[start .. start + buffer.len]);
+    }
+};
+
+/// A binary on disk: only its headers and symbol tables are read.
+pub const FileReader = struct {
+    file: std.Io.File,
+    io: std.Io,
+
+    pub fn reader(self: *const FileReader) Reader {
+        return .{ .context = self, .readAtFn = readAtFile };
+    }
+
+    fn readAtFile(context: *const anyopaque, offset: u64, buffer: []u8) anyerror!void {
+        const self: *const FileReader = @ptrCast(@alignCast(context));
+        const n = try self.file.readPositionalAll(self.io, buffer, offset);
+        if (n != buffer.len) return error.Truncated;
+    }
+};
+
+const Format = enum { mach_o, elf };
+
+/// Which object format `head` (a binary's first bytes) starts: 64-bit
+/// little-endian Mach-O or ELF.
+fn formatOf(head: []const u8) ?Format {
+    if (head.len >= 4 and std.mem.readInt(u32, head[0..4], .little) == 0xfeedfacf) return .mach_o;
+    if (head.len >= 6 and std.mem.eql(u8, head[0..4], "\x7fELF") and head[4] == 2 and head[5] == 1) return .elf;
+    return null;
+}
 
 /// A thread-local symbol and the bytes of the block it takes.
 pub const Symbol = struct {
@@ -95,7 +142,7 @@ fn keepLargest(arena: Allocator, symbols: []Symbol) Allocator.Error![]const Symb
 pub fn threadLocalBlock(arena: Allocator, reader: Reader) anyerror!Block {
     var head: [16]u8 = undefined;
     try readAt(reader, 0, &head);
-    return switch (object_file.formatOf(&head) orelse return error.NotAnObjectFile) {
+    return switch (formatOf(&head) orelse return error.NotAnObjectFile) {
         .mach_o => blockMachO(arena, reader),
         .elf => blockElf(arena, reader),
     };
