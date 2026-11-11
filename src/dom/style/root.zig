@@ -20,6 +20,7 @@ pub const inline_style = @import("inline_style.zig");
 pub const typed_om = @import("typed_om.zig");
 pub const content_visibility = @import("content_visibility.zig");
 pub const font_hints = @import("font_hints.zig");
+pub const matched_properties_cache = @import("matched_properties_cache.zig");
 
 pub const StyleEngine = engine.StyleEngine;
 pub const SheetRecord = sheet.SheetRecord;
@@ -95,4 +96,5 @@ pub fn setDeliveredSheetPolicy(owner: *@import("runtime").Instance, path: []cons
 test {
     _ = engine;
     _ = ua_sheet;
+    _ = matched_properties_cache;
 }

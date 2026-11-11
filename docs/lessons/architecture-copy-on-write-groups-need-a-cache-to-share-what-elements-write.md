@@ -1,0 +1,16 @@
+# Architecture: Copy-on-write groups share only what elements leave alone - a matched-properties cache shares what they write
+
+**Date**: 2026-11-10
+**Lesson**: Copy-on-write style groups make an untouched group free, but every element that writes a group still gets its own copy, even when a thousand elements write the same values. The browsers pair the groups with a cache keyed by the matched declarations (Blink's MatchedPropertiesCache, WebKit's MatchedDeclarationsCache, Stylo's sharing and rule caches) so elements matched by the same rules hold the same groups. Count identical-value classes before designing the sharing: they give the saving in advance.
+
+**Why**: Copy on write decides when a group is copied (first write), not who else could hold the copy. A cascade that writes `display: block; margin: 2px 0; ...` into six groups copies six groups per element; nothing ever notices that the next element's copies are bit-for-bit the same. Blink's StyleResolver says the MPC "allows us to skip step 4, but equally important, it allows us to reuse subgroups of ComputedStyle so that we use less RAM".
+
+**What Happened**: Lane style1 batch 1 measured a cached computed style at 3,208 B per element for 1,000 identical sibling divs (ElementStyle 288, header 240, six private groups 2,680) and 3,471 B per styled element on the framework lane's jQuery page. A census of the live styles (a never-committed console.time hook walking the slab) grouped each group by identical values: 6,003 groups were 6 classes (3,200 B if shared); jQuery's 2.96 MB of groups were 11 KB of distinct values. A per-document matched-properties cache that, after each cascade, swaps every group a style holds alone for an identical one a cached style holds (values compared tag, address and float bits, so no computed value can change) took the siblings to 532 B per element, jQuery to 581 B, the grid page from 4,475 to 1,871 B. Two things it cannot share, found the same way: values the cascade allocates per element (transition and animation lists: a 1,000-class group on a page that declares a transition), and pseudo-element styles resolved for every element.
+
+**Fix**:
+1. Before designing sharing, census the live objects twice: distinct by address, and in classes of identical values. The second number is what sharing can reach; a group whose classes equal its count holds per-element allocations or per-element values.
+2. Key the cache as the browsers do (the matched declarations, a style attribute's by content) and verify by value when the engine's computed values read inputs the browsers' cacheability conditions do not list; skip the cascade on a hit only once those conditions exist.
+3. Give the cache's holds their releases: generation change, an LRU cap, a per-key cap, the owner's teardown (lesson architecture-a-browsers-strong-hold-comes-with-the-step-that-ends-it).
+4. A cache nearly every document makes is not Rare state (lesson architecture-count-which-fields-objects-set-before-choosing-rare-data): it needs a word of its own.
+
+**Takeaway**: **Copy-on-write groups need a cache keyed by what matched before elements that write the same values share them: count identical-value classes first, they are the saving.**
