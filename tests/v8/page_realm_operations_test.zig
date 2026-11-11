@@ -2773,6 +2773,52 @@ test "protocol: a page's end tells V8 a main frame's context went, its frame's e
     try std.testing.expectEqual(@as(u64, 1), child_after - child_before);
 }
 
+test "protocol: a page that ends does not abort another page's WebAssembly compilation" {
+    // Isolate::ContextDisposedNotification with kNoDependants also aborts
+    // every asynchronous WebAssembly compilation of the isolate's CURRENT
+    // context (V8 15.7 src/api/api.cc: "We left the current context, we can
+    // abort all WebAssembly compilations of that context" -
+    // WasmEngine::DeleteCompileJobsOnContext(native_context())): V8 takes the
+    // entered context for the disposed one. Blink sends it from
+    // LocalWindowProxy::DisposeContext inside a ScriptState::Scope of the
+    // context it disposes. Crane sent it after leaving the realm's context,
+    // with whichever context was entered below - another page's - and that
+    // page's WebAssembly.compile() promises never settled: 41 wasm/core files
+    // of the worklist timed out (lane v8up b5's FULL A/B, 2026-11-11).
+    defer test_agent.close();
+    var live_host: WindowHost = .{};
+    const live = try windowRealm(&live_host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(live, .global_detached);
+    var old_host: WindowHost = .{};
+    const old = try windowRealm(&old_host, false, .new_window_proxy);
+    const agent: *protocol.Agent = @ptrCast(test_isolate.?);
+
+    // The smallest module: the magic number and the version. The compile job
+    // is made here and finishes in tasks.
+    try expectEval(live,
+        \\globalThis.outcome = 'pending';
+        \\WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0])).then(
+        \\    () => { outcome = 'compiled'; },
+        \\    (e) => { outcome = 'rejected: ' + e; });
+        \\outcome
+    , "pending");
+
+    // The other page goes while that compilation is in flight.
+    protocol.destroyWindowRealm(old, .global_detached);
+
+    // The loop turns: V8's tasks, then the microtask checkpoint.
+    var turns: usize = 0;
+    while (turns < 200_000) : (turns += 1) {
+        while (ffi.v8_Platform_PumpMessageLoop(test_isolate.?)) {}
+        try protocol.performMicrotaskCheckpoint(agent);
+        const outcome = try evalString(live, "outcome");
+        defer std.testing.allocator.free(outcome);
+        if (!std.mem.eql(u8, outcome, "pending")) break;
+        std.Thread.yield() catch {};
+    }
+    try expectEval(live, "outcome", "compiled");
+}
+
 test "protocol: the entry and incumbent realms are the innermost prepared realm" {
     defer test_agent.close();
     // Two realms made here: the context manager names a realm by where its
