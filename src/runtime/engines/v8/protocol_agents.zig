@@ -822,6 +822,19 @@ const EnteredIsolate = struct {
     }
 };
 
+/// A full collection of `agent`'s heap now (engine.requestGarbageCollection's
+/// collection), with the agent's isolate entered for it as every other agent
+/// operation here enters it: V8 15.7 checks that a collection runs on the
+/// thread's current isolate (MainAllocator::identity, "Check failed: isolate_
+/// == isolate" in Heap::FreeLinearAllocationAreas), which a worker agent made
+/// on a thread whose current isolate is another, or none, is not - 13.1 did
+/// not check.
+pub fn collectGarbageNow(agent: *Agent) void {
+    const entered = EnteredIsolate.of(agent);
+    defer entered.leave();
+    ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
+}
+
 /// HTML "perform a microtask checkpoint" for the agent: V8's microtask queue
 /// is the isolate's, and each microtask runs in its own context.
 pub fn performMicrotaskCheckpoint(agent: *Agent) void {

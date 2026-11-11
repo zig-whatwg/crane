@@ -267,7 +267,7 @@ pub fn nextEngineTaskDelay(agent: *Agent) ?u64 {
 /// A realm's agent is its isolate (context_manager records it so).
 /// LowMemoryNotification: a full, synchronous collection.
 pub fn requestGarbageCollection(agent: *Agent) void {
-    ffi.v8_Isolate_RequestGarbageCollection(isolateOf(agent));
+    protocol_agents.collectGarbageNow(agent);
     // "As completely as the engine can": the trees the collection queued for
     // deferred teardown are freed before it returns - unless a DOM algorithm
     // is on the agent's stack (TestUtils.gc() from script is itself a binding
