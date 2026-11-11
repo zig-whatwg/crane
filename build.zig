@@ -1404,7 +1404,6 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
     if (launch.sanitize_thread) {
         run.addArg("--sanitize-thread");
         run.addPrefixedFileArg("--tsan-suppressions=", b.path("tools/test_launcher/tsan_suppressions.txt"));
-        run.setEnvironmentVariable("TSAN_OPTIONS", tsan_v8_options);
         for (config.tsan_skip) |skip| {
             run.addArg(b.fmt("--tsan-skip={s}", .{skip.name}));
             run.addArg(b.fmt("--tsan-skip-reason={s}", .{skip.reason}));
@@ -1708,7 +1707,6 @@ fn addTestVerifyIn(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
         // slow one, and a race needs no repetition to be seen.
         run.addArgs(&.{ "--verify-batched=1", "--verify-alone=0", "--sanitize-thread" });
         run.addPrefixedFileArg("--tsan-suppressions=", b.path("tools/test_launcher/tsan_suppressions.txt"));
-        run.setEnvironmentVariable("TSAN_OPTIONS", tsan_v8_options);
     }
     if (launch.many_browsers) run.addArg("--many-browsers");
     // The row's names (tsan_skip, alone, slow), with the member's prefix.
@@ -1751,24 +1749,32 @@ fn finishTestVerify(b: *std.Build, v: *TestVerify) void {
 /// the calls it intercepts (pthread, malloc): a race inside V8 is not seen,
 /// and V8's own atomics can make a report a false positive - suppressed
 /// only when proven, in tools/test_launcher/tsan_suppressions.txt.
-/// The TSAN_OPTIONS every ThreadSanitizer run adds for V8 15.7 (the launcher
-/// puts them after its own, tools/test_launcher/child.zig tsanOptions; the
-/// snapshot generator's run gets them too). V8 15.7's v8::base::Mutex is an
-/// absl::Mutex (src/base/platform/mutex.h), which synchronizes with futexes
-/// and atomics in uninstrumented code, so ThreadSanitizer sees none of V8's
-/// own locking - only V8's calls into the runtime's interceptors (memcpy,
-/// operator new/delete, free) - and reported every V8-internal handoff as a
-/// race (the first -Dsanitize-thread run on 15.7, server1, lane v8up b3e: 336
-/// reports in the snapshot generator, all in V8's DefaultWorkerThreadsTaskRunner
-/// and heap). 13.1's base::Mutex was a pthread mutex, which TSAN intercepts.
-/// `ignore_interceptors_accesses` drops the interceptors' reads and writes:
-/// uninstrumented code then makes no access TSAN sees, and Crane's own
-/// instrumented accesses are all still checked - a race between two Zig
-/// writes is still a crash (the verify run's deliberate race, b3e). What it
-/// gives up: a race whose one side is a libc free or memcpy that Zig code
-/// called on c_allocator memory (std.testing.allocator's poisoning writes are
-/// instrumented and still count).
-const tsan_v8_options = "ignore_interceptors_accesses=1";
+/// V8 15.7's v8::base::Mutex is an absl::Mutex (src/base/platform/mutex.h),
+/// which synchronizes with futexes and atomics in uninstrumented code, so
+/// ThreadSanitizer sees none of V8's own locking - only V8's calls into the
+/// runtime's interceptors (memcpy, operator new/delete, free) - and reports
+/// V8-internal handoffs as races (the first -Dsanitize-thread run on 15.7,
+/// server1, lane v8up b3e: 336 reports in the snapshot generator, all in V8's
+/// DefaultWorkerThreadsTaskRunner and heap). 13.1's base::Mutex was a pthread
+/// mutex, which TSAN intercepts. Those reports are suppressed by V8's own
+/// frames (tools/test_launcher/tsan_suppressions.txt, section 2), never by
+/// dropping the interceptors' accesses (`ignore_interceptors_accesses`, b3e's
+/// first answer): that also drops a Zig free or memcpy racing a Zig read,
+/// the class verify mode exists for. The launcher names the file in every
+/// test child's TSAN_OPTIONS; the snapshot generator, which links the same
+/// instrumented modules, gets it from `useTsanSuppressions`.
+const tsan_suppressions_path = "tools/test_launcher/tsan_suppressions.txt";
+
+/// A run of an instrumented program outside the launcher (the snapshot
+/// generator) reads the suppressions too: TSAN_OPTIONS names the file
+/// relative to the build root, which becomes the run's working directory
+/// (the runtime opens a relative path from there), and the file is an input
+/// of the run, so a changed file runs it again.
+fn useTsanSuppressions(b: *std.Build, run: *std.Build.Step.Run) void {
+    run.setCwd(b.path("."));
+    run.addFileInput(b.path(tsan_suppressions_path));
+    run.setEnvironmentVariable("TSAN_OPTIONS", "suppressions=" ++ tsan_suppressions_path);
+}
 
 fn instrumentForThreadSanitizer(b: *std.Build, launch: *const TestLaunch) void {
     var seen: std.AutoHashMapUnmanaged(*std.Build.Module, void) = .empty;
@@ -5301,11 +5307,11 @@ pub fn build(b: *std.Build) void {
     // to tests/v8 by path (`test_snapshot_options` above).
     const gen_test_snapshot = b.addRunArtifact(snapshot_gen_exe);
     // Under -Dsanitize-thread the generator shares instrumented modules with
-    // the tests: it runs with the options V8 15.7 needs (tsan_v8_options).
+    // the tests: it runs with their suppressions (useTsanSuppressions).
     if (sanitize_thread_option) {
-        gen_test_snapshot.setEnvironmentVariable("TSAN_OPTIONS", tsan_v8_options);
-        gen_snapshot.setEnvironmentVariable("TSAN_OPTIONS", tsan_v8_options);
-        run_snapshot_gen.setEnvironmentVariable("TSAN_OPTIONS", tsan_v8_options);
+        useTsanSuppressions(b, gen_test_snapshot);
+        useTsanSuppressions(b, gen_snapshot);
+        useTsanSuppressions(b, run_snapshot_gen);
     }
     test_snapshot_options.addOptionPath("path", gen_test_snapshot.addOutputFileArg("whatwg_snapshot.bin"));
 

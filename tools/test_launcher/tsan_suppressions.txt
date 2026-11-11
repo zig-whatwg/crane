@@ -76,3 +76,40 @@ race:v8::internal::PointersUpdatingJob::~PointersUpdatingJob
 # teardown is never suppressed by this entry's reasoning: it is a bug. Proved by
 # wr1 b2, 2026-11-09.
 race:v8::internal::PageEvacuationJob::~PageEvacuationJob
+#
+# --- 5. V8 15.7: V8's own code, whose locking ThreadSanitizer cannot see ---
+# V8 15.7's v8::base::Mutex is an absl::Mutex (src/base/platform/mutex.h), which locks
+# with futexes and atomics inside the uninstrumented prebuilt; 13.1's was a pthread
+# mutex, which TSAN intercepts. So TSAN sees none of V8's own ordering, only V8's calls
+# into its interceptors (memcpy, operator new and delete, free), and reports V8-internal
+# handoffs between V8's threads as races: memcpy in Utf8Decoder and the Scavenger,
+# V8's worker vector, its CancelableTaskManager map (lane v8up b3e, b3f). An
+# uninstrumented caller leaves TSAN only the interceptor and the function that called it
+# (frame #1), so these entries name V8's code by namespace. They replace b3e's
+# TSAN_OPTIONS ignore_interceptors_accesses=1, which also dropped a Zig free or memcpy
+# racing a Zig read (integrator ruling, 2026-11-11).
+# Why they cannot match Crane's Zig: every pattern holds "::", and a Zig symbol never
+# does (Zig names are dotted: heap.c_allocator_impl.free, Thread.PosixThreadImpl.spawn).
+# Only C++ frames can match: V8, Chromium's libc++ (std::__Cr), which is linked into V8
+# and the uninstrumented v8_wrapper.cpp alone - Zig never calls it - and the wrapper.
+# They are unanchored because a symbolized template function starts with its return
+# type ("void v8::internal::...", "unsigned long std::__Cr::__hash_table<...>",
+# "heap::base::SlotCallbackResult v8::internal::Scavenger::...").
+# What they give up, as every entry here does by matching either stack: a race whose
+# one side runs in V8's code - Crane freeing memory a V8 worker still reads included.
+# Proved by lane v8up b3f on server1, the snapshot generator run by hand with
+# halt_on_error=0: 317 reports with sections 1-4 only; 1 with the four V8 namespaces
+# anchored (V8's CancelableTaskManager map, std::__Cr::__hash_table); 0 with
+# std::__Cr added. And the gate still bites: .v8up/job-b3f-tsan.sh BITE=1 (lane v8up's
+# scratch) plants three racing tests in a -Dsanitize-thread verify of tests-v8 - a Zig
+# write racing a Zig write; libc's free, called from Zig, racing a Zig read (the free
+# interceptor is that side's only access); and a Zig write inside a native callback JS
+# called (V8's frames on the native stack) racing a Zig write - and all three are
+# reported ("tests-v8: verify: 228 of 231 tests PASS, 3 FAIL", the 3 = the planted races).
+# TSAN's stack is the instrumented shadow stack: V8's frames never appear in a Zig
+# access's stack, only as an interceptor's caller.
+race:v8::
+race:absl::
+race:cppgc::
+race:heap::base::
+race:std::__Cr::
