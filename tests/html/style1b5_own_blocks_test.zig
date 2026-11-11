@@ -255,7 +255,7 @@ fn uniqueAttributesFlood() !void {
     const page = try helpers.Page.open();
     defer page.close();
     // 1,000 rows whose style attributes no other row holds, then three rows
-    // with one new content, then a row with the first row's content. Built
+    // with one new content, then a row with the 401st row's content. Built
     // first, read after: no read dirties a style.
     try page.run(
         \\document.head.insertAdjacentHTML('beforeend', '<style>.row { display: block; margin: 2px 0; color: #333; }</style>');
@@ -266,7 +266,7 @@ fn uniqueAttributesFlood() !void {
         \\  globalThis.flood = [];
         \\  for (let i = 0; i < 1000; i++) flood.push(make('margin-top: ' + i + 'px'));
         \\  globalThis.repeats = [make('margin-top: 5000px'), make('margin-top: 5000px'), make('margin-top: 5000px')];
-        \\  globalThis.again = make('margin-top: 0px');
+        \\  globalThis.again = make('margin-top: 400px');
         \\  for (let i = 0; i < 1000; i++) if (getComputedStyle(flood[i]).marginTop !== i + 'px') throw new Error('row ' + i);
         \\}
     );
@@ -274,14 +274,14 @@ fn uniqueAttributesFlood() !void {
     const cache = dom.style.engine.engineOf(document).?.matched_properties.?;
     const Cache = @TypeOf(cache.*);
     std.debug.print("\nSTYLE1B5 1,000 unique style attributes: entries {d} hits {d} misses {d}\n", .{ cache.entries, cache.hits, cache.misses });
-    // The cache fills to its limit and stays there: a content no other
-    // element holds does not get the entry that would force a prune
-    // (design 3.6 item 9) ...
-    try testing.expectEqual(@as(u32, Cache.limit), cache.entries);
-    // ... so the first row's entry is still there after the 999 that came
-    // after it ...
+    // The first prune (at the cache's limit, some 490 rows in) finds that
+    // no own-block entry served a hit; from there a content no other
+    // element holds gets no entry (design 3.6 item 9), so the cache holds
+    // what that prune kept and is not pruned again ...
+    try testing.expect(cache.entries <= Cache.prune_target + 2 * Cache.per_key);
+    // ... an entry that prune kept still serves ...
     try expectOnlyHits(page,
-        \\if (getComputedStyle(again).marginTop !== '0px') throw new Error('again ' + getComputedStyle(again).marginTop);
+        \\if (getComputedStyle(again).marginTop !== '400px') throw new Error('again ' + getComputedStyle(again).marginTop);
     );
     // ... and a content that repeats is kept from its second sighting: two
     // cascades, then a hit.

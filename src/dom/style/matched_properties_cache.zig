@@ -1276,7 +1276,54 @@ fn ownShapedMiss(cache: *MatchedPropertiesCache, matched: *const [1]Matched, par
     return style;
 }
 
-test "at its limit the cache gives an own block's content its entry on its second sighting: blocks no other element holds make no entry and prune none" {
+/// Own blocks no other element holds (`margin-left: <from>px` and up), each
+/// resolved and added, until the cache prunes; returns how many it took.
+fn uniqueUntilPrune(cache: *MatchedPropertiesCache, parent: *const ComputedStyle, from: usize) !usize {
+    var buffer: [64]u8 = undefined;
+    var n: usize = 0;
+    var last = cache.entries;
+    while (n <= 2 * MatchedPropertiesCache.limit) : (n += 1) {
+        var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, try std.fmt.bufPrint(&buffer, "margin-left: {d}px", .{from + n}));
+        defer block.deinit();
+        const matched = [1]Matched{.{ .block = &block, .source = own_source }};
+        (try ownShapedMiss(cache, &matched, parent)).destroy();
+        if (cache.entries < last) return n + 1;
+        last = cache.entries;
+    }
+    return error.NoPrune;
+}
+
+/// Rules' styles (adoption-only, keys of their own from `from` up) until the
+/// cache prunes.
+fn rulesUntilPrune(cache: *MatchedPropertiesCache, parent: *const ComputedStyle, from: usize) !void {
+    var buffer: [64]u8 = undefined;
+    var k: usize = 0;
+    var last = cache.entries;
+    while (k <= 2 * MatchedPropertiesCache.limit) : (k += 1) {
+        const s = try styleOf(testing.allocator, parent, try std.fmt.bufPrint(&buffer, "margin-top: {d}px", .{k + 1}));
+        defer s.destroy();
+        cache.add(.{ .key = from + k, .generation = 1 }, null, s);
+        if (cache.entries < last) return;
+        last = cache.entries;
+    }
+    return error.NoPrune;
+}
+
+/// Whether an own block's content, first seen now, is kept: a second block
+/// with the same content finds it.
+fn firstSightingKept(cache: *MatchedPropertiesCache, parent: *const ComputedStyle, text: []const u8) !bool {
+    const parse = css.declarations.DeclarationBlock.parse;
+    var a = try parse(.{ .allocator = testing.allocator }, text);
+    defer a.deinit();
+    var b = try parse(.{ .allocator = testing.allocator }, text);
+    defer b.deinit();
+    const ma = [1]Matched{.{ .block = &a, .source = own_source }};
+    const mb = [1]Matched{.{ .block = &b, .source = own_source }};
+    (try ownShapedMiss(cache, &ma, parent)).destroy();
+    return cache.find(ownShaped(&mb, parent)) != null;
+}
+
+test "a prune that finds the own-block entries served no hit: from then an own block's content is kept from its second sighting" {
     const allocator = testing.allocator;
     const cache = try MatchedPropertiesCache.create(allocator);
     defer cache.destroy();
@@ -1287,87 +1334,76 @@ test "at its limit the cache gives an own block's content its entry on its secon
     var buffer: [64]u8 = undefined;
     const parse = css.declarations.DeclarationBlock.parse;
 
-    // With room, an own block's content is kept at its first sighting.
-    var early = try parse(.{ .allocator = allocator }, "padding-left: 1px");
-    defer early.deinit();
-    var early_twin = try parse(.{ .allocator = allocator }, "padding-left: 1px");
-    defer early_twin.deinit();
-    const m_early = [1]Matched{.{ .block = &early, .source = own_source }};
-    const m_early_twin = [1]Matched{.{ .block = &early_twin, .source = own_source }};
-    (try ownShapedMiss(cache, &m_early, root)).destroy();
-    try testing.expect(cache.find(ownShaped(&m_early_twin, root)) != null);
-    // The shape key of the blocks to come takes its adoption-only entries
-    // now (as before lane style1 b5), so it adds none at the limit.
-    for (0..MatchedPropertiesCache.per_key) |i| {
-        var block = try parse(.{ .allocator = allocator }, try std.fmt.bufPrint(&buffer, "margin-left: {d}px", .{9000 + i}));
-        defer block.deinit();
-        const matched = [1]Matched{.{ .block = &block, .source = own_source }};
-        (try ownShapedMiss(cache, &matched, root)).destroy();
-    }
-
-    // A rule's style that serves hits, then rules' styles: past the prune
-    // target ...
-    (try scene.miss(cache, root)).destroy();
-    var k: usize = 0;
-    while (cache.entries < MatchedPropertiesCache.prune_target + 10) : (k += 1) {
-        const s = try styleOf(allocator, root, try std.fmt.bufPrint(&buffer, "margin-top: {d}px", .{k + 1}));
-        defer s.destroy();
-        cache.add(.{ .key = 1000 + k, .generation = 1 }, null, s);
-    }
-    // ... where there is still room - nothing is pruned for an entry below
-    // the limit - so a first sighting is still kept ...
-    var middle = try parse(.{ .allocator = allocator }, "padding-left: 2px");
-    defer middle.deinit();
-    var middle_twin = try parse(.{ .allocator = allocator }, "padding-left: 2px");
-    defer middle_twin.deinit();
-    const m_middle = [1]Matched{.{ .block = &middle, .source = own_source }};
-    const m_middle_twin = [1]Matched{.{ .block = &middle_twin, .source = own_source }};
-    (try ownShapedMiss(cache, &m_middle, root)).destroy();
-    try testing.expect(cache.find(ownShaped(&m_middle_twin, root)) != null);
-    // ... and up to the limit.
-    while (cache.entries < MatchedPropertiesCache.limit) : (k += 1) {
-        const s = try styleOf(allocator, root, try std.fmt.bufPrint(&buffer, "margin-top: {d}px", .{k + 1}));
-        defer s.destroy();
-        cache.add(.{ .key = 1000 + k, .generation = 1 }, null, s);
-    }
-
-    // 1,000 own blocks no other element holds: none gets an entry, so the
-    // cache is never pruned for them - every entry is still there.
+    // Before any prune an own block's content is kept at its first sighting.
+    try testing.expect(try firstSightingKept(cache, root, "padding-left: 1px"));
+    // Own blocks no other element holds, until the cache prunes for one:
+    // the prune finds hundreds of own-block entries and one that served.
+    _ = try uniqueUntilPrune(cache, root, 1);
+    const after_prune = cache.entries;
+    // From here such a block gets no entry (its shape key keeps its
+    // adoption-only entries, as before lane style1 b5): no further prune.
     for (0..1000) |i| {
-        var block = try parse(.{ .allocator = allocator }, try std.fmt.bufPrint(&buffer, "margin-left: {d}px", .{i + 1}));
+        var block = try parse(.{ .allocator = allocator }, try std.fmt.bufPrint(&buffer, "margin-left: {d}px", .{100000 + i}));
         defer block.deinit();
         const matched = [1]Matched{.{ .block = &block, .source = own_source }};
         (try ownShapedMiss(cache, &matched, root)).destroy();
     }
-    try testing.expectEqual(@as(u32, MatchedPropertiesCache.limit), cache.entries);
-    try testing.expect(cache.find(scene.lookup(root)) != null);
-    try testing.expect(cache.find(ownShaped(&m_early_twin, root)) != null);
+    try testing.expect(cache.entries <= after_prune + MatchedPropertiesCache.per_key);
 
     // A content that repeats: its first sighting leaves no entry, its
-    // second makes one - the cache prunes for it - and its third is a hit.
+    // second makes one, its third is a hit.
     var blocks: [3]css.declarations.DeclarationBlock = undefined;
-    for (&blocks) |*b| b.* = try parse(.{ .allocator = allocator }, "margin-left: 5000px");
+    for (&blocks) |*b| b.* = try parse(.{ .allocator = allocator }, "margin-left: 7777777px");
     defer for (&blocks) |*b| b.deinit();
     const m0 = [1]Matched{.{ .block = &blocks[0], .source = own_source }};
     const m1 = [1]Matched{.{ .block = &blocks[1], .source = own_source }};
     const m2 = [1]Matched{.{ .block = &blocks[2], .source = own_source }};
+    const before = cache.entries;
     (try ownShapedMiss(cache, &m0, root)).destroy();
-    try testing.expectEqual(@as(u32, MatchedPropertiesCache.limit), cache.entries);
+    try testing.expectEqual(before, cache.entries);
     try testing.expect(cache.find(ownShaped(&m1, root)) == null);
     (try ownShapedMiss(cache, &m1, root)).destroy();
-    try testing.expectEqual(@as(u32, MatchedPropertiesCache.prune_target), cache.entries);
+    try testing.expectEqual(before + 1, cache.entries);
     try testing.expect(cache.find(ownShaped(&m2, root)) != null);
 
-    // At the limit again, a rule's style is kept at its first sighting, as
-    // before: a rule's block is one object for every element it matches.
-    while (cache.entries < MatchedPropertiesCache.limit) : (k += 1) {
-        const s = try styleOf(allocator, root, try std.fmt.bufPrint(&buffer, "margin-top: {d}px", .{k + 1}));
-        defer s.destroy();
-        cache.add(.{ .key = 1000 + k, .generation = 1 }, null, s);
+    // A rule's style is kept at its first sighting, as before: a rule's
+    // block is one object for every element it matches.
+    (try scene.miss(cache, root)).destroy();
+    try testing.expect(cache.find(scene.lookup(root)) != null);
+}
+
+test "a prune that finds own-block entries serving hits, or too few of them to tell, leaves an own block's content kept at its first sighting" {
+    const allocator = testing.allocator;
+    var buffer: [64]u8 = undefined;
+    {
+        // Half the cache's limit in own-block contents, each held by two
+        // elements: every entry serves a hit.
+        const cache = try MatchedPropertiesCache.create(allocator);
+        defer cache.destroy();
+        var root = try rootStyle("font-size: 20px");
+        defer root.block.deinit();
+        defer root.style.destroy();
+        for (0..MatchedPropertiesCache.limit / 2) |i| {
+            try testing.expect(try firstSightingKept(cache, root.style, try std.fmt.bufPrint(&buffer, "margin-left: {d}px", .{i + 1})));
+        }
+        try rulesUntilPrune(cache, root.style, 1000);
+        try testing.expect(try firstSightingKept(cache, root.style, "padding-left: 9px"));
     }
-    var other: Scene = undefined;
-    try other.init("font-size: 20px", "display: grid; margin-left: 7px");
-    defer other.deinit();
-    (try other.miss(cache, root)).destroy();
-    try testing.expect(cache.find(other.lookup(root)) != null);
+    {
+        // A dozen own-block entries that served no hit among rules' styles:
+        // too few to say what the page's own blocks do.
+        const cache = try MatchedPropertiesCache.create(allocator);
+        defer cache.destroy();
+        var root = try rootStyle("font-size: 20px");
+        defer root.block.deinit();
+        defer root.style.destroy();
+        for (0..12) |i| {
+            var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = allocator }, try std.fmt.bufPrint(&buffer, "margin-left: {d}px", .{i + 1}));
+            defer block.deinit();
+            const matched = [1]Matched{.{ .block = &block, .source = own_source }};
+            (try ownShapedMiss(cache, &matched, root.style)).destroy();
+        }
+        try rulesUntilPrune(cache, root.style, 1000);
+        try testing.expect(try firstSightingKept(cache, root.style, "padding-left: 9px"));
+    }
 }
