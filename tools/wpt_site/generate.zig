@@ -1799,6 +1799,21 @@ test "site: the index links to /performance/" {
     try testing.expect(std.mem.indexOf(u8, page, "performance/") == null);
 }
 
+test "site: the index links to /frameworks/, beside /performance/" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixture(gpa, &f, "out", fixture_worklist);
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    // The JS framework compatibility matrix (tools/fw_matrix), right after
+    // the benchmark report's line.
+    try expectHas(index, "</a></dd></div>\n<div><dt>Frameworks</dt><dd><a href=\"frameworks/\">");
+    const page = try readOut(gpa, &f, "out/dom/index.html");
+    defer gpa.free(page);
+    try testing.expect(std.mem.indexOf(u8, page, "frameworks/") == null);
+}
+
 test "site: index.html carries the social card's tags, and the card is a 1200x630 PNG" {
     const gpa = testing.allocator;
     var f = try Fixture.init(fixture_stream);
