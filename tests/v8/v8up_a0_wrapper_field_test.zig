@@ -263,3 +263,8 @@ test "a kept wrapper Crane made costs one cppgc slot wrapper, node and non-node 
         (try evalOwned(realm, "o.keep = null; 0")).release();
     }
 }
+
+test "ffi.ArgumentRead has the C++ side's layout" {
+    // It crosses the FFI by pointer (v8_FunctionCallbackInfo_ReadArgument fills it); A0 took a field out of both.
+    try testing.expectEqual(ffi.v8_ArgumentRead_Size(), @sizeOf(ffi.ArgumentRead));
+}

@@ -96,9 +96,9 @@ pub const capabilities: engine.Capabilities = .{
     .webassembly_streaming = .native,
     // runtime.instance_lifecycle.markWrapped where the instance is written
     // into the object: template_registry.wrapInstanceAsV8Object (every
-    // outcome of its cache step), interface.zig setInstance and
-    // setInstanceWithTypeInfo (constructors, custom element construction
-    // and upgrade), and the Window and worker global bindings
+    // outcome of its cache step), interface.zig setInstance (constructors,
+    // custom element construction and upgrade), and the Window and worker
+    // global bindings
     // (tests/v8/wrap_tracking_test.zig).
     .wrap_tracking = .native,
     // AgentOptions.clock: CranePlatform's CurrentClockTimeMilli* read the

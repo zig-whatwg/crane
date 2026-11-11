@@ -114,15 +114,10 @@ pub const zig_callbacks = @import("zig_callbacks.zig");
 /// V8 Type Conversion Helpers - Safe type checking before pointer casts
 pub const helpers = @import("helpers.zig");
 
-/// WrapperTypeInfo for type-safe V8 object unwrapping
-pub const wrapper_type_info_mod = @import("wrapper_type_info.zig");
-pub const WrapperTypeInfo = wrapper_type_info_mod.WrapperTypeInfo;
-pub const TypeTag = wrapper_type_info_mod.TypeTag;
-pub const WrapperClassId = wrapper_type_info_mod.WrapperClassId;
-pub const INTERNAL_FIELD_COUNT = wrapper_type_info_mod.INTERNAL_FIELD_COUNT;
-
-/// DOM WrapperTypeInfo definitions (pre-defined until codegen generates them)
-pub const dom_type_info = @import("dom_type_info.zig");
+/// A platform object's wrapper has one internal field, its instance: the
+/// brand check is the instance's state ancestry, not a WrapperTypeInfo (lane
+/// v8up A0; interface.zig INTERNAL_FIELD_COUNT).
+pub const INTERNAL_FIELD_COUNT = interface_mod.INTERNAL_FIELD_COUNT;
 
 /// V8 Callback Wrapper for callback interfaces (EventListener, NodeFilter, etc.)
 pub const callback_wrapper_mod = @import("callback_wrapper.zig");

@@ -239,8 +239,7 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     if (interface.adoptExistingWrapper(info, this_obj, instance, constructor_context)) return;
 
     // Store the Zig instance in the V8 object's internal field (slot 0)
-    // Also store WrapperTypeInfo in slot 1 for type-safe unwrapping
-    bindInstance(self, this_obj, instance);
+    interface.setInstance(runtime.Instance, this_obj, instance);
 
     // ========================================
     // CACHE THE WRAPPER: Store constructor-created wrapper for identity
@@ -280,18 +279,6 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     }
 
     // Return 'this' (V8 does this automatically for constructors)
-}
-
-/// The instance in `receiver`'s internal fields: slot 0, and the
-/// interface's WrapperTypeInfo in slot 1 when the registry has one.
-fn bindInstance(self: *const Constructor, receiver: *v8.Object, instance: *runtime.Instance) void {
-    const wrapper_type_info_registry = @import("wrapper_type_info_registry.zig");
-    if (wrapper_type_info_registry.getWrapperTypeInfoByName(self.interface_name)) |type_info| {
-        interface.setInstanceWithTypeInfo(runtime.Instance, receiver, instance, type_info);
-    } else {
-        // Fall back to legacy setInstance if type info not found via comptime lookup
-        interface.setInstance(runtime.Instance, receiver, instance);
-    }
 }
 
 /// HTML 3.2.3 "HTML element constructors", the overridden constructor
@@ -479,7 +466,7 @@ fn elementWrapperCache(element: *runtime.Instance) ?*WrapperCache {
 /// internal fields, and the wrapper cache's entry. Whether the cache
 /// took the receiver's handle.
 fn bindConstructedElement(self: *const Constructor, receiver: *v8.Object, element: *runtime.Instance, isolate: *v8.Isolate) anyerror!bool {
-    bindInstance(self, receiver, element);
+    interface.setInstance(runtime.Instance, receiver, element);
     if (self.install_conditional_unforgeables) |install| {
         const context: *v8.Context = @ptrCast(@alignCast(element.ctx.engine_ctx orelse return false));
         install(isolate, context, receiver);
@@ -497,12 +484,10 @@ fn bindConstructedElement(self: *const Constructor, receiver: *v8.Object, elemen
     return true;
 }
 
-/// Clear the internal fields `setInstance` wrote on `receiver`, so a
+/// Clear the internal field `setInstance` wrote on `receiver`, so a
 /// receiver the wrapper cache did not take reaches no instance.
 fn unbindReceiver(receiver: *v8.Object) void {
-    const count = v8.v8_Object_InternalFieldCount(receiver);
-    if (count >= 1) v8.v8_Object_SetAlignedPointerInInternalField(receiver, 0, null);
-    if (count >= 2) v8.v8_Object_SetAlignedPointerInInternalField(receiver, 1, null);
+    if (v8.v8_Object_InternalFieldCount(receiver) >= 1) v8.v8_Object_SetAlignedPointerInInternalField(receiver, 0, null);
 }
 
 // ============================================================================
@@ -692,9 +677,10 @@ fn operationBody(info: *const v8.FunctionCallbackInfo, self: *const Operation) v
     // Nothing above asks that of every receiver: the implicit-this
     // path hands back the realm's GLOBAL for a null `this` whatever
     // the interface (idlharness calls every operation as
-    // `op.apply(null, args)`), and a wrapper with no type info in
-    // slot 1 - any interface outside dom_type_info's 24 - is
-    // unwrapped unchecked. The impl then reads another interface's
+    // `op.apply(null, args)`), and a wrapper's one internal field is
+    // its instance, with no type beside it (lane v8up A0: field 1's
+    // WrapperTypeInfo, kept for 24 interfaces, is gone). The impl
+    // would then read another interface's
     // state as its own: `XMLHttpRequest.open` on the Window died on
     // `_internal.?`. The state ancestry is the brand check; an
     // instance whose vtable carries none implements nothing
@@ -746,13 +732,14 @@ fn operationBody(info: *const v8.FunctionCallbackInfo, self: *const Operation) v
 /// caller throws "Illegal invocation".
 fn operationReceiver(self: *const Operation, info: *const v8.FunctionCallbackInfo, isolate: *v8.Isolate) ?*runtime.Instance {
     // A non-[Global] interface's receiver, read from `info` with no handle
-    // (`thisInstanceOf`, as the attribute getter reads it): a Global<Object>
+    // (`thisInstance`, as the attribute getter reads it): a Global<Object>
     // per call before (perf3 phase 1b). A freed instance's poisoned pointer
-    // is none, as `interface.getInstance` answered. Anything else - a
-    // [Global] interface, a `this` that is no instance of this one (the
+    // is none, as `interface.getInstance` answered. Whether it implements
+    // this interface is the caller's check (operationBody step 2.4).
+    // Anything else - a [Global] interface, a `this` with no instance (the
     // implicit global `this` below) - takes the handle.
     if (!self.global_interface) {
-        if (thisInstanceOf(info, self.interface_name)) |found| {
+        if (thisInstance(info)) |found| {
             if (!isPoisoned(@intFromPtr(found))) return @ptrCast(@alignCast(found));
         }
     }
@@ -807,44 +794,10 @@ fn operationReceiver(self: *const Operation, info: *const v8.FunctionCallbackInf
         return null;
     }
 
-    // Non-[Global] interface: use normal this handling
-    //
-    // First, try to get instance using type-safe check with comptime registry
-    const wrapper_type_info_registry = @import("wrapper_type_info_registry.zig");
-    if (wrapper_type_info_registry.getWrapperTypeInfoByName(self.interface_name)) |expected_type| {
-        if (interface.getInstanceTypeSafe(runtime.Instance, this_obj, expected_type)) |inst| {
-            return inst;
-        }
-    } else {
-        // Type info not found via comptime lookup - check WrapperTypeInfo in slot 1
-        if (interface.getWrapperTypeInfo(this_obj)) |stored_type_info| {
-            // WrapperTypeInfo is present - use it for type checking
-            //
-            // IMPORTANT: Check inheritance chain, not just exact match!
-            // E.g., if method is on Node.prototype and this is HTMLDivElement,
-            // we need to check if HTMLDivElement inherits from Node.
-            var current_type: ?*const interface.WrapperTypeInfo = stored_type_info;
-            const type_matches = while (current_type) |type_info| {
-                if (std.mem.eql(u8, type_info.getName(), self.interface_name)) {
-                    break true;
-                }
-                current_type = type_info.parent;
-            } else false;
-
-            if (type_matches) {
-                // Type matches (including inheritance) - get instance using legacy getInstance
-                if (interface.getInstance(runtime.Instance, this_obj)) |inst| {
-                    return inst;
-                }
-            }
-            // Type mismatch - fall through to implicit this handling or TypeError
-        } else {
-            // No WrapperTypeInfo in slot 1 - fall back to legacy getInstance check
-            if (interface.getInstance(runtime.Instance, this_obj)) |inst| {
-                return inst;
-            }
-            // Continue to implicit this handling
-        }
+    // Non-[Global] interface: `this`'s instance, whose interface the
+    // caller checks (operationBody step 2.4, the state ancestry).
+    if (interface.getInstance(runtime.Instance, this_obj)) |inst| {
+        return inst;
     }
 
     // IMPLICIT THIS HANDLING FOR GLOBAL OBJECTS:
@@ -1051,7 +1004,7 @@ pub fn attributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter
     // interface compares it with globals and asks its
     // creation context, and a [SameObject] attribute draws an
     // edge from it. Every other getter reads the receiver's
-    // internal fields from `info` (ThisInstanceFields), which
+    // internal field from `info` (thisInstance), which
     // makes no handle: the Global, made and disposed per read,
     // was most of `list.length` in NodeList-static-length-
     // getter-tampered-[123].html (~6e7 reads each).
@@ -1167,73 +1120,18 @@ pub fn attributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter
             // - For regular attributes: throw TypeError if `this` is not a valid instance
             // - For [LegacyLenientThis]: return undefined if `this` is not a valid instance
 
-            // CROSS-REALM SUPPORT: Use internal slot checking instead of HasInstance.
-            // HasInstance uses prototype chain which fails across realms because
-            // different realms have different prototype objects even for same interface.
-            // Internal slot (WrapperTypeInfo in slot 1) works across realms because
-            // it's tied to the Zig type system, not the JavaScript prototype chain.
-            //
-            // Per WebIDL spec, type checking should be done via internal slots:
-            // "If the this value is null or undefined, or is not a platform object
-            // that implements the interface, then throw a TypeError"
-            // Use comptime-generated registry which has ALL interfaces
-            const wrapper_type_info_registry = @import("wrapper_type_info_registry.zig");
-            if (wrapper_type_info_registry.getWrapperTypeInfoByName(self.interface_name)) |expected_type| {
-                const this_obj = info.getThis();
-                defer v8.v8_Object_Dispose(this_obj);
-                if (interface.getInstanceTypeSafe(runtime.Instance, this_obj, expected_type)) |inst| {
-                    break :blk @ptrCast(inst);
-                }
-                // Type check failed - not an instance of this interface
-                if (is_lenient_this) {
-                    // [LegacyLenientThis] - return undefined per WebIDL §4.3.10
-                    conv.setReturnUndefined(info);
-                    return;
-                }
-                // Regular attribute - fall through to throw TypeError
-            } else {
-                // Type info not found via comptime lookup - check WrapperTypeInfo in slot 1
-                // (read from `info` with slot 0, as getWrapperTypeInfo and
-                // getInstance read them from a handle)
-                var this_instance: ?*anyopaque = null;
-                var this_type_info: ?*anyopaque = null;
-                v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ThisInstanceFields(info, &this_instance, &this_type_info);
-                if (if (this_type_info) |ptr| @as(?*const interface.WrapperTypeInfo, @ptrCast(@alignCast(ptr))) else null) |stored_type_info| {
-                    // WrapperTypeInfo is present - use it for type checking
-                    // Per WebIDL spec: "If the this value is null or undefined, or is not a
-                    // platform object that implements the interface, then throw a TypeError"
-                    //
-                    // IMPORTANT: Check inheritance chain, not just exact match!
-                    // E.g., if getter is on Node.prototype and this is HTMLDivElement,
-                    // we need to check if HTMLDivElement inherits from Node.
-                    var current_type: ?*const interface.WrapperTypeInfo = stored_type_info;
-                    const type_matches = while (current_type) |type_info| {
-                        if (std.mem.eql(u8, type_info.getName(), self.interface_name)) {
-                            break true;
-                        }
-                        current_type = type_info.parent;
-                    } else false;
-
-                    if (type_matches) {
-                        // Type matches (including inheritance) - get instance pointer from slot 0
-                        const instance_ptr = this_instance;
-                        if (instance_ptr != null) {
-                            break :blk instance_ptr;
-                        }
-                    }
-                    // Type mismatch - fall through to throw TypeError
-                } else {
-                    // No WrapperTypeInfo in slot 1 - fall back to legacy getInstance check
-                    const instance_ptr = this_instance;
-                    if (instance_ptr != null) {
-                        break :blk instance_ptr;
-                    }
-                }
-                // [LegacyLenientThis] - return undefined instead of throwing
-                if (is_lenient_this) {
-                    conv.setReturnUndefined(info);
-                    return;
-                }
+            // The brand check is the instance's state ancestry (`self.implements`
+            // below): per instance, so it holds across realms, where each realm
+            // has its own prototype objects, and whatever an object's prototype
+            // says. Per WebIDL 3.7.6: "If O is not a platform object that
+            // implements the interface, throw a TypeError". `this`'s instance is
+            // read from `info` with no handle (`thisInstance`); a wrapper keeps
+            // no WrapperTypeInfo beside it (lane v8up A0).
+            if (thisInstance(info)) |instance_ptr| break :blk instance_ptr;
+            // [LegacyLenientThis] - return undefined instead of throwing
+            if (is_lenient_this) {
+                conv.setReturnUndefined(info);
+                return;
             }
         }
 
@@ -1940,27 +1838,16 @@ pub fn throwInFunctionRealm(frame: *CallFrame, kind: ThrownError, message: []con
     }
 }
 
-/// `this`'s instance when it implements `interface_name` by its
-/// WrapperTypeInfo chain - or carries no type info but an instance, which
-/// `interface.getInstance` accepted - read from `info` with no handle
-/// (v8_FunctionCallbackInfo_ThisInstanceFields: internal fields 0 and 1,
-/// through a legacy platform object's proxy, as the attribute getter reads
-/// them; perf3 phase 1b). Null otherwise. Per WebIDL, a `this` that is not a
-/// platform object implementing the interface is a TypeError; checking the
-/// internal slots, not the prototype chain, holds across realms.
-pub fn thisInstanceOf(info: *const v8.FunctionCallbackInfo, interface_name: []const u8) ?*anyopaque {
-    var this_instance: ?*anyopaque = null;
-    var this_type_info: ?*anyopaque = null;
-    v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ThisInstanceFields(info, &this_instance, &this_type_info);
-    const instance = this_instance orelse return null;
-    const stored = this_type_info orelse return instance;
-    // IMPORTANT: the inheritance chain, not just an exact match: a method on
-    // Node.prototype called on an HTMLDivElement.
-    var current: ?*const interface.WrapperTypeInfo = @ptrCast(@alignCast(stored));
-    while (current) |type_info| : (current = type_info.parent) {
-        if (std.mem.eql(u8, type_info.getName(), interface_name)) return instance;
-    }
-    return null;
+/// `this`'s instance - internal field 0, through a legacy platform object's
+/// proxy - read from `info` with no handle (v8_FunctionCallbackInfo_ThisInstance;
+/// perf3 phase 1b), or null when `this` has none. Whether it implements the
+/// member's interface is the caller's brand check, the instance's state
+/// ancestry (`conv.implements`): per WebIDL a `this` that is not a platform
+/// object implementing the interface is a TypeError, and an ancestry check per
+/// instance holds across realms. A wrapper keeps no WrapperTypeInfo beside its
+/// instance (lane v8up A0).
+pub fn thisInstance(info: *const v8.FunctionCallbackInfo) ?*anyopaque {
+    return v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ThisInstance(info);
 }
 
 /// An attribute setter function's steps (the generic makeSetterCallback's
@@ -2048,7 +1935,7 @@ fn setterBody(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
         if (self.global_interface) {
             // A handle for `this`: a [Global] receiver is compared with
             // the realm's global object (the only setters that still make
-            // one; `thisInstanceOf` serves every other).
+            // one; `thisInstance` serves every other).
             const this_obj = info.getThis();
             defer v8.v8_Object_Dispose(this_obj);
             if (v8.v8_Isolate_GetCurrentContext(isolate_inner)) |method_ctx| {
@@ -2105,19 +1992,11 @@ fn setterBody(info: *const v8.FunctionCallbackInfo, self: *const Setter) void {
             // - For regular attributes: throw TypeError if `this` is not a valid instance
             // - For [LegacyLenientThis]: silently return if `this` is not a valid instance
 
-            // CROSS-REALM SUPPORT: Use internal slot checking instead of HasInstance.
-            // HasInstance uses prototype chain which fails across realms because
-            // different realms have different prototype objects even for same interface.
-            // Internal slot (WrapperTypeInfo in slot 1) works across realms because
-            // it's tied to the Zig type system, not the JavaScript prototype chain.
-            //
-            // Per WebIDL spec, type checking should be done via internal slots:
-            // "If the this value is null or undefined, or is not a platform object
-            // that implements the interface, then throw a TypeError"
-            // `this`'s internal fields, read from `info` with no handle
-            // (`thisInstanceOf`, as the attribute getter reads them): a
+            // The brand check is the instance's state ancestry (`self.implements`
+            // below), per instance, so it holds across realms. `this`'s instance
+            // is read from `info` with no handle (`thisInstance`): a
             // Global<Object> per assignment before (perf3 phase 1b).
-            if (thisInstanceOf(info, self.interface_name)) |instance_ptr| break :blk instance_ptr;
+            if (thisInstance(info)) |instance_ptr| break :blk instance_ptr;
             // [LegacyLenientThis] - silently return instead of throwing
             if (is_lenient_this) {
                 conv.setReturnUndefined(info);

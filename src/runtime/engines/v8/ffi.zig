@@ -100,11 +100,10 @@ pub const ArgumentRead = extern struct {
     boolean: bool,
     /// The whole string is in the buffer.
     fits: bool,
-    /// An object's internal fields 0 and 1 (through a legacy platform
+    /// An object's internal field 0, its instance (through a legacy platform
     /// object's proxy, as `this` is read); null when it has none, and for a
-    /// function.
+    /// function. A wrapper has no other field (lane v8up A0).
     instance: ?*anyopaque,
-    type_info: ?*anyopaque,
 
     pub const Kind = enum(i32) {
         missing = 0,
@@ -120,6 +119,10 @@ pub const ArgumentRead = extern struct {
     };
 };
 
+/// sizeof the C++ side's ArgumentRead: a test pins `ArgumentRead`'s layout
+/// against it (tests/v8/v8up_a0_wrapper_field_test.zig).
+pub extern fn v8_ArgumentRead_Size() usize;
+
 /// FunctionCallbackInfo - Encapsulates information about a function call from JavaScript
 pub const FunctionCallbackInfo = opaque {
     /// Get the V8 isolate for this callback
@@ -134,11 +137,12 @@ pub const FunctionCallbackInfo = opaque {
     /// Get the 'this' object for the function call
     pub extern fn v8_FunctionCallbackInfo_This(self: *const FunctionCallbackInfo) *Object;
 
-    /// Internal fields 0 and 1 of the receiver (the instance and its
-    /// WrapperTypeInfo), looked through a legacy platform object's proxy, in
-    /// one call; a field the receiver lacks, or a receiver that is not an
-    /// object, reads as null. Makes no handle.
-    pub extern fn v8_FunctionCallbackInfo_ThisInstanceFields(self: *const FunctionCallbackInfo, instance: *?*anyopaque, type_info: *?*anyopaque) void;
+    /// Internal field 0 of the receiver, its instance, looked through a
+    /// legacy platform object's proxy; null for a receiver with no field or
+    /// one that is not an object. Makes no handle. A wrapper has one field:
+    /// the brand check is the instance's state ancestry (`conv.implements`),
+    /// not a WrapperTypeInfo beside it (lane v8up A0).
+    pub extern fn v8_FunctionCallbackInfo_ThisInstance(self: *const FunctionCallbackInfo) ?*anyopaque;
 
     /// A primitive return value, written into the return slot: no handle.
     pub extern fn v8_FunctionCallbackInfo_SetReturnValueDouble(self: *const FunctionCallbackInfo, value: f64) void;

@@ -170,7 +170,7 @@ test "a wrap that fails after the object is made still marks the instance: the m
     try testing.expect(lifecycle.wasWrapped(div));
 }
 
-test "a constructed instance is marked (setInstanceWithTypeInfo)" {
+test "a constructed instance is marked (setInstance)" {
     // A constructor binds its instance to the `this` V8 made for it - a node
     // (this bare realm has no window document, so `new Document()`) or any
     // other platform object, through the same path.

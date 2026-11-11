@@ -36,6 +36,7 @@
 #include <string>
 #include <vector>
 #include <set>
+#include <span>
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
@@ -2900,9 +2901,8 @@ extern "C" void* v8_NodeWrapper_ClearWeak(void* slot) {
 }
 
 static void clearInternalFields(Local<Object> object) {
-    const int count = object->InternalFieldCount();
-    if (count >= 1) object->SetAlignedPointerInInternalField(0, nullptr, kCraneEmbedderDataTag);
-    if (count >= 2) object->SetAlignedPointerInInternalField(1, nullptr, kCraneEmbedderDataTag);
+    // One field, the instance: a wrapper carries no WrapperTypeInfo (lane v8up A0).
+    if (object->InternalFieldCount() >= 1) object->SetAlignedPointerInInternalField(0, nullptr, kCraneEmbedderDataTag);
 }
 
 /// The node's wrapper ends outside a collection: its node's teardown began
@@ -5293,7 +5293,7 @@ void v8_Object_SetAlignedPointerInInternalField(Global<Object>* obj, int index, 
         fprintf(stderr, "FATAL: SetAlignedPointerInInternalField index %d out of bounds (object has %d internal fields)\n", 
                 index, field_count);
         fprintf(stderr, "  This usually means:\n");
-        fprintf(stderr, "  1. Object was not created from a template with SetInternalFieldCount(2)\n");
+        fprintf(stderr, "  1. Object was not created from a template with SetInternalFieldCount(1)\n");
         fprintf(stderr, "  2. Object is the global object (has 0 internal fields by default)\n");
         fprintf(stderr, "  3. Object is from a different isolate/context\n");
         
@@ -5913,7 +5913,10 @@ char* v8_Module_GetModuleRequestType(Global<Module>* module, int index, int* sta
 // until the module is disposed unevaluated). Same design as d8's
 // json_module_to_parsed_json_map.
 
-static MaybeLocal<Value> JsonModuleEvaluationSteps(Local<Context> context, Local<Module> module) {
+// V8 >= 15.7: the evaluation steps answer the evaluation's promise
+// (Module::SyntheticModuleEvaluationSteps); the Value-returning form is
+// LegacySyntheticModuleEvaluationSteps, deprecated.
+static MaybeLocal<Promise> JsonModuleEvaluationSteps(Local<Context> context, Local<Module> module) {
     Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
 
     Local<Value> value;
@@ -5930,17 +5933,17 @@ static MaybeLocal<Value> JsonModuleEvaluationSteps(Local<Context> context, Local
     if (!found) {
         isolate->ThrowException(Exception::TypeError(
             String::NewFromUtf8Literal(isolate, "JSON module has no parsed value")));
-        return MaybeLocal<Value>();
+        return MaybeLocal<Promise>();
     }
 
     Local<String> default_name = String::NewFromUtf8Literal(isolate, "default", NewStringType::kInternalized);
     if (module->SetSyntheticModuleExport(isolate, default_name, value).IsNothing()) {
-        return MaybeLocal<Value>();
+        return MaybeLocal<Promise>();
     }
 
     Local<Promise::Resolver> resolver;
-    if (!Promise::Resolver::New(context).ToLocal(&resolver)) return MaybeLocal<Value>();
-    if (resolver->Resolve(context, Undefined(isolate)).IsNothing()) return MaybeLocal<Value>();
+    if (!Promise::Resolver::New(context).ToLocal(&resolver)) return MaybeLocal<Promise>();
+    if (resolver->Resolve(context, Undefined(isolate)).IsNothing()) return MaybeLocal<Promise>();
     return resolver->GetPromise();
 }
 
@@ -5994,7 +5997,7 @@ Global<Module>* v8_Module_CreateJsonModule(
     Local<Module> module = Module::CreateSyntheticModule(
         isolate,
         module_name,
-        MemorySpan<const Local<String>>(&default_name, 1),
+        std::span<const Local<String>>(&default_name, 1),
         JsonModuleEvaluationSteps
     );
 
@@ -6046,7 +6049,7 @@ Global<Module>* v8_Module_CreateDefaultExportSyntheticModule(
     Local<Module> module = Module::CreateSyntheticModule(
         isolate,
         module_name,
-        MemorySpan<const Local<String>>(&default_name, 1),
+        std::span<const Local<String>>(&default_name, 1),
         JsonModuleEvaluationSteps
     );
 
@@ -6746,34 +6749,30 @@ int v8_FunctionCallbackInfo_Length(const FunctionCallbackInfo<Value>* info) {
     return info->Length();
 }
 
-// FunctionCallbackInfo - internal fields 0 (the instance) and 1 (its
-// WrapperTypeInfo) of the receiver (This()), looked through a legacy platform
-// object's proxy to its target as v8_Object_GetAlignedPointerFromInternalField
-// does; a field the receiver lacks - or a receiver that is not an object -
-// reads as nullptr. No Global: This() is a slot of the callback's arguments,
-// and an attribute getter runs once per read - `list.length` ~6e7 times in
-// NodeList-static-length-getter-tampered-[123].html, where
-// v8_FunctionCallbackInfo_This's Global, made, tracked and disposed per call,
-// and a HandleScope per field read were most of the binding's cost. Both
-// fields in one crossing: the getter's brand check reads both, and at -O0
-// (the Debug build) each read is a few kilobytes of sanitized inline V8
-// code. A Local the proxy's target makes lives in the callback's own
-// HandleScope (V8 opens one around every API callback).
-void v8_FunctionCallbackInfo_ThisInstanceFields(const FunctionCallbackInfo<Value>* info, void** instance, void** type_info) {
-    *instance = nullptr;
-    *type_info = nullptr;
+// FunctionCallbackInfo - internal field 0 (the instance) of the receiver
+// (This()), looked through a legacy platform object's proxy to its target as
+// v8_Object_GetAlignedPointerFromInternalField does; a receiver with no field -
+// or one that is not an object - reads as nullptr. A wrapper has one field: the
+// brand check is the instance's state ancestry (conv.implements), so no
+// WrapperTypeInfo is kept beside it (lane v8up A0; on V8 >= 15.7 every aligned
+// pointer in a field is a cppgc object, d04704a20fc). No Global: This() is a
+// slot of the callback's arguments, and an attribute getter runs once per read
+// - `list.length` ~6e7 times in NodeList-static-length-getter-tampered-[123].html,
+// where v8_FunctionCallbackInfo_This's Global, made, tracked and disposed per
+// call, and a HandleScope per field read were most of the binding's cost. A
+// Local the proxy's target makes lives in the callback's own HandleScope (V8
+// opens one around every API callback).
+void* v8_FunctionCallbackInfo_ThisInstance(const FunctionCallbackInfo<Value>* info) {
     Local<Value> receiver = info->This();
-    if (!receiver->IsObject()) return;
+    if (!receiver->IsObject()) return nullptr;
     Local<Object> self = receiver.As<Object>();
     if (self->IsProxy()) {
         Local<Value> target = self.As<Proxy>()->GetTarget();
-        if (!target->IsObject()) return;
+        if (!target->IsObject()) return nullptr;
         self = target.As<Object>();
     }
-    const int count = self->InternalFieldCount();
-    Isolate* isolate = info->GetIsolate();
-    if (count >= 1) *instance = self->GetAlignedPointerFromInternalField(isolate, 0, kCraneEmbedderDataTag);
-    if (count >= 2) *type_info = self->GetAlignedPointerFromInternalField(isolate, 1, kCraneEmbedderDataTag);
+    if (self->InternalFieldCount() < 1) return nullptr;
+    return self->GetAlignedPointerFromInternalField(info->GetIsolate(), 0, kCraneEmbedderDataTag);
 }
 
 // FunctionCallbackInfo - set a primitive return value straight into the
@@ -6859,16 +6858,21 @@ struct ArgumentRead {
     bool boolean;
     bool fits;
     void* instance;
-    void* type_info;
 };
+
+/// sizeof(ArgumentRead), so a test pins ffi.ArgumentRead's layout against it:
+/// the struct crosses the FFI by pointer and both sides must agree.
+size_t v8_ArgumentRead_Size() {
+    return sizeof(ArgumentRead);
+}
 
 /// Argument `index` of the call, read with no handle: its kind; ToBoolean of it
 /// (which runs no script); a Number's value; a String's WTF-8 into `buffer` (the
 /// bytes v8_String_WriteUtf8 gives: no REPLACE_INVALID_UTF8, so a lone surrogate
 /// is its three-byte form, as fromV8String reads it), whole or not at all
 /// (`fits`; `length` is then the bytes a buffer needs); an object's internal
-/// fields 0 and 1 through a legacy platform object's proxy, as `this` is read
-/// (v8_FunctionCallbackInfo_ThisInstanceFields) - none for a function, which no
+/// field 0 through a legacy platform object's proxy, as `this` is read
+/// (v8_FunctionCallbackInfo_ThisInstance) - none for a function, which no
 /// platform object is (conversions.platformObjectOf).
 void v8_FunctionCallbackInfo_ReadArgument(const FunctionCallbackInfo<Value>* info, int index, ArgumentRead* out, char* buffer, int capacity) {
     out->kind = 0;
@@ -6877,7 +6881,6 @@ void v8_FunctionCallbackInfo_ReadArgument(const FunctionCallbackInfo<Value>* inf
     out->boolean = false;
     out->fits = false;
     out->instance = nullptr;
-    out->type_info = nullptr;
     if (index < 0 || index >= info->Length()) return;
     Isolate* isolate = info->GetIsolate();
     Local<Value> value = (*info)[index];
@@ -6911,9 +6914,7 @@ void v8_FunctionCallbackInfo_ReadArgument(const FunctionCallbackInfo<Value>* inf
             if (!target->IsObject()) return;
             object = target.As<Object>();
         }
-        const int count = object->InternalFieldCount();
-        if (count >= 1) out->instance = object->GetAlignedPointerFromInternalField(isolate, 0, kCraneEmbedderDataTag);
-        if (count >= 2) out->type_info = object->GetAlignedPointerFromInternalField(isolate, 1, kCraneEmbedderDataTag);
+        if (object->InternalFieldCount() >= 1) out->instance = object->GetAlignedPointerFromInternalField(isolate, 0, kCraneEmbedderDataTag);
     } else {
         out->kind = 7;
     }
@@ -12211,7 +12212,7 @@ class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
             return Nothing<uint32_t>();
         }
         // 2.
-        MemorySpan<const uint8_t> bytes = module->GetCompiledModule().GetWireBytesRef();
+        std::span<const uint8_t> bytes = module->GetCompiledModule().GetWireBytesRef();
         attachments_.wasm_modules.emplace_back(bytes.data(), bytes.data() + bytes.size());
         return Just(static_cast<uint32_t>(attachments_.wasm_modules.size() - 1));
     }
@@ -12304,7 +12305,7 @@ class HostObjectDeserializerDelegate final : public ValueDeserializer::Delegate 
             return MaybeLocal<WasmModuleObject>();
         }
         const std::vector<uint8_t>& bytes = attachments_->wasm_modules[transfer_id];
-        return WasmModuleObject::Compile(isolate, MemorySpan<const uint8_t>(bytes.data(), bytes.size()));
+        return WasmModuleObject::Compile(isolate, std::span<const uint8_t>(bytes.data(), bytes.size()));
     }
 
     MaybeLocal<SharedArrayBuffer> GetSharedArrayBufferFromId(Isolate* isolate, uint32_t id) override {

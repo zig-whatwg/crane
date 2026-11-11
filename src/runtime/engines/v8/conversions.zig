@@ -25,7 +25,6 @@ const debug = @import("debug.zig");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const interface_mod = @import("interface.zig");
-const dom_type_info = @import("dom_type_info.zig");
 const callback_wrapper = @import("callback_wrapper.zig");
 const typedefs = @import("typedefs");
 const js_value_mod = @import("js_value.zig");

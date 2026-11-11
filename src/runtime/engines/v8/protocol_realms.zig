@@ -14,7 +14,6 @@ const engine = @import("engine");
 const ffi = @import("ffi.zig");
 const context_manager = @import("context_manager.zig");
 const interface_bindings = @import("interface_bindings.zig");
-const dom_type_info = @import("dom_type_info.zig");
 const window_properties = @import("window_properties.zig");
 const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 const realm_v8 = @import("realm_v8.zig");
@@ -374,7 +373,6 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     // (removeContext's Window), which must not find another realm's Window,
     // nor a field never set, which V8 refuses to read as a pointer.
     ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, null);
-    ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, null);
 
     // HTML "create a new realm", the customization for the global object:
     // the host's new Window, bound to `global` (BORROWED by the host).
@@ -655,13 +653,10 @@ fn bindWindowToGlobal(
     window: *engine.Instance,
     allocator: std.mem.Allocator,
 ) void {
-    // Internal field 0: the Window; 1: its type info.
+    // Internal field 0, the only one: the Window (lane v8up A0: no type info).
     ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window));
     // [wrap_tracking]: the global object reaches the Window from here.
     runtime.instance_lifecycle.markWrapped(window);
-    if (dom_type_info.getTypeInfoByName("Window")) |type_info| {
-        ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
-    }
 
     // Cross-origin checks ask the context manager for an accessor's Window.
     context_manager.setWindowForContext(context, window) catch |err| {

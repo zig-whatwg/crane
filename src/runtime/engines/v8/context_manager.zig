@@ -960,9 +960,7 @@ fn createWindowBoundToGlobal(
     // 2. Get the V8 global object
     const global = v8.v8_Context_Global(v8_ctx) orelse return error.GlobalNotFound;
 
-    // 3. Set internal fields on the global to point to our Window instance
-    // Field 0: instance pointer
-    // Field 1: type info pointer (for type-safe unwrapping)
+    // 3. Set the global's internal field, its only one, to our Window instance
     v8.v8_Object_SetAlignedPointerInInternalField(
         global,
         0,
@@ -970,16 +968,6 @@ fn createWindowBoundToGlobal(
     );
     // [wrap_tracking]: the global object reaches the Window from here.
     runtime.instance_lifecycle.markWrapped(window_instance);
-
-    // Use dom_type_info which has the actual type info definitions
-    const dom_type_info = @import("dom_type_info.zig");
-    if (dom_type_info.getTypeInfoByName("Window")) |type_info| {
-        v8.v8_Object_SetAlignedPointerInInternalField(
-            global,
-            1,
-            @ptrCast(@constCast(type_info)),
-        );
-    }
 
     // 4. Store the V8 global in the Window's internal state
     // This is the KEY change for cross-realm support:
@@ -1858,16 +1846,10 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
     const window_instance = try Window.init(allocator, runtime_ctx);
     errdefer Window.deinit(window_instance);
 
-    // 10. Bind Window instance to global object's internal fields
-    // Field 0: instance pointer, Field 1: type info pointer
-    // Use dom_type_info which has the actual type info definitions
-    const dom_type_info_3 = @import("dom_type_info.zig");
+    // 10. Bind Window instance to the global object's internal field (its only one)
     v8.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window_instance));
     // [wrap_tracking]: the global object reaches the Window from here.
     runtime.instance_lifecycle.markWrapped(window_instance);
-    if (dom_type_info_3.getTypeInfoByName("Window")) |type_info| {
-        v8.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
-    }
 
     // 11. Bind V8 global to Window instance for cross-realm access
     impls.Window.setBoundV8Global(window_instance, @ptrCast(global));

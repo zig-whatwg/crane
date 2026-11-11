@@ -249,7 +249,6 @@ fn clearFields(object: *v8.Object) void {
     const count = v8.v8_Object_InternalFieldCount(object);
     if (count < 1) return;
     v8.v8_Object_SetAlignedPointerInInternalField(object, 0, null);
-    if (count >= 2) v8.v8_Object_SetAlignedPointerInInternalField(object, 1, null);
 }
 
 /// What a path that ends an entry did to the entry's instance, for
