@@ -16065,7 +16065,10 @@ bool CrossOriginNamedChild(Isolate* isolate, Local<Object> holder, Local<Name> n
 
 // --- named interceptors ---
 
-/// [[Get]] (7.2.3.7 step 4, 7.2.4.7 step 2): CrossOriginGet.
+/// [[Get]] (7.2.3.7 step 4, 7.2.4.7 step 2): CrossOriginGet. A getter is
+/// called on the HOLDER, not the Receiver (CrossOriginGet step 5): V8 >= 14
+/// gives an interceptor no receiver - the KNOWN DEVIATION recorded at
+/// CrossOriginNamedSetter, with the V8 lines that were checked.
 Intercepted CrossOriginNamedGetter(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     int32_t kind = CrossOriginKindOf(info.DataV2().As<Value>());
@@ -16115,8 +16118,45 @@ Intercepted CrossOriginNamedGetter(Local<Name> name, const PropertyCallbackInfo<
 }
 
 /// [[Set]] (7.2.3.8 step 4, 7.2.4.8 step 2): CrossOriginSet - the setter of
-/// a member that has one, called on the receiver; a SecurityError for
-/// anything else (expandos included).
+/// a member that has one; a SecurityError for anything else (expandos
+/// included).
+///
+/// KNOWN DEVIATION (the user's ruling, 2026-11-11; lane v8up b4): CrossOriginSet
+/// step 3.1 is Call(desc.[[Set]], Receiver, V), and here the setter is called
+/// on the HOLDER. V8 removed v8::PropertyCallbackInfo<T>::This() in 14
+/// (24eb3c4ba35, "Remove deprecated v8::PropertyCallbackInfo<T>::This()"); on
+/// V8 13.1 this function passed info.This(). So a write whose receiver only
+/// inherits from a cross-origin Window or Location -
+/// `Object.create(crossOriginWindow).location = url`,
+/// `Object.create(crossOriginWindow.location).href = url` - performs the
+/// navigation the direct write is allowed to perform, where the spec has the
+/// setter's brand check throw a TypeError of the lexical realm. Nothing is
+/// read and no capability is added. WPT
+/// html/browsers/origin/cross-origin-objects/window-location-and-location-href-cross-realm-set.html,
+/// the two "... setter throws TypeError in lexical realm on invalid |this|
+/// value" subtests: Chrome 157 fails both (9/11; Blink reads info.Holder()
+/// too), Firefox 160 and Safari 27.2 pass (11/11; wpt.fyi stable runs of
+/// 2026-11-11). Pinned by tests/wpt/crane/v8up-cross-origin-setter-inherited-receiver-deviation.html.
+///
+/// Checked 2026-11-11 against V8 15.7.112.43 - NO public path gives the
+/// receiver; delete this deviation the day one does:
+/// - PropertyCallbackInfo's argument block has no receiver slot
+///   (v8-function-callback.h 310-332: kPropertyKeyIndex, the frame slots,
+///   kIsolateIndex, kReturnValueIndex, kCallbackInfoIndex, kHolderIndex,
+///   kShouldThrowOnErrorIndex, kValueIndex), and V8 fills it from the holder
+///   alone (js-objects.cc 1404, SetPropertyWithInterceptorInternal:
+///   `PropertyCallbackArguments args(isolate, it->GetHolderForApi(), should_throw)`;
+///   api-arguments.h 60-62 has no constructor that takes a receiver) - the
+///   definer, descriptor and deleter callbacks get the same info;
+/// - v8::AccessCheckCallback gets (accessing_context, accessed_object, data)
+///   (v8-template.h 439-441), and accessed_object is the checked HOLDER
+///   (isolate.cc 2461-2502, Isolate::MayAccess; js-objects.cc 2833,
+///   `checked = it->GetHolder<JSObject>()`);
+/// - PropertyHandlerFlags (v8-template.h 708-746: kNone, kNonMasking,
+///   kOnlyInterceptStrings, kHasNoSideEffect, kHasDontDeleteProperty,
+///   kInternalNewCallbacksSignatures) change which lookups reach the
+///   interceptor, never what it is told;
+/// - no Isolate-level state names the lookup's receiver while the callback runs.
 Intercepted CrossOriginNamedSetter(Local<Name> name, Local<Value> value, const PropertyCallbackInfo<Boolean>& info) {
     Isolate* isolate = info.GetIsolate();
     int32_t kind = CrossOriginKindOf(info.DataV2().As<Value>());
