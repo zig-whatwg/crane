@@ -1,6 +1,7 @@
 # Architecture: A deferred finalizer needs a safe point inside the task, not only between tasks
 
 **Date**: 2026-11-11
+**Status (2026-11-12, lane v8up b7)**: the safe points stand; the queueing moved. The record now joins the agent's queue in V8's FIRST pass, so a finalizer no longer waits for the next collection to run a pending second pass (architecture-a-dead-wrappers-finalizer-is-queued-in-the-first-pass-a-second-pass-is-a-collection-late.md).
 **Lesson**: Moving a finalizer out of the collector to "the next safe point" is only half a design: say which safe point one long task reaches, and measure a one-script loop that makes and drops objects before calling the move free.
 
 **Why**: The queue that took Zig finalizers out of V8's second pass (lane v8up b6) ran them at the pump and when a forced collection returned - "the moments they ran before". That was true only between tasks. V8 posts a collection's second pass as a task (15.7.112.43 src/handles/global-handles.cc:892-901), and when the NEXT collection begins before that task ran, V8 runs the pending pass first (src/heap/heap.cc:1509-1511, `Heap::CollectGarbage`: "Ensure that all pending phantom callbacks are invoked"). In one long script that was where every finalizer ran: one collection late, in the middle of an allocation. With the queue they all waited for the pump, a task away, each keeping its native state.
