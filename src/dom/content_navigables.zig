@@ -35,6 +35,11 @@ pub const Implementation = struct {
     is_navigating: *const fn (document: *runtime.Instance) bool,
     /// A resource in an active child document stopped delaying its load.
     load_delay_may_have_ended: *const fn (document: *runtime.Instance) void,
+    /// window.stop() ended the load of `document`, a content navigable's
+    /// active document, before its load event: the navigable stops delaying
+    /// its container's document, whose load the container's load event steps
+    /// would otherwise have released.
+    load_stopped: *const fn (document: *runtime.Instance) void,
 };
 
 var implementation: Hook(?Implementation) = .init(null);
@@ -79,6 +84,13 @@ pub fn stopLoadingIfNavigating(document: *runtime.Instance) void {
     if (impl.is_navigating(document)) impl.stop_loading(document);
 }
 
+/// `document`'s load was stopped before its load event (window.stop()):
+/// see Implementation.load_stopped.
+pub fn loadStopped(document: *runtime.Instance) void {
+    const impl = implementation.get() orelse return;
+    impl.load_stopped(document);
+}
+
 test "without an installed implementation nothing delays a load event" {
     const override = implementation.overrideForTest(null);
     defer override.restore();
@@ -89,4 +101,5 @@ test "without an installed implementation nothing delays a load event" {
     loadDelayMayHaveEnded(&document);
     stopLoading(&document);
     stopLoadingIfNavigating(&document);
+    loadStopped(&document);
 }
