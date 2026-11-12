@@ -1,6 +1,7 @@
 # Workflow: An A/B against a generation older than the main the branch merged counts main's gains as the batch's
 
 **Date**: 2026-11-12
+**Status** (2026-11-12, lane v8up b7): the same holds for a PERF pair, in the other direction. The pair's frozen baseline was round 6's console (main 253917157d7); the tip had merged main fd0567b64ed, which other lanes had made lighter. Against the frozen console the port's memory read 1.0337 of main (30 rows over the 3% bar); against a console built from the merged main, the same day and host, 1.0596 (34 rows) - main's gains had been counted as the port's. Build main-now's console (ten minutes) and report both columns whenever the frozen pin is older than the merged main.
 **Lesson**: When the A/B baseline is a generation swept before the main your branch has since merged, the raw difference is main's progress plus the batch's. Attribute before reporting: diff your tip's journal against a main-now sweep of the same day, host and configuration, and report both numbers.
 
 **Why**: A lane merges current main before its gate, and the frozen baseline is the last published generation. Between the two, other lanes merged. Every file they fixed shows as CHANGED in the lane's A/B, and its losses hide among them. The headline (+329 here) says nothing about the batch.
