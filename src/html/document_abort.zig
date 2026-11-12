@@ -65,7 +65,22 @@ pub const DescendantAbort = struct {
     fn steps(context: ?*anyopaque) void {
         const target: *Target = @ptrCast(@alignCast(context.?));
         const task = target.task;
+        const document_generation = runtime.SlabAllocator.generationOf(target.document);
         document_lifecycle.abort(target.document);
+        // The descendant's load ends as the stopped document's does
+        // (Window.stop, Document's lifecycleStopLoad): readiness "complete",
+        // no load event at it or its container, and its container no longer
+        // delays the container's document. Stated deviation from HTML, whose
+        // aborted descendant still fires load once its cancelled fetches stop
+        // delaying it - golden rule 2, mechanism by mechanism as for the
+        // stopped document (lifecycleStopLoad's evidence: no load in Chrome
+        // and Firefox), here because Blink FrameLoader::StopAllLoaders runs
+        // Document::CancelParsing in every local descendant frame, and WebKit
+        // FrameLoader::stopAllLoaders stops each local child's loaders. Only
+        // "stop loading" queues these tasks (its step 3).
+        if (runtime.SlabAllocator.generationOf(target.document) == document_generation and target.document.ctx.hasEngine()) {
+            document_lifecycle.stopLoad(target.document);
+        }
         // Abort callbacks may end either document; the task holds each
         // wrapper and still checks the slab identity before reading state.
         if (!task.parent_ctx.hasEngine() or runtime.SlabAllocator.generationOf(task.parent) != task.parent_generation) return;
