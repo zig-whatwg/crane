@@ -587,6 +587,27 @@ fn moveSelectionByKey(target: *Instance, right: bool, extend: bool, granularity:
         if (right) interfaces.Selection.call_collapseToEnd(selection) catch {} else interfaces.Selection.call_collapseToStart(selection) catch {};
         return;
     }
+    const starts_selection = extend and (interfaces.Selection.get_isCollapsed(selection) catch false);
+    const caret_node = interfaces.Selection.get_focusNode(selection) catch null;
+    const caret_offset = interfaces.Selection.get_focusOffset(selection) catch 0;
+    modifySelection(selection, extend, right, granularity);
+    // Extending a caret into a range starts a selection: the Selection API's
+    // selectstart, at the caret's container, and a cancelled one leaves the
+    // caret where it was. Only when the extension moved something: Blink's
+    // FrameSelection::Modify runs the SelectionModifier first, returns when
+    // it did not move, then DispatchSelectStart at the extent's container
+    // (selection/onselectstart-on-key-in-contenteditable.html: no
+    // selectstart at the host's start or end).
+    if (starts_selection and !(interfaces.Selection.get_isCollapsed(selection) catch true)) {
+        const node = caret_node orelse return;
+        interfaces.Selection.call_collapse(selection, node, .passed(caret_offset)) catch return;
+        if (!@import("execcommand/root.zig").fireSelectStart(node)) return;
+        if ((interfaces.Selection.get_rangeCount(selection) catch 0) == 0) return;
+        modifySelection(selection, extend, right, granularity);
+    }
+}
+
+fn modifySelection(selection: *Instance, extend: bool, right: bool, granularity: []const u8) void {
     const Opt = webidl.Opt(runtime.DOMString);
     interfaces.Selection.call_modify(
         selection,
@@ -932,25 +953,12 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
             return;
         }
     }
-    // With the word modifier (Ctrl, Alt where navigator.platform names a
-    // Mac - isWordModifier, as WPT's EditorTestUtils.deleteWordModifier),
-    // Backspace and Delete delete a word: Blink's key bindings
-    // "DeleteWordBackward" / "DeleteWordForward" (editing_behavior.cc),
-    // Gecko's cmd_deleteWordBackward, inputType deleteWordBackward /
-    // deleteWordForward (Input Events 2).
-    // TODO(editing): the line forms (Meta+Backspace on a Mac:
-    // deleteSoftLineBackward) need line boundaries.
-    if ((isKey(key, "Backspace") or isKey(key, "Delete")) and (modifiers.ctrl or modifiers.alt) and !modifiers.meta and !modifiers.shift) {
-        const execcommand = @import("execcommand/root.zig");
-        if (execcommand.isEditableTarget(target)) {
-            const window = viewOf(target) orelse return;
-            const navigator = interfaces.Window.get_navigator(window) catch return;
-            var platform = interfaces.Navigator.get_platform(navigator) catch return;
-            defer platform.deinit(target.ctx.allocator);
-            if (isWordModifier(platform.asSlice(), modifiers)) execcommand.deleteWordByKey(target, isKey(key, "Delete"));
-            return;
-        }
-    }
+    // TODO(editing): Ctrl/Alt/Meta+Backspace and +Delete (deleteWordBackward,
+    // deleteSoftLineBackward, ...): they need word and line movement across
+    // inline element boundaries (Selection.modify's word steps stop at a
+    // Text node's edge, so "abc <span>def</span>[]" would delete nothing
+    // where "abc def[]" deletes "def": editing/whitespaces/delete-word-
+    // around-span.html compares the two).
     // ArrowLeft and ArrowRight in an editing host: the caret moves (Shift:
     // the selection extends) by a character, or by a word with the word
     // modifier - Blink's key bindings MoveLeft / MoveRight /
