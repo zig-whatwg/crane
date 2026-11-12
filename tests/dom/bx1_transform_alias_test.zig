@@ -190,12 +190,14 @@ test "one-member shorthand census covers every computed wrapper" {
                 .page_break_before => .break_before,
                 .page_break_after => .break_after,
                 .page_break_inside => .break_inside,
+                // Color Adjustment 1 §3.1 (lane cssprop1).
+                .color_adjust => .print_color_adjust,
                 else => return error.UncoveredOneMemberShorthand,
             };
             try testing.expectEqual(expected, longhands[0]);
         }
     }
-    try testing.expectEqual(@as(usize, 6), count);
+    try testing.expectEqual(@as(usize, 7), count);
 }
 
 test "computed transform alias uses the canonical resolver in every display case" {
