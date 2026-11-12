@@ -259,10 +259,3 @@ pub const Run = struct {
         cache.leave(self.kind);
     }
 };
-
-/// The cache `document` has now, if any: for tests and memory reports.
-pub fn of(document: *runtime.Instance) ?*const DocumentCache {
-    const state = document_state.Registry.get(document) orelse return null;
-    const shared = state.interaction_state orelse return null;
-    return shared.attribute_blocks;
-}
