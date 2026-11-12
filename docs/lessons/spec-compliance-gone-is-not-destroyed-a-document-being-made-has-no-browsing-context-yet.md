@@ -1,0 +1,12 @@
+# Spec Compliance: "Gone" is not "destroyed" - a document being made has no browsing context yet
+
+**Date**: 2026-11-12
+**Lesson**: Ask whether "destroy a document" has run (`dom.document_lifecycle.isDestroyed`), not whether `dom.document_activity` says `.gone`, when a step depends on a document being destroyed.
+
+**Why**: `document_activity.activity` answers the event loop's question: can this document's tasks ever run again? It answers `.gone` for a freed or destroyed document. It also answers `.gone` for a document that has no browsing context yet, or no navigable showing it. That second case includes every document still inside "create and initialize a Document object", before it becomes its navigable's active document. Code that runs in that window and asks about the new document's Window (the realm-creation hooks, a service worker client being made) sees "gone" for a live document.
+
+**What Happened**: Lane nav2 batch 9 (3a3ddd1dd3a) made Window.zig's `navigableOf` return null once the Window's associated Document was destroyed, so a frame inside a removed frame answers `parent` null at once (iframe-synchronously-discard.html). It tested for this with `document_activity.activity(...) == .gone`. The FULL A/B against generation 216 then showed 6 service-worker files newly blocking, and windowclient-navigate fell from 20 to 12. `WindowClient.frameType` answered "top-level" where the tests expect "nested" or "auxiliary". The cause: service_worker/realm.zig computes the frame type when it creates the client, while the document is still being made, by reading `Window.parent` and `Window.opener`. The new document was `.gone` (no browsing context yet), so `navigableOf` returned null.
+
+**Fix**: 3299311a6b4 adds a `document_lifecycle.isDestroyed` hook that Document installs (its `destroyed` flag, set by `lifecycleDestroy`). `navigableOf` returns null only when that hook says the document was destroyed. iframe-synchronously-discard keeps passing, because the removed frame's documents ARE destroyed, and the SW clients read their real frame type.
+
+**Takeaway**: **A three-way classification built for one consumer (the event loop's run/keep/drop) is not a predicate for another spec concept. Name the exact spec state you need (destroyed, fully active, has a browsing context) and read that state. A FULL A/B catches the cross-area reader; a probe of the batch's own files does not.**
