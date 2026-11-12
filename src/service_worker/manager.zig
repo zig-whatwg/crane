@@ -454,6 +454,14 @@ pub const ReservedClient = struct {
     /// The same for a top-level traversable's document (a request whose
     /// destination is "document"). OWNED; null: none.
     top_level_storage_key: ?[]u8 = null,
+    /// The creator's browsing context and its last focus time when it
+    /// reserved (0: none, never): a frame's navigation reserves from the
+    /// frame's own document, which unloads - its environment ends - before
+    /// the new document is a client (HTMLIFrameElement runCommit), so the
+    /// browsing context's focus time crosses on the reservation to the next
+    /// client of the same navigable (`createClientControlled`).
+    creator_navigable: usize = 0,
+    creator_focus_ns: u64 = 0,
 
     /// The key for a fetch whose destination is `destination`.
     fn storageKeyFor(self: *const ReservedClient, destination: fetch.internal.Destination) ?[]const u8 {
@@ -1463,6 +1471,14 @@ pub const Manager = struct {
     pub fn reserveClient(self: *Manager, kind: registry_mod.EnvironmentKind, creator: u64, inherited_worker: u64, keys: ReservedKeys) ?*ReservedClient {
         const handle = self.allocator.create(ReservedClient) catch return null;
         handle.* = .{ .manager = self, .kind = kind, .creator = creator, .inherited_worker = inherited_worker };
+        if (creator != 0) {
+            self.lock();
+            defer self.unlock();
+            if (self.registry.findEnvironment(creator)) |environment| if (environment.kind == .window) {
+                handle.creator_navigable = environment.navigable;
+                handle.creator_focus_ns = environment.last_focus_ns;
+            };
+        }
         if (keys.nested) |k| handle.storage_key = self.allocator.dupe(u8, k) catch {
             self.destroyReserved(handle);
             return null;
@@ -1560,6 +1576,7 @@ pub const Manager = struct {
                         environment.secure_context = values.secure_context;
                         environment.navigable = values.navigable;
                         self.registry.inheritFocusTime(environment);
+                        self.inheritReservedFocusTime(environment, reserved);
                         const controller = try self.controllerAtCreation(environment);
                         // The messages a service worker sent it meanwhile.
                         self.deliverReservedMessages(environment);
@@ -1590,12 +1607,24 @@ pub const Manager = struct {
                 break :inherit creator.active_worker;
             } else null;
             if (inherited) |worker| self.registry.setActiveWorker(environment, worker);
+            if (values.reserved) |reserved| self.inheritReservedFocusTime(environment, reserved);
             const controller = try self.controllerAtCreation(environment);
             self.navigated(&requests, values.navigable, environment) catch {};
             break :blk .{ .id = environment.id, .controller = controller };
         };
         self.postWindowDataRequests(requests.items);
         return created;
+    }
+
+    /// A new window client of the navigable its reservation's creator was a
+    /// document of starts with that browsing context's focus time - the
+    /// creator's latest if it is still listed, else the one it had when it
+    /// reserved (`ReservedClient.creator_focus_ns`). Locked.
+    fn inheritReservedFocusTime(self: *Manager, environment: *registry_mod.Environment, reserved: *const ReservedClient) void {
+        if (environment.navigable == 0 or reserved.creator_navigable != environment.navigable) return;
+        var at = reserved.creator_focus_ns;
+        if (self.registry.findEnvironment(reserved.creator)) |creator| at = @max(at, creator.last_focus_ns);
+        environment.last_focus_ns = @max(environment.last_focus_ns, at);
     }
 
     /// The window client `id`'s browsing context was focused at `at_ns` (the

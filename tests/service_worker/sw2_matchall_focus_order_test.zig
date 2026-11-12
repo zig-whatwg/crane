@@ -279,6 +279,35 @@ test "matchAll: equal focus times - a frame and its ancestors in one focus updat
     try testing.expectEqualStrings("clients: /page.html /top2.html /top1.html /nested1.html /top0.html", try fixture.matchAll());
 }
 
+test "matchAll: a frame's next document keeps its focus time when the old one unloads before the new one is a client" {
+    var fixture: Fixture = undefined;
+    try fixture.init(testing.allocator);
+    defer fixture.deinit();
+    const manager = &fixture.manager;
+
+    const page = try fixture.window("/page.html", 0);
+    try fixture.startWorker(page);
+    const frame_a = try fixture.window("/a.html", 7);
+    const other = try fixture.window("/other.html", 8);
+    manager.environmentFocused(frame_a, 100);
+    manager.environmentFocused(other, 50);
+    // The frame navigates as HTMLIFrameElement does: the navigation reserves
+    // its client from the frame's own document, that document unloads (its
+    // environment ends), and only then does the new document become a client.
+    const reserved = manager.reserveClient(.window, frame_a, 0, .{}) orelse return error.OutOfMemory;
+    manager.removeEnvironment(frame_a);
+    _ = try manager.createClient(.{
+        .kind = .window,
+        .origin = "https://example.com",
+        .creation_url = "https://example.com/b.html",
+        .secure_context = true,
+        .endpoint = &fixture.endpoint().endpoint,
+        .reserved = reserved,
+        .navigable = 7,
+    });
+    try testing.expectEqualStrings("clients: /b.html /other.html /page.html", try fixture.matchAll());
+}
+
 test "matchAll: a focus time is the browsing context's - the next client of the same navigable carries it" {
     var fixture: Fixture = undefined;
     try fixture.init(testing.allocator);
