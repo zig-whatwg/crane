@@ -109,6 +109,30 @@ pub fn caretOnFocus(element: *Instance) void {
     interfaces.Selection.call_collapse(selection, element, .passed(0)) catch {};
 }
 
+/// A primary-button press that hit the editable element `hit` (mousedown's
+/// default action, after its focus): the caret goes to the hit position -
+/// Blink's SelectionController::HandleMousePressEvent (PositionForPoint of
+/// the hit), Gecko's nsIFrame::HandlePress (GetContentOffsetsFromPoint),
+/// WebKit's the same. Which position a point maps to is geometry, a read
+/// on the renderer (docs/platform-protocol.md 6.9) - except for an element
+/// with exactly one caret position, an empty one, where every renderer
+/// answers the same: (element, 0) (the integrator's G5 ruling, 2026-11-12:
+/// DOM fact, not a stand-in). editing/other/empty-elements-insertion.html's
+/// border row and empty-elements-insertion-padding.html: all three pass.
+/// TODO(renderer position-for-point): the layout adapter
+/// (src/platform/layout_adapter.zig) offers caret rects only, no
+/// position-for-point read, so a press on an element with content places
+/// no caret until a renderer answers that read.
+pub fn caretAtHit(hit: *Instance) void {
+    if ((interfaces.Node.get_nodeType(hit) catch return) != interfaces.Node.get_ELEMENT_NODE()) return;
+    if (!(editing.isEditable(hit) catch false) and !(editing.isEditingHost(hit) catch false)) return;
+    // One caret position only: no child nodes.
+    if ((interfaces.Node.get_firstChild(hit) catch return) != null) return;
+    const document = (interfaces.Node.get_ownerDocument(hit) catch return) orelse return;
+    const selection = (interfaces.Document.call_getSelection(document) catch return) orelse return;
+    interfaces.Selection.call_collapse(selection, hit, .passed(0)) catch {};
+}
+
 pub fn focusPosition(node: *Instance, offset: u32) void {
     // Q20: inert descendants do not move focus, even in an editable root
     // (Chrome/Safari majority; Firefox focuses the root).

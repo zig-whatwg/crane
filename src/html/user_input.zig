@@ -562,11 +562,48 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     } else if (nodeDocument(focus_target)) |document| {
         focus.focusingSteps(document, null, .click);
     }
+    // Then the press's selection (Blink EventHandler::HandleMousePressEvent:
+    // HandleMouseFocus, then the SelectionController): a primary press on
+    // an editable element outside a text control puts the caret at the hit
+    // position (selection_focus.caretAtHit: only where it is no geometry).
+    if (button == 0) if (pointer.currentTarget()) |hit| {
+        if (textControlAncestor(hit) == null) @import("selection_focus.zig").caretAtHit(hit);
+    };
     // Keep ordinary focus before the picker focusing steps: the shipping
     // browsers split (select-events.optional.html, df642c4142: Chrome155
     // skips select focus; Safari27 focuses it). HTML decides the tie,
     // row61 Q19; the helper must not swallow this click-focus default.
     if (pointer.currentTarget()) |current| @import("forms/select_picker.zig").mouseDown(current, button);
+}
+
+/// An arrow key's selection change in an editing host (see
+/// defaultKeyDownAction): Selection.modify("move" | "extend", "left" |
+/// "right", granularity), or the collapse of a range to its edge.
+fn moveSelectionByKey(target: *Instance, right: bool, extend: bool, granularity: []const u8) void {
+    const document = nodeDocument(target) orelse return;
+    const selection = (interfaces.Document.call_getSelection(document) catch return) orelse return;
+    if ((interfaces.Selection.get_rangeCount(selection) catch 0) == 0) return;
+    if (!extend and !(interfaces.Selection.get_isCollapsed(selection) catch true)) {
+        if (right) interfaces.Selection.call_collapseToEnd(selection) catch {} else interfaces.Selection.call_collapseToStart(selection) catch {};
+        return;
+    }
+    const Opt = webidl.Opt(runtime.DOMString);
+    interfaces.Selection.call_modify(
+        selection,
+        Opt.passed(runtime.DOMString.initInterned(if (extend) "extend" else "move")),
+        Opt.passed(runtime.DOMString.initInterned(if (right) "right" else "left")),
+        Opt.passed(runtime.DOMString.initInterned(granularity)),
+    ) catch {};
+}
+
+/// The text control `node` is, or is inside (its own editor owns its
+/// caret).
+fn textControlAncestor(node: *Instance) ?*Instance {
+    var current: ?*Instance = node;
+    while (current) |n| : (current = parentOf(n)) {
+        if (isElement(n) and textControlKind(n) != .none) return n;
+    }
+    return null;
 }
 
 /// Whether a click at `target` is one a disabled form control swallows: HTML
