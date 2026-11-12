@@ -3317,6 +3317,9 @@ fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, wai
         log.warn("[navigation] no realm for {s}: {s}", .{ record.url, @errorName(err) });
         return endLoadDelay(integration);
     };
+    // A new realm commits with its document ("create and initialize a
+    // Document object" step 10) or is undone, on every way out below.
+    defer settleRealmReplacement(integration);
     // Service Workers 2.5.1: the new document's window client - the
     // navigation's reserved client, or its creator's controller for a
     // document no fetch went through HTTP for - before any of its script
@@ -5296,6 +5299,9 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
     const url = record.javascript_url orelse return;
     if (integration.state == .discarded or integration.browsing_context == null) return;
     integration.realmForDocument(integration.container_origin) catch return endLoadDelay(integration);
+    // A new realm commits with its document ("create and initialize a
+    // Document object" step 10) or is undone, on every way out below.
+    defer settleRealmReplacement(integration);
     // Step 11: the new document state's about base URL is oldDocState's.
     integration.setNextAboutBaseUrl(record.initiator_base_url);
     defer integration.setNextAboutBaseUrl(null);
@@ -6806,7 +6812,9 @@ fn keepsInitialWindow(integration: *IFrameIntegration, new_origin: html_core.Ori
 /// it (Blink's LocalWindowProxy::CreateContext after DisposeContext with
 /// kFrameWillBeReused). Every reference to the proxy - iframe.contentWindow,
 /// open()'s return value, a window[name] on the parent - now reaches the new
-/// Window.
+/// Window. The replacement stays pending until the new Window has its
+/// document: settleRealmReplacement then ends the old realm, or, if the
+/// navigation stops first, goes back to it.
 ///
 /// The old realm is not destroyed: its document was unloaded (runCommit) and
 /// is destroyed ("destroy a document": its timers were cleared, its tasks go,
@@ -6819,6 +6827,8 @@ fn keepsInitialWindow(integration: *IFrameIntegration, new_origin: html_core.Ori
 /// churn.html). Code still running in it sees a detached global (V8 gives
 /// API callbacks a holder with no Window).
 fn replaceRealm(integration: *IFrameIntegration, new_origin: html_core.Origin) bool {
+    // A replacement still pending, if a caller did not settle it, is settled first.
+    settleRealmReplacement(integration);
     const old: runtime.Context = @ptrCast(@alignCast(integration.context_cleanup_data orelse return false));
     const browsing_context = integration.browsing_context orelse return false;
     const allocator = integration.allocator;
@@ -6845,33 +6855,109 @@ fn replaceRealm(integration: *IFrameIntegration, new_origin: html_core.Origin) b
     // is a new one, with a WindowProxy of its own ("obtain a browsing
     // context to use for a navigation response" step 10).
     const switched = integration.next_new_window_proxy;
-    const old_data = integration.releaseCurrentRealm() orelse return false;
+    const kept = integration.currentRealm();
+    _ = integration.releaseCurrentRealm() orelse return false;
     if (attachRealm(integration, parent, browsing_context, origin_copy, if (switched) .new_window_proxy else .{ .window_proxy_of = old }, secure_context, allocator) == null) {
-        // No new realm: the old one ends with the integration, as every
-        // replaced realm once did.
-        integration.keepRetiredRealm(old_data) catch engine.destroyWindowRealm(old, .global_detached);
+        // No new realm - out of memory, which HTML does not let "create and
+        // initialize a Document object" step 7 ("create a new realm") do:
+        // the navigation fails before its document exists, as one whose
+        // response makes no document, and the navigable keeps its active
+        // document, its active window and that Window's realm, so every
+        // invariant the spec states still holds. The old realm is the
+        // integration's again and NOTHING ends it: a realm is never ended
+        // while a browsing context answers its Window as its active window.
+        // It used to be kept as retired (or, when that append ran out of
+        // memory too, ended) while the browsing context still answered its
+        // Window: the next navigation's abort made a DOMException in the
+        // ended realm and panicked ("a platform object made in a realm no
+        // Browser owns"), and the navigable, with no realm, never navigated
+        // again. The new Window, when one was made before the failure, was
+        // set as the browsing context's active window (FrameWindow.create):
+        // the old one is active again. If the engine had already handed the
+        // WindowProxy on (window_proxy_of detaches the old global first), the
+        // old Window keeps its realm but the proxy no longer reaches it:
+        // V8 has no way to attach a global to a context again.
+        integration.restoreCurrentRealm(kept);
+        if (old_window) |window| browsing_context.setActiveWindow(@ptrCast(window));
         return false;
     }
-    // The popups the old Window opened move with the navigable (lane
-    // newwin1, B7): the new Window keeps them, and their next realms are
-    // made under the new realm.
-    if (old_window) |from| if (browsing_context.getActiveWindow()) |to| {
-        dom_module.window_globals.moveAuxiliaryNavigables(from, @ptrCast(@alignCast(to)));
-    };
-    // After a switch, the browsing context the old Window showed is
-    // discarded for whoever still holds its WindowProxy - its opener: the
-    // proxy stays attached to the old Window, which reads `closed` true and
-    // no frames, as a removed frame's does (engine.WindowRealmEnd
-    // .navigable_destroyed; Chromium's opener sees a closed popup after a
-    // COOP swap).
-    if (switched) {
-        engine.destroyWindowRealm(old, .navigable_destroyed);
-        return true;
-    }
-    // HTML "destroy a document" for the old document: the engine keeps its
-    // realm while script reaches it.
-    engine.destroyWindowRealm(old, .global_detached);
+    // The old realm, its Window and the Window's popups wait until the new
+    // Window has its document: settleRealmReplacement ends the old realm or
+    // goes back to it.
+    integration.pending_realm_replacement = .{ .kept = kept, .window = if (old_window) |w| @ptrCast(w) else null, .switched = switched };
     return true;
+}
+
+/// Commit or undo the realm replacement `replaceRealm` left pending
+/// (IFrameIntegration.pending_realm_replacement), once the navigation that
+/// made it has made its document, or has stopped. Every caller of
+/// realmForDocument runs this before it returns.
+///
+/// HTML "create and initialize a Document object" does it all in one
+/// algorithm that cannot fail. Step 7 creates the new realm and its Window,
+/// step 9 creates the document, and step 10 sets the Window's associated
+/// Document, so every Window has one. Crane makes the realm (replaceRealm,
+/// through realmForDocument) before the document (commitResponse), and
+/// either can run out of memory, which HTML never allows for. So the
+/// replacement commits only at step 10: once the new Window has its
+/// associated Document, the old realm ends and the old Window's popups move
+/// to the new one. A navigation that stops before step 10 leaves the
+/// navigable exactly as it was: its old realm, its old Window active, and
+/// its old document. The new realm is ended. Its global is detached
+/// (engine.WindowRealmEnd.global_detached on a realm whose WindowProxy was
+/// not handed on).
+///
+/// One trace stays, and it is the engine's: when the new realm was made
+/// around the navigable's WindowProxy, V8 had already detached the proxy
+/// from the old global. V8 has no API to attach a global to a context again
+/// (Context::ReattachGlobal was removed), so until the next navigation
+/// commits, the proxy has no global. Member reads through it throw V8's
+/// TypeError "no access". The old Window, its realm and its document are
+/// whole, and the browsing context answers that Window as its active window.
+///
+/// Before this, a failure between the two steps (the new Window's Location,
+/// then everything after it) left the navigable on the new Window with no
+/// document. Script through the proxy got a SecurityError, because a Window
+/// with no document has no origin. The old realm was already ended.
+/// tests/html/iframe_policy_container_oom_test.zig hit it at failing
+/// allocation 146 (chat2) and 145 (server1).
+fn settleRealmReplacement(integration: *IFrameIntegration) void {
+    const pending = integration.pending_realm_replacement orelse return;
+    integration.pending_realm_replacement = null;
+    const old: runtime.Context = @ptrCast(@alignCast(pending.kept.context_cleanup_data orelse return));
+    const old_window: ?*runtime.Instance = if (pending.window) |w| @ptrCast(@alignCast(w)) else null;
+    const old_end: engine.WindowRealmEnd = if (pending.switched)
+        // After a browsing context group switch, the browsing context the old Window showed is
+        // discarded for whoever still holds its WindowProxy, which is its opener. The proxy
+        // stays attached to the old Window, which reads `closed` true and has no frames, as a
+        // removed frame's does (engine.WindowRealmEnd.navigable_destroyed; Chromium's opener
+        // sees a closed popup after a COOP swap).
+        .navigable_destroyed
+    else
+        // HTML "destroy a document" for the old document: the engine keeps its realm while
+        // script reaches it.
+        .global_detached;
+    // The navigable lost its realm while the document was being made: its
+    // iframe went and its teardown ended the new realm. Nothing goes back.
+    const new: runtime.Context = @ptrCast(@alignCast(integration.context_cleanup_data orelse return engine.destroyWindowRealm(old, old_end)));
+    const new_window = windowOfRealm(new);
+    const has_document = if (new_window) |w| if (interfaces.Window.get_document(w)) |_| true else |_| false else false;
+    if (has_document) {
+        // Step 10 happened: the replacement commits. The popups the old
+        // Window opened move with the navigable (lane newwin1, B7). The new
+        // Window keeps them, and their next realms are made under the new
+        // realm.
+        if (old_window) |from| if (new_window) |to| dom_module.window_globals.moveAuxiliaryNavigables(from, to);
+        engine.destroyWindowRealm(old, old_end);
+        return;
+    }
+    // The navigation stopped before step 10: back to the old realm and
+    // Window. The browsing context answers the old Window as active before
+    // the new realm ends, so no realm ends while it is the active window.
+    integration.restoreCurrentRealm(pending.kept);
+    integration.realm_replacements_abandoned +|= 1;
+    if (old_window) |window| if (integration.browsing_context) |bc| bc.setActiveWindow(@ptrCast(window));
+    engine.destroyWindowRealm(new, .global_detached);
 }
 
 /// HTML 8.1.3.5 for the realm of a document of `new_origin` that replaces a

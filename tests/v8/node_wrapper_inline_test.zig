@@ -8,14 +8,15 @@
 //! process-wide armed map.
 //!
 //! - The FIRST pass resets the slot in place (V8: "Handle not reset in first
-//!   callback") and frees the cell; the agent's drain - V8's second pass,
-//!   unless a walk holds the agent's teardowns - releases the wrapper's
+//!   callback") and frees the cell; the agent's drain - at its safe point
+//!   after V8's second pass, unless a walk holds the agent's teardowns -
+//!   releases the wrapper's
 //!   counted reference. The adapter never frees a node: the counts decide.
 //! - A node's pending-activity keep is the agent's (its keep table): the
 //!   slot's Global is strong while one remains.
 //!
 //! The collections are V8's own (LowMemoryNotification through the FFI): the
-//! second pass runs synchronously at the end of a forced one; nothing drains
+//! finalizers of what one finds dead run when it returns; nothing drains
 //! the deferred teardown queue (engine.requestGarbageCollection would).
 //!
 //! The file shares tests/v8's process: it starts the engine as any file may
@@ -114,8 +115,8 @@ const Page = struct {
         return engine.convertToPlatformObject(self.realm, held.value) orelse error.NotAPlatformObject;
     }
 
-    /// V8's own full collection, twice: the second pass runs synchronously
-    /// for a forced one; nothing drains the queue.
+    /// V8's own full collection, twice: the finalizers of what each finds dead
+    /// run when it returns; nothing drains the deferred teardown queue.
     fn collect(self: Page) void {
         const isolate: *v8.ffi.Isolate = @ptrCast(@alignCast(self.agent));
         v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);

@@ -182,12 +182,28 @@ test "the agent's end takes back what it reported, and releases the figure" {
     try testing.expectEqual(start, page.external());
 }
 
-// 600 detached divs, made one script each and dropped, each standing for
+// 600 detached divs, made one task each and dropped, each standing for
 // 1 MB of native memory the way a node's wrapper stands for its tree: told
 // about it, V8 collects - nothing forces a collection - and each dropped
 // div's wrapper dies, its deref queueing the div as a garbage tree (refcount
 // step 7). Without the report V8's heap barely grows (600 small wrappers),
 // it never collects, and every div waits with its wrapper.
+//
+// Each iteration is one turn of the event loop: a task (the script), then
+// the tasks V8 posted to the platform (src/browser/event_loop.zig step 2b,
+// engine.runEngineTasks). V8 15.7 needs that turn: a report past its
+// allocation limits only STARTS incremental marking (Heap::
+// UpdateExternalMemory -> StartIncrementalMarkingIfAllocationLimitIsReached),
+// and the marking advances in IncrementalMarkingJob's task, which runs only
+// when the embedder pumps the platform. V8 13.1 advanced it on every report
+// itself (heap.cc HandleExternalMemoryInterrupt ->
+// AdvanceAndFinalizeIfNecessary). Without the turn's step, 15.7 finishes a
+// cycle only when the reports overshoot its limit by a large margin, 80-130
+// iterations after the cycle began, and the count read at the end is
+// whatever the last finished cycle covered (lane v8up b3d: cycles finished
+// at i = 173, 302, 515 for 302 queued at 1635a5f250a; the GlobalAnchor
+// commit cd92f70a04d moved them to 169, 296, 506 for 296 - the same objects,
+// the same cycles, ~2% earlier).
 test "reported memory makes V8 collect dropped wrappers with no forced collection" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
@@ -203,8 +219,14 @@ test "reported memory makes V8 collect dropped wrappers with no forced collectio
         // reports it.
         memory.add(1 << 20);
         try page.run("void doc.createElement('div');");
+        _ = protocol.runEngineTasks(page.agent);
     }
     const queued = queue.queued_total - queued_before;
     if (queued < 300) std.debug.print("600 dropped wrappers beside 600 MB reported: {d} queued by their collection\n", .{queued});
     try testing.expect(queued >= 300);
+
+    // None is lost: a collection now finds every wrapper still uncollected,
+    // and each div is queued once.
+    protocol.notifyMemoryPressure(page.agent, .critical);
+    try testing.expectEqual(@as(usize, 600), queue.queued_total - queued_before);
 }

@@ -834,7 +834,7 @@ test "protocol: the diagnostics tier reports the agent's heap and the adapter's 
         "node_wrappers",
         "globals_created",
         "object_globals_from.FunctionCallbackInfo_This",
-        "object_globals_from.PropertyCallbackInfo_This",
+        "object_globals_from.PropertyCallbackInfo_Holder",
         "object_globals_from.Context_Global",
         "object_globals_from.GetGlobalPrototype",
         "object_globals_from.FunctionTemplate_GetPrototypeObject",

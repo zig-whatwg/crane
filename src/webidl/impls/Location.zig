@@ -150,13 +150,39 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// Helper to get URL from internal state
 /// HTML §7.10.1: "A Location object's url is its relevant Document's URL,
 /// if this Location object's relevant Document is non-null, and about:blank
-/// otherwise." The record parsed at construction (about:blank) is the
-/// fallback when the Window has no live browsing context; otherwise the
-/// active document's URL wins, including changes made by history.pushState.
+/// otherwise" - with no relevant Document, its Window's Document's URL, as
+/// the browsers do (urlDocumentWithoutRelevantDocument). The record parsed at
+/// construction (about:blank) is the fallback when there is neither;
+/// otherwise the document's URL wins, including changes made by
+/// history.pushState.
 fn getURL(instance: *runtime.Instance) ?*url_record.URLRecord {
     const internal = getInternal(instance) orelse return null;
     refreshFromDocument(internal);
     return internal.url;
+}
+
+/// The Document whose URL a Location with NO relevant Document reports: its
+/// Window's associated Document, when it has one. HTML says about:blank
+/// ("url ... about:blank otherwise"): a Window whose navigable navigated away,
+/// or whose frame was removed, has a destroyed Document, and "destroy a
+/// Document" step 6 set that Document's browsing context - so the Window's -
+/// to null. The browsers read the Window's Document instead (golden rule 2,
+/// the majority; the integrator's ruling, 2026-11-11): probe
+/// tmp/probes/v8up-oldwin3/ (v3 and v4: Chrome 157.0, Firefox 159.0,
+/// Safari 27.0), a Location kept from a frame's first document, read after
+/// the frame navigated - href, toString, origin, protocol, host, pathname,
+/// search: Chrome and Safari the OLD document's URL, Firefox the new one; and
+/// a removed frame's Location: Chrome and Safari its document's URL, Firefox
+/// "". Blink's Location::Url reads its DOMWindow's document. Only the URL
+/// changes: the href setter, assign, replace, reload and the component
+/// setters still begin "if this's relevant Document is null, then return" -
+/// in Chrome and Safari none of them navigates the frame from such a
+/// Location (Firefox's do: its old Location follows the docshell), and
+/// ancestorOrigins is the empty list in all three.
+fn urlDocumentWithoutRelevantDocument(internal: *InternalState) ?*runtime.Instance {
+    const window = internal.window orelse return null;
+    if (window.stateAs(interfaces.Window.State) == null) return null;
+    return interfaces.Window.get_document(window) catch null;
 }
 
 /// HTML's relevant Document: the relevant Window's browsing context's
@@ -190,7 +216,7 @@ fn checkGetter(instance: *runtime.Instance) !void {
 /// from the one it was parsed from. Every failure leaves the previous record
 /// in place: an unreadable document URL is not a reason to report a wrong one.
 fn refreshFromDocument(internal: *InternalState) void {
-    const document = relevantDocument(internal);
+    const document = relevantDocument(internal) orelse urlDocumentWithoutRelevantDocument(internal);
     // The interface getter clones into the DOCUMENT's context allocator, so
     // that is what frees it (AGENTS.md, "Interface getters clone").
     const doc_url = if (document) |doc| interfaces.Document.get_URL(doc) catch return else "about:blank";
@@ -250,6 +276,16 @@ pub fn init(
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     std.log.debug("[Location.init] Created instance {*}", .{instance});
+    // Should anything below fail (out of memory), the instance's teardown
+    // (`deinit`) frees whatever its internal state holds by then, and its
+    // slot goes back. With no errdefer, a failed URL parse left the internal
+    // state and the URL record allocated for good: a navigation's new
+    // Window makes its Location (Window.get_location under attachRealm), and
+    // tests/html/iframe_policy_container_oom_test.zig found 10 such blocks
+    // live after Browser.deinit (lane v8up b3h).
+    const state = instance.getState(StateType);
+    state.own._internal = null;
+    errdefer runtime.Instance.deinit(instance);
 
     // Initialize internal state. The Window is the relevant global object -
     // the realm record's, when the realm is a Window's (a Location made after
@@ -260,17 +296,15 @@ pub fn init(
         .allocator = allocator,
         .window = relevantWindow(ctx),
     };
+    state.own._internal = internal;
 
     // Initialize with default URL (about:blank)
     // Per spec, Location's URL should be the document's URL
     // For WPT tests, we initialize to a default URL that can be updated later
     const parsed_url = try allocator.create(url_record.URLRecord);
+    errdefer allocator.destroy(parsed_url);
     parsed_url.* = try basic_parser.parse(allocator, "about:blank", null);
     internal.url = parsed_url;
-
-    // Store internal state in the instance
-    const state = instance.getState(StateType);
-    state.own._internal = internal;
 
     std.log.debug("[Location.init] Instance {*} initialized with URL {*}", .{ instance, parsed_url });
     return instance;

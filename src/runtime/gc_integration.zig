@@ -250,13 +250,23 @@ pub const DeferredTeardown = struct {
     /// loop's next slice. A callback's return into its native caller never
     /// runs it.
     algorithm_depth: u32 = 0,
-    /// What the queue owes the next safe point (see `algorithm_depth`).
+    /// What the queue owes the next safe point (see `algorithm_depth`). One
+    /// byte, which the agent's adapter also writes (`owedWord`).
     owed: Owed = .{},
     /// What the agent's adapter runs at a safe point when the agent's DOM
     /// memory moved past its report step (`Owed.report`; runtime.gc.
     /// ExternalMemory): it tells its engine. Set by the adapter while the
     /// agent lives (engine.AgentOptions.external_memory), null otherwise.
     report_steps: ?ReportSteps = null,
+    /// What the agent's adapter runs at a safe point when its engine's
+    /// collector found wrappers dead (`Owed.finalizers`, `Owed.fresh`): the
+    /// finalizers the collector may not run itself. Set by the adapter while
+    /// the agent lives, null otherwise.
+    finalizer_steps: ?FinalizerSteps = null,
+    /// The agent's callback clock (`Callbacks`): which native-to-script
+    /// callback invocation is innermost on the stack, and when it began -
+    /// what decides which finalizers may run inside a callback's script.
+    callback: Callbacks = .{},
     /// The DOM's books of the trees its counts queued here (refcount step 7,
     /// dom.refcount_teardown): diagnostics and tests.
     books: Books = .{},
@@ -301,7 +311,27 @@ pub const DeferredTeardown = struct {
         /// The agent's DOM memory moved past its report step
         /// (ExternalMemory.due): `report_steps` tell the engine.
         report: bool = false,
-        _: u5 = 0,
+        /// The engine's collector found wrappers dead, and their finalizers
+        /// wait on the agent's adapter: `finalizer_steps` run them. The one
+        /// bit the ADAPTER sets, from inside its engine's collector, by a
+        /// store through `owedWord` - the collector calls nothing of the
+        /// host's - and clears once it has run every finalizer that waited,
+        /// at whichever of its safe points that was.
+        finalizers: bool = false,
+        /// Some of those finalizers have not been looked at by a callback's
+        /// exit yet, or waited there for an outer callback that script is
+        /// back in: one of them may be FRESH - its object made by a
+        /// script-called constructor since the innermost callback invocation
+        /// on the stack began - and so may run at a binding's return into
+        /// that callback's script (`runFresh`). Set by the adapter's
+        /// collector callback with `finalizers`, and by `leaveCallback`.
+        fresh: bool = false,
+        _: u3 = 0,
+
+        /// `finalizers` and `fresh`, as the bits of the queue's owed word an
+        /// adapter's collector callback sets.
+        pub const finalizers_mask: u8 = @bitCast(Owed{ .finalizers = true });
+        pub const fresh_mask: u8 = @bitCast(Owed{ .fresh = true });
 
         pub inline fn any(self: Owed) bool {
             return @as(u8, @bitCast(self)) != 0;
@@ -313,6 +343,76 @@ pub const DeferredTeardown = struct {
         run: *const fn (data: ?*anyopaque) void,
         data: ?*anyopaque,
     };
+
+    /// The adapter's steps for `Owed.finalizers`, and their data: run every
+    /// finalizer that waits. False when they could not run here - the
+    /// returning binding left an exception pending, which engine work would
+    /// clear, or a finalizer is already on the stack - and still wait: the
+    /// queue owes them to the next exit.
+    pub const FinalizerSteps = struct {
+        run: *const fn (data: ?*anyopaque) bool,
+        /// Run the FRESH ones only (`runFresh`): those whose object was made
+        /// by a script-called constructor at or after `innermost` on the
+        /// callback clock. One made at or after `outermost` but before
+        /// `innermost` waits where it is; anything else waits for depth
+        /// zero. Answers whether it could run here (as `run`) and the newest
+        /// stamp it left waiting.
+        run_fresh: *const fn (data: ?*anyopaque, innermost: u32, outermost: u32) Fresh,
+        data: ?*anyopaque,
+
+        pub const Fresh = struct {
+            done: bool,
+            waiting: u32,
+        };
+    };
+
+    /// THE CALLBACK CLOCK. A tick for every native-to-script callback
+    /// invocation of the agent (`enterCallback`: the adapter's
+    /// invokeCallbackFunction, constructCallbackFunction and
+    /// callUserObjectOperation), and the invocations on the stack now.
+    ///
+    /// Script inside a callback runs with the algorithm that called it on the
+    /// stack, so its bindings never return at depth zero and nothing the
+    /// queue owes runs there - and most of a page's script runs inside
+    /// callbacks. ONE thing may: the finalizer of an object that did not
+    /// exist when the innermost callback began. Every DOM algorithm on the
+    /// stack has been suspended in its call into script since before such an
+    /// object was made, so none holds a pointer to it; a pointer some
+    /// binding stored in a longer-lived structure since is the question it
+    /// already is at depth zero. The adapter stamps the objects its
+    /// script-called constructors make with the clock (`freshStamp`), and a
+    /// stamp at or after the innermost callback's beginning is FRESH.
+    pub const Callbacks = struct {
+        /// The clock: the callback invocations that have begun. It stops at
+        /// its last value rather than wrap, and nothing is stamped from then
+        /// on (`freshStamp`) - an old stamp must never compare as new.
+        serial: u32 = 0,
+        /// The innermost invocation on the stack: the clock when it began,
+        /// and `algorithm_depth` with it counted. 0 and 0: none.
+        active: u32 = 0,
+        depth: u32 = 0,
+        /// The outermost invocation's clock: nothing stamped before it can
+        /// be fresh until the stack is empty again. 0: none.
+        outermost: u32 = 0,
+        /// The newest stamp a fresh run left waiting for an outer callback
+        /// (made inside the callbacks on the stack, before the innermost
+        /// began); 0: none. `leaveCallback` owes a fresh run again when the
+        /// callback script returns into is at or before it.
+        waiting: u32 = 0,
+    };
+
+    /// The invocation `enterCallback` found innermost, for `leaveCallback`.
+    pub const OuterCallback = struct {
+        active: u32,
+        depth: u32,
+    };
+
+    /// The byte an adapter's collector callback sets `Owed.finalizers_mask`
+    /// in, valid while the queue lives. The adapter registers it with its
+    /// engine while its agent lives and withdraws it at the agent's end.
+    pub fn owedWord(self: *DeferredTeardown) *u8 {
+        return @ptrCast(&self.owed);
+    }
 
     /// The agent's DOM memory is due to be reported (ExternalMemory, where
     /// its figure moves): the next safe point runs `report_steps`.
@@ -421,16 +521,74 @@ pub const DeferredTeardown = struct {
         self.algorithm_depth += 1;
     }
 
-    /// A binding returns to script: the outermost one runs what is owed.
-    pub fn leaveAlgorithmToScript(self: *DeferredTeardown) void {
+    /// A binding returns to script: the outermost one runs what is owed;
+    /// one that returns into a callback's own script - no binding between
+    /// it and the callback invocation - runs the fresh finalizers, and
+    /// nothing else. With nothing owed it is the one check it always was,
+    /// and that check is all a binding's exit carries: inline, the rest out
+    /// of line (`leaveOwing`). (Left to the optimizer, this was a call from
+    /// every binding exit into a function that had `runOwed` inlined in it -
+    /// and paid its prologue with nothing owed; measured, lane v8up b6c.)
+    pub inline fn leaveAlgorithmToScript(self: *DeferredTeardown) void {
         self.algorithm_depth -|= 1;
-        if (self.algorithm_depth == 0 and self.owed.any()) self.runOwed();
+        if (self.owed.any()) self.leaveOwing();
+    }
+
+    /// `leaveAlgorithmToScript` with something owed.
+    noinline fn leaveOwing(self: *DeferredTeardown) void {
+        if (self.algorithm_depth == 0) {
+            self.runOwed();
+        } else if (self.owed.fresh and self.algorithm_depth == self.callback.depth) {
+            self.runFresh();
+        }
     }
 
     /// A callback returns to the native algorithm that invoked it: nothing
     /// runs here, whatever is owed.
     pub fn leaveAlgorithmToNative(self: *DeferredTeardown) void {
         self.algorithm_depth -|= 1;
+    }
+
+    /// A native algorithm calls script (`enterAlgorithm` for a callback
+    /// invocation): the clock ticks, and this invocation is the innermost.
+    pub fn enterCallback(self: *DeferredTeardown) OuterCallback {
+        self.algorithm_depth += 1;
+        const outer: OuterCallback = .{ .active = self.callback.active, .depth = self.callback.depth };
+        if (self.callback.serial != std.math.maxInt(u32)) self.callback.serial += 1;
+        self.callback.active = self.callback.serial;
+        self.callback.depth = self.algorithm_depth;
+        if (outer.active == 0) self.callback.outermost = self.callback.active;
+        return outer;
+    }
+
+    /// The callback returns to the native algorithm that invoked it
+    /// (`leaveAlgorithmToNative`): nothing runs here. Script may be back in
+    /// the callback below, where a finalizer that waited for it is fresh:
+    /// the next binding exit there looks.
+    pub fn leaveCallback(self: *DeferredTeardown, outer: OuterCallback) void {
+        self.algorithm_depth -|= 1;
+        self.callback.active = outer.active;
+        self.callback.depth = outer.depth;
+        if (outer.active == 0) {
+            // No callback is on the stack: what waited runs with everything
+            // else, at depth zero or the pump.
+            self.callback.outermost = 0;
+            self.callback.waiting = 0;
+        } else if (self.callback.waiting >= outer.active) {
+            self.owed.fresh = true;
+        }
+    }
+
+    /// The stamp of an object a script-called constructor has just made
+    /// (the adapter's constructor trampoline, once the instance it created
+    /// is wrapped): the clock, inside a callback; 0 - never fresh - outside
+    /// one, where depth zero finalizes, and once the clock has stopped.
+    /// A callback that began while the constructor ran (one it invoked) has
+    /// ended by now, so the clock is at or past the beginning of every
+    /// callback still on the stack, and before that of any to come.
+    pub inline fn freshStamp(self: *const DeferredTeardown) u32 {
+        if (self.callback.active == 0 or self.callback.serial == std.math.maxInt(u32)) return 0;
+        return self.callback.serial;
     }
 
     /// Whether a DOM algorithm is on the agent's stack.
@@ -450,8 +608,13 @@ pub const DeferredTeardown = struct {
     /// What is owed, at a safe point (depth zero, back in script).
     fn runOwed(self: *DeferredTeardown) void {
         if (self.slicing) return;
+        // The collector's finalizers first: what they let go of - a tree's
+        // last reference, an object's native state - is what the frees below
+        // free and what the report tells the engine about.
+        if (self.owed.finalizers) self.runFinalizers();
         const owed = self.owed;
-        self.owed = .{};
+        // Finalizers that still wait stay owed.
+        self.owed = .{ .finalizers = owed.finalizers, .fresh = owed.fresh };
         if (owed.drain) {
             self.drainAll();
         } else if (owed.relief and self.pending > high_water) {
@@ -459,6 +622,45 @@ pub const DeferredTeardown = struct {
         }
         // After the frees: the figure the engine is told is what they left.
         if (owed.report) if (self.report_steps) |steps| steps.run(steps.data);
+    }
+
+    /// The safe point for the finalizers of the wrappers the engine's
+    /// collector found dead (`Owed.finalizers`, `finalizer_steps`): a script
+    /// that makes and drops objects in one task reaches no other - the
+    /// engine's collector may not run them (V8 15.7 runs its weak callbacks
+    /// under DisallowJSObjectModification), and the event loop's pump is a task
+    /// away, each dead wrapper keeping its native state until then. Blink
+    /// releases a dead wrappable's native state the same way, inside the
+    /// running script: a wrappable is a cppgc object (blink ScriptWrappable :
+    /// v8::Object::Wrappable : cppgc::GarbageCollected), its destructor is
+    /// its finalizer, and cppgc sweeps lazily on allocation ("Lazily sweep
+    /// pages of this heap", V8 15.7.112.43 src/heap/cppgc-internal/
+    /// object-allocator.cc ObjectAllocator::TryRefillLinearAllocationBuffer
+    /// -> Sweeper::SweepForAllocationIfRunning -> HeapObjectHeader::Finalize).
+    ///
+    /// Only here: at depth zero, from the outermost binding exit - no DOM
+    /// algorithm is below a finalizer it runs.
+    fn runFinalizers(self: *DeferredTeardown) void {
+        std.debug.assert(self.algorithm_depth == 0);
+        self.owed.finalizers = false;
+        const steps = self.finalizer_steps orelse return;
+        if (!steps.run(steps.data)) self.owed.finalizers = true;
+    }
+
+    /// The safe point INSIDE A CALLBACK: a binding returned into the script
+    /// of the innermost callback invocation, with no other DOM algorithm
+    /// between the two (a binding whose conversion ran that script would be
+    /// one, and then nothing runs). Only the fresh finalizers run
+    /// (`Callbacks`); the rest of what the queue owes - every other
+    /// finalizer, the trees, the relief, the report - waits for depth zero.
+    fn runFresh(self: *DeferredTeardown) void {
+        std.debug.assert(self.algorithm_depth != 0 and self.algorithm_depth == self.callback.depth);
+        self.owed.fresh = false;
+        const steps = self.finalizer_steps orelse return;
+        const result = steps.run_fresh(steps.data, self.callback.active, self.callback.outermost);
+        // Not here (as `runFinalizers`): nothing was looked at, and the next
+        // exit of this callback looks again.
+        if (result.done) self.callback.waiting = result.waiting else self.owed.fresh = true;
     }
 
     /// One slice: items in the order they were queued, until `budget` nodes

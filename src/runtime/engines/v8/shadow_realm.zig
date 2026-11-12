@@ -180,6 +180,13 @@ fn shadowRealmContextCallback(initiator_context_ptr: ?*anyopaque) callconv(.c) ?
     // fetch against.
     if (context_manager.getOrCreate(context, data.allocator)) |shadow| {
         shadow.principal_realm = if (initiator_context) |ctx| context_manager.get(ctx) else null;
+        // Its global through THE attach function every realm global goes
+        // through (realm_global.attach: a GlobalAnchor on the proxy and its
+        // hidden global, Object::WrapGlobal, kept on the realm's entry). No
+        // instance: HTML's ShadowRealmGlobalScope is a platform object Crane
+        // does not make yet (TODO(shadowrealm-global-scope): make it and bind
+        // it here, as Blink's ShadowRealmContext does).
+        @import("realm_global.zig").attach(context, null);
     } else |err| {
         std.log.warn("[ShadowRealm] Failed to register context in manager: {}", .{err});
     }

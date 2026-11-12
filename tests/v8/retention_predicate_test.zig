@@ -80,7 +80,7 @@ test "JSValue does NOT retain the CONTEXT, though it carries a value handle" {
 
 test "Instance pointers are inert - the conversion reads the wrapper and keeps nothing" {
     // conv.fromV8Value's `*runtime.Instance` branch checks the object, reads its
-    // WrapperTypeInfo and internal field 0, and returns the pointer; the
+    // internal field 0, and returns the pointer; the
     // context is never stored. This was pinned "retains" as a precaution, which
     // kept every fetch(request) and new Headers(init) leaking its context - each
     // one pinning the page. (The use-after-frees in this predicate's history

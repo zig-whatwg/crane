@@ -46,8 +46,13 @@ const exempt_prefixes = [_][]const u8{
     "tests/wpt/",
 };
 
-/// This tool: its tests spell out the references it counts.
-const exempt_files = [_][]const u8{"tools/lint_engine_boundary.zig"};
+/// This tool: its tests spell out the references it counts. And the engine
+/// build protocol's adapter list (src/runtime/engine_build_protocol.zig): the
+/// one file where the protocol's build side names each adapter's build file
+/// by path (`engines/v8/engine_build.zig`), so that the root build.zig names
+/// none - an import of a path, run by the configure step, never compiled into
+/// Crane.
+const exempt_files = [_][]const u8{ "tools/lint_engine_boundary.zig", "src/runtime/engine_build_protocol.zig" };
 
 /// Whether `path` (repo-relative, `/`-separated) is held to the boundary.
 pub fn inScope(path: []const u8) bool {
@@ -474,6 +479,9 @@ test "the adapter, its tests and the WPT checkout are exempt; everything else is
     try testing.expect(!inScope("tests/v8/snapshot_stamp_test.zig"));
     try testing.expect(!inScope("tests/wpt/tools/x.zig"));
     try testing.expect(!inScope("tools/lint_engine_boundary.zig"));
+    // The engine build protocol's adapter list, and nothing beside it.
+    try testing.expect(!inScope("src/runtime/engine_build_protocol.zig"));
+    try testing.expect(inScope("src/runtime/engine_protocol.zig"));
     try testing.expect(inScope("src/webidl/impls/Worker.zig"));
     try testing.expect(inScope("src/runtime/engine_types.zig"));
     try testing.expect(inScope("src/runtime/engines/jsc/binding.zig"));

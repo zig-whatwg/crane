@@ -24,7 +24,11 @@
 //! - **Collection**: V8's FIRST pass (`collected`) frees the cell, records the
 //!   release, and answers the slot, which v8_wrapper.cpp Resets ("Handle not
 //!   reset in first callback"): no other V8 call, no count change, no free.
-//!   The SECOND pass (`drainCallback`) releases the recorded references -
+//!   The SECOND pass only says a node wrapper died (a node wrapper keeps
+//!   its second pass: v8_wrapper.cpp `nodeWrapperSecondPass` says why); at
+//!   the agent's safe point after it (v8_wrapper.cpp `runQueuedFinalizers`,
+//!   never inside the collector) `drainCallback` releases the recorded
+//!   references -
 //!   unless a walk holds the agent's teardowns (engine.deferTeardowns), whose
 //!   last resume drains instead. A release only counts: a tree it leaves
 //!   with no hold is queued by the counts (dom.refcount_teardown) - A
@@ -384,7 +388,8 @@ fn collected(raw_registry: ?*anyopaque, raw_cell: ?*anyopaque) callconv(.c) ?*an
     return slot;
 }
 
-/// V8's second pass: the agent's drain.
+/// The agent's safe point after a second pass (v8_wrapper.cpp
+/// `runQueuedFinalizers`): the agent's drain.
 fn drainCallback(raw_registry: ?*anyopaque) callconv(.c) void {
     const registry: *Registry = @ptrCast(@alignCast(raw_registry.?));
     registry.drain();

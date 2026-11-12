@@ -1688,11 +1688,21 @@ pub fn get_frameElement(instance: *runtime.Instance) anyerror!?*runtime.Instance
 
 /// The container of `window`'s navigable (navigable_container's
 /// implementation): the element its browsing context records, or null.
+///
+/// HTML's "this's node navigable" (frameElement step 1) is the navigable
+/// whose active document is this Window's associated Document: none for a
+/// Window its navigable navigated away from (`navigableOf`), whose old realm
+/// still reaches it contextually (lane v8up b3e: the receiver rule gives an
+/// old realm's contextual reads its OWN Window, design 2.3). Its frameElement
+/// is null then. Probe tmp/probes/v8up-oldwin3/ (2026-11-11): Safari 27 null;
+/// Firefox 159 throws (NS_ERROR_XPC_SECURITY_MANAGER_VETO); Chrome 157 reads
+/// the NEW Window there and answers the iframe - all three differ, so the
+/// spec's steps decide (golden rule 2; the integrator's ruling, 2026-11-11).
+/// The browsing context alone answered the iframe for the old Window too.
 fn containerOf(window: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(window) orelse return null;
-    const bc_ptr = @intFromPtr(internal.browsing_context);
-    if (bc_ptr == 0 or bc_ptr < 0x1000) return null;
-    const container = internal.browsing_context.container orelse return null;
+    const navigable = navigableOf(window, internal) orelse return null;
+    const container = navigable.container orelse return null;
     return @ptrCast(@alignCast(container));
 }
 

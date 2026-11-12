@@ -533,16 +533,46 @@ test "wasm Suspending preserves same-realm Promise identity and abrupt completio
     ++ ending);
 }
 
-test "wasm Suspending resolves through the import realm intrinsics after tampering" {
+// JSPI "create a suspending function" step 3.15: PromiseResolve(%Promise%,
+// ret.[[Value]]), then Await - %Promise% of the running realm, which steps
+// 3.6/3.12 restore after the call: the promising call's, not the import's.
+// V8 15.7 does the step itself, with the importing instance's native context
+// (src/compiler/turboshaft/wasm-wrappers.h BuildSuspend: PromiseResolve(
+// native_context[PROMISE_FUNCTION_INDEX], value), native_context =
+// WasmImportData's). Probe tmp/probes/v8up-jspi-realm (lane v8up b3d; Chrome
+// 157.0 headless, Firefox 159.0 headless, Safari 27.0; all three ship JSPI),
+// instance and promising in this realm:
+// - another realm's promise (a throwing `then` getter) returned by another
+//   realm's function: Chrome and Firefox read `then` and reject with its
+//   error (the spec: this realm's %Promise% assimilates a foreign promise);
+//   Safari resolves 29 without reading it. Majority = spec: reject.
+// - this realm's promise returned by another realm's function: all three
+//   resolve 31 without reading `then` (the spec: PromiseResolve returns it).
+// No WPT covers the realm (wasm/jsapi/jspi/ has no cross-realm case). V8 13.1
+// needed an adapter for the step (v8_wrapper.cpp WasmSuspendingApply, the
+// IMPORT realm's PromiseResolve); on 15.7 it resolved twice, and a promise of
+// this realm returned by another realm's function was assimilated by the
+// other realm, reading its `then`. The tampering after construction checks
+// that the intrinsics, never the mutable bindings, resolve.
+test "wasm Suspending resolves through the promising realm's intrinsics after tampering" {
     try check(jspi_prelude ++
         \\other.p = other.Promise.resolve(29);
-        \\Object.defineProperty(other.p, "then", {get() { throw Error("wrong realm Promise"); }});
-        \\const original = new other.Function("return globalThis.p");
-        \\const suspending = new WebAssembly.Suspending(original);
-        \\const instance = make(suspending);
+        \\Object.defineProperty(other.p, "then", {get() { throw Error("other realm then read"); }});
+        \\const mine = Promise.resolve(31);
+        \\Object.defineProperty(mine, "then", {get() { throw Error("this realm then read"); }});
+        \\other.mine = mine;
+        \\const foreign = make(new WebAssembly.Suspending(new other.Function("return globalThis.p")));
+        \\const own = make(new WebAssembly.Suspending(new other.Function("return globalThis.mine")));
         \\other.Promise.resolve = () => {throw Error("mutable resolve");};
         \\other.Promise = function() {throw Error("mutable Promise");};
-        \\if (await WebAssembly.promising(instance.exports.f)(0,0) !== 29) return "realm result";
+        \\Promise.resolve = () => {throw Error("mutable resolve");};
+        \\globalThis.Promise = function() {throw Error("mutable Promise");};
+        \\let result;
+        \\try { result = await WebAssembly.promising(own.exports.f)(0,0); }
+        \\catch (e) { return "this realm's promise: " + e; }
+        \\if (result !== 31) return "this realm's promise: " + result;
+        \\try { result = await WebAssembly.promising(foreign.exports.f)(0,0); return "foreign promise kept: " + result; }
+        \\catch (e) { if (e.message !== "other realm then read") return "foreign promise: " + e; }
     ++ ending);
 }
 
@@ -621,7 +651,11 @@ test "wasm Exception keeps constructor shape prototype ordering and native throw
         \\try {
         \\const ctor = WebAssembly.Exception;
         \\const tag = new WebAssembly.Tag({parameters:[]});
-        \\if (ctor.length !== 1 || ctor.name !== "Exception" || ctor.prototype.constructor !== ctor) return "constructor shape";
+        \\// length 2: the JS API's Exception(tag, payload, options) since 2019 and
+        \\// WPT exception/constructor.tentative.any.js "length"; Chrome 156 ships it
+        \\// (V8 15.7 too), Firefox 159 and Safari 27 still 1 - browsers behind the
+        \\// spec, golden rule 2 (probe tmp/probes/v8up-wasm-order, lane v8up b3c).
+        \\if (ctor.length !== 2 || ctor.name !== "Exception" || ctor.prototype.constructor !== ctor) return "constructor shape";
         \\const namespace = Object.getOwnPropertyDescriptor(WebAssembly,"Exception");
         \\if (!namespace.writable || namespace.enumerable || !namespace.configurable) return "namespace shape";
         \\try { ctor(tag,[]); return "no new"; } catch(e) { if (!(e instanceof TypeError)) return "no-new error"; }

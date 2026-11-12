@@ -25,7 +25,6 @@ const debug = @import("debug.zig");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
 const interface_mod = @import("interface.zig");
-const dom_type_info = @import("dom_type_info.zig");
 const callback_wrapper = @import("callback_wrapper.zig");
 const typedefs = @import("typedefs");
 const js_value_mod = @import("js_value.zig");
@@ -4363,15 +4362,14 @@ fn getLegacyCodeForDOMExceptionName(name: []const u8) u16 {
     return legacy_codes.get(name) orelse 0;
 }
 
-/// Throw a DOMException in V8
+/// Throw a DOMException in V8, in the CURRENT realm (throwDOMExceptionFromContext),
+/// or a plain Error named so when there is none.
 ///
 /// Creates a proper DOMException instance with the correct name and message properties.
 /// This is essential for WebIDL error handling where tests check:
 /// - e instanceof DOMException === true
 /// - e.name === "ErrorName"
 /// - e.code === <legacy code>
-///
-/// If DOMException constructor is not available, falls back to generic Error.
 pub fn throwDOMException(
     isolate: *v8.Isolate,
     name: []const u8,
@@ -4382,106 +4380,14 @@ pub fn throwDOMException(
         return;
     };
     defer v8.v8_Context_Dispose(context);
-    // The derived interface (WebIDL 2.8.3), not a DOMException named so.
-    if (isQuotaExceededError(name)) {
-        if (newQuotaExceededError(isolate, context, message)) |exception| {
-            defer v8.v8_Value_Dispose(exception);
-            v8.v8_Isolate_ThrowException(isolate, exception);
-            return;
-        }
-    }
-    // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
-    // `Context::Global()` returns a borrowed Local. Disposing releases OUR
-    // handle; the global object itself stays rooted by the context.
-    // Not applied in context_manager.zig, which hands its global to
-    // `WindowImpl.setBoundV8Global` and so keeps it.
-    const global = v8.v8_Context_Global(context) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_Object_Dispose(global);
-
-    // Get the DOMException constructor from global
-    const dom_exception_key = v8.v8_String_NewFromUtf8(isolate, "DOMException", 12) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_String_Dispose(dom_exception_key);
-    const dom_exception_ctor = v8.v8_Object_Get(global, context, @ptrCast(dom_exception_key)) orelse {
-        // DOMException not registered, fall back to Error with .name property
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_Value_Dispose(dom_exception_ctor);
-
-    if (!v8.v8_Value_IsFunction(dom_exception_ctor)) {
-        // DOMException is not a function, fall back to Error with .name property
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    }
-
-    // Create V8 strings for the arguments
-    const v8_message = v8.v8_String_NewFromUtf8(isolate, message.ptr, @intCast(message.len)) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_String_Dispose(v8_message);
-    const v8_name = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_String_Dispose(v8_name);
-
-    // Use Reflect.construct to call the constructor
-    // Reflect.construct(DOMException, [message, name])
-    const reflect_key = v8.v8_String_NewFromUtf8(isolate, "Reflect", 7) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_String_Dispose(reflect_key);
-    const reflect_obj = v8.v8_Object_Get(global, context, @ptrCast(reflect_key)) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_Value_Dispose(reflect_obj);
-    const construct_key = v8.v8_String_NewFromUtf8(isolate, "construct", 9) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_String_Dispose(construct_key);
-    const construct_fn_value = v8.v8_Object_Get(@ptrCast(reflect_obj), context, @ptrCast(construct_key)) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_Value_Dispose(construct_fn_value);
-    if (!v8.v8_Value_IsFunction(construct_fn_value)) {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    }
-    const construct_fn: *v8.Function = @ptrCast(construct_fn_value);
-
-    // Create argument array: [message, name]
-    const args_array = v8.v8_Array_New(isolate, 2);
-    defer v8.v8_Array_Dispose(args_array);
-    _ = v8.v8_Array_Set(args_array, context, 0, @ptrCast(v8_message));
-    _ = v8.v8_Array_Set(args_array, context, 1, @ptrCast(v8_name));
-
-    // Call Reflect.construct(DOMException, [message, name])
-    var args = [_]*v8.Value{ dom_exception_ctor, @ptrCast(args_array) };
-    const exception = v8.v8_Function_Call(construct_fn, context, reflect_obj, 2, &args) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_Value_Dispose(exception);
-
-    v8.v8_Isolate_ThrowException(isolate, exception);
+    throwDOMExceptionFromContext(isolate, context, name, message);
 }
 
-/// Throw a DOMException from a specific context's realm
-///
-/// Per WebIDL spec, DOMExceptions should be thrown from the function's realm
-/// or the caller's realm depending on the error type. For cross-origin security
-/// errors, this should be the caller's realm so the caller's try/catch can catch it.
+/// Throw a new DOMException named `name` with `message`, made in `context`'s
+/// realm (newDOMExceptionFromContext) - the realm WebIDL names, which for a
+/// cross-origin error is the caller's: throwing there lets the caller's
+/// try/catch catch it. A plain Error named so when V8 refused, or when
+/// `context` is no realm the engine hosts (newDOMExceptionFromContext).
 pub fn throwDOMExceptionFromContext(
     isolate: *v8.Isolate,
     context: *v8.Context,
@@ -4489,98 +4395,12 @@ pub fn throwDOMExceptionFromContext(
     message: []const u8,
 ) void {
     log.debug("[throwDOMExceptionFromContext] name={s}\n", .{name});
-    // The derived interface (WebIDL 2.8.3), not a DOMException named so.
-    if (isQuotaExceededError(name)) {
-        if (newQuotaExceededError(isolate, context, message)) |exception| {
-            defer v8.v8_Value_Dispose(exception);
-            v8.v8_Isolate_ThrowException(isolate, exception);
-            return;
-        }
-    }
-    // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
-    // `Context::Global()` returns a borrowed Local. Disposing releases OUR
-    // handle; the global object itself stays rooted by the context.
-    // Not applied in context_manager.zig, which hands its global to
-    // `WindowImpl.setBoundV8Global` and so keeps it.
-    const global = v8.v8_Context_Global(context) orelse {
-        log.debug("[throwDOMExceptionFromContext] fallback - no global\n", .{});
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_Object_Dispose(global);
-
-    // Get the DOMException constructor from the specified context's global
-    const dom_exception_key = v8.v8_String_NewFromUtf8(isolate, "DOMException", 12) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_String_Dispose(dom_exception_key);
-    const dom_exception_ctor = v8.v8_Object_Get(global, context, @ptrCast(dom_exception_key)) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_Value_Dispose(dom_exception_ctor);
-
-    if (!v8.v8_Value_IsFunction(dom_exception_ctor)) {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    }
-
-    // Create V8 strings for the arguments
-    const v8_message = v8.v8_String_NewFromUtf8(isolate, message.ptr, @intCast(message.len)) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_String_Dispose(v8_message);
-    const v8_name = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_String_Dispose(v8_name);
-
-    // Use Reflect.construct to call the constructor
-    const reflect_key = v8.v8_String_NewFromUtf8(isolate, "Reflect", 7) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_String_Dispose(reflect_key);
-    const reflect_obj = v8.v8_Object_Get(global, context, @ptrCast(reflect_key)) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_Value_Dispose(reflect_obj);
-    const construct_key = v8.v8_String_NewFromUtf8(isolate, "construct", 9) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_String_Dispose(construct_key);
-    const construct_fn_value = v8.v8_Object_Get(@ptrCast(reflect_obj), context, @ptrCast(construct_key)) orelse {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    };
-    defer v8.v8_Value_Dispose(construct_fn_value);
-    if (!v8.v8_Value_IsFunction(construct_fn_value)) {
-        throwDOMExceptionFallback(isolate, name, message);
-        return;
-    }
-    const construct_fn: *v8.Function = @ptrCast(construct_fn_value);
-
-    // Create argument array: [message, name]
-    const args_array = v8.v8_Array_New(isolate, 2);
-    defer v8.v8_Array_Dispose(args_array);
-    _ = v8.v8_Array_Set(args_array, context, 0, @ptrCast(v8_message));
-    _ = v8.v8_Array_Set(args_array, context, 1, @ptrCast(v8_name));
-
-    // Call Reflect.construct(DOMException, [message, name])
-    var args = [_]*v8.Value{ dom_exception_ctor, @ptrCast(args_array) };
-    const exception = v8.v8_Function_Call(construct_fn, context, reflect_obj, 2, &args) orelse {
-        log.debug("[throwDOMExceptionFromContext] fallback - Reflect.construct failed\n", .{});
+    const exception = newDOMExceptionFromContext(isolate, context, name, message) orelse {
+        log.debug("[throwDOMExceptionFromContext] fallback - no DOMException made\n", .{});
         throwDOMExceptionFallback(isolate, name, message);
         return;
     };
     defer v8.v8_Value_Dispose(exception);
-
-    log.debug("[throwDOMExceptionFromContext] throwing exception\n", .{});
     v8.v8_Isolate_ThrowException(isolate, exception);
 }
 
@@ -4614,31 +4434,56 @@ fn isQuotaExceededError(name: []const u8) bool {
 /// A new DOMException named `name` with `message`, made by `context`'s
 /// DOMException constructor - the value an algorithm rejects a promise with,
 /// or stores as an abort reason, where throwDOMExceptionFromContext throws it.
-/// Owned; null only if V8 refused (the constructor is missing, or threw).
+/// Owned; null if `context` is no realm the engine hosts (below) or V8
+/// refused (the constructor threw).
+///
+/// WebIDL "create a DOMException" in a realm uses that realm's interface
+/// object, never a property of its global: script may have replaced or
+/// deleted `DOMException` (and `Reflect`) there, and the global a navigated-
+/// away realm's context names is the reused WindowProxy - the NEW Window's
+/// (Context::Global() after DetachGlobal; lesson architecture-after-
+/// detachglobal-the-old-context-s-global-is-the-new-window-s-proxy.md), so an
+/// error thrown in the old realm was the new Window's DOMException (lane v8up
+/// b3e; probe tmp/probes/v8up-oldwin3/: Chrome 157, Firefox 159 and Safari
+/// 27 all throw the old realm's). Blink makes it from the realm's own
+/// constructor, V8PerContextData::ConstructorForType; here the realm's
+/// instance of the DOMException template (materializeInterfaceObject, which
+/// every path that makes the interface object takes).
+///
+/// Only in a realm the engine hosts - a context with its record in the
+/// context manager, as newQuotaExceededError requires - and null in any
+/// other context: Blink's V8ThrowDOMException::CreateOrEmpty wraps in
+/// ScriptState::ForCurrentRealm, which exists only for a context Blink made
+/// (its V8PerContextData). A bare context has no WebIDL realm, so no
+/// DOMException interface object; constructing the template's instance
+/// there ran the binding's constructor, whose
+/// context_manager.getOrCreateWithIsolate MADE a record for the context -
+/// a strong Global<Context> and an event loop, kept until the agent ends -
+/// so one DOMException thrown in a context kept it alive (lane v8up b3i;
+/// tests/v8/page_realm_operations_test.zig "an exception thrown in a realm
+/// does not keep that realm alive"). A navigated-away realm keeps its record
+/// while script reaches it (protocol_realms.detach), so its errors stay its
+/// own DOMExceptions.
 pub fn newDOMExceptionFromContext(
     isolate: *v8.Isolate,
     context: *v8.Context,
     name: []const u8,
     message: []const u8,
 ) ?*v8.Value {
+    if (@import("context_manager.zig").get(context) == null) return null;
     // The derived interface (WebIDL 2.8.3), not a DOMException named so.
     if (isQuotaExceededError(name)) {
         if (newQuotaExceededError(isolate, context, message)) |exception| return exception;
     }
-    const global = v8.v8_Context_Global(context) orelse return null;
-    defer v8.v8_Object_Dispose(global);
-    const key = v8.v8_String_NewFromUtf8(isolate, "DOMException", 12) orelse return null;
-    defer v8.v8_String_Dispose(key);
-    const ctor = v8.v8_Object_Get(global, context, @ptrCast(key)) orelse return null;
-    defer v8.v8_Value_Dispose(ctor);
-    if (!v8.v8_Value_IsFunction(ctor)) return null;
+    const ctor = interface_mod.V8Interface(@import("interfaces").DOMException).materializeInterfaceObject(isolate, context, "DOMException") orelse return null;
+    defer v8.v8_Function_Dispose(ctor);
 
     const v8_message = v8.v8_String_NewFromUtf8(isolate, message.ptr, @intCast(message.len)) orelse return null;
     defer v8.v8_String_Dispose(v8_message);
     const v8_name = v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len)) orelse return null;
     defer v8.v8_String_Dispose(v8_name);
     var args = [_]*v8.Value{ @ptrCast(v8_message), @ptrCast(v8_name) };
-    const exception = v8.v8_Function_NewInstance(@ptrCast(ctor), context, 2, &args) orelse return null;
+    const exception = v8.v8_Function_NewInstance(ctor, context, 2, &args) orelse return null;
     return @ptrCast(exception);
 }
 
@@ -4939,7 +4784,7 @@ pub fn instanceToV8Checked(isolate: *v8.Isolate, instance: *runtime.Instance) er
 /// or null when it has none to answer with:
 /// - its teardown ran (a realm's end frees its state, the binding with it);
 /// - its realm has no engine left: the collector took a detached realm's
-///   context and its global with it, in the collection whose second pass
+///   context and its global with it, in the collection whose finalizers
 ///   disposed the cached handle the binding names, before the realm's end -
 ///   a queued task - has run (lane winslot1, E4;
 ///   tests/v8/window_collected_realm_conversion_test.zig). realmCollected

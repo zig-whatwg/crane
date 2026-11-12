@@ -96,9 +96,9 @@ pub const capabilities: engine.Capabilities = .{
     .webassembly_streaming = .native,
     // runtime.instance_lifecycle.markWrapped where the instance is written
     // into the object: template_registry.wrapInstanceAsV8Object (every
-    // outcome of its cache step), interface.zig setInstance and
-    // setInstanceWithTypeInfo (constructors, custom element construction
-    // and upgrade), and the Window and worker global bindings
+    // outcome of its cache step), interface.zig setInstance (constructors,
+    // custom element construction and upgrade), and the Window and worker
+    // global bindings
     // (tests/v8/wrap_tracking_test.zig).
     .wrap_tracking = .native,
     // AgentOptions.clock: CranePlatform's CurrentClockTimeMilli* read the
@@ -116,11 +116,11 @@ pub const capabilities: engine.Capabilities = .{
     // public only through the inspector.
     .repl_mode = .native,
     // AgentOptions.external_memory: the change of the host's figure goes to
-    // Isolate::AdjustAmountOfExternalAllocatedMemory at the outermost binding
-    // exit and each microtask checkpoint (external_memory.zig); V8 starts
-    // incremental marking past its low-water mark + 64 MB and collects in
-    // full past half its old-generation limit (V8 13.1 heap.cc
-    // HandleExternalMemoryInterrupt).
+    // the agent's v8::ExternalMemoryAccounter at the outermost binding exit
+    // and each microtask checkpoint (external_memory.zig); V8 counts it
+    // toward its global allocation limit, starts incremental marking when
+    // that is reached and collects when it is overshot by a large margin
+    // (V8 15.7 heap.cc Heap::UpdateExternalMemory).
     .external_memory = .native,
 };
 
@@ -267,7 +267,7 @@ pub fn nextEngineTaskDelay(agent: *Agent) ?u64 {
 /// A realm's agent is its isolate (context_manager records it so).
 /// LowMemoryNotification: a full, synchronous collection.
 pub fn requestGarbageCollection(agent: *Agent) void {
-    ffi.v8_Isolate_RequestGarbageCollection(isolateOf(agent));
+    protocol_agents.collectGarbageNow(agent);
     // "As completely as the engine can": the trees the collection queued for
     // deferred teardown are freed before it returns - unless a DOM algorithm
     // is on the agent's stack (TestUtils.gc() from script is itself a binding
@@ -453,8 +453,8 @@ pub fn invokeCallbackFunction(realm: Context, callback: *const engine.CallbackFu
     forbidScriptInHold(realm);
     // A native algorithm calls script: a DOM algorithm on the agent's stack
     // until the callback returns to it (dom_algorithm.zig, risk 4).
-    const algorithm = dom_algorithm.enterRealm(realm);
-    defer dom_algorithm.leaveToNative(algorithm);
+    const algorithm = dom_algorithm.enterCallback(realm);
+    defer dom_algorithm.leaveCallback(algorithm);
     return protocol_callbacks.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
 }
 
@@ -462,8 +462,8 @@ pub fn invokeCallbackFunctionWithReturnType(realm: Context, callback: *const eng
     forbidScriptInHold(realm);
     // A native algorithm calls script: a DOM algorithm on the agent's stack
     // until the callback returns to it (dom_algorithm.zig, risk 4).
-    const algorithm = dom_algorithm.enterRealm(realm);
-    defer dom_algorithm.leaveToNative(algorithm);
+    const algorithm = dom_algorithm.enterCallback(realm);
+    defer dom_algorithm.leaveCallback(algorithm);
     return switch (return_type) {
         inline else => |kind| protocol_callbacks.invokeCallbackFunctionWithReturnType(realm, callback, this_arg, args, behavior, kind),
     };
@@ -473,8 +473,8 @@ pub fn constructCallbackFunction(realm: Context, callback: *const engine.Callbac
     forbidScriptInHold(realm);
     // A native algorithm calls script: a DOM algorithm on the agent's stack
     // until the callback returns to it (dom_algorithm.zig, risk 4).
-    const algorithm = dom_algorithm.enterRealm(realm);
-    defer dom_algorithm.leaveToNative(algorithm);
+    const algorithm = dom_algorithm.enterCallback(realm);
+    defer dom_algorithm.leaveCallback(algorithm);
     return protocol_callbacks.constructCallbackFunction(realm, callback, args);
 }
 
@@ -482,8 +482,8 @@ pub fn callUserObjectOperation(realm: Context, callback: *const engine.CallbackI
     forbidScriptInHold(realm);
     // A native algorithm calls script: a DOM algorithm on the agent's stack
     // until the callback returns to it (dom_algorithm.zig, risk 4).
-    const algorithm = dom_algorithm.enterRealm(realm);
-    defer dom_algorithm.leaveToNative(algorithm);
+    const algorithm = dom_algorithm.enterCallback(realm);
+    defer dom_algorithm.leaveCallback(algorithm);
     return protocol_callbacks.callUserObjectOperation(realm, callback, operation, this_arg, args, behavior);
 }
 
@@ -1035,7 +1035,7 @@ pub fn platformObjectDestroyed(instance: *Instance) void {
     context_manager.markInstanceCleanedUp(instance);
 }
 
-/// engine.deferTeardowns: the agent's second passes flag their entries
+/// engine.deferTeardowns: the agent's finalizers flag their entries
 /// instead of tearing them down (wrapper_cache.TeardownHolds).
 pub fn deferTeardowns(realm: Context) void {
     @import("wrapper_cache.zig").deferTeardowns(realm);
@@ -1137,7 +1137,7 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "globals_created", .value = ffi.v8_Debug_CreatedGlobals() },
         // v8_wrapper.cpp's g_obj_src slots, in its order.
         .{ .name = "object_globals_from.FunctionCallbackInfo_This", .value = ffi.v8_Debug_ObjSrc(0) },
-        .{ .name = "object_globals_from.PropertyCallbackInfo_This", .value = ffi.v8_Debug_ObjSrc(1) },
+        .{ .name = "object_globals_from.PropertyCallbackInfo_Holder", .value = ffi.v8_Debug_ObjSrc(1) },
         .{ .name = "object_globals_from.Context_Global", .value = ffi.v8_Debug_ObjSrc(2) },
         .{ .name = "object_globals_from.GetGlobalPrototype", .value = ffi.v8_Debug_ObjSrc(3) },
         .{ .name = "object_globals_from.FunctionTemplate_GetPrototypeObject", .value = ffi.v8_Debug_ObjSrc(4) },
