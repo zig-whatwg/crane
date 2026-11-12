@@ -186,3 +186,27 @@ fn lastWordInInlineBlockHost() !void {
 test "deleting the last word of an inline-block editing host keeps its trailing white-space visible" {
     try helpers.onFreshThread(lastWordInInlineBlockHost);
 }
+
+fn backspaceEmptiesARootWithOnePosition() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(caret_script);
+    // editing/other/fire-selection-change-on-deleting-empty-element.html's
+    // second Backspace (Chrome, Firefox): the emptied heading is the root's
+    // only caret position, so the root is emptied to a placeholder br and
+    // the caret goes to its start (Blink's MakeEditableRootEmpty).
+    try page.run("document.body.innerHTML = '<div contenteditable id=host><h1><br></h1></div>'; host.focus(); getSelection().collapse(host.firstChild, 0);");
+    press(page, backspace, .{});
+    try harness.expectEval(page, "host.innerHTML + ' ' + caret()", "<br> div#host@0");
+    // A lone placeholder br in a block root stays.
+    press(page, backspace, .{});
+    try harness.expectEval(page, "host.innerHTML + ' ' + caret()", "<br> div#host@0");
+    // With another position before it, Backspace is the delete action.
+    try page.run("host.innerHTML = '<p>a</p><h1><br></h1>'; getSelection().collapse(host.lastChild, 0);");
+    press(page, backspace, .{});
+    try harness.expectEval(page, "host.firstChild.localName + ' ' + host.textContent", "p a");
+}
+
+test "Backspace at the only caret position of an editing host empties it to a placeholder" {
+    try helpers.onFreshThread(backspaceEmptiesARootWithOnePosition);
+}

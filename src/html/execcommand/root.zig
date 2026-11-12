@@ -486,11 +486,50 @@ pub fn deleteByKey(target: *Instance, command: Command) void {
     // selection.
     if (!(isEnabledIn(&edit, command) catch false)) return;
     const affected = (affectedEditingHost(&edit) catch null) orelse return;
+    if (command == .delete) {
+        if (makeEditableRootEmpty(&edit) catch false) {
+            if (isConnected(affected)) _ = fireInputEvent(affected, "input", command.inputType(), null);
+            return;
+        }
+    }
     const result = runAction(&edit, command, "") catch |err| {
         log.debug("{s} by key: {}", .{ @tagName(command), err });
         return;
     };
     if (result and edit.modified and isConnected(affected)) _ = fireInputEvent(affected, "input", command.inputType(), null);
+}
+
+/// Backspace with the caret at the only place a caret can be in its root
+/// editable element (no previous and no next visible position) empties
+/// the root: Blink's TypingCommand::DeleteKeyPressed "when there are no
+/// visible positions in the editing root, delete its entire contents"
+/// (MakeEditableRootEmpty: the caret goes to the root's start, its
+/// children are removed, and a block root gets a placeholder br). A lone
+/// br in a block root is left alone, and an empty list item is Blink's
+/// BreakOutOfEmptyListItem case, tried before it (left to the delete
+/// action here). editing/other/fire-selection-change-on-deleting-empty-
+/// element.html: Chrome 157 and Firefox 160 pass (one selectionchange
+/// after "<h1><br></h1>" goes), Safari 27.2 fires none. The Editing
+/// spec's delete action does nothing at the root's start; Backspace is the
+/// browsers' key behaviour (golden rule 2: two of three), and
+/// execCommand("delete") keeps the spec's action. Whether it ran.
+fn makeEditableRootEmpty(edit: *Edit) !bool {
+    if (!try edit.rangeCollapsed()) return false;
+    const caret = (try edit.rangeStart()) orelse return false;
+    const vp = visible_position;
+    const root = vp.soleCaretRoot(edit.scratchAllocator(), caret) orelse return false;
+    const first = (try common.firstChild(root)) orelse return false;
+    const block_flow = vp.isBlockFlow(edit.scratchAllocator(), root);
+    if ((try common.lastChild(root)) == first and (try common.isHtmlElementNamed(first, "br")) and block_flow) return false;
+    var ancestor: ?*Instance = caret.node;
+    while (ancestor) |a| : (ancestor = try common.parent(a)) {
+        if (a == root) break;
+        if (try common.isHtmlElementIn(a, &.{ "li", "dt", "dd" })) return false;
+    }
+    try edit.collapse(root, 0);
+    while (try common.firstChild(root)) |child| try edit.removeNode(child);
+    if (block_flow) try edit.appendChild(root, try edit.createElement("br"));
+    return true;
 }
 
 /// The word modifier with Backspace (`forward` false) or Delete in an
