@@ -2773,6 +2773,250 @@ test "protocol: a page's end tells V8 a main frame's context went, its frame's e
     try std.testing.expectEqual(@as(u64, 1), child_after - child_before);
 }
 
+// ---------------------------------------------------------------------------
+// The collection after a main frame's navigation (navigation_collection.zig;
+// the build option -Dv8-navigation-collection-mb): Blink's step for a device
+// short of memory - a critical memory-pressure notice at a main frame's
+// context disposal when the page being left used much memory and the frame
+// will be reused (v8_gc_for_context_dispose.cc:69-87; set by
+// OomInterventionImpl, oom_intervention_impl.cc:164-166; Chromium
+// 157.0.8103.50). Crane: when V8's heap holds at least the agent's threshold
+// (its objects plus its ArrayBuffer backing stores), at the agent's next
+// engine-task step.
+// ---------------------------------------------------------------------------
+
+const megabyte: usize = 1024 * 1024;
+
+/// The navigation collections the test's agent was sent.
+fn navigationCollections() u64 {
+    return v8.protocol_agents.navigationCollectionsOf(test_isolate.?);
+}
+
+/// What the threshold is compared with: the objects in V8's heap plus its
+/// ArrayBuffer backing stores (v8::HeapStatistics).
+fn heapHeld() usize {
+    var used: usize = 0;
+    var external: usize = 0;
+    ffi.v8_Isolate_GetHeapUsage(test_isolate.?, &used, null, &external);
+    return used + external;
+}
+
+/// `page` navigates: a new Window behind its WindowProxy, and the old
+/// document's realm goes - what a navigation's commit does. The new realm.
+fn navigate(page: runtime.Context, host: *WindowHost) !runtime.Context {
+    const next = try windowRealm(host, false, .{ .window_proxy_of = page });
+    protocol.destroyWindowRealm(page, .global_detached);
+    return next;
+}
+
+test "protocol: a navigation that leaves much behind is collected at the agent's next engine-task step, once" {
+    defer test_agent.close();
+    var host_a: WindowHost = .{};
+    const a = try windowRealm(&host_a, false, .new_window_proxy);
+    const agent: *protocol.Agent = @ptrCast(test_isolate.?);
+    // "Much": more than any page's realm holds.
+    v8.protocol_agents.setNavigationCollectionThreshold(test_isolate.?, megabyte);
+    try expectEval(a, "globalThis.kept = []; for (let i = 0; i < 50000; i++) kept.push('k' + i); String(kept.length)", "50000");
+    const sent_before = navigationCollections();
+
+    var host_b: WindowHost = .{};
+    const b = try navigate(a, &host_b);
+    defer protocol.destroyWindowRealm(b, .global_detached);
+    // Nothing is collected inside the realm's end: finalizers and queued
+    // teardowns may not run there.
+    const collections_before = fullCollections();
+    try std.testing.expectEqual(sent_before, navigationCollections());
+
+    // The event loop's engine-task step: the notice, and V8 collects before
+    // it returns.
+    _ = protocol.runEngineTasks(agent);
+    try std.testing.expectEqual(sent_before + 1, navigationCollections());
+    try std.testing.expect(fullCollections() > collections_before);
+
+    // Once per navigation: the next steps owe nothing.
+    _ = protocol.runEngineTasks(agent);
+    _ = protocol.runEngineTasks(agent);
+    try std.testing.expectEqual(sent_before + 1, navigationCollections());
+    // And the page the navigation showed is untouched.
+    try expectEval(b, "typeof kept + ',' + (self === globalThis)", "undefined,true");
+}
+
+test "protocol: a navigation that leaves little behind is not collected - V8 was told, and collects by its own limits" {
+    defer test_agent.close();
+    var host_a: WindowHost = .{};
+    const a = try windowRealm(&host_a, false, .new_window_proxy);
+    const agent: *protocol.Agent = @ptrCast(test_isolate.?);
+    // A threshold no test page reaches.
+    v8.protocol_agents.setNavigationCollectionThreshold(test_isolate.?, 1024 * megabyte);
+    try expectEval(a, "globalThis.kept = []; for (let i = 0; i < 50000; i++) kept.push('k' + i); String(kept.length)", "50000");
+    const sent_before = navigationCollections();
+    var main_before: u64 = 0;
+    var child_before: u64 = 0;
+    ffi.v8_Debug_ContextDisposals(test_isolate.?, &main_before, &child_before);
+
+    var host_b: WindowHost = .{};
+    const b = try navigate(a, &host_b);
+    _ = protocol.runEngineTasks(agent);
+    try std.testing.expectEqual(sent_before, navigationCollections());
+    // The disposal notice went as before (Blink's, on every device).
+    var main_after: u64 = 0;
+    var child_after: u64 = 0;
+    ffi.v8_Debug_ContextDisposals(test_isolate.?, &main_after, &child_after);
+    try std.testing.expectEqual(@as(u64, 1), main_after - main_before);
+
+    // With no threshold - a build for a desktop, -Dv8-navigation-collection-mb=0 -
+    // nothing is sent however much is left.
+    v8.protocol_agents.setNavigationCollectionThreshold(test_isolate.?, null);
+    var host_c: WindowHost = .{};
+    const c = try navigate(b, &host_c);
+    defer protocol.destroyWindowRealm(c, .global_detached);
+    _ = protocol.runEngineTasks(agent);
+    try std.testing.expectEqual(sent_before, navigationCollections());
+}
+
+test "protocol: this build's threshold - a page that leaves more than it behind is collected and its memory comes back, a small page is not" {
+    // The build's own value (-Dv8-navigation-collection-mb, or the adapter's
+    // default: 16 MB with a limited young generation); a build with none
+    // sends nothing, which the test above pins.
+    const threshold = v8.navigation_collection.threshold orelse return error.SkipZigTest;
+    defer test_agent.close();
+    var host_a: WindowHost = .{};
+    const a = try windowRealm(&host_a, false, .new_window_proxy);
+    const agent: *protocol.Agent = @ptrCast(test_isolate.?);
+    const sent_before = navigationCollections();
+
+    // A small page first: its navigation owes a look, and the look finds
+    // little.
+    try std.testing.expect(heapHeld() < threshold);
+    var host_b: WindowHost = .{};
+    const b = try navigate(a, &host_b);
+    _ = protocol.runEngineTasks(agent);
+    try std.testing.expectEqual(sent_before, navigationCollections());
+
+    // A page that holds 4 MB more than the threshold: strings and closures
+    // it keeps, 100,000 of each a piece (about 7 MB of objects in V8's heap;
+    // not `'x'.repeat(n)` or padEnd, which make ropes of a few bytes).
+    var pieces: usize = 0;
+    while (heapHeld() < threshold + 4 * megabyte and pieces < 64) : (pieces += 1) {
+        const made = try evalString(b, "globalThis.heavy ??= []; for (let i = 0; i < 100000; i++) { const n = heavy.length; heavy.push('k' + n, () => n); } String(heavy.length)");
+        std.testing.allocator.free(made);
+    }
+    try std.testing.expect(heapHeld() >= threshold + 4 * megabyte);
+
+    var host_c: WindowHost = .{};
+    const c = try navigate(b, &host_c);
+    defer protocol.destroyWindowRealm(c, .global_detached);
+    // Still held: the realm's end collects nothing.
+    try std.testing.expect(heapHeld() >= threshold);
+    _ = protocol.runEngineTasks(agent);
+    try std.testing.expectEqual(sent_before + 1, navigationCollections());
+    // The page that was left is gone from the heap: what the notice is for.
+    if (heapHeld() >= threshold) std.debug.print("V8 still holds {d} KB after the navigation's collection (threshold {d} KB)\n", .{ heapHeld() / 1024, threshold / 1024 });
+    try std.testing.expect(heapHeld() < threshold);
+}
+
+test "protocol: a realm that goes for good owes no collection - a removed frame's, a frame's navigation, a closed page's" {
+    // Blink sends the notice only for a main frame that will be reused
+    // (WindowProxy::kFrameWillBeReused): nothing is reused when a frame is
+    // removed or a page closes, and a frame's navigation is not a main
+    // frame's.
+    defer test_agent.close();
+    var host: WindowHost = .{};
+    const page = try windowRealm(&host, false, .new_window_proxy);
+    const agent: *protocol.Agent = @ptrCast(test_isolate.?);
+    v8.protocol_agents.setNavigationCollectionThreshold(test_isolate.?, megabyte);
+    const sent_before = navigationCollections();
+
+    // An iframe is removed: HTML "destroy a child navigable".
+    var removed_realm: FrameRealm = .{ .parent = page };
+    const removed = try removed_realm.make();
+    protocol.destroyWindowRealm(removed, .navigable_destroyed);
+    _ = protocol.runEngineTasks(agent);
+    try std.testing.expectEqual(sent_before, navigationCollections());
+
+    // An iframe navigates: a new Window behind the frame's WindowProxy.
+    var old_frame_realm: FrameRealm = .{ .parent = page };
+    const old_frame = try old_frame_realm.make();
+    var new_frame_realm: FrameRealm = .{ .parent = page, .global_this = .{ .window_proxy_of = old_frame } };
+    _ = try new_frame_realm.make();
+    protocol.destroyWindowRealm(old_frame, .global_detached);
+    _ = protocol.runEngineTasks(agent);
+    try std.testing.expectEqual(sent_before, navigationCollections());
+
+    // The page closes - its tab, or its Browser, ends: no realm takes its
+    // WindowProxy on.
+    protocol.destroyWindowRealm(page, .global_detached);
+    _ = protocol.runEngineTasks(agent);
+    try std.testing.expectEqual(sent_before, navigationCollections());
+}
+
+test "protocol: a page that is kept - the back/forward cache's - owes no collection, and another page's collection leaves it whole" {
+    // A page the back/forward cache keeps is never ended: its realm stays,
+    // its global attached to its own WindowProxy (dom.bfcache.KeptPage), and
+    // the navigation's new document gets a realm with a WindowProxy of its
+    // own. Nothing was disposed, so nothing is owed; and a collection
+    // another navigation of the same agent sends takes nothing of it.
+    defer test_agent.close();
+    var host_kept: WindowHost = .{};
+    const kept = try windowRealm(&host_kept, false, .new_window_proxy);
+    const agent: *protocol.Agent = @ptrCast(test_isolate.?);
+    v8.protocol_agents.setNavigationCollectionThreshold(test_isolate.?, megabyte);
+    try expectEval(kept, "globalThis.state = { n: 41, list: [] }; for (let i = 0; i < 50000; i++) state.list.push('s' + i); String(state.list.length)", "50000");
+    const sent_before = navigationCollections();
+
+    // The navigation away from it: a new realm, a new WindowProxy.
+    var host_next: WindowHost = .{};
+    const next = try windowRealm(&host_next, false, .new_window_proxy);
+    _ = protocol.runEngineTasks(agent);
+    try std.testing.expectEqual(sent_before, navigationCollections());
+
+    // That page navigates on, and is not kept: its collection is sent.
+    var host_after: WindowHost = .{};
+    const after = try navigate(next, &host_after);
+    _ = protocol.runEngineTasks(agent);
+    try std.testing.expectEqual(sent_before + 1, navigationCollections());
+
+    // The kept page is whole: its realm runs script, its heap is as it was.
+    try expectEval(kept, "state.n + 1 + ',' + state.list.length + ',' + state.list[49999] + ',' + (self === globalThis)", "42,50000,s49999,true");
+    protocol.destroyWindowRealm(after, .global_detached);
+    protocol.destroyWindowRealm(kept, .global_detached);
+}
+
+test "protocol: a host's critical memory-pressure notice pays what a navigation owed" {
+    // Browser.navigate sends a critical notice when it lets a page go: that
+    // collection takes the page a navigation left, and no second one follows.
+    defer test_agent.close();
+    var host_a: WindowHost = .{};
+    const a = try windowRealm(&host_a, false, .new_window_proxy);
+    const agent: *protocol.Agent = @ptrCast(test_isolate.?);
+    v8.protocol_agents.setNavigationCollectionThreshold(test_isolate.?, megabyte);
+    const sent_before = navigationCollections();
+
+    var host_b: WindowHost = .{};
+    const b = try navigate(a, &host_b);
+    defer protocol.destroyWindowRealm(b, .global_detached);
+    protocol.notifyMemoryPressure(agent, .critical);
+    _ = protocol.runEngineTasks(agent);
+    _ = protocol.runEngineTasks(agent);
+    try std.testing.expectEqual(sent_before, navigationCollections());
+}
+
+test "protocol: the build's megabytes become the navigation collection's threshold" {
+    const thresholdFor = v8.navigation_collection.thresholdFor;
+    // Not given: 16 MB with a limited young generation - the configuration
+    // for little memory - and never with V8's own.
+    try std.testing.expectEqual(@as(?usize, 16 * megabyte), thresholdFor(null, true));
+    try std.testing.expectEqual(@as(?usize, null), thresholdFor(null, false));
+    // Given: the build's, whatever the young generation is.
+    try std.testing.expectEqual(@as(?usize, 32 * megabyte), thresholdFor(32, true));
+    try std.testing.expectEqual(@as(?usize, 8 * megabyte), thresholdFor(8, false));
+    // 0: never.
+    try std.testing.expectEqual(@as(?usize, null), thresholdFor(0, true));
+    try std.testing.expectEqual(@as(?usize, null), thresholdFor(0, false));
+    // And this build's threshold is that of what it was given.
+    try std.testing.expectEqual(thresholdFor(v8.navigation_collection.requested_mb, v8.young_generation.limit != null), v8.navigation_collection.threshold);
+}
+
 test "protocol: a page that ends does not abort another page's WebAssembly compilation" {
     // Isolate::ContextDisposedNotification with kNoDependants also aborts
     // every asynchronous WebAssembly compilation of the isolate's CURRENT

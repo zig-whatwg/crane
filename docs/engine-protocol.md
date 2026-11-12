@@ -586,6 +586,7 @@ The V8 adapter's build file declares:
 | Option | What it does |
 |---|---|
 | `-Dv8-young-generation-mb=<n>` | The most memory each isolate's young generation takes at rest - the window agent's and every worker's. Below. |
+| `-Dv8-navigation-collection-mb=<n>` | After a main frame's navigation, collect the page that was left when V8's heap holds at least `n` MB. Below. |
 
 Still declared by the root build.zig, and V8's alone - to move behind this
 interface (lane build1, with the V8 link lines): `-Dv8` and `-Dv8-build`
@@ -643,7 +644,58 @@ tests/v8/young_generation_limit_test.zig pins the ceiling at 8 MB and 2 MB
 semispaces, the rounding, V8's own sizing, and that an agent made through the
 protocol has its build's.
 
-Why it is not an option of the protocol (the user, 2026-11-12): no other
+**The collection after a main frame's navigation is a V8 build option:
+`-Dv8-navigation-collection-mb=<n>`.** When a page navigates, V8 is told that
+the old page's context was disposed, as Blink tells it
+(`ContextDisposedNotification`, sent by the old realm's end), and V8 15.7 does
+not collect for that: with its preconfigured old generation - Chrome's default
+- the notice resets no limit and only arms the memory reducer, 30 s away. Pages
+left one after another in one tab stay until V8's own 64 MB limit. Blink has
+one more step there for a device short of memory: when the page being left
+used much memory and the main frame will be reused, one critical
+memory-pressure notice at that disposal, "so that the memory usage of the two
+pages would not overlap" (v8_gc_for_context_dispose.cc:69-87, set by
+OomInterventionImpl, oom_intervention_impl.cc:164-166; Chromium 157.0.8103.50).
+The option is that step:
+
+- WHEN: a top-level realm ended because a navigation gave its navigable a new
+  Window. Never a frame's realm, never a page, tab or Browser that closed
+  (nothing is reused), never a page the back/forward cache keeps (its realm
+  does not end).
+- IF: V8's heap then holds at least `n` MB - the objects in its heap, live or
+  not yet collected, plus its ArrayBuffer backing stores (v8::HeapStatistics
+  `used_heap_size + external_memory`; the DOM memory Crane reports to V8 is
+  not in that figure). A page heavy in DOM and light in script reaches it
+  late: V8's own limit - 64 MB of heap plus the reported DOM memory - is the
+  backstop for those.
+- WHAT: one critical memory-pressure notice, from the agent's next
+  engine-task step - the event loop's own turn, not inside the realm's end,
+  where Crane's finalizers and teardowns may not run. Once per navigation; a
+  critical notice the host sends meanwhile pays it.
+
+| `-Dv8-navigation-collection-mb` | what it is |
+|---|---|
+| `0` | never: only the disposal notice, as Chrome on desktop |
+| `n` | when V8's heap holds at least `n` MB |
+| not given | THE DEFAULT (`default_mb` in src/runtime/engines/v8/navigation_collection.zig): 16 when the build's young generation is limited - the default build, configured for little memory - and never when it is V8's own (`-Dv8-young-generation-mb=0`, a desktop build) |
+
+Measured on the perf suite's four pages that navigate (the 8 MB-semispace
+default, chat.local, 7 alternating runs; end memory in MB, time per
+navigation against no collection):
+
+| threshold | load.news | load.docs | load.app | memory.page-growth | time |
+|---|---|---|---|---|---|
+| never | 55.6 | 103.2 | 79.4 | 64.4 | |
+| 32 MB | 55.6 | 105.2 | 79.5 | 64.3 | never reached |
+| 16 MB (the default) | 33.8 | 61.5 | 46.9 | 41.0 | +0.3% to +2.2% |
+| every navigation | 23.6 | 39.3 | 28.3 | 24.6 | +7.6% to +20.6% |
+| main on V8 13.1 | 48.8 | 74.9 | 56.0 | 69.5 | |
+
+At 16 MB one notice is sent in about ten pages, 2.4 to 7 ms each.
+tests/v8/page_realm_operations_test.zig pins when it is owed, when it is
+sent, that it is sent once, and what never owes it.
+
+Why neither is an option of the protocol (the user, 2026-11-12): no other
 engine Crane runs on could honour it. JavaScriptCore's public API has no heap
 sizing - JSBase.h offers `JSGarbageCollect` and nothing else about the heap,
 JSContextRef.h and JSVirtualMachine.h nothing; its eden size is the private

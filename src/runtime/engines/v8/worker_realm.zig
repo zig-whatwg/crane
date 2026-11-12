@@ -104,6 +104,9 @@ pub fn hasPendingEngineWork(agent: *runtime.Agent) bool {
 /// Engine table `runEngineTasks`: run the tasks V8 has posted to the platform
 /// for `agent`; whether any ran.
 pub fn runEngineTasks(agent: *runtime.Agent) bool {
+    // The collection a navigation owed, when its page left much behind
+    // (navigation_collection.zig): here, at the event loop's own turn.
+    @import("protocol_agents.zig").payNavigationCollection(agent);
     const entered = EnteredAgent.enter(agent);
     defer entered.leave();
     return event_loop.pumpPlatformTasks(entered.isolate);

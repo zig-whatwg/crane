@@ -2825,6 +2825,11 @@ struct IsolateData {
     /// (kSomeDependants). Written on the isolate's thread; a diagnostic the
     /// tests read (v8_Debug_ContextDisposals).
     uint64_t context_disposals[2] = {0, 0};
+    /// navigation_collection.zig: a navigation replaced a main frame's
+    /// document, and the agent's next engine-task step owes V8 a look at how
+    /// much the heap holds - and, over the build's threshold, a critical
+    /// memory-pressure notice. Written and read on the isolate's thread.
+    bool navigation_collection_owed = false;
     /// The agent's C++ heap (newAgentCppHeap) until V8 takes it: handed to
     /// V8 as CreateParams::cpp_heap and attached from Isolate::Initialize on,
     /// after which V8 OWNS it ("V8 takes ownership of the CppHeap passed this
@@ -4765,6 +4770,22 @@ void v8_Isolate_ContextDisposedNotification(Isolate* isolate, Global<Context>* d
     Context::Scope entered(context);
     if (IsolateData* record = isolateData(isolate)) ++record->context_disposals[has_dependants ? 1 : 0];
     isolate->ContextDisposedNotification(has_dependants ? ContextDependants::kSomeDependants : ContextDependants::kNoDependants);
+}
+
+/// navigation_collection.zig: a navigation replaced a main frame's document
+/// (IsolateData::navigation_collection_owed). On the isolate's thread.
+extern "C" void v8_Isolate_OweNavigationCollection(Isolate* isolate) {
+    if (IsolateData* record = isolateData(isolate)) record->navigation_collection_owed = true;
+}
+
+/// Whether a navigation's collection was owed; it is not any more. Read at
+/// every engine-task step, so it is one field of the isolate's own record,
+/// no lock. On the isolate's thread.
+extern "C" bool v8_Isolate_TakeNavigationCollectionOwed(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    if (!record || !record->navigation_collection_owed) return false;
+    record->navigation_collection_owed = false;
+    return true;
 }
 
 /// `isolate`'s context disposals so far, by what V8 was told

@@ -1099,6 +1099,13 @@ pub extern fn v8_Isolate_ContextDisposedNotification(isolate: *Isolate, disposed
 /// (no dependants) and a child frame's. A diagnostic for tests; 0 for an
 /// isolate the adapter did not make.
 pub extern fn v8_Debug_ContextDisposals(isolate: ?*Isolate, main_frame: *u64, child_frame: *u64) void;
+/// navigation_collection.zig: a navigation replaced a main frame's document
+/// of `isolate`; its next engine-task step looks at the heap. On the
+/// isolate's thread.
+pub extern fn v8_Isolate_OweNavigationCollection(isolate: *Isolate) void;
+/// Whether that was owed - and it is not any more. One field of the
+/// isolate's record, no lock: asked at every engine-task step.
+pub extern fn v8_Isolate_TakeNavigationCollectionOwed(isolate: *Isolate) bool;
 /// v8::MemoryPressureLevel.
 pub const MemoryPressureLevel = enum(c_int) { none = 0, moderate = 1, critical = 2 };
 /// Isolate::MemoryPressureNotification, the signal Blink sends when the

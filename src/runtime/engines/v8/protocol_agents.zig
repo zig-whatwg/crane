@@ -22,6 +22,7 @@ const isolate_lifecycle = @import("isolate_lifecycle.zig");
 const isolate_allocator = @import("isolate_allocator.zig");
 const shadow_realm = @import("shadow_realm.zig");
 const young_generation = @import("young_generation.zig");
+const navigation_collection = @import("navigation_collection.zig");
 const intl_binding = @import("intl_binding.zig");
 const observable_array = @import("observable_array.zig");
 const context_manager = @import("context_manager.zig");
@@ -182,6 +183,14 @@ const AgentRecord = struct {
     /// host may free them only after the agent is destroyed
     /// (`liveSnapshotAgents`, deinitializeEngine).
     from_snapshot: bool = false,
+    /// navigation_collection.zig: how many bytes V8's heap must hold (its
+    /// objects plus its ArrayBuffer backing stores) for the collection
+    /// after a main frame's navigation; null: none is sent. The build's
+    /// (-Dv8-navigation-collection-mb);
+    /// tests/v8 give an agent another (`setNavigationCollectionThreshold`).
+    navigation_collection_threshold: ?usize = navigation_collection.threshold,
+    /// How many of those collections the agent was sent (tests).
+    navigation_collections: u64 = 0,
     /// The agent's ShadowRealms (shadow_realm.zig): made with the agent,
     /// freed by its end. Null when ShadowRealm support was not installed.
     shadow_realms: ?*shadow_realm.ShadowRealmCallbackData = null,
@@ -929,6 +938,9 @@ pub fn notifyMemoryPressure(agent: *Agent, level: engine.MemoryPressure) void {
     defer entered.leave();
     switch (level) {
         .critical => {
+            // This collection takes the page a navigation left, too: what
+            // that navigation owed is paid (navigation_collection.zig).
+            _ = ffi.v8_Isolate_TakeNavigationCollectionOwed(entered.isolate);
             ffi.v8_Isolate_MemoryPressureNotification(entered.isolate, .critical);
             ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
             if (!teardownsHeld(entered.isolate)) {
@@ -937,6 +949,52 @@ pub fn notifyMemoryPressure(agent: *Agent, level: engine.MemoryPressure) void {
         },
         .moderate => ffi.v8_Isolate_MemoryPressureNotification(entered.isolate, .moderate),
     }
+}
+
+/// navigation_collection.zig, WHEN: a navigation gave a main frame's
+/// navigable a new Window, and the old realm's context of `isolate` was
+/// disposed (protocol_realms.zig `detach`). Nothing is collected here, in
+/// the realm's end: the agent's next engine-task step looks.
+pub fn oweNavigationCollection(isolate: *ffi.Isolate) void {
+    ffi.v8_Isolate_OweNavigationCollection(isolate);
+}
+
+/// navigation_collection.zig, IF and WHAT: at the agent's engine-task step
+/// (worker_realm.zig `runEngineTasks`) - the event loop's own turn, no DOM
+/// algorithm on the stack. When a navigation's collection is owed and V8's
+/// heap holds at least the agent's threshold (v8::HeapStatistics
+/// used_heap_size + external_memory), one critical memory-pressure notice
+/// (`notifyMemoryPressure`), as Blink sends
+/// at a main frame's context disposal when the page being left used much
+/// memory (v8_gc_for_context_dispose.cc:69-87, Chromium 157.0.8103.50).
+/// Below the threshold, or with none, what was owed is forgotten: V8 was
+/// told of the disposal, and collects by its own limits.
+pub fn payNavigationCollection(agent: *Agent) void {
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+    // Almost always false: one read of the isolate's own record.
+    if (!ffi.v8_Isolate_TakeNavigationCollectionOwed(isolate)) return;
+    const record = recordOf(isolate) orelse return;
+    const threshold = record.navigation_collection_threshold orelse return;
+    var used: usize = 0;
+    var external: usize = 0;
+    ffi.v8_Isolate_GetHeapUsage(isolate, &used, null, &external);
+    if (used + external < threshold) return;
+    record.navigation_collections += 1;
+    notifyMemoryPressure(agent, .critical);
+}
+
+/// For tests/v8: give `isolate`'s agent another threshold than the build's
+/// (bytes; null: never) - a test binary is one build.
+pub fn setNavigationCollectionThreshold(isolate: *ffi.Isolate, threshold: ?usize) void {
+    const record = recordOf(isolate) orelse return;
+    record.navigation_collection_threshold = threshold;
+}
+
+/// For tests/v8: the navigation collections `isolate`'s agent was sent; 0
+/// for an isolate createAgent did not make.
+pub fn navigationCollectionsOf(isolate: *ffi.Isolate) u64 {
+    const record = recordOf(isolate) orelse return 0;
+    return record.navigation_collections;
 }
 
 /// Whether a walk holds the agent's teardowns now (engine.deferTeardowns).

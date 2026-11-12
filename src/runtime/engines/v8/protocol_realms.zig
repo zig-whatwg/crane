@@ -911,6 +911,14 @@ fn detach(realm: Context, state: *WindowRealmState) void {
     notifyContextDisposed(state.isolate, context, state);
     ffi.v8_Context_SetWeak(context, record, realmCollected);
     state.detached = record;
+    // A navigation gave a MAIN frame's navigable a new Window - this realm's
+    // WindowProxy went on to it, so the frame is reused (Blink's
+    // WindowProxy::kFrameWillBeReused): the agent's next engine-task step
+    // collects the page that was left if it left much
+    // (navigation_collection.zig). Not a frame's realm, and not a realm
+    // whose navigable is gone - a closed page's ends in `endRealm`, a
+    // destroyed navigable's has handed nothing on.
+    if (state.top_level and state.window_proxy_handed_on) protocol_agents.oweNavigationCollection(state.isolate);
 }
 
 /// Tell V8 a Window realm's context is disposed, and whether it had

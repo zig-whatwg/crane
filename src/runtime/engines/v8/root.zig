@@ -152,6 +152,9 @@ pub const external_memory = @import("external_memory.zig");
 /// (-Dv8-young-generation-mb), as V8's ResourceConstraints take it
 /// (tests/v8/young_generation_limit_test.zig).
 pub const young_generation = @import("young_generation.zig");
+/// The collection after a main frame's navigation, a build option of this
+/// adapter (-Dv8-navigation-collection-mb).
+pub const navigation_collection = @import("navigation_collection.zig");
 
 /// Isolate allocator (per-isolate memory management)
 pub const isolate_allocator = @import("isolate_allocator.zig");

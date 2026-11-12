@@ -33,6 +33,11 @@ pub const Options = struct {
     /// default (young_generation.zig `default_mb`, which says what the value
     /// means and how it is applied).
     young_generation_mb: ?u32,
+    /// `-Dv8-navigation-collection-mb`: how many megabytes V8's heap must
+    /// hold for the collection after a main frame's navigation; 0 is never;
+    /// null, not given, is the adapter's default (navigation_collection.zig,
+    /// which says what it is and why).
+    navigation_collection_mb: ?u32,
 };
 
 /// Declare the V8 adapter's build options.
@@ -43,10 +48,16 @@ pub fn declareOptions(b: *std.Build) Options {
             "v8-young-generation-mb",
             "V8: the most memory each isolate's young generation takes at rest, in MB of the WHOLE young generation: 24 = 8 MB semispaces (the default: src/runtime/engines/v8/young_generation.zig default_mb), 48 = 16 MB, 96 = 32 MB, 0 = V8's own sizing (32 MB semispaces, Chrome's on desktop: for a desktop build)",
         ),
+        .navigation_collection_mb = b.option(
+            u32,
+            "v8-navigation-collection-mb",
+            "V8: after a main frame's navigation, collect the page that was left when V8's heap holds at least this many MB (default: 16 with a limited young generation, never with V8's own sizing, -Dv8-young-generation-mb=0); 0 = never",
+        ),
     };
 }
 
 /// Put `options` in the adapter's own options module.
 pub fn apply(options: Options, adapter_options: *std.Build.Step.Options) void {
     adapter_options.addOption(?u32, "young_generation_mb", options.young_generation_mb);
+    adapter_options.addOption(?u32, "navigation_collection_mb", options.navigation_collection_mb);
 }
