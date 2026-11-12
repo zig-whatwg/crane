@@ -534,8 +534,10 @@ pub fn call_selectAllChildren(instance: *runtime.Instance, node: *runtime.Instan
 /// granularity: "character" | "word" | "sentence" | "line" | "paragraph" |
 ///              "lineboundary" | "sentenceboundary" | "paragraphboundary" | "documentboundary"
 ///
-/// Note: Layout-dependent granularities (line, lineboundary) require a LayoutBackend.
-/// This implementation supports character and word granularity without layout.
+/// "character" and "word" move over visible positions (Blink's
+/// SelectionModifier, src/html/execcommand/visible_position.zig) and
+/// "documentboundary" to the document's edge; the line and sentence
+/// granularities are renderer reads (TODO(renderer)) and move nothing.
 pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMString), direction: webidl.Opt(runtime.DOMString), granularity: webidl.Opt(runtime.DOMString)) anyerror!void {
     // Selection API modify steps 1-3: only ASCII case-insensitive matches
     // are accepted; omitted arguments have no valid keyword default.
@@ -557,37 +559,43 @@ pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMStr
     const focus_node = (try get_focusNode(instance)) orelse return;
     const focus_offset = try get_focusOffset(instance);
 
-    // Determine new position based on granularity
-    var new_node = focus_node;
-    var new_offset: u32 = 0;
-
-    if (std.ascii.eqlIgnoreCase(granularity_slice, "character")) {
-        // Move by one character
-        const result = try moveByCharacter(focus_node, focus_offset, is_forward);
-        new_node = result.node;
-        new_offset = result.offset;
-    } else if (std.ascii.eqlIgnoreCase(granularity_slice, "word")) {
-        // Move by one word
-        const result = try moveByWord(focus_node, focus_offset, is_forward);
-        new_node = result.node;
-        new_offset = result.offset;
-    } else if (std.ascii.eqlIgnoreCase(granularity_slice, "documentboundary")) {
-        // Move to document boundary
-        const result = try moveToDocumentBoundary(focus_node, is_forward);
-        new_node = result.node;
-        new_offset = result.offset;
-    } else {
-        // Layout-dependent granularities: sentence, line, paragraph, lineboundary, etc.
-        // These require LayoutBackend integration - return without modification
-        // TODO: Integrate with LayoutBackend when available
+    const is_character = std.ascii.eqlIgnoreCase(granularity_slice, "character");
+    if (is_character or std.ascii.eqlIgnoreCase(granularity_slice, "word")) {
+        // Blink's SelectionModifier (selection_modifier.cc) over visible
+        // positions, as WebKit's FrameSelection::modify: the caret moves to
+        // the next position a caret can be at, not the next DOM offset
+        // (src/html/execcommand/visible_position.zig). Null: Blink's modify
+        // returns false and the selection stays.
+        const vp = @import("html").execcommand.visible_position;
+        var selection: vp.Selection = .{ .focus = .{ .node = focus_node, .offset = focus_offset } };
+        if (!try get_isCollapsed(instance)) {
+            const internal = getInternal(instance) orelse return;
+            const bounds = visibleBoundaries(internal) orelse return;
+            selection.range = .{
+                .start = .{ .node = bounds.start_container, .offset = bounds.start_offset },
+                .end = .{ .node = bounds.end_container, .offset = bounds.end_offset },
+            };
+        }
+        const target = vp.modifyPosition(instance.ctx.allocator, selection, is_extend, is_forward, if (is_character) .character else .word) orelse return;
+        if (is_extend) {
+            try call_extend(instance, target.node, .passed(target.offset));
+        } else {
+            try call_collapse(instance, target.node, .passed(target.offset));
+        }
         return;
     }
 
-    if (is_extend) {
-        try call_extend(instance, new_node, .passed(new_offset));
-    } else {
-        try call_collapse(instance, new_node, .passed(new_offset));
+    if (std.ascii.eqlIgnoreCase(granularity_slice, "documentboundary")) {
+        const result = try moveToDocumentBoundary(focus_node, is_forward);
+        if (is_extend) {
+            try call_extend(instance, result.node, .passed(result.offset));
+        } else {
+            try call_collapse(instance, result.node, .passed(result.offset));
+        }
     }
+    // Layout-dependent granularities (sentence, line, paragraph,
+    // lineboundary, ...): TODO(renderer): line and sentence boundaries are
+    // reads on the renderer; with none the selection does not move.
 }
 
 /// Result of a position calculation
@@ -595,178 +603,6 @@ const PositionResult = struct {
     node: *runtime.Instance,
     offset: u32,
 };
-
-/// Move position by one character
-fn moveByCharacter(node: *runtime.Instance, offset: u32, forward: bool) !PositionResult {
-    const node_type = interfaces.Node.get_nodeType(node) catch 0;
-
-    // For text nodes, we can move within the text content
-    if (node_type == interfaces.Node.get_TEXT_NODE() or
-        node_type == interfaces.Node.get_COMMENT_NODE() or
-        node_type == interfaces.Node.get_CDATA_SECTION_NODE())
-    {
-        if (interfaces.CharacterData.get_length(node)) |data_len| {
-            if (forward) {
-                if (offset < data_len) {
-                    // Move forward within same node
-                    return .{ .node = node, .offset = offset + 1 };
-                } else {
-                    // At end of text node, try to move to next node
-                    if (try getNextTextPosition(node)) |next| {
-                        // Text has no contenteditable of its own: siblings
-                        // share every ancestor and therefore the editing host.
-                        if (parentNode(node) == parentNode(next.node)) return next;
-                        return skipEditingBoundary(.{ .node = node, .offset = offset }, next, true);
-                    }
-                    // Can't move further, stay at end
-                    return .{ .node = node, .offset = offset };
-                }
-            } else {
-                if (offset > 0) {
-                    // Move backward within same node
-                    return .{ .node = node, .offset = offset - 1 };
-                } else {
-                    // At start of text node, try to move to previous node
-                    if (try getPreviousTextPosition(node)) |prev| {
-                        // The same sibling equivalence holds in reverse.
-                        if (parentNode(node) == parentNode(prev.node)) return prev;
-                        return skipEditingBoundary(.{ .node = node, .offset = offset }, prev, false);
-                    }
-                    // Can't move further, stay at start
-                    return .{ .node = node, .offset = 0 };
-                }
-            }
-        } else |_| {}
-    }
-
-    // Steps 10-11: a parent boundary adjacent to text is the same caret
-    // position as that text's edge, not a request to skip the whole child.
-    // Blink's Next/PreviousVisuallyDistinctCandidate traverses descendants
-    // from this boundary before consuming a character. Keep the existing
-    // character unit and editing-root check; no layout position is invented.
-    if (forward or offset != 0) {
-        if (childAt(node, if (forward) offset else offset - 1)) |child| {
-            if (try findTextNode(child, forward, true)) |text| {
-                const candidate = PositionResult{ .node = text, .offset = if (forward) 0 else try nodeLength(text) };
-                const adjusted = try skipEditingBoundary(.{ .node = node, .offset = offset }, candidate, forward);
-                if (!std.meta.eql(candidate, adjusted)) return adjusted;
-                return moveByCharacter(text, candidate.offset, forward);
-            }
-        }
-    }
-
-    // A child without text keeps its structural boundary movement.
-    const child_count = countChildren(node);
-    if (forward) {
-        if (offset < child_count) {
-            return .{ .node = node, .offset = offset + 1 };
-        }
-    } else {
-        if (offset > 0) {
-            return .{ .node = node, .offset = offset - 1 };
-        }
-    }
-
-    // Can't move within this node
-    return .{ .node = node, .offset = offset };
-}
-
-fn isEditableNode(node: *runtime.Instance) bool {
-    var current: ?*runtime.Instance = node;
-    while (current) |element| : (current = parentNode(element)) {
-        if (element.stateAs(interfaces.HTMLElement.State) != null)
-            return interfaces.HTMLElement.get_isContentEditable(element) catch false;
-    }
-    return false;
-}
-
-fn highestEditableRoot(node: *runtime.Instance) ?*runtime.Instance {
-    if (!isEditableNode(node)) return null;
-    var root = node;
-    var current: ?*runtime.Instance = node;
-    while (current) |ancestor| : (current = parentNode(ancestor)) {
-        if (isEditableNode(ancestor)) root = ancestor;
-        if (ancestor.stateAs(interfaces.HTMLBodyElement.State) != null) break;
-    }
-    return root;
-}
-
-/// Selection.modify steps 10-11 follow user movement. Blink's
-/// position_units.cc SkipToEnd/StartOfEditingBoundary and editing_utilities.cc
-/// First/LastEditablePositionInRoot keep the caret in its highest editing
-/// root, skipping noneditable positions. Chrome/Safari pass all 16 cases in
-/// selection/contenteditable/modify-around-non-editable-span.html (WPT
-/// 23b0b89b1a); Firefox stops at some adjacent visible positions instead.
-/// Only a node transition needs these reads; moving inside Text is unchanged.
-fn skipEditingBoundary(origin: PositionResult, candidate: PositionResult, forward: bool) !PositionResult {
-    const root = highestEditableRoot(origin.node);
-    const candidate_root = highestEditableRoot(candidate.node);
-    if (root == candidate_root) return candidate;
-    if (root == null) {
-        const host = candidate_root orelse return candidate;
-        const parent = parentNode(host) orelse return origin;
-        return .{ .node = parent, .offset = getChildIndex(parent, host) + @as(u32, if (forward) 1 else 0) };
-    }
-    if (!try interfaces.Node.call_contains(root.?, candidate.node)) return origin;
-    var position = candidate;
-    while (!isEditableNode(position.node)) {
-        // A Text position can jump to its parent boundary without examining
-        // the noneditable characters. Element positions visit children in
-        // order, so an explicitly editable descendant remains reachable.
-        const child = if (isTextNode(position.node)) null else childAt(position.node, if (forward) position.offset else position.offset -| 1);
-        if (child != null and (forward or position.offset != 0)) {
-            position = .{ .node = child.?, .offset = if (forward) 0 else try nodeLength(child.?) };
-        } else {
-            if (position.node == root.?) return origin;
-            const parent = parentNode(position.node) orelse return origin;
-            const offset = getChildIndex(parent, position.node) + @as(u32, if (forward) 1 else 0);
-            position = .{ .node = parent, .offset = offset };
-        }
-    }
-    return position;
-}
-
-fn childAt(node: *runtime.Instance, offset: u32) ?*runtime.Instance {
-    var child = firstChild(node);
-    var index: u32 = 0;
-    while (child) |current| : (child = nextSibling(current)) {
-        if (index == offset) return current;
-        index += 1;
-    }
-    return null;
-}
-
-/// Move position by one word
-fn moveByWord(node: *runtime.Instance, offset: u32, forward: bool) !PositionResult {
-    const node_type = interfaces.Node.get_nodeType(node) catch 0;
-
-    // Only works for text nodes
-    if (node_type != interfaces.Node.get_TEXT_NODE() and
-        node_type != interfaces.Node.get_COMMENT_NODE() and
-        node_type != interfaces.Node.get_CDATA_SECTION_NODE())
-    {
-        // For non-text nodes, fall back to character movement
-        return moveByCharacter(node, offset, forward);
-    }
-
-    var text = interfaces.CharacterData.get_data(node) catch |err| switch (err) {
-        error.InvalidStateError => return .{ .node = node, .offset = offset },
-        else => return err,
-    };
-    defer text.deinit(node.ctx.allocator);
-    const data = text.asSlice();
-    // Selection.modify steps 10-11: only leave a node when starting at its
-    // boundary. Reaching the end of its last word is itself a movement
-    // result. Blink NextWordPositionInternal does the same before advancing
-    // to the next block; all three browsers pass the generated-content
-    // word-extension WPT at 23b0b89b1a.
-    if (forward and infra.wtf8.positionOfCodeUnit(data, offset).byte == data.len) {
-        if (try getNextTextPosition(node)) |next| return next;
-    } else if (!forward and offset == 0) {
-        if (try getPreviousTextPosition(node)) |previous| return previous;
-    }
-    return .{ .node = node, .offset = @import("html").word_navigation.move(data, offset, forward) };
-}
 
 /// Move to document boundary
 fn moveToDocumentBoundary(node: *runtime.Instance, forward: bool) !PositionResult {
@@ -807,64 +643,6 @@ fn countChildren(node: *runtime.Instance) u32 {
         child = nextSibling(child.?);
     }
     return count;
-}
-
-/// Get next text position (first position in next text node)
-fn getNextTextPosition(node: *runtime.Instance) !?PositionResult {
-    var current = node;
-
-    // Try next sibling first
-    while (true) {
-        if (nextSibling(current)) |sibling| {
-            // Check if sibling is a text node
-            if (isTextNode(sibling)) {
-                return .{ .node = sibling, .offset = 0 };
-            }
-            // Check sibling's descendants
-            if (try findFirstTextNode(sibling)) |text| {
-                return .{ .node = text, .offset = 0 };
-            }
-            current = sibling;
-        } else {
-            // No more siblings, go up to parent
-            if (parentNode(current)) |parent| {
-                current = parent;
-            } else {
-                return null; // Reached root
-            }
-        }
-    }
-}
-
-/// Get previous text position (last position in previous text node)
-fn getPreviousTextPosition(node: *runtime.Instance) !?PositionResult {
-    var current = node;
-
-    // Try previous sibling first
-    while (true) {
-        if (previousSibling(current)) |sibling| {
-            // Check sibling's descendants (rightmost text)
-            if (try findLastTextNode(sibling)) |text| {
-                if (interfaces.CharacterData.get_length(text)) |length| {
-                    return .{ .node = text, .offset = length };
-                } else |_| {}
-            }
-            // Check if sibling itself is a text node
-            if (isTextNode(sibling)) {
-                if (interfaces.CharacterData.get_length(sibling)) |length| {
-                    return .{ .node = sibling, .offset = length };
-                } else |_| {}
-            }
-            current = sibling;
-        } else {
-            // No more siblings, go up to parent
-            if (parentNode(current)) |parent| {
-                current = parent;
-            } else {
-                return null; // Reached root
-            }
-        }
-    }
 }
 
 /// Find first text node in subtree (depth-first)

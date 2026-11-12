@@ -57,6 +57,9 @@ pub const blocks = @import("blocks.zig");
 pub const select_all = @import("select_all.zig");
 pub const clipboard = @import("clipboard.zig");
 pub const clipboard_platform = @import("clipboard_platform.zig");
+/// Where a caret can be and how Selection.modify moves it (Blink's
+/// VisiblePosition model, layout facts from the style system).
+pub const visible_position = @import("visible_position.zig");
 
 const Instance = runtime.Instance;
 const Edit = common.Edit;
@@ -488,6 +491,45 @@ pub fn deleteByKey(target: *Instance, command: Command) void {
         return;
     };
     if (result and edit.modified and isConnected(affected)) _ = fireInputEvent(affected, "input", command.inputType(), null);
+}
+
+/// The word modifier with Backspace (`forward` false) or Delete in an
+/// editing host: a collapsed selection is first extended by a word in the
+/// key's direction - Selection.modify("extend", ..., "word"), the
+/// SelectionModifier Blink's TypingCommand::DeleteKeyPressed /
+/// ForwardDeleteKeyPressed run with TextGranularity::kWord - then the
+/// delete command's action removes it, announced by beforeinput and input
+/// with inputType deleteWordBackward / deleteWordForward (Input Events 2).
+/// A cancelled beforeinput leaves the selection as it was (Blink computes
+/// the range to delete without moving the selection).
+pub fn deleteWordByKey(target: *Instance, forward: bool) void {
+    const document = nodeDocument(target) orelse return;
+    var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
+    defer arena.deinit();
+    var edit = (beginEdit(document, arena.allocator()) catch return) orelse return;
+    const command: Command = if (forward) .forward_delete else .delete;
+    const input_type = if (forward) "deleteWordForward" else "deleteWordBackward";
+    if (!(isEnabledIn(&edit, command) catch false)) return;
+    const host = (affectedEditingHost(&edit) catch null) orelse return;
+    const original = (edit.rangeStart() catch return) orelse return;
+    const was_collapsed = edit.rangeCollapsed() catch return;
+    if (was_collapsed) {
+        interfaces.Selection.call_modify(edit.selection, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned("extend")), webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(if (forward) "forward" else "backward")), webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned("word"))) catch return;
+        // No word in that direction: nothing to delete.
+        if (edit.rangeCollapsed() catch true) return;
+    }
+    if (!fireInputEvent(host, "beforeinput", input_type, null)) {
+        if (was_collapsed) edit.collapse(original.node, original.offset) catch {};
+        return;
+    }
+    if (!isConnected(host)) return;
+    if (!(isEnabledIn(&edit, command) catch false)) return;
+    const affected = (affectedEditingHost(&edit) catch null) orelse return;
+    const result = runAction(&edit, command, "") catch |err| {
+        log.debug("{s} by key: {}", .{ input_type, err });
+        return;
+    };
+    if (result and edit.modified and isConnected(affected)) _ = fireInputEvent(affected, "input", input_type, null);
 }
 
 /// The user types `text` with the focus in an editing host (Editing spec,
