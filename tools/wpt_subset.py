@@ -670,6 +670,14 @@ EXCLUDE = [
     ('html/anonymous-iframe/', 'WICG draft; deferred by the user 2026-10-22'),
     ('html/document-isolation-policy/', 'WICG draft; deferred by the user 2026-10-22'),
     ('fetch/orb/', 'unmerged Fetch proposal; deferred by the user 2026-10-22'),
+    # The integrator's ruling (2026-11-12 08:45 UTC, lane nav2 b10's finding) under the same line: HTML's
+    # speculation rules section calls prerender rules "not-yet-accepted extensions" from WICG's
+    # Prerendering Revamped (a UA may treat "prerender" as "prefetch"). Only Chrome ships them
+    # (wpt.fyi stable 24ddf405a0: Chrome 157 passes, Firefox 160 ERROR "speculationrules must be
+    # supported", Safari 27.2 TIMEOUT). The other pagereveal/ files stay. Revisit when prerendering
+    # is merged into HTML.
+    ('html/browsers/browsing-the-web/history-traversal/pagereveal/order-in-prerender-activation.https.html',
+     'pagereveal at prerender activation: speculation-rules prerendering is a WICG draft only Chrome ships'),
     ('websockets/stream/', 'unmerged WebSocketStream proposal; deferred by the user 2026-10-22'),
 
     # Anything that needs layout or paint. Crane is the web platform; the host
