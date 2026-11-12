@@ -1817,6 +1817,9 @@ fn planNavigationWith(form: *runtime.Instance, submitter: *runtime.Instance, url
     // cancels them too: cancelPlannedNavigationsTo.)
     const navigable = targetNavigableId(document, target);
     cancelPlannedNavigationsTo(form, navigable);
+    // And a javascript: URL queued in that navigable does not run after it
+    // (dom.navigables.cancelQueuedJavascriptNavigation states the evidence).
+    @import("dom").navigables.cancelQueuedJavascriptNavigation(form, navigable);
     if (internal.pending_allocator == null) internal.pending_allocator = allocator;
     internal.pending_navigations.append(internal.pending_allocator.?, .{ .token = task.token, .navigable = navigable }) catch return task.destroy();
     internal.planned_navigation = task.token;
