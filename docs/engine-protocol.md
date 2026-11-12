@@ -637,6 +637,27 @@ published perf consoles, the tests. A host that builds for desktop passes
 build line - the option goes on every artifact's alike (`repl-exe`,
 `wpt-runner`, `crane`): it is the adapter's, not one binary's.
 
+What the choice costs and buys, measured on the perf suite (lane v8up b7,
+201a4f7c62b, release consoles on chat.local, 7 timed runs of the 48 workloads,
+each build against main 253917157d7 on V8 13.1; geometric means):
+
+| build | time | CPU | instructions | memory at the end mark | peak |
+|---|---|---|---|---|---|
+| the default: 24 MB young generation, 8 MB semispaces | 0.8985 | 0.8877 | 0.9070 | 1.0337 | 1.0226 |
+| `-Dv8-young-generation-mb=0`: V8's own, 32 MB semispaces | 0.8865 | 0.8602 | 0.8920 | 1.1782 | 1.1531 |
+
+The larger young generation is 1.3% faster over the suite and holds 14% more
+memory. Its speed is on the pages that allocate fast and drop at once (time
+against main, default | V8's own): streams.pipe-through-decoder 0.899 | 0.732,
+streams.blob-stream 0.902 | 0.777, streams.transform-chain 0.910 | 0.820,
+timers.queue-microtask 0.917 | 0.837. Its memory is on the same pages and on
+fetch (end memory against main): fetch.loopback-stream 1.455 | 2.669,
+fetch.loopback-json 1.296 | 2.451, fetch.response-text 1.038 | 1.843,
+timers.message-channel 1.031 | 1.739, timers.queue-microtask 1.041 | 1.756,
+the streams rows 1.04 | 1.22 to 1.26. (The V8-own build also sends no
+navigation collection: the load rows read 0.71 to 0.83 of main at the default
+and 1.16 to 1.39 with V8's own.)
+
 How it is applied: the adapter sets the isolate's ResourceConstraints
 (`set_max_young_generation_size_in_bytes`, include/v8-isolate.h) on its
 CreateParams before the isolate initializes, at both isolate-creation sites
