@@ -524,15 +524,22 @@ pub const DeferredTeardown = struct {
     /// A binding returns to script: the outermost one runs what is owed;
     /// one that returns into a callback's own script - no binding between
     /// it and the callback invocation - runs the fresh finalizers, and
-    /// nothing else. With nothing owed it is the one check it always was.
-    pub fn leaveAlgorithmToScript(self: *DeferredTeardown) void {
+    /// nothing else. With nothing owed it is the one check it always was,
+    /// and that check is all a binding's exit carries: inline, the rest out
+    /// of line (`leaveOwing`). (Left to the optimizer, this was a call from
+    /// every binding exit into a function that had `runOwed` inlined in it -
+    /// and paid its prologue with nothing owed; measured, lane v8up b6c.)
+    pub inline fn leaveAlgorithmToScript(self: *DeferredTeardown) void {
         self.algorithm_depth -|= 1;
-        if (self.owed.any()) {
-            if (self.algorithm_depth == 0) {
-                self.runOwed();
-            } else if (self.owed.fresh and self.algorithm_depth == self.callback.depth) {
-                self.runFresh();
-            }
+        if (self.owed.any()) self.leaveOwing();
+    }
+
+    /// `leaveAlgorithmToScript` with something owed.
+    noinline fn leaveOwing(self: *DeferredTeardown) void {
+        if (self.algorithm_depth == 0) {
+            self.runOwed();
+        } else if (self.owed.fresh and self.algorithm_depth == self.callback.depth) {
+            self.runFresh();
         }
     }
 
