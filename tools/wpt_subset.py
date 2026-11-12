@@ -360,7 +360,9 @@ INCLUDE = [
     ('css/css-lists/li-counter-increment-computed-style.html', 'lists computed style and inheritance; no rendered box assertions'),
     ('css/css-mixins/functions/at-function-parsing.html', 'mixins syntax and value parsing outside the parsing directory'),
     ('css/css-mixins/functions/dashed-function-parsing.html', 'mixins syntax and value parsing outside the parsing directory'),
-    ('css/css-mixins/mixins/mixin-parsing.html', 'mixins syntax and value parsing outside the parsing directory'),
+    # css/css-mixins/mixins/mixin-parsing.html left (the integrator, 2026-11-12 03:21 UTC; the 11-01 scope
+    # line): @mixin/@apply (CSS Mixins 1 draft) ships in no browser - wpt.fyi stable Chrome 0/29, Firefox
+    # 0/29, Safari 0/29, Chrome behind a flag only. Revisit when an engine ships @mixin.
     ('css/css-multicol/zero-column-width-computed-style.html', 'multicol computed style and inheritance; no rendered box assertions'),
     ('css/css-nesting/parsing.html', 'nesting syntax and value parsing outside the parsing directory'),
     ('css/css-overflow/column-creates-computed-style.html', 'overflow computed style and inheritance; no rendered box assertions'),
