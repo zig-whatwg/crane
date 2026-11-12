@@ -2163,10 +2163,30 @@ pub fn call_exitPointerLock(instance: *runtime.Instance) anyerror!void {
     if (internal.rareData()) |rare| rare.pointer_lock_element = null;
 }
 
+/// The editing methods' document check (execCommand and the five
+/// queryCommand* methods): InvalidStateError unless this is an HTML document
+/// or its content type is application/xhtml+xml. No spec text (the Editing
+/// draft's methods have none); golden rule 2 - Chrome 157, Firefox 159 and
+/// Safari 27.2 all throw on an XML document (editing/other/
+/// non-html-document.html, 1/1 in each at wpt.fyi stable). Blink
+/// Document::execCommand and the queryCommand* methods ("... is only
+/// supported on HTML documents", core/dom/document.cc), Gecko
+/// Document::ExecCommand / QueryCommand* (!IsHTMLOrXHTML() ->
+/// NS_ERROR_DOM_INVALID_STATE_ERR, dom/base/Document.cpp), WebKit
+/// Document::execCommand (InvalidStateError when !isHTMLDocument() &&
+/// !isXHTMLDocument()).
+fn requireHtmlOrXhtmlForEditing(instance: *runtime.Instance) error{InvalidStateError}!void {
+    const internal = getInternal(instance) orelse return;
+    if (internal.doc_type == .html) return;
+    if (std.mem.eql(u8, internal.content_type.asSlice(), "application/xhtml+xml")) return;
+    return error.InvalidStateError;
+}
+
 /// Operation: queryCommandState
 /// Returns the state of a toggle command (e.g., bold, italic).
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandstate
 pub fn call_queryCommandState(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
+    try requireHtmlOrXhtmlForEditing(instance);
     const internal = getInternal(instance) orelse return false;
     const command_name = commandId.asSlice();
 
@@ -2365,7 +2385,7 @@ pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.
 /// Returns whether an editing command is supported by this implementation.
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandsupported
 pub fn call_queryCommandSupported(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
-    _ = instance;
+    try requireHtmlOrXhtmlForEditing(instance);
     const command_name = commandId.asSlice();
     return editing.queryCommandSupported(command_name);
 }
@@ -2685,6 +2705,7 @@ pub fn call_hasRedemptionRecord(instance: *runtime.Instance, issuer: runtime.USV
 /// The editing module (html_core) provides command parsing and validation,
 /// but DOM manipulation happens here since impls has access to interfaces.
 pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMString, showUI: webidl.Opt(bool), value: webidl.Opt(typedefs.TrustedHTMLOrDOMString)) anyerror!bool {
+    try requireHtmlOrXhtmlForEditing(instance);
     const internal = getInternal(instance) orelse return false;
 
     // Get command name (case-insensitive per spec)
@@ -2896,6 +2917,7 @@ pub fn call_clear(instance: *runtime.Instance) anyerror!void {
 /// Returns whether an editing command is in an indeterminate state (mixed).
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandindeterm
 pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
+    try requireHtmlOrXhtmlForEditing(instance);
     const internal = getInternal(instance) orelse return false;
     const command_name = commandId.asSlice();
 
@@ -3231,6 +3253,7 @@ pub fn call_createCDATASection(instance: *runtime.Instance, data: runtime.DOMStr
 /// Returns whether an editing command is currently enabled.
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandenabled
 pub fn call_queryCommandEnabled(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
+    try requireHtmlOrXhtmlForEditing(instance);
     const internal = getInternal(instance) orelse return false;
     const command_name = commandId.asSlice();
 
@@ -3429,6 +3452,7 @@ pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Inst
 /// Returns the current value for a valued command (e.g., fontName, fontSize).
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandvalue
 pub fn call_queryCommandValue(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!runtime.DOMString {
+    try requireHtmlOrXhtmlForEditing(instance);
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
     const command_name = commandId.asSlice();
 
