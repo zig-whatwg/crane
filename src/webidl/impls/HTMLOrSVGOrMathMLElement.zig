@@ -56,7 +56,11 @@ pub fn installHooks() void {
     inline for (.{ html_namespace, svg_namespace, mathml_namespace }) |namespace| {
         dom.attribute_change_steps.installForAttribute(namespace, "nonce", .{ .change = &nonceAttributeChanged, .read = &nonceValueOf });
     }
+    // Hiding, when browsing-context connected: an HTML element's in the
+    // post-connection steps, an SVG or MathML element's in the insertion
+    // steps (`nonceConnectionSteps`).
     dom.mutation.registerPostConnectionStepsCallback(&nonceConnectionSteps) catch @panic("out of memory installing nonce connection steps");
+    dom.mutation.registerInsertionStepsCallback(&nonceInsertionSteps) catch @panic("out of memory installing nonce insertion steps");
     dom.cloning_steps.install(&nonceCloningSteps);
 }
 
@@ -125,22 +129,46 @@ fn nonceAttributeChanged(instance: *runtime.Instance, _: []const u8, _: ?[]const
     }
 }
 
-/// HTML 2.5.6: when browsing-context connected, hide a nonempty nonce
-/// content attribute if any policy was header-delivered. WebKit's
+/// HTML 2.5.6: "Whenever an element including HTMLOrSVGOrMathMLElement
+/// becomes browsing-context connected", hide a nonempty nonce content
+/// attribute if any policy was header-delivered. WebKit's
 /// Element::hideNonceSlow likewise preserves the slot around the change.
-/// Deviation: HTML 2.1.4 (cached html.md:4216-4224) ties this to insertion,
-/// before connectedCallback is enqueued. All three aligned stable browsers
-/// pass script-nonces-hidden.html 12/12 (cc74d2669f, 2026-10-06), requiring
-/// Connected before AttributeChanged(hiding): the post-connection steps,
-/// for every includer (an SVG element hid in its insertion steps before
-/// the mixin's members were implemented once).
+///
+/// When: an SVG or MathML element hides in its insertion steps - "becomes
+/// browsing-context connected" happens as it is inserted (HTML 2.1.4), so
+/// an SVG script, which runs in its own insertion steps after this one
+/// (crane/cn-nonce-hidden-during-script.html), already sees the attribute
+/// hidden. Deviation for an HTML element, stated: it hides in the
+/// post-connection steps (`nonceConnectionSteps`), before an HTML script
+/// runs in its own: all three aligned stable browsers pass
+/// script-nonces-hidden.html 12/12 (cc74d2669f, 2026-10-06), which needs a
+/// custom element's connectedCallback enqueued before the hiding's
+/// attributeChangedCallback - and only HTML elements are custom elements.
+fn nonceInsertionSteps(node: *dom.NodeBase) void {
+    const instance = nonceCandidate(node) orelse return;
+    if (instance.stateAs(interfaces.HTMLElement.State) != null) return;
+    hideNonce(instance);
+}
+
+/// The post-connection half of `nonceInsertionSteps`: an HTML element's.
 fn nonceConnectionSteps(node: *dom.NodeBase) void {
-    if (node.node_type != 1 or !node.is_connected) return;
-    const instance: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return));
-    // Every connected element passes here: one without a slot has no
-    // nonce to hide, and nothing is made for it. Only includers ever have
-    // one (set_nonce).
-    if (rare_data.getBytes(rare_data.of(instance), .nonce) == null) return;
+    const instance = nonceCandidate(node) orelse return;
+    if (instance.stateAs(interfaces.HTMLElement.State) == null) return;
+    hideNonce(instance);
+}
+
+/// A connected element with a nonce slot: every connected element passes
+/// here, and one without a slot has no nonce to hide - nothing is made for
+/// it. Only includers ever have one (set_nonce).
+fn nonceCandidate(node: *dom.NodeBase) ?*runtime.Instance {
+    if (node.node_type != 1 or !node.is_connected) return null;
+    const instance: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return null));
+    if (rare_data.getBytes(rare_data.of(instance), .nonce) == null) return null;
+    return instance;
+}
+
+/// HTML 2.5.6's hiding steps 1-2.3 for `instance`, connected with a slot.
+fn hideNonce(instance: *runtime.Instance) void {
     const data = element_data.of(instance) orelse return;
     const attribute = element_data.getAttributeByNamespaceAndLocalName(data, null, "nonce") orelse return;
     if (attribute.value.len == 0) return;
