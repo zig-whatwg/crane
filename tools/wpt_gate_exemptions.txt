@@ -759,6 +759,15 @@ kind      = needs-renderer
 why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
 assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
 
+# needs-renderer (lane editing5 b4, 2026-11-12; integrator's GRANT 04:34 and ruling 05:17 UTC): a click and a
+# line-end key whose caret positions only a renderer answers. Evidence: the production run's messages (server1,
+# 2026-11-12 05:10 UTC, the b3 runner) and the Crane test crane/ed5-delete-at-renderer-caret.html, which places
+# the caret where the renderer's reads would and passes the rest of each subtest.
+[selection/fire-selectionchange-event-on-deleting-single-character-inside-inline-element.html]
+kind      = needs-renderer
+why       = each subtest clicks a non-empty inline editing host and presses End before Backspace: the click's caret is the renderer's position-for-point (Blink SelectionController / PositionForPoint) and End's target is the line's end (Blink MoveToEndOfLine, Selection.modify lineboundary, a line-box read); with no renderer neither places a caret, so Backspace deletes nothing and no selectionchange fires (Crane test crane/ed5-delete-at-renderer-caret.html: with the caret at the line's end all three cases pass)
+assertion = assert_greater_than: selectionchange should fire when deleting single character from inline contenteditable expected a number greater than 0 but got 0
+
 # test-bug (lane editing5 b2, 2026-11-11; filed on the user's "File both", integrator 23:58 UTC).
 [editing/other/paste_text_with_text_transform.html]
 kind            = test-bug
