@@ -364,6 +364,8 @@ pub const indexeddb_keys = @import("indexeddb_keys.zig");
 /// HTML media owner algorithms without an IDL member.
 pub const media_elements = @import("media_elements.zig");
 pub const image_sources = @import("image_sources.zig");
+/// HTML 4.12.5.5: a bitmap serialized as a file, and its data: URL.
+pub const bitmap_serialization = @import("bitmap_serialization.zig");
 
 /// CSS Scoping tree identities, owned by Document and ShadowRoot.
 pub const tree_scope = @import("tree_scope.zig");

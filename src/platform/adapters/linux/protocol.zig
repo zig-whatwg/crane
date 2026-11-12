@@ -20,6 +20,7 @@
 //! platform - what Crane's own browser, the release console, and the
 //! production WPT runner compile in - so the capabilities every browser
 //! ships are built in here today: image decoding (kit/image_decoding, D1),
+//! image encoding (kit/image_encoding: PNG, the integrator 2026-11-12),
 //! media decoding (kit/media_decoding: WAV linear PCM, D4) and the
 //! clipboard (kit/memory_clipboard per Browser, D2).
 
@@ -50,6 +51,15 @@ const image_decoding_built_in = for (platform_options.platform_without) |capabil
     if (std.mem.eql(u8, capability, "image_decoding")) break false;
 } else true;
 const image_decoding = if (image_decoding_built_in) @import("kit_image_decoding") else headless;
+
+/// kit/image_encoding's built-in encoder - PNG in Zig, which HTML 4.12.5.5
+/// requires (the integrator, 2026-11-12, D1's pattern) - unless
+/// image_encoding is compiled out: then kit/headless's answers, every
+/// serialization of a bitmap null, as the testing platform does.
+const image_encoding_built_in = for (platform_options.platform_without) |capability| {
+    if (std.mem.eql(u8, capability, "image_encoding")) break false;
+} else true;
+const image_encoding = if (image_encoding_built_in) @import("kit_image_encoding") else headless;
 
 /// kit/media_decoding's built-in decoders - WAV linear PCM (D4, the user
 /// 2026-11-09) - unless media_decoding is compiled out: then kit/headless's
@@ -127,6 +137,8 @@ pub const protocol = struct {
         // kit/image_decoding, built in (D1, the user 2026-11-09): PNG, BMP,
         // GIF, JPEG and SVG, the testing platform's decoders.
         if (image_decoding_built_in) c.image_decoding = .native;
+        // kit/image_encoding, built in: PNG, the testing platform's encoder.
+        if (image_encoding_built_in) c.image_encoding = .native;
         // kit/media_decoding, built in (D4, the user 2026-11-09): WAV linear
         // PCM; WebM, Ogg and MP4 answer "" until a decoder for them exists.
         if (media_decoding_built_in) c.media_decoding = .native;
@@ -272,6 +284,8 @@ pub const protocol = struct {
     pub const closeMediaDecoder = media_decoding.closeMediaDecoder;
     pub const imageMimeTypeSupported = image_decoding.imageMimeTypeSupported;
     pub const decodeImage = image_decoding.decodeImage;
+    pub const imageEncodingMimeTypeSupported = image_encoding.imageEncodingMimeTypeSupported;
+    pub const encodeImage = image_encoding.encodeImage;
     pub const decodeFont = fonts.decodeFont;
     pub const genericFontFace = fonts.genericFontFace;
     pub const installedFontFace = fonts.installedFontFace;

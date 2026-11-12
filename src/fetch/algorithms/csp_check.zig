@@ -99,7 +99,7 @@ fn reportingUrl(request: *const InternalRequest, options: ReportingOptions) []co
 /// Main fetch step 7, with an optional violation-resource URL.
 pub fn shouldRequestBeBlockedWithOptions(request: *const InternalRequest, options: ReportingOptions) bool {
     const container = checkedContainer(request) orelse return false;
-    var reporting: RequestReporting = .{ .url = reportingUrl(request, options), .client = request.csp_violation_reporter };
+    var reporting: RequestReporting = .{ .url = reportingUrl(request, options), .client = request.csp_violation_reporter, .location = startLocation(request) };
     return csp.request_check.shouldRequestBeBlocked(&container.csp_list, requestOf(request), reporting.reporter()) == .blocked;
 }
 
@@ -114,7 +114,7 @@ pub fn reportViolationsForRequest(request: *const InternalRequest) void {
 pub fn reportViolationsForRequestWithOptions(request: *const InternalRequest, options: ReportingOptions) void {
     const container = checkedContainer(request) orelse return;
     if (request.csp_violation_reporter == null) return;
-    var reporting: RequestReporting = .{ .url = reportingUrl(request, options), .client = request.csp_violation_reporter };
+    var reporting: RequestReporting = .{ .url = reportingUrl(request, options), .client = request.csp_violation_reporter, .location = startLocation(request) };
     csp.request_check.reportViolationsForRequest(&container.csp_list, requestOf(request), reporting.reporter().?);
 }
 
@@ -200,13 +200,27 @@ fn checkedContainer(request: *const InternalRequest) ?*const internal_request.Po
     return container;
 }
 
+/// The location of the script that started `request`, for main fetch's
+/// checks of steps 4 and 7 before any redirect: the ones Gecko and WebKit
+/// make while that location stands (InternalRequest.csp_violation_location).
+/// A redirect's checks run from the network, as main fetch step 4's and 7's
+/// do again for each hop, and the response's (step 20) after it: there no
+/// browser has a script location, so none is carried.
+fn startLocation(request: *const InternalRequest) ?csp.violation_events.SourceLocation {
+    if (request.redirect_count != 0) return null;
+    return request.csp_violation_location;
+}
+
 /// CSP 2.4.2 "create a violation object for request, and policy": the
 /// request's effective directive and, as its resource, the request's URL -
 /// "not its current url, as the latter might contain information about
-/// redirect targets" - handed to the client's reporter.
+/// redirect targets" - handed to the client's reporter, with the location of
+/// the script that started the request when one was carried
+/// (`startLocation`).
 const RequestReporting = struct {
     url: []const u8,
     client: ?internal_request.CspViolationReporter,
+    location: ?csp.violation_events.SourceLocation = null,
 
     fn reporter(self: *RequestReporting) ?csp.request_check.Reporter {
         if (self.client == null) return null;
@@ -220,6 +234,7 @@ const RequestReporting = struct {
             .policy = violation.policy,
             .effective_directive = violation.effective_directive,
             .resource = .{ .url = self.url },
+            .location = self.location,
         });
     }
 };

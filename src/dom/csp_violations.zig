@@ -17,7 +17,9 @@
 //! line and column (§2.4.1
 //! step 2) are the running script's, when the engine can say
 //! (engine.runningScriptLocation: V8 can; JavaScriptCore and QuickJS
-//! cannot, and report none).
+//! cannot, and report none) - else the location a finder carried for the
+//! script that started what it checked (Violation.location: an img's
+//! request), else, for an element's inline content, where it starts.
 //!
 //! Spec: https://w3c.github.io/webappsec-csp/#report-violation
 
@@ -764,6 +766,18 @@ fn queueViolationTask(global: *runtime.Instance, violation: *const Violation, po
         task.source_file = try csp.violation_events.sourceFileForReports(allocator, location.url);
         task.line_number = location.line;
         task.column_number = location.column;
+    } else if (violation.location) |carried| {
+        // No script is running: the violation's finder carried the location
+        // of the script that started what it checked - a request "update
+        // the image data" made in its microtask, after the script that set
+        // `src` returned (fetch.internal.InternalRequest
+        // .csp_violation_location). Firefox and Safari report it: Gecko's
+        // ImageLoadTask installs its queuing location as
+        // JSCallingLocation::AutoFallback, which Get() answers when no
+        // script runs; Chrome reports none (golden rule 2, by mechanism).
+        task.source_file = try csp.violation_events.sourceFileForReports(allocator, carried.url);
+        task.line_number = carried.line;
+        task.column_number = carried.column;
     } else if (position) |at| {
         // No script is running: the parser is blocking an element it made.
         // The violation is located where the element's content starts in

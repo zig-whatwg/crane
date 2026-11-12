@@ -650,7 +650,10 @@ fn selectDocumentResources(state: *State) Allocator.Error!void {
         const element: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(node) orelse continue));
         if (!try eligibleOrigin(element)) continue;
         const style = (try @import("engine.zig").computedStyle(element, null)) orelse continue;
-        if (style.display().box != .contents) try selectStyleResources(state, style);
+        if (style.display().box != .contents) {
+            try selectStyleResources(state, style);
+            try selectSvgReferences(state, element, style);
+        }
         // CSS Pseudo 4: before/after generate a box only for non-normal,
         // non-none content. Their originating display:contents element
         // need not generate its own box for a pseudo-element to exist.
@@ -695,7 +698,91 @@ fn selectStyleResources(state: *State, style: *const css.computed_style.Computed
     }
 }
 
+/// SVG 2 §16.1.7.2 "Fetching the document" for the url() references the
+/// used values of SVG's and CSS Masking's resource properties make: a
+/// reference to another document fetches that document (once per document
+/// URL: the fragment names an element in it, svg_resources.Cache). A
+/// same-document reference (CSS Values 4 §4.5.1.1: fragment-only; SVG 2
+/// §16.1.7.1: equal but for the fragment) fetches nothing.
+///
+/// fill, stroke and the markers paint SVG shapes, so only an SVG element's
+/// values are read; clip-path, filter and mask-image apply to every element
+/// with a box (CSS Masking 1, Filter Effects 1).
+///
+/// The request is the potentially CORS-enabled one both specifications ask
+/// for - SVG 2 §16.1.7.2's "anonymous" state for a style property or
+/// presentation attribute, CSS Masking 1 §"Security"'s "Anonymous" mode -
+/// so mode "cors", credentials "same-origin".
+///
+/// Golden rule 2, by mechanism (wpt.fyi 24ddf405a0, referrer-policy/
+/// css-integration/svg/*): FETCHING has the Chrome 157 + Firefox 160
+/// majority - both fetch every reference (Chrome passes external-stylesheet
+/// and processing-instruction 9/9, Firefox all five files); Safari 27.2
+/// fetches only mask-image. For the REFERRER Chrome and Firefox split -
+/// Chrome sends the document's full URL for inline, internal and
+/// presentation-attribute values, Firefox the document's policy applied -
+/// and Safari, fetching nothing else, does not count: so the spec decides,
+/// CSS Values 4 §4.5.4 step 6 - the sheet's URL (the style resource base
+/// URL) for a value a sheet declared, else the client's referrer under the
+/// document's policy - which is Firefox's behaviour (the integrator,
+/// 2026-11-12). The source of each value carries both
+/// (css.style_values.ResourceSource).
+fn selectSvgReferences(state: *State, element: *runtime.Instance, style: *const css.computed_style.ComputedStyle) Allocator.Error!void {
+    const data = element_data.of(element) orelse return;
+    const is_svg = std.mem.eql(u8, data.namespaceSlice() orelse "", svg_resources.svg_namespace);
+    const shape_properties = [_]css.properties.Longhand{ .fill, .stroke, .marker_start, .marker_mid, .marker_end };
+    const box_properties = [_]css.properties.Longhand{ .clip_path, .filter, .mask_image };
+    if (is_svg) for (shape_properties) |property| {
+        for (style.get(property).resourceUrls()) |occurrence| try fetchSvgDocument(state, occurrence);
+    };
+    for (box_properties) |property| {
+        const value = style.get(property);
+        for (value.resourceUrls()) |occurrence| {
+            if (property == .mask_image) {
+                // A mask layer's <image> is fetched as one, only where it
+                // stands alone (as background-image's: image-set() and the
+                // like pick their candidate first); a url() naming an
+                // element - with a fragment - is a <mask-source>, its
+                // document fetched (CSS Masking 1 §6.1).
+                const text = backgroundImageText(value) orelse continue;
+                if (!isSimpleImageOccurrence(text, occurrence.range)) continue;
+                if (std.mem.indexOfScalar(u8, occurrence.url, '#') == null) {
+                    try fetchImageWith(state, occurrence, .cors, .same_origin);
+                    continue;
+                }
+            }
+            try fetchSvgDocument(state, occurrence);
+        }
+    }
+}
+
+/// SVG 2 §16.1.7.2 for one reference: the document it names, through the
+/// document's cache of SVG resource documents.
+fn fetchSvgDocument(state: *State, occurrence: css.style_values.ResourceUrl) Allocator.Error!void {
+    if (!occurrence.valid or occurrence.local_fragment) return;
+    if (state.document.ctx.documentUrl()) |document_url| {
+        if (svg_resources.sameDocument(occurrence.url, document_url)) return;
+    }
+    const source = occurrence.source;
+    // A request that could not start stays failed in the cache.
+    _ = try state.svg.getOrStart(state.document, .{
+        .url = occurrence.url,
+        .referrer = if (source) |s| s.referrer else null,
+        .referrer_policy = if (source) |s| fetch.internal.policy_container.parseReferrerPolicyHeader(s.referrer_policy) else .empty,
+        .destination = .image,
+        .mode = .cors,
+        .credentials = .same_origin,
+        .origin_clean = if (source) |s| s.origin_clean else true,
+    });
+}
+
 fn fetchImage(state: *State, occurrence: css.style_values.ResourceUrl) Allocator.Error!void {
+    return fetchImageWith(state, occurrence, .no_cors, .include);
+}
+
+/// CSS Values 4 §4.5.4 "fetch a style resource" for an image, in `mode`
+/// with `credentials` (step 4: "no-cors" takes "include").
+fn fetchImageWith(state: *State, occurrence: css.style_values.ResourceUrl, mode: fetch.internal.RequestMode, credentials: fetch.internal.CredentialsMode) Allocator.Error!void {
     if (!occurrence.valid or occurrence.local_fragment) return;
     const source = occurrence.source;
     // CSS Values 4 §4.5.4 steps 2–8. Step 1's resolution is already in
@@ -704,6 +791,8 @@ fn fetchImage(state: *State, occurrence: css.style_values.ResourceUrl) Allocator
         .url = occurrence.url,
         .referrer = if (source) |s| s.referrer else null,
         .referrer_policy = if (source) |s| fetch.internal.policy_container.parseReferrerPolicyHeader(s.referrer_policy) else .empty,
+        .mode = mode,
+        .credentials = credentials,
         .origin_clean = if (source) |s| s.origin_clean else true,
     });
     if (cached.found_existing) return;
