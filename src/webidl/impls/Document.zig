@@ -4020,7 +4020,33 @@ fn lifecycleFinishLoading(document: *runtime.Instance) void {
     // scrollToFragment) and Blink (FragmentAnchor, from
     // Document::FinishedParsing) do - :target then holds in load listeners.
     @import("dom").fragment_scroll.scrollToTheFragment(document);
-    queueLifecycleTask(document, .dom_content_loaded);
+    // Step 6, synchronously: DOMContentLoaded fires now, in the task in which
+    // the parser stopped, and not in a task of its own.
+    //
+    // Stated deviation from HTML "the end" step 6, which queues it - golden
+    // rule 2, no newer spec involved, so the browsers decide (the user's
+    // ruling, 2026-11-12): all three fire it synchronously when the parser
+    // stops. Blink Document::FinishedParsing dispatches it ("FIXME:
+    // DOMContentLoaded is dispatched synchronously, but this should be
+    // dispatched in a queued task, see https://crbug.com/961428"), WebKit
+    // Document::finishedParsing too ("FIXME: Schedule a task to fire
+    // DOMContentLoaded event instead. See webkit.org/b/82931"), and Gecko
+    // Document::UnblockDOMContentLoaded through a script runner
+    // (dom.document.domcontentloaded_synchronous.enabled). The FIXMEs date
+    // from 2019 and 2012, with no spec change since. The trade, accepted by
+    // the user: html/syntax/parsing/DOMContentLoaded-defer.html (a timer a
+    // defer script queued must run before DOMContentLoaded) goes 1 -> 0 and
+    // fails as it does in Chrome 157, Firefox 160 and Safari 27.2, whose
+    // tentative twin DOMContentLoaded-defer-task-order.tentative.html all
+    // three pass.
+    const generation = runtime.SlabAllocator.generationOf(document);
+    const had_engine = document.ctx.hasEngine();
+    const epoch = internal.parser_epoch;
+    fireDOMContentLoaded(document);
+    // Its listeners may have taken the document away, or document.open()ed
+    // it: that ends this parser's "the end".
+    if ((had_engine and !document.ctx.hasEngine()) or runtime.SlabAllocator.generationOf(document) != generation) return;
+    if ((getInternal(document) orelse return).parser_epoch != epoch) return;
     // HTML 7.4.6.5 "restore persisted state" step 2 for a document a
     // back/forward traversal made: its controls are restored in a task now
     // that its parser has finished (Blink Document::SetParsingState ->
@@ -4029,8 +4055,82 @@ fn lifecycleFinishLoading(document: *runtime.Instance) void {
     // Step 7 - the scripts that execute as soon as possible, or in order as
     // soon as possible - run as their results arrive (script_execution); a
     // script-inserted script still fetching keeps them non-empty, which
-    // queueLoadUnlessDelayed waits on.
-    queueLoadUnlessDelayed(document);
+    // completeLoadUnlessDelayed waits on.
+    completeLoadUnlessDelayed(document);
+}
+
+/// "The end" step 6's DOMContentLoaded, fired now (lifecycleFinishLoading
+/// says why it is not queued) in `document`'s realm - the top-level parser
+/// runs in none.
+fn fireDOMContentLoaded(document: *runtime.Instance) void {
+    // A navigation that replaced the document before its parser stopped
+    // leaves nothing to fire.
+    if (!isShownByItsWindow(document)) return;
+    engine.runInRealm(document.ctx, domContentLoadedSteps, document) catch |err| {
+        log.debug("DOMContentLoaded not fired: {}", .{err});
+    };
+}
+
+fn domContentLoadedSteps(data: ?*anyopaque) void {
+    const document: *runtime.Instance = @ptrCast(@alignCast(data.?));
+    // Step 6.1-6.3: the DOM content loaded event start time; "Fire an event
+    // named DOMContentLoaded at the Document object, with its bubbles
+    // attribute initialized to true"; its end time. (The timeline keeps the
+    // load timing info of the document a window shows; a windowless
+    // document's is not recorded.)
+    const has_window = (get_defaultView(document) catch null) != null;
+    if (has_window) @import("dom").performance_timeline.recordLoadTiming(document.ctx, .dom_content_loaded_event_start);
+    fireEvent(document, document, "DOMContentLoaded", true);
+    if (has_window) @import("dom").performance_timeline.recordLoadTiming(document.ctx, .dom_content_loaded_event_end);
+    // Step 6.4: enable the client message queue of the
+    // ServiceWorkerContainer whose client is the document's relevant
+    // settings object.
+    if (has_window) @import("dom").client_message_queues.domContentLoaded(document.ctx);
+}
+
+/// "The end" steps 7-9 as the parser stops, right after DOMContentLoaded:
+/// with nothing delaying the load event, step 9's steps - readiness
+/// "complete", load at the window, the container's load, pageshow - run now,
+/// in this task (completeLoading); otherwise the load waits, and whatever
+/// delays it queues step 9's task when it ends (queueLoadUnlessDelayed).
+///
+/// Stated deviation from HTML, whose step 9 is a queued task - golden rule
+/// 2, no newer spec involved, the Chrome + Safari majority (the user's
+/// ruling, 2026-11-12): Blink Document::FinishedParsing calls
+/// FrameLoader::FinishedParsing, which calls Document::CheckCompleted; with
+/// no blocking request and nothing delaying the load (ShouldComplete) it
+/// sets the readiness to complete and fires the window's load
+/// (DispatchLoadEventAndFinalize -> LocalDOMWindow::DispatchLoadEvent, then
+/// `owner->DispatchLoad()`), all inside the task in which parsing ended;
+/// WebKit Document::finishedParsing -> FrameLoader::finishedParsing ->
+/// checkCompleted -> checkCallImplicitClose -> Document::implicitClose ->
+/// LocalDOMWindow::dispatchLoadEvent -> dispatchLoadEventToParent, the same.
+/// Gecko unblocks onload from a posted runnable (Document::
+/// PostUnblockOnloadEvent). So a task the parse queued - a message the frame
+/// posted to its parent, a zero-delay timer - runs after the frame's load and
+/// its container's: service-workers/service-worker/client-url-creation-url.
+/// https.html, which listens for the frame's parse-time message only after
+/// with_iframe's load (wpt.fyi 24ddf405a0: Chrome 157 10/10, Safari 27.2
+/// 10/10, Firefox 160 TIMEOUT).
+fn completeLoadUnlessDelayed(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    const scripts_pending = internal.scripts.scripts_to_execute_asap.items.len > 0 or internal.scripts.scripts_to_execute_in_order_asap.items.len > 0;
+    if (scripts_pending or lifecycleDelaysLoadEvent(document)) {
+        internal.load_waiting_on_delay = true;
+        return;
+    }
+    internal.load_waiting_on_delay = false;
+    // Step 11, "ready for post-load tasks", as queueLoadUnlessDelayed sets it
+    // before step 9's task runs.
+    internal.ready_for_post_load_tasks = true;
+    if (!isShownByItsWindow(document)) return;
+    engine.runInRealm(document.ctx, completeLoadingSteps, document) catch |err| {
+        log.debug("the load at the end of the parse did not complete: {}", .{err});
+    };
+}
+
+fn completeLoadingSteps(data: ?*anyopaque) void {
+    completeLoading(@ptrCast(@alignCast(data.?)));
 }
 
 /// "The end" step 8: "Spin the event loop until there is nothing that delays
@@ -4658,7 +4758,7 @@ fn updateVisibilityState(document: *runtime.Instance, state: enums.DocumentVisib
     if (state == ._visible_) @import("dom").update_the_rendering.requestFrame(document);
 }
 
-const LifecycleStep = enum { dom_content_loaded, load, declarative_refresh, resume_script_delivery };
+const LifecycleStep = enum { load, declarative_refresh, resume_script_delivery };
 
 const LifecycleTask = struct {
     allocator: std.mem.Allocator,
@@ -4792,52 +4892,22 @@ fn lifecycleTaskSteps(data: ?*anyopaque) void {
     // those tasks nothing to do. Running them fired a second load at the
     // frame's container, for a document the frame no longer shows.
     switch (task.step) {
-        .dom_content_loaded, .load, .declarative_refresh => if (!isShownByItsWindow(task.target)) return,
+        .load, .declarative_refresh => if (!isShownByItsWindow(task.target)) return,
         .resume_script_delivery => {},
     }
 
     switch (task.step) {
-        // Step 6.1-6.3: the DOM content loaded event start time; "Fire an
-        // event named DOMContentLoaded at the Document object, with its
-        // bubbles attribute initialized to true"; its end time.
-        //
-        // In a QUEUED task, as "the end" step 6 says, though all three
-        // engines fire it synchronously at the end of the parse: Blink's
-        // Document::FinishedParsing ("FIXME: DOMContentLoaded is dispatched
-        // synchronously, but this should be dispatched in a queued task, see
-        // https://crbug.com/961428"), WebKit's Document::finishedParsing
-        // ("FIXME: Schedule a task to fire DOMContentLoaded event instead. See
-        // webkit.org/b/82931"), and Gecko's Document::UnblockDOMContentLoaded
-        // through a script runner while dom.document.domcontentloaded_
-        // synchronous.enabled is set (a runnable otherwise). Two of the three
-        // mark their dispatch a bug against the spec: they lag it, so the spec
-        // decides (golden rule 2; integrator ruling 2026-11-06). Observable
-        // through a zero-delay timer set by a defer script, whose task is
-        // queued at its call (Context.zig queueAtCall), ahead of this one:
-        // html/syntax/parsing/DOMContentLoaded-defer.html passes here and
-        // fails in Chrome 157, Firefox 159 and Safari 27.2, and its tentative
-        // twin DOMContentLoaded-defer-task-order.tentative.html the reverse.
-        .dom_content_loaded => {
-            // (The timeline keeps the load timing info of the document a
-            // window shows; a windowless document's is not recorded.)
-            const has_window = (get_defaultView(task.target) catch null) != null;
-            if (has_window) @import("dom").performance_timeline.recordLoadTiming(task.target.ctx, .dom_content_loaded_event_start);
-            fireEvent(task.target, task.target, "DOMContentLoaded", true);
-            if (has_window) @import("dom").performance_timeline.recordLoadTiming(task.target.ctx, .dom_content_loaded_event_end);
-            // Step 6.4: enable the client message queue of the
-            // ServiceWorkerContainer whose client is the document's relevant
-            // settings object.
-            if (has_window) @import("dom").client_message_queues.domContentLoaded(task.target.ctx);
-        },
         .load => {
             if (getInternal(task.target)) |internal| {
                 // Its last child's load completed the document already.
                 if (task.load_token != 0 and task.load_token == internal.early_load_token) return;
                 // "The end" steps 7-8 (lane nav2 batch 6, H-NAV2-DOC-LOAD-
                 // RECHECK): "spin the event loop until ... nothing delays the
-                // load event". Step 6's DOMContentLoaded task runs inside that
-                // spin, so a frame or script its handlers insert delays the
-                // load; this task was queued before they ran. Delayed again:
+                // load event". A task that ran between the delay's end, which
+                // queued this one, and this task may have inserted a frame or
+                // a script that delays the load again (DOMContentLoaded itself
+                // fires as the parser stops, before step 7 is first checked:
+                // completeLoadUnlessDelayed). Delayed again:
                 // wait, and the delayer's end queues the load anew
                 // (lifecycleLoadDelayMayHaveEnded). The browsers wait too
                 // (trusted-types/inheriting-csp-for-local-schemes.html, whose

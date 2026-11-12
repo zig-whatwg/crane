@@ -109,7 +109,10 @@ test "discarding the last deferred delivery continues the end asynchronously" {
     fixture.runFirst();
     try std.testing.expect(!internal.parsing_end_waiting_on_scripts);
     try std.testing.expect(internal.ready_for_post_load_tasks);
-    try std.testing.expectEqual(@as(usize, 2), fixture.task_count); // DOMContentLoaded, load
+    // DOMContentLoaded and, with nothing delaying it, the load came in this
+    // task, as the parser's end ran (Document's lifecycleFinishLoading: the
+    // user's ruling 2026-11-12) - nothing more is queued.
+    try std.testing.expectEqual(@as(usize, 0), fixture.task_count);
 }
 
 test "a discarded ordered head releases its already-ready successor" {
