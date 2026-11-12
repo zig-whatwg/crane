@@ -118,8 +118,25 @@ pub fn canonicalizeWhitespace(edit: *Edit, point: Point, fix_collapsed_space: bo
                 continue;
             }
         }
-        // Step 7.2.
-        if (end_offset == try common.nodeLength(end_node) and !(try common.precedesLineBreak(end_node))) {
+        // Step 7.2. The run must reach back to `point`: step 3 can walk
+        // backward out of a white-space-only Text node that a deletion
+        // left ("abc <span>def</span>[ ]" after "ghi" went), and that node
+        // makes "def" "precede a line break" (it is a collapsed whitespace
+        // node), so the spec's walk forward stops at "def" and never
+        // canonicalizes the space at `point`. Until the walk is back at
+        // `point`, it climbs as if no line break followed. Blink rebalances
+        // the Text node holding the position (CompositeEditCommand::
+        // RebalanceWhitespaceAt), Gecko the white-space run around it
+        // (WhiteSpaceVisibilityKeeper): both keep that space visible as a
+        // no-break space, and editing/whitespaces/delete-word-around-
+        // span.html's "abc <span>def</span> ghi[]" (Chrome 157, Firefox 160,
+        // Safari 27.2 at wpt.fyi 24ddf405a0) compares it with "abc def
+        // ghi[]", whose single Text node the spec's walk does reach.
+        // (A deletion of collapsed spaces in 7.3.1 can shorten `point`'s
+        // node: compare with its offset clamped to the node's length.)
+        const target = Point{ .node = node, .offset = @min(offset, try common.nodeLength(node)) };
+        const short_of_point = try common.pointIsBefore(.{ .node = end_node, .offset = end_offset }, target);
+        if (end_offset == try common.nodeLength(end_node) and (short_of_point or !(try common.precedesLineBreak(end_node)))) {
             if (try common.parent(end_node)) |p| {
                 if (try common.inSameEditingHost(end_node, p)) {
                     end_offset = 1 + try common.indexOf(end_node);
