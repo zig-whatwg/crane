@@ -1918,11 +1918,20 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     }
     // Step 23: "If sourceDocument is navigable's container document, then
     // reserve deferred fetch quota for navigable's container given url's
-    // origin" (Fetch 4.12.1; dom.deferred_fetches).
+    // origin" (Fetch 4.12.1; dom.deferred_fetches). Golden rule 2, stated:
+    // a container whose sandboxing flags set the sandboxed origin browsing
+    // context flag (an iframe sandbox without allow-same-origin) reserves
+    // for an opaque origin - the one its document will have - not url's:
+    // Chrome 157, the only browser shipping fetchLater, gives such a frame
+    // its own minimal quota (fetch/fetch-later/quota/cross-origin-iframe/
+    // sandboxed-iframe.https.window.js 1/1, wpt.fyi stable 24ddf405a0), where
+    // url's origin would reserve normal quota that the opaque document's
+    // "deferred-fetch" policy cannot use.
     if (options.source_document) |source| if (integration.iframe_element) |raw| {
         const container: *runtime.Instance = @ptrCast(@alignCast(raw));
         if ((interfaces.Node.get_ownerDocument(container) catch null) == source) {
-            if (fetch_mod.internal.origins.serializedOriginOf(allocator, url)) |origin| {
+            const opaque_document = creationSandboxingFlagsOf(integration).origin;
+            if (if (opaque_document) allocator.dupe(u8, "null") else fetch_mod.internal.origins.serializedOriginOf(allocator, url)) |origin| {
                 defer allocator.free(origin);
                 dom_module.deferred_fetches.reserveQuota(browsing_context, container, origin);
             } else |_| {}
