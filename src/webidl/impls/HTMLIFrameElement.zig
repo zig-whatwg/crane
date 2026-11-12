@@ -337,10 +337,9 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     // <html><head></head><body></body></html>
     // This is required because browsers always create these elements for any HTML document.
     const DocumentImpl = @import("Document.zig");
-    const NodeImpl = @import("Node.zig");
 
     // Create html element (HTMLHtmlElement)
-    const html_element = DocumentImpl.call_createElement(
+    const html_element = interfaces.Document.call_createElement(
         document_instance,
         runtime.DOMString.initInterned("html"),
         webidl.Opt(runtime.JSValue).notPassed(),
@@ -349,7 +348,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     };
 
     // Create head element (HTMLHeadElement)
-    const head_element = DocumentImpl.call_createElement(
+    const head_element = interfaces.Document.call_createElement(
         document_instance,
         runtime.DOMString.initInterned("head"),
         webidl.Opt(runtime.JSValue).notPassed(),
@@ -358,7 +357,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     };
 
     // Create body element (HTMLBodyElement)
-    const body_element = DocumentImpl.call_createElement(
+    const body_element = interfaces.Document.call_createElement(
         document_instance,
         runtime.DOMString.initInterned("body"),
         webidl.Opt(runtime.JSValue).notPassed(),
@@ -367,17 +366,17 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     };
 
     // Append head to html
-    _ = NodeImpl.call_appendChild(html_element, head_element) catch {
+    _ = interfaces.Node.call_appendChild(html_element, head_element) catch {
         return document_instance;
     };
 
     // Append body to html
-    _ = NodeImpl.call_appendChild(html_element, body_element) catch {
+    _ = interfaces.Node.call_appendChild(html_element, body_element) catch {
         return document_instance;
     };
 
     // Append html to document
-    _ = NodeImpl.call_appendChild(document_instance, html_element) catch {
+    _ = interfaces.Node.call_appendChild(document_instance, html_element) catch {
         return document_instance;
     };
 
@@ -1978,6 +1977,37 @@ fn requestReferrerOf(source: *runtime.Instance, allocator: std.mem.Allocator) ?[
     return null;
 }
 
+/// `node`'s node document - DOM's "node document" of an element or other
+/// non-document node, read through Node's interface (ownerDocument); null
+/// for a Document node or when it cannot be read.
+fn nodeDocumentOf(node: *runtime.Instance) ?*runtime.Instance {
+    return interfaces.Node.get_ownerDocument(node) catch null;
+}
+
+/// The referrer main fetch leaves on the request of an about:blank
+/// navigation - "create and initialize a Document object" step 14 takes the
+/// new document's referrer from it. Fetch main fetch step 8: the request's
+/// referrer policy, or its policy container's when it has none (here the
+/// initiator's, as "create navigation params by fetching" step 3 gives the
+/// request), then "determine request's referrer" toward about:blank, whose
+/// origin is opaque: a cross-origin target, so strict-origin-when-cross-
+/// origin sends the source's origin alone
+/// (html/browsers/browsing-the-web/navigating-across-documents/source/
+/// navigate-child-src-about-blank.html: Chrome 157 and Safari 27.2 pass,
+/// with document.referrer the parent's origin and "/"). Owned by the
+/// record's allocator; null for no referrer.
+fn aboutBlankReferrer(record: *Navigation) ?[]u8 {
+    const source = record.referrer orelse return null;
+    var policy = record.referrer_policy;
+    if (policy == .empty) {
+        if (record.initiator_policy_container) |*container| policy = container.referrer_policy;
+    }
+    if (policy == .empty) policy = .strict_origin_when_cross_origin;
+    const determined = (fetch_mod.algorithms.main_fetch.determineRequestReferrer(record.allocator, policy, source, record.url) catch return null) orelse return null;
+    defer record.allocator.free(determined);
+    return record.allocator.dupe(u8, determined) catch null;
+}
+
 /// Queue `callback` for navigation `id` on the navigable's event loop - a
 /// global task on the navigation and traversal task source. With no loop (a
 /// context built for tests) it runs now.
@@ -2156,6 +2186,9 @@ fn startFetch(record: *Navigation) void {
     }
     if (navigate_steps.matchesAboutBlank(url)) {
         record.response = htmlResponse(allocator, url, "") catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
+        if (record.response) |*response| {
+            if (!response.is_network_error) response.referrer = aboutBlankReferrer(record);
+        }
         return queueNavigationTask(record.integration, record.id, &runCommit);
     }
 
@@ -2449,9 +2482,8 @@ fn startFetch(record: *Navigation) void {
 fn isSelfReferential(integration: *IFrameIntegration, url: []const u8) bool {
     if (std.mem.eql(u8, navigate_steps.schemeOf(url), "about")) return false;
     const container: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return false));
-    const NodeImpl = @import("Node.zig");
     const allocator = integration.allocator;
-    var document = NodeImpl.getOwnerDocument(container);
+    var document = nodeDocumentOf(container);
     var found = false;
     var depth: usize = 0;
     while (document) |doc| : (depth += 1) {
@@ -2464,7 +2496,7 @@ fn isSelfReferential(integration: *IFrameIntegration, url: []const u8) bool {
         }
         const window = (interfaces.Document.get_defaultView(doc) catch null) orelse return false;
         const parent_container = dom_module.navigable_container.of(window) orelse return false;
-        document = NodeImpl.getOwnerDocument(parent_container);
+        document = nodeDocumentOf(parent_container);
     }
     return false;
 }
@@ -4671,8 +4703,7 @@ fn navigationParamsOrigin(integration: *IFrameIntegration, flags: SandboxingFlag
     if (navigate_steps.matchesAboutBlank(url) or navigate_steps.matchesAboutSrcdoc(url)) {
         const container_window: ?*runtime.Instance = blk: {
             const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
-            const NodeImpl = @import("Node.zig");
-            const container = NodeImpl.getOwnerDocument(element) orelse break :blk null;
+            const container = nodeDocumentOf(element) orelse break :blk null;
             break :blk interfaces.Document.get_defaultView(container) catch null;
         };
         const active: ?*runtime.Instance = if (bc.getActiveWindow()) |w| @ptrCast(@alignCast(w)) else null;
@@ -4772,7 +4803,7 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
         }
         const source: ?*runtime.Instance = if (resource != null) blk: {
             const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
-            break :blk @import("Node.zig").getOwnerDocument(element);
+            break :blk nodeDocumentOf(element);
         } else null;
         navigate(integration, url, .{ .source_document = source, .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .srcdoc = resource, .traversal_waiter = waiter });
         return traversalInFlight(list, integration, waiter);
@@ -5478,8 +5509,7 @@ fn endLoadDelay(integration: *IFrameIntegration) void {
     if (!integration.delaying_load) return;
     integration.delaying_load = false;
     const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return));
-    const NodeImpl = @import("Node.zig");
-    const document = NodeImpl.getOwnerDocument(element) orelse return;
+    const document = nodeDocumentOf(element) orelse return;
     document_lifecycle.loadDelayMayHaveEnded(document);
 }
 
@@ -5651,8 +5681,7 @@ fn chosenOf(document: *runtime.Instance) Chosen {
 fn parentDocumentOf(document: *runtime.Instance) ?*runtime.Instance {
     const integration = navigableOfDocument(document) orelse return null;
     const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return null));
-    const NodeImpl = @import("Node.zig");
-    return NodeImpl.getOwnerDocument(element);
+    return nodeDocumentOf(element);
 }
 
 /// The active document of `document`'s top-level traversable.
@@ -5980,10 +6009,9 @@ fn navigateFromLocation(ctx: ?*anyopaque, url: []const u8, request: html_core.wi
 /// loads eagerly.
 fn processIframeAttributes(element: *runtime.Instance, initial_insertion: bool) void {
     const internal = getInternal(element) orelse return;
-    const ElementImpl = @import("Element.zig");
     // Step 1: "If element's srcdoc attribute is specified" - navigate to the
     // srcdoc resource.
-    if (ElementImpl.call_getAttribute(element, runtime.DOMString.initInterned("srcdoc")) catch null) |srcdoc| {
+    if (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("srcdoc")) catch null) |srcdoc| {
         const markup = internal.allocator.dupe(u8, srcdoc.asSlice()) catch return;
         defer internal.allocator.free(markup);
         navigateIframeOrFrame(element, "about:srcdoc", markup, initial_insertion);
@@ -6016,8 +6044,7 @@ fn processIframeAttributes(element: *runtime.Instance, initial_insertion: bool) 
 /// Step 4 (URL and history update steps for about:blank?query) is not
 /// modelled. error.OutOfMemory when the URL cannot be made (`resolveSrc`).
 fn sharedAttributeProcessingSteps(element: *runtime.Instance) error{OutOfMemory}!?[]const u8 {
-    const ElementImpl = @import("Element.zig");
-    const src = ElementImpl.call_getAttribute(element, runtime.DOMString.initInterned("src")) catch null;
+    const src = interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("src")) catch null;
     const value: []const u8 = if (src) |s| s.asSlice() else "";
     const url = try resolveSrc(element, value);
     if (ancestorShows(element, url)) {
@@ -6051,8 +6078,7 @@ fn sharedAttributeProcessingSteps(element: *runtime.Instance) error{OutOfMemory}
 /// (2026-09-29).
 fn ancestorShows(element: *runtime.Instance, url: []const u8) bool {
     if (navigate_steps.matchesAboutBlank(url)) return false;
-    const NodeImpl = @import("Node.zig");
-    var document = NodeImpl.getOwnerDocument(element);
+    var document = nodeDocumentOf(element);
     var depth: usize = 0;
     var found_one_self_reference = false;
     while (document) |doc| : (depth += 1) {
@@ -6067,7 +6093,7 @@ fn ancestorShows(element: *runtime.Instance, url: []const u8) bool {
         }
         const window = (interfaces.Document.get_defaultView(doc) catch null) orelse return false;
         const container = dom_module.navigable_container.of(window) orelse return false;
-        document = NodeImpl.getOwnerDocument(container);
+        document = nodeDocumentOf(container);
     }
     return false;
 }
@@ -6119,8 +6145,7 @@ fn navigateContainer(element: *runtime.Instance, integration: *IFrameIntegration
     // a fragment navigation of a cross-origin frame through its element
     // fires the element's load event, as a cross-document one would - its
     // absence would tell the container that the frame is still on that URL.
-    const NodeImpl = @import("Node.zig");
-    const container_document = NodeImpl.getOwnerDocument(element);
+    const container_document = nodeDocumentOf(element);
     const load_for_fragment = crossOriginFragmentNavigation(integration, container_document, url, srcdoc != null);
     // Step 3: "Let referrerPolicy be the current state of element's
     // referrerpolicy content attribute."
@@ -6235,8 +6260,17 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
     // navigable", and their pagehide and unload handlers still reach the
     // frame's window through the element, as in every browser.
     if (internal.integration.state == .discarded) return null;
-    const NodeImpl = @import("Node.zig");
-    const is_connected = NodeImpl.get_isConnected(instance) catch false;
+    // Nor does an element in a destroyed document - a frame inside a removed
+    // frame: "destroy a document and its descendants" destroys the documents
+    // its child navigables show, and the browsers detach the whole subtree
+    // at once (html/semantics/embedded-content/the-iframe-element/iframe-
+    // synchronously-discard.html: Chrome 157, Firefox 160 and Safari 27.2
+    // pass "grandchild should be discarded"; Blink's Frame::Detach detaches
+    // every child frame synchronously, clearing each owner's content frame).
+    if (interfaces.Node.get_ownerDocument(instance) catch null) |node_document| {
+        if (dom_module.document_activity.activity(node_document, runtime.SlabAllocator.generationOf(node_document)) == .gone) return null;
+    }
+    const is_connected = interfaces.Node.get_isConnected(instance) catch false;
     if (!is_connected) {
         if (!internal.integration.hasRealmContext()) return null;
         if (navigableContext(internal.integration)) |realm| {
@@ -7577,8 +7611,7 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
 /// HTML "reflect": the srcdoc content attribute, or "". A copy - the binding
 /// frees what a getter returns, and the attribute can change under it.
 pub fn get_srcdoc(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const ElementImpl = @import("Element.zig");
-    const value = (try ElementImpl.call_getAttribute(instance, runtime.DOMString.initInterned("srcdoc"))) orelse
+    const value = (try interfaces.Element.call_getAttribute(instance, runtime.DOMString.initInterned("srcdoc"))) orelse
         return runtime.DOMString.initInterned("");
     return runtime.DOMString.initDupe(instance.ctx.allocator, value.asSlice());
 }
@@ -7636,8 +7669,7 @@ fn iframeAttributeChangeSteps(
     if (!is_srcdoc and !std.mem.eql(u8, local_name, "src")) return;
     if (!hasContentNavigable(element)) return;
     if (!is_srcdoc) {
-        const ElementImpl = @import("Element.zig");
-        if (ElementImpl.call_hasAttribute(element, runtime.DOMString.initInterned("srcdoc")) catch false) return;
+        if (interfaces.Element.call_hasAttribute(element, runtime.DOMString.initInterned("srcdoc")) catch false) return;
     }
     processIframeAttributes(element, false);
 }
@@ -7648,8 +7680,7 @@ fn hasContentNavigable(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
     if (internal.integration.state == .discarded or internal.integration.state == .uninitialized) return false;
     if (internal.integration.browsing_context == null) return false;
-    const NodeImpl = @import("Node.zig");
-    return NodeImpl.get_isConnected(instance) catch false;
+    return interfaces.Node.get_isConnected(instance) catch false;
 }
 
 /// Getter for name
@@ -7695,13 +7726,12 @@ pub fn get_sandbox(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // This is critical: the attribute may have been set via Element.setAttribute()
     // before the DOMTokenList was created. Per spec, the DOMTokenList should
     // reflect the current attribute value.
-    const ElementImpl = @import("Element.zig");
     const sandbox_attr_name = runtime.DOMString.initInterned("sandbox");
-    if (ElementImpl.call_getAttribute(instance, sandbox_attr_name) catch null) |attr_value| {
+    if (interfaces.Element.call_getAttribute(instance, sandbox_attr_name) catch null) |attr_value| {
         const attr_slice = attr_value.asSlice();
         if (attr_slice.len > 0) {
             // Parse the attribute value and populate the token list
-            DOMTokenListImpl.set_value(token_list, attr_value) catch {};
+            interfaces.DOMTokenList.set_value(token_list, attr_value) catch {};
         }
     }
 
@@ -7879,8 +7909,7 @@ fn iframePostConnectionSteps(node: *NodeBase) void {
     const instance_ptr = instance_bridge.getInstance(node) orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
     const internal = getInternal(instance) orelse return;
-    const NodeImpl = @import("Node.zig");
-    if (!(NodeImpl.get_isConnected(instance) catch false)) return;
+    if (!(interfaces.Node.get_isConnected(instance) catch false)) return;
 
     // Inserted again after a removal: the old navigable is gone.
     if (internal.integration.state == .discarded) {
@@ -7891,7 +7920,6 @@ fn iframePostConnectionSteps(node: *NodeBase) void {
     // security token as it is created. Fails closed: an attribute that
     // cannot be read sandboxes the frame fully, as `sandbox=""` does - an
     // error read as no attribute made the frame unsandboxed.
-    const ElementImpl = @import("Element.zig");
     if (interfaces.Element.call_getAttribute(instance, runtime.DOMString.initInterned("sandbox"))) |attribute| {
         if (attribute) |sandbox| internal.integration.setSandbox(sandbox.asSlice());
     } else |_| internal.integration.setSandbox("");
@@ -7905,7 +7933,7 @@ fn iframePostConnectionSteps(node: *NodeBase) void {
     // parent's global reaches it by that name.
     const name: ?[]const u8 = blk: {
         if (internal.name_attr) |n| break :blk n;
-        if (ElementImpl.call_getAttribute(instance, runtime.DOMString.initInterned("name")) catch null) |attr| break :blk attr.asSlice();
+        if (interfaces.Element.call_getAttribute(instance, runtime.DOMString.initInterned("name")) catch null) |attr| break :blk attr.asSlice();
         break :blk null;
     };
     if (name) |n| {
