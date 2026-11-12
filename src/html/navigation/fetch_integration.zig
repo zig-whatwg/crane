@@ -807,10 +807,13 @@ pub fn networkErrorResult(allocator: Allocator, url: []const u8) NavigationFetch
 /// and a navigation to about:srcdoc by any other route - location, a link,
 /// window.open() - is a network error, whose document has an opaque origin
 /// (html/browsers/browsing-the-web/navigating-across-documents/about-srcdoc-
-/// navigation-blocked.window.js: Firefox 160 passes 3/3, following the
-/// spec; Chrome 157 and Safari 27.2 pass 0/3. Golden rule 2: the spec's
-/// steps, which one browser ships - the integrator rules on it with the
-/// batch; a 404 page for an unknown about: URL had no spec at all).
+/// navigation-blocked.window.js; wpt.fyi stable: Chrome 157 0/3, Firefox
+/// 160 3/3, Safari 27.2 0/3). Golden rule 2, the user's ruling (2026-11-12
+/// 01:01 UTC): the spec, which Firefox ships. Chrome and Safari lag rather
+/// than deviate: Chromium's own open bug 40165505 (crbug 1169736),
+/// "Navigation to about:srcdoc should fail per HTML Standard", wrote this
+/// WPT, and whatwg/html#6316 (annevk, 2021) confirms the network error;
+/// no engine declined. A 404 page for an unknown about: URL had no spec.
 fn handleAboutUrl(allocator: Allocator, url: []const u8) NavigationFetchError!NavigationFetchResult {
     var result = NavigationFetchResult.init(allocator);
     errdefer result.deinit();
