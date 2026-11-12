@@ -515,6 +515,33 @@ pub const Longhand = enum(u16) {
     view_transition_class,
     zoom,
 
+    // Grammar longhands, batch 2 (lane cssprop1, cluster C01b): Masking 1
+    // Appendix A (clip), Sizing 4 §§4.1, 5.2 (aspect-ratio and the
+    // contain-intrinsic-* longhands), Box 4 §3.3 (margin-trim), Borders 4
+    // §3.7 (corner-*-shape), Color HDR 1 §3.1 (dynamic-range-limit),
+    // Scrollbars 1 §§2-3 (scrollbar-color, scrollbar-width), SVG 2 §9.3.2
+    // (d) and §13.5.6 (stroke-dasharray).
+    clip,
+    aspect_ratio,
+    contain_intrinsic_width,
+    contain_intrinsic_height,
+    contain_intrinsic_inline_size,
+    contain_intrinsic_block_size,
+    margin_trim,
+    corner_top_left_shape,
+    corner_top_right_shape,
+    corner_bottom_right_shape,
+    corner_bottom_left_shape,
+    corner_start_start_shape,
+    corner_start_end_shape,
+    corner_end_start_shape,
+    corner_end_end_shape,
+    dynamic_range_limit,
+    scrollbar_color,
+    scrollbar_width,
+    d,
+    stroke_dasharray,
+
     pub const count = @typeInfo(Longhand).@"enum".field_names.len;
 
     /// The property name.
@@ -571,9 +598,33 @@ pub const Logical = struct {
     group: Group,
     side: Side,
 
-    pub const Group = enum { margin, padding, inset, border_width, border_style, border_color, size, min_size, max_size, scroll_margin, scroll_padding, overflow, overscroll };
+    /// A corner's inline-axis side, `side` then being its block-axis side
+    /// (Borders 4 §3.7: corner-`block`-`inline`-shape, "The first
+    /// start/end gives the block axis side, and the second the inline-axis
+    /// side"). Null for a side's longhand.
+    inline_side: ?Side = null,
+
+    pub const Group = enum { margin, padding, inset, border_width, border_style, border_color, size, min_size, max_size, scroll_margin, scroll_padding, overflow, overscroll, contain_intrinsic, corner_shape };
     pub const Side = enum { block_start, block_end, inline_start, inline_end };
 };
+
+/// The physical longhand a logical one maps to for a writing mode and
+/// direction: a side's through physicalLonghand, a corner's (Borders 4
+/// §3.7) from the physical sides its block and inline sides map to.
+pub fn physicalOf(lg: Logical, writing_mode: Keyword, direction: Keyword) Longhand {
+    const first = physicalSide(lg.side, writing_mode, direction);
+    const inline_side = lg.inline_side orelse return physicalLonghand(lg.group, first);
+    const second = physicalSide(inline_side, writing_mode, direction);
+    const vertical = if (first == .top or first == .bottom) first else second;
+    const horizontal = if (first == .left or first == .right) first else second;
+    return switch (lg.group) {
+        .corner_shape => if (vertical == .top)
+            (if (horizontal == .left) .corner_top_left_shape else .corner_top_right_shape)
+        else
+            (if (horizontal == .left) .corner_bottom_left_shape else .corner_bottom_right_shape),
+        else => unreachable,
+    };
+}
 
 pub const PhysicalSide = enum { top, right, bottom, left };
 
@@ -621,6 +672,13 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
             .top, .bottom => .overscroll_behavior_y,
             .left, .right => .overscroll_behavior_x,
         },
+        // Sizing 4 §5.2: contain-intrinsic-block-size/-inline-size.
+        .contain_intrinsic => switch (side) {
+            .top, .bottom => .contain_intrinsic_height,
+            .left, .right => .contain_intrinsic_width,
+        },
+        // A corner has two sides: physicalOf maps it.
+        .corner_shape => unreachable,
         .scroll_margin => switch (side) {
             .top => .scroll_margin_top,
             .right => .scroll_margin_right,
@@ -798,6 +856,25 @@ pub const Grammar = enum {
     view_transition_class,
     /// Viewport 1 §3.1: normal | <number [0,∞]> | <percentage [0,∞]>.
     zoom,
+    /// Masking 1 Appendix A: rect() | auto.
+    clip,
+    /// Sizing 4 §4.1: auto || <ratio>.
+    aspect_ratio,
+    /// Sizing 4 §5.2: auto? [ none | <length [0,∞]> ].
+    contain_intrinsic,
+    /// Box 4 §3.3: none | block | [ block-start || block-end ].
+    margin_trim,
+    /// Borders 4 §3.7: <corner-shape-value>.
+    corner_shape,
+    /// Color HDR 1 §3.1: standard | no-limit | constrained |
+    /// <dynamic-range-limit-mix()>.
+    dynamic_range_limit,
+    /// Scrollbars 1 §3: auto | <color>{2}.
+    scrollbar_color,
+    /// SVG 2 §9.3.2: none | path(<string>).
+    path_data,
+    /// SVG 2 §13.5.6: none | <dasharray>.
+    dasharray,
 };
 
 pub const Info = struct {
@@ -1303,6 +1380,30 @@ const infos: [Longhand.count]Info = blk: {
         // Viewport 1 §3.1: not inherited (the effective zoom multiplies
         // down the tree; the property's computed value does not).
         .{ .longhand = .zoom, .inherited = false, .initial = .{ .number = 1 }, .grammar = .zoom },
+        // Masking 1 Appendix A; Values 4 Appendix C lists clip among the
+        // quirky-length properties, rect() included.
+        .{ .longhand = .clip, .inherited = false, .initial = Value.kw(.auto), .grammar = .clip, .quirky_length = true },
+        .{ .longhand = .aspect_ratio, .inherited = false, .initial = Value.kw(.auto), .grammar = .aspect_ratio },
+        .{ .longhand = .contain_intrinsic_width, .inherited = false, .initial = Value.kw(.none), .grammar = .contain_intrinsic },
+        .{ .longhand = .contain_intrinsic_height, .inherited = false, .initial = Value.kw(.none), .grammar = .contain_intrinsic },
+        .{ .longhand = .contain_intrinsic_inline_size, .inherited = false, .initial = Value.kw(.none), .grammar = .contain_intrinsic, .logical = .{ .group = .contain_intrinsic, .side = .inline_start } },
+        .{ .longhand = .contain_intrinsic_block_size, .inherited = false, .initial = Value.kw(.none), .grammar = .contain_intrinsic, .logical = .{ .group = .contain_intrinsic, .side = .block_start } },
+        .{ .longhand = .margin_trim, .inherited = false, .initial = Value.kw(.none), .grammar = .margin_trim },
+        // Borders 4 §3.7: initial round, whose computed value is
+        // superellipse(1) - the parameter K is the computed value.
+        .{ .longhand = .corner_top_left_shape, .inherited = false, .initial = .{ .number = 1 }, .grammar = .corner_shape },
+        .{ .longhand = .corner_top_right_shape, .inherited = false, .initial = .{ .number = 1 }, .grammar = .corner_shape },
+        .{ .longhand = .corner_bottom_right_shape, .inherited = false, .initial = .{ .number = 1 }, .grammar = .corner_shape },
+        .{ .longhand = .corner_bottom_left_shape, .inherited = false, .initial = .{ .number = 1 }, .grammar = .corner_shape },
+        .{ .longhand = .corner_start_start_shape, .inherited = false, .initial = .{ .number = 1 }, .grammar = .corner_shape, .logical = .{ .group = .corner_shape, .side = .block_start, .inline_side = .inline_start } },
+        .{ .longhand = .corner_start_end_shape, .inherited = false, .initial = .{ .number = 1 }, .grammar = .corner_shape, .logical = .{ .group = .corner_shape, .side = .block_start, .inline_side = .inline_end } },
+        .{ .longhand = .corner_end_start_shape, .inherited = false, .initial = .{ .number = 1 }, .grammar = .corner_shape, .logical = .{ .group = .corner_shape, .side = .block_end, .inline_side = .inline_start } },
+        .{ .longhand = .corner_end_end_shape, .inherited = false, .initial = .{ .number = 1 }, .grammar = .corner_shape, .logical = .{ .group = .corner_shape, .side = .block_end, .inline_side = .inline_end } },
+        .{ .longhand = .dynamic_range_limit, .inherited = true, .initial = Value.kw(.no_limit), .grammar = .dynamic_range_limit },
+        .{ .longhand = .scrollbar_color, .inherited = true, .initial = Value.kw(.auto), .grammar = .scrollbar_color },
+        .{ .longhand = .scrollbar_width, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .thin, .none } },
+        .{ .longhand = .d, .inherited = false, .initial = Value.kw(.none), .grammar = .path_data },
+        .{ .longhand = .stroke_dasharray, .inherited = true, .initial = Value.kw(.none), .grammar = .dasharray },
     };
     for (defs) |def| {
         const i = @backingInt(def.longhand);
@@ -1433,6 +1534,23 @@ pub const Shorthand = enum(u8) {
     color_adjust,
     // Compat §3.4.6.4: <line-width> || <color>.
     _webkit_text_stroke,
+    // Sizing 4 §5.2: [ auto? [ none | <length [0,∞]> ] ]{1,2}, width then
+    // height.
+    contain_intrinsic_size,
+    // Borders 4 §3.8.2: <'corner-top-left-shape'>{1,4}, as border-radius
+    // orders its corners.
+    corner_shape,
+    // Borders 4 §3.8.1: <'corner-top-left-shape'>{1,2}, left/right or
+    // top/bottom for a physical side, start/end in the other axis for a
+    // logical one.
+    corner_top_shape,
+    corner_right_shape,
+    corner_bottom_shape,
+    corner_left_shape,
+    corner_block_start_shape,
+    corner_block_end_shape,
+    corner_inline_start_shape,
+    corner_inline_end_shape,
 
     /// Cascade 5 §3.1 / Break 3 §3.4: omitted only from cssText selection.
     /// Everywhere else these behave exactly as regular shorthands.
@@ -1502,6 +1620,16 @@ pub const Shorthand = enum(u8) {
             .overscroll_behavior => &.{ .overscroll_behavior_x, .overscroll_behavior_y },
             .color_adjust => &.{.print_color_adjust},
             ._webkit_text_stroke => &.{ ._webkit_text_stroke_width, ._webkit_text_stroke_color },
+            .contain_intrinsic_size => &.{ .contain_intrinsic_width, .contain_intrinsic_height },
+            .corner_shape => &.{ .corner_top_left_shape, .corner_top_right_shape, .corner_bottom_right_shape, .corner_bottom_left_shape },
+            .corner_top_shape => &.{ .corner_top_left_shape, .corner_top_right_shape },
+            .corner_right_shape => &.{ .corner_top_right_shape, .corner_bottom_right_shape },
+            .corner_bottom_shape => &.{ .corner_bottom_left_shape, .corner_bottom_right_shape },
+            .corner_left_shape => &.{ .corner_top_left_shape, .corner_bottom_left_shape },
+            .corner_block_start_shape => &.{ .corner_start_start_shape, .corner_start_end_shape },
+            .corner_block_end_shape => &.{ .corner_end_start_shape, .corner_end_end_shape },
+            .corner_inline_start_shape => &.{ .corner_start_start_shape, .corner_end_start_shape },
+            .corner_inline_end_shape => &.{ .corner_start_end_shape, .corner_end_end_shape },
             .padding => &.{ .padding_top, .padding_right, .padding_bottom, .padding_left },
             .padding_block => &.{ .padding_block_start, .padding_block_end },
             .padding_inline => &.{ .padding_inline_start, .padding_inline_end },
@@ -2301,6 +2429,47 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             _ = stream.next();
             return v;
         },
+        .clip => {
+            if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
+            return @import("clip_values.zig").parse(options, stream, def.quirky_length);
+        },
+        .aspect_ratio => return @import("sizing_values.zig").parseAspectRatio(options, stream),
+        .contain_intrinsic => return @import("sizing_values.zig").parseContainIntrinsic(options, stream),
+        .margin_trim => {
+            // Box 4 §3.3: none | block | [ block-start || block-end ].
+            // "block: Computes to block-start block-end", and "computed
+            // values equivalent to block will serialize as that keyword", so
+            // the pair is block from the start (margin-trim.html: Chrome
+            // 21/21, the spec's grammar; Safari still takes the inline
+            // values the spec dropped).
+            if (takeKeyword(stream, &.{ .none, .block })) |k| return Value.kw(k);
+            const first = takeKeyword(stream, &.{ .block_start, .block_end }) orelse return null;
+            const other: Keyword = if (first == .block_start) .block_end else .block_start;
+            if (takeKeyword(stream, &.{other}) != null) return Value.kw(.block);
+            return Value.kw(first);
+        },
+        .corner_shape => return @import("corner_shape_values.zig").parse(options, stream),
+        .dynamic_range_limit => return @import("dynamic_range_values.zig").parse(options, stream),
+        .scrollbar_color => {
+            // Scrollbars 1 §3: auto | <color>{2}, the thumb's then the
+            // track's.
+            if (takeKeyword(stream, &.{.auto})) |k| return Value.kw(k);
+            const thumb = (try colorValue(options, stream, def)) orelse return null;
+            defer thumb.release();
+            const track = (try colorValue(options, stream, def)) orelse return null;
+            defer track.release();
+            return .{ .text_values = try @import("text_values.zig").Components.create(options.allocator, l, &.{ thumb, track }) };
+        },
+        .path_data => {
+            // SVG 2 §9.3.2 lists none | <string>; Chrome and Firefox ship
+            // none | path(<string>) - web-animations/responsive/d.html is
+            // Chrome 1/1, Firefox 1/1, and Safari has no d property - so
+            // golden rule 2 takes path(), with no fill rule (that is a
+            // shape's).
+            if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);
+            return .{ .shape = (try @import("shape_values.zig").consumePathData(options, stream)) orelse return null };
+        },
+        .dasharray => return @import("svg_paint.zig").parseDasharray(options, stream),
     }
 }
 
@@ -2881,7 +3050,21 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
     try out.append(options.allocator, .{ .longhand = l, .value = .{ .value = v } });
 }
 
-fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
+fn parseShorthand(given: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
+    // Values 4 Appendix C and Color 4 Appendix B: a <quirky-length> or
+    // <quirky-color> is valid only in the properties they list, "not in
+    // properties that include or reference these properties, such as the
+    // background shorthand". The listed shorthands: background-position,
+    // border-width, margin and padding (lengths), border-color (colors),
+    // and vertical-align, a shorthand here of Inline 3's longhands. All
+    // three browsers reject the rest (quirks/unitless-length/
+    // excluded-properties-003.html: inset, and quirks.html's "Excluded
+    // property" cases: border-*, background, font).
+    var options = given;
+    if (options.quirks) switch (s) {
+        .background_position, .border_width, .margin, .padding, .border_color, .vertical_align => {},
+        else => options.quirks = false,
+    };
     switch (s) {
         .page_break_before, .page_break_after, .page_break_inside => return @import("fragmentation_values.zig").consume(options, s, stream, out),
         .container => return @import("container_values.zig").consumeShorthand(options, stream, out),
@@ -3020,8 +3203,8 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
         },
         // `all` takes only the CSS-wide keywords, handled by the caller.
         .all => return false,
-        .margin, .padding, .scroll_margin, .scroll_padding, .inset, .border_width, .border_style, .border_color => return fourSides(options, s.longhands(), stream, out),
-        .margin_block, .margin_inline, .padding_block, .padding_inline, .scroll_margin_block, .scroll_margin_inline, .scroll_padding_block, .scroll_padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .gap, .overscroll_behavior => return twoSides(options, s.longhands(), stream, out),
+        .margin, .padding, .scroll_margin, .scroll_padding, .inset, .border_width, .border_style, .border_color, .corner_shape => return fourSides(options, s.longhands(), stream, out),
+        .margin_block, .margin_inline, .padding_block, .padding_inline, .scroll_margin_block, .scroll_margin_inline, .scroll_padding_block, .scroll_padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .gap, .overscroll_behavior, .contain_intrinsic_size, .corner_top_shape, .corner_right_shape, .corner_bottom_shape, .corner_left_shape, .corner_block_start_shape, .corner_block_end_shape, .corner_inline_start_shape, .corner_inline_end_shape => return twoSides(options, s.longhands(), stream, out),
         .color_adjust => {
             const value = (try parseLonghand(options, .print_color_adjust, stream)) orelse return false;
             if (!stream.atEnd()) return false;
@@ -3329,6 +3512,9 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         try out.append(allocator, ' ');
         return values.appendLength(value.length, out, allocator);
     }
+    // Borders 4 §3.7: a corner shape's parameter is a superellipse().
+    if ((value == .number or value == .calculation) and l.info().grammar == .corner_shape)
+        return @import("corner_shape_values.zig").serialize(value, out, allocator);
     switch (value) {
         .text_values => |v| try v.serialize(out, allocator),
         .decoration_keywords => |v| try v.serialize(out, allocator),
@@ -3400,6 +3586,8 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .font_size_adjust => |v| try v.serialize(out, allocator),
         .font_system => {}, // Pending specified system longhand (Q28).
         .gap_list => |list| try list.serialize(l, out, allocator),
+        .dynamic_range => |mix| try mix.serialize(out, allocator),
+        .scoped_name => |n| try out.appendSlice(allocator, n.name.bytes),
     }
 }
 
@@ -3526,7 +3714,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
             } else try serializeValue(.text_orientation, vs[0].value, out, allocator);
             return true;
         },
-        .margin, .padding, .scroll_margin, .scroll_padding, .inset, .border_width, .border_style, .border_color => {
+        .margin, .padding, .scroll_margin, .scroll_padding, .inset, .border_width, .border_style, .border_color, .corner_shape => {
             const top = vs[0].value;
             const right = vs[1].value;
             const bottom = vs[2].value;
@@ -3551,7 +3739,7 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
             try serializeValue(ls[1], vs[1].value, out, allocator);
             return true;
         },
-        .margin_block, .margin_inline, .padding_block, .padding_inline, .scroll_margin_block, .scroll_margin_inline, .scroll_padding_block, .scroll_padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .overflow, .overscroll_behavior, .place_content, .place_items, .place_self, .gap => {
+        .margin_block, .margin_inline, .padding_block, .padding_inline, .scroll_margin_block, .scroll_margin_inline, .scroll_padding_block, .scroll_padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .overflow, .overscroll_behavior, .place_content, .place_items, .place_self, .gap, .contain_intrinsic_size, .corner_top_shape, .corner_right_shape, .corner_bottom_shape, .corner_left_shape, .corner_block_start_shape, .corner_block_end_shape, .corner_inline_start_shape, .corner_inline_end_shape => {
             try serializeValue(ls[0], vs[0].value, out, allocator);
             if (!vs[1].value.eql(vs[0].value)) {
                 try out.append(allocator, ' ');
