@@ -920,7 +920,9 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
 // collection that found its wrapper dead, not after V8's later task or next
 // collection), and the ORDER within one collection (the first pass's own
 // order; V8's second pass handed them over reversed, global-handles.cc:850,
-// 765-767). The safe points and their rules are the same.
+// 765-767). The safe points and their rules are the same. NOT a node
+// wrapper's release: that keeps its second pass (`nodeWrapperSecondPass`
+// says why).
 
 // ============================================================================
 // V8 Exception Information Structure
@@ -2835,11 +2837,11 @@ struct IsolateData {
     /// parameter. Zig bookkeeping only (the cell freed, the release
     /// recorded); answers the node's slot, which the caller Resets.
     void* (*node_wrapper_collected)(void* registry, void* cell) = nullptr;
-    /// The agent's safe point (`runQueuedFinalizers`), after a first pass
+    /// The agent's safe point (`runQueuedFinalizers`), after a second pass
     /// set `node_wrappers_collected`: the agent's released references go
     /// (its drain).
     void (*node_wrappers_drain)(void* registry) = nullptr;
-    /// A node wrapper's first pass has run since the last drain: the
+    /// A node wrapper's second pass has run since the last drain: the
     /// registry holds releases for the agent's next safe point.
     bool node_wrappers_collected = false;
     /// THE AGENT'S FINALIZER QUEUE: the records of collected wrappers, queued
@@ -2975,16 +2977,17 @@ extern "C" void v8_Debug_FullGCPauses(Isolate* isolate, uint64_t* count, uint64_
 // its agent's registry, and the first pass touches no handle but the slot it
 // resets - so the hazard armedWeakData() exists for (a callback disposing a
 // SECOND armed handle whose callback is still queued, releaseWeakArm's note)
-// cannot arise. The node is never freed here: the agent's safe point only
-// releases the wrapper's counted reference, and the counts decide.
+// cannot arise. The node is never freed here: the second pass only says a
+// wrapper died, the agent's safe point releases its counted reference, and
+// the counts decide.
 
 static_assert(sizeof(Global<Object>) == sizeof(void*), "a node's wrapper slot holds exactly one Global<Object>");
 
-/// The first pass queued a finalizer, or recorded node wrappers' releases:
-/// the agent's queue owes them to its next safe point - the binding's return
-/// into script that finds the bit (dom_algorithm.zig leaveToScript ->
-/// DeferredTeardown.leaveAlgorithmToScript). One store into the agent's own
-/// byte; nothing of Zig's is called from V8's pass.
+/// The first pass queued a finalizer, or a node wrapper's second pass said
+/// one died: the agent's queue owes them to its next safe point - the
+/// binding's return into script that finds the bit (dom_algorithm.zig
+/// leaveToScript -> DeferredTeardown.leaveAlgorithmToScript). One store into
+/// the agent's own byte; nothing of Zig's is called from V8's pass.
 static inline void oweFinalizers(IsolateData* record, uint8_t bits) {
     if (record->finalizers_owed) *record->finalizers_owed |= bits;
 }
@@ -3251,13 +3254,39 @@ extern "C" size_t v8_Debug_QueuedFinalizers(Isolate* isolate) {
     return waiting;
 }
 
+/// V8's second pass for a collected node wrapper: it only says so. The
+/// releases the first pass recorded go at the agent's safe point
+/// (`runQueuedFinalizers`), with the other finalizers.
+///
+/// WHY A NODE WRAPPER KEEPS ITS SECOND PASS when every other finalizer is
+/// queued by the first ("Why the first pass queues", above): WHEN a node
+/// wrapper's reference is released decides what refcount step 7a's net does
+/// with a detached tree that only its own pending work still holds (an
+/// <img> whose image update is pending, in a tree document.open() replaced).
+/// Released at its realm's end, the net frees the tree (node_wrappers.zig
+/// endRealm, endedRealmNet); released earlier, while the realm lives, the
+/// net declines, nothing looks again, and the tree stays to the agent's end
+/// (tests/html parser_implied_end_tags_test: "4 node(s) alive at the agent's
+/// end" - 15 of 15 runs with this flag set in the first pass, 0 of 15 with
+/// the second pass, lane v8up b7). That hole is older than the first-pass
+/// queue - a pump between the collection and the realm's end opens it too -
+/// and closing it is step 7b's work (the realm's end lets its pending work's
+/// references go), or the node redesign's (lane wr1 replaces this registry).
+/// Until then a node wrapper's release keeps the timing it had. The cost,
+/// measured: the perf pair's dom.clone-node ends at 165.6 MB instead of
+/// 133.0 MB (main: 119.4 MB) - a dropped tree waits one more collection.
+static void nodeWrapperSecondPass(const WeakCallbackInfo<void>& info) {
+    IsolateData* record = isolateData(info.GetIsolate());
+    // The parameter is the cell the first pass freed: not read.
+    if (!record) return;
+    record->node_wrappers_collected = true;
+    oweFinalizers(record, record->finalizers_owed_mask);
+}
+
 /// V8's first pass for a collected node wrapper. "When first called, the
 /// embedder MUST Reset() the Global which triggered the callback"
 /// (v8-weak-callback-info.h): the node's slot, which the registry answers for
-/// the cell. No other V8 call. The release the registry recorded goes at the
-/// agent's safe point (`runQueuedFinalizers`), with the other finalizers:
-/// the pass says so here - one flag, one byte owed - and sets no second pass
-/// ("Why the first pass queues", above).
+/// the cell. No other V8 call; the release waits for the second pass.
 static void nodeWrapperFirstPass(const WeakCallbackInfo<void>& info) {
     IsolateData* record = isolateData(info.GetIsolate());
     // A cell exists only while its registry does, and the registry outlives
@@ -3273,8 +3302,7 @@ static void nodeWrapperFirstPass(const WeakCallbackInfo<void>& info) {
     Global<Object>* wrapper = static_cast<Global<Object>*>(slot);
     forgetCountedHandle(wrapper);
     wrapper->Reset();
-    record->node_wrappers_collected = true;
-    oweFinalizers(record, record->finalizers_owed_mask);
+    info.SetSecondPassCallback(nodeWrapperSecondPass);
 }
 
 /// The isolate's node wrapper registry (IsolateData::node_wrappers), or null
@@ -3764,7 +3792,7 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             // the detached set and the rest with pendingFinalizers().
             record->queued_finalizers.clear();
             record->unjudged_finalizers.clear();
-            // No first pass stores into the agent's queue from here on (the
+            // No pass of V8's stores into the agent's queue from here on (the
             // agent's end withdrew the byte already; a test's own isolate
             // never registered one).
             record->finalizers_owed = nullptr;

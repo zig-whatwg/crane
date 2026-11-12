@@ -24,10 +24,11 @@
 //! - **Collection**: V8's FIRST pass (`collected`) frees the cell, records the
 //!   release, and answers the slot, which v8_wrapper.cpp Resets ("Handle not
 //!   reset in first callback"): no other V8 call, no count change, no free.
-//!   The pass also says a node wrapper died (one flag, one bit owed: no
-//!   second pass is set); at the agent's safe point after the collection
-//!   (v8_wrapper.cpp `runQueuedFinalizers`, never inside the collector)
-//!   `drainCallback` releases the recorded references -
+//!   The SECOND pass only says a node wrapper died (a node wrapper keeps
+//!   its second pass: v8_wrapper.cpp `nodeWrapperSecondPass` says why); at
+//!   the agent's safe point after it (v8_wrapper.cpp `runQueuedFinalizers`,
+//!   never inside the collector) `drainCallback` releases the recorded
+//!   references -
 //!   unless a walk holds the agent's teardowns (engine.deferTeardowns), whose
 //!   last resume drains instead. A release only counts: a tree it leaves
 //!   with no hold is queued by the counts (dom.refcount_teardown) - A
@@ -387,7 +388,7 @@ fn collected(raw_registry: ?*anyopaque, raw_cell: ?*anyopaque) callconv(.c) ?*an
     return slot;
 }
 
-/// The agent's safe point after a collection (v8_wrapper.cpp
+/// The agent's safe point after a second pass (v8_wrapper.cpp
 /// `runQueuedFinalizers`): the agent's drain.
 fn drainCallback(raw_registry: ?*anyopaque) callconv(.c) void {
     const registry: *Registry = @ptrCast(@alignCast(raw_registry.?));
@@ -587,7 +588,7 @@ pub fn endRealm(cache_storage: *anyopaque) void {
     var roots: std.ArrayListUnmanaged(Root) = .empty;
     defer roots.deinit(std.heap.c_allocator);
     // The realm's wrappers already collected whose release waits for the
-    // drain (the agent's safe point after their collection has not come):
+    // drain (V8's second pass is a posted task for an ordinary collection):
     // released now, and a detached root among them is the net's - the sweep
     // finalized such an entry itself ("wrappers already collected whose
     // finalizer has not run"), freeing a collected root nothing in a tree

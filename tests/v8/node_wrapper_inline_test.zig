@@ -9,7 +9,7 @@
 //!
 //! - The FIRST pass resets the slot in place (V8: "Handle not reset in first
 //!   callback") and frees the cell; the agent's drain - at its safe point
-//!   after the collection, unless a walk holds the agent's teardowns -
+//!   after V8's second pass, unless a walk holds the agent's teardowns -
 //!   releases the wrapper's
 //!   counted reference. The adapter never frees a node: the counts decide.
 //! - A node's pending-activity keep is the agent's (its keep table): the

@@ -9,4 +9,6 @@
 
 **Fix**: The first-pass callback Resets the handle, does its bookkeeping and pushes the record on the agent's queue (`queueFinalizer`: a list push and one byte stored - no V8 API, nothing of Zig's); no second pass is set. The queue's safe points and rules are unchanged. Two tests pin WHEN the record joins: one scavenge, then the script's next binding exit runs the finalizers with no second collection and no pump; the collection an external-memory report runs is finalized when that report returns. Precedent: Node.js deletes the native object in the first pass (src/base_object.cc:59-71 -> base_object-inl.h:112-114); Blink has no pass (a wrappable is a cppgc object, finalized when its page is swept).
 
+**Not for node wrappers (same batch)**: a node wrapper's release keeps its second pass - an earlier release slips past refcount step 7a's net (architecture-moving-a-release-earlier-opens-a-net-that-only-looked-when-it-came-late.md).
+
 **Takeaway**: **A weak callback's second pass is for work that needs the engine's API inside the collection's own processing. If the work only has to run "after the collection, at my safe point", queue it in the first pass: the second pass arrives a task later, or - in a long script - a whole collection later, and everything the dead object owns stays alive for one more young generation.**
