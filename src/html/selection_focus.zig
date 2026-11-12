@@ -80,6 +80,35 @@ fn canonicalPositionIsEditable(node: *Instance, offset: u32) bool {
     return left == .editable or right == .editable or (left == .absent and right == .absent);
 }
 
+/// The focus() side of the same pairing: focusing a root editable element
+/// puts the caret at its start unless the selection is already in it.
+/// Blink and WebKit Element::UpdateSelectionOnFocus with focus()'s
+/// SelectionBehaviorOnFocus::kRestore ("if this is not the selection's root
+/// editable element, collapse to FirstPositionInOrBeforeNode(this)", core/
+/// dom/element.cc); Gecko HTMLEditor::OnFocus -> EditorBase::
+/// InitializeSelection collapses into the focused editing host likewise.
+/// Without it `host.focus(); document.execCommand(...)` finds no range:
+/// editing/other/inserttext-after-bold-in-font-face-monospace.html and
+/// selectall-in-editinghost.html row 1 pass in Chrome 157, Firefox 160 and
+/// Safari 27.2 (wpt.fyi 24ddf405a0). Script focus only: a click places the
+/// caret at its hit position (Blink passes kNone for mouse focus). Runs
+/// before the focusing steps, so focus listeners see the caret.
+pub fn caretOnFocus(element: *Instance) void {
+    const root = rootEditable(element) orelse return;
+    if (root != element) return;
+    // Only where the focusing steps will focus it (focusPosition's checks).
+    if (focus.isHostInert(element)) return;
+    if (!(dom.style.engine.isRenderedForFocus(element) catch false)) return;
+    const document = interfaces.Node.get_ownerDocument(element) catch return;
+    const selection = (interfaces.Document.call_getSelection(document orelse return) catch return) orelse return;
+    if ((interfaces.Selection.get_rangeCount(selection) catch 0) > 0) {
+        if (interfaces.Selection.get_anchorNode(selection) catch null) |anchor| {
+            if (rootEditable(anchor) == element) return;
+        }
+    }
+    interfaces.Selection.call_collapse(selection, element, .passed(0)) catch {};
+}
+
 pub fn focusPosition(node: *Instance, offset: u32) void {
     // Q20: inert descendants do not move focus, even in an editable root
     // (Chrome/Safari majority; Firefox focuses the root).

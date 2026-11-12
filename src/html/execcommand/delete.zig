@@ -165,6 +165,21 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         var current = try common.firstChild(root);
         while (current) |node| {
             if (!common.isInclusiveDescendantOf(node, root)) break;
+            // The document's head and body never go, nor anything in the
+            // head (golden rule 2, no newer spec): with <html
+            // contenteditable>, selectAllChildren(documentElement) or
+            // selectAll and then delete leave `<body>` and `<head>` in place
+            // and empty only the body's content (editing/other/select-all-
+            // and-delete-in-html-element-having-contenteditable.html: Chrome
+            // 157 12/12, Safari 27.2 10/12, Firefox 159 8/12; the spec's
+            // steps 23-25 remove both). Blink deletes a VisibleSelection,
+            // whose canonical positions never lie in the unrendered head
+            // and start and end inside the body's content; Gecko's
+            // HTMLEditor keeps the body as its root element.
+            if (try isDocumentHeadOrBody(node)) {
+                current = if (try common.isHtmlElementNamed(node, "head")) try common.nextSkippingChildren(node) else try common.nextInTreeOrder(node);
+                continue;
+            }
             if (try isContained(node, range_start, range_end)) {
                 if ((try common.isEditable(node)) and !try common.isHtmlElementIn(node, &table_part_names)) {
                     try node_list.append(edit.allocator, node);
@@ -185,9 +200,16 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
     // `<p><br></p>`, and the same for `<p><b><i>[foo]</i></b>` and
     // `<span>[abc]</span>` -> `<br>` (editing/run/delete.html and
     // forwarddelete.html at wpt.fyi c645564b0e).
+    // Whether the deletion removed a line's inline content - only inline
+    // nodes, one of them text or a replaced element, not just a line break
+    // (see padEmptiedLine).
+    var removed_line_content = false;
+    var removed_only_inline = true;
     for (node_list.items) |node| {
         // Step 25.1.
         var p = (try common.parent(node)) orelse continue;
+        if (!common.isInlineNode(node)) removed_only_inline = false;
+        if (!removed_line_content and try holdsLineContent(node)) removed_line_content = true;
         // Step 25.2.
         try edit.removeNode(node);
         // Step 25.4: strip the emptied inline wrappers. Without strip
@@ -205,9 +227,20 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
                 p = grandparent;
             }
         }
-        // Step 25.3: a block emptied by the removal gets a br.
+        // Step 25.3: a block emptied by the removal gets a br - but never
+        // an inline editing host (golden rule 2, no newer spec): an inline
+        // host keeps a line's height empty, and Chrome 157 and Firefox 159
+        // leave `<div><span contenteditable>D[]</span></div>` as
+        // `<span contenteditable></span>` (editing/other/br-tag-not-added-
+        // with-inline-root-editable-element.html; Safari 27.2 pads it), as
+        // editing/run/delete.html's `<p contenteditable=false><span
+        // contenteditable=true>[abc]</span></p>` expects. Gecko:
+        // HTMLEditor::InsertPaddingBRElementToMakeEmptyLineVisibleIfNeeded
+        // ("We don't need to put <br> if it reaches an inline editing host",
+        // editor/libeditor/HTMLEditSubActionHandler.cpp).
         if (try common.blockNodeOf(p)) |block| {
-            if (!(try hasVisibleChild(block)) and try common.isEditableOrEditingHost(p)) {
+            const inline_host = common.isInlineNode(p) and try common.isEditingHost(p);
+            if (!inline_host and !(try hasVisibleChild(block)) and try common.isEditableOrEditingHost(p)) {
                 const br = try edit.createElement("br");
                 try edit.appendChild(p, br);
             }
@@ -225,6 +258,7 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         !(try common.inSameEditingHost(start_block.?, end_block.?)) or start_block.? == end_block.?)
     {
         if (direction == .forward) try collapseForward(edit, original_start) else try edit.collapseToEnd();
+        if (removed_only_inline and removed_line_content) try padEmptiedLine(edit);
         try overrides.restoreStatesAndValues(edit, recorded);
         return;
     }
@@ -425,6 +459,120 @@ fn collapseForward(edit: *Edit, original_start: Point) !void {
     }
     try edit.collapseToStart();
 }
+
+/// After a deletion of inline content that left the caret's line with
+/// nothing visible between two block boundaries, a br at the caret keeps
+/// the line (golden rule 2, no newer spec: the spec adds a br only to a
+/// block left with no visible child, step 25.3). Chrome 157, Firefox 159
+/// and Safari 27.2 all give `<div contenteditable>{A}<div
+/// contenteditable=false>x</div></div>` -> `<br><div contenteditable=
+/// "false">x</div>`, and the same between two such blocks and after one
+/// (editing/other/insert-br-tag-on-text-node-removal-with-non-editable-
+/// elements.html, 3/3 in each at wpt.fyi stable). Gecko:
+/// HTMLEditUtils::LineRequiresPaddingLineBreakToBeVisible (editor/
+/// libeditor/HTMLEditUtils.cpp, mozilla-firefox/firefox main 2026-11-11),
+/// called by HTMLEditor::InsertPaddingBRElementIfNeeded after a delete: the
+/// point is preceded by its block's start or a block, and followed by its
+/// block's end or a block. A br before the caret ends a line and is not a
+/// block boundary, so `abc<br>[def]<p>` gets none, as in Gecko. Never in an
+/// inline editing host (see step 25.3).
+fn padEmptiedLine(edit: *Edit) !void {
+    const caret = (try edit.rangeStart()) orelse return;
+    const host = (try common.editingHostOf(caret.node)) orelse return;
+    if (common.isInlineNode(host)) return;
+    if (!try common.isEditableOrEditingHost(caret.node)) return;
+    // No line where nothing renders (a caret steps 4-5 left in the head),
+    // and none where a br may not go (table structure: Gecko's
+    // AdjustPointToInsertPaddingLineBreak gives up at the block).
+    if (try common.hasDisplayNoneInclusiveAncestor(caret.node)) return;
+    if (!common.isText(caret.node) and !try common.isAllowedChild(.{ .name = "br" }, caret.node)) return;
+    if (common.isText(caret.node)) {
+        const length = try common.nodeLength(caret.node);
+        if (!try common.textIsCollapsibleWhitespace(caret.node, 0, length)) return;
+    }
+    if ((try lineSideAt(caret, .backward)) != .block_boundary) return;
+    if ((try lineSideAt(caret, .forward)) != .block_boundary) return;
+    const br = try edit.createElement("br");
+    if (common.isText(caret.node)) {
+        const p = (try common.parent(caret.node)) orelse return;
+        try edit.insertBefore(p, br, try common.nextSibling(caret.node));
+    } else {
+        try edit.insertBefore(caret.node, br, try common.childAt(caret.node, caret.offset));
+    }
+}
+
+const LineSide = enum { block_boundary, content };
+
+/// Whether `node` holds content of a line other than a line break: text
+/// with a character that is not white-space, or a replaced element. A line
+/// left by deleting only a br or a line feed is the empty line the
+/// browsers' join removes (deleteEmptyLineBeforeBlock), not one to pad.
+fn holdsLineContent(node: *Instance) !bool {
+    if (common.isText(node)) {
+        var data = try common.textData(node);
+        defer data.deinit(node.ctx.allocator);
+        for (data.asSlice()) |byte| switch (byte) {
+            ' ', '\t', '\n', '\r', '\x0c' => {},
+            else => return true,
+        };
+        return false;
+    }
+    if (!common.isElement(node)) return false;
+    if (try isBr(node)) return false;
+    if (!try common.isHtmlElement(node) or try common.isHtmlElementIn(node, &replaced_inline_names)) return true;
+    var child = try common.firstChild(node);
+    while (child) |c| : (child = try common.nextSibling(c)) {
+        if (try holdsLineContent(c)) return true;
+    }
+    return false;
+}
+
+/// What comes first from `point` in `direction` on its line, past collapsed
+/// white-space, display: none subtrees and empty inline containers: a block
+/// boundary (a block node, or the start or end of the block or editing host
+/// holding the point) or visible content (a br, a replaced element, text).
+/// Gecko's WSRunScanner::ScanInclusiveNextVisibleNodeOrBlockBoundary and
+/// GetPreviousLeafContentOrPreviousBlockElement with
+/// IgnoreInvisibleEmptyInlineContainers. A Text point's own data is the
+/// caller's.
+fn lineSideAt(point: Point, direction: Direction) !LineSide {
+    var node = point.node;
+    var index = point.offset;
+    if (common.isText(node)) {
+        index = try common.indexOf(node) + @intFromBool(direction == .forward);
+        node = (try common.parent(node)) orelse return .block_boundary;
+    }
+    while (true) {
+        const at_edge = if (direction == .backward) index == 0 else index >= try common.childCount(node);
+        if (at_edge) {
+            if (common.isBlockNode(node) or try common.isEditingHost(node)) return .block_boundary;
+            const p = (try common.parent(node)) orelse return .block_boundary;
+            index = try common.indexOf(node) + @intFromBool(direction == .forward);
+            node = p;
+            continue;
+        }
+        const child = (try common.childAt(node, if (direction == .backward) index - 1 else index)).?;
+        if (direction == .backward) index -= 1 else index += 1;
+        if (common.isText(child)) {
+            if (try common.textIsCollapsibleWhitespace(child, 0, try common.nodeLength(child))) continue;
+            return .content;
+        }
+        if (!common.isElement(child)) continue;
+        if (common.displayIsNone(child)) continue;
+        if (common.isBlockNode(child)) return .block_boundary;
+        // SVG and MathML roots draw their own content.
+        if (!try common.isHtmlElement(child)) return .content;
+        if (try common.isHtmlElementIn(child, &replaced_inline_names)) return .content;
+        if (try common.hasChildren(child)) {
+            node = child;
+            index = if (direction == .backward) try common.childCount(child) else 0;
+        }
+    }
+}
+
+/// Inline elements that show something with no children (or whose
+/// children are not their content).
+const replaced_inline_names = [_][]const u8{ "br", "img", "hr", "input", "select", "textarea", "button", "video", "audio", "canvas", "iframe", "embed", "object", "meter", "progress" };
 
 /// forwardDelete at an empty line right before a block: the browsers delete
 /// that line alone - its br, or its preserved line feed, with an inline
@@ -755,7 +903,26 @@ const LineEnd = struct { parent: *Instance, node: ?*Instance };
 /// and the inline itself there (Gecko's SplitNodeDeep; the clones take
 /// what follows). Appends the line's top-level nodes - `first` and its
 /// following siblings - to `line`.
+///
+/// Content at the line's end that visibility hides stays where it is: the
+/// line Chrome and Safari move ends at its last VISIBLE position (Blink's
+/// EndOfParagraph skips a layout object whose visibility is not visible;
+/// DeleteSelectionCommand::MergeParagraphs then moves up to it), so
+/// `<div>abc</div><div>[]def<select style=visibility:hidden></select></div>`
+/// joins as `<div>abcdef</div><div><select ...></select></div>`
+/// (editing/other/delete-at-start-boundary-of-div-containing-hidden-select-
+/// element-with-non-editable-node.html: Chrome 157 and Safari 27.2 pass,
+/// Firefox 159 moves the select too). Golden rule 2, no newer spec: the
+/// majority.
 fn extractFirstLine(edit: *Edit, first: *Instance, line: *Line, lone_br: LoneBr) !void {
+    try collectFirstLine(edit, first, line, lone_br);
+    while (line.nodes.items.len > 1) {
+        if (!try common.isVisibilityHidden(line.nodes.items[line.nodes.items.len - 1])) break;
+        _ = line.nodes.pop();
+    }
+}
+
+fn collectFirstLine(edit: *Edit, first: *Instance, line: *Line, lone_br: LoneBr) !void {
     var current: ?*Instance = first;
     while (current) |child| {
         if (common.isBlockNode(child)) return;
@@ -878,6 +1045,14 @@ fn splitDeep(edit: *Edit, top: *Instance, parent: *Instance, node: ?*Instance) !
         from = try common.nextSibling(level);
         level = (try common.parent(level)) orelse return;
     }
+}
+
+/// Whether `node` is a head or body element child of the document element.
+fn isDocumentHeadOrBody(node: *Instance) !bool {
+    if (!try common.isHtmlElementIn(node, &.{ "head", "body" })) return false;
+    const p = (try common.parent(node)) orelse return false;
+    const grandparent = (try common.parent(p)) orelse return false;
+    return common.isDocument(grandparent);
 }
 
 fn hasVisibleChild(node: *Instance) !bool {
