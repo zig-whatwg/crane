@@ -1035,7 +1035,10 @@ pub fn navigateSequentially(document: *Instance, direction: Direction) void {
         const start: ?*Instance = if (isDocument(starting_point)) null else starting_point;
         // Steps 4-5.
         if (sequentialSearch(starting_document, start, direction)) |candidate| {
-            // Step 6.
+            // Step 6. A root editable element gets the caret at its first
+            // position first (Blink's kReset, Gecko's InitializeSelection:
+            // selection_focus.caretOnSequentialFocus).
+            @import("selection_focus.zig").caretOnSequentialFocus(candidate);
             focusingSteps(candidate, null, .keyboard);
             return;
         }

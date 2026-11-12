@@ -106,7 +106,93 @@ pub fn caretOnFocus(element: *Instance) void {
             if (rootEditable(anchor) == element) return;
         }
     }
-    interfaces.Selection.call_collapse(selection, element, .passed(0)) catch {};
+    const first = firstCaretPosition(element);
+    interfaces.Selection.call_collapse(selection, first.node, .passed(first.offset)) catch {};
+}
+
+/// Sequential focus navigation's side (Tab, Shift+Tab): a root editable
+/// element it focuses gets the caret at its first position, wherever the
+/// selection was - Blink's FocusController::AdvanceFocusInDocumentOrder
+/// focuses with SelectionBehaviorOnFocus::kReset (Element::
+/// UpdateSelectionOnFocus: "collapse to FirstPositionInOrBeforeNode",
+/// canonicalized), Gecko's HTMLEditor::OnFocus -> EditorBase::
+/// InitializeSelection likewise. Runs before the focusing steps, as
+/// caretOnFocus. editing/run/caret-navigation-after-removing-line-break.html:
+/// all three browsers.
+pub fn caretOnSequentialFocus(element: *Instance) void {
+    const root = rootEditable(element) orelse return;
+    if (root != element) return;
+    if (focus.isHostInert(element)) return;
+    if (!(dom.style.engine.isRenderedForFocus(element) catch false)) return;
+    const document = interfaces.Node.get_ownerDocument(element) catch return;
+    const selection = (interfaces.Document.call_getSelection(document orelse return) catch return) orelse return;
+    const first = firstCaretPosition(element);
+    interfaces.Selection.call_collapse(selection, first.node, .passed(first.offset)) catch {};
+}
+
+const Position = struct { node: *Instance, offset: u32 };
+
+/// The first caret position inside the root editable element `root`, as
+/// Blink canonicalizes FirstPositionInOrBeforeNode(root)
+/// (CreateVisiblePosition(...).DeepEquivalent()): down to the first Text
+/// whose characters do not all collapse, at its first character that does
+/// not (leading collapsible white-space - spaces, tabs and segment breaks
+/// where the style's white-space collapses them, the rule innerText reads
+/// - is not a position), or before the first atomic inline (a br, an img,
+/// a form control, a non-editable element). No geometry: what collapses is
+/// the style system's answer. The root itself, at 0, when it holds none.
+fn firstCaretPosition(root: *Instance) Position {
+    var current = interfaces.Node.get_firstChild(root) catch null;
+    while (current) |node| {
+        if (caretPositionAt(node)) |position| return position;
+        current = nextInside(node, root, descendInto(node));
+    }
+    return .{ .node = root, .offset = 0 };
+}
+
+/// The first caret position `node` itself offers, if it is a leaf that
+/// holds one.
+fn caretPositionAt(node: *Instance) ?Position {
+    if (editing.isText(node)) {
+        var data = editing.textData(node) catch return null;
+        defer data.deinit(node.ctx.allocator);
+        const text = data.asSlice();
+        if (text.len == 0) return null;
+        if ((editing.whiteSpaceAround(node) catch return null).preservesSpaces()) return .{ .node = node, .offset = 0 };
+        for (text, 0..) |byte, index| switch (byte) {
+            ' ', '\t', '\n', '\r', '\x0c' => {},
+            // ASCII white-space is one code unit a byte: the byte index is
+            // the UTF-16 offset.
+            else => return .{ .node = node, .offset = @intCast(index) },
+        };
+        return null;
+    }
+    if (!editing.isElement(node)) return null;
+    if (editing.displayIsNone(node)) return null;
+    const atomic = (editing.isHtmlElementIn(node, &.{ "br", "img", "hr", "input", "select", "textarea", "button", "video", "audio", "canvas", "iframe", "embed", "object", "meter", "progress" }) catch false) or
+        !(editing.isEditable(node) catch false);
+    if (!atomic) return null;
+    const p = parent(node) orelse return null;
+    return .{ .node = p, .offset = editing.indexOf(node) catch return null };
+}
+
+/// Whether the walk goes into `node`'s children: an editable element with
+/// a display.
+fn descendInto(node: *Instance) bool {
+    if (!editing.isElement(node) or editing.displayIsNone(node)) return false;
+    return editing.isEditable(node) catch false;
+}
+
+/// The next node in tree order inside `root` (into `node`'s children when
+/// `descend`).
+fn nextInside(node: *Instance, root: *Instance, descend: bool) ?*Instance {
+    if (descend) if (interfaces.Node.get_firstChild(node) catch null) |child| return child;
+    var current = node;
+    while (current != root) {
+        if (interfaces.Node.get_nextSibling(current) catch null) |sibling| return sibling;
+        current = parent(current) orelse return null;
+    }
+    return null;
 }
 
 /// A primary-button press that hit the editable element `hit` (mousedown's

@@ -924,14 +924,56 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
         .copy, .cut, .paste => unreachable,
     };
     // Backspace and Delete in an editing host (Editing spec, "Additional
-    // requirements": the key runs the delete / forwardDelete command). The
-    // modified forms - a word or a line - are not routed yet.
-    // TODO(editing): Ctrl/Alt/Meta+Backspace and +Delete (deleteWordBackward,
-    // deleteSoftLineBackward, ... per UI Events / Input Events).
+    // requirements": the key runs the delete / forwardDelete command).
     if ((isKey(key, "Backspace") or isKey(key, "Delete")) and !modifiers.ctrl and !modifiers.alt and !modifiers.meta) {
         const execcommand = @import("execcommand/root.zig");
         if (execcommand.isEditableTarget(target)) {
             execcommand.deleteByKey(target, if (isKey(key, "Backspace")) .delete else .forward_delete);
+            return;
+        }
+    }
+    // With the word modifier (Ctrl, Alt where navigator.platform names a
+    // Mac - isWordModifier, as WPT's EditorTestUtils.deleteWordModifier),
+    // Backspace and Delete delete a word: Blink's key bindings
+    // "DeleteWordBackward" / "DeleteWordForward" (editing_behavior.cc),
+    // Gecko's cmd_deleteWordBackward, inputType deleteWordBackward /
+    // deleteWordForward (Input Events 2).
+    // TODO(editing): the line forms (Meta+Backspace on a Mac:
+    // deleteSoftLineBackward) need line boundaries.
+    if ((isKey(key, "Backspace") or isKey(key, "Delete")) and (modifiers.ctrl or modifiers.alt) and !modifiers.meta and !modifiers.shift) {
+        const execcommand = @import("execcommand/root.zig");
+        if (execcommand.isEditableTarget(target)) {
+            const window = viewOf(target) orelse return;
+            const navigator = interfaces.Window.get_navigator(window) catch return;
+            var platform = interfaces.Navigator.get_platform(navigator) catch return;
+            defer platform.deinit(target.ctx.allocator);
+            if (isWordModifier(platform.asSlice(), modifiers)) execcommand.deleteWordByKey(target, isKey(key, "Delete"));
+            return;
+        }
+    }
+    // ArrowLeft and ArrowRight in an editing host: the caret moves (Shift:
+    // the selection extends) by a character, or by a word with the word
+    // modifier - Blink's key bindings MoveLeft / MoveRight /
+    // MoveWordLeft / MoveWordRight and their AndModifySelection forms,
+    // which run the SelectionModifier that Selection.modify drives (the
+    // same here). Without Shift, a selection that is not collapsed
+    // collapses to its left or right edge instead (Blink's
+    // SelectionModifier::ModifyMovingLeft / Right "if (!selection_.IsCaret())";
+    // Gecko's nsFrameSelection::MoveCaret likewise).
+    if ((isKey(key, "ArrowLeft") or isKey(key, "ArrowRight")) and !modifiers.meta) {
+        const execcommand = @import("execcommand/root.zig");
+        if (execcommand.isEditableTarget(target)) {
+            const right = isKey(key, "ArrowRight");
+            var granularity: []const u8 = "character";
+            if (modifiers.ctrl or modifiers.alt) {
+                const window = viewOf(target) orelse return;
+                const navigator = interfaces.Window.get_navigator(window) catch return;
+                var platform = interfaces.Navigator.get_platform(navigator) catch return;
+                defer platform.deinit(target.ctx.allocator);
+                if (!isWordModifier(platform.asSlice(), modifiers)) return;
+                granularity = "word";
+            }
+            moveSelectionByKey(target, right, modifiers.shift, granularity);
             return;
         }
     }
