@@ -666,10 +666,7 @@ fn ensureNavigable(content: *Content) bool {
     }
     if (!dom.navigables.createChildNavigable(element, integration)) return false;
     if (attributeValue(element, "name")) |name| {
-        if (name.len > 0) {
-            integration.setName(name) catch {};
-            dom.navigables.registerNamedProperty(integration, name);
-        }
+        if (name.len > 0) integration.setName(name) catch {};
     }
     return true;
 }

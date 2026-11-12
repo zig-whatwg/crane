@@ -683,19 +683,6 @@ pub fn inclusiveDescendantDocuments(document: *runtime.Instance, allocator: std.
     return out;
 }
 
-/// The container's named access on its node document's window:
-/// `window[name]` is the content navigable's WindowProxy, set on the parent's
-/// global in the parent's realm. V8's named property interceptors do not
-/// survive snapshot restore, so the property is set directly.
-pub fn registerNamedProperty(integration: *IFrameIntegration, name: []const u8) void {
-    const child_bc = integration.browsing_context orelse return;
-    const parent_bc = child_bc.parent orelse return;
-    const parent_window: *runtime.Instance = @ptrCast(@alignCast(parent_bc.active_window orelse return));
-    const child_window: *runtime.Instance = @ptrCast(@alignCast(child_bc.active_window orelse return));
-    // A Window converts to its WindowProxy.
-    engine.setProperty(parent_window.ctx, .{ .instance = parent_window }, name, .{ .instance = child_window }) catch {};
-}
-
 /// HTML "content window": the content navigable's active WindowProxy - the
 /// Window of its realm - or null when the container has none.
 pub fn contentWindow(integration: *IFrameIntegration) ?*runtime.Instance {
