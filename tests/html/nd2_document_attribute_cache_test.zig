@@ -27,6 +27,7 @@ const engine = @import("engine");
 const dom = @import("dom");
 const browser_mod = @import("browser");
 const platform = @import("platform");
+const clock = @import("clock");
 
 const AttributeList = dom.element_data.AttributeList;
 
@@ -52,11 +53,23 @@ fn onFreshThread(comptime exercise: fn () anyerror!void) !void {
     if (failure) |err| return err;
 }
 
-/// A Browser whose clock is virtual (the testing platform's): it stands
-/// still while the page works and moves to the next timer when the loop is
-/// idle.
+/// A Browser whose clock is virtual where the platform has one (the
+/// testing platform's): it stands still while the page works and moves to
+/// the next timer when the loop is idle.
 fn startBrowser() !*browser_mod.Browser {
-    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "", .platform = .{ .virtual_clock = true, .random_seed = 1 } });
+    if (comptime is_testing) return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "", .platform = .{ .virtual_clock = true, .random_seed = 1 } });
+    return startRealTimeBrowser();
+}
+
+/// A Browser on the real clock, as a host runs it.
+fn startRealTimeBrowser() !*browser_mod.Browser {
+    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+}
+
+/// The caches of the Browser's documents whose 10 s are running: its event
+/// loop's armed background timers (nothing else arms one).
+fn armedCaches(browser: *browser_mod.Browser) usize {
+    return browser.event_loop.?.timer_manager.?.getBackgroundTimerCount();
 }
 
 fn run(browser: *browser_mod.Browser, source: []const u8) !void {
@@ -296,17 +309,48 @@ fn timerIsNotPendingWork() !void {
     const browser = try startBrowser();
     defer browser.deinit();
     try loadPage(browser, "<!doctype html><body>" ++ p ++ p ++ "</body>");
+    try runUntilIdle(browser);
     try run(browser, "globalThis.kept = [...document.querySelectorAll('p')]; globalThis.before = performance.now();");
     _ = try expectOneBlock(browser, "kept", 2, 3);
+    try testing.expectEqual(@as(usize, 1), armedCaches(browser));
     // The loop goes idle with the cache's timer armed: an armed drop is not
-    // pending work, and an idle loop does not move its virtual clock to it.
+    // pending work, and an idle loop does not move its virtual clock to it -
+    // not by a millisecond.
     try runUntilIdle(browser);
-    try testing.expect(try truthy(browser, "performance.now() - before < 1000"));
+    try runUntilIdle(browser);
+    try testing.expect(try truthy(browser, "performance.now() === before"));
+    try testing.expectEqual(@as(usize, 1), armedCaches(browser));
     _ = try expectOneBlock(browser, "kept", 2, 3);
     // It fires when the loop's own work takes the clock past it.
     try pass(browser, "10001");
     _ = try expectOneBlock(browser, "kept", 2, 2);
+    try testing.expectEqual(@as(usize, 0), armedCaches(browser));
     try runUntilIdle(browser);
+}
+
+fn realTimeLoopGoesIdle() !void {
+    const browser = try startRealTimeBrowser();
+    defer browser.deinit();
+    try loadPage(browser, "<!doctype html><body>" ++ p ++ p ++ "</body>");
+    try run(browser, "globalThis.kept = [...document.querySelectorAll('p')];");
+    _ = try expectOneBlock(browser, "kept", 2, 3);
+    try testing.expectEqual(@as(usize, 1), armedCaches(browser));
+    // A host runs a page until its loop has nothing left to do
+    // (Browser.runEventLoopBlocking): with the cache's 10 s still running
+    // that is at once, not when they are over.
+    const started = clock.monotonicMillis();
+    _ = try browser.runEventLoopBlocking(60_000);
+    _ = try browser.runEventLoopBlocking(60_000);
+    const elapsed_ms = clock.monotonicMillis() - started;
+    try testing.expect(!browser.event_loop.?.hasPendingWork());
+    try testing.expect(elapsed_ms < 5_000);
+    // The cache is still there, its timer armed: the Browser's end frees it.
+    try testing.expectEqual(@as(usize, 1), armedCaches(browser));
+    _ = try expectOneBlock(browser, "kept", 2, 3);
+}
+
+test "document cache: on the real clock a host's run-until-idle returns at once with the cache's timer armed" {
+    try onFreshThread(realTimeLoopGoesIdle);
 }
 
 test "document cache: its timer keeps no event loop busy and moves no virtual clock" {
@@ -340,31 +384,73 @@ test "document cache: a parser still running when the 10 s are over keeps sharin
 // ---------------------------------------------------------------------------
 // The document's end
 
-fn documentTeardownEndsItsCache() !void {
+/// The only elements of these documents: nothing else names the value.
+const gone = "<p class=nd2k title=nd2gone></p>";
+
+fn collectedDocumentEndsItsCache() !void {
     const browser = try startBrowser();
     defer browser.deinit();
-    try loadPage(browser, "<!doctype html><body><iframe id=f></iframe></body>");
-    // The frame's document parses two elements the parent keeps; its cache
-    // is alive (timer armed) when the frame is removed and the document
-    // collected.
-    try run(browser, "{ const d = document.getElementById('f').contentDocument; d.open(); d.write('<!doctype html><body>" ++ p ++ p ++ "'); d.close();" ++
-        "globalThis.kept = [...d.querySelectorAll('p')].map((el) => document.adoptNode(el)); }");
-    const block = try expectOneBlock(browser, "kept", 2, 3);
-    try run(browser, "document.getElementById('f').remove();");
+    // A page with no attribute has no cache.
+    try loadPage(browser, "<!doctype html><body></body>");
+    try testing.expectEqual(@as(usize, 0), armedCaches(browser));
+    // A DOMParser document nothing keeps: its cache is alive, its 10 s
+    // running, when the collector takes the document.
+    try run(browser, "{ const parsed = new DOMParser().parseFromString('" ++ gone ++ gone ++ "', 'text/html'); if (parsed.querySelectorAll('p').length !== 2) throw new Error('not parsed'); }");
+    try testing.expectEqual(@as(usize, 1), armedCaches(browser));
+    try testing.expectEqual(@as(u32, 1), try referencesOn(browser, "nd2gone"));
     try settle(browser);
-    // The document went, and its cache with it: the adopted elements hold
-    // the block alone.
-    try testing.expect(try expectOneBlock(browser, "kept", 2, 2) == block);
-    // Its timer was cancelled: 10 s later nothing fires into the freed
-    // document (a Browser on std.testing.allocator: a use after free here
-    // reads poisoned memory).
+    // The document's end ended the cache - its block went with the
+    // elements - and cleared the timer: nothing is left to fire.
+    try testing.expectEqual(@as(usize, 0), armedCaches(browser));
+    try testing.expectEqual(@as(u32, 0), try referencesOn(browser, "nd2gone"));
     try pass(browser, "10001");
-    try testing.expect(try expectOneBlock(browser, "kept", 2, 2) == block);
+    try testing.expectEqual(@as(usize, 0), armedCaches(browser));
 }
 
-test "document cache: a document's teardown ends its cache and cancels its timer" {
+test "document cache: a collected document's teardown ends its cache and clears its timer" {
     if (comptime !is_testing) return error.SkipZigTest;
-    try onFreshThread(documentTeardownEndsItsCache);
+    try onFreshThread(collectedDocumentEndsItsCache);
+}
+
+fn destroyedFrameEndsItsCache() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try loadPage(browser, "<!doctype html><body></body>");
+    // A frame's document, written by a script-created parser: its cache's
+    // 10 s start when that parse ends.
+    try run(browser, "{ const f = document.body.appendChild(document.createElement('iframe')); const d = f.contentDocument; d.open(); d.write('<!doctype html><body>" ++ gone ++ gone ++ "'); d.close(); }");
+    try testing.expectEqual(@as(usize, 1), armedCaches(browser));
+    try testing.expectEqual(@as(u32, 1), try referencesOn(browser, "nd2gone"));
+    // The frame is removed: its document is destroyed with its realm.
+    try run(browser, "document.querySelector('iframe').remove();");
+    try settle(browser);
+    try testing.expectEqual(@as(usize, 0), armedCaches(browser));
+    try testing.expectEqual(@as(u32, 0), try referencesOn(browser, "nd2gone"));
+    try pass(browser, "10001");
+    try testing.expectEqual(@as(usize, 0), armedCaches(browser));
+}
+
+test "document cache: a removed frame's document ends its cache and clears its timer" {
+    if (comptime !is_testing) return error.SkipZigTest;
+    try onFreshThread(destroyedFrameEndsItsCache);
+}
+
+fn navigationEndsTheOldDocumentsCache() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    try loadPage(browser, "<!doctype html><body>" ++ gone ++ gone ++ "</body>");
+    try testing.expectEqual(@as(usize, 1), armedCaches(browser));
+    try testing.expectEqual(@as(u32, 1), try referencesOn(browser, "nd2gone"));
+    // The page is navigated away from with its cache's 10 s running: the
+    // old document's realm ends, and its cache with it.
+    try browser.navigate("about:blank", .window);
+    try settle(browser);
+    try testing.expectEqual(@as(usize, 0), armedCaches(browser));
+    try testing.expectEqual(@as(u32, 0), try referencesOn(browser, "nd2gone"));
+}
+
+test "document cache: a navigation away ends the old document's cache with its realm" {
+    try onFreshThread(navigationEndsTheOldDocumentsCache);
 }
 
 fn browserEndsWithCachesAlive() !void {
@@ -378,6 +464,7 @@ fn browserEndsWithCachesAlive() !void {
         "globalThis.xml = new DOMParser().parseFromString('<r>" ++ xp ++ xp ++ "</r>', 'application/xml');" ++
         "globalThis.kept = [...document.querySelectorAll('p')];");
     _ = try expectOneBlock(browser, "kept", 2, 3);
+    try testing.expect(armedCaches(browser) >= 3);
 }
 
 test "document cache: a Browser that ends with caches alive frees them" {
