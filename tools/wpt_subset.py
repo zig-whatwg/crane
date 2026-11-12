@@ -742,6 +742,13 @@ EXCLUDE = [
     ('mathml/relations/html5-tree/dynamic-childlist-', 'asserts MathML layout feature detection and getBoundingClientRect sizes'),
     ('mathml/relations/html5-tree/integration-point-4.html', 'asserts MathML fraction getBoundingClientRect sizes and alignment'),
     ('mathml/relations/html5-tree/integration-point-5.html', 'asserts MathML fraction getBoundingClientRect sizes and alignment'),
+    # The integrator's ruling (2026-11-12 08:36 UTC) under the 11-01 scope line (a file stays only when a
+    # browser ships its feature): rel/relList on MathMLAnchorElement are in no spec - MathML Core's IDL (the
+    # editor's draft of 2026-11-12) has href, target and HyperlinkElementUtils only - and ship in no stable
+    # browser (wpt.fyi stable 24ddf405a0: Chrome 157, Firefox 160 and Safari 27.2 all 0/1); only Chromium's
+    # unshipped patch has them (wpt 20a7bd3ff3, Chromium bug 510487697). Revisit when MathML Core adds them
+    # or an engine ships them.
+    ('mathml/relations/html5-tree/a-rel-getter-setter.html', 'rel/relList IDL on MathMLAnchorElement: in no spec, shipped by no browser'),
 
     ('html/interaction/focus/processing-model/preventScroll', 'asserts scroll positions before/after focus'),
     ('html/interaction/focus/processing-model/textarea-scroll-selection.html', 'asserts textarea scrollTop after selection changes'),
