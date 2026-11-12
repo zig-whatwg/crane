@@ -137,13 +137,11 @@ fn executeCommandImpl(
         .undo => executeUndo(allocator, document),
         .redo => executeRedo(allocator, document),
 
-        // Selection commands
-        .selectAll => selection_ops.executeSelectAll(allocator, document),
-        // delete and forwardDelete are the html module's
+        // selectAll, delete and forwardDelete are the html module's
         // (src/html/execcommand/, on the generated interfaces, which
         // html_core cannot reach); Document.execCommand dispatches them
         // there before this executor, so they never arrive here.
-        .delete, .forwardDelete => .{ .success = false },
+        .selectAll, .delete, .forwardDelete => .{ .success = false },
 
         // Configuration commands
         .styleWithCSS,

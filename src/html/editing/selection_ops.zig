@@ -1,7 +1,6 @@
 //! Selection and Clipboard Operations
 //!
 //! Implements selection and clipboard execCommand operations:
-//! - Selection commands (selectAll)
 //! - Clipboard commands (copy, cut, paste)
 //!
 //! delete and forwardDelete live in the html module (src/html/execcommand/),
@@ -33,39 +32,6 @@ pub const ClipboardBackend = platform.ClipboardBackend;
 pub const ClipboardResult = platform.ClipboardResult;
 pub const ClipboardFormat = platform.ClipboardFormat;
 pub const ClipboardItem = platform.ClipboardItem;
-
-// =============================================================================
-// Selection Commands
-// =============================================================================
-
-/// Execute selectAll command
-/// Selects all content in the editable area
-///
-/// Spec: https://w3c.github.io/editing/docs/execCommand/#the-selectall-command
-///
-/// Algorithm:
-/// 1. Let editing host be the nearest editing host of the active range's
-///    start node (or document.body if in designMode)
-/// 2. Get document's Selection via document.getSelection()
-/// 3. Call selection.selectAllChildren(editingHost)
-/// 4. Return true (selectAll always succeeds)
-///
-/// Note: selectAll does NOT create an undo entry as it doesn't modify content.
-///
-/// TODO: Full implementation requires DOM integration via html module (full.zig)
-/// which has access to runtime.Instance and impls.Selection.
-pub fn executeSelectAll(allocator: std.mem.Allocator, document: DocumentHandle) !CommandResult {
-    _ = allocator;
-    _ = document;
-
-    // Algorithm when integrated with DOM:
-    // 1. Get document instance from handle
-    // 2. Call document.getSelection() to get Selection object
-    // 3. Get editing host (document.body or contenteditable ancestor)
-    // 4. Call selection.selectAllChildren(editingHost)
-
-    return .{ .success = true };
-}
 
 // =============================================================================
 // Clipboard Commands

@@ -88,7 +88,8 @@
 # - intentional: the 2026-10-17 audit of every stated browser deviation (lane
 #   gr2audit, 108 deviations) found none that all three browsers intentionally
 #   declined with evidence. Add an entry only with that evidence for all three.
-# - test-bug: none either (lane site1, 2026-11-09). The candidates were
+# - test-bug: none until 2026-11-11 (lane site1, 2026-11-09); since then the entry at the end of this file
+#   (editing/other/paste_text_with_text_transform.html, wpt#65067). site1's candidates were
 #   html/cross-origin-embedder-policy/reporting-to-worker-owner.https.html and
 #   reporting-to-frame-owner.https.html (wpt#64870, Report.toJSON body ->
 #   DataCloneError). Neither meets the rule. wpt#64870 was resolved on
@@ -757,3 +758,13 @@ assertion = promise_test: Unhandled rejection with value: object "IndexSizeError
 kind      = needs-renderer
 why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
 assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+# test-bug (lane editing5 b2, 2026-11-11; filed on the user's "File both", integrator 23:58 UTC).
+[editing/other/paste_text_with_text_transform.html]
+kind            = test-bug
+why             = the file's top-level script asserts window.testRunner (WebKit's DumpRenderTree/WebKitTestRunner object) before any test is defined, so it ends in a harness ERROR in every wptrunner browser - "This test requires testRunner to read/write clipboard" in Chrome, Firefox, Safari and Crane alike
+upstream        = https://github.com/web-platform-tests/wpt/issues/65067
+chrome.result   = wpt.fyi run 4918833408901120: 0/0 (ERROR, Chrome 157, 24ddf405a0)
+firefox.result  = wpt.fyi run 4888858429489152: 0/0 (ERROR, Firefox 160, 24ddf405a0)
+safari.result   = wpt.fyi run 5440535234609152: 0/0 (ERROR, Safari 27.2, 24ddf405a0)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/65067 is resolved
