@@ -474,6 +474,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A thread-local array is paid by every thread that touches any thread-local](architecture-a-thread-local-array-is-paid-by-every-thread-that-touches-any-thread-local.md) - A thread-local costs its full size on every thread that touches any thread-local of the image: map per-thread memory for the threads that use it, and hold the binary's thread-local block to a budget.
 ||||||| eb188adf573
 - [A component list's property is part of its equality](architecture-a-component-list-property-is-part-of-its-equality.md) - **A value's identity includes every field `eql` reads: choose those fields so equal CSS values compare equal across the longhands that share a grammar.**
+- [A content coding Fetch reports is not one curl decodes](architecture-a-content-coding-fetch-reports-is-not-one-curl-decodes.md) - **A capability is what the linked library does, not what a list in our code says: read the dependency's build options before trusting a "supported" table, and keep the table and the decoder the same object.**
 
 ### Spec Compliance
 - [Spec Compliance: Browsers inherit COOP into top-level local documents](spec-compliance-browsers-inherit-coop-into-top-level-local-documents.md) - Before enforcing a navigation policy that reads only response headers, check what local-scheme documents get - the browsers inherit where the spec is silent, and the tests encode it - and compare with navigationParams's origin, never the URL's.
