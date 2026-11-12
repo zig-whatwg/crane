@@ -3817,7 +3817,11 @@ fn lifecycleStopLoad(document: *runtime.Instance) void {
     // readystatechange listeners run here, and may take the frame away.
     engine.runInRealm(document.ctx, becomeComplete, document) catch {};
     if (runtime.SlabAllocator.generationOf(document) != generation) return;
-    // The container's document may have been waiting on this one alone.
+    // Its navigable stops delaying the container's document, which may have
+    // been waiting on this one alone (the container's load event steps,
+    // which would have released it, never run for a stopped load).
+    @import("dom").content_navigables.loadStopped(document);
+    if (runtime.SlabAllocator.generationOf(document) != generation) return;
     @import("dom").content_navigables.loadDelayMayHaveEnded(document);
 }
 

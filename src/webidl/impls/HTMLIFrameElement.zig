@@ -177,6 +177,7 @@ pub fn installHooks() void {
         .stop_loading = &stopLoadingDocument,
         .is_navigating = &documentIsNavigating,
         .load_delay_may_have_ended = &childLoadDelayMayHaveEnded,
+        .load_stopped = &contentDocumentLoadStopped,
     });
     dom_module.attribute_change_steps.install("iframe", &iframeAttributeChangeSteps);
     dom_module.navigables.install(.{
@@ -5526,6 +5527,19 @@ fn iframesDelayLoadEvent(document: *runtime.Instance) bool {
         if (!document_lifecycle.isReadyForPostLoadTasks(active) or document_lifecycle.delaysLoadEvent(active)) return true;
     }
     return false;
+}
+
+/// dom.content_navigables: window.stop() ended `document`'s load before its
+/// load event (Document's lifecycleStopLoad), so the iframe load event steps,
+/// which end its navigable's delay on the container's document, never run:
+/// the delay ends now. HTML sets "is delaying load events" false at the
+/// commit ("finalize a cross-document navigation" step 2); Crane holds it to
+/// the iframe load event steps, and a stopped load must release it as
+/// Blink's DocumentLoader::StopLoading -> LoadFailed -> DidFinishNavigation
+/// runs the parent's CheckCompleted without the owner's load event.
+fn contentDocumentLoadStopped(document: *runtime.Instance) void {
+    const integration = navigableOfDocument(document) orelse return;
+    endLoadDelay(integration);
 }
 
 /// A resource in an active child document stopped delaying load, possibly
