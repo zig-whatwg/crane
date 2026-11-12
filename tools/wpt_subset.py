@@ -678,6 +678,14 @@ EXCLUDE = [
     # is merged into HTML.
     ('html/browsers/browsing-the-web/history-traversal/pagereveal/order-in-prerender-activation.https.html',
      'pagereveal at prerender activation: speculation-rules prerendering is a WICG draft only Chrome ships'),
+    # The integrator's ruling (2026-11-12 10:30 UTC, lane sw2 b1's finding) under the same line: the file
+    # freezes a frame with test_driver.freeze() and asserts Client.lifecycleState ("frozen"/"active"), both
+    # from WICG Page Lifecycle (specs/idl/page-lifecycle.idl's partial interface Client), a Community Group
+    # draft no browser ships (Chromium keeps lifecycleState behind a runtime flag). wpt.fyi stable
+    # 24ddf405a0: Chrome 157, Firefox 160 and Safari 27.2 all TIMEOUT at "Test Clients.matchAll()", as
+    # Crane does. Revisit when Page Lifecycle is ratified or ships.
+    ('service-workers/service-worker/clients-matchall-frozen.https.html',
+     'Client.lifecycleState + test_driver.freeze: WICG Page Lifecycle, shipped by no browser'),
     ('websockets/stream/', 'unmerged WebSocketStream proposal; deferred by the user 2026-10-22'),
 
     # Anything that needs layout or paint. Crane is the web platform; the host
