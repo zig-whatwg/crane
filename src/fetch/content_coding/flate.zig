@@ -7,10 +7,11 @@
 //! Compression Streams: the input it sees is followed by a few zero bytes
 //! of lookahead, each call is bounded, and a call that ran out of input or
 //! read into the lookahead is rolled back - its decoder state restored, its
-//! output dropped - to be redone when more input has come. Calls start
-//! large (`max_step` bytes of output) and shrink only near the end of the
-//! input, so a body costs a handful of rolled-back calls per chunk, not one
-//! per 258 bytes.
+//! output dropped - to be redone when more input has come. Each call asks
+//! for as much output as the input left can surely make (`stepFor`: at the
+//! stream's compression ratio so far, halved), up to `max_step`, so a call
+//! seldom runs out and is redone: only the last few hundred bytes of each
+//! chunk go in 258-byte calls, not the whole body.
 //!
 //! The containers are parsed here, the way the browsers do, which is more
 //! lenient than the RFCs:
@@ -60,6 +61,9 @@ const lookahead = 8;
 const window_len = flate.history_len + 2 * max_step + 2 * min_step;
 /// Chromium's kMaxZlibHeaderSniffBytes.
 const max_sniff_bytes = 1000;
+/// Input kept back from a call's estimate for a dynamic block header that
+/// may start inside it (at most about 300 bytes, RFC 1951 3.2.7).
+const header_margin = 640;
 
 pub const Decoder = struct {
     allocator: Allocator,
@@ -87,6 +91,10 @@ pub const Decoder = struct {
     /// "deflate": no output yet behind what was taken for a zlib header -
     /// a failure now means raw DEFLATE (Chromium's sniffing state).
     sniffing: bool = false,
+    /// DEFLATE input consumed and output made so far: the stream's ratio,
+    /// which sizes each call (`stepFor`).
+    total_in: u64 = 0,
+    total_out: u64 = 0,
 
     pub fn create(allocator: Allocator, container: Container) Error!*Decoder {
         const self = try allocator.create(Decoder);
@@ -237,8 +245,11 @@ pub const Decoder = struct {
             .end = self.pending.items.len,
         };
         defer self.start = self.input.seek;
-        var step: usize = max_step;
+        // A call that ran out of input is redone smaller: no larger call
+        // in this push after it.
+        var cap: usize = max_step;
         while (true) {
+            const step = @min(cap, self.stepFor(input_end - self.input.seek));
             // Room for the call's output, the last 32 KiB kept as history.
             if (self.window.len - self.window_end < 2 * step + 2 * min_step) {
                 const keep = @min(self.window_end, flate.history_len);
@@ -283,11 +294,13 @@ pub const Decoder = struct {
                     if (self.sniffing and input_end >= max_sniff_bytes) self.sniffing = false;
                     return false;
                 }
-                step = @max(min_step, step / 4);
+                cap = @max(min_step, step / 4);
                 continue;
             }
             const produced = self.window[self.window_end..writer.end];
             self.window_end = writer.end;
+            self.total_in += self.input.seek - seek;
+            self.total_out += produced.len;
             if (produced.len > 0) {
                 // Output: the zlib header was a zlib header.
                 self.sniffing = false;
@@ -306,6 +319,17 @@ pub const Decoder = struct {
             // A call that read nothing and wrote nothing is out of input.
             if (produced.len == 0 and self.input.seek == seek and self.inflater.consumed_bits == checkpoint.consumed_bits) return false;
         }
+    }
+
+    /// The output to ask of a call with `available` bytes of input left: as
+    /// much as they can surely make at the stream's ratio so far (each
+    /// output byte costs at most about two input bytes: a 15-bit literal
+    /// code; RFC 1951 3.2.5-3.2.6), short of a block header's margin.
+    fn stepFor(self: *const Decoder, available: usize) usize {
+        if (available <= header_margin) return min_step;
+        const ratio: u64 = if (self.total_in > 0) @max(1, self.total_out / self.total_in) else 1;
+        const surely: u64 = (available - header_margin) * ratio / 2;
+        return @intCast(std.math.clamp(surely, min_step, max_step));
     }
 
     /// The zlib header was not one: the stream is raw DEFLATE from its
