@@ -141,6 +141,10 @@ pub fn releaseNodeWrappers(_: *Agent) void {}
 pub fn agentRestoredFromSnapshot(_: *Agent) bool {
     return false;
 }
+/// [young_generation_limit] is unsupported here: no agent has a ceiling.
+pub fn youngGenerationLimitOf(_: *Agent) ?usize {
+    return null;
+}
 /// No agent is made here (createAgent is NotSupported): no host to hand
 /// back. When agents are made, the adapter keeps AgentOptions.host to call
 /// the hooks with, and answers it.

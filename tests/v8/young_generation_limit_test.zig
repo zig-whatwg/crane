@@ -175,6 +175,32 @@ test "young_generation_limit: null leaves the engine's own ceiling" {
     try onThread(noLimit);
 }
 
+/// engine.youngGenerationLimitOf of a new agent made with `limit`.
+fn limitGot(limit: ?usize) !?usize {
+    const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
+    defer own_runtime.end();
+    const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator, .young_generation_limit = limit });
+    defer engine.destroyAgent(agent);
+    return engine.youngGenerationLimitOf(agent);
+}
+
+fn whatAnAgentGot() !void {
+    // In the option's unit - the whole young generation - after V8's
+    // rounding: three power-of-two semispaces' worth, down, never up.
+    try std.testing.expectEqual(@as(?usize, 24 * mb), try limitGot(24 * mb)); // 8 MB semispaces
+    try std.testing.expectEqual(@as(?usize, 96 * mb), try limitGot(96 * mb)); // 32 MB: V8 15.7's own
+    try std.testing.expectEqual(@as(?usize, 12 * mb), try limitGot(20 * mb)); // 4 MB, not 8
+    try std.testing.expectEqual(@as(?usize, 24 * mb), try limitGot(47 * mb));
+    try std.testing.expectEqual(@as(?usize, 3 * mb), try limitGot(1)); // V8's smallest: 1 MB semispaces
+    // No limit: no ceiling but the engine's own.
+    try std.testing.expectEqual(@as(?usize, null), try limitGot(null));
+}
+
+test "youngGenerationLimitOf: what an agent got, after the engine's rounding; null without a limit" {
+    if (comptime engine.capabilities.young_generation_limit == .unsupported) return error.SkipZigTest;
+    try onThread(whatAnAgentGot);
+}
+
 test "young_generation_limit: an agent whose host says nothing gets the protocol's one default" {
     const options: engine.AgentOptions = .{ .can_block = false, .from_snapshot = false, .hooks = &hooks };
     try std.testing.expectEqual(engine.default_young_generation_limit, options.young_generation_limit);

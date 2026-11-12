@@ -133,15 +133,19 @@ pub const BrowserConfig = struct {
     /// runner, which poisons its allocator's frees by default (the user,
     /// 2026-11-05); off by default - never in a product build.
     poison_freed_state: bool = false,
-    /// The most memory the young generation of its window agent may take,
-    /// in bytes (engine.AgentOptions.young_generation_limit):
-    /// a larger one is faster for allocation-heavy pages and holds more
-    /// memory between collections. A host that ships for desktop can permit
-    /// the engine's own ceiling (null; V8 15.7: 96 MB, 32 MB semispaces); one
-    /// that runs many Browsers in a server, or on a phone, gives less (24 MB
-    /// is 8 MB semispaces). A hint where the engine has no such knob. The
-    /// default is the protocol's one constant,
-    /// engine.default_young_generation_limit.
+    /// The most memory the young generation of each of its JavaScript
+    /// agents - its window agent and every worker's - may take at rest, in
+    /// bytes of the WHOLE young generation
+    /// (engine.AgentOptions.young_generation_limit): a larger one is faster
+    /// for allocation-heavy pages and holds more memory between
+    /// collections. V8 and Chrome quote the figure per semispace, a third of
+    /// this value: `24 * 1024 * 1024` is 8 MB semispaces (a server running
+    /// many Browsers, a phone); `96 * 1024 * 1024`, or null, is V8 15.7's own
+    /// 32 MB semispaces (Chrome 157 on desktop). A value between sizes
+    /// rounds DOWN (the option's doc has the table);
+    /// engine.youngGenerationLimitOf says what an agent got. A hint where
+    /// the engine has no such knob. The default is the protocol's one
+    /// constant, engine.default_young_generation_limit.
     young_generation_limit: ?usize = engine.default_young_generation_limit,
     /// How many pages the back/forward cache keeps (back_forward_cache.zig):
     /// 8 by default - Firefox's desktop cap, for the whole Browser
@@ -280,6 +284,10 @@ pub const Browser = struct {
         // so a seeded run replays both. A Browser that cannot reserve fails
         // here, cleanly; the scope's end releases it, last.
         try scope.reserveHeap(platform, browser_platform);
+
+        // The young-generation limit its workers' agents are made with: the
+        // Browser's own, before any realm of it can start a worker.
+        (try scope.of(@import("html").WorkerRegistry)).young_generation_limit = config.young_generation_limit;
 
         const agent_host = try allocator.create(@import("html").agent_host.AgentHost);
         agent_host.* = @import("html").agent_host.AgentHost.init(allocator);

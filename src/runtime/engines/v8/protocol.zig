@@ -237,6 +237,10 @@ pub fn agentRestoredFromSnapshot(agent: *Agent) bool {
     return protocol_agents.restoredFromSnapshot(agent);
 }
 
+pub fn youngGenerationLimitOf(agent: *Agent) ?usize {
+    return protocol_agents.youngGenerationLimitOf(agent);
+}
+
 pub fn agentHost(agent: *Agent) ?*anyopaque {
     return protocol_agents.agentHost(agent);
 }

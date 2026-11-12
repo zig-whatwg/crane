@@ -94,6 +94,10 @@ pub fn releaseNodeWrappers(_: *Agent) void {}
 pub fn agentRestoredFromSnapshot(_: *Agent) bool {
     return false;
 }
+/// [young_generation_limit] is unsupported here: no agent has a ceiling.
+pub fn youngGenerationLimitOf(_: *Agent) ?usize {
+    return null;
+}
 /// No agent is made here (createAgent is NotSupported): none has a host.
 pub fn agentHost(_: *Agent) ?*anyopaque {
     return null;

@@ -181,6 +181,11 @@ const AgentRecord = struct {
     /// host may free them only after the agent is destroyed
     /// (`liveSnapshotAgents`, deinitializeEngine).
     from_snapshot: bool = false,
+    /// [young_generation_limit]: what the isolate's ResourceConstraints were
+    /// given for AgentOptions.young_generation_limit, in bytes of the whole
+    /// young generation after young_generation.zig's rounding; null: no
+    /// constraint. Written once, before the record is published.
+    young_generation_limit: ?usize = null,
     /// The agent's ShadowRealms (shadow_realm.zig): made with the agent,
     /// freed by its end. Null when ShadowRealm support was not installed.
     shadow_realms: ?*shadow_realm.ShadowRealmCallbackData = null,
@@ -552,6 +557,14 @@ fn warnSnapshotRefused(blob: []const u8) void {
     }
 }
 
+/// engine.youngGenerationLimitOf: the ceiling `agent`'s isolate was made
+/// with, null for none. From any thread: the record is found under the
+/// agents lock and the field never changes.
+pub fn youngGenerationLimitOf(agent: *Agent) ?usize {
+    const record = recordOf(@ptrCast(@alignCast(agent))) orelse return null;
+    return record.young_generation_limit;
+}
+
 /// Whether `agent` was restored from the engine's snapshot
 /// (engine.agentRestoredFromSnapshot): only then can its Window realms be
 /// restored from it.
@@ -617,7 +630,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     const deferred_teardown = options.deferred_teardown orelse own_queue;
     const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.destroy(record);
-    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = deferred_teardown, .own_deferred_teardown = own_queue, .webassembly_compilations = .{ .allocator = options.allocator } };
+    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .young_generation_limit = if (isolate_options.max_young_generation_bytes == 0) null else isolate_options.max_young_generation_bytes, .deferred_teardown = deferred_teardown, .own_deferred_teardown = own_queue, .webassembly_compilations = .{ .allocator = options.allocator } };
     {
         std.Io.Threaded.mutexLockUncancelable(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
