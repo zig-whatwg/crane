@@ -144,6 +144,14 @@ const predefined = [_][]const u8{
     "decimal", "decimal-leading-zero", "arabic-indic", "armenian", "upper-armenian", "lower-armenian", "bengali", "cambodian", "khmer", "cjk-decimal", "devanagari", "georgian", "gujarati", "gurmukhi", "hebrew", "kannada", "lao", "malayalam", "mongolian", "myanmar", "oriya", "persian", "lower-roman", "upper-roman", "tamil", "telugu", "thai", "tibetan", "lower-alpha", "lower-latin", "upper-alpha", "upper-latin", "lower-greek", "hiragana", "hiragana-iroha", "katakana", "katakana-iroha", "disc", "circle", "square", "disclosure-open", "disclosure-closed", "cjk-earthly-branch", "cjk-heavenly-stem", "japanese-informal", "japanese-formal", "korean-hangul-formal", "korean-hanja-informal", "korean-hanja-formal", "simp-chinese-informal", "simp-chinese-formal", "trad-chinese-informal", "trad-chinese-formal", "cjk-ideographic", "ethiopic-numeric",
 };
 
+/// Whether `name` (serialized as counterName gives it) is one of Counter
+/// Styles 3 §§6-7's predefined counter styles, which a name matches ASCII
+/// case-insensitively, as a keyword.
+pub fn isPredefined(name: []const u8) bool {
+    for (predefined) |candidate| if (std.mem.eql(u8, name, candidate)) return true;
+    return false;
+}
+
 fn customIdent(allocator: Allocator, token: tokens.Token) Allocator.Error!?[]u8 {
     if (token.token_type != .ident) return null;
     const decoded = try tokens.decode(allocator, token.value);

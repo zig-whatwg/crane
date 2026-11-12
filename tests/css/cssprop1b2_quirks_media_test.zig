@@ -63,9 +63,13 @@ test "a custom media name keeps its case, and outside a boolean context is gener
 }
 
 fn listStyleType(scope: u64) !*css.computed_style.ComputedStyle {
+    return listStyleTypeNamed("custom", scope);
+}
+
+fn listStyleTypeNamed(name: []const u8, scope: u64) !*css.computed_style.ComputedStyle {
     var block = css.declarations.DeclarationBlock.init(testing.allocator);
     defer block.deinit();
-    try testing.expect(try block.setProperty(.{ .allocator = testing.allocator }, "list-style-type", "custom", ""));
+    try testing.expect(try block.setProperty(.{ .allocator = testing.allocator }, "list-style-type", name, ""));
     return css.cascade.cascade(.{ .allocator = testing.allocator, .parent = null }, &.{.{ .block = &block, .source = .{ .origin = .author, .tree_scope = .{ .serial = scope } } }});
 }
 
@@ -96,4 +100,17 @@ test "a counter-style name computes with the tree scope that named it" {
     const b = try css.cascade.cascade(.{ .allocator = testing.allocator, .parent = null }, &.{.{ .block = &block, .source = .{ .origin = .author } }});
     defer b.destroy();
     try testing.expect(a.get(l).eql(b.get(l)));
+}
+
+test "a predefined counter style is the same value from any tree scope" {
+    // css/css-lists/list-style-type-transition-tree-scope-keyword.html:
+    // `circle` from the document and from a shadow tree starts no transition.
+    const l = (try lookup("list-style-type")).longhand;
+    for ([_][]const u8{ "circle", "decimal", "Lower-Roman", "disclosure-open" }) |name| {
+        const document = try listStyleTypeNamed(name, 0);
+        defer document.destroy();
+        const shadow = try listStyleTypeNamed(name, 7);
+        defer shadow.destroy();
+        try testing.expect(document.get(l).eql(shadow.get(l)));
+    }
 }

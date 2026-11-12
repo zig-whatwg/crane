@@ -47,10 +47,16 @@ pub const ScopedName = struct {
     }
 };
 
-/// Whether list-style-type's specified text is a <counter-style-name> (not
-/// a <string> or symbols()).
+/// Whether list-style-type's specified text is an author-defined
+/// <counter-style-name>: not a <string>, not symbols(), and not one of the
+/// predefined counter styles, which match as keywords and are the same
+/// value from any tree (css/css-lists/list-style-type-transition-tree-scope-
+/// keyword.html: `circle` from the document and from a shadow tree starts
+/// no transition; Blink parses them as CSSIdentifierValues and only other
+/// names as tree-scoped custom idents).
 pub fn namesCounterStyle(text: []const u8) bool {
-    return text.len != 0 and text[0] != '"' and !std.mem.startsWith(u8, text, "symbols(");
+    return text.len != 0 and text[0] != '"' and !std.mem.startsWith(u8, text, "symbols(") and
+        !@import("counter_style_descriptors.zig").isPredefined(text);
 }
 
 pub const Counters = struct {
