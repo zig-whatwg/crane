@@ -94,6 +94,7 @@ fn canonicalPositionIsEditable(node: *Instance, offset: u32) bool {
 /// caret at its hit position (Blink passes kNone for mouse focus). Runs
 /// before the focusing steps, so focus listeners see the caret.
 pub fn caretOnFocus(element: *Instance) void {
+    if (selectionBeforeTextControl(element)) return;
     const root = rootEditable(element) orelse return;
     if (root != element) return;
     // Only where the focusing steps will focus it (focusPosition's checks).
@@ -120,6 +121,7 @@ pub fn caretOnFocus(element: *Instance) void {
 /// caretOnFocus. editing/run/caret-navigation-after-removing-line-break.html:
 /// all three browsers.
 pub fn caretOnSequentialFocus(element: *Instance) void {
+    if (selectionBeforeTextControl(element)) return;
     const root = rootEditable(element) orelse return;
     if (root != element) return;
     if (focus.isHostInert(element)) return;
@@ -128,6 +130,28 @@ pub fn caretOnSequentialFocus(element: *Instance) void {
     const selection = (interfaces.Document.call_getSelection(document orelse return) catch return) orelse return;
     const first = firstCaretPosition(element);
     interfaces.Selection.call_collapse(selection, first.node, .passed(first.offset)) catch {};
+}
+
+/// A text control taking the focus takes the selection into its own
+/// editor, which the document's Selection shows as the point just before
+/// the control in its parent: Blink's TextControlElement::
+/// UpdateSelectionOnFocus restores the control's selection in its inner
+/// editor, and DOMSelection reports a selection inside the UA shadow tree
+/// at its host (ShadowAdjustedNode / Offset); Gecko collapses the document
+/// selection before the control (bug 2032191). html/interaction/focus/
+/// focus-selection.html: Chrome 157 and Firefox 160 pass, Safari 27.2
+/// leaves the selection. Whether `element` was such a control (then the
+/// caller is done).
+fn selectionBeforeTextControl(element: *Instance) bool {
+    if (!@import("user_input.zig").isTextControl(element)) return false;
+    if (focus.isHostInert(element)) return true;
+    if (!(dom.style.engine.isRenderedForFocus(element) catch false)) return true;
+    const p = parent(element) orelse return true;
+    const index = editing.indexOf(element) catch return true;
+    const document = interfaces.Node.get_ownerDocument(element) catch return true;
+    const selection = (interfaces.Document.call_getSelection(document orelse return true) catch return true) orelse return true;
+    interfaces.Selection.call_collapse(selection, p, .passed(index)) catch {};
+    return true;
 }
 
 const Position = struct { node: *Instance, offset: u32 };

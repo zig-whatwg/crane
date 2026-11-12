@@ -1391,6 +1391,12 @@ pub fn focusedTextControl(document: *Instance) ?*Instance {
     return if (textControlKind(focused) != .none) focused else null;
 }
 
+/// Whether `element` is a text control: an input whose value is edited as
+/// text, or a textarea.
+pub fn isTextControl(element: *Instance) bool {
+    return textControlKind(element) != .none;
+}
+
 /// Whether the user may edit the text control `element`.
 pub fn isMutableTextControl(element: *Instance) bool {
     return textControlKind(element) != .none and isMutable(element);

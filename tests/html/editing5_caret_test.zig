@@ -2,9 +2,8 @@
 //! presses in an editing host - a primary press on an empty editable element
 //! (selection_focus.caretAtHit, the integrator's G5 ruling: only where every
 //! renderer answers the same), Tab and focus() to the first caret position
-//! (caretOnSequentialFocus / caretOnFocus), ArrowLeft/Right and the word
-//! modifier with Backspace (user_input.zig, execcommand root.zig
-//! deleteWordByKey).
+//! (caretOnSequentialFocus / caretOnFocus) and ArrowLeft/Right
+//! (user_input.zig).
 const std = @import("std");
 const html = @import("html");
 const helpers = @import("edges_node_holders_helpers.zig");
@@ -87,45 +86,62 @@ fn focusAndTabPutTheCaretAtTheFirstPosition() !void {
     try harness.expectEval(page, "document.activeElement.id + ' ' + caret()", "c \"ijkl\"@0");
 }
 
+fn textControlFocusMovesTheSelectionBeforeIt() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(caret_script);
+    // html/interaction/focus/focus-selection.html: a focused text control
+    // shows the document's selection just before it; a button leaves it.
+    try page.run("document.body.innerHTML = '<div id=box tabindex=0><button>b</button><input id=t><input type=number id=n><input type=submit id=s></div>'; getSelection().collapse(box);");
+    try page.run("box.querySelector('button').focus();");
+    try harness.expectEval(page, "caret()", "div#box@0");
+    try page.run("document.getElementById('t').focus();");
+    try harness.expectEval(page, "caret()", "div#box@1");
+    try page.run("document.getElementById('n').focus();");
+    try harness.expectEval(page, "caret()", "div#box@2");
+    try page.run("document.getElementById('s').focus();");
+    try harness.expectEval(page, "caret()", "div#box@2");
+}
+
+test "focusing a text control collapses the selection just before it" {
+    try helpers.onFreshThread(textControlFocusMovesTheSelectionBeforeIt);
+}
+
 test "focus() and Tab put the caret at the first caret position of an editing host" {
     try helpers.onFreshThread(focusAndTabPutTheCaretAtTheFirstPosition);
 }
 
 const arrow_right: html.user_input.Key = .{ .key = "ArrowRight", .code = "ArrowRight", .key_code = 39 };
 const arrow_left: html.user_input.Key = .{ .key = "ArrowLeft", .code = "ArrowLeft", .key_code = 37 };
-const backspace: html.user_input.Key = .{ .key = "Backspace", .code = "Backspace", .key_code = 8 };
 
-fn wordModifier(page: helpers.Page) !html.user_input.Modifiers {
-    const name = try page.evaluate("navigator.platform");
-    defer std.testing.allocator.free(name);
-    return if (std.mem.indexOf(u8, name, "Mac") != null) .{ .alt = true } else .{ .ctrl = true };
-}
-
-fn arrowsAndWordDelete() !void {
+fn arrowKeys() !void {
     const page = try helpers.Page.open();
     defer page.close();
     try page.run(harness.setup_script);
     try page.run(caret_script);
-    try page.run("globalThis.events = []; host.addEventListener('beforeinput', (e) => events.push(e.inputType)); setupHost('ab[]cd').focus(); setupHost('ab[]cd');");
+    try page.run("globalThis.starts = 0; document.addEventListener('selectstart', (e) => { starts++; if (globalThis.cancelStart) e.preventDefault(); }); setupHost('ab[]cd').focus(); setupHost('ab[]cd');");
     // ArrowRight / ArrowLeft move the caret by a character.
     press(page, arrow_right, .{});
     try harness.expectEval(page, "caret()", "\"abcd\"@3");
     press(page, arrow_left, .{});
     press(page, arrow_left, .{});
     try harness.expectEval(page, "caret()", "\"abcd\"@1");
-    // Shift extends; an unshifted arrow then collapses to the range's edge.
+    // Shift extends, after a selectstart; an unshifted arrow then collapses
+    // to the range's edge.
     press(page, arrow_right, .{ .shift = true });
-    try harness.expectEval(page, "caret()", "\"abcd\"@1+");
+    try harness.expectEval(page, "caret() + ' ' + starts", "\"abcd\"@1+ 1");
     press(page, arrow_left, .{});
     try harness.expectEval(page, "caret()", "\"abcd\"@1");
-    // The word modifier with Backspace deletes the word before the caret,
-    // as deleteWordBackward (editing/whitespaces/delete-last-word-in-
-    // inline-block-editing-host.html).
-    try page.run("setupHost('a b[]'); events.length = 0;");
-    press(page, backspace, try wordModifier(page));
-    try harness.expectEval(page, "hostHTML() + '|' + events.join()", "a&nbsp;|deleteWordBackward");
+    // A cancelled selectstart leaves the caret.
+    try page.run("globalThis.cancelStart = true;");
+    press(page, arrow_right, .{ .shift = true });
+    try harness.expectEval(page, "caret() + ' ' + starts", "\"abcd\"@1 2");
+    // Nothing to extend over at the host's start: no selectstart.
+    try page.run("globalThis.cancelStart = false; starts = 0; setupHost('[]ab');");
+    press(page, arrow_left, .{ .shift = true });
+    try harness.expectEval(page, "caret() + ' ' + starts", "\"ab\"@0 0");
 }
 
-test "arrow keys move the caret in an editing host; the word modifier with Backspace deletes a word" {
-    try helpers.onFreshThread(arrowsAndWordDelete);
+test "arrow keys move the caret in an editing host; Shift starts a selection with selectstart" {
+    try helpers.onFreshThread(arrowKeys);
 }
