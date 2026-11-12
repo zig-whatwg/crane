@@ -578,15 +578,13 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
 
 /// An arrow key's selection change in an editing host (see
 /// defaultKeyDownAction): Selection.modify("move" | "extend", "left" |
-/// "right", granularity), or the collapse of a range to its edge.
+/// "right", granularity) - Blink's MoveLeft / MoveRight commands run the
+/// same SelectionModifier, which collapses a range to its edge for a
+/// character move (ModifyMovingLeft / Right).
 fn moveSelectionByKey(target: *Instance, right: bool, extend: bool, granularity: []const u8) void {
     const document = nodeDocument(target) orelse return;
     const selection = (interfaces.Document.call_getSelection(document) catch return) orelse return;
     if ((interfaces.Selection.get_rangeCount(selection) catch 0) == 0) return;
-    if (!extend and !(interfaces.Selection.get_isCollapsed(selection) catch true)) {
-        if (right) interfaces.Selection.call_collapseToEnd(selection) catch {} else interfaces.Selection.call_collapseToStart(selection) catch {};
-        return;
-    }
     const starts_selection = extend and (interfaces.Selection.get_isCollapsed(selection) catch false);
     const caret_node = interfaces.Selection.get_focusNode(selection) catch null;
     const caret_offset = interfaces.Selection.get_focusOffset(selection) catch 0;
@@ -953,21 +951,51 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
             return;
         }
     }
-    // TODO(editing): Ctrl/Alt/Meta+Backspace and +Delete (deleteWordBackward,
-    // deleteSoftLineBackward, ...): they need word and line movement across
-    // inline element boundaries (Selection.modify's word steps stop at a
-    // Text node's edge, so "abc <span>def</span>[]" would delete nothing
-    // where "abc def[]" deletes "def": editing/whitespaces/delete-word-
-    // around-span.html compares the two).
+    // With the word modifier (Ctrl, Alt where navigator.platform names a
+    // Mac - isWordModifier, as WPT's EditorTestUtils.deleteWordModifier),
+    // Backspace and Delete delete a word: Blink's key bindings
+    // "DeleteWordBackward" / "DeleteWordForward" (editing_behavior.cc),
+    // Gecko's cmd_deleteWordBackward, inputType deleteWordBackward /
+    // deleteWordForward (Input Events 2). The word is found over the inline
+    // formatting context's text, across inline element edges
+    // (execcommand/visible_position.zig): "abc <span>def</span>[]" deletes
+    // "def" as "abc def[]" does (editing/whitespaces/delete-word-around-
+    // span.html compares the two).
+    // TODO(renderer): the line forms (Meta+Backspace on a Mac:
+    // deleteSoftLineBackward) need line boundaries, a renderer read.
+    if ((isKey(key, "Backspace") or isKey(key, "Delete")) and (modifiers.ctrl or modifiers.alt) and !modifiers.meta and !modifiers.shift) {
+        const execcommand = @import("execcommand/root.zig");
+        if (execcommand.isEditableTarget(target)) {
+            const window = viewOf(target) orelse return;
+            const navigator = interfaces.Window.get_navigator(window) catch return;
+            var platform = interfaces.Navigator.get_platform(navigator) catch return;
+            defer platform.deinit(target.ctx.allocator);
+            if (isWordModifier(platform.asSlice(), modifiers)) execcommand.deleteWordByKey(target, isKey(key, "Delete"));
+            return;
+        }
+    }
+    // Home and End in an editing host: the caret moves (Shift: the
+    // selection extends) to the start or end of its line - Blink's key
+    // bindings MoveToBeginningOfLine / MoveToEndOfLine and their
+    // AndModifySelection forms, Selection.modify(..., "lineboundary").
+    // Where a line ends is a read on the renderer (soft wraps); with none,
+    // Selection.modify leaves the caret (TODO(renderer)).
+    if ((isKey(key, "Home") or isKey(key, "End")) and !modifiers.ctrl and !modifiers.alt and !modifiers.meta) {
+        const execcommand = @import("execcommand/root.zig");
+        if (execcommand.isEditableTarget(target)) {
+            moveSelectionByKey(target, isKey(key, "End"), modifiers.shift, "lineboundary");
+            return;
+        }
+    }
     // ArrowLeft and ArrowRight in an editing host: the caret moves (Shift:
     // the selection extends) by a character, or by a word with the word
     // modifier - Blink's key bindings MoveLeft / MoveRight /
     // MoveWordLeft / MoveWordRight and their AndModifySelection forms,
     // which run the SelectionModifier that Selection.modify drives (the
-    // same here). Without Shift, a selection that is not collapsed
-    // collapses to its left or right edge instead (Blink's
-    // SelectionModifier::ModifyMovingLeft / Right "if (!selection_.IsCaret())";
-    // Gecko's nsFrameSelection::MoveCaret likewise).
+    // same here). Without Shift, a character move collapses a selection
+    // that is not collapsed to its left or right edge (Blink's
+    // SelectionModifier::ModifyMovingLeft / Right "if (selection_.IsRange())",
+    // in Selection.modify; Gecko's nsFrameSelection::MoveCaret likewise).
     if ((isKey(key, "ArrowLeft") or isKey(key, "ArrowRight")) and !modifiers.meta) {
         const execcommand = @import("execcommand/root.zig");
         if (execcommand.isEditableTarget(target)) {
