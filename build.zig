@@ -12,26 +12,9 @@ const v8_archives = @import("tools/v8_archives.zig");
 
 /// THE BUILD SIDE OF THE ENGINE PROTOCOL (docs/engine-protocol.md, 7b): an engine adapter's build options are
 /// declared by the adapter, in its own build file, never here (the user, 2026-11-12: "the valid flags should be in
-/// the js engine protocol"). One entry per -Dengine name whose adapter has a build file; each exports
-/// `declareOptions(b) Options` and `apply(options, adapter_options)`.
-const engine_builds = .{
-    .v8 = @import("src/runtime/engines/v8/engine_build.zig"),
-};
-
-/// The options module of the build's engine adapter: the chosen adapter's build file declares its -D options and
-/// puts their values here; only the adapter's module imports it ("adapter_options"). An adapter that is not the
-/// build's engine is never asked, so its options are not declared, and the configure step refuses them by itself
-/// as it refuses any -D nothing declared.
-fn engineAdapterOptions(b: *std.Build, engine: []const u8) *std.Build.Step.Options {
-    const adapter_options = b.addOptions();
-    inline for (comptime std.meta.fieldNames(@TypeOf(engine_builds))) |name| {
-        if (std.mem.eql(u8, engine, name)) {
-            const adapter = @field(engine_builds, name);
-            adapter.apply(adapter.declareOptions(b), adapter_options);
-        }
-    }
-    return adapter_options;
-}
+/// the js engine protocol"). The protocol's build file lists the adapters and asks the chosen one; this file names
+/// no adapter and no adapter's option.
+const engine_build = @import("src/runtime/engine_build_protocol.zig");
 
 // Crane builds with a Zig from the 0.17.x branch pinned at 77c319a0f00a
 // (0.17.1-dev+77c319a0f0) until 0.17.1 ships. Zig 0.17.0 itself cannot build
@@ -2720,7 +2703,7 @@ const ModuleConfig = struct {
     debug_options: *std.Build.Step.Options,
     /// The dom module's own options (refcount_audit).
     dom_options: *std.Build.Step.Options,
-    /// The engine adapter's own options, from its build file (`engineAdapterOptions`).
+    /// The engine adapter's own options, from its build file (`engine_build.adapterOptions`).
     engine_adapter_options: *std.Build.Step.Options,
     engine_choice: []const u8,
     use_system_curl: bool,
@@ -3253,9 +3236,9 @@ pub fn build(b: *std.Build) void {
     ) orelse "";
     build_options.addOption([]const u8, "v8_extra_flags", std.mem.trim(u8, v8_extra_flags, " "));
 
-    // The engine adapter's own build options: declared and carried by the adapter's build file
-    // (`engine_builds`, above), not here.
-    const engine_adapter_options = engineAdapterOptions(b, engine_choice);
+    // The engine adapter's own build options: declared and carried by the adapter's build file, which the
+    // protocol's build file asks (`engine_build`, above), not here.
+    const engine_adapter_options = engine_build.adapterOptions(b, target, engine_choice);
 
     build_options.addOption([]const u8, "engine_name", engine_choice);
     build_options.addOption(bool, "has_snapshot_support", std.mem.eql(u8, engine_choice, "v8"));
@@ -7802,7 +7785,8 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .target = target,
     });
     engine_impl_mod.addImport("engine", engine_mod);
-    // The adapter's own build options (its build file's, `engineAdapterOptions`): this module alone imports them.
+    // The adapter's own build options (its build file's, `engine_build.adapterOptions`): this module alone
+    // imports them.
     engine_impl_mod.addOptions("adapter_options", config.engine_adapter_options);
     engine_mod.addImport("engine_impl", engine_impl_mod);
     impls_mod.addImport("engine", engine_mod);

@@ -564,21 +564,23 @@ declares its own `-D` options, in a build file beside its code,
 
 ```zig
 pub const Options = struct { ... };                       // what the command line gave
-pub fn declareOptions(b: *std.Build) Options              // the adapter's b.option calls
+pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options   // the adapter's b.option calls
 pub fn apply(options: Options, adapter_options: *std.Build.Step.Options) void
 ```
 
-The root build.zig keeps one table, `engine_builds`, of the build files by
-`-Dengine` name, and asks only the CHOSEN engine's (`engineAdapterOptions`):
-it declares that adapter's options and puts their values in an options module
-of the adapter's own, which the engine adapter's module alone imports as
-`@import("adapter_options")` - not in the `build_options` every module
-shares. So:
+The protocol's own build file, `src/runtime/engine_build_protocol.zig`, keeps
+the list of adapters that have a build file (`adapters`, by `-Dengine` name)
+and one function, `adapterOptions(b, target, engine)`, which asks only the
+CHOSEN engine's: it declares that adapter's options and puts their values in
+an options module of the adapter's own, which the engine adapter's module
+alone imports as `@import("adapter_options")` - not in the `build_options`
+every module shares. The root build.zig imports the protocol's build file and
+calls that function. So:
 
 - a build of another engine does not have the option at all: nothing declared
   it, and `zig build` refuses a `-D` nothing declared ("invalid option");
-- no line of the root build.zig names an adapter's option, and adding one to
-  an adapter touches only that adapter's directory;
+- no line of the root build.zig names an adapter or an adapter's option, and
+  adding an option to an adapter touches only that adapter's directory;
 - an adapter with no build options has no build file and no row.
 
 The V8 adapter's build file declares:

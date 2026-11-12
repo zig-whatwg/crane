@@ -4,14 +4,16 @@
 //! the v8 code in build.zig, the valid flags should be in the js engine
 //! protocol").
 //!
-//! The root build.zig imports the chosen engine's build file by the engine's
-//! name (`engine_builds`) and calls this interface, the same for every
-//! adapter that has a build side:
+//! The protocol's build file (src/runtime/engine_build_protocol.zig, which
+//! the root build.zig imports) lists the adapters' build files by engine
+//! name and calls this interface, the same for every adapter that has a
+//! build side:
 //!
-//!   - `declareOptions(b)` declares the adapter's `-D` options and returns
-//!     what the command line gave. An adapter that is not the build's engine
-//!     is never asked, so its options do not exist in that build: `zig build`
-//!     itself refuses a `-D` nothing declared.
+//!   - `declareOptions(b, target)` declares the adapter's `-D` options and
+//!     returns what the command line gave; an option's default may depend on
+//!     the target. An adapter that is not the build's engine is never asked,
+//!     so its options do not exist in that build: `zig build` itself refuses
+//!     a `-D` nothing declared.
 //!   - `apply(options, adapter_options)` puts the values in the adapter's own
 //!     options module - `@import("adapter_options")`, which only the engine
 //!     adapter's module imports - never in the `build_options` every module
@@ -40,8 +42,10 @@ pub const Options = struct {
     navigation_collection_mb: ?u32,
 };
 
-/// Declare the V8 adapter's build options.
-pub fn declareOptions(b: *std.Build) Options {
+/// Declare the V8 adapter's build options. `target`: what the build is for -
+/// no option here defaults from it yet (-Djitless will, when it moves here).
+pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
+    _ = target;
     return .{
         .young_generation_mb = b.option(
             u32,
