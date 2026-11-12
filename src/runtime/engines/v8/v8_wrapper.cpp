@@ -3535,9 +3535,9 @@ static void deleteSyntheticExport(SyntheticJsonExport* entry) {
 }
 
 /// What an agent asks of its isolate before it initializes (ffi.zig
-/// IsolateOptions; engine.AgentOptions.random_seed, .clock and
-/// .young_generation_limit). Null, or every field zero: an isolate exactly
-/// as v8_Isolate_New made it before.
+/// IsolateOptions; engine.AgentOptions.random_seed and .clock, and the
+/// build's limit for the young generation). Null, or every field zero: an
+/// isolate exactly as v8_Isolate_New made it before.
 struct CraneIsolateOptions {
     bool seeded;
     uint64_t random_seed;
@@ -3555,15 +3555,16 @@ static void applyIsolateOptions(IsolateData* record, const CraneIsolateOptions* 
     record->clock_context = options->clock_context;
 }
 
-/// [young_generation_limit]: the agent's ceiling for its young generation
-/// into the isolate's ResourceConstraints, which Heap::ConfigureHeap reads
-/// once, inside Isolate::Initialize (15.7.112.43 src/heap/heap.cc:4886-4892:
-/// max_semi_space_size_ from constraints.max_young_generation_size_in_bytes;
-/// include/v8-isolate.h:133-143). 0, or no options: no constraint - V8's own
-/// ceiling, 32 MB semispaces (heap.cc:4844-4860). The embedder API for it:
-/// gin sets the same field through ResourceConstraints::ConfigureDefaults
-/// (Chromium 157.0.8103.50 gin/isolate_holder.cc:186-190). Never a V8 flag:
-/// a flag is the process's, and this is one agent's.
+/// The build's ceiling for the young generation (-Dv8-young-generation-mb,
+/// young_generation.zig) into the isolate's ResourceConstraints, which
+/// Heap::ConfigureHeap reads once, inside Isolate::Initialize (15.7.112.43
+/// src/heap/heap.cc:4886-4892: max_semi_space_size_ from
+/// constraints.max_young_generation_size_in_bytes; include/v8-isolate.h:
+/// 133-143). 0, or no options: no constraint - V8's own ceiling, 32 MB
+/// semispaces (heap.cc:4844-4860). The embedder API for it: gin sets the
+/// same field through ResourceConstraints::ConfigureDefaults (Chromium
+/// 157.0.8103.50 gin/isolate_holder.cc:186-190). Not a V8 flag string: the
+/// constraint is the isolate's own, set where the isolate is made.
 static void applyHeapConstraints(Isolate::CreateParams& create_params, const CraneIsolateOptions* options) {
     if (!options || options->max_young_generation_bytes == 0) return;
     create_params.constraints.set_max_young_generation_size_in_bytes(options->max_young_generation_bytes);

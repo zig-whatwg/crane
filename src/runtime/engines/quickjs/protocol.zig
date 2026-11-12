@@ -60,7 +60,6 @@ pub const capabilities: engine.Capabilities = .{
     // own REPL's), not wired: no engine is linked yet.
     .repl_mode = .unsupported,
     .external_memory = .unsupported,
-    .young_generation_limit = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.
@@ -108,10 +107,6 @@ pub fn releaseNodeWrappers(_: *Agent) void {}
 /// restored from a snapshot.
 pub fn agentRestoredFromSnapshot(_: *Agent) bool {
     return false;
-}
-/// [young_generation_limit] is unsupported here: no agent has a ceiling.
-pub fn youngGenerationLimitOf(_: *Agent) ?usize {
-    return null;
 }
 /// No agent is made here (createAgent is NotSupported): none has a host.
 pub fn agentHost(_: *Agent) ?*anyopaque {

@@ -122,12 +122,6 @@ pub const capabilities: engine.Capabilities = .{
     // that is reached and collects when it is overshot by a large margin
     // (V8 15.7 heap.cc Heap::UpdateExternalMemory).
     .external_memory = .native,
-    // AgentOptions.young_generation_limit: the isolate's ResourceConstraints
-    // (max_young_generation_size_in_bytes, include/v8-isolate.h), set before
-    // it initializes (young_generation.zig; v8_wrapper.cpp
-    // applyHeapConstraints) - the embedder API gin configures the same
-    // ceiling through (gin/isolate_holder.cc ConfigureDefaults).
-    .young_generation_limit = .native,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.
@@ -235,10 +229,6 @@ pub fn releaseNodeWrappers(agent: *Agent) void {
 
 pub fn agentRestoredFromSnapshot(agent: *Agent) bool {
     return protocol_agents.restoredFromSnapshot(agent);
-}
-
-pub fn youngGenerationLimitOf(agent: *Agent) ?usize {
-    return protocol_agents.youngGenerationLimitOf(agent);
 }
 
 pub fn agentHost(agent: *Agent) ?*anyopaque {

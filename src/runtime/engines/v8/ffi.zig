@@ -832,9 +832,10 @@ const isolate_entries = struct {
 };
 
 /// What an agent asks of its isolate before it initializes (v8_wrapper.cpp
-/// CraneIsolateOptions): engine.AgentOptions.random_seed, .clock and
-/// .young_generation_limit. The default - nothing seeded, no clock, no
-/// ceiling - is an isolate exactly as v8_Isolate_New makes one.
+/// CraneIsolateOptions): engine.AgentOptions.random_seed and .clock, and the
+/// build's limit for the young generation (young_generation.zig). The
+/// default - nothing seeded, no clock, no ceiling - is an isolate exactly as
+/// v8_Isolate_New makes one.
 pub const IsolateOptions = extern struct {
     /// Whether `random_seed` seeds the isolate's random number generator,
     /// and so each context's Math.random (craneEntropySource).
@@ -846,8 +847,8 @@ pub const IsolateOptions = extern struct {
     clock_context: ?*anyopaque = null,
     clock_wall_now: ?*const fn (context: ?*anyopaque) callconv(.c) i64 = null,
     /// The isolate's ResourceConstraints max_young_generation_size_in_bytes
-    /// (young_generation.zig computes it from the agent's limit); 0: none,
-    /// V8's own ceiling.
+    /// (young_generation.zig computes it from the build's limit,
+    /// -Dv8-young-generation-mb); 0: none, V8's own ceiling.
     max_young_generation_bytes: usize = 0,
 };
 

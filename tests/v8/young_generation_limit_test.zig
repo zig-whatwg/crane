@@ -1,8 +1,22 @@
-//! engine.AgentOptions.young_generation_limit [young_generation_limit]: the
-//! most memory an agent's young generation may take. A host that runs many
-//! agents, or runs on a phone, gives a small one; a host that ships for
-//! desktop can permit the engine's own (the user's direction, 2026-11-12: "a
-//! configurable value for the js engine protocol").
+//! The young generation's size is a V8 BUILD option,
+//! `-Dv8-young-generation-mb=<n>` (src/runtime/engines/v8/
+//! young_generation.zig): megabytes of the WHOLE young generation of every
+//! isolate the build makes - 24 is 8 MB semispaces, 0 is V8's own sizing,
+//! not given is the adapter's one default. Not an option of the engine
+//! protocol: JavaScriptCore's public API has no heap sizing (the user,
+//! 2026-11-12).
+//!
+//! A test binary is ONE build, so the values are pinned two ways:
+//!   - through the adapter's one creation function with the limit given
+//!     (protocol_agents.createAgentWithYoungGeneration, which createAgent
+//!     calls with the build's): 24 MB, 6 MB, a value that rounds down, and
+//!     none - at both isolate-creation sites, a fresh isolate and one
+//!     restored from the snapshot;
+//!   - an agent made through the protocol (engine.createAgent) has THIS
+//!     build's limit, whatever the build was given. Run the file in a second
+//!     build to see another value arrive from the command line:
+//!     `zig build test -j2 -Dspec=v8 -Dv8-young-generation-mb=24
+//!     -Dtest-filter='young_generation_limit_test*'`.
 //!
 //! On V8 the young generation is two semispaces and a new large object space
 //! of a semispace's size, and it only grows while what it holds survives
@@ -34,11 +48,21 @@ const engine = @import("engine");
 const interfaces = @import("interfaces");
 const v8 = @import("v8");
 const ffi = v8.ffi;
+const young_generation = v8.young_generation;
+
+/// The snapshot this build generated (build.zig passes its path and makes
+/// the tests depend on the step that writes it).
+const snapshot_path = @import("test_snapshot").path;
 
 const mb = 1024 * 1024;
 
 fn createGlobal(realm: runtime.Context, _: runtime.JSValue, _: ?*anyopaque) ?*runtime.Instance {
     return interfaces.Window.init(realm.allocator, realm) catch null;
+}
+/// The global of a realm restored from the snapshot, as
+/// pattern_attribute_snapshot_test.zig makes its own.
+fn createSnapshotGlobal(realm: runtime.Context, _: runtime.JSValue, _: ?*anyopaque) ?*runtime.Instance {
+    return interfaces.Window.init(std.heap.c_allocator, realm) catch null;
 }
 fn report(_: ?*anyopaque, _: *const engine.ErrorInfo) void {}
 const reporter: engine.Reporter = .{ .report = report, .host = null };
@@ -83,17 +107,25 @@ const Semispaces = struct {
     at_rest: usize,
 };
 
-/// A new agent made with `limit`, its Window realm run through the survivors
-/// and then the garbage.
-fn semispacesOf(limit: ?usize) !Semispaces {
-    const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
-    defer own_runtime.end();
-    const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator, .young_generation_limit = limit });
-    defer engine.destroyAgent(agent);
-    const realm_options: engine.WindowRealmOptions = .{ .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://young-generation.test", .create_global_object = createGlobal };
-    const realm = try engine.createWindowRealm(&realm_options);
-    defer engine.destroyWindowRealm(realm, .global_detached);
-    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+/// How an agent's young generation is limited.
+const Limit = union(enum) {
+    /// Given to the adapter's creation function: bytes of the whole young
+    /// generation, null for V8's own sizing.
+    given: ?usize,
+    /// The build's (-Dv8-young-generation-mb, or the adapter's default):
+    /// an agent as the protocol makes one, engine.createAgent.
+    the_builds,
+};
+
+fn makeAgent(limit: Limit, options: engine.AgentOptions) !*engine.Agent {
+    return switch (limit) {
+        .given => |bytes| v8.protocol_agents.createAgentWithYoungGeneration(options, bytes),
+        .the_builds => engine.createAgent(options),
+    };
+}
+
+/// `realm` run through the survivors and then the garbage.
+fn runThrough(realm: runtime.Context, isolate: *ffi.Isolate) !Semispaces {
     var result: Semispaces = .{ .most = 0, .at_rest = std.math.maxInt(usize) };
     for (0..survivor_pieces) |_| {
         const text = try engine.evaluateClassicScriptToString(realm, .{ .utf8 = survivors }, "survivors.js", null, std.testing.allocator, reporter);
@@ -113,15 +145,30 @@ fn semispacesOf(limit: ?usize) !Semispaces {
     return result;
 }
 
+/// A new agent limited as `limit` says - a fresh isolate, the first of the
+/// adapter's two isolate-creation sites - its Window realm run through the
+/// survivors and then the garbage.
+fn semispacesOf(limit: Limit) !Semispaces {
+    const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
+    defer own_runtime.end();
+    const agent = try makeAgent(limit, .{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator });
+    defer engine.destroyAgent(agent);
+    const realm_options: engine.WindowRealmOptions = .{ .agent = agent, .allocator = std.testing.allocator, .from_snapshot = false, .timer = null, .origin = "https://young-generation.test", .create_global_object = createGlobal };
+    const realm = try engine.createWindowRealm(&realm_options);
+    defer engine.destroyWindowRealm(realm, .global_detached);
+    return runThrough(realm, @ptrCast(@alignCast(agent)));
+}
+
 /// V8 commits a space in pages, and a semispace pair read 512 KB over twice
 /// its capacity at rest: a megabyte of slack, where the sizes a limit can
 /// come to differ by a factor of two.
 const slack = mb;
 
-fn expectCeiling(limit: usize, semispace: usize) !void {
-    const semispaces = try semispacesOf(limit);
+/// `semispaces` are those of a young generation held to `semispace` bytes
+/// each: at rest never more than two of them, and it did reach them.
+fn expectHeldTo(what: []const u8, semispaces: Semispaces, semispace: usize) !void {
     if (semispaces.at_rest > 2 * semispace + slack or semispaces.most + slack < 2 * semispace) {
-        std.debug.print("young_generation_limit {d} MB: {d} KB committed to the semispaces at rest, {d} KB at most (two semispaces of {d} MB allowed)\n", .{ limit / mb, semispaces.at_rest / 1024, semispaces.most / 1024, semispace / mb });
+        std.debug.print("{s}: {d} KB committed to the semispaces at rest, {d} KB at most (two semispaces of {d} MB allowed)\n", .{ what, semispaces.at_rest / 1024, semispaces.most / 1024, semispace / mb });
     }
     // At rest, never more than two semispaces of the size the limit allows...
     try std.testing.expect(semispaces.at_rest <= 2 * semispace + slack);
@@ -129,85 +176,118 @@ fn expectCeiling(limit: usize, semispace: usize) !void {
     try std.testing.expect(semispaces.most + slack >= 2 * semispace);
 }
 
-fn twentyFourMegabytes() !void {
-    // V8 13.1's ceiling: three 8 MB semispaces' worth.
-    try expectCeiling(24 * mb, 8 * mb);
-}
-
-test "young_generation_limit: 24 MB keeps the semispaces at 8 MB each" {
-    if (comptime engine.capabilities.young_generation_limit == .unsupported) return error.SkipZigTest;
-    try onThread(twentyFourMegabytes);
-}
-
-fn sixMegabytes() !void {
-    try expectCeiling(6 * mb, 2 * mb);
-}
-
-test "young_generation_limit: 6 MB keeps the semispaces at 2 MB each" {
-    if (comptime engine.capabilities.young_generation_limit == .unsupported) return error.SkipZigTest;
-    try onThread(sixMegabytes);
-}
-
-fn roundedDown() !void {
-    // 20 MB holds three 4 MB semispaces, not three of 8: the engine rounds
-    // DOWN to a size it supports, never past what the host said.
-    try expectCeiling(20 * mb, 4 * mb);
-}
-
-test "young_generation_limit: a limit between two sizes rounds down, never up" {
-    if (comptime engine.capabilities.young_generation_limit == .unsupported) return error.SkipZigTest;
-    try onThread(roundedDown);
-}
-
-fn noLimit() !void {
-    // Null: the engine's own sizing, exactly as without the option - V8 15.7
-    // grows its semispaces to 32 MB, so the same script leaves well over the
-    // 16 MB that a 24 MB limit allows.
-    const semispaces = try semispacesOf(null);
+/// `semispaces` are those of a young generation V8 sized by itself: 15.7
+/// grows its semispaces to 32 MB, so the same script leaves well over the
+/// 16 MB that 8 MB semispaces come to.
+fn expectV8sOwn(what: []const u8, semispaces: Semispaces) !void {
     if (semispaces.at_rest <= 16 * mb + slack) {
-        std.debug.print("no young_generation_limit: only {d} KB committed to the semispaces at rest ({d} KB at most)\n", .{ semispaces.at_rest / 1024, semispaces.most / 1024 });
+        std.debug.print("{s}: only {d} KB committed to the semispaces at rest ({d} KB at most)\n", .{ what, semispaces.at_rest / 1024, semispaces.most / 1024 });
     }
     try std.testing.expect(semispaces.at_rest > 16 * mb + slack);
 }
 
-test "young_generation_limit: null leaves the engine's own ceiling" {
-    if (comptime engine.capabilities.young_generation_limit == .unsupported) return error.SkipZigTest;
+fn twentyFourMegabytes() !void {
+    // V8 13.1's ceiling: three 8 MB semispaces' worth.
+    try expectHeldTo("24 MB", try semispacesOf(.{ .given = 24 * mb }), 8 * mb);
+}
+
+test "a young generation of 24 MB keeps the semispaces at 8 MB each" {
+    try onThread(twentyFourMegabytes);
+}
+
+fn sixMegabytes() !void {
+    try expectHeldTo("6 MB", try semispacesOf(.{ .given = 6 * mb }), 2 * mb);
+}
+
+test "a young generation of 6 MB keeps the semispaces at 2 MB each" {
+    try onThread(sixMegabytes);
+}
+
+fn roundedDown() !void {
+    // 20 MB holds three 4 MB semispaces, not three of 8: the adapter rounds
+    // DOWN to a size V8 supports, never past what the build said.
+    try expectHeldTo("20 MB", try semispacesOf(.{ .given = 20 * mb }), 4 * mb);
+}
+
+test "a value between two sizes rounds down, never up" {
+    try onThread(roundedDown);
+}
+
+fn noLimit() !void {
+    try expectV8sOwn("no limit", try semispacesOf(.{ .given = null }));
+}
+
+test "no limit leaves V8's own ceiling" {
     try onThread(noLimit);
 }
 
-/// engine.youngGenerationLimitOf of a new agent made with `limit`.
-fn limitGot(limit: ?usize) !?usize {
-    const own_runtime = test_process.OwnRuntime.begin(std.testing.allocator);
-    defer own_runtime.end();
-    const agent = try engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &hooks, .allocator = std.testing.allocator, .young_generation_limit = limit });
+fn theBuilds() !void {
+    // What -Dv8-young-generation-mb (or, without it, the adapter's default)
+    // came to for this build: every agent the protocol makes has it.
+    const semispaces = try semispacesOf(.the_builds);
+    const limit = young_generation.limit orelse return expectV8sOwn("this build (V8's own sizing)", semispaces);
+    const semispace = young_generation.semispaceBytes(limit);
+    // The script grows a young generation as far as V8's own 32 MB
+    // semispaces: a build that allows that much, or more, is told from a
+    // smaller one, not from a larger.
+    if (semispace >= 32 * mb) return expectV8sOwn("this build (32 MB semispaces or more)", semispaces);
+    try expectHeldTo("this build", semispaces, semispace);
+}
+
+test "an agent made through the protocol has this build's young generation" {
+    try onThread(theBuilds);
+}
+
+test "an agent restored from the snapshot is held to its young generation too" {
+    // The adapter's second isolate-creation site, and the one a Browser's
+    // agents come from. A host gives the engine its snapshot when the process
+    // starts, before anything else touches V8 (pattern_attribute_snapshot_test.zig
+    // says what happens otherwise): where V8 was started earlier in this
+    // process the test skips, saying so. tests-v8 runs a process per test.
+    if (ffi.v8_Platform_IsInitialized()) {
+        std.log.warn("skipping: V8 was started in this process before this test; run it in a process of its own (tests-v8 runs at batch 1; -Dlaunch-batch=1 or -Dtest-file=)", .{});
+        return error.SkipZigTest;
+    }
+    const io = std.testing.io;
+    // Missing is a failure: the build made it for this test.
+    const file = try std.Io.Dir.cwd().openFile(io, snapshot_path, .{});
+    defer file.close(io);
+    const size = (try file.stat(io)).size;
+    const bytes = try std.heap.c_allocator.alloc(u8, size);
+    defer std.heap.c_allocator.free(bytes);
+    _ = try file.readPositionalAll(io, bytes, 0);
+
+    try test_process.startSnapshot(bytes);
+    defer test_process.endSnapshot();
+    const agent = try makeAgent(.{ .given = 24 * mb }, .{ .can_block = false, .from_snapshot = true, .hooks = &hooks, .host = null });
     defer engine.destroyAgent(agent);
-    return engine.youngGenerationLimitOf(agent);
+    // Restored, not made afresh (createAgent falls back to a fresh isolate,
+    // with a warning, when the snapshot does not restore - which would make
+    // this test pass through the other site).
+    if (!ffi.v8_Isolate_IsFromSnapshot(@ptrCast(@alignCast(agent)))) return error.AgentNotRestoredFromSnapshot;
+    const realm = try engine.createWindowRealm(&.{ .agent = agent, .allocator = std.heap.c_allocator, .from_snapshot = true, .timer = null, .origin = "https://young-generation.test", .create_global_object = createSnapshotGlobal });
+    defer engine.destroyWindowRealm(realm, .global_detached);
+    try expectHeldTo("24 MB, an agent restored from the snapshot", try runThrough(realm, @ptrCast(@alignCast(agent))), 8 * mb);
 }
 
-fn whatAnAgentGot() !void {
-    // In the option's unit - the whole young generation - after V8's
-    // rounding: three power-of-two semispaces' worth, down, never up.
-    try std.testing.expectEqual(@as(?usize, 24 * mb), try limitGot(24 * mb)); // 8 MB semispaces
-    try std.testing.expectEqual(@as(?usize, 96 * mb), try limitGot(96 * mb)); // 32 MB: V8 15.7's own
-    try std.testing.expectEqual(@as(?usize, 12 * mb), try limitGot(20 * mb)); // 4 MB, not 8
-    try std.testing.expectEqual(@as(?usize, 24 * mb), try limitGot(47 * mb));
-    try std.testing.expectEqual(@as(?usize, 3 * mb), try limitGot(1)); // V8's smallest: 1 MB semispaces
-    // No limit: no ceiling but the engine's own.
-    try std.testing.expectEqual(@as(?usize, null), try limitGot(null));
+test "the build's megabytes become the limit: not given is the default, 0 is V8's own" {
+    const limitFor = young_generation.limitFor;
+    // Not given: the adapter's default - which may itself be V8's own.
+    try std.testing.expectEqual(@as(?usize, null), limitFor(null, null));
+    try std.testing.expectEqual(@as(?usize, 24 * mb), limitFor(null, 24));
+    // Given: the build's, whatever the default is.
+    try std.testing.expectEqual(@as(?usize, 24 * mb), limitFor(24, null));
+    try std.testing.expectEqual(@as(?usize, 48 * mb), limitFor(48, 24));
+    try std.testing.expectEqual(@as(?usize, 96 * mb), limitFor(96, 24));
+    // 0: V8's own sizing, expressible whatever the default is.
+    try std.testing.expectEqual(@as(?usize, null), limitFor(0, 24));
+    try std.testing.expectEqual(@as(?usize, null), limitFor(0, null));
+    // And this build's limit is that of what it was given.
+    try std.testing.expectEqual(limitFor(young_generation.requested_mb, young_generation.default_mb), young_generation.limit);
 }
 
-test "youngGenerationLimitOf: what an agent got, after the engine's rounding; null without a limit" {
-    if (comptime engine.capabilities.young_generation_limit == .unsupported) return error.SkipZigTest;
-    try onThread(whatAnAgentGot);
-}
-
-test "young_generation_limit: an agent whose host says nothing gets the protocol's one default" {
-    const options: engine.AgentOptions = .{ .can_block = false, .from_snapshot = false, .hooks = &hooks };
-    try std.testing.expectEqual(engine.default_young_generation_limit, options.young_generation_limit);
-}
-
-test "young_generation_limit: a limit becomes three power-of-two semispaces, rounded down, never under V8's smallest" {
-    const convert = v8.young_generation.maxYoungGenerationBytes;
+test "a limit becomes three power-of-two semispaces, rounded down, never under V8's smallest" {
+    const convert = young_generation.maxYoungGenerationBytes;
     try std.testing.expectEqual(@as(usize, 0), convert(null));
     // V8 13.1's ceiling and Chrome's on a phone below its high-end threshold.
     try std.testing.expectEqual(@as(usize, 24 * mb), convert(24 * mb));

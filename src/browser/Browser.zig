@@ -133,20 +133,6 @@ pub const BrowserConfig = struct {
     /// runner, which poisons its allocator's frees by default (the user,
     /// 2026-11-05); off by default - never in a product build.
     poison_freed_state: bool = false,
-    /// The most memory the young generation of each of its JavaScript
-    /// agents - its window agent and every worker's - may take at rest, in
-    /// bytes of the WHOLE young generation
-    /// (engine.AgentOptions.young_generation_limit): a larger one is faster
-    /// for allocation-heavy pages and holds more memory between
-    /// collections. V8 and Chrome quote the figure per semispace, a third of
-    /// this value: `24 * 1024 * 1024` is 8 MB semispaces (a server running
-    /// many Browsers, a phone); `96 * 1024 * 1024`, or null, is V8 15.7's own
-    /// 32 MB semispaces (Chrome 157 on desktop). A value between sizes
-    /// rounds DOWN (the option's doc has the table);
-    /// engine.youngGenerationLimitOf says what an agent got. A hint where
-    /// the engine has no such knob. The default is the protocol's one
-    /// constant, engine.default_young_generation_limit.
-    young_generation_limit: ?usize = engine.default_young_generation_limit,
     /// How many pages the back/forward cache keeps (back_forward_cache.zig):
     /// 8 by default - Firefox's desktop cap, for the whole Browser
     /// (back_forward_cache.zig `default_size` says why). 0 keeps none.
@@ -285,10 +271,6 @@ pub const Browser = struct {
         // here, cleanly; the scope's end releases it, last.
         try scope.reserveHeap(platform, browser_platform);
 
-        // The young-generation limit its workers' agents are made with: the
-        // Browser's own, before any realm of it can start a worker.
-        (try scope.of(@import("html").WorkerRegistry)).young_generation_limit = config.young_generation_limit;
-
         const agent_host = try allocator.create(@import("html").agent_host.AgentHost);
         agent_host.* = @import("html").agent_host.AgentHost.init(allocator);
         errdefer {
@@ -311,8 +293,6 @@ pub const Browser = struct {
             .clock = if (browser_clock.wall_now) |wall_now| .{ .context = browser_clock.context, .wall_now = wall_now } else null,
             // Math.random replays from the Browser's stream when it has one.
             .random_seed = if (seeded) random_seed else null,
-            // The young generation's ceiling the host chose for this Browser.
-            .young_generation_limit = config.young_generation_limit,
         }) catch return error.V8InitFailed;
 
         // What the agent really is: one asked for the snapshot is made without

@@ -93,7 +93,6 @@ pub const capabilities: engine.Capabilities = .{
     // script's evaluation; Web Inspector's console evaluation is private).
     .repl_mode = .unsupported,
     .external_memory = .unsupported,
-    .young_generation_limit = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.
@@ -140,10 +139,6 @@ pub fn releaseNodeWrappers(_: *Agent) void {}
 /// restores nothing from a snapshot (`restores_snapshots` unsupported).
 pub fn agentRestoredFromSnapshot(_: *Agent) bool {
     return false;
-}
-/// [young_generation_limit] is unsupported here: no agent has a ceiling.
-pub fn youngGenerationLimitOf(_: *Agent) ?usize {
-    return null;
 }
 /// No agent is made here (createAgent is NotSupported): no host to hand
 /// back. When agents are made, the adapter keeps AgentOptions.host to call

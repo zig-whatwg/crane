@@ -27,12 +27,6 @@ pub const WorkerRegistry = struct {
     links: std.ArrayListUnmanaged(*WorkerLink) = .empty,
     /// The Browser is ending: no worker starts any more.
     closed: bool = false,
-    /// The young-generation limit every worker agent of this Browser is
-    /// made with (engine.AgentOptions.young_generation_limit, bytes of the
-    /// whole young generation): the Browser's own configuration, written by
-    /// its init before any realm can start a worker and never after. The
-    /// protocol's default until then, and for a scope with no Browser.
-    young_generation_limit: ?usize = @import("engine").default_young_generation_limit,
 
     pub fn init(allocator: Allocator) WorkerRegistry {
         return .{ .allocator = allocator };

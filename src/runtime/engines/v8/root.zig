@@ -148,8 +148,9 @@ pub const cleanupTemplateStorage = isolate_templates.cleanupTemplateStorage;
 
 /// [external_memory]: the host's native memory reported to the isolate.
 pub const external_memory = @import("external_memory.zig");
-/// engine.AgentOptions.young_generation_limit as V8's ResourceConstraints
-/// take it (tests/v8/young_generation_limit_test.zig).
+/// The young generation's size, a build option of this adapter
+/// (-Dv8-young-generation-mb), as V8's ResourceConstraints take it
+/// (tests/v8/young_generation_limit_test.zig).
 pub const young_generation = @import("young_generation.zig");
 
 /// Isolate allocator (per-isolate memory management)

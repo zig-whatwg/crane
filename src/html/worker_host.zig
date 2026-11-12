@@ -989,11 +989,6 @@ pub const WorkerHost = struct {
             // loop to run between tasks (runtime.gc.DeferredTeardown).
             .deferred_teardown = &self.agent_host.deferred_teardown,
             .engine_task_sink = thread.loop.sink,
-            // Its Browser's young-generation limit (the host's
-            // configuration, kept on the Browser's WorkerRegistry): a
-            // host's limit reaches every agent of its Browser. The
-            // protocol's default for a worker with no Browser.
-            .young_generation_limit = if (start.browser_scope) |scope| (if (scope.existing(WorkerRegistry)) |registry| registry.young_generation_limit else engine.default_young_generation_limit) else engine.default_young_generation_limit,
         });
         self.agent = agent;
         thread.loop.agent = agent;
@@ -1081,9 +1076,6 @@ pub const WorkerHost = struct {
             .allocator = allocator,
             .deferred_teardown = &self.agent_host.deferred_teardown,
             .engine_task_sink = thread.loop.sink,
-            // Its Browser's young-generation limit, as a dedicated or shared
-            // worker's agent gets it (above).
-            .young_generation_limit = if (start.browser_scope) |scope| (if (scope.existing(WorkerRegistry)) |registry| registry.young_generation_limit else engine.default_young_generation_limit) else engine.default_young_generation_limit,
         });
         self.agent = agent;
         thread.loop.agent = agent;

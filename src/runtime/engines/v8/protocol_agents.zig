@@ -21,6 +21,7 @@ const protocol_modules = @import("protocol_modules.zig");
 const isolate_lifecycle = @import("isolate_lifecycle.zig");
 const isolate_allocator = @import("isolate_allocator.zig");
 const shadow_realm = @import("shadow_realm.zig");
+const young_generation = @import("young_generation.zig");
 const intl_binding = @import("intl_binding.zig");
 const observable_array = @import("observable_array.zig");
 const context_manager = @import("context_manager.zig");
@@ -181,11 +182,6 @@ const AgentRecord = struct {
     /// host may free them only after the agent is destroyed
     /// (`liveSnapshotAgents`, deinitializeEngine).
     from_snapshot: bool = false,
-    /// [young_generation_limit]: what the isolate's ResourceConstraints were
-    /// given for AgentOptions.young_generation_limit, in bytes of the whole
-    /// young generation after young_generation.zig's rounding; null: no
-    /// constraint. Written once, before the record is published.
-    young_generation_limit: ?usize = null,
     /// The agent's ShadowRealms (shadow_realm.zig): made with the agent,
     /// freed by its end. Null when ShadowRealm support was not installed.
     shadow_realms: ?*shadow_realm.ShadowRealmCallbackData = null,
@@ -557,14 +553,6 @@ fn warnSnapshotRefused(blob: []const u8) void {
     }
 }
 
-/// engine.youngGenerationLimitOf: the ceiling `agent`'s isolate was made
-/// with, null for none. From any thread: the record is found under the
-/// agents lock and the field never changes.
-pub fn youngGenerationLimitOf(agent: *Agent) ?usize {
-    const record = recordOf(@ptrCast(@alignCast(agent))) orelse return null;
-    return record.young_generation_limit;
-}
-
 /// Whether `agent` was restored from the engine's snapshot
 /// (engine.agentRestoredFromSnapshot): only then can its Window realms be
 /// restored from it.
@@ -578,18 +566,29 @@ pub fn restoredFromSnapshot(agent: *Agent) bool {
 /// was given - with [[CanBlock]] as the options say and the host's hooks
 /// installed. The isolate is not entered.
 pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
+    // RED (the next commit applies the build's limit, young_generation.limit):
+    // no agent is limited yet.
+    return createAgentWithYoungGeneration(options, null);
+}
+
+/// `createAgent`, with the young generation's limit given - bytes of the
+/// whole young generation, null for V8's own sizing - instead of read from
+/// the build. The product has one limit, the build's, and calls
+/// `createAgent`; this is the seam tests/v8/young_generation_limit_test.zig
+/// pins other values through, since a test binary is one build.
+pub fn createAgentWithYoungGeneration(options: engine.AgentOptions, young_generation_limit: ?usize) Error!*Agent {
     // [seeded_random] and [host_clock]: in the isolate's record before it
     // initializes - V8 may make its random number generator then. None of
     // either: an isolate exactly as before (v8_wrapper.cpp IsolateData).
-    // [young_generation_limit]: the isolate's ResourceConstraints, read once
-    // when its heap is configured (young_generation.zig); null leaves V8's
-    // own ceiling.
+    // The young generation's limit: the isolate's ResourceConstraints, read
+    // once when its heap is configured (young_generation.zig); null leaves
+    // V8's own ceiling.
     const isolate_options: ffi.IsolateOptions = .{
         .seeded = options.random_seed != null,
         .random_seed = options.random_seed orelse 0,
         .clock_context = if (options.clock) |agent_clock| agent_clock.context else null,
         .clock_wall_now = if (options.clock) |agent_clock| agent_clock.wall_now else null,
-        .max_young_generation_bytes = @import("young_generation.zig").maxYoungGenerationBytes(options.young_generation_limit),
+        .max_young_generation_bytes = young_generation.maxYoungGenerationBytes(young_generation_limit),
     };
     const isolate: *ffi.Isolate = blk: {
         if (options.from_snapshot) {
@@ -630,7 +629,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     const deferred_teardown = options.deferred_teardown orelse own_queue;
     const record = std.heap.c_allocator.create(AgentRecord) catch return error.OutOfMemory;
     errdefer std.heap.c_allocator.destroy(record);
-    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .young_generation_limit = if (isolate_options.max_young_generation_bytes == 0) null else isolate_options.max_young_generation_bytes, .deferred_teardown = deferred_teardown, .own_deferred_teardown = own_queue, .webassembly_compilations = .{ .allocator = options.allocator } };
+    record.* = .{ .isolate = isolate, .hooks = options.hooks, .host = options.host, .allocator = options.allocator, .from_snapshot = ffi.v8_Isolate_IsFromSnapshot(isolate), .deferred_teardown = deferred_teardown, .own_deferred_teardown = own_queue, .webassembly_compilations = .{ .allocator = options.allocator } };
     {
         std.Io.Threaded.mutexLockUncancelable(&agents_lock);
         defer std.Io.Threaded.mutexUnlock(&agents_lock);
