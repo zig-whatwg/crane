@@ -535,6 +535,10 @@ fn createNavigationDocument(
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
     giveReferrer(document_instance, browsing_ctx_ptr);
+    // Step 21: "Potentially free deferred fetch quota for document" (Fetch
+    // 4.12.1): a same-origin nested document shares its parent's quota, and
+    // its origin is known only now, after redirects.
+    dom_module.deferred_fetches.potentiallyFreeQuota(browsing_ctx_ptr, document_instance);
 
     const DocumentImpl = @import("Document.zig");
     if (window_instance) |window_inst| {
@@ -1530,8 +1534,7 @@ fn documentOriginOf(document: *runtime.Instance, allocator: std.mem.Allocator) ?
 /// Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate
 ///
 /// Steps not modelled, stated: source snapshot params and sandboxed
-/// navigation (1-7), deferred fetch quota (22), WebDriver BiDi, and lazy
-/// loading (11). Step 21's navigate event has no form data entry list.
+/// navigation (1-7), WebDriver BiDi, and lazy loading (11). Step 21's navigate event has no form data entry list.
 pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: NavigateOptions) void {
     // The navigation's start: the moment navigate is entered, which the new
     // document's time origin becomes (performance_timeline's
@@ -1913,6 +1916,18 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
             if (navigationById(list, id) == null or !isOngoing(integration, id)) return;
         }
     }
+    // Step 23: "If sourceDocument is navigable's container document, then
+    // reserve deferred fetch quota for navigable's container given url's
+    // origin" (Fetch 4.12.1; dom.deferred_fetches).
+    if (options.source_document) |source| if (integration.iframe_element) |raw| {
+        const container: *runtime.Instance = @ptrCast(@alignCast(raw));
+        if ((interfaces.Node.get_ownerDocument(container) catch null) == source) {
+            if (fetch_mod.internal.origins.serializedOriginOf(allocator, url)) |origin| {
+                defer allocator.free(origin);
+                dom_module.deferred_fetches.reserveQuota(browsing_context, container, origin);
+            } else |_| {}
+        }
+    };
     // Step 24: "In parallel": beforeunload, then the fetch. Deviation,
     // stated: "checking if unloading is canceled" runs now, inside the call
     // that navigates, not from a task - as Blink (FrameLoader::StartNavigation
