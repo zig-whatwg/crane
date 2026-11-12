@@ -461,6 +461,19 @@ pub const Keyword = enum(u16) {
     content_block_size,
     // View Transitions 2 §11.3 view-transition-name.
     match_element,
+    // Box 4 §3.3 margin-trim (inline_start/inline_end are shared above).
+    block_start,
+    block_end,
+    // Borders 4 §3.7 <corner-shape-value>.
+    round,
+    scoop,
+    bevel,
+    notch,
+    square,
+    squircle,
+    // Color HDR 1 §3.1 dynamic-range-limit (no-limit is shared above).
+    standard,
+    constrained,
 
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
@@ -1086,6 +1099,8 @@ pub const Value = union(enum) {
     text_shadow: *@import("text_shadow_values.zig").Shadows,
     /// Gaps 1 §4.5: a gap decoration list of 2+ items or with a repeat().
     gap_list: *@import("gap_decorations.zig").List,
+    /// Color HDR 1 §3.2: a dynamic-range-limit-mix(), specified or computed.
+    dynamic_range: *@import("dynamic_range_values.zig").Mix,
 
     /// Borrowed URL candidates in serialization order, valid while this
     /// value is retained. No sheet or document lookup is needed to use them.
@@ -1114,6 +1129,7 @@ pub const Value = union(enum) {
         if (self == .text_values) return self.text_values.ref();
         if (self == .text_shadow) return self.text_shadow.ref();
         if (self == .gap_list) return self.gap_list.ref();
+        if (self == .dynamic_range) return self.dynamic_range.ref();
         if (self == .box_numeric) return self.box_numeric.ref();
         if (self == .color) return self.color.retain();
         if (self == .content) return self.content.ref();
@@ -1159,6 +1175,7 @@ pub const Value = union(enum) {
         if (self == .text_values) return self.text_values.unref();
         if (self == .text_shadow) return self.text_shadow.unref();
         if (self == .gap_list) return self.gap_list.unref();
+        if (self == .dynamic_range) return self.dynamic_range.unref();
         if (self == .box_numeric) return self.box_numeric.unref();
         if (self == .color) return self.color.release();
         if (self == .content) return self.content.unref();
@@ -1271,6 +1288,7 @@ pub const Value = union(enum) {
             .decoration_keywords => |v| v.eql(b.decoration_keywords),
             .text_shadow => |v| v.eql(b.text_shadow),
             .gap_list => |v| v.eql(b.gap_list),
+            .dynamic_range => |v| v.eql(b.dynamic_range),
         };
     }
 
@@ -1337,6 +1355,7 @@ pub const Value = union(enum) {
             .text_values => |v| v.needsUnavailableMetrics(geometry_length),
             .text_shadow => |v| v.needsUnavailableMetrics(geometry_length),
             .gap_list => |v| v.needsUnavailableMetrics(geometry_length),
+            .dynamic_range => |v| v.needsUnavailableMetrics(geometry_length),
             .decoration_keywords => false,
         };
     }
@@ -1400,6 +1419,7 @@ pub const Value = union(enum) {
             .text_values => |v| v.needsTreeCounts(),
             .text_shadow => |v| v.needsTreeCounts(),
             .gap_list => |v| v.needsTreeCounts(),
+            .dynamic_range => |v| v.needsTreeCounts(),
             .decoration_keywords => false,
         };
     }
@@ -1461,6 +1481,7 @@ pub const Value = union(enum) {
             .text_values => |v| v.needsRandomBase(),
             .text_shadow => |v| v.needsRandomBase(),
             .gap_list => |v| v.needsRandomBase(),
+            .dynamic_range => |v| v.needsRandomBase(),
             .decoration_keywords => false,
         };
     }

@@ -39,6 +39,11 @@ pub fn consumeName(options: properties.ParseOptions, stream: *Stream) Allocator.
     return .{ .text = try values.SharedText.create(a, out.items) };
 }
 
+/// Conditional 5 §5.1 extended by Anchor Position 2 §2.1:
+/// normal | [ [ size | inline-size ] || scroll-state || anchored ],
+/// serialized in that canonical order (container-type-anchored-computed.html:
+/// "anchored size" reads back as "size anchored", Chrome 3/3 - the one
+/// browser shipping anchored).
 pub fn consumeType(options: properties.ParseOptions, stream: *Stream) Allocator.Error!?Value {
     const first = stream.peek();
     if (first.token_type == .ident and tokenizer.nameEql(first.value, "normal")) {
@@ -47,6 +52,7 @@ pub fn consumeType(options: properties.ParseOptions, stream: *Stream) Allocator.
     }
     var size: ?[]const u8 = null;
     var scroll_state = false;
+    var anchored = false;
     while (stream.peek().token_type == .ident) {
         const token = stream.next();
         if (tokenizer.nameEql(token.value, "size") or tokenizer.nameEql(token.value, "inline-size")) {
@@ -55,15 +61,32 @@ pub fn consumeType(options: properties.ParseOptions, stream: *Stream) Allocator.
         } else if (tokenizer.nameEql(token.value, "scroll-state")) {
             if (scroll_state) return null;
             scroll_state = true;
+        } else if (tokenizer.nameEql(token.value, "anchored")) {
+            if (anchored) return null;
+            anchored = true;
         } else return null;
     }
-    if (size == null and !scroll_state) return null;
-    var buffer: [32]u8 = undefined;
-    const text = if (size) |s| if (scroll_state)
-        std.fmt.bufPrint(&buffer, "{s} scroll-state", .{s}) catch unreachable
-    else
-        s else "scroll-state";
-    return .{ .text = try values.SharedText.create(options.allocator, text) };
+    if (size == null and !scroll_state and !anchored) return null;
+    // The longest: "inline-size scroll-state anchored".
+    var buffer: [48]u8 = undefined;
+    var text: std.ArrayList(u8) = .initBuffer(&buffer);
+    for ([_]?[]const u8{ size, if (scroll_state) "scroll-state" else null, if (anchored) "anchored" else null }) |part| if (part) |word| {
+        if (text.items.len != 0) text.appendAssumeCapacity(' ');
+        text.appendSliceAssumeCapacity(word);
+    };
+    return .{ .text = try values.SharedText.create(options.allocator, text.items) };
+}
+
+/// The size container type a computed container-type names, if any.
+pub const SizeType = enum { size, inline_size };
+
+pub fn sizeType(value: Value) ?SizeType {
+    if (value != .text) return null;
+    const text = value.text.bytes;
+    const word = text[0 .. std.mem.indexOfScalar(u8, text, ' ') orelse text.len];
+    if (std.mem.eql(u8, word, "size")) return .size;
+    if (std.mem.eql(u8, word, "inline-size")) return .inline_size;
+    return null;
 }
 
 pub fn consume(options: properties.ParseOptions, longhand: properties.Longhand, stream: *Stream) Allocator.Error!?Value {

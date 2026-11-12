@@ -1601,15 +1601,14 @@ fn containerEligibility(raw: *anyopaque, axis: css.math_values.Context.Container
             // container farther outward may still serve a hidden consumer.
             eligible = false;
         } else if (!eligible) {
-            const value = computed.get(.container_type);
-            const supports_axis = if (value == .text) blk: {
-                const text = value.text.bytes;
-                if (std.mem.eql(u8, text, "size") or std.mem.eql(u8, text, "size scroll-state")) break :blk true;
-                if (std.mem.eql(u8, text, "inline-size") or std.mem.eql(u8, text, "inline-size scroll-state")) {
+            // Conditional 5 §5.1: a size or inline-size container, with
+            // or without scroll-state and anchored (Anchor Position 2 §2.1).
+            const supports_axis = if (css.container_values.sizeType(computed.get(.container_type))) |kind| switch (kind) {
+                .size => true,
+                .inline_size => blk: {
                     const vertical = computed.keyword(.writing_mode) != .horizontal_tb;
                     break :blk axis == (if (vertical) css.math_values.Context.ContainerAxis.height else .width);
-                }
-                break :blk false;
+                },
             } else false;
             if (supports_axis and @import("content_visibility.zig").applies(element, computed.display())) eligible = true;
         }

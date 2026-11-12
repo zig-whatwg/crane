@@ -77,6 +77,19 @@ pub const Components = struct {
         return false;
     }
     pub fn serialize(self: *const Components, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
+        switch (self.property) {
+            .clip => return @import("clip_values.zig").serialize(self.items, out, allocator),
+            .aspect_ratio => return @import("sizing_values.zig").serializeAspectRatio(self.items, out, allocator),
+            // SVG 2 §13.5.6: "a comma separated list".
+            .stroke_dasharray => {
+                for (self.items, 0..) |item, i| {
+                    if (i != 0) try out.appendSlice(allocator, ", ");
+                    try properties.serializeValue(self.property, item, out, allocator);
+                }
+                return;
+            },
+            else => {},
+        }
         var count = self.items.len;
         // Text4 §6.3.4: after defaults to before; before defaults to auto.
         if (self.property == .hyphenate_limit_chars) {
@@ -93,7 +106,12 @@ pub const Components = struct {
         }
     }
     pub fn compute(self: *const Components, allocator: Allocator, context: anytype) Allocator.Error!*Components {
-        var computed: [4]Value = undefined;
+        // Most lists hold at most four components; a <dasharray> may hold
+        // any number.
+        var inline_buffer: [4]Value = undefined;
+        const heap = self.items.len > inline_buffer.len;
+        const computed = if (heap) try allocator.alloc(Value, self.items.len) else inline_buffer[0..];
+        defer if (heap) allocator.free(computed);
         var count: usize = 0;
         defer for (computed[0..count]) |item| item.release();
         for (self.items) |item| {

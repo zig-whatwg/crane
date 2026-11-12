@@ -1623,7 +1623,7 @@ const Builder = struct {
     /// element's writing mode and direction.
     fn target(self: *const Builder, l: Longhand) Longhand {
         const lg = l.logical() orelse return l;
-        return properties.physicalLonghand(lg.group, properties.physicalSide(lg.side, self.writing_mode, self.direction));
+        return properties.physicalOf(lg, self.writing_mode, self.direction);
     }
 
     /// Cascade 5 sections 6-7.3: the specified value of physical longhand
@@ -1885,6 +1885,8 @@ const Builder = struct {
         if (v == .box_numeric) return .{ .box_numeric = try v.box_numeric.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         // Gaps 1 §§4.1-4.3: each value as a plain value of `l` computes.
         if (v == .gap_list) return .{ .gap_list = try v.gap_list.compute(self.ctx.allocator, l, ComponentContext.init(self, source)) };
+        // Color HDR 1 §3.3: a mix computes to its normalized percentages.
+        if (v == .dynamic_range) return v.dynamic_range.compute(self.ctx.allocator, ComponentContext.init(self, source));
         if (v == .animation_list) {
             // CSS Scoping 1 tree-scoped references: animation-name keeps the
             // tree scope of its winning declaration (as font-family's named
@@ -2015,6 +2017,12 @@ const Builder = struct {
             },
             .fill, .stroke => return @import("svg_paint.zig").compute(v, self.ctx.allocator, .{ .scheme = self.used_scheme, .math = self.computationContext(l, v, source) }),
             .stroke_width => if (v == .number) return Value.px(v.number),
+            // SVG 2 §13.5.6: "numbers converted to absolute lengths first".
+            .stroke_dasharray => if (v == .number) return Value.px(v.number),
+            // Borders 4 §3.7: "the corresponding superellipse() value".
+            .corner_top_left_shape, .corner_top_right_shape, .corner_bottom_right_shape, .corner_bottom_left_shape, .corner_start_start_shape, .corner_start_end_shape, .corner_end_start_shape, .corner_end_end_shape => if (v == .keyword) {
+                if (@import("corner_shape_values.zig").parameter(v.keyword)) |k| return .{ .number = k };
+            },
             .font_size => return Value.px(self.computeFontSize(v)),
             .font_weight => return .{ .number = self.computeFontWeight(v) },
             .font_width => return @import("font_width.zig").compute(v),

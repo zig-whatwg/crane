@@ -504,6 +504,27 @@ pub fn parse(options: properties.ParseOptions, stream: *properties.Stream) Alloc
     return .{ .shape = shape };
 }
 
+/// SVG 2 §9.3.2's d property as the browsers ship it: path(<string>) alone,
+/// with no fill rule (Blink ConsumePathOrNone, Gecko's SVGPathData d
+/// value), whose string is the whole path data.
+pub fn consumePathData(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?*Shape {
+    const token = stream.peek();
+    if (token.token_type != .function or !tokenizer.nameEql(token.value, "path")) return null;
+    _ = stream.next();
+    if (stream.next().token_type != .left_paren) return null;
+    const t = stream.next();
+    if (t.token_type != .string) return null;
+    if (stream.peek().token_type != .right_paren) return null;
+    const decoded = try tokenizer.decode(options.allocator, t.stringContents());
+    defer options.allocator.free(decoded);
+    const text = (try @import("path_values.zig").parse(options.allocator, decoded)) orelse return null;
+    errdefer text.unref();
+    _ = stream.next();
+    const result = try options.allocator.create(Shape);
+    result.* = .{ .allocator = options.allocator, .data = .{ .path = .{ .evenodd = false, .text = text } } };
+    return result;
+}
+
 /// The shared CSS Shapes §3 grammar, without the owning property's boxes.
 pub fn consumeBasicShape(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?*Shape {
     return parseShape(options, stream);

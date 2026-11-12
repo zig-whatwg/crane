@@ -68,5 +68,16 @@ pub fn parse(options: properties.ParseOptions, namespace: []const u8, element: [
     const property = lookup(namespace, element, attribute) orelse return false;
     var context = options;
     context.svg_presentation = true;
+    if (std.mem.eql(u8, attribute, "d")) {
+        // SVG 2 §9.3.2: the d attribute's value is path data, which the d
+        // property holds as path(<string>) (Blink's SVGPathElement maps the
+        // attribute to a CSSPathValue; Gecko's d presentation hint the same).
+        var wrapped: std.ArrayList(u8) = .empty;
+        defer wrapped.deinit(options.allocator);
+        try wrapped.appendSlice(options.allocator, "path(");
+        try @import("style_values.zig").appendString(text, &wrapped, options.allocator);
+        try wrapped.append(options.allocator, ')');
+        return properties.parseDeclaration(context, property, wrapped.items, out);
+    }
     return properties.parseDeclaration(context, property, text, out);
 }
