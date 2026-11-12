@@ -77,10 +77,15 @@ pub const Contents = struct {
     }
 };
 
-/// The futex calls' Io, as runtime.TaskSink's: a futex wait and wake are
-/// plain system calls on an address.
-fn futexIo() std.Io {
-    return std.Io.Threaded.global_single_threaded.io();
+/// The futex calls, as runtime.TaskSink makes them: a futex wait and wake
+/// are plain system calls on an address, the same through the standard
+/// library's static Io (synchronisation, not OS access: lint-platform).
+fn futexWake(word: *std.atomic.Value(u32)) void {
+    std.Io.Threaded.global_single_threaded.io().futexWake(u32, &word.raw, 1);
+}
+
+fn futexWait(word: *std.atomic.Value(u32), expected: u32) void {
+    std.Io.Threaded.global_single_threaded.io().futexWaitTimeout(u32, &word.raw, expected, .none) catch {};
 }
 
 /// One synchronous clipboard read (see the file comment). The allocator
@@ -139,7 +144,7 @@ pub const ReadRequest = struct {
     /// in that order, so the word is still there to wake.
     fn finish(self: *ReadRequest, state: u32) void {
         self.state.store(state, .release);
-        futexIo().futexWake(u32, &self.state.raw, 1);
+        futexWake(&self.state);
         self.release();
     }
 
@@ -149,7 +154,7 @@ pub const ReadRequest = struct {
         while (true) {
             const state = self.state.load(.acquire);
             if (state != pending) return state == delivered;
-            futexIo().futexWaitTimeout(u32, &self.state.raw, pending, .none) catch {};
+            futexWait(&self.state, pending);
         }
     }
 
