@@ -70,6 +70,16 @@ inline fn metaOf(node: *NodeBase) ?*runtime.Instance {
 fn postConnectionSteps(node: *NodeBase) void {
     const meta = metaOf(node) orelse return;
     if (!inDocumentTree(node)) return;
+    // HTML 4.2.5.1, the "referrer" metadata name, "if any meta element is
+    // inserted into the document": run in the post-connection steps, as
+    // Chrome and Safari do - a script inserted before the meta in one
+    // fragment fetches with the old policy, one after it with the new
+    // (Node-append-meta-referrer-and-script-from-fragment.html: Chrome 157
+    // and Safari 27.2 pass, Firefox 160 fails; wpt.fyi stable 24ddf405a0,
+    // 2026-11-11). Blink's HTMLMetaElement::DidNotifySubtreeInsertionsToDocument
+    // and WebKit's HTMLMetaElement::postConnectionSteps; whatwg/html#10241
+    // (open) proposes the post-insertion steps for the meta steps.
+    referrerMetadataName(meta);
     if (namedColorScheme(meta)) colorSchemesChanged(meta);
     defaultStyleState(meta);
 }
@@ -163,8 +173,8 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// user agent must run the algorithm appropriate for that state."
 ///
 /// Content Language, Refresh and Content Security Policy are modelled here;
-/// the default style state runs in the post-connection steps
-/// (`defaultStyleState`); the other states (encoding declaration,
+/// the default style state and the "referrer" metadata name run in the
+/// post-connection steps (`postConnectionSteps`); the other states (encoding declaration,
 /// set-cookie, X-UA-Compatible) do nothing.
 fn insertionSteps(node: *NodeBase) void {
     if (node.node_type != 1) return;
@@ -177,9 +187,6 @@ fn insertionSteps(node: *NodeBase) void {
     // now in a document tree - not a shadow tree
     // (attr-meta-http-equiv-refresh/not-in-shadow-tree).
     if (!inDocumentTree(node)) return;
-    // The "referrer" metadata name runs for a meta element inserted into the
-    // document.
-    referrerMetadataName(instance);
     // An http-equiv that cannot be read names no state we can rule out: it
     // may be the Content Security Policy state, so the document's CSP list
     // fails closed (`pragmaUnreadable`). It used to `catch return`, and the
