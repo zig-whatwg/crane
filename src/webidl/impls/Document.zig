@@ -254,7 +254,6 @@ pub fn installHooks() void {
         .end_load = &lifecycleEndLoad,
         .propagate_abort = &lifecyclePropagateAbort,
         .destroy = &lifecycleDestroy,
-        .is_destroyed = &lifecycleIsDestroyed,
         .set_about_base_url = &lifecycleSetAboutBaseUrl,
         .about_fallback_base_url = &lifecycleAboutFallbackBaseUrl,
         .declarative_refresh = &lifecycleDeclarativeRefresh,
@@ -4390,13 +4389,6 @@ fn lifecycleDestroy(document: *runtime.Instance) void {
     internal.kept_in_bfcache = false;
     @import("html").script_execution.discardDocumentScripts(document);
     discardDocumentParser(internal);
-}
-
-/// dom.document_lifecycle: whether "destroy a document" has run on
-/// `document` (its `destroyed` flag, set by lifecycleDestroy).
-fn lifecycleIsDestroyed(document: *runtime.Instance) bool {
-    const internal = getInternal(document) orelse return false;
-    return internal.destroyed;
 }
 
 /// dom.document_lifecycle: set `document`'s about base URL (a copy).
