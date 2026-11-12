@@ -73,8 +73,12 @@
 //! Element owns the holder and supplies its address through the hook slot it
 //! already installs for its ElementData (dom.element_data's
 //! `rare_holder`). What each field means is its owner's: Element's fields
-//! are written only by Element, HTMLElement's (style, nonce,
-//! element_internals and their flags) only by HTMLElement.
+//! are written only by Element; element_internals and its flags only by
+//! HTMLElement; an HTML element's style only by the ElementCSSInlineStyle
+//! mixin's impl, and every includer's nonce only by the
+//! HTMLOrSVGOrMathMLElement mixin's (HTMLElement's teardown releases an HTML
+//! element's style and nonce; this module's `destroy` frees any element's
+//! nonce bytes).
 const std = @import("std");
 
 const runtime = @import("runtime");
@@ -92,8 +96,9 @@ pub const Field = enum(u5) {
     /// lane cg1, N1). The grid reads it 58,137 times in 20 screens: bit 0,
     /// no popcount.
     class_list = 0,
-    /// HTMLElement: element.style's CSSStyleProperties ([SameObject];
-    /// Blink's kCssomWrapper), with its generation below.
+    /// An HTML element's element.style CSSStyleProperties ([SameObject];
+    /// Blink's kCssomWrapper), with its generation below: made by the
+    /// ElementCSSInlineStyle mixin's impl, released by HTMLElement's teardown.
     style = 1,
     style_generation,
     /// Element: the cached NamedNodeMap of `attributes` (Blink's
@@ -123,9 +128,10 @@ pub const Field = enum(u5) {
     /// slot assigns; readers that find none read dom.slot_helpers.unassigned
     /// (Blink's FlatTreeNodeData). A block of its own.
     slottable,
-    /// HTMLElement: HTML 2.5.6 [[CryptographicNonce]] (Blink's kNonce). Null
-    /// is unused/removed; an explicitly empty value may accompany a
-    /// nonempty attribute that must hide on connection. Bytes of their own.
+    /// HTMLOrSVGOrMathMLElement: HTML 2.5.6 [[CryptographicNonce]] of an
+    /// HTML, SVG or MathML element (Blink's kNonce). Null is unused/removed;
+    /// an explicitly empty value may accompany a nonempty attribute that
+    /// must hide on connection. Bytes of their own, freed by `destroy`.
     nonce,
     /// HTMLElement: the ElementInternals attachInternals() made (Blink's
     /// kElementInternals).
@@ -146,10 +152,9 @@ pub const Field = enum(u5) {
     part,
     /// ElementCSSInlineStyle's attributeStyleMap (Blink's kCssomMapWrapper).
     attribute_style_map,
-    /// ElementCSSInlineStyle's style object of an element whose impl does
-    /// not keep it (SVGElement, MathMLElement): the generated cache's, owned
-    /// by its wrapper - never HTMLElement's `style`, which the element keeps
-    /// and frees whole.
+    /// ElementCSSInlineStyle's style object of an SVG or MathML element:
+    /// the generated cache's, owned by its wrapper - never an HTML element's
+    /// `style`, which the element keeps and frees whole.
     inline_style,
     /// SVGElement's className SVGAnimatedString.
     svg_class_name,
