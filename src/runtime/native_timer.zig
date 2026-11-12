@@ -49,6 +49,24 @@
 //! The id map stays for clearTimeout and remainingMs, which look a timer up
 //! by the id script holds (`TimerIdMap`).
 //!
+//! ## Background timers
+//!
+//! A background timer (`setBackgroundTimeout`, runtime.TimerVTable) is the
+//! engine's own housekeeping: a Document dropping its shared attribute
+//! blocks 10 s after its parse, as Blink's and WebKit's Documents do
+//! (dom.attribute_block_cache). It fires as any timer does - in firing
+//! order with the others, when a poll finds it due - but an armed one is not
+//! pending work. So it is kept in a heap of its own (`background`), which the
+//! questions an event loop asks to decide whether it is idle and how long to
+//! wait never read: `getActiveTimerCount`, `getNextTimerDeadline`,
+//! `nextDeadlineNs`. A loop with only background timers armed is idle, does
+//! not wake for them, and does not move a virtual clock to them; when the
+//! loop turns for its own reasons after one's deadline, the poll fires it.
+//! There is no spec for this - it is libuv's unreferenced handle (uv_unref)
+//! and Node's `timeout.unref()`. A browser's task scheduler needs none: a
+//! browser never ends because its loop went idle, where Crane's hosts run a
+//! page until it has (Browser.runEventLoopBlocking).
+//!
 //! ## Re-entrancy
 //!
 //! A timer callback may schedule or cancel timers - `setInterval` reschedules itself
@@ -255,11 +273,18 @@ const Entry = struct {
     /// wall-clock deadline moves under an NTP step and the timer fires early or
     /// never. i128 to match the monotonic clock's nanoseconds (`nowNs`).
     deadline_ns: i128,
-    /// Its place in `NativeTimerManager.heap`, kept by every move there - what
-    /// WebKit's ThreadTimerHeapItem keeps as heapIndex, so that clearTimeout
-    /// finds it without a search.
+    /// Its place in its heap (`NativeTimerManager.heap`, or `.background`
+    /// for a background timer), kept by every move there - what WebKit's
+    /// ThreadTimerHeapItem keeps as heapIndex, so that clearTimeout finds it
+    /// without a search.
     heap_index: usize,
+    /// A background timer (`setBackgroundTimeout`): in `background`, not
+    /// `heap`.
+    background: bool = false,
 };
+
+/// A binary min-heap of timers in firing order (`firesBefore`).
+const Heap = std.ArrayListUnmanaged(*Entry);
 
 /// Whether `a` fires before `b`: by deadline, then by id.
 ///
@@ -319,7 +344,11 @@ pub const NativeTimerManager = struct {
     /// (`firesBefore`): `heap[0]` fires first, and each entry's `heap_index`
     /// is its place. Given back after a burst as the id map is
     /// (`reserveHeapSlot`).
-    heap: std.ArrayListUnmanaged(*Entry) = .empty,
+    heap: Heap = .empty,
+    /// Every armed BACKGROUND timer, a heap of the same kind (the file's
+    /// comment): fired by a poll in firing order with `heap`'s, and read by
+    /// nothing that decides whether the loop is idle or how long it waits.
+    background: Heap = .empty,
     probe: Probe = .{},
     /// What every deadline is read against (`nowNs`): arming, polling, the
     /// next deadline and a suspension's remaining wait (`remainingMs`).
@@ -353,38 +382,49 @@ pub const NativeTimerManager = struct {
         // Take the timers first: a drop may free something whose own
         // teardown reaches this manager (a clearTimeout of a sibling timer),
         // which then finds nothing.
-        var heap = self.heap;
+        var heaps = [2]Heap{ self.heap, self.background };
         var timers = self.timers;
         self.heap = .empty;
+        self.background = .empty;
         self.timers = .empty;
         self.initialized = false;
-        for (heap.items) |entry| {
-            if (entry.drop) |drop| drop(entry.user_data);
-            self.allocator.destroy(entry);
+        for (&heaps) |*heap| {
+            for (heap.items) |entry| {
+                if (entry.drop) |drop| drop(entry.user_data);
+                self.allocator.destroy(entry);
+            }
+            heap.deinit(self.allocator);
         }
-        heap.deinit(self.allocator);
         timers.deinit(self.allocator);
         self.allocator.destroy(self);
     }
 
     /// Schedule a one-shot timer. Returns 0 on failure.
     pub fn setTimeout(self: *Self, ms: u64, callback: TimerCallback, user_data: ?*anyopaque) TimerId {
-        return self.arm(ms, callback, user_data, null);
+        return self.arm(ms, callback, user_data, null, false);
     }
 
     /// Schedule a one-shot timer that owns `user_data`: `drop(user_data)`
     /// runs if this manager ends with the timer unfired (`deinit`). Returns
     /// 0 on failure, and the caller still owns `user_data`.
     pub fn setTimeoutOwned(self: *Self, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: TimerDrop) TimerId {
-        return self.arm(ms, callback, user_data, drop);
+        return self.arm(ms, callback, user_data, drop, false);
     }
 
-    fn arm(self: *Self, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: ?TimerDrop) TimerId {
+    /// Schedule a one-shot background timer (the file's comment) that owns
+    /// `user_data` as `setTimeoutOwned`'s does. Returns 0 on failure, and
+    /// the caller still owns `user_data`.
+    pub fn setBackgroundTimeout(self: *Self, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: TimerDrop) TimerId {
+        return self.arm(ms, callback, user_data, drop, true);
+    }
+
+    fn arm(self: *Self, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: ?TimerDrop, background: bool) TimerId {
         if (!self.initialized) return 0;
 
         // Room in both first: a timer is in both or in neither.
+        const heap = if (background) &self.background else &self.heap;
         self.timers.ensureUnusedCapacity(self.allocator, 1) catch return 0;
-        self.reserveHeapSlot() catch return 0;
+        self.reserveHeapSlot(heap) catch return 0;
         const id = self.next_id;
         const entry = self.allocator.create(Entry) catch return 0;
         entry.* = .{
@@ -394,9 +434,10 @@ pub const NativeTimerManager = struct {
             .id = id,
             .deadline_ns = self.nowNs() + @as(i128, @intCast(ms)) * std.time.ns_per_ms,
             .heap_index = undefined,
+            .background = background,
         };
         self.timers.putAssumeCapacityNoClobber(id, entry);
-        self.heapPushAssumeCapacity(entry);
+        heapPushAssumeCapacity(heap, entry);
 
         // Only consume the id once the timer is actually registered, so a failed
         // schedule does not burn one.
@@ -415,7 +456,7 @@ pub const NativeTimerManager = struct {
 
         const kv = self.timers.fetchRemove(id) orelse return false;
         const entry = kv.value;
-        _ = self.heapRemove(entry.heap_index);
+        _ = heapRemove(self.heapOf(entry), entry.heap_index);
         self.allocator.destroy(entry);
         return true;
     }
@@ -452,20 +493,16 @@ pub const NativeTimerManager = struct {
         const armed_before = self.next_id;
         var invoked = false;
 
-        while (self.heap.items.len > 0) {
-            // The top afresh each time: an earlier callback may have cleared
-            // or armed timers.
-            const entry = self.heap.items[0];
-            self.noteSlots(1);
-            if (entry.deadline_ns > now or entry.id >= armed_before) break;
-
+        // The tops afresh each time: an earlier callback may have cleared or
+        // armed timers.
+        while (self.nextDue(now, armed_before)) |entry| {
             const cb = entry.callback;
             const data = entry.user_data;
 
             // Remove and free BEFORE invoking. One-shot timers must not be visible
             // to clearTimeout from inside their own callback, and the callback may
             // reschedule under a new id.
-            self.noteSlots(self.heapRemove(0));
+            self.noteSlots(heapRemove(self.heapOf(entry), 0));
             _ = self.timers.remove(entry.id);
             self.allocator.destroy(entry);
 
@@ -523,6 +560,7 @@ pub const NativeTimerManager = struct {
     const vtable: TimerVTable = .{
         .setTimeout = setTimeoutVTable,
         .setTimeoutOwned = setTimeoutOwnedVTable,
+        .setBackgroundTimeout = setBackgroundTimeoutVTable,
         .clearTimeout = clearTimeoutVTable,
         .remainingMs = remainingMsVTable,
         .reserveId = reserveIdVTable,
@@ -573,6 +611,11 @@ pub const NativeTimerManager = struct {
         return self.setTimeoutOwned(ms, callback, user_data, drop);
     }
 
+    fn setBackgroundTimeoutVTable(ctx: *anyopaque, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: TimerDrop) TimerId {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        return self.setBackgroundTimeout(ms, callback, user_data, drop);
+    }
+
     fn clearTimeoutVTable(ctx: *anyopaque, id: TimerId) bool {
         const self: *Self = @ptrCast(@alignCast(ctx));
         return self.clearTimeout(id);
@@ -583,7 +626,8 @@ pub const NativeTimerManager = struct {
     }
 
     /// Milliseconds until the next live timer is due, or null if none. 0 means one
-    /// is already due. The heap's top.
+    /// is already due. The heap's top: a background timer is nothing a loop
+    /// waits for (the file's comment).
     pub fn getNextTimerDeadline(self: *Self) ?u64 {
         if (!self.initialized) return null;
         if (self.heap.items.len == 0) return null;
@@ -597,7 +641,8 @@ pub const NativeTimerManager = struct {
     /// When the next live timer is due, exactly: its deadline on the
     /// manager's clock (ns), or null if none. What an event loop
     /// fast-forwards a virtual clock to - `getNextTimerDeadline`'s whole
-    /// milliseconds, rounded down, would land short of it.
+    /// milliseconds, rounded down, would land short of it. Never a
+    /// background timer's: no clock moves to one.
     pub fn nextDeadlineNs(self: *Self) ?i128 {
         if (!self.initialized) return null;
         if (self.heap.items.len == 0) return null;
@@ -619,9 +664,17 @@ pub const NativeTimerManager = struct {
         return std.math.cast(c_int, due_in) orelse std.math.maxInt(c_int);
     }
 
+    /// The armed timers a loop is busy for: every one but the background
+    /// timers, which are not pending work (the file's comment).
     pub fn getActiveTimerCount(self: *Self) usize {
         if (!self.initialized) return 0;
         return self.heap.items.len;
+    }
+
+    /// The armed background timers.
+    pub fn getBackgroundTimerCount(self: *Self) usize {
+        if (!self.initialized) return 0;
+        return self.background.items.len;
     }
 
     /// Present for API compatibility. libuv needed extra loop turns to run close
@@ -634,12 +687,15 @@ pub const NativeTimerManager = struct {
     /// Whether the heap and the id map agree: the same timers, each at its
     /// `heap_index`, none firing before its parent. For tests.
     pub fn isConsistent(self: *const Self) bool {
-        const items = self.heap.items;
-        if (items.len != self.timers.count()) return false;
-        for (items, 0..) |entry, i| {
-            if (entry.heap_index != i) return false;
-            if (self.timers.get(entry.id) != entry) return false;
-            if (i > 0 and firesBefore(entry, items[(i - 1) / 2])) return false;
+        if (self.heap.items.len + self.background.items.len != self.timers.count()) return false;
+        for ([2]*const Heap{ &self.heap, &self.background }) |heap| {
+            const items = heap.items;
+            for (items, 0..) |entry, i| {
+                if (entry.heap_index != i) return false;
+                if (entry.background != (heap == &self.background)) return false;
+                if (self.timers.get(entry.id) != entry) return false;
+                if (i > 0 and firesBefore(entry, items[(i - 1) / 2])) return false;
+            }
         }
         return true;
     }
@@ -652,41 +708,67 @@ pub const NativeTimerManager = struct {
         if (builtin.is_test) self.probe.slots += slots;
     }
 
-    /// Room for one more timer in the heap. An array at less than a sixth of
+    /// The heap `entry` is in.
+    fn heapOf(self: *Self, entry: *const Entry) *Heap {
+        return if (entry.background) &self.background else &self.heap;
+    }
+
+    /// The timer a poll fires next: the first in firing order, of both
+    /// heaps, that was due at `now` and armed before `armed_before`; null
+    /// when neither top is. Nothing due can sit behind a top that is not:
+    /// a top armed since has a deadline of at least `now`.
+    fn nextDue(self: *Self, now: i128, armed_before: TimerId) ?*Entry {
+        var due: ?*Entry = null;
+        if (self.heap.items.len > 0) {
+            const top = self.heap.items[0];
+            self.noteSlots(1);
+            if (top.deadline_ns <= now and top.id < armed_before) due = top;
+        }
+        if (self.background.items.len > 0) {
+            const top = self.background.items[0];
+            self.noteSlots(1);
+            if (top.deadline_ns <= now and top.id < armed_before) {
+                if (due == null or firesBefore(top, due.?)) due = top;
+            }
+        }
+        return due;
+    }
+
+    /// Room for one more timer in `heap`. An array at less than a sixth of
     /// its capacity is copied into a smaller one first, as `TimerIdMap`
     /// rebuilds its table: positions, and so `heap_index`es, stay.
-    fn reserveHeapSlot(self: *Self) Allocator.Error!void {
-        const len = self.heap.items.len;
-        if (self.heap.capacity > shrink_floor and len * min_load < self.heap.capacity) {
+    fn reserveHeapSlot(self: *Self, heap: *Heap) Allocator.Error!void {
+        const len = heap.items.len;
+        if (heap.capacity > shrink_floor and len * min_load < heap.capacity) {
             if (self.allocator.alloc(*Entry, @max(len * 2, shrink_floor))) |smaller| {
-                @memcpy(smaller[0..len], self.heap.items);
-                self.heap.deinit(self.allocator);
-                self.heap = .{ .items = smaller[0..len], .capacity = smaller.len, .pointer_stability = .{} };
+                @memcpy(smaller[0..len], heap.items);
+                heap.deinit(self.allocator);
+                heap.* = .{ .items = smaller[0..len], .capacity = smaller.len, .pointer_stability = .{} };
             } else |_| {}
         }
-        try self.heap.ensureUnusedCapacity(self.allocator, 1);
+        try heap.ensureUnusedCapacity(self.allocator, 1);
     }
 
-    fn heapPushAssumeCapacity(self: *Self, entry: *Entry) void {
-        entry.heap_index = self.heap.items.len;
-        self.heap.appendAssumeCapacity(entry);
-        _ = self.siftUp(entry.heap_index);
+    fn heapPushAssumeCapacity(heap: *Heap, entry: *Entry) void {
+        entry.heap_index = heap.items.len;
+        heap.appendAssumeCapacity(entry);
+        _ = siftUp(heap, entry.heap_index);
     }
 
-    /// Take the entry at `index` out of the heap: the last entry takes its
+    /// Take the entry at `index` out of `heap`: the last entry takes its
     /// place and moves up or down to where it belongs. The slots the move
     /// compared.
-    fn heapRemove(self: *Self, index: usize) usize {
-        const last = self.heap.pop().?;
-        if (index == self.heap.items.len) return 0;
-        self.heap.items[index] = last;
+    fn heapRemove(heap: *Heap, index: usize) usize {
+        const last = heap.pop().?;
+        if (index == heap.items.len) return 0;
+        heap.items[index] = last;
         last.heap_index = index;
-        if (index > 0 and firesBefore(last, self.heap.items[(index - 1) / 2])) return self.siftUp(index);
-        return self.siftDown(index);
+        if (index > 0 and firesBefore(last, heap.items[(index - 1) / 2])) return siftUp(heap, index);
+        return siftDown(heap, index);
     }
 
-    fn siftUp(self: *Self, start: usize) usize {
-        const items = self.heap.items;
+    fn siftUp(heap: *Heap, start: usize) usize {
+        const items = heap.items;
         const entry = items[start];
         var i = start;
         var steps: usize = 0;
@@ -702,8 +784,8 @@ pub const NativeTimerManager = struct {
         return steps;
     }
 
-    fn siftDown(self: *Self, start: usize) usize {
-        const items = self.heap.items;
+    fn siftDown(heap: *Heap, start: usize) usize {
+        const items = heap.items;
         const entry = items[start];
         var i = start;
         var steps: usize = 0;

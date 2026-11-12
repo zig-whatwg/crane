@@ -29,10 +29,16 @@ const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
-/// A parser run's shared attribute blocks (dom.element_data.SharingCache):
-/// the parser makes one, hands it to `setParsed` for each element it
-/// creates, and deinits it when its run ends, on every path.
+/// The shared attribute blocks a parser's elements take theirs from
+/// (dom.element_data.SharingCache): its document's cache, which the parser
+/// reaches through its run (`ParserRun.blocks()`) for each element it
+/// creates.
 pub const SharingCache = @import("element_data.zig").SharingCache;
+
+/// A parser run's share in its document's cache (dom.attribute_block_cache.
+/// Run): `begin` with the document when the run starts, `blocks()` for
+/// `setParsed`, `end` on every path the run ends by.
+pub const ParserRun = @import("attribute_block_cache.zig").Run;
 
 pub const Error = error{ InvalidStateError, OutOfMemory };
 
@@ -93,9 +99,10 @@ pub fn append(element: *runtime.Instance, attribute: Attribute) Error!void {
 
 /// HTML 13.2.6.1 "create an element for a token": "Append each attribute in
 /// the given token to element", for an element the parser just created,
-/// with no attributes yet. The list is set at once - from `cache`, shared
-/// with every element of the parse whose set is equal - and then "handle
-/// attribute changes" runs for each attribute, in order. Blink (Element::
+/// with no attributes yet. The list is set at once - from `cache`, its
+/// document's (`ParserRun.blocks()`), shared with every element whose set is
+/// equal - and then "handle attribute changes" runs for each attribute, in
+/// order. Blink (Element::
 /// ParserSetAttributes) and WebKit (Element::parserSetAttributes) do the
 /// same: their elements' change steps see the whole token's list.
 pub fn setParsed(element: *runtime.Instance, attributes: []const Attribute, cache: ?*SharingCache) Error!void {
