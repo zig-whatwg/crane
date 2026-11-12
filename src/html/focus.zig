@@ -758,6 +758,17 @@ pub fn focusMethod(element: *Instance) void {
     // false, then return."
     const document = nodeDocument(element) orelse return;
     if (!allowFocusSteps(document)) return;
+    // The browsers' selection side of focus(), BEFORE the focus events: a
+    // root editable element about to take the focus gets the caret at its
+    // start unless the selection is already in it, so its focus listeners
+    // see the selection they will have afterwards (Blink and WebKit
+    // Element::UpdateSelectionOnFocus with kRestore, Gecko
+    // HTMLEditor::OnFocus -> InitializeSelection; no spec text, golden rule
+    // 2 - see selection_focus.caretOnFocus; selection/contenteditable/
+    // initial-selection-during-focus-event-propagation.html, Chrome 157 and
+    // Firefox 160 3/3). Selection.collapse's own editable focus step
+    // focuses it; step 2 then finds it focused.
+    @import("selection_focus.zig").caretOnFocus(element);
     // Step 2: "Run the focusing steps for this."
     focusingSteps(element, null, .other);
     // Steps 3-4 (indicate focus, scroll into view): nothing is rendered.
