@@ -994,7 +994,9 @@ const preferred_shorthands = blk: {
     for (fields) |f| {
         const s: Shorthand = @fromBackingInt(@intCast(f.value));
         // Legacy one-member aliases are emitted with their canonical longhand.
-        if (s == .all or s == ._webkit_text_orientation or s == ._webkit_transform or s == ._webkit_perspective or s.isLegacyShorthand()) continue;
+        // color-adjust (Color Adjustment 1 §3.1) is one too: cssText keeps
+        // print-color-adjust, as Firefox and Safari serialize it.
+        if (s == .all or s == ._webkit_text_orientation or s == ._webkit_transform or s == ._webkit_perspective or s == .color_adjust or s.isLegacyShorthand()) continue;
         out[n] = s;
         n += 1;
     }
@@ -1029,6 +1031,7 @@ fn logicalGroup(l: Longhand) ?properties.Logical.Group {
         .min_width, .min_height => return .min_size,
         .max_width, .max_height => return .max_size,
         .overflow_x, .overflow_y => return .overflow,
+        .overscroll_behavior_x, .overscroll_behavior_y => return .overscroll,
         else => {},
     }
     const sides = [_]PhysicalSides{
@@ -1361,6 +1364,7 @@ test "page-break repair preserves every preferred shorthand in its original orde
         "margin-block",
         "margin-inline",
         "overflow",
+        "overscroll-behavior",
         "padding-block",
         "padding-inline",
         "place-content",
@@ -1385,6 +1389,7 @@ test "page-break repair preserves every preferred shorthand in its original orde
         "text-spacing",
         "text-wrap",
         "white-space",
+        "-webkit-text-stroke",
     };
     try std.testing.expectEqual(expected.len, preferred_shorthands.len);
     for (expected, preferred_shorthands) |name, shorthand|

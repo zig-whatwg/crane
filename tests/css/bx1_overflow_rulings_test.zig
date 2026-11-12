@@ -35,10 +35,11 @@ test "overlay from a real pending value converts at computed value time" {
     try h.expect(style, "overflow-x", "auto", testing.allocator);
 }
 
-test "CSSOM starts with accent color and puts every prefixed longhand after z index" {
+test "CSSOM starts with accent color and puts every prefixed longhand after zoom" {
     const names = css.properties.lexicographic;
     try testing.expectEqualStrings("accent-color", names[0].name());
-    const last_standard = std.mem.indexOfScalar(css.properties.Longhand, &names, .z_index).?;
+    // zoom (Viewport 1 §3.1, lane cssprop1) sorts after z-index.
+    const last_standard = std.mem.indexOfScalar(css.properties.Longhand, &names, .zoom).?;
     try testing.expect(last_standard + 1 < names.len);
     var saw_prefix = false;
     for (names, 0..) |property, i| {
