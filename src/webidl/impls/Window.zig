@@ -1518,8 +1518,14 @@ fn navigableOf(instance: *runtime.Instance, internal: *InternalState) ?*Browsing
     // (html/semantics/embedded-content/the-iframe-element/iframe-
     // synchronously-discard.html: Chrome 157, Firefox 160 and Safari 27.2
     // pass; Blink's Frame::Detach detaches the whole subtree synchronously).
+    // Only a DESTROYED document: a document still being made is not yet its
+    // navigable's active document, yet its Window is that navigable's - a
+    // service worker client made then reads its frame type through parent
+    // and opener (service-workers/service-worker/clients-get.https.html:
+    // "nested"), so document_activity's "gone", which counts a document no
+    // browsing context shows yet, is not this test.
     if (internal.document) |document| {
-        if (@import("dom").document_activity.activity(document, runtime.SlabAllocator.generationOf(document)) == .gone) return null;
+        if (@import("dom").document_lifecycle.isDestroyed(document)) return null;
     }
     return bc;
 }
