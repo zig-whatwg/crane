@@ -369,8 +369,9 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         if (try common.nextSibling(reference)) |next| {
             try extractFirstLine(edit, next, &line, .move);
         }
-        try rewrapMovedLine(edit, &line);
+        try dropLeadingWhiteSpace(edit, &line);
         try line.recordWhiteSpace(edit, sb);
+        try rewrapMovedLine(edit, &line);
         // Step 33.8.
         values = try overrides.recordTheValues(edit, line.nodes.items);
         // Step 33.9.
@@ -398,8 +399,9 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         var line: Line = .{};
         defer line.deinit(edit.allocator);
         if (try common.firstChild(eb)) |first| try extractFirstLine(edit, first, &line, .delete);
-        try rewrapMovedLine(edit, &line);
+        try dropLeadingWhiteSpace(edit, &line);
         try line.recordWhiteSpace(edit, sb);
+        try rewrapMovedLine(edit, &line);
         for (line.nodes.items) |node| {
             try edit.movePreservingRanges(node, sb, try common.childCount(sb));
         }
@@ -987,21 +989,19 @@ fn collectFirstLine(edit: *Edit, first: *Instance, line: *Line, lone_br: LoneBr)
 /// Firefox 159 moves the nodes as the spec does. Golden rule 2, no newer
 /// spec: the majority. WebKit's MoveParagraphs is the same algorithm.
 fn rewrapMovedLine(edit: *Edit, line: *Line) !void {
-    // The leading collapsible white-space.
-    while (line.nodes.items.len > 1) {
-        const first = line.nodes.items[0];
-        if (!common.isText(first) or try holdsLineContent(first)) break;
-        if ((try common.whiteSpaceAround(first)).preservesSpaces()) break;
-        if (!try common.isEditable(first)) break;
-        try edit.removeNode(first);
-        _ = line.nodes.orderedRemove(0);
-    }
     var rebuilt: std.ArrayList(*Instance) = .empty;
     defer rebuilt.deinit(edit.allocator);
+    var rebuilt_styles: std.ArrayList(?common.WhiteSpaceStyles) = .empty;
+    defer rebuilt_styles.deinit(edit.allocator);
     var changed = false;
-    for (line.nodes.items) |node| {
+    for (line.nodes.items, 0..) |node, i| {
+        // The white-space recorded for the span goes with what replaces it,
+        // so preserveWhiteSpace keeps it (a span whose class sets
+        // white-space: editing/other/join-different-white-space-style-*).
+        const recorded: ?common.WhiteSpaceStyles = if (i < line.styles.items.len) line.styles.items[i] else null;
         if (!try common.isHtmlElementNamed(node, "span") or !try common.isEditable(node)) {
             try rebuilt.append(edit.allocator, node);
+            try rebuilt_styles.append(edit.allocator, recorded);
             continue;
         }
         // The span's children up to its last one with visible content.
@@ -1020,6 +1020,7 @@ fn rewrapMovedLine(edit: *Edit, line: *Line) !void {
         moved.shrinkRetainingCapacity(keep_from);
         if (moved.items.len == 0) {
             try rebuilt.append(edit.allocator, node);
+            try rebuilt_styles.append(edit.allocator, recorded);
             continue;
         }
         changed = true;
@@ -1033,10 +1034,12 @@ fn rewrapMovedLine(edit: *Edit, line: *Line) !void {
             try edit.insertBefore(source_parent, fresh, node);
             for (moved.items) |m| try edit.movePreservingRanges(m, fresh, try common.childCount(fresh));
             try rebuilt.append(edit.allocator, fresh);
+            try rebuilt_styles.append(edit.allocator, recorded);
         } else {
             for (moved.items) |m| {
                 try edit.movePreservingRanges(m, source_parent, try common.indexOf(node));
                 try rebuilt.append(edit.allocator, m);
+                try rebuilt_styles.append(edit.allocator, recorded);
             }
         }
         // The span itself stays, with what it still holds; emptied, it goes.
@@ -1045,6 +1048,23 @@ fn rewrapMovedLine(edit: *Edit, line: *Line) !void {
     if (!changed) return;
     line.nodes.clearRetainingCapacity();
     try line.nodes.appendSlice(edit.allocator, rebuilt.items);
+    if (line.styles.items.len > 0) {
+        line.styles.clearRetainingCapacity();
+        try line.styles.appendSlice(edit.allocator, rebuilt_styles.items);
+    }
+}
+
+/// The moved line's leading collapsible white-space (see rewrapMovedLine):
+/// a white-space-only Text that the style collapses goes with the source.
+fn dropLeadingWhiteSpace(edit: *Edit, line: *Line) !void {
+    while (line.nodes.items.len > 1) {
+        const first = line.nodes.items[0];
+        if (!common.isText(first) or try holdsLineContent(first)) break;
+        if ((try common.whiteSpaceAround(first)).preservesSpaces()) break;
+        if (!try common.isEditable(first)) break;
+        try edit.removeNode(first);
+        _ = line.nodes.orderedRemove(0);
+    }
 }
 
 /// What a line that is only a br does with it.

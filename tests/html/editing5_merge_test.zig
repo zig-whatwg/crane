@@ -23,6 +23,12 @@ fn mergedLineLeavesItsSpan() !void {
     defer page.close();
     try page.run(harness.setup_script);
     try harness.runCases(page, &move_cases);
+    // A span whose class sets white-space: the moved text keeps the
+    // white-space on the span preserveWhiteSpace makes (editing/other/join-
+    // different-white-space-style-left-paragraph-and-right-line.html, its
+    // first accepted result).
+    try page.run("const sheet = document.createElement('style'); sheet.textContent = '.nowrap { white-space: nowrap }'; document.head.appendChild(sheet);");
+    try harness.expectEval(page, "runCommands('<div style=\"white-space:normal\">abc</div><span class=\"nowrap\">[]def</span>', [['delete', '']]); hostHTML()", "<div style=\"white-space:normal\">abc<span style=\"white-space: nowrap\">def</span></div>");
 }
 
 test "a block merge moves a line out of its span, as Chrome and Safari do" {
