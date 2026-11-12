@@ -827,6 +827,16 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
         return;
     }
     const kind = textControlKind(target);
+    // The clipboard shortcuts, in a text control or anywhere else: the
+    // Clipboard API's copy, cut and paste actions as the user's own
+    // (execcommand/clipboard.zig; Blink's "Copy" / "Cut" / "Paste" editor
+    // commands from the key bindings, which run in text fields too).
+    if (editingShortcut(target, key, modifiers)) |shortcut| switch (shortcut) {
+        .copy => return @import("execcommand/clipboard.zig").byKey(target, .copy),
+        .cut => return @import("execcommand/clipboard.zig").byKey(target, .cut),
+        .paste => return @import("execcommand/clipboard.zig").byKey(target, .paste),
+        .select_all => {},
+    };
     if (kind != .none) {
         // SD1-TEXTCONTROL-WORD-KEYS: navigation also applies to readonly
         // controls. The modifier follows navigator.platform, as WPT's
@@ -874,6 +884,7 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
             @import("execcommand/root.zig").selectAllByKey(target);
             return;
         },
+        .copy, .cut, .paste => unreachable,
     };
     // Backspace and Delete in an editing host (Editing spec, "Additional
     // requirements": the key runs the delete / forwardDelete command). The
@@ -1086,20 +1097,30 @@ fn graphemeBoundary(text: []const u8, offset: u32, forward: bool) u32 {
     return if (forward) at else @min(offset, at);
 }
 
-const EditingShortcut = enum { select_all };
+const EditingShortcut = enum { select_all, copy, cut, paste };
 
 /// The editing shortcut `key` with `modifiers` is, or null: the platform's
 /// command modifier (Meta on a Mac, else Ctrl; navigator.platform decides,
-/// see isCommandModifier) alone with the letter.
+/// see isCommandModifier) alone with the letter - A select all, C copy, X
+/// cut, V paste (Blink editing_behavior.cc's key table: kKeyboardCodeKeyA
+/// "SelectAll", C "Copy", X "Cut", V "Paste", each with the command
+/// modifier).
 fn editingShortcut(target: *Instance, key: Key, modifiers: Modifiers) ?EditingShortcut {
     if (!modifiers.ctrl and !modifiers.meta) return null;
-    if (key.key.len != 1 or std.ascii.toLower(key.key[0]) != 'a') return null;
+    if (key.key.len != 1) return null;
+    const shortcut: EditingShortcut = switch (std.ascii.toLower(key.key[0])) {
+        'a' => .select_all,
+        'c' => .copy,
+        'x' => .cut,
+        'v' => .paste,
+        else => return null,
+    };
     const window = viewOf(target) orelse return null;
     const navigator = interfaces.Window.get_navigator(window) catch return null;
     var platform = interfaces.Navigator.get_platform(navigator) catch return null;
     defer platform.deinit(target.ctx.allocator);
     if (!isCommandModifier(platform.asSlice(), modifiers)) return null;
-    return .select_all;
+    return shortcut;
 }
 
 /// Whether `modifiers` is exactly the platform's command modifier: Meta
@@ -1223,7 +1244,7 @@ fn fireInputEvent(target: *Instance, comptime event_type: []const u8, input_type
 /// cancelled) the text replaces the selection - cut to the control's
 /// maxlength - and input fires.
 fn insertText(target: *Instance, kind: TextControl, text_in: []const u8, input_type: []const u8) void {
-    if (!fireInputEvent(target, "beforeinput", input_type, if (std.mem.eql(u8, input_type, "insertText")) text_in else null)) return;
+    if (!fireInputEvent(target, "beforeinput", input_type, if (carriesData(input_type)) text_in else null)) return;
     if (!isConnected(target)) return;
     var text = text_in;
     var value = getValue(target) orelse return;
@@ -1263,7 +1284,47 @@ fn insertText(target: *Instance, kind: TextControl, text_in: []const u8, input_t
             .none => unreachable,
         }
     }
-    _ = fireInputEvent(target, "input", input_type, if (std.mem.eql(u8, input_type, "insertText")) text else null);
+    _ = fireInputEvent(target, "input", input_type, if (carriesData(input_type)) text else null);
+}
+
+/// Whether a text control's beforeinput and input of `input_type` carry the
+/// inserted text as data: insertText, and insertFromPaste - Input Events
+/// 2's data "for ... insertFromPaste ... in a text control" (its
+/// dataTransfer is null there; editing/other/
+/// data_transfer_on_input_event_with_insertfrompaste_type.html, all three
+/// browsers).
+fn carriesData(input_type: []const u8) bool {
+    return std.mem.eql(u8, input_type, "insertText") or std.mem.eql(u8, input_type, "insertFromPaste");
+}
+
+/// The focused area of `document` when it is a text control (an input
+/// whose value is edited as text, or a textarea).
+pub fn focusedTextControl(document: *Instance) ?*Instance {
+    const focused = (interfaces.Document.get_activeElement(document) catch return null) orelse return null;
+    return if (textControlKind(focused) != .none) focused else null;
+}
+
+/// Whether the user may edit the text control `element`.
+pub fn isMutableTextControl(element: *Instance) bool {
+    return textControlKind(element) != .none and isMutable(element);
+}
+
+/// The paste action into the text control `control` (Clipboard API 8.3
+/// step 3.1.1): `text` replaces its selection as typed text does, with
+/// beforeinput and input of inputType insertFromPaste.
+pub fn pasteIntoTextControl(control: *Instance, text: []const u8) void {
+    const kind = textControlKind(control);
+    if (kind == .none or !isMutable(control)) return;
+    insertText(control, kind, text, "insertFromPaste");
+}
+
+/// The cut action's removal in the text control `control` (8.2 step
+/// 3.1.2): its selection goes, with beforeinput and input of inputType
+/// deleteByCut. Nothing for a collapsed selection.
+pub fn deleteByCut(control: *Instance) void {
+    const kind = textControlKind(control);
+    if (kind == .none or !isMutable(control)) return;
+    deleteContent(control, kind, .cut);
 }
 
 /// execCommand("insertText" / "insertHTML") while `document`'s focused area
@@ -1352,7 +1413,7 @@ fn signNotAfterE(text: []const u8) bool {
     return false;
 }
 
-const DeleteDirection = enum { backward, forward };
+const DeleteDirection = enum { backward, forward, cut };
 
 /// The UTF-16 length of the code point that ends (backward) or starts
 /// (forward) at UTF-16 offset `offset` of `value`.
@@ -1370,19 +1431,25 @@ fn codePointUnits(value: []const u8, offset: u32, direction: DeleteDirection) u3
             while (start > 0 and value[start] & 0xC0 == 0x80) start -= 1;
             return if (byte - start == 4) 2 else 1;
         },
+        .cut => return 0,
     }
 }
 
 /// Backspace (backward) or Delete (forward): the selection, or the code
 /// point before (after) the caret.
 fn deleteContent(target: *Instance, kind: TextControl, direction: DeleteDirection) void {
-    const input_type = if (direction == .backward) "deleteContentBackward" else "deleteContentForward";
+    const input_type = switch (direction) {
+        .backward => "deleteContentBackward",
+        .forward => "deleteContentForward",
+        .cut => "deleteByCut",
+    };
     var value = getValue(target) orelse return;
     defer value.deinit(target.ctx.allocator);
     const current = value.asSlice();
     const length = form_associated.utf16Length(current);
     var range: [2]u32 = selectionOf(target) orelse .{ length, length };
     if (range[0] == range[1]) {
+        if (direction == .cut) return;
         const units = codePointUnits(current, range[0], direction);
         if (units == 0) return;
         if (direction == .backward) range[0] -= units else range[1] += units;

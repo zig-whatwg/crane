@@ -19,9 +19,13 @@
 //! };
 //! ```
 //!
-//! Stated: dataTransfer and targetRanges are not kept - DataTransfer has no
-//! implementation to hold, and nothing fires beforeinput with ranges - so
-//! dataTransfer reads null and getTargetRanges() an empty sequence.
+//! dataTransfer is kept as SubmitEvent keeps its submitter: a traced edge
+//! (Blink's InputEvent::Trace visits data_transfer_), a link and its realm as
+//! the teardown net. The paste action gives its beforeinput and input in an
+//! editing host one (Input Events 2, insertFromPaste: "dataTransfer" holds
+//! what is inserted; src/html/execcommand/clipboard.zig).
+//! Stated: targetRanges are not kept - nothing fires beforeinput with ranges
+//! yet - so getTargetRanges() is an empty sequence.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -32,7 +36,8 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const event_construction = @import("dom").event_construction;
+const dom = @import("dom");
+const event_construction = dom.event_construction;
 const InputEvent = interfaces.InputEvent;
 
 pub const State = InputEvent.State;
@@ -48,6 +53,8 @@ pub const InternalState = struct {
     /// Owned.
     input_type: []u8 = &.{},
     is_composing: bool = false,
+    data_transfer: ?dom.same_object.Link = null,
+    data_transfer_realm: ?runtime.Context = null,
 
     fn clear(self: *InternalState) void {
         if (self.data) |d| self.allocator.free(d);
@@ -81,6 +88,9 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        // A native event can die before its wrapper exists: end the edge
+        // waiting for that wrapper (SubmitEvent's submitter likewise).
+        if (internal.data_transfer != null) engine.forgetTracedChild(instance, .{ .name = "dataTransfer" });
         internal.clear();
         internal.allocator.destroy(internal);
         state.own._internal = null;
@@ -106,6 +116,11 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     internal.data = data;
     internal.input_type = input_type;
     internal.is_composing = dict.isComposing orelse false;
+    if (dict.dataTransfer) |data_transfer| {
+        internal.data_transfer = dom.same_object.Link.to(data_transfer);
+        internal.data_transfer_realm = data_transfer.ctx;
+        engine.traceChild(instance, data_transfer, .{ .name = "dataTransfer" });
+    }
     return instance;
 }
 
@@ -130,10 +145,15 @@ pub fn get_inputType(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return runtime.DOMString.initDupe(instance.ctx.allocator, internal.input_type);
 }
 
-/// Getter for dataTransfer: null (stated above).
+/// Getter for dataTransfer: the DataTransfer the event was initialized
+/// with, kept alive by the event's traced edge.
 pub fn get_dataTransfer(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    const internal = getInternal(instance) orelse return null;
+    const link = internal.data_transfer orelse return null;
+    const realm = internal.data_transfer_realm orelse return null;
+    if (!realm.hasEngine()) return null;
+    if (!link.isLive()) return null;
+    return link.instance;
 }
 
 /// Operation: getTargetRanges - an empty sequence (stated above).
