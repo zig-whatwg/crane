@@ -1503,6 +1503,27 @@ pub fn get_closed(instance: *runtime.Instance) anyerror!bool {
 /// DOMWindow::parent()/top() answer null for a detached frame (no GetFrame()).
 /// A browsing context that has no active window yet (a Window being made) is
 /// this Window's.
+///
+/// When a removed frame's Window loses its navigable - so parent, top,
+/// opener, length and closed with it (lane nav2 batch 10's design):
+/// "destroy a document" steps 6-7 for its associated Document, after that
+/// document's pagehide and unload. Crane's dom.navigables.destroyChildNavigable
+/// unloads the whole subtree (children first), then destroys it (children
+/// first), then discards the browsing context (BrowsingContext.discard: it
+/// leaves its parent and close() cascades to every descendant), with no
+/// script between the destroy and the discard. Blink's order: LocalFrame::
+/// DetachImpl dispatches unload, detaches the child frames, then
+/// DomWindow()->FrameDestroyed() (DisconnectFromFrame: GetFrame() null), all
+/// inside the removal. So the test is the browsing context's, never the
+/// Window's own Document - a Window kept for the document replacing its
+/// initial about:blank holds that destroyed document while the new one is
+/// made, and a service worker client made then reads parent and opener for
+/// its frame type - nor the container's - a removed frame's unload handlers
+/// run with the container already disconnected and post to window.parent
+/// (fetch/api/cors/cors-keepalive.any.js). Batch 9 tried both and lost those
+/// readers; the Crane tests nav2b10-sw-frame-type-reused-window,
+/// nav2b10-removed-frame-unload-sees-parent and
+/// nav2b10-removed-frame-detached-at-once pin all three.
 fn navigableOf(instance: *runtime.Instance, internal: *InternalState) ?*BrowsingContext {
     const bc_ptr = @intFromPtr(internal.browsing_context);
     if (bc_ptr == 0 or bc_ptr < 0x1000) return null;
@@ -3348,6 +3369,11 @@ pub fn call_stop(instance: *runtime.Instance) anyerror!void {
     // step 3, aborting the document and its descendants.
     if (get_document(instance)) |document| {
         @import("dom").content_navigables.stopLoading(document);
+        // The abort ends the document's load if its load event has not run:
+        // "complete" now, no load, and its container no longer waits on it -
+        // Blink's StopAllLoaders -> Document::CancelParsing (the deviation
+        // and its evidence: Document's lifecycleStopLoad).
+        @import("dom").document_lifecycle.stopLoad(document);
     } else |_| {}
     @import("dom").navigation_api.informAboutAbortingNavigation(instance);
 }

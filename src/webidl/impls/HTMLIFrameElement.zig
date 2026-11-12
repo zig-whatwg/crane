@@ -177,6 +177,7 @@ pub fn installHooks() void {
         .stop_loading = &stopLoadingDocument,
         .is_navigating = &documentIsNavigating,
         .load_delay_may_have_ended = &childLoadDelayMayHaveEnded,
+        .load_stopped = &contentDocumentLoadStopped,
     });
     dom_module.attribute_change_steps.install("iframe", &iframeAttributeChangeSteps);
     dom_module.navigables.install(.{
@@ -5552,6 +5553,19 @@ fn iframesDelayLoadEvent(document: *runtime.Instance) bool {
     return false;
 }
 
+/// dom.content_navigables: window.stop() ended `document`'s load before its
+/// load event (Document's lifecycleStopLoad), so the iframe load event steps,
+/// which end its navigable's delay on the container's document, never run:
+/// the delay ends now. HTML sets "is delaying load events" false at the
+/// commit ("finalize a cross-document navigation" step 2); Crane holds it to
+/// the iframe load event steps, and a stopped load must release it as
+/// Blink's DocumentLoader::StopLoading -> LoadFailed -> DidFinishNavigation
+/// runs the parent's CheckCompleted without the owner's load event.
+fn contentDocumentLoadStopped(document: *runtime.Instance) void {
+    const integration = navigableOfDocument(document) orelse return;
+    endLoadDelay(integration);
+}
+
 /// A resource in an active child document stopped delaying load, possibly
 /// without EOF or a new navigation. Its parent rechecks all three iframe
 /// delay conditions. Rechecking can run script; nothing is read afterward.
@@ -6284,15 +6298,26 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
     // navigable", and their pagehide and unload handlers still reach the
     // frame's window through the element, as in every browser.
     if (internal.integration.state == .discarded) return null;
-    // Nor does an element in a destroyed document - a frame inside a removed
-    // frame: "destroy a document and its descendants" destroys the documents
-    // its child navigables show, and the browsers detach the whole subtree
-    // at once (html/semantics/embedded-content/the-iframe-element/iframe-
-    // synchronously-discard.html: Chrome 157, Firefox 160 and Safari 27.2
-    // pass "grandchild should be discarded"; Blink's Frame::Detach detaches
-    // every child frame synchronously, clearing each owner's content frame).
+    // Nor does an element whose node document was destroyed - a frame inside
+    // a removed frame, or inside a document its navigable navigated away
+    // from. HTML "destroy a document and its descendants" destroys the
+    // documents of a document's child navigables (steps 4-5) before the
+    // document itself (step 6.1), and a destroyed document's navigable has
+    // no active document ("destroy a document" step 7), so no active
+    // WindowProxy: the content window is null by the time the node document
+    // is destroyed. Blink: LocalFrame::DetachImpl's DetachChildren detaches
+    // each child frame - Frame::Detach ends in DisconnectOwnerElement, which
+    // clears the owner's content frame - before DomWindow()->
+    // FrameDestroyed() shuts the document down. (html/semantics/embedded-
+    // content/the-iframe-element/iframe-synchronously-discard.html: Chrome
+    // 157, Firefox 160 and Safari 27.2 pass "grandchild should be
+    // discarded".) The CONTAINER's document, and only "destroyed": a frame's
+    // own document is destroyed while a Window kept for its successor is
+    // still the frame's, and document_activity's "gone" also counts a
+    // document never given a browsing context (lesson spec-compliance-gone-
+    // is-not-destroyed-a-document-being-made-has-no-browsing-context-yet).
     if (interfaces.Node.get_ownerDocument(instance) catch null) |node_document| {
-        if (dom_module.document_activity.activity(node_document, runtime.SlabAllocator.generationOf(node_document)) == .gone) return null;
+        if (document_lifecycle.isDestroyed(node_document)) return null;
     }
     const is_connected = interfaces.Node.get_isConnected(instance) catch false;
     if (!is_connected) {
