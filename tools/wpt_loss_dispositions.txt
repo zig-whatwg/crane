@@ -1911,3 +1911,10 @@ why = The test harness's own server, not Crane: the generation 217 sweep ran on 
 pair.1 = base 4/4; tip 4/4
 pair.2 = base 4/4; tip 4/4
 pair.3 = base 4/4; tip 4/4
+
+[html/browsers/origin/cross-origin-objects/window-location-and-location-href-cross-realm-set.html]
+generation = 219
+kind = user-ruling
+why = Generation 219 is the first on V8 15.7.112.43 (Chrome 157's; merge 58da4933037). V8 14 and later removed PropertyCallbackInfo::This(), so the cross-origin [[Set]] of a WindowProxy or Location cannot call an inherited setter on its receiver: two subtests fail, 11 -> 9, stable (reruns 3/3, verify 10/10 in lane v8up's windows). Chrome 157.0.8103.50 fails the same two (9/11); Firefox 160.0 and Safari 27.2 pass 11/11 (wpt.fyi 2026-11-11). Pinned by tests/wpt/crane/v8up-cross-origin-setter-inherited-receiver-deviation.html; no public V8 API gives the receiver back.
+date = 2026-11-11
+decision = the user, 2026-11-11 09:53 ET (14:53 UTC), by prompt: accept the 2 subtests as a recorded known deviation on V8 15.7
