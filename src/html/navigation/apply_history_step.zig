@@ -475,13 +475,11 @@ pub const ApplyItem = struct {
         // navigation API), so a SAME-document traversal sets it too: it ends
         // a cross-document navigation of the navigable still fetching, which
         // 14.10.1 then lets new ones start again ("whereas during the
-        // traversal they were blocked"). overlapping-navigations-and-
-        // traversals/cross-document-nav-same-document-traversal.html: Chrome
-        // 157 and Safari 27.2 pass, Firefox 160 fails (wpt.fyi 24ddf405a0).
-        // Ending the navigation only at 14.10.1, as before (lane nav2 batch
-        // 11), lost the race whenever its response came first: its finalize
-        // queued, it was mature (HTMLIFrameElement setOngoingNavigation) and
-        // committed, and back() went to #2 from the new document. Only a
+        // traversal they were blocked"). Before lane nav2 batch 11 it was
+        // ended only at 14.10.1 (the step read as part of 8.3). A navigation
+        // whose finalize is queued already is mature
+        // (HTMLIFrameElement setOngoingNavigation) and still commits, as the
+        // spec's queued finalize never rechecks. Only a
         // traversal's same-document change: a finalize's own push/replace
         // step leaves a navigation started after it alone (whatwg/html#12861,
         // whose open PR #12942 limits these writes to traversals and
