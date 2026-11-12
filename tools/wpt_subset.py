@@ -686,6 +686,14 @@ EXCLUDE = [
     # Crane does. Revisit when Page Lifecycle is ratified or ships.
     ('service-workers/service-worker/clients-matchall-frozen.https.html',
      'Client.lifecycleState + test_driver.freeze: WICG Page Lifecycle, shipped by no browser'),
+    # The integrator's ruling (2026-11-12 10:43 UTC, lane sw2 b1's finding) under the same line (WICG drafts
+    # wait even when Chrome ships them): navigator.storageBuckets is WICG Storage Buckets, a Community Group
+    # draft (mozilla/standards-positions#475 positive, WebKit/standards-positions#181 open). wpt.fyi stable
+    # 24ddf405a0: Chrome 157 passes (shipped since 122), Firefox 160 and Safari 27.2 0/2. Both worklist files
+    # that read navigator.storageBuckets leave; Storage Buckets is a feature-queue item after 0.1.
+    ('IndexedDB/storage-buckets.https.any.js', 'navigator.storageBuckets: WICG Storage Buckets, only Chrome ships'),
+    ('service-workers/cache-storage/cache-storage-buckets.https.any.js',
+     'navigator.storageBuckets: WICG Storage Buckets, only Chrome ships'),
     ('websockets/stream/', 'unmerged WebSocketStream proposal; deferred by the user 2026-10-22'),
 
     # Anything that needs layout or paint. Crane is the web platform; the host
