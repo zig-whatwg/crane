@@ -3555,6 +3555,20 @@ static void applyIsolateOptions(IsolateData* record, const CraneIsolateOptions* 
     record->clock_context = options->clock_context;
 }
 
+/// [young_generation_limit]: the agent's ceiling for its young generation
+/// into the isolate's ResourceConstraints, which Heap::ConfigureHeap reads
+/// once, inside Isolate::Initialize (15.7.112.43 src/heap/heap.cc:4886-4892:
+/// max_semi_space_size_ from constraints.max_young_generation_size_in_bytes;
+/// include/v8-isolate.h:133-143). 0, or no options: no constraint - V8's own
+/// ceiling, 32 MB semispaces (heap.cc:4844-4860). The embedder API for it:
+/// gin sets the same field through ResourceConstraints::ConfigureDefaults
+/// (Chromium 157.0.8103.50 gin/isolate_holder.cc:186-190). Never a V8 flag:
+/// a flag is the process's, and this is one agent's.
+static void applyHeapConstraints(Isolate::CreateParams& create_params, const CraneIsolateOptions* options) {
+    if (!options || options->max_young_generation_bytes == 0) return;
+    create_params.constraints.set_max_young_generation_size_in_bytes(options->max_young_generation_bytes);
+}
+
 // ---- one read-only heap per process (lane tsanfix1, M1) ----
 //
 // With pointer compression in one shared cage (Crane's V8:
@@ -3719,6 +3733,7 @@ Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options) {
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     auto record = std::make_unique<IsolateData>();
     applyIsolateOptions(record.get(), options);
+    applyHeapConstraints(create_params, options);
     // The agent's C++ heap, attached from Isolate::Initialize on and V8's to
     // free from then (IsolateData::cpp_heap says why).
     record->cpp_heap = newAgentCppHeap();
@@ -11166,6 +11181,7 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     create_params.snapshot_blob = &isolate_data->startup_data;
     create_params.external_references = external_references;
+    applyHeapConstraints(create_params, options);
     // The agent's C++ heap, as v8_Isolate_NewWithOptions gives it.
     isolate_data->cpp_heap = newAgentCppHeap();
     create_params.cpp_heap = isolate_data->cpp_heap.get();
