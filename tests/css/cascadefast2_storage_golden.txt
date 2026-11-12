@@ -389,6 +389,26 @@ text-size-adjust: auto
 view-transition-name: none
 view-transition-class: none
 zoom: 1
+clip: auto
+aspect-ratio: auto
+contain-intrinsic-width: none
+contain-intrinsic-height: none
+contain-intrinsic-inline-size: none
+contain-intrinsic-block-size: none
+margin-trim: none
+corner-top-left-shape: superellipse(1)
+corner-top-right-shape: superellipse(1)
+corner-bottom-right-shape: superellipse(1)
+corner-bottom-left-shape: superellipse(1)
+corner-start-start-shape: superellipse(1)
+corner-start-end-shape: superellipse(1)
+corner-end-start-shape: superellipse(1)
+corner-end-end-shape: superellipse(1)
+dynamic-range-limit: no-limit
+scrollbar-color: auto
+scrollbar-width: auto
+d: none
+stroke-dasharray: none
 == initial root and child / 0
 display: block
 == initial root and child / 1
