@@ -8000,12 +8000,8 @@ fn iframePostConnectionSteps(node: *NodeBase) void {
         if (!createChildNavigable(instance)) return;
     }
 
-    // The navigable's target name is the element's name attribute. Its
-    // parent's Window reaches it by that name only through HTML 7.2.2.3's
-    // named properties object (Window.getNamedProperty, which keeps a frame
-    // in a shadow tree and a removed one out) - never an own property of
-    // the global, which outlived the frame and leaked shadow tree frames
-    // (lane nav2 batch 11).
+    // The navigable's target name is the element's name attribute, and the
+    // parent's global reaches it by that name.
     const name: ?[]const u8 = blk: {
         if (internal.name_attr) |n| break :blk n;
         if (interfaces.Element.call_getAttribute(instance, runtime.DOMString.initInterned("name")) catch null) |attr| break :blk attr.asSlice();
@@ -8016,6 +8012,7 @@ fn iframePostConnectionSteps(node: *NodeBase) void {
             const owned = internal.allocator.dupe(u8, n) catch return;
             defer internal.allocator.free(owned);
             internal.integration.setName(owned) catch {};
+            dom_module.navigables.registerNamedProperty(internal.integration, owned);
         }
     }
 
