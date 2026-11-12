@@ -250,13 +250,19 @@ pub const DeferredTeardown = struct {
     /// loop's next slice. A callback's return into its native caller never
     /// runs it.
     algorithm_depth: u32 = 0,
-    /// What the queue owes the next safe point (see `algorithm_depth`).
+    /// What the queue owes the next safe point (see `algorithm_depth`). One
+    /// byte, which the agent's adapter also writes (`owedWord`).
     owed: Owed = .{},
     /// What the agent's adapter runs at a safe point when the agent's DOM
     /// memory moved past its report step (`Owed.report`; runtime.gc.
     /// ExternalMemory): it tells its engine. Set by the adapter while the
     /// agent lives (engine.AgentOptions.external_memory), null otherwise.
     report_steps: ?ReportSteps = null,
+    /// What the agent's adapter runs at a safe point when its engine's
+    /// collector found wrappers dead (`Owed.finalizers`): the finalizers the
+    /// collector may not run itself. Set by the adapter while the agent
+    /// lives, null otherwise.
+    finalizer_steps: ?FinalizerSteps = null,
     /// The DOM's books of the trees its counts queued here (refcount step 7,
     /// dom.refcount_teardown): diagnostics and tests.
     books: Books = .{},
@@ -301,7 +307,18 @@ pub const DeferredTeardown = struct {
         /// The agent's DOM memory moved past its report step
         /// (ExternalMemory.due): `report_steps` tell the engine.
         report: bool = false,
-        _: u5 = 0,
+        /// The engine's collector found wrappers dead, and their finalizers
+        /// wait on the agent's adapter: `finalizer_steps` run them. The one
+        /// bit the ADAPTER sets, from inside its engine's collector, by a
+        /// store through `owedWord` - the collector calls nothing of the
+        /// host's - and clears once it has run every finalizer that waited,
+        /// at whichever of its safe points that was.
+        finalizers: bool = false,
+        _: u4 = 0,
+
+        /// `finalizers`, as the bit of the queue's owed word an adapter's
+        /// collector callback sets.
+        pub const finalizers_mask: u8 = @bitCast(Owed{ .finalizers = true });
 
         pub inline fn any(self: Owed) bool {
             return @as(u8, @bitCast(self)) != 0;
@@ -313,6 +330,23 @@ pub const DeferredTeardown = struct {
         run: *const fn (data: ?*anyopaque) void,
         data: ?*anyopaque,
     };
+
+    /// The adapter's steps for `Owed.finalizers`, and their data: run every
+    /// finalizer that waits. False when they could not run here - the
+    /// returning binding left an exception pending, which engine work would
+    /// clear, or a finalizer is already on the stack - and still wait: the
+    /// queue owes them to the next exit.
+    pub const FinalizerSteps = struct {
+        run: *const fn (data: ?*anyopaque) bool,
+        data: ?*anyopaque,
+    };
+
+    /// The byte an adapter's collector callback sets `Owed.finalizers_mask`
+    /// in, valid while the queue lives. The adapter registers it with its
+    /// engine while its agent lives and withdraws it at the agent's end.
+    pub fn owedWord(self: *DeferredTeardown) *u8 {
+        return @ptrCast(&self.owed);
+    }
 
     /// The agent's DOM memory is due to be reported (ExternalMemory, where
     /// its figure moves): the next safe point runs `report_steps`.
@@ -450,8 +484,13 @@ pub const DeferredTeardown = struct {
     /// What is owed, at a safe point (depth zero, back in script).
     fn runOwed(self: *DeferredTeardown) void {
         if (self.slicing) return;
+        // The collector's finalizers first: what they let go of - a tree's
+        // last reference, an object's native state - is what the frees below
+        // free and what the report tells the engine about.
+        if (self.owed.finalizers) self.runFinalizers();
         const owed = self.owed;
-        self.owed = .{};
+        // Finalizers that still wait stay owed.
+        self.owed = .{ .finalizers = owed.finalizers };
         if (owed.drain) {
             self.drainAll();
         } else if (owed.relief and self.pending > high_water) {
@@ -459,6 +498,29 @@ pub const DeferredTeardown = struct {
         }
         // After the frees: the figure the engine is told is what they left.
         if (owed.report) if (self.report_steps) |steps| steps.run(steps.data);
+    }
+
+    /// The safe point for the finalizers of the wrappers the engine's
+    /// collector found dead (`Owed.finalizers`, `finalizer_steps`): a script
+    /// that makes and drops objects in one task reaches no other - the
+    /// engine's own second pass may not run them (V8 15.7 runs it under
+    /// DisallowJSObjectModification), and the event loop's pump is a task
+    /// away, each dead wrapper keeping its native state until then. Blink
+    /// releases a dead wrappable's native state the same way, inside the
+    /// running script: a wrappable is a cppgc object (blink ScriptWrappable :
+    /// v8::Object::Wrappable : cppgc::GarbageCollected), its destructor is
+    /// its finalizer, and cppgc sweeps lazily on allocation ("Lazily sweep
+    /// pages of this heap", V8 15.7.112.43 src/heap/cppgc-internal/
+    /// object-allocator.cc ObjectAllocator::TryRefillLinearAllocationBuffer
+    /// -> Sweeper::SweepForAllocationIfRunning -> HeapObjectHeader::Finalize).
+    ///
+    /// Only here: at depth zero, from the outermost binding exit - no DOM
+    /// algorithm is below a finalizer it runs.
+    fn runFinalizers(self: *DeferredTeardown) void {
+        std.debug.assert(self.algorithm_depth == 0);
+        self.owed.finalizers = false;
+        const steps = self.finalizer_steps orelse return;
+        if (!steps.run(steps.data)) self.owed.finalizers = true;
     }
 
     /// One slice: items in the order they were queued, until `budget` nodes

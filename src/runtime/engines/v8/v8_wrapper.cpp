@@ -2844,6 +2844,21 @@ struct IsolateData {
     /// v8_Isolate_Dispose empties the list without calling Zig; the two
     /// owners free the records. Read and written on the isolate's thread.
     std::deque<WeakCallbackData*> queued_finalizers;
+    /// WHERE A SECOND PASS SAYS FINALIZERS WAIT: one byte of the agent's own
+    /// - what its deferred teardown queue owes its next safe point
+    /// (runtime.gc.DeferredTeardown.owedWord) - and the bit of it that means
+    /// "finalizers" (`oweFinalizers`). BORROWED from the adapter's Zig side
+    /// (v8_Isolate_SetFinalizersOwed: createAgent to the agent's end); null
+    /// for an isolate with no queue, whose finalizers wait for the pump or a
+    /// forced collection. The second pass still calls nothing: it stores.
+    /// Read and written on the isolate's thread.
+    uint8_t* finalizers_owed = nullptr;
+    uint8_t finalizers_owed_mask = 0;
+    /// `runQueuedFinalizers` is on the stack: a finalizer is running. The
+    /// safe points inside a task - a binding's return into script, the
+    /// external-memory report made there - run nothing beneath it
+    /// (`runQueuedFinalizersInTask`).
+    bool finalizers_running = false;
     /// The registry's end, and its memory.
     void (*node_wrappers_end)(void* registry) = nullptr;
 
@@ -2943,6 +2958,24 @@ extern "C" void v8_Debug_FullGCPauses(Isolate* isolate, uint64_t* count, uint64_
 
 static_assert(sizeof(Global<Object>) == sizeof(void*), "a node's wrapper slot holds exactly one Global<Object>");
 
+/// A second pass queued a finalizer, or released node wrappers: the agent's
+/// queue owes them to its next safe point - the binding's return into script
+/// that finds the bit (dom_algorithm.zig leaveToScript ->
+/// DeferredTeardown.leaveAlgorithmToScript). One store into the agent's own
+/// byte; nothing of Zig's is called from V8's pass.
+static inline void oweFinalizers(IsolateData* record) {
+    if (record->finalizers_owed) *record->finalizers_owed |= record->finalizers_owed_mask;
+}
+
+/// Nothing waits any more - a drain ran every finalizer, at whichever safe
+/// point: the queue owes none, so the next binding exit pays nothing for
+/// them.
+static inline void settleFinalizersOwed(IsolateData* record) {
+    if (!record->finalizers_owed) return;
+    if (!record->queued_finalizers.empty() || record->node_wrappers_collected) return;
+    *record->finalizers_owed &= static_cast<uint8_t>(~record->finalizers_owed_mask);
+}
+
 /// A record's second pass has run: it waits on its agent's queue from here.
 /// An isolate with no record - the snapshot creator's, or one whose disposal
 /// has begun - has no safe point: the record stays where the first pass left
@@ -2950,7 +2983,9 @@ static_assert(sizeof(Global<Object>) == sizeof(void*), "a node's wrapper slot ho
 /// v8_Isolate_Dispose to free.
 static void queueFinalizer(Isolate* isolate, WeakCallbackData* data) {
     IsolateData* record = isolateData(isolate);
-    if (record) record->queued_finalizers.push_back(data);
+    if (!record) return;
+    record->queued_finalizers.push_back(data);
+    oweFinalizers(record);
 }
 
 /// THE AGENT'S SAFE POINT for the finalizers of its collected wrappers: run
@@ -2974,23 +3009,35 @@ static void queueFinalizer(Isolate* isolate, WeakCallbackData* data) {
 ///     built on them promise what was found dead is finalized when they
 ///     return (engine.requestGarbageCollection, notifyMemoryPressure) - as a
 ///     browser's test-only gc() finalizes before it returns.
-///   * v8_ExternalMemoryAccounter_Update, after V8 returns: the host's
-///     external-memory report, made only at the agent's own safe points
-///     (external_memory.zig) once its figure moved 128 KB. It is the safe
-///     point INSIDE a task: finalizers queued by a second pass V8 ran by
-///     itself - a pending pass run at the start of the next collection, an
-///     allocation's last resort - run here, not a task later at the pump.
+///   * INSIDE A TASK (`runQueuedFinalizersInTask`): a binding's return into
+///     script at DOM-algorithm depth zero, when a second pass has owed them
+///     to the agent's queue (v8_Isolate_RunQueuedFinalizers, the queue's
+///     finalizer steps), and the host's external-memory report made at that
+///     same exit or at a microtask checkpoint outside a DOM algorithm
+///     (v8_ExternalMemoryAccounter_Update, after V8 returns). Finalizers
+///     queued by a second pass V8 ran by itself - a pending pass run at the
+///     start of the next collection, an allocation's last resort - run
+///     there, not a task later at the pump.
 /// A teardown hold (engine.deferTeardowns) is the Zig finalizer's own
 /// business: it lists its entry for the hold's last resume, as before.
 ///
 /// One record at a time, the next taken afresh: a finalizer may force a
-/// collection, which runs this again beneath it, or end a realm, whose cache
-/// cancels records still listed here.
+/// collection, which runs this again beneath it (the collection promises
+/// what it found dead is finalized when it returns), or end a realm, whose
+/// cache cancels records still listed here. The safe points inside a task
+/// never run it beneath itself (`finalizers_running`): what a collection
+/// queues under a finalizer, the drain on the stack takes when that
+/// finalizer returns.
 static bool runQueuedFinalizers(Isolate* isolate) {
     IsolateData* record = isolateData(isolate);
     if (!record) return false;
-    if (record->queued_finalizers.empty() && !record->node_wrappers_collected) return false;
+    if (record->queued_finalizers.empty() && !record->node_wrappers_collected) {
+        settleFinalizersOwed(record);
+        return false;
+    }
     HandleScope handle_scope(isolate);
+    const bool was_running = record->finalizers_running;
+    record->finalizers_running = true;
     bool ran = false;
     while (!record->queued_finalizers.empty()) {
         WeakCallbackData* data = record->queued_finalizers.front();
@@ -3021,7 +3068,63 @@ static bool runQueuedFinalizers(Isolate* isolate) {
             ran = true;
         }
     }
+    record->finalizers_running = was_running;
+    settleFinalizersOwed(record);
     return ran;
+}
+
+/// THE SAFE POINT INSIDE A TASK: `runQueuedFinalizers` for a caller on the
+/// agent's stack while script runs - a binding returning into script at
+/// DOM-algorithm depth zero, the external-memory report made there. False
+/// when finalizers still wait because this is no place to run them:
+///
+///   * a finalizer is already on the stack (`finalizers_running`): one that
+///     runs script, whose binding returns into it, runs no other finalizer
+///     beneath itself. cppgc's sweeper has the same rule for a finalizer
+///     that allocates - "Bail out for recursive sweeping calls. This can
+///     happen when finalizers allocate new memory." (15.7.112.43 src/heap/
+///     cppgc-internal/sweeper.cc:1197-1211, SweepForAllocationIfRunning,
+///     `is_sweeping_on_mutator_thread_`) - and so has V8's own second pass
+///     (src/handles/global-handles.cc:752-756, "Newly added callbacks will
+///     always be run by the outermost GC run only");
+///   * the returning binding left an exception pending (Isolate::
+///     HasPendingException, src/api/api.cc:10065-10073): V8 hands an
+///     exception thrown inside an API callback only to a TryCatch registered
+///     before the throw, and the engine work of a finalizer - a script, a
+///     call - would clear it silently ("Binding catch scopes", above): the
+///     script would never see what its call threw.
+/// The queue then keeps them owed, for the next exit or the pump.
+static bool runQueuedFinalizersInTask(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return true;
+    if (record->finalizers_running) return false;
+    if (isolate->HasPendingException()) {
+        return record->queued_finalizers.empty() && !record->node_wrappers_collected;
+    }
+    runQueuedFinalizers(isolate);
+    return true;
+}
+
+/// The agent's queue owes finalizers and a binding returned into script at
+/// DOM-algorithm depth zero (the queue's finalizer steps,
+/// finalizer_safe_point.zig): run them (`runQueuedFinalizersInTask`). False
+/// when they still wait. On the isolate's thread, the isolate entered.
+extern "C" bool v8_Isolate_RunQueuedFinalizers(Isolate* isolate) {
+    if (!isolate) return true;
+    return runQueuedFinalizersInTask(isolate);
+}
+
+/// Where `isolate`'s second passes say that finalizers wait
+/// (IsolateData::finalizers_owed): `word`, a byte of the agent's that stays
+/// valid until this is called again, and the bit `mask` of it; null
+/// withdraws it (the agent's end, before its queue can go). What already
+/// waits is owed at once. On the isolate's thread.
+extern "C" void v8_Isolate_SetFinalizersOwed(Isolate* isolate, uint8_t* word, uint8_t mask) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    record->finalizers_owed = word;
+    record->finalizers_owed_mask = word ? mask : 0;
+    if (!record->queued_finalizers.empty() || record->node_wrappers_collected) oweFinalizers(record);
 }
 
 /// Finalizers on `isolate`'s queue that their owners have not cancelled: a
@@ -3043,7 +3146,9 @@ extern "C" size_t v8_Debug_QueuedFinalizers(Isolate* isolate) {
 static void nodeWrapperSecondPass(const WeakCallbackInfo<void>& info) {
     IsolateData* record = isolateData(info.GetIsolate());
     // The parameter is the cell the first pass freed: not read.
-    if (record) record->node_wrappers_collected = true;
+    if (!record) return;
+    record->node_wrappers_collected = true;
+    oweFinalizers(record);
 }
 
 /// V8's first pass for a collected node wrapper. "When first called, the
@@ -3554,6 +3659,11 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             // list goes: the records are freed below, the cancelled ones with
             // the detached set and the rest with pendingFinalizers().
             record->queued_finalizers.clear();
+            // No second pass stores into the agent's queue from here on (the
+            // agent's end withdrew the byte already; a test's own isolate
+            // never registered one).
+            record->finalizers_owed = nullptr;
+            record->finalizers_owed_mask = 0;
             record->foreground_tasks->close();
             isolate->SetData(kIsolateDataSlot, nullptr);
             for (SyntheticJsonExport* entry : record->synthetic_json_exports) deleteSyntheticExport(entry);
@@ -4218,8 +4328,12 @@ void v8_ExternalMemoryAccounter_Update(ExternalMemoryAccounter* accounter, Isola
     // drops objects in one loop used to run. Without this they all waited
     // for the pump, a task away, and each kept its native state until then
     // (300,000 dropped Events in one loop: 392 MB at the loop's end instead
-    // of 168 MB, lane v8up b6).
-    runQueuedFinalizers(isolate);
+    // of 168 MB, lane v8up b6). The binding exit itself is that safe point
+    // now, for every script (v8_Isolate_RunQueuedFinalizers); this one adds
+    // the passes the report's own collection ran, under the same two rules -
+    // not beneath a running finalizer, not while the returning binding's
+    // exception is pending (`runQueuedFinalizersInTask`).
+    runQueuedFinalizersInTask(isolate);
 }
 
 void v8_ExternalMemoryAccounter_Delete(ExternalMemoryAccounter* accounter, Isolate* isolate, uint64_t reported) {

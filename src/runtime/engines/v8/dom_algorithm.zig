@@ -10,7 +10,8 @@
 //! custom element reaction or an observer callback calling script
 //! (protocol.zig's invokeCallbackFunction, constructCallbackFunction,
 //! callUserObjectOperation). What the queue owes meanwhile - its memory
-//! bound past high_water, a full collection's drain - runs at the binding
+//! bound past high_water, a full collection's drain, the finalizers of
+//! collected wrappers - runs at the binding
 //! exit that brings the depth back to zero: that exit returns into script,
 //! with nothing of the DOM below it. A callback's return goes back into the
 //! native algorithm that invoked it and runs nothing.
@@ -43,7 +44,9 @@ pub inline fn enterRealm(realm: runtime.Context) ?*DeferredTeardown {
 }
 
 /// A binding returns into script: at depth zero the queue runs what it owes -
-/// a relief, a drain, and the report of the agent's DOM memory to V8
+/// the finalizers of the wrappers V8's collector found dead
+/// (finalizer_safe_point.zig, through the queue's finalizer steps), a relief,
+/// a drain, and the report of the agent's DOM memory to V8
 /// (external_memory.zig, through the queue's report steps) - all behind the
 /// one check of what is owed.
 pub inline fn leaveToScript(queue: ?*DeferredTeardown) void {

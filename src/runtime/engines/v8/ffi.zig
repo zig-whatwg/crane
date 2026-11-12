@@ -2754,9 +2754,11 @@ pub extern fn v8_Global_SetWeak(
 /// is a fatal CHECK) and only queues the finalizer on its agent, which runs it
 /// at the agent's safe point - `v8_Platform_PumpMessageLoop`, after the task
 /// that carried the second pass and before the event loop's microtask
-/// checkpoint; or `v8_Isolate_RequestGarbageCollection` /
+/// checkpoint; `v8_Isolate_RequestGarbageCollection` /
 /// `v8_Isolate_MemoryPressureNotification`, before a forced collection
-/// returns - where it may do any engine work, in the order V8's second pass
+/// returns; or, inside a task, a binding's return into script at
+/// DOM-algorithm depth zero (`v8_Isolate_RunQueuedFinalizers`) - where it
+/// may do any engine work, in the order V8's second pass
 /// handed the finalizers over (the order they ran in when that pass ran them
 /// itself: the reverse of the first pass's). Disposing the handle before then cancels
 /// `finalize`; an agent's end runs what is queued in its last forced
@@ -2776,6 +2778,23 @@ pub extern fn v8_Debug_InFirstPassWeakCallback() bool;
 /// Finalizers a collection's second pass has queued on `isolate`'s agent and
 /// its safe point has not run yet, not counting cancelled ones (tests).
 pub extern fn v8_Debug_QueuedFinalizers(isolate: *Isolate) usize;
+
+/// Where `isolate`'s second passes say that finalizers wait: `word`, a byte
+/// of the agent's - what its deferred teardown queue owes
+/// (runtime.gc.DeferredTeardown.owedWord) - that stays valid until this is
+/// called again, and the bit `mask` of it. The pass stores the bit and calls
+/// nothing; a drain that leaves none waiting clears it. Null withdraws it:
+/// the agent's end, before its queue can go. On the isolate's thread.
+pub extern fn v8_Isolate_SetFinalizersOwed(isolate: *Isolate, word: ?*u8, mask: u8) void;
+
+/// The agent's safe point for queued finalizers INSIDE a task: a binding
+/// returned into script at DOM-algorithm depth zero and the agent's queue
+/// owes finalizers (finalizer_safe_point.zig). Runs them all, as the pump
+/// does. False when they still wait because this is no place to run them: a
+/// finalizer is already on the stack (no drain runs beneath itself), or the
+/// returning binding left an exception pending, which a finalizer's engine
+/// work would clear. On the isolate's thread, the isolate entered.
+pub extern fn v8_Isolate_RunQueuedFinalizers(isolate: *Isolate) bool;
 
 /// One platform task WITHOUT the agent's safe point: what its second pass
 /// queued stays queued. For tests of the finalizer queue only; the engine
