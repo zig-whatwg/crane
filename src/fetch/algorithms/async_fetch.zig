@@ -104,8 +104,14 @@ pub const AsyncFetch = struct {
     /// (FetchJob.awaitsBodyEnd: its report timing steps run then) - or, for a
     /// race's network side, the one its raced fetch does.
     track_body_end: bool = false,
-    /// The bytes of the body arriving now, as its producer gave them.
+    /// The bytes of the body arriving now, as its producer gave them - the
+    /// network's with their content codings undone (the body info's decoded
+    /// size, HTTP-network fetch 18.1.1.1.10).
     body_bytes: u64 = 0,
+    /// The same body as it arrived, before its codings were undone (the
+    /// encoded size, 18.1.1.1.8): the network's count (`networkEncoded`);
+    /// a service worker's body has none to undo.
+    encoded_bytes: u64 = 0,
     /// Whether the body's end may still be reported: false once the
     /// client has gone (`sweep`) - its global hears nothing more.
     reporting: bool = true,
@@ -465,7 +471,7 @@ pub const AsyncFetch = struct {
                     self.transfer = self.fetches.scheduler.startStreaming(
                         self.allocator,
                         needed.request,
-                        .{ .context = self, .head = networkHead, .data = networkData, .end = networkEnd },
+                        .{ .context = self, .head = networkHead, .data = networkData, .end = networkEnd, .encoded = networkEncoded },
                     ) catch |err| {
                         // Not sent at all: that is the network's answer.
                         self.awaiting_head = false;
@@ -498,6 +504,7 @@ pub const AsyncFetch = struct {
             .{ .context = self, .cancel = stopProducing, .pause = pauseTransfer, .unpause = unpauseTransfer };
         self.source = source;
         self.body_bytes = 0;
+        self.encoded_bytes = 0;
         const pipe = source.branch() catch {
             var h = head;
             h.deinit();
@@ -518,6 +525,11 @@ pub const AsyncFetch = struct {
             self.body_bytes += bytes.len;
             source.push(bytes);
         }
+    }
+
+    fn networkEncoded(context: ?*anyopaque, total: u64) void {
+        const self: *AsyncFetch = @ptrCast(@alignCast(context.?));
+        self.encoded_bytes = total;
     }
 
     fn networkEnd(context: ?*anyopaque, result: NetworkError!void) void {
@@ -551,7 +563,7 @@ pub const AsyncFetch = struct {
         // would report to is going. Its body can still end after - its
         // reader freed with the realm (stopProducing, stopRelay).
         if (!self.reporting) return;
-        const sizes: fetch_job.BodySizes = .{ .encoded = self.body_bytes, .decoded = self.body_bytes };
+        const sizes: fetch_job.BodySizes = .{ .encoded = self.encoded_bytes, .decoded = self.body_bytes };
         if (self.race_owner) |owner| {
             if (owner.reporting) owner.raceBodyEnded(sizes);
             return;
@@ -783,6 +795,7 @@ pub const AsyncFetch = struct {
         const source = self.relay_source orelse return false;
         const end = relay.drainInto(source);
         self.body_bytes = relay.drained;
+        self.encoded_bytes = relay.drained;
         if (end == .open) return true;
         self.relay_source = null;
         relay.release();
@@ -801,7 +814,10 @@ pub const AsyncFetch = struct {
     fn stopRelay(context: *anyopaque) void {
         const self: *AsyncFetch = @ptrCast(@alignCast(context));
         self.relay_source = null;
-        if (self.relay) |relay| self.body_bytes = relay.drained;
+        if (self.relay) |relay| {
+            self.body_bytes = relay.drained;
+            self.encoded_bytes = relay.drained;
+        }
         self.endBody();
         self.letRelayGo();
     }
