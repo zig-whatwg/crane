@@ -51,10 +51,16 @@ pub const Implementation = struct {
     /// load event fired: its load ends without load, pageshow or its
     /// container's load (Document's completeLoading).
     end_load: *const fn (document: *runtime.Instance) void,
+    /// window.stop() stopped `document`'s load before its load event: its
+    /// readiness becomes "complete" now, it fires no load, and it stops
+    /// delaying its container's document (Document's lifecycleStopLoad).
+    stop_load: *const fn (document: *runtime.Instance) void,
     /// Abort a document and its descendants, step 3.2: propagate the
     /// descendant's unsalvageable state to the root after its abort task.
     propagate_abort: *const fn (parent: *runtime.Instance, child: *runtime.Instance) void,
     destroy: *const fn (document: *runtime.Instance) void,
+    /// Whether "destroy a document" has run on `document`.
+    is_destroyed: *const fn (document: *runtime.Instance) bool,
     set_about_base_url: *const fn (document: *runtime.Instance, url: ?[]const u8) void,
     about_fallback_base_url: *const fn (document: *runtime.Instance) ?[]const u8,
     declarative_refresh: *const fn (document: *runtime.Instance, input: []const u8, meta: ?*runtime.Instance) void,
@@ -247,6 +253,13 @@ pub fn endLoad(document: *runtime.Instance) void {
     impl.end_load(document);
 }
 
+/// End `document`'s load after window.stop() aborted it: see
+/// Implementation.stop_load. Nothing without an implementation.
+pub fn stopLoad(document: *runtime.Instance) void {
+    const impl = implementation.get() orelse return;
+    impl.stop_load(document);
+}
+
 /// HTML "abort a document and its descendants" step 3.2: if child's
 /// salvageable state is false, parent's becomes false as well. Neither
 /// document's activity changes merely because it cannot enter the bfcache.
@@ -262,6 +275,16 @@ pub fn propagateAbort(parent: *runtime.Instance, child: *runtime.Instance) void 
 pub fn destroy(document: *runtime.Instance) void {
     const impl = implementation.get() orelse return;
     impl.destroy(document);
+}
+
+/// Whether HTML "destroy a document" (7.5.10) has run on `document` - only
+/// that. A document still being made, not yet any navigable's active
+/// document, is not destroyed, nor is one whose realm merely ended
+/// (document_activity calls all three "gone"; lesson spec-compliance-gone-
+/// is-not-destroyed-a-document-being-made-has-no-browsing-context-yet).
+pub fn isDestroyed(document: *runtime.Instance) bool {
+    const impl = implementation.get() orelse return false;
+    return impl.is_destroyed(document);
 }
 
 /// "Create and initialize a Document object" and "create a new browsing
