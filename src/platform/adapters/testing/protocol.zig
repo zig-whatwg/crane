@@ -6,7 +6,8 @@
 //! Step 0 of the platform protocol: the OS services are the same kit parts
 //! darwin and linux compose; of the test capabilities the in-memory
 //! clipboard (kit/memory_clipboard), the image decoders
-//! (kit/image_decoding, decision 19) and the media decoders
+//! (kit/image_decoding, decision 19) and encoder (kit/image_encoding: PNG,
+//! the integrator 2026-11-12, as darwin and linux) and the media decoders
 //! (kit/media_decoding: WAV linear PCM) - all three also darwin's and
 //! linux's since the user's rulings D1, D2 and D4 (2026-11-09) - and the
 //! fonts (fonts.zig: kit/sfnt and fixed installed faces, decision 20) are
@@ -32,6 +33,11 @@ const SeededRandom = @import("seeded_random.zig").SeededRandom;
 const image_decoding = if (for (platform_options.platform_without) |capability| {
     if (std.mem.eql(u8, capability, "image_decoding")) break true;
 } else false) headless else @import("kit_image_decoding");
+/// kit/image_encoding (PNG), as darwin and linux build it in.
+const image_encoding_built_in = for (platform_options.platform_without) |capability| {
+    if (std.mem.eql(u8, capability, "image_encoding")) break false;
+} else true;
+const image_encoding = if (image_encoding_built_in) @import("kit_image_encoding") else headless;
 /// kit/media_decoding (WAV linear PCM; D4), as darwin and linux build it in.
 const media_decoding_built_in = for (platform_options.platform_without) |capability| {
     if (std.mem.eql(u8, capability, "media_decoding")) break false;
@@ -128,6 +134,8 @@ pub const protocol = struct {
         c.clipboard = .emulated;
         // kit/image_decoding, compiled in: PNG, BMP, GIF, JPEG and SVG.
         c.image_decoding = .native;
+        // kit/image_encoding, compiled in: PNG.
+        if (image_encoding_built_in) c.image_encoding = .native;
         // kit/media_decoding, compiled in: WAV linear PCM (D4).
         if (media_decoding_built_in) c.media_decoding = .native;
         // kit/sfnt (decision 20): web fonts in Zig, and fixed default,
@@ -304,6 +312,8 @@ pub const protocol = struct {
     pub const closeMediaDecoder = media_decoding.closeMediaDecoder;
     pub const imageMimeTypeSupported = image_decoding.imageMimeTypeSupported;
     pub const decodeImage = image_decoding.decodeImage;
+    pub const imageEncodingMimeTypeSupported = image_encoding.imageEncodingMimeTypeSupported;
+    pub const encodeImage = image_encoding.encodeImage;
     pub const decodeFont = fonts.decodeFont;
     pub const genericFontFace = fonts.genericFontFace;
     pub const installedFontFace = fonts.installedFontFace;

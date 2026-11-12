@@ -2441,6 +2441,7 @@ const Platform = enum {
 /// this list only makes a typo fail before any compile starts.
 const platform_capability_names = [_][]const u8{
     "image_decoding",
+    "image_encoding",
     "font_decoding",
     "brotli",
     "persistent_storage",
@@ -2705,7 +2706,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     const font_decoding_enabled = for (options.without) |name| {
         if (std.mem.eql(u8, name, "font_decoding")) break false;
     } else true;
-    const kit_parts = [_][]const u8{ "posix", "headless", "memory_store", "curl", "crypto", "memory_clipboard", "browser_state", "brotli", "image_codecs", "inflate", "sfnt", "image_decoding", "media_decoding" };
+    const kit_parts = [_][]const u8{ "posix", "headless", "memory_store", "curl", "crypto", "memory_clipboard", "browser_state", "brotli", "image_codecs", "inflate", "sfnt", "image_decoding", "media_decoding", "image_encoding" };
     var kit: [kit_parts.len]*std.Build.Module = undefined;
     for (kit_parts, 0..) |part, i| {
         kit[i] = b.createModule(.{
@@ -4407,6 +4408,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "testing_without_camera_clipboard", .platform = .testing, .without = &.{ "camera", "clipboard" } },
             .{ .name = "testing_without_brotli", .platform = .testing, .without = &.{"brotli"} },
             .{ .name = "testing_without_image_decoding", .platform = .testing, .without = &.{"image_decoding"} },
+            .{ .name = "testing_without_image_encoding", .platform = .testing, .without = &.{"image_encoding"} },
             .{ .name = "testing_without_font_decoding", .platform = .testing, .without = &.{"font_decoding"} },
             .{ .name = "darwin_without_font_decoding", .platform = .darwin, .without = &.{"font_decoding"} },
         };
