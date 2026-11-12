@@ -2843,7 +2843,15 @@ struct IsolateData {
     /// added to a live wrapper: a record joins when its wrapper has died.
     /// v8_Isolate_Dispose empties the list without calling Zig; the two
     /// owners free the records. Read and written on the isolate's thread.
+    ///
+    /// Two lists, run in this order by every full drain: `queued_finalizers`
+    /// holds the records a callback's exit has looked at and found must wait
+    /// for depth zero (`v8_Isolate_RunFreshFinalizers`); a second pass puts
+    /// a record on `unjudged_finalizers`, where one that waits for an outer
+    /// callback also stays. An agent that never looks from inside a callback
+    /// keeps everything on the second list, in the second pass's order.
     std::deque<WeakCallbackData*> queued_finalizers;
+    std::deque<WeakCallbackData*> unjudged_finalizers;
     /// WHERE A SECOND PASS SAYS FINALIZERS WAIT: one byte of the agent's own
     /// - what its deferred teardown queue owes its next safe point
     /// (runtime.gc.DeferredTeardown.owedWord) - and the bit of it that means
@@ -2854,6 +2862,10 @@ struct IsolateData {
     /// Read and written on the isolate's thread.
     uint8_t* finalizers_owed = nullptr;
     uint8_t finalizers_owed_mask = 0;
+    /// The bit of the same byte that says "some finalizer has not been
+    /// looked at by a callback's exit" (DeferredTeardown.Owed.fresh): set
+    /// with the other when a second pass queues a record.
+    uint8_t fresh_owed_mask = 0;
     /// `runQueuedFinalizers` is on the stack: a finalizer is running. The
     /// safe points inside a task - a binding's return into script, the
     /// external-memory report made there - run nothing beneath it
@@ -2963,8 +2975,8 @@ static_assert(sizeof(Global<Object>) == sizeof(void*), "a node's wrapper slot ho
 /// that finds the bit (dom_algorithm.zig leaveToScript ->
 /// DeferredTeardown.leaveAlgorithmToScript). One store into the agent's own
 /// byte; nothing of Zig's is called from V8's pass.
-static inline void oweFinalizers(IsolateData* record) {
-    if (record->finalizers_owed) *record->finalizers_owed |= record->finalizers_owed_mask;
+static inline void oweFinalizers(IsolateData* record, uint8_t bits) {
+    if (record->finalizers_owed) *record->finalizers_owed |= bits;
 }
 
 /// Nothing waits any more - a drain ran every finalizer, at whichever safe
@@ -2972,8 +2984,8 @@ static inline void oweFinalizers(IsolateData* record) {
 /// them.
 static inline void settleFinalizersOwed(IsolateData* record) {
     if (!record->finalizers_owed) return;
-    if (!record->queued_finalizers.empty() || record->node_wrappers_collected) return;
-    *record->finalizers_owed &= static_cast<uint8_t>(~record->finalizers_owed_mask);
+    if (!record->queued_finalizers.empty() || !record->unjudged_finalizers.empty() || record->node_wrappers_collected) return;
+    *record->finalizers_owed &= static_cast<uint8_t>(~(record->finalizers_owed_mask | record->fresh_owed_mask));
 }
 
 /// A record's second pass has run: it waits on its agent's queue from here.
@@ -2984,8 +2996,32 @@ static inline void settleFinalizersOwed(IsolateData* record) {
 static void queueFinalizer(Isolate* isolate, WeakCallbackData* data) {
     IsolateData* record = isolateData(isolate);
     if (!record) return;
-    record->queued_finalizers.push_back(data);
-    oweFinalizers(record);
+    record->unjudged_finalizers.push_back(data);
+    oweFinalizers(record, record->finalizers_owed_mask | record->fresh_owed_mask);
+}
+
+/// Run the finalizer of `data`, a record a drain took off its list: the
+/// record goes first, then the Zig finalizer runs unless its owner cancelled
+/// it. Answers whether it ran.
+static bool runFinalizerRecord(WeakCallbackData* data) {
+    const ZigWeakCallbackFn finalize = data->finalize;
+    void* const user_data = data->user_data;
+    // Forgotten BEFORE calling into Zig, which disposes the handle and must
+    // not find a finalizer to cancel. A cancelled record has no handle and
+    // is in the detached set.
+    if (data->handle) {
+        auto& pending = pendingFinalizers();
+        auto it = pending.find(static_cast<const void*>(data->handle));
+        if (it != pending.end() && it->second == data) pending.erase(it);
+    }
+    {
+        std::lock_guard<std::mutex> guard(weakDataLock());
+        detachedWeakData().erase(data);
+    }
+    freeWeakData(data);
+    if (!finalize) return false;
+    finalize(user_data, 0);
+    return true;
 }
 
 /// THE AGENT'S SAFE POINT for the finalizers of its collected wrappers: run
@@ -3018,6 +3054,10 @@ static void queueFinalizer(Isolate* isolate, WeakCallbackData* data) {
 ///     queued by a second pass V8 ran by itself - a pending pass run at the
 ///     start of the next collection, an allocation's last resort - run
 ///     there, not a task later at the pump.
+///   * INSIDE A CALLBACK (`v8_Isolate_RunFreshFinalizers`, not this
+///     function): a binding's return into the script of the innermost
+///     callback invocation runs the FRESH ones alone - objects a
+///     script-called constructor made since that callback began.
 /// A teardown hold (engine.deferTeardowns) is the Zig finalizer's own
 /// business: it lists its entry for the hold's last resume, as before.
 ///
@@ -3031,7 +3071,7 @@ static void queueFinalizer(Isolate* isolate, WeakCallbackData* data) {
 static bool runQueuedFinalizers(Isolate* isolate) {
     IsolateData* record = isolateData(isolate);
     if (!record) return false;
-    if (record->queued_finalizers.empty() && !record->node_wrappers_collected) {
+    if (record->queued_finalizers.empty() && record->unjudged_finalizers.empty() && !record->node_wrappers_collected) {
         settleFinalizersOwed(record);
         return false;
     }
@@ -3039,27 +3079,15 @@ static bool runQueuedFinalizers(Isolate* isolate) {
     const bool was_running = record->finalizers_running;
     record->finalizers_running = true;
     bool ran = false;
-    while (!record->queued_finalizers.empty()) {
-        WeakCallbackData* data = record->queued_finalizers.front();
-        record->queued_finalizers.pop_front();
-        const ZigWeakCallbackFn finalize = data->finalize;
-        void* const user_data = data->user_data;
-        // Forgotten BEFORE calling into Zig, which disposes the handle and
-        // must not find a finalizer to cancel. A cancelled record has no
-        // handle and is in the detached set.
-        if (data->handle) {
-            auto& pending = pendingFinalizers();
-            auto it = pending.find(static_cast<const void*>(data->handle));
-            if (it != pending.end() && it->second == data) pending.erase(it);
-        }
-        {
-            std::lock_guard<std::mutex> guard(weakDataLock());
-            detachedWeakData().erase(data);
-        }
-        freeWeakData(data);
-        if (!finalize) continue;
-        finalize(user_data, 0);
-        ran = true;
+    // The records a callback's exit set aside for depth zero first - they
+    // are the older ones - then the rest, each list from its front.
+    for (;;) {
+        std::deque<WeakCallbackData*>& list =
+            !record->queued_finalizers.empty() ? record->queued_finalizers : record->unjudged_finalizers;
+        if (list.empty()) break;
+        WeakCallbackData* data = list.front();
+        list.pop_front();
+        if (runFinalizerRecord(data)) ran = true;
     }
     if (record->node_wrappers_collected) {
         record->node_wrappers_collected = false;
@@ -3099,9 +3127,77 @@ static bool runQueuedFinalizersInTask(Isolate* isolate) {
     if (!record) return true;
     if (record->finalizers_running) return false;
     if (isolate->HasPendingException()) {
-        return record->queued_finalizers.empty() && !record->node_wrappers_collected;
+        return record->queued_finalizers.empty() && record->unjudged_finalizers.empty() && !record->node_wrappers_collected;
     }
     runQueuedFinalizers(isolate);
+    return true;
+}
+
+/// THE SAFE POINT INSIDE A CALLBACK: a binding returned into the script of
+/// the innermost native-to-script callback invocation on the agent's stack,
+/// with no other DOM algorithm between the two (DeferredTeardown.runFresh).
+/// Only a FRESH finalizer runs here: one whose object a script-called
+/// constructor made at or after that invocation began - every DOM algorithm
+/// on the stack has been suspended in its call into script since before the
+/// object existed, so none holds a pointer to it (finalizer_safe_point.zig,
+/// "Inside a callback"). `stamp_of` answers when a record's object was made
+/// on the agent's callback clock (0: never fresh - the default); `innermost`
+/// and `outermost` are when the innermost and the outermost invocation on
+/// the stack began.
+///
+/// Every record no callback's exit has looked at yet, and every one that
+/// waited for an outer callback, is looked at once: stamped at or after
+/// `innermost`, it runs; at or after `outermost`, it stays - script will be
+/// back in a callback it is fresh for (`*waiting` gets the newest such
+/// stamp, for DeferredTeardown.leaveCallback to owe the next look); anything
+/// else joins the records that wait for depth zero and is not looked at
+/// again. Nothing here touches the node wrappers' releases.
+///
+/// The two rules of `runQueuedFinalizersInTask` hold: not beneath a running
+/// finalizer, not while the returning binding's exception is pending - then
+/// nothing is looked at and the answer is false.
+extern "C" bool v8_Isolate_RunFreshFinalizers(Isolate* isolate, uint32_t innermost, uint32_t outermost,
+                                              uint32_t (*stamp_of)(ZigWeakCallbackFn finalize, void* user_data),
+                                              uint32_t* waiting) {
+    *waiting = 0;
+    IsolateData* record = isolateData(isolate);
+    if (!record || !stamp_of) return true;
+    if (record->finalizers_running) return false;
+    if (isolate->HasPendingException()) return record->unjudged_finalizers.empty();
+    if (record->unjudged_finalizers.empty()) {
+        if (record->finalizers_owed) *record->finalizers_owed &= static_cast<uint8_t>(~record->fresh_owed_mask);
+        return true;
+    }
+    HandleScope handle_scope(isolate);
+    record->finalizers_running = true;
+    // Taken whole: a finalizer may collect, and what its second pass queues
+    // joins the (now empty) list behind the records kept here.
+    std::deque<WeakCallbackData*> looking;
+    looking.swap(record->unjudged_finalizers);
+    std::deque<WeakCallbackData*> kept;
+    uint32_t newest_kept = 0;
+    while (!looking.empty()) {
+        WeakCallbackData* data = looking.front();
+        looking.pop_front();
+        // Cancelled while it waited: the record goes, uncalled.
+        const uint32_t stamp = data->finalize ? stamp_of(data->finalize, data->user_data) : UINT32_MAX;
+        if (stamp != 0 && stamp >= innermost) {
+            runFinalizerRecord(data);
+        } else if (stamp != 0 && stamp >= outermost) {
+            kept.push_back(data);
+            if (stamp > newest_kept) newest_kept = stamp;
+        } else {
+            record->queued_finalizers.push_back(data);
+        }
+    }
+    const bool arrived = !record->unjudged_finalizers.empty();
+    for (WeakCallbackData* data : record->unjudged_finalizers) kept.push_back(data);
+    record->unjudged_finalizers.swap(kept);
+    record->finalizers_running = false;
+    *waiting = newest_kept;
+    // Looked at, every one - unless a finalizer's own collection queued more.
+    if (!arrived && record->finalizers_owed) *record->finalizers_owed &= static_cast<uint8_t>(~record->fresh_owed_mask);
+    settleFinalizersOwed(record);
     return true;
 }
 
@@ -3119,12 +3215,14 @@ extern "C" bool v8_Isolate_RunQueuedFinalizers(Isolate* isolate) {
 /// valid until this is called again, and the bit `mask` of it; null
 /// withdraws it (the agent's end, before its queue can go). What already
 /// waits is owed at once. On the isolate's thread.
-extern "C" void v8_Isolate_SetFinalizersOwed(Isolate* isolate, uint8_t* word, uint8_t mask) {
+extern "C" void v8_Isolate_SetFinalizersOwed(Isolate* isolate, uint8_t* word, uint8_t mask, uint8_t fresh_mask) {
     IsolateData* record = isolateData(isolate);
     if (!record) return;
     record->finalizers_owed = word;
     record->finalizers_owed_mask = word ? mask : 0;
-    if (!record->queued_finalizers.empty() || record->node_wrappers_collected) oweFinalizers(record);
+    record->fresh_owed_mask = word ? fresh_mask : 0;
+    if (!record->queued_finalizers.empty() || record->node_wrappers_collected) oweFinalizers(record, record->finalizers_owed_mask);
+    if (!record->unjudged_finalizers.empty()) oweFinalizers(record, record->finalizers_owed_mask | record->fresh_owed_mask);
 }
 
 /// Finalizers on `isolate`'s queue that their owners have not cancelled: a
@@ -3135,6 +3233,9 @@ extern "C" size_t v8_Debug_QueuedFinalizers(Isolate* isolate) {
     if (!record) return 0;
     size_t waiting = 0;
     for (const WeakCallbackData* data : record->queued_finalizers) {
+        if (data->finalize) waiting++;
+    }
+    for (const WeakCallbackData* data : record->unjudged_finalizers) {
         if (data->finalize) waiting++;
     }
     return waiting;
@@ -3148,7 +3249,7 @@ static void nodeWrapperSecondPass(const WeakCallbackInfo<void>& info) {
     // The parameter is the cell the first pass freed: not read.
     if (!record) return;
     record->node_wrappers_collected = true;
-    oweFinalizers(record);
+    oweFinalizers(record, record->finalizers_owed_mask);
 }
 
 /// V8's first pass for a collected node wrapper. "When first called, the
@@ -3659,11 +3760,13 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             // list goes: the records are freed below, the cancelled ones with
             // the detached set and the rest with pendingFinalizers().
             record->queued_finalizers.clear();
+            record->unjudged_finalizers.clear();
             // No second pass stores into the agent's queue from here on (the
             // agent's end withdrew the byte already; a test's own isolate
             // never registered one).
             record->finalizers_owed = nullptr;
             record->finalizers_owed_mask = 0;
+            record->fresh_owed_mask = 0;
             record->foreground_tasks->close();
             isolate->SetData(kIsolateDataSlot, nullptr);
             for (SyntheticJsonExport* entry : record->synthetic_json_exports) deleteSyntheticExport(entry);

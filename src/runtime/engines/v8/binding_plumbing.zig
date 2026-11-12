@@ -259,7 +259,16 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
         // error is thrown.
         // A node's receiver moves into its slot (its box goes): nothing
         // below reads `this_obj` but a DOMException's, which is no node.
-        _ = cache.set(instance, this_obj, isolate) catch |err| {
+        // The instance was created by this call (WebIDL 3.7.2: the
+        // constructor steps make a new object) and is first wrapped here -
+        // one a traced edge wrapped while it was made returned above: inside
+        // a callback it is stamped with the agent's callback clock, so that
+        // its finalizer may run at a binding's return into that callback's
+        // script (finalizer_safe_point.zig, "Inside a callback"). Script
+        // the constructor itself ran - a dictionary getter, a callback - has
+        // returned; a callback it invoked has ended.
+        const stamp: u32 = if (algorithm) |queue| queue.freshStamp() else 0;
+        _ = cache.setConstructed(instance, this_obj, isolate, stamp) catch |err| {
             unbindReceiver(this_obj);
             instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
             const function_ctx_owned = info.getFunctionCreationContext();

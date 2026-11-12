@@ -164,7 +164,24 @@ const CacheEntry = struct {
     /// (`releaseCounted`). The second pass hands it back without looking the
     /// node up again (refcount design 2.1, 5.1).
     counted: ?*anyopaque = null,
+
+    /// When a script-called constructor made the instance, on its agent's
+    /// callback clock (runtime.gc.DeferredTeardown.freshStamp, given by the
+    /// constructor trampoline to `setConstructed`); 0 - the default, and the
+    /// safe answer - for every other wrap: an object an operation returned,
+    /// one wrapped while it was being constructed, one made outside any
+    /// callback. Its finalizer may run at a binding's return into a
+    /// callback's script only when this is at or after that callback's
+    /// beginning (`freshStampOf`; finalizer_safe_point.zig). Four bytes the
+    /// entry's padding already held (the size is pinned below).
+    fresh: u32 = 0,
 };
+
+comptime {
+    // Nothing is added to a live wrapper: the stamp sits in the entry's
+    // padding (8 pointers, a u64, two u32, 8 one-byte flags).
+    if (@sizeOf(usize) == 8) std.debug.assert(@sizeOf(CacheEntry) == 88);
+}
 
 /// Let `entry`'s counted reference go (runtime.lifetime), once - only while
 /// its node is alive. A node whose teardown began under its wrapper had it let
@@ -901,6 +918,19 @@ fn finalizeCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
         }
     }
     finalizeEntry(entry);
+}
+
+/// The stamp of the object a queued finalizer is for (`CacheEntry.fresh`), for
+/// the agent's safe point inside a callback (finalizer_safe_point.zig): 0 -
+/// never fresh - for a finalizer that is not a wrapper cache entry's (an
+/// observable array's, an asynchronous iterator's, a promise reaction's), and
+/// for an entry whose cache is gone. `data` is what the finalizer was armed
+/// with; it has not been cancelled (the caller checked).
+pub fn freshStampOf(finalize: v8.WeakCallbackFn, data: ?*anyopaque) u32 {
+    if (finalize != &finalizeCollected) return 0;
+    const entry: *const CacheEntry = @ptrCast(@alignCast(data orelse return 0));
+    if (entry.is_orphaned) return 0;
+    return entry.fresh;
 }
 
 /// An agent's holds on the teardowns of its collected platform objects
@@ -2047,6 +2077,23 @@ pub const WrapperCache = struct {
         wrapper: *v8.Object,
         isolate: *v8.Isolate,
     ) !*v8.Object {
+        return self.setConstructed(instance, wrapper, isolate, 0);
+    }
+
+    /// `set` for the receiver of a script-called constructor, whose
+    /// `instance` that same binding call created: `stamp` is when, on its
+    /// agent's callback clock (`CacheEntry.fresh`; 0: not fresh). Only the
+    /// constructor trampoline calls it, and only for an instance nothing
+    /// wrapped while it was made (interface.adoptExistingWrapper returns
+    /// first). A node takes no stamp: its wrapper is its slot's, and its
+    /// end frees no node.
+    pub fn setConstructed(
+        self: *Self,
+        instance: *runtime.Instance,
+        wrapper: *v8.Object,
+        isolate: *v8.Isolate,
+        stamp: u32,
+    ) !*v8.Object {
         // A cache being torn down takes no wrapper: its sweep (`deinit`)
         // walks the map, and an entry put in now would be met or not as the
         // hash order fell - a wrapper whose instance the sweep then never
@@ -2085,6 +2132,7 @@ pub const WrapperCache = struct {
             .original_vtable = instance.vtable,
             .original_state = instance.state,
             .original_generation = runtime.SlabAllocator.generationOf(instance),
+            .fresh = stamp,
         };
 
         // Store in HashMap.

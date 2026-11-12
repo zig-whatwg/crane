@@ -2782,10 +2782,29 @@ pub extern fn v8_Debug_QueuedFinalizers(isolate: *Isolate) usize;
 /// Where `isolate`'s second passes say that finalizers wait: `word`, a byte
 /// of the agent's - what its deferred teardown queue owes
 /// (runtime.gc.DeferredTeardown.owedWord) - that stays valid until this is
-/// called again, and the bit `mask` of it. The pass stores the bit and calls
-/// nothing; a drain that leaves none waiting clears it. Null withdraws it:
-/// the agent's end, before its queue can go. On the isolate's thread.
-pub extern fn v8_Isolate_SetFinalizersOwed(isolate: *Isolate, word: ?*u8, mask: u8) void;
+/// called again, and two bits of it: `mask`, "finalizers wait", and
+/// `fresh_mask`, "some have not been looked at by a callback's exit". The
+/// pass stores the bits and calls nothing; a drain that leaves none waiting
+/// clears them. Null withdraws it: the agent's end, before its queue can go.
+/// On the isolate's thread.
+pub extern fn v8_Isolate_SetFinalizersOwed(isolate: *Isolate, word: ?*u8, mask: u8, fresh_mask: u8) void;
+
+/// The stamp of the object a queued finalizer is for, asked by
+/// `v8_Isolate_RunFreshFinalizers` of each one it looks at: `finalize` and
+/// `data` as the finalizer was armed. 0: never fresh.
+pub const FreshStampFn = *const fn (finalize: WeakCallbackFn, data: ?*anyopaque) callconv(.c) u32;
+
+/// The agent's safe point INSIDE A CALLBACK: a binding returned into the
+/// script of the innermost callback invocation on the stack
+/// (finalizer_safe_point.zig). Of the finalizers no callback's exit has
+/// looked at yet, and those that waited for an outer callback: one stamped
+/// (`stamp_of`) at or after `innermost` runs now; one stamped at or after
+/// `outermost` waits where it is; every other joins those that wait for
+/// depth zero. `waiting` gets the newest stamp left waiting (0: none). False
+/// when nothing was looked at because this is no place to run a finalizer
+/// (as `v8_Isolate_RunQueuedFinalizers`). On the isolate's thread, the
+/// isolate entered.
+pub extern fn v8_Isolate_RunFreshFinalizers(isolate: *Isolate, innermost: u32, outermost: u32, stamp_of: FreshStampFn, waiting: *u32) bool;
 
 /// The agent's safe point for queued finalizers INSIDE a task: a binding
 /// returned into script at DOM-algorithm depth zero and the agent's queue
