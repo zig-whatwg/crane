@@ -544,7 +544,13 @@ pub const AgentOptions = struct {
     /// invocation on its `algorithm_depth`: nothing is freed while it is not
     /// zero, and what is owed meanwhile runs when the outermost binding exit
     /// brings it back to zero - never at a callback's return
-    /// (docs/engine-protocol.md, "Deferred teardown"). The agent's end closes
+    /// (docs/engine-protocol.md, "Deferred teardown"). The queue also carries
+    /// what the adapter owes for the wrappers its collector found dead: their
+    /// finalizers run at that same outermost exit (and between tasks), and
+    /// at a binding's return into a callback's own script only for an object
+    /// a script-called constructor made since the innermost callback
+    /// invocation began - the adapter keeps the agent's callback clock on
+    /// the queue for it (`DeferredTeardown.Callbacks`). The agent's end closes
     /// it. Null (only a test's own agent): an adapter that frees no node from
     /// a collection makes the agent's OWN queue, drained at a requested
     /// collection, at each realm's end and at the agent's end - no event loop

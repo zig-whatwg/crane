@@ -144,6 +144,26 @@ It drains at a requested collection, at each realm's end and at the agent's
 end (no event loop slices it), and goes with the agent before its isolate is
 disposed. JavaScriptCore, QuickJS and the test adapter answer null.
 
+The same queue carries what the adapter owes for the wrappers its collector
+found dead (`DeferredTeardown.Owed.finalizers`, `finalizer_steps`): an
+engine whose collector may not run a finalizer itself (V8 15.7 runs its
+second pass under DisallowJSObjectModification) only records the dead wrapper
+and sets that bit - a store, no call into the host - and the finalizers run at
+the agent's safe points: between tasks (the engine-task step, a requested
+collection's return) and, inside a task, at the outermost binding exit,
+before the trees it also owes. They never run beneath a running finalizer,
+nor while the returning binding's exception is pending (they stay owed).
+Script inside a callback never reaches that exit, so ONE thing runs at a
+binding's return into a callback's own script (no other binding between the
+two): the finalizer of an object a script-called constructor made since the
+innermost callback invocation on the stack began - no DOM algorithm on the
+stack can hold it. The queue keeps the agent's callback clock for that
+(`DeferredTeardown.Callbacks`: `enterCallback` / `leaveCallback` around each
+of the three callback operations, `freshStamp` for the constructor
+trampoline); everything else - nodes, what an operation returned, older
+objects, the trees, the relief, the drain, the report - waits for depth zero
+(src/runtime/engines/v8/finalizer_safe_point.zig).
+
 **External memory: the engine counts the host's DOM.** The engine collects
 when its own heap grows, and a wrapper of a few dozen bytes keeps a native
 tree alive, so a script that makes and drops trees allocates almost nothing the
