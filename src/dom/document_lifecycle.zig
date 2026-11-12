@@ -51,6 +51,10 @@ pub const Implementation = struct {
     /// load event fired: its load ends without load, pageshow or its
     /// container's load (Document's completeLoading).
     end_load: *const fn (document: *runtime.Instance) void,
+    /// window.stop() stopped `document`'s load before its load event: its
+    /// readiness becomes "complete" now, it fires no load, and it stops
+    /// delaying its container's document (Document's lifecycleStopLoad).
+    stop_load: *const fn (document: *runtime.Instance) void,
     /// Abort a document and its descendants, step 3.2: propagate the
     /// descendant's unsalvageable state to the root after its abort task.
     propagate_abort: *const fn (parent: *runtime.Instance, child: *runtime.Instance) void,
@@ -247,6 +251,13 @@ pub fn abortForNavigation(document: *runtime.Instance) void {
 pub fn endLoad(document: *runtime.Instance) void {
     const impl = implementation.get() orelse return;
     impl.end_load(document);
+}
+
+/// End `document`'s load after window.stop() aborted it: see
+/// Implementation.stop_load. Nothing without an implementation.
+pub fn stopLoad(document: *runtime.Instance) void {
+    const impl = implementation.get() orelse return;
+    impl.stop_load(document);
 }
 
 /// HTML "abort a document and its descendants" step 3.2: if child's

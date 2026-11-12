@@ -3369,6 +3369,11 @@ pub fn call_stop(instance: *runtime.Instance) anyerror!void {
     // step 3, aborting the document and its descendants.
     if (get_document(instance)) |document| {
         @import("dom").content_navigables.stopLoading(document);
+        // The abort ends the document's load if its load event has not run:
+        // "complete" now, no load, and its container no longer waits on it -
+        // Blink's StopAllLoaders -> Document::CancelParsing (the deviation
+        // and its evidence: Document's lifecycleStopLoad).
+        @import("dom").document_lifecycle.stopLoad(document);
     } else |_| {}
     @import("dom").navigation_api.informAboutAbortingNavigation(instance);
 }

@@ -252,6 +252,7 @@ pub fn installHooks() void {
         .abort = &lifecycleAbort,
         .abort_for_navigation = &lifecycleAbortForNavigation,
         .end_load = &lifecycleEndLoad,
+        .stop_load = &lifecycleStopLoad,
         .propagate_abort = &lifecyclePropagateAbort,
         .destroy = &lifecycleDestroy,
         .is_destroyed = &lifecycleIsDestroyed,
@@ -3779,6 +3780,45 @@ fn lifecycleAbortForNavigation(document: *runtime.Instance) void {
 fn lifecycleEndLoad(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
     if (internal.ready_state != ._complete_) internal.load_aborted = true;
+}
+
+/// dom.document_lifecycle: window.stop() aborted `document` (HTML "stop
+/// loading" step 3) before its load event: its load ends now. Its readiness
+/// becomes "complete", it fires no load, pageshow or container load
+/// (completeLoading's load_aborted branch), and it is ready for post-load
+/// tasks, so its container stops delaying the container's document.
+///
+/// Stated deviation, golden rule 2 mechanism by mechanism (no newer spec;
+/// the three browsers differ, html/browsers/browsing-the-web/
+/// navigating-across-documents/abort-document-load.html at wpt.fyi
+/// 24ddf405a0: Chrome 157 passes, Firefox 160 and Safari 27.2 fail):
+/// - readiness "complete": the spec ("abort a parser" step 5; "the end" step
+///   9.1 once the cancelled fetches stop delaying) and Chrome - Blink's
+///   FrameLoader::StopAllLoaders calls Document::CancelParsing, which sets
+///   the ready state to complete. Safari leaves an aborted parse
+///   "interactive".
+/// - no load event: Chrome (CancelParsing sets load_event_progress_ to
+///   kLoadEventCompleted) and Firefox (the stop ends the load as
+///   NS_BINDING_ABORTED, and nsDocumentViewer::LoadComplete fires load only
+///   for a successful status), against "the end" step 9.5.
+/// - the container's document is not held: all three (each harness
+///   finishes; Blink's DocumentLoader::StopLoading -> LoadFailed ->
+///   DidFinishNavigation runs the parent's CheckCompleted), against HTML
+///   4.8.5's first delay predicate - an aborted parser's document never
+///   reaches "the end" step 11, ready for post-load tasks.
+/// Each majority is Chrome's behaviour, so Crane does what Chrome does.
+fn lifecycleStopLoad(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    // Its load already ran, or ended: nothing is left to stop.
+    if (internal.ready_for_post_load_tasks) return;
+    internal.load_aborted = true;
+    internal.ready_for_post_load_tasks = true;
+    const generation = runtime.SlabAllocator.generationOf(document);
+    // readystatechange listeners run here, and may take the frame away.
+    engine.runInRealm(document.ctx, becomeComplete, document) catch {};
+    if (runtime.SlabAllocator.generationOf(document) != generation) return;
+    // The container's document may have been waiting on this one alone.
+    @import("dom").content_navigables.loadDelayMayHaveEnded(document);
 }
 
 /// Only fetch-owner policy distinguishes provisional navigation here;
