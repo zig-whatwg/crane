@@ -40,6 +40,15 @@ pub const Resource = union(enum) {
     }
 };
 
+/// Where a script was (§2.4.1 step 2's source file, line number and column
+/// number): a script's URL, unstripped ("" for none), its 1-based line and
+/// its column as the JS engine counts it (0 when unknown).
+pub const SourceLocation = struct {
+    url: []const u8,
+    line: u32,
+    column: u32,
+};
+
 /// A violation as its finder hands it over: everything but its global
 /// object, which is the reporter's. Borrowed for the call.
 pub const Violation = struct {
@@ -55,6 +64,12 @@ pub const Violation = struct {
     /// The first 40 characters of the inline source, when the violated
     /// directive asks for a sample; else empty.
     sample: []const u8 = "",
+    /// The location of the script that started what the violation was
+    /// found in, when no script is running as it is found: a request's
+    /// (fetch.internal.InternalRequest.csp_violation_location). The
+    /// reporter uses it when §2.4.1 step 2 finds no running script. Null:
+    /// none was carried.
+    location: ?SourceLocation = null,
 };
 
 /// What a finder reports a violation to: its global's side.
