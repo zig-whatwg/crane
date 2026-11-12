@@ -312,10 +312,10 @@ pub fn styleStart(local_name: []const u8, document: *runtime.Instance) ?dom.styl
 }
 
 /// HTML 13.2.6.1 "create an element for a token": "Append each attribute in
-/// the given token to element" - at once, the list from the parser run's
-/// `cache` (dom.element_attributes.setParsed: shared with the run's elements
-/// whose set is equal; lane nd2 batch 4).
-pub fn appendParsedAttributes(element: *runtime.Instance, attrs: []const html_core.parser.TreeNode.Attribute, cache: ?*dom.element_attributes.SharingCache) void {
+/// the given token to element" - at once, the list from the cache of the
+/// parser `run`'s document (dom.element_attributes.setParsed: shared with
+/// every element whose set is equal; lane nd2 batches 4 and 5).
+pub fn appendParsedAttributes(element: *runtime.Instance, attrs: []const html_core.parser.TreeNode.Attribute, run: ?*dom.element_attributes.ParserRun) void {
     // The conversion buffer is declared without ReleaseSafe's 0xaa fill -
     // over a kilobyte written for every element with an attribute, on the
     // parser's path (the user's approval of 2026-11-06 for hot-path buffer
@@ -324,10 +324,10 @@ pub fn appendParsedAttributes(element: *runtime.Instance, attrs: []const html_co
     @setRuntimeSafety(false);
     if (attrs.len == 0) return;
     var stack: [16]dom.element_attributes.Attribute = undefined;
-    return appendParsedAttributesIn(&stack, element, attrs, cache);
+    return appendParsedAttributesIn(&stack, element, attrs, run);
 }
 
-fn appendParsedAttributesIn(stack: *[16]dom.element_attributes.Attribute, element: *runtime.Instance, attrs: []const html_core.parser.TreeNode.Attribute, cache: ?*dom.element_attributes.SharingCache) void {
+fn appendParsedAttributesIn(stack: *[16]dom.element_attributes.Attribute, element: *runtime.Instance, attrs: []const html_core.parser.TreeNode.Attribute, run: ?*dom.element_attributes.ParserRun) void {
     const on_heap = attrs.len > stack.len;
     const allocator = runtime.allocatorOf(element);
     const converted = if (on_heap) allocator.alloc(dom.element_attributes.Attribute, attrs.len) catch |err| {
@@ -341,7 +341,7 @@ fn appendParsedAttributesIn(stack: *[16]dom.element_attributes.Attribute, elemen
         .local_name = attr.name,
         .value = attr.value,
     };
-    dom.element_attributes.setParsed(element, converted, cache) catch |err| log.debug("parser attributes not appended: {}", .{err});
+    dom.element_attributes.setParsed(element, converted, if (run) |r| r.blocks() else null) catch |err| log.debug("parser attributes not appended: {}", .{err});
 }
 
 pub fn appendParsedAttribute(element: *runtime.Instance, attr: html_core.parser.TreeNode.Attribute) void {
@@ -801,11 +801,13 @@ pub const DomTreeAdapter = struct {
     rescuer: ?Rescuer = null,
     /// The patching templates' counted holds (`PatchHold`); usually empty.
     patch_holds: std.ArrayListUnmanaged(PatchHold) = .empty,
-    /// This parse's shared attribute blocks (dom.element_data.SharingCache):
-    /// one per distinct attribute set, for this parser run only - freed in
-    /// `deinit`, which every path the parser ends by reaches (its last
-    /// reference: finished, aborted by document.open, stopped).
-    attribute_blocks: dom.element_attributes.SharingCache = .{},
+    /// This parse's share in its document's attribute-block cache
+    /// (dom.attribute_block_cache.Run): ended when the parse finishes
+    /// (`finishedParsing`: the cache's 10 s start there, as Blink's
+    /// Document::FinishedParsing starts its timer) and in `deinit`, which
+    /// every other path the parser ends by reaches (its last reference:
+    /// aborted by document.open, stopped, its document destroyed).
+    attribute_run: dom.element_attributes.ParserRun,
     /// What the node being created can have done (`mustCheckWrapper`); set by
     /// the create step, consumed by onNodeCreated.
     last_creation: ?Creation = null,
@@ -833,9 +835,15 @@ pub const DomTreeAdapter = struct {
             .allocator = allocator,
             .ctx = ctx,
             .document = document,
+            .attribute_run = .begin(document, .document),
             .document_generation = runtime.SlabAllocator.generationOf(document),
             .had_engine = ctx.hasEngine(),
         };
+    }
+
+    /// The parser processed its end of file: it makes no more elements.
+    pub fn finishedParsing(self: *DomTreeAdapter) void {
+        self.attribute_run.end();
     }
 
     pub fn deinit(self: *DomTreeAdapter) void {
@@ -859,7 +867,7 @@ pub const DomTreeAdapter = struct {
         self.pending.deinit(self.allocator);
         for (self.patch_holds.items) |*held| held.release();
         self.patch_holds.deinit(self.allocator);
-        self.attribute_blocks.deinit();
+        self.attribute_run.end();
     }
 
     /// Hold `patch`'s live target and markers counted (see `PatchHold`),
@@ -1198,7 +1206,7 @@ pub const DomTreeAdapter = struct {
             dom.finish_parsing_children.createdByParser(element, local_name);
         }
 
-        appendParsedAttributes(element, tree_node.attributes.toSlice(), &self.attribute_blocks);
+        appendParsedAttributes(element, tree_node.attributes.toSlice(), &self.attribute_run);
 
         // HTML 4.2.7 records the token's stylesheet relationship and enabled
         // state at creation, before its post-connection steps start a fetch.

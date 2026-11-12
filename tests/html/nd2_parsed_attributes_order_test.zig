@@ -176,7 +176,9 @@ fn parsedDefaultModeInputsShare() !void {
     // attribute copies the element's block; none may.
     // The control (class k): two equal sets on elements with no change step
     // that writes - what the helper and the holder count read when nothing
-    // is wrong.
+    // is wrong: the two elements, and their document's cache while its 10 s
+    // run (dom.attribute_block_cache; batch 4's cache per parser run had
+    // gone by here).
     try loadPage(browser, "<!doctype html><body>" ++
         "<p class=k title=tok></p><p class=k title=tok></p>" ++
         "<input class=h type=hidden value=tok><input class=h type=hidden value=tok>" ++
@@ -185,7 +187,7 @@ fn parsedDefaultModeInputsShare() !void {
     inline for (.{ "k", "h", "s", "c" }) |class| {
         const first = try blockOf(browser, "document.getElementsByClassName('" ++ class ++ "')[0]");
         const second = try blockOf(browser, "document.getElementsByClassName('" ++ class ++ "')[1]");
-        if (first != second or first.holders != 2) {
+        if (first != second or first.holders != 3) {
             std.debug.print("\nA3 order: class {s}: the two elements {s}, the first's block has {d} holder(s)\n", .{ class, if (first == second) "share a block" else "hold two blocks", first.holders });
             return error.TestUnexpectedResult;
         }
