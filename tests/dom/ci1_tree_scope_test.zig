@@ -173,41 +173,33 @@ fn interleavedLoadTokens() !void {
         f.ctx.event_loop = null;
     }
     // Invoke the existing loading algorithm, rather than the serial helper.
-    // With nothing delaying it, the parser's end completes the load at once
-    // and draws no token (Document's lifecycleFinishLoading: DOMContentLoaded
-    // and the load fire as the parser stops - the user's ruling 2026-11-12).
-    // A delayed load draws its token when the delay ends ("the end" step 9's
-    // task, queueLoadUnlessDelayed), and that task stays queued here, so the
-    // pending token can be read before completion clears it. Scope creation
-    // uses real roots.
-    const document = f.document.?;
-    dom.document_lifecycle.delayLoadEvent(document);
-    dom.document_lifecycle.finishLoading(document);
-    dom.document_lifecycle.undelayLoadEvent(document);
-    const state = dom.document_internals.getInternal(document) orelse return error.NoDocumentState;
+    // Its DOMContentLoaded/load tasks remain queued so the pending token can
+    // be read before completion clears it. Scope creation uses real roots.
+    dom.document_lifecycle.finishLoading(f.document.?);
+    const state = dom.document_internals.getInternal(f.document.?) orelse return error.NoDocumentState;
     const first_load = state.pending_load_token;
     try testing.expect(first_load != 0);
-    const a = dom.tree_scope.serialOf(try f.attach(try Fixture.element(document, f.container, "div")));
-    const b = dom.tree_scope.serialOf(try f.attach(try Fixture.element(document, f.container, "span")));
-    dom.document_lifecycle.delayLoadEvent(document);
-    dom.document_lifecycle.finishLoading(document);
-    dom.document_lifecycle.undelayLoadEvent(document);
+    const a = dom.tree_scope.serialOf(try f.attach(try Fixture.element(f.document.?, f.container, "div")));
+    const b = dom.tree_scope.serialOf(try f.attach(try Fixture.element(f.document.?, f.container, "span")));
+    dom.document_lifecycle.finishLoading(f.document.?);
     const second_load = state.pending_load_token;
-    const c = dom.tree_scope.serialOf(try f.attach(try Fixture.element(document, f.container, "div")));
+    const c = dom.tree_scope.serialOf(try f.attach(try Fixture.element(f.document.?, f.container, "div")));
     try testing.expect(first_load < a and a < b and b < second_load and second_load < c);
     try testing.expectEqual(@as(u64, 0), state.early_load_token);
-    try testing.expectEqual(@as(usize, 2), queue.count); // Two load tasks.
+    try testing.expectEqual(@as(usize, 4), queue.count); // Two DCL/load pairs.
 }
 
 test "load tokens stay nonzero and unique when shadow scope serials interleave" {
     try isolated(interleavedLoadTokens);
 }
 
-// The synchronous end of the parse (lane nav2 batch 11, the user's ruling
-// 2026-11-12): a load nothing delays completes as the parser stops - it draws
-// no token, leaves none pending and queues no task - and a later delayed load
-// still draws a nonzero token after every serial drawn before it.
-fn synchronousLoadTokens() !void {
+// The delayed path of "the end" (lane nav2 batch 11): a load something
+// delays over the parser's end draws no token while it waits - its
+// DOMContentLoaded task is queued, its load is not - and draws a nonzero
+// token, ordered after every serial drawn before it, when the delay ends and
+// step 9's task is queued (Document's lifecycleLoadDelayMayHaveEnded ->
+// queueLoadUnlessDelayed).
+fn delayedLoadTokens() !void {
     if (comptime !@hasDecl(dom, "tree_scope")) return error.TreeScopeSerialNotImplemented;
     var f: Fixture = undefined;
     try f.init();
@@ -219,23 +211,22 @@ fn synchronousLoadTokens() !void {
         f.ctx.event_loop = null;
     }
     const document = f.document.?;
+    dom.document_lifecycle.delayLoadEvent(document);
     dom.document_lifecycle.finishLoading(document);
     const state = dom.document_internals.getInternal(document) orelse return error.NoDocumentState;
     try testing.expectEqual(@as(u64, 0), state.pending_load_token);
-    try testing.expectEqual(@as(u64, 0), state.early_load_token);
-    try testing.expect(state.ready_for_post_load_tasks);
-    try testing.expect(!state.load_waiting_on_delay);
-    try testing.expectEqual(@as(usize, 0), queue.count); // Nothing queued.
+    try testing.expect(state.load_waiting_on_delay);
+    try testing.expectEqual(@as(usize, 1), queue.count); // DOMContentLoaded only.
     const a = dom.tree_scope.serialOf(try f.attach(try Fixture.element(document, f.container, "div")));
-    dom.document_lifecycle.delayLoadEvent(document);
-    dom.document_lifecycle.finishLoading(document);
     dom.document_lifecycle.undelayLoadEvent(document);
     const token = state.pending_load_token;
     const b = dom.tree_scope.serialOf(try f.attach(try Fixture.element(document, f.container, "span")));
     try testing.expect(a != 0 and token != 0 and a < token and token < b);
-    try testing.expectEqual(@as(usize, 1), queue.count); // The delayed load's task.
+    try testing.expect(!state.load_waiting_on_delay);
+    try testing.expectEqual(@as(u64, 0), state.early_load_token);
+    try testing.expectEqual(@as(usize, 2), queue.count); // And the load's task.
 }
 
-test "load tokens stay nonzero and unique when the load completes synchronously" {
-    try isolated(synchronousLoadTokens);
+test "load tokens stay nonzero and unique when the load is delayed over the end" {
+    try isolated(delayedLoadTokens);
 }
