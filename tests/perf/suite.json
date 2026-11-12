@@ -10,7 +10,7 @@
     {"page": "workloads/events.html", "kind": "timed", "timeout_s": 600, "workloads": ["events.dispatch", "events.add-remove-listener", "events.custom-event"]},
     {"page": "workloads/parser.html", "kind": "timed", "timeout_s": 600, "workloads": ["parser.inner-html-large", "parser.dom-parser", "parser.document-write"]},
     {"page": "workloads/json.html", "kind": "timed", "timeout_s": 300, "workloads": ["json.parse", "json.stringify"]},
-    {"page": "workloads/fetch.html", "kind": "timed", "timeout_s": 600, "workloads": ["fetch.data-url-text", "fetch.response-text", "fetch.loopback-small", "fetch.loopback-json", "fetch.loopback-stream"]},
+    {"page": "workloads/fetch.html", "kind": "timed", "timeout_s": 600, "workloads": ["fetch.data-url-text", "fetch.response-text", "fetch.loopback-small", "fetch.loopback-json", "fetch.loopback-stream", "fetch.loopback-gzip", "fetch.loopback-br"]},
     {"page": "workloads/streams.html", "kind": "timed", "timeout_s": 600, "workloads": ["streams.reader", "streams.enqueue-read", "streams.pipe-through-decoder", "streams.transform-chain", "streams.blob-stream"]},
     {"page": "workloads/timers.html", "kind": "timed", "timeout_s": 600, "workloads": ["timers.set-timeout-batch", "timers.promise-chain", "timers.queue-microtask", "timers.message-channel"]},
     {"page": "load/news.html", "kind": "chain", "steps": 10, "timeout_s": 300, "workloads": ["load.news"]},
