@@ -55,6 +55,8 @@ pub const Implementation = struct {
     /// descendant's unsalvageable state to the root after its abort task.
     propagate_abort: *const fn (parent: *runtime.Instance, child: *runtime.Instance) void,
     destroy: *const fn (document: *runtime.Instance) void,
+    /// Whether "destroy a document" has run on `document`.
+    is_destroyed: *const fn (document: *runtime.Instance) bool,
     set_about_base_url: *const fn (document: *runtime.Instance, url: ?[]const u8) void,
     about_fallback_base_url: *const fn (document: *runtime.Instance) ?[]const u8,
     declarative_refresh: *const fn (document: *runtime.Instance, input: []const u8, meta: ?*runtime.Instance) void,
@@ -262,6 +264,16 @@ pub fn propagateAbort(parent: *runtime.Instance, child: *runtime.Instance) void 
 pub fn destroy(document: *runtime.Instance) void {
     const impl = implementation.get() orelse return;
     impl.destroy(document);
+}
+
+/// Whether HTML "destroy a document" (7.5.10) has run on `document` - only
+/// that. A document still being made, not yet any navigable's active
+/// document, is not destroyed, nor is one whose realm merely ended
+/// (document_activity calls all three "gone"; lesson spec-compliance-gone-
+/// is-not-destroyed-a-document-being-made-has-no-browsing-context-yet).
+pub fn isDestroyed(document: *runtime.Instance) bool {
+    const impl = implementation.get() orelse return false;
+    return impl.is_destroyed(document);
 }
 
 /// "Create and initialize a Document object" and "create a new browsing
