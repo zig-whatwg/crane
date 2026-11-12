@@ -417,6 +417,16 @@ pub const BrowsingContext = struct {
     /// Spec: https://html.spec.whatwg.org/multipage/document-sequences.html#internal-ancestor-origin-objects-list-creation-steps
     ancestor_origins_policy: @import("fetch").internal.ReferrerPolicy = .empty,
 
+    /// Fetch 4.12.1: this navigable's container's "reserved deferred-fetch
+    /// quota" - 0, minimal quota (8 KiB) or normal quota (64 KiB) - kept on
+    /// the container's content navigable, which a container has while it
+    /// holds the reservation. HTML navigate step 23 sets it
+    /// (dom.deferred_fetches.reserveQuota), "create and initialize a
+    /// Document object" step 21 clears it for a same-origin document
+    /// (potentiallyFreeQuota). 0 for a top-level traversable.
+    /// Spec: https://fetch.spec.whatwg.org/#reserved-deferred-fetch-quota
+    reserved_deferred_fetch_quota: @import("dom").deferred_fetches.ReservedQuota = .none,
+
     /// HTML "cross-origin isolation mode" of this context's browsing
     /// context group. A group's mode is set once, as the group is made
     /// ("obtain a browsing context to use for a navigation response" step

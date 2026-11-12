@@ -16,8 +16,9 @@
 //!   `dom.same_object_cache.element*` in the field the codegen names (classList
 //!   at bit 0: no popcount on the hot read).
 //! - A cache the impl already keeps itself (Element's NamedNodeMap in its rare
-//!   data, HTMLElement's inline style object) loses its generated copy: the
-//!   getter calls the impl.
+//!   data, HTMLElement's inline style object - since lane quick1 the
+//!   ElementCSSInlineStyle mixin's impl keeps it) loses its generated copy:
+//!   the getter calls the impl (or is the mixin module's, by alias).
 //! - Everything else keeps its `cached_<name>`: a non-element (Document's
 //!   children), and a leaf element's own attribute (an anchor's relList).
 //! - The destruction chain ends the edges of the level's rare-block caches
@@ -54,6 +55,13 @@ const Generated = struct {
 
     fn file(self: *Generated, name: []const u8) ![]u8 {
         return generated(self.root, name);
+    }
+
+    /// A mixin's generated module.
+    fn mixin(self: *Generated, name: []const u8) ![]u8 {
+        const path = try std.fmt.allocPrint(testing.allocator, "{s}/mixins/{s}.zig", .{ self.root, name });
+        defer testing.allocator.free(path);
+        return std.Io.Dir.cwd().readFileAlloc(testing.io, path, testing.allocator, .limited(1 << 20));
     }
 };
 
@@ -126,13 +134,20 @@ test "a cache the impl keeps itself loses its generated copy: Element.attributes
     try testing.expect(!contains(attributes, "same_object_cache"));
     try testing.expect(!contains(attributes, "cached"));
 
-    const style = try function(html, "get_style");
-    try testing.expect(contains(style, "return try HTMLElementImpl.get_style(instance);"));
-    try testing.expect(!contains(style, "same_object_cache"));
-    try testing.expect(!contains(style, "cached"));
-    // Its [PutForwards] setter still forwards through the getter.
-    try testing.expect(contains(try function(html, "set_style"), "try get_style(instance)"));
+    // HTMLElement's style is ElementCSSInlineStyle's, an inherited mixin
+    // since lane quick1 (2026-11-12): the getter and setter are the mixin
+    // module's, by alias, and the mixin's impl keeps an HTML element's
+    // object - no generated cache anywhere.
+    try testing.expect(contains(html, "pub const get_style = mixins.ElementCSSInlineStyle.get_style;"));
+    try testing.expect(contains(html, "pub const set_style = mixins.ElementCSSInlineStyle.set_style;"));
+    try testing.expect(!contains(html, "pub fn get_style("));
     try testing.expect(!contains(try stateFields(html), "cached_style"));
+    // Its [PutForwards] setter still forwards through the getter - the
+    // mixin module's own.
+    const mixin = try out.mixin("ElementCSSInlineStyle");
+    defer testing.allocator.free(mixin);
+    try testing.expect(contains(try function(mixin, "set_style"), "try get_style(instance)"));
+    try testing.expect(!contains(try function(mixin, "get_style"), "same_object_cache"));
 }
 
 test "HTMLElement's and SVGElement's family-wide caches go to the rare data; SVG's style has a field of its own" {
@@ -143,15 +158,18 @@ test "HTMLElement's and SVGElement's family-wide caches go to the rare data; SVG
     const svg = try out.file("SVGElement");
     defer testing.allocator.free(svg);
 
-    try expectRareGetter(html, "get_dataset", "dataset", "dataset", "try HTMLElementImpl.get_dataset(instance)");
-    try expectRareGetter(html, "get_attributeStyleMap", "attribute_style_map", "attributeStyleMap", "try HTMLElementImpl.get_attributeStyleMap(instance)");
+    // dataset and attributeStyleMap: inherited mixin members (lane quick1,
+    // 2026-11-12), cached by each includer around the mixin module's getter.
+    try expectRareGetter(html, "get_dataset", "dataset", "dataset", "try mixins.HTMLOrSVGOrMathMLElement.get_dataset(instance)");
+    try expectRareGetter(html, "get_attributeStyleMap", "attribute_style_map", "attributeStyleMap", "try mixins.ElementCSSInlineStyle.get_attributeStyleMap(instance)");
     try testing.expect(!contains(try stateFields(html), "cached_"));
 
-    // SVGElement's impl makes a new object per call: the generated cache
-    // keeps it, in a field apart from HTMLElement's kept style object.
-    try expectRareGetter(svg, "get_style", "inline_style", "style", "try SVGElementImpl.get_style(instance)");
-    try expectRareGetter(svg, "get_dataset", "dataset", "dataset", "try SVGElementImpl.get_dataset(instance)");
-    try expectRareGetter(svg, "get_attributeStyleMap", "attribute_style_map", "attributeStyleMap", "try SVGElementImpl.get_attributeStyleMap(instance)");
+    // An SVG element's style object is made per call (the mixin's impl
+    // keeps only an HTML element's): the generated cache keeps it, in a
+    // field apart from HTMLElement's kept style object.
+    try expectRareGetter(svg, "get_style", "inline_style", "style", "try mixins.ElementCSSInlineStyle.get_style(instance)");
+    try expectRareGetter(svg, "get_dataset", "dataset", "dataset", "try mixins.HTMLOrSVGOrMathMLElement.get_dataset(instance)");
+    try expectRareGetter(svg, "get_attributeStyleMap", "attribute_style_map", "attributeStyleMap", "try mixins.ElementCSSInlineStyle.get_attributeStyleMap(instance)");
     try expectRareGetter(svg, "get_className", "svg_class_name", "className", "try SVGElementImpl.get_className(instance)");
     try testing.expect(!contains(try stateFields(svg), "cached_"));
 }

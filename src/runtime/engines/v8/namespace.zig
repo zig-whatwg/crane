@@ -376,6 +376,22 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     }
                 }
             }
+            // WebIDL 3.13.1: "The class string of a namespace object is the
+            // namespace's identifier", and WebIDL 3: "If an object has a
+            // class string classString, then the object must, at the time it
+            // is created, have a property whose name is the
+            // %Symbol.toStringTag% symbol with PropertyDescriptor{[[Writable]]:
+            // false, [[Enumerable]]: false, [[Configurable]]: true,
+            // [[Value]]: classString}" - so Object.prototype.toString gives
+            // "[object console]", "[object CSS]". The interface prototype's
+            // tag is defined with the same two calls (interface.zig).
+            if (v8.v8_Symbol_GetToStringTag(isolate)) |symbol| {
+                defer v8.v8_Symbol_Dispose(symbol);
+                if (v8.v8_String_NewFromUtf8(isolate, namespace_name.ptr, @intCast(namespace_name.len))) |class_string| {
+                    defer v8.v8_String_Dispose(class_string);
+                    _ = v8.v8_Object_DefineProperty(object, context, @ptrCast(symbol), @ptrCast(class_string), false, false, true);
+                }
+            }
 
             return object;
         }

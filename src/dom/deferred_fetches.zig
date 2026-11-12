@@ -403,14 +403,20 @@ fn processAll(environment: runtime.Context) void {
 // The deferred-fetch quota (Fetch 4.12.1)
 // ============================================================================
 //
-// Pure reads over the navigables and their fetch groups: fetchLater() (Codex
-// row 126) asks `availableQuota` at its step 11, with the "allowed to use"
-// answers for the control document, which it computes - this module never
-// computes a permissions policy. A navigable container's "reserved
-// deferred-fetch quota" is 0 here: nothing reserves one yet (feature-queue
-// "DEFERRED-FETCH QUOTA RESERVATION ON NAVIGABLE CONTAINERS", which adds
-// HTML navigate step 23's reservation and "create and initialize a Document
-// object" step 21's release); "unless stated otherwise, it is 0".
+// Reads over the navigables and their fetch groups: fetchLater() asks
+// `availableQuota` at its step 11, with the "allowed to use" answers for the
+// control document, which it computes. A navigable container's "reserved
+// deferred-fetch quota" is kept on the container's content navigable
+// (BrowsingContext.reserved_deferred_fetch_quota: a container has one
+// content navigable while it holds the reservation); HTML navigate step 23
+// sets it (`reserveQuota`), "create and initialize a Document object" step
+// 21 clears it for a same-origin document (`potentiallyFreeQuota`), and
+// "unless stated otherwise, it is 0".
+//
+// Golden rule 2: Chrome is the only browser that ships fetchLater (Firefox
+// and Safari ship neither it nor the deferred-fetch policies), so only the
+// spec decides here - fetch/fetch-later/quota/cross-origin-iframe/*: Chrome
+// 157 passes all, wpt.fyi stable 24ddf405a0, 2026-11-11.
 
 /// "Allowed to use" answers for a document - or, for a container's
 /// reservation, the inherited policy's - given by the caller for the call.
@@ -422,18 +428,27 @@ pub const Policy = struct {
     deferred_fetch_minimal: bool,
 };
 
-const kib: i64 = 1024;
+const kib: u64 = 1024;
 /// 640 kibibytes for a top-level traversable ("640kb should be enough for
 /// everyone").
-pub const top_level_quota: i64 = 640 * kib;
+pub const top_level_quota: u64 = 640 * kib;
 /// "The quota reserved for deferred-fetch-minimal is 128 kibibytes."
-pub const minimal_reserve: i64 = 128 * kib;
-/// "normal quota": 64 kibibytes.
-pub const normal_quota: i64 = 64 * kib;
-/// "minimal quota": 8 kibibytes.
-pub const minimal_quota: i64 = 8 * kib;
+pub const minimal_reserve: u64 = 128 * kib;
 /// Step 7's quotaForRequestOrigin.
-pub const per_origin_quota: i64 = 64 * kib;
+pub const per_origin_quota: u64 = 64 * kib;
+
+/// A navigable container's "reserved deferred-fetch quota": "Its possible
+/// values are minimal quota, which is 8 kibibytes, and normal quota, which
+/// is 0 or 64 kibibytes. Unless stated otherwise, it is 0."
+pub const ReservedQuota = enum(u32) {
+    none = 0,
+    minimal = 8 * 1024,
+    normal = 64 * 1024,
+
+    pub fn bytes(self: ReservedQuota) u64 {
+        return @backingInt(self);
+    }
+};
 
 /// Fetch 4.12.1 "the deferred-fetch control document" of `document`: itself
 /// when its node navigable's container document is null or not same origin
@@ -448,6 +463,49 @@ pub fn controlDocumentOf(document: *runtime.Instance) *runtime.Instance {
     return current;
 }
 
+/// What "the available deferred-fetch quota" steps 6-11 compute from: the
+/// control document's place and policy (steps 3-5), its container's
+/// reservation (step 6), and the sums of step 8 - every reservation of the
+/// containers in the considered documents (8.1) and their pending records'
+/// total request lengths (8.2), all of them and those same origin with the
+/// request's.
+pub const QuotaInputs = struct {
+    is_top_level: bool,
+    policy: Policy,
+    /// The control document's node navigable's container's reservation.
+    reserved: ReservedQuota = .none,
+    reserved_by_containers: u64 = 0,
+    pending: u64 = 0,
+    pending_same_origin: u64 = 0,
+};
+
+/// Steps 6-11 of "the available deferred-fetch quota", over `inputs`. The
+/// decrements saturate at 0: step 9 answers 0 for any quota at or below it.
+pub fn quotaFrom(inputs: QuotaInputs) u64 {
+    const policy = inputs.policy;
+    // 6. "Let quota be the result of the first matching statement."
+    var quota: u64 = if (inputs.is_top_level)
+        (if (!policy.deferred_fetch) 0 else if (!policy.deferred_fetch_minimal) top_level_quota else top_level_quota - minimal_reserve)
+    else if (policy.deferred_fetch and inputs.reserved == .normal)
+        ReservedQuota.normal.bytes()
+    else if (policy.deferred_fetch_minimal and inputs.reserved == .minimal)
+        ReservedQuota.minimal.bytes()
+    else
+        0;
+    // 7. "Let quotaForRequestOrigin be 64 kibibytes."
+    var for_request_origin: u64 = per_origin_quota;
+    // 8.1 and 8.2.3: decrement quota; 8.2.4: and quotaForRequestOrigin.
+    quota -|= inputs.reserved_by_containers;
+    quota -|= inputs.pending;
+    for_request_origin -|= inputs.pending_same_origin;
+    // 9. "If quota is equal or less than 0, then return 0."
+    if (quota == 0) return 0;
+    // 10. "If quota is less than quotaForRequestOrigin, then return quota."
+    if (quota < for_request_origin) return quota;
+    // 11. "Return quotaForRequestOrigin."
+    return for_request_origin;
+}
+
 /// Fetch 4.12.1 "the available deferred-fetch quota" given `document` and
 /// `request_origin` - the request URL's origin, serialized (null, or
 /// "null" for an opaque one, which no record's origin is same origin
@@ -458,22 +516,16 @@ pub fn availableQuota(document: *runtime.Instance, request_origin: ?[]const u8, 
     const control = controlDocumentOf(document);
     // 2-3. Its node navigable, and whether that is a top-level traversable.
     const navigable = navigableOf(control);
-    const is_top_level = if (navigable) |bc| bc.parent == null else true;
-    // 6. quota: the first statement that matches. A nested control
-    //    document's container has reserved nothing (see above), so its two
-    //    cases - normal quota with deferred-fetch, minimal quota with
-    //    deferred-fetch-minimal - do not match yet.
-    var quota: i64 = if (is_top_level)
-        (if (!policy.deferred_fetch) 0 else if (!policy.deferred_fetch_minimal) top_level_quota else top_level_quota - minimal_reserve)
-    else
-        0;
-    // 7. Let quotaForRequestOrigin be 64 kibibytes.
-    var for_request_origin: i64 = per_origin_quota;
+    var inputs: QuotaInputs = .{
+        .is_top_level = if (navigable) |bc| bc.parent == null else true,
+        .policy = policy,
+        // 6's "navigable's navigable container's reserved deferred-fetch
+        // quota".
+        .reserved = if (navigable) |bc| bc.reserved_deferred_fetch_quota else .none,
+    };
     // 8. For each navigable in controlDocument's node navigable's inclusive
     //    descendant navigables whose active document's control document is
-    //    controlDocument: (8.1, its containers' reserved quota, is 0 for
-    //    every container) 8.2, its active document's relevant settings
-    //    object's fetch group's pending records.
+    //    controlDocument:
     if (navigable) |top| {
         var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
         defer tree.deinit(std.heap.page_allocator);
@@ -482,31 +534,111 @@ pub fn availableQuota(document: *runtime.Instance, request_origin: ?[]const u8, 
         for (tree.items) |bc| {
             const active: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveDocument() orelse continue));
             if (bc != top and controlDocumentOf(active) != control) continue;
+            // 8.1. For each navigable container in its active document,
+            //    decrement quota by the container's reservation: the
+            //    containers of its child navigables.
+            for (bc.children.items) |child| inputs.reserved_by_containers +|= child.reserved_deferred_fetch_quota.bytes();
+            // 8.2. Its fetch group's pending records.
             const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse continue));
-            subtractPending(window, request_origin, &quota, &for_request_origin);
+            addPending(window, request_origin, &inputs);
         }
     } else {
         // A document with no navigable: its own window's records, if any.
-        if (windowOf(control)) |window| subtractPending(window, request_origin, &quota, &for_request_origin);
+        if (windowOf(control)) |window| addPending(window, request_origin, &inputs);
     }
-    // 9. If quota is equal or less than 0, then return 0.
-    if (quota <= 0) return 0;
-    // 10. If quota is less than quotaForRequestOrigin, then return quota.
-    if (quota < for_request_origin) return @intCast(quota);
-    // 11. Return quotaForRequestOrigin.
-    return @intCast(@max(for_request_origin, 0));
+    return quotaFrom(inputs);
 }
 
 /// Step 8.2 for one fetch group: each pending record's total request
-/// length leaves `quota`, and - same origin with `request_origin` - leaves
-/// `for_request_origin` too.
-fn subtractPending(window: *runtime.Instance, request_origin: ?[]const u8, quota: *i64, for_request_origin: *i64) void {
+/// length, and - same origin with `request_origin` - again for the request
+/// origin's quota. A record in the group is pending (one that is not is
+/// freed at once).
+fn addPending(window: *runtime.Instance, request_origin: ?[]const u8, inputs: *QuotaInputs) void {
     const group = global_settings.fetchGroupOf(window) orelse return;
     for (group.deferred.items.items) |record| {
-        const length: i64 = @intCast(@min(record.total_request_length, std.math.maxInt(i32)));
-        quota.* -= length;
-        if (sameSerializedOrigin(record.url_origin, request_origin)) for_request_origin.* -= length;
+        const length: u64 = record.total_request_length;
+        inputs.pending +|= length;
+        if (sameSerializedOrigin(record.url_origin, request_origin)) inputs.pending_same_origin +|= length;
     }
+}
+
+/// Fetch 4.12.1 "reserve deferred-fetch quota" for the navigable container
+/// `container`, whose content navigable is `navigable`, given
+/// `origin_to_navigate_to` (serialized; "null" for an opaque one) - HTML
+/// navigate step 23, "if sourceDocument is navigable's container document".
+/// The inherited policies come from the container's document's policy
+/// (Permissions Policy 9.7, `policy_containers.inheritedDeferredFetchPolicy`)
+/// and the control document's "allowed to use" answers from its own.
+pub fn reserveQuota(navigable: *BrowsingContext, container: *runtime.Instance, origin_to_navigate_to: []const u8) void {
+    // 1. "Set container's reserved deferred-fetch quota to 0."
+    navigable.reserved_deferred_fetch_quota = .none;
+    const policy_containers = @import("policy_containers.zig");
+    // 2. "Let controlDocument be container's node document's deferred-fetch
+    //    control document."
+    const container_document = (interfaces.Node.get_ownerDocument(container) catch null) orelse return;
+    const control = controlDocumentOf(container_document);
+    // The inherited policy for each feature, container and
+    // originToNavigateTo. One that cannot be computed is not "Enabled".
+    const target: origin_record.Origin = .{ .serialized = origin_to_navigate_to };
+    const inherited = policy_containers.inheritedDeferredFetchPolicy(container, &target) catch return;
+    // 3. "If the inherited policy for "deferred-fetch", container and
+    //    originToNavigateTo is "Enabled", and the available deferred-fetch
+    //    quota for controlDocument is equal or greater than normal quota,
+    //    then set container's reserved deferred-fetch quota to normal quota
+    //    and return." (An origin-or-null of null: no record is same origin.)
+    if (inherited.deferred_fetch) {
+        const control_policy: Policy = .{
+            .deferred_fetch = policy_containers.allowedToUseWith(control, .deferred_fetch, .{ .report = false }) catch false,
+            .deferred_fetch_minimal = policy_containers.allowedToUseWith(control, .deferred_fetch_minimal, .{ .report = false }) catch false,
+        };
+        if (availableQuota(control, null, control_policy) >= ReservedQuota.normal.bytes()) {
+            navigable.reserved_deferred_fetch_quota = .normal;
+            return;
+        }
+    }
+    // 4. If controlDocument's node navigable is a top-level traversable, the
+    //    inherited policy for "deferred-fetch-minimal" is "Enabled", and its
+    //    descendant navigables whose container holds minimal quota number
+    //    fewer than 128 KiB / 8 KiB, set the reservation to minimal quota.
+    const top = navigableOf(control) orelse return;
+    if (top.parent != null or !inherited.deferred_fetch_minimal) return;
+    if (minimalReservationAvailable(minimalReservations(top, navigable))) navigable.reserved_deferred_fetch_quota = .minimal;
+}
+
+/// Step 4's count: `top`'s descendant navigables whose container's
+/// reservation is minimal quota - `navigable`'s own, set to 0 by step 1,
+/// is not among them.
+fn minimalReservations(top: *BrowsingContext, navigable: *BrowsingContext) usize {
+    var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
+    defer tree.deinit(std.heap.page_allocator);
+    top.collectDescendants(std.heap.page_allocator, &tree) catch {};
+    var count: usize = 0;
+    // Descendants only: collectDescendants puts `top` first.
+    for (tree.items[@min(1, tree.items.len)..]) |bc| {
+        if (bc != navigable and bc.reserved_deferred_fetch_quota == .minimal) count += 1;
+    }
+    return count;
+}
+
+/// Step 4's last condition: `count` minimal reservations leave room for
+/// another - fewer than "quota reserved for deferred-fetch-minimal /
+/// minimal quota", 16.
+pub fn minimalReservationAvailable(count: usize) bool {
+    return count < minimal_reserve / ReservedQuota.minimal.bytes();
+}
+
+/// Fetch 4.12.1 "potentially free deferred-fetch quota" for `document`, a
+/// document just created for `navigable` ("create and initialize a
+/// Document object" step 21): "if document's node navigable's container
+/// document is not null, and its origin is same origin with document, then
+/// set document's node navigable's navigable container's reserved
+/// deferred-fetch quota to 0" - a same-origin nested document shares its
+/// parent's quota. Its origin is known only now, after redirects.
+pub fn potentiallyFreeQuota(navigable: *BrowsingContext, document: *runtime.Instance) void {
+    if (navigable.parent == null) return;
+    const container: *runtime.Instance = @ptrCast(@alignCast(navigable.container orelse return));
+    const container_document = (interfaces.Node.get_ownerDocument(container) catch null) orelse return;
+    if (sameOriginDocuments(container_document, document)) navigable.reserved_deferred_fetch_quota = .none;
 }
 
 /// Whether two serialized origins are the same tuple origin: an opaque
