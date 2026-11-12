@@ -189,7 +189,9 @@ pub const CURLOPT_FORBID_REUSE = c.CURLOPT_FORBID_REUSE;
 pub const CURLOPT_FRESH_CONNECT = c.CURLOPT_FRESH_CONNECT;
 
 // Encoding/compression
-/// Accept-Encoding header (empty = all supported)
+/// Accept-Encoding header (empty = all supported). Never set: Fetch says
+/// what it accepts (HTTP-network-or-cache fetch 8.20) and undoes the codings
+/// itself (src/fetch/content_coding); unset, libcurl decodes nothing.
 pub const CURLOPT_ACCEPT_ENCODING = c.CURLOPT_ACCEPT_ENCODING;
 
 // Diagnostics

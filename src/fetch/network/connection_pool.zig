@@ -439,8 +439,10 @@ fn configureRequest(handle: *curl.CURL, request: *const NetworkRequest, ctx: *Co
         }
     }
 
-    // Accept compression
-    _ = curl.easy_setopt(handle, curl.CURLOPT_ACCEPT_ENCODING, "");
+    // No CURLOPT_ACCEPT_ENCODING: no Accept-Encoding of libcurl's own and no
+    // content decoding - content codings are Fetch's (curl_backend.zig
+    // configureRequest; the content coding table in src/fetch/content_coding).
+    // The pool hands bodies over as they arrived.
 
     // Verbose logging
     if (request.verbose) {

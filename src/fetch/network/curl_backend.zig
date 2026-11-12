@@ -28,6 +28,7 @@ const curl_options = @import("curl_options");
 const curl_error = @import("curl_error.zig");
 const clock = @import("clock");
 const kit_curl = @import("kit_curl_share");
+const content_coding = @import("../content_coding/root.zig");
 
 // =============================================================================
 // Global State Management
@@ -194,6 +195,22 @@ pub const LibcurlBackend = struct {
         /// body that is not sent.
         head_request: bool = false,
 
+        /// The response's content codings, read from its final header block
+        /// at the body's first bytes (`planned`), and their decoder: Fetch's
+        /// "handle content codings" (HTTP-network fetch 18.1.1.1.9), run on
+        /// each piece of the body as it arrives - Chromium sets up its
+        /// network service's decoding source streams there too
+        /// (URLRequestHttpJob::SetUpSourceStream). The body in
+        /// `response_body` is decoded; `encoded_bytes` counts it as it came
+        /// (18.1.1.1.8's encoded size).
+        codings: content_coding.Plan = .identity,
+        planned: bool = false,
+        decoder: ?*content_coding.Decoder = null,
+        encoded_bytes: u64 = 0,
+        /// The codings could not be undone: the transfer ends as a
+        /// network error (18.1.1.1.11 terminates the fetch).
+        decode_failed: bool = false,
+
         // Strings that must persist until request completes (curl doesn't copy them)
         url_z: ?[:0]u8 = null,
         method_z: ?[:0]u8 = null,
@@ -213,6 +230,7 @@ pub const LibcurlBackend = struct {
         }
 
         fn deinit(self: *CallbackContext) void {
+            self.dropDecoder();
             self.response_body.deinit(self.allocator);
             for (self.response_headers.items) |header| {
                 self.allocator.free(header.name);
@@ -225,6 +243,48 @@ pub const LibcurlBackend = struct {
             if (self.url_z) |url| self.allocator.free(url);
             if (self.method_z) |method| self.allocator.free(method);
             if (self.header_list) |list| curl.slist_free_all(list);
+        }
+
+        fn dropDecoder(self: *CallbackContext) void {
+            if (self.decoder) |decoder| decoder.destroy();
+            self.decoder = null;
+        }
+
+        /// Undo the codings of `bytes`, the body's next bytes as they
+        /// arrived, into `response_body`. False: the transfer must stop.
+        fn receiveBody(self: *CallbackContext, bytes: []const u8) bool {
+            self.encoded_bytes += bytes.len;
+            if (!self.planned) {
+                self.codings = codingsOfBlock(finalBlock(self.raw_headers.items));
+                self.planned = true;
+            }
+            switch (self.codings) {
+                .identity => {
+                    self.response_body.appendSlice(self.allocator, bytes) catch return false;
+                    return true;
+                },
+                .too_many => {
+                    self.decode_failed = true;
+                    return false;
+                },
+                .decode => |codings| {
+                    const decoder = self.decoder orelse made: {
+                        const made = content_coding.Decoder.create(self.allocator, codings.slice()) catch return false;
+                        self.decoder = made;
+                        break :made made;
+                    };
+                    decoder.push(bytes, .{ .context = self, .write = appendDecoded }) catch |err| {
+                        if (err == error.InvalidData) self.decode_failed = true;
+                        return false;
+                    };
+                    return true;
+                },
+            }
+        }
+
+        fn appendDecoded(context: *anyopaque, bytes: []const u8) content_coding.Error!void {
+            const self: *CallbackContext = @ptrCast(@alignCast(context));
+            try self.response_body.appendSlice(self.allocator, bytes);
         }
     };
 
@@ -377,8 +437,19 @@ pub const LibcurlBackend = struct {
             .trust = request.cert_options.trust,
         });
 
-        // Accept gzip/deflate compression
-        _ = curl.easy_setopt(handle, curl.CURLOPT_ACCEPT_ENCODING, "");
+        // Content codings are Fetch's: the request's header list says what
+        // is accepted (HTTP-network-or-cache fetch 8.20, from the content
+        // coding table) and Fetch undoes them (`receiveBody`). So libcurl is
+        // given no CURLOPT_ACCEPT_ENCODING: it then adds no Accept-Encoding
+        // and decodes nothing - it builds its decoding stack only when that
+        // option is set (lib/http.c: Content-Encoding is read only with
+        // STRING_ENCODING; CURLOPT_HTTP_CONTENT_DECODING's documentation:
+        // "libcurl has no default content decoding but requires you to use
+        // CURLOPT_ACCEPT_ENCODING for that"), and the body arrives as it was
+        // sent (tests/fetch/quick1b3_content_coding_test.zig counts its
+        // encoded bytes). It decoded them before, and only those it was
+        // built with: zstd was a network error (docs/lessons/architecture-a-
+        // content-coding-fetch-reports-is-not-one-curl-decodes.md).
 
         // Verbose logging for debugging
         if (request.verbose) {
@@ -606,6 +677,11 @@ pub const Transfer = struct {
         }
         self.ctx.response_headers.clearRetainingCapacity();
         self.ctx.raw_headers.clearRetainingCapacity();
+        self.ctx.dropDecoder();
+        self.ctx.codings = .identity;
+        self.ctx.planned = false;
+        self.ctx.encoded_bytes = 0;
+        self.ctx.decode_failed = false;
     }
 
     /// How many attempts a transfer gets when its connection fails.
@@ -649,6 +725,10 @@ pub const Transfer = struct {
         const allocator = self.allocator;
         const end = self.ctx.head_end orelse return NetworkError.ProtocolError;
         const block = self.ctx.raw_headers.items[self.ctx.block_start..end];
+        // More codings than a decoder chain nests: Chromium fails the
+        // request at its headers (SetUpSourceStream returns null:
+        // ERR_CONTENT_DECODING_INIT_FAILED).
+        if (codingsOfBlock(block) == .too_many) return NetworkError.ContentDecodingFailed;
 
         var headers: std.ArrayList(NetworkResponse.Header) = .empty;
         errdefer {
@@ -741,12 +821,19 @@ pub const Transfer = struct {
         self.ctx.response_body.clearRetainingCapacity();
     }
 
+    /// How many bytes of the body have arrived, before their content
+    /// codings were undone: the body info's encoded size so far.
+    pub fn encodedBodyBytes(self: *const Transfer) u64 {
+        return self.ctx.encoded_bytes;
+    }
+
     /// How a streamed transfer ended, once its last attempt ended with
     /// `result`: the same judgement `finish` makes - an abort, a transport
     /// failure, or the clean end of a close-delimited body - without building
     /// a response.
     pub fn outcome(self: *Transfer, result: curl.CURLcode) NetworkError!void {
         if (self.ctx.aborted.load(.seq_cst)) return NetworkError.Aborted;
+        if (self.ctx.decode_failed) return self.decodingFailed();
         if (result == curl.CURLE_OK) return;
         const end = self.ctx.head_end orelse self.ctx.raw_headers.items.len;
         var status_code: c_long = 0;
@@ -761,6 +848,11 @@ pub const Transfer = struct {
             @errorName(net_err),
         });
         return net_err;
+    }
+
+    fn decodingFailed(self: *const Transfer) NetworkError {
+        log.warn("{s} {s} failed: its body is not what its Content-Encoding says ({d} bytes arrived)", .{ self.method, self.url, self.ctx.encoded_bytes });
+        return NetworkError.ContentDecodingFailed;
     }
 
     /// The transfer's outcome, once its last attempt ended with `result`.
@@ -783,6 +875,10 @@ pub const Transfer = struct {
 
         var status_code: c_long = 0;
         _ = curl.easy_getinfo(handle, curl.CURLINFO_RESPONSE_CODE, &status_code);
+
+        // The body's content codings could not be undone - or are more than
+        // a chain nests, which fails even a response with no body (`head`).
+        if (ctx.decode_failed or codingsOfBlock(finalBlock(ctx.raw_headers.items)) == .too_many) return self.decodingFailed();
 
         // Check for errors
         if (result != curl.CURLE_OK) {
@@ -894,6 +990,7 @@ pub const Transfer = struct {
             .http_version = http_version,
             .headers = headers,
             .body = body,
+            .encoded_body_size = ctx.encoded_bytes,
             .final_url = final_url,
             .total_time_ms = @intFromFloat(total_time * 1000),
             .time_to_first_byte_ms = starttransfer_time * 1000,
@@ -926,10 +1023,51 @@ fn writeCallback(data: [*]u8, size: usize, nmemb: usize, userdata: *anyopaque) c
     }
 
     const total_size = size * nmemb;
-    ctx.response_body.appendSlice(ctx.allocator, data[0..total_size]) catch {
-        return 0; // Signal error
-    };
+    // Decoded as it arrives (0 stops the transfer: an error).
+    if (!ctx.receiveBody(data[0..total_size])) return 0;
     return total_size;
+}
+
+/// The content codings of a final header block's response (its
+/// `Content-Encoding` fields). A redirect's body is never decoded: Fetch
+/// follows a redirect with a `Location` itself and never reads its body,
+/// as Chromium sets up no source stream for a redirect
+/// (URLRequestJob::NotifyHeadersComplete handles it first).
+fn codingsOfBlock(block: []const u8) content_coding.Plan {
+    if (statusOfBlock(block)) |status| switch (status) {
+        301, 302, 303, 307, 308 => if (blockHasField(block, "location")) return .identity,
+        else => {},
+    };
+    return content_coding.plan(BlockFields{ .lines = headerLines(block), .name = "content-encoding" });
+}
+
+fn blockHasField(block: []const u8, name: []const u8) bool {
+    var fields: BlockFields = .{ .lines = headerLines(block), .name = name };
+    return fields.next() != null;
+}
+
+/// A header block's values of the field `name`, in order.
+const BlockFields = struct {
+    lines: HeaderLines,
+    name: []const u8,
+
+    pub fn next(self: *BlockFields) ?[]const u8 {
+        while (self.lines.next()) |line| {
+            if (std.mem.startsWith(u8, line, "HTTP/")) continue;
+            const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
+            if (!std.ascii.eqlIgnoreCase(std.mem.trim(u8, line[0..colon], " \t"), self.name)) continue;
+            return std.mem.trim(u8, line[colon + 1 ..], " \t");
+        }
+        return null;
+    }
+};
+
+test "a block's codings: its Content-Encoding fields, but none for a redirect Fetch follows" {
+    const gzip_br = codingsOfBlock("HTTP/1.1 200 OK\r\ncontent-encoding: gzip\r\nContent-Encoding:br\r\n\r\n");
+    try std.testing.expectEqualSlices(content_coding.Coding, &.{ .gzip, .br }, gzip_br.decode.slice());
+    try std.testing.expect(codingsOfBlock("HTTP/1.1 302 Found\r\nLocation: /x\r\nContent-Encoding: gzip\r\n\r\n") == .identity);
+    try std.testing.expect(codingsOfBlock("HTTP/1.1 302 Found\r\nContent-Encoding: gzip\r\n\r\n") == .decode);
+    try std.testing.expect(codingsOfBlock("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n") == .identity);
 }
 
 /// Header callback - called for each header line received
