@@ -1247,6 +1247,11 @@ EXCLUDE = [
      'scroll-snap-stop: before: 0/1 in all three'),
     ('css/css-sizing/parsing/size-shorthand.html',
      'size as a width/height shorthand (CSS Sizing 4): 0/12 in all three'),
+    # The integrator, 2026-11-12 03:05 UTC: size-valid tests the same Sizing 4
+    # shorthand. Chrome's 9/10 is Blink parsing its @page `size` descriptor in
+    # element style (no width or height is set), not the shorthand shipping.
+    ('css/css-sizing/parsing/size-valid.html',
+     'size as a width/height shorthand (CSS Sizing 4): Chrome 9/10 only through its @page size descriptor, Firefox 0/10, Safari 0/10'),
     ('css/css-text/parsing/text-align-all-valid.html',
      'text-align-all: 0/7 in all three'),
     ('css/css-ui/input-security-computed.html',
