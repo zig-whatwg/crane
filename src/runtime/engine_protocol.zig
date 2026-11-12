@@ -585,7 +585,33 @@ pub const AgentOptions = struct {
     /// before its unified heap). The agent's end takes back what it
     /// reported. Null, the default: the engine sees only its own heap.
     external_memory: ?*runtime.gc.ExternalMemory = null,
+    /// The most memory the agent's young generation may take, in bytes -
+    /// honoured where `young_generation_limit`; a HINT elsewhere: an engine
+    /// with no such knob keeps its own sizing. The young generation is where
+    /// a generational collector allocates new objects (V8's new space,
+    /// JavaScriptCore's eden, SpiderMonkey's nursery): a larger one means
+    /// fewer young collections - faster for allocation-heavy script - and
+    /// more memory held between them, by the engine and by every native
+    /// object a dead wrapper still keeps until the collection that finds it.
+    /// A host that ships for desktop can permit more than one that runs many
+    /// agents in a server or on a phone. The engine may round DOWN to a size
+    /// it supports, never up (V8: three semispaces' worth, the semispace a
+    /// power of two of at least 1 MB - so 24 MB is V8 13.1's ceiling, 8 MB
+    /// semispaces, and 96 MB is V8 15.7's own, 32 MB semispaces, which
+    /// Chrome 157 ships on desktop; Chrome ships 24 MB on Android phones
+    /// below its high-end threshold). Null: the engine's own sizing, exactly
+    /// as without this option. The default is `default_young_generation_limit`.
+    young_generation_limit: ?usize = default_young_generation_limit,
 };
+
+/// What `AgentOptions.young_generation_limit` is for an agent whose host did
+/// not say - every agent a Browser makes with its configuration left alone,
+/// its workers' agents, a test's. ONE constant, so the choice is one line:
+/// null keeps the engine's own sizing (V8 15.7: up to 32 MB semispaces, 96 MB
+/// in all - Chrome 157's desktop configuration); `24 * 1024 * 1024` is 8 MB
+/// semispaces (V8 13.1's ceiling). Measured on the perf suite, lane v8up b7:
+/// docs/engine-protocol.md, "The young generation's size".
+pub const default_young_generation_limit: ?usize = null;
 
 /// A host's wall clock for an agent (AgentOptions.clock): nanoseconds since
 /// the Unix epoch. C-shaped, so an adapter can call it from the engine's own
@@ -1061,6 +1087,12 @@ pub const Capabilities = struct {
     /// JSReportExtraMemoryCost is not public API; QuickJS counts only its
     /// own allocations).
     external_memory: Support,
+    /// AgentOptions.young_generation_limit: the agent's young generation
+    /// never takes more than the host said. Unsupported: the option is
+    /// ignored and the engine sizes its young generation by itself
+    /// (JavaScriptCore's public C API has no heap sizing - its eden size is
+    /// the private JSC::Options; QuickJS's collector has no generations).
+    young_generation_limit: Support,
 };
 
 /// The capabilities of the engine this build selected.

@@ -832,9 +832,9 @@ const isolate_entries = struct {
 };
 
 /// What an agent asks of its isolate before it initializes (v8_wrapper.cpp
-/// CraneIsolateOptions): engine.AgentOptions.random_seed and .clock. The
-/// default - nothing seeded, no clock - is an isolate exactly as
-/// v8_Isolate_New makes one.
+/// CraneIsolateOptions): engine.AgentOptions.random_seed, .clock and
+/// .young_generation_limit. The default - nothing seeded, no clock, no
+/// ceiling - is an isolate exactly as v8_Isolate_New makes one.
 pub const IsolateOptions = extern struct {
     /// Whether `random_seed` seeds the isolate's random number generator,
     /// and so each context's Math.random (craneEntropySource).
@@ -845,6 +845,10 @@ pub const IsolateOptions = extern struct {
     /// isolate is disposed.
     clock_context: ?*anyopaque = null,
     clock_wall_now: ?*const fn (context: ?*anyopaque) callconv(.c) i64 = null,
+    /// The isolate's ResourceConstraints max_young_generation_size_in_bytes
+    /// (young_generation.zig computes it from the agent's limit); 0: none,
+    /// V8's own ceiling.
+    max_young_generation_bytes: usize = 0,
 };
 
 /// v8_Isolate_New, with `options` applied before the isolate initializes.
@@ -2773,6 +2777,12 @@ pub extern fn v8_Global_SetWeakFinalizer(
 /// Whether this thread is inside V8's first-pass weak callbacks - for tests
 /// that a finalizer runs after the collection, never inside it.
 pub extern fn v8_Debug_InFirstPassWeakCallback() bool;
+
+/// The bytes `isolate`'s heap has committed to the space V8 names `name`
+/// ("new_space", "old_space", ...: Isolate::GetHeapSpaceStatistics'
+/// space_size), 0 for no such space. Counters only. For tests of the heap's
+/// configuration (the young generation's ceiling).
+pub extern fn v8_Debug_HeapSpaceCommittedBytes(isolate: *Isolate, name: [*:0]const u8) usize;
 
 /// Finalizers a collection's first pass has queued on `isolate`'s agent and
 /// its safe point has not run yet, not counting cancelled ones (tests).

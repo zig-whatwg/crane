@@ -116,12 +116,18 @@ pub const capabilities: engine.Capabilities = .{
     // public only through the inspector.
     .repl_mode = .native,
     // AgentOptions.external_memory: the change of the host's figure goes to
-    // Isolate::AdjustAmountOfExternalAllocatedMemory at the outermost binding
-    // exit and each microtask checkpoint (external_memory.zig); V8 starts
-    // incremental marking past its low-water mark + 64 MB and collects in
-    // full past half its old-generation limit (V8 13.1 heap.cc
-    // HandleExternalMemoryInterrupt).
+    // the agent's v8::ExternalMemoryAccounter at the outermost binding exit
+    // and each microtask checkpoint (external_memory.zig); V8 counts it
+    // toward its global allocation limit, starts incremental marking when
+    // that is reached and collects when it is overshot by a large margin
+    // (V8 15.7 heap.cc Heap::UpdateExternalMemory).
     .external_memory = .native,
+    // AgentOptions.young_generation_limit: the isolate's ResourceConstraints
+    // (max_young_generation_size_in_bytes, include/v8-isolate.h), set before
+    // it initializes (young_generation.zig; v8_wrapper.cpp
+    // applyHeapConstraints) - the embedder API gin configures the same
+    // ceiling through (gin/isolate_holder.cc ConfigureDefaults).
+    .young_generation_limit = .native,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.

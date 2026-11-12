@@ -133,6 +133,16 @@ pub const BrowserConfig = struct {
     /// runner, which poisons its allocator's frees by default (the user,
     /// 2026-11-05); off by default - never in a product build.
     poison_freed_state: bool = false,
+    /// The most memory the young generation of its window agent may take,
+    /// in bytes (engine.AgentOptions.young_generation_limit):
+    /// a larger one is faster for allocation-heavy pages and holds more
+    /// memory between collections. A host that ships for desktop can permit
+    /// the engine's own ceiling (null; V8 15.7: 96 MB, 32 MB semispaces); one
+    /// that runs many Browsers in a server, or on a phone, gives less (24 MB
+    /// is 8 MB semispaces). A hint where the engine has no such knob. The
+    /// default is the protocol's one constant,
+    /// engine.default_young_generation_limit.
+    young_generation_limit: ?usize = engine.default_young_generation_limit,
     /// How many pages the back/forward cache keeps (back_forward_cache.zig):
     /// 8 by default - Firefox's desktop cap, for the whole Browser
     /// (back_forward_cache.zig `default_size` says why). 0 keeps none.
@@ -293,6 +303,8 @@ pub const Browser = struct {
             .clock = if (browser_clock.wall_now) |wall_now| .{ .context = browser_clock.context, .wall_now = wall_now } else null,
             // Math.random replays from the Browser's stream when it has one.
             .random_seed = if (seeded) random_seed else null,
+            // The young generation's ceiling the host chose for this Browser.
+            .young_generation_limit = config.young_generation_limit,
         }) catch return error.V8InitFailed;
 
         // What the agent really is: one asked for the snapshot is made without

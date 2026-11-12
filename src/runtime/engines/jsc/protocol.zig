@@ -93,6 +93,7 @@ pub const capabilities: engine.Capabilities = .{
     // script's evaluation; Web Inspector's console evaluation is private).
     .repl_mode = .unsupported,
     .external_memory = .unsupported,
+    .young_generation_limit = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.

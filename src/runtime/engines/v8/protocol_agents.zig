@@ -568,11 +568,15 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     // [seeded_random] and [host_clock]: in the isolate's record before it
     // initializes - V8 may make its random number generator then. None of
     // either: an isolate exactly as before (v8_wrapper.cpp IsolateData).
+    // [young_generation_limit]: the isolate's ResourceConstraints, read once
+    // when its heap is configured (young_generation.zig); null leaves V8's
+    // own ceiling.
     const isolate_options: ffi.IsolateOptions = .{
         .seeded = options.random_seed != null,
         .random_seed = options.random_seed orelse 0,
         .clock_context = if (options.clock) |agent_clock| agent_clock.context else null,
         .clock_wall_now = if (options.clock) |agent_clock| agent_clock.wall_now else null,
+        .max_young_generation_bytes = @import("young_generation.zig").maxYoungGenerationBytes(options.young_generation_limit),
     };
     const isolate: *ffi.Isolate = blk: {
         if (options.from_snapshot) {

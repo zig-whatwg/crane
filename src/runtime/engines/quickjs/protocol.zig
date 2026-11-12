@@ -60,6 +60,7 @@ pub const capabilities: engine.Capabilities = .{
     // own REPL's), not wired: no engine is linked yet.
     .repl_mode = .unsupported,
     .external_memory = .unsupported,
+    .young_generation_limit = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.

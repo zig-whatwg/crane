@@ -600,6 +600,18 @@ static std::unordered_map<const void*, WeakCallbackData*>& pendingFinalizers() {
 // per-thread: a call-stack extent - whether V8's first-pass weak callbacks are running on this thread's stack (a diagnostic for tests).
 static thread_local int g_first_pass_depth = 0;
 
+/// The bytes `isolate`'s heap has committed to the space named `name`
+/// (HeapSpaceStatistics::space_size), 0 for no such space (tests).
+extern "C" size_t v8_Debug_HeapSpaceCommittedBytes(Isolate* isolate, const char* name) {
+    if (!isolate || !name) return 0;
+    for (size_t i = 0; i < isolate->NumberOfHeapSpaces(); i++) {
+        HeapSpaceStatistics statistics;
+        if (!isolate->GetHeapSpaceStatistics(&statistics, i)) continue;
+        if (strcmp(statistics.space_name(), name) == 0) return statistics.space_size();
+    }
+    return 0;
+}
+
 extern "C" bool v8_Debug_InFirstPassWeakCallback() {
     return g_first_pass_depth > 0;
 }
@@ -3523,13 +3535,15 @@ static void deleteSyntheticExport(SyntheticJsonExport* entry) {
 }
 
 /// What an agent asks of its isolate before it initializes (ffi.zig
-/// IsolateOptions; engine.AgentOptions.random_seed and .clock). Null, or
-/// every field zero: an isolate exactly as v8_Isolate_New made it before.
+/// IsolateOptions; engine.AgentOptions.random_seed, .clock and
+/// .young_generation_limit). Null, or every field zero: an isolate exactly
+/// as v8_Isolate_New made it before.
 struct CraneIsolateOptions {
     bool seeded;
     uint64_t random_seed;
     void* clock_context;
     int64_t (*clock_wall_now)(void*);
+    size_t max_young_generation_bytes;
 };
 
 /// `options` into the record, before Isolate::Initialize.

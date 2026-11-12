@@ -45,6 +45,7 @@ pub const capabilities: engine.Capabilities = .{
     .seeded_random = .unsupported,
     .repl_mode = .unsupported,
     .external_memory = .unsupported,
+    .young_generation_limit = .unsupported,
 };
 
 /// No engine behind it.
