@@ -140,8 +140,9 @@ const CacheEntry = struct {
     original_generation: u64,
 
     /// Collected: V8's first pass took the wrapper and `unlinkCollected` took
-    /// the entry out of the cache. Its finalizer (`finalizeCollected`) runs in
-    /// the second pass; until then it waits on the cache's pending list.
+    /// the entry out of the cache. Its finalizer (`finalizeCollected`) runs at
+    /// the agent's next safe point; until then it waits on the cache's pending
+    /// list.
     collected: bool = false,
 
     /// The first pass found another entry under this instance, or none: this
@@ -149,7 +150,7 @@ const CacheEntry = struct {
     /// but its handle.
     stale: bool = false,
 
-    /// Its second pass ran while its agent's teardowns were held
+    /// Its finalizer ran while its agent's teardowns were held
     /// (engine.deferTeardowns): it waits on the pending list, and on the
     /// agent's TeardownHolds.deferred, for the last resume to tear it down.
     teardown_deferred: bool = false,
@@ -161,7 +162,7 @@ const CacheEntry = struct {
     /// The counted object this wrapper holds a reference on - a node's
     /// NodeBase - as runtime.lifetime.wrapperAcquired answered it in `set`;
     /// null for a type that does not count, and once the reference is let go
-    /// (`releaseCounted`). The second pass hands it back without looking the
+    /// (`releaseCounted`). The finalizer hands it back without looking the
     /// node up again (refcount design 2.1, 5.1).
     counted: ?*anyopaque = null,
 
@@ -187,7 +188,7 @@ comptime {
 /// its node is alive. A node whose teardown began under its wrapper had it let
 /// go then (`markAsCleanedUp`); one freed some other way - its slot reissued,
 /// or a teardown this cache did not hear because the entry was waiting for
-/// its second pass - is forgotten, never read. Since refcount step 7 the
+/// its finalizer - is forgotten, never read. Since refcount step 7 the
 /// release decides: a tree it leaves with no hold is queued by the counts.
 fn releaseCounted(entry: *CacheEntry) void {
     const target = entry.counted orelse return;
@@ -899,10 +900,10 @@ fn unlinkCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
 }
 
 /// The finalizer of a collected wrapper (`unlinkCollected` ran), at its
-/// agent's safe point - never while the engine is collecting, and never in
-/// V8's second pass, which only queues it (v8_wrapper.cpp
-/// `runQueuedFinalizers`: after the platform task that carried the pass, or
-/// before a forced collection returns): the instance's teardown runs here,
+/// agent's safe point - never while the engine is collecting: V8's first
+/// pass only queues it (v8_wrapper.cpp `runQueuedFinalizers`: a binding's
+/// return into script, the pump, a forced collection's return) - the
+/// instance's teardown runs here,
 /// and may do any engine work - a dropped Response cancels its open body
 /// transfer, which reports to its page.
 fn finalizeCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
@@ -1045,8 +1046,8 @@ fn runDeferredTeardowns(holds: *TeardownHolds) void {
 }
 
 /// The teardown of a collected entry: free its instance unless something
-/// still owns it, then its handle and the entry. Run by the second pass, or
-/// by the cache's end for one whose second pass has not come yet.
+/// still owns it, then its handle and the entry. Run by the finalizer, or
+/// by the cache's end for one whose finalizer has not run yet.
 fn finalizeEntry(entry: *CacheEntry) void {
     // Waiting for a hold's end (engine.deferTeardowns) and torn down another
     // way first - its cache's end: it leaves the agent's list.
@@ -1163,7 +1164,7 @@ fn finalizeEntry(entry: *CacheEntry) void {
     // [wrap_tracking]) - the slice's, or its tree's later. An agent made
     // without a queue (engine.AgentOptions.deferred_teardown null: a test's
     // own) has nowhere for its counts to queue a tree, and keeps the old
-    // model below: the second pass frees a collected root nothing owns.
+    // model below: the finalizer frees a collected root nothing owns.
     if (counted and entry.cache.deferredQueue() != null) {
         if (!wrappedElsewhere(entry.instance, entry.cache))
             runtime.instance_lifecycle.markWrapperGone(entry.instance);
@@ -1312,8 +1313,8 @@ pub const WrapperCache = struct {
 
     /// Entries whose wrapper was collected and whose finalizer has not run
     /// (`unlinkCollected` -> `finalizeCollected`), most recent first. The
-    /// cache's end finalizes what is still here: V8 drops a second pass its
-    /// isolate never ran.
+    /// cache's end finalizes what is still here: a finalizer its agent's
+    /// safe points never reached does not run.
     pending_head: ?*CacheEntry = null,
 
     /// What this realm's end finalizes that no wrapper owns: its promise
@@ -1331,7 +1332,7 @@ pub const WrapperCache = struct {
     deferred_looked_up: bool = false,
 
     /// The agent's teardown holds (engine.deferTeardowns), looked up by this
-    /// cache's first second pass (`teardownHolds`); null before, or for an
+    /// cache's first finalizer (`teardownHolds`); null before, or for an
     /// isolate createAgent did not make. The agent outlives its realms'
     /// caches.
     holds: ?*TeardownHolds = null,
@@ -1355,7 +1356,7 @@ pub const WrapperCache = struct {
             // Looked up only with the realm's isolate entered: a lookup made
             // without one answers nothing and is not remembered (the realm's
             // end asks too, refcount step 7, and a remembered null would make
-            // every later second pass take the queue-less path).
+            // every later finalizer take the queue-less path).
             const isolate = v8.v8_Isolate_GetCurrent() orelse return null;
             self.deferred_looked_up = true;
             self.deferred = @import("protocol_agents.zig").deferredTeardownOf(isolate);
@@ -1363,8 +1364,8 @@ pub const WrapperCache = struct {
         return self.deferred;
     }
 
-    /// The holds on this realm's agent's teardowns, from a second pass: the
-    /// isolate collecting is entered, as `deferredQueue` finds it.
+    /// The holds on this realm's agent's teardowns, from a finalizer: the
+    /// isolate that collected is entered, as `deferredQueue` finds it.
     fn teardownHolds(self: *Self) ?*TeardownHolds {
         if (self.holds_looked_up) return self.holds;
         const isolate = v8.v8_Isolate_GetCurrent() orelse return null;
@@ -1381,7 +1382,7 @@ pub const WrapperCache = struct {
     }
 
     /// This realm is ending: tear down every node it queued, now, before
-    /// anything of the realm goes - what the second pass would have done had
+    /// anything of the realm goes - what the finalizer would have done had
     /// the teardown not been deferred.
     pub fn drainDeferred(self: *Self) void {
         const queue = self.deferred orelse return;
@@ -1409,7 +1410,7 @@ pub const WrapperCache = struct {
     }
 
     /// Let every wrapper's counted reference go - the live entries' and the
-    /// collected ones waiting for their second pass - at the realm's end,
+    /// collected ones waiting for their finalizer - at the realm's end,
     /// before its sweep frees anything.
     fn releaseAllCounted(self: *Self) void {
         // A walk: since references decide (refcount step 7) a release can
@@ -1465,7 +1466,7 @@ pub const WrapperCache = struct {
         self.linkPending(entry);
     }
 
-    /// Tests: run the finalizers waiting for V8's second pass now.
+    /// Tests: run the finalizers waiting for the agent's safe point now.
     pub fn finalizePendingForTest(self: *Self) void {
         self.finalizePending();
     }
@@ -1478,9 +1479,9 @@ pub const WrapperCache = struct {
         return count;
     }
 
-    /// The cache is ending: run every finalizer still waiting for its second
-    /// pass now - outside any collection - and cancel that pass (disposing
-    /// the entry's handle does). Each runs as the second pass would have.
+    /// The cache is ending: run every finalizer still waiting for its safe
+    /// point now - outside any collection - and cancel its queued record
+    /// (disposing the entry's handle does). Each runs as it would have there.
     fn finalizePending(self: *Self) void {
         while (self.pending_head) |entry| finalizeEntry(entry);
     }
@@ -1517,8 +1518,8 @@ pub const WrapperCache = struct {
         v8.v8_Global_SetWeak(@ptrCast(holder), null, detachedHolderCollected);
         self.detached_holder = holder;
         // A walk: syncEntry makes V8 calls that may allocate, and a
-        // collection they start runs first passes here (removals only); a
-        // forced one would run its second passes - teardowns - too.
+        // collection they start runs first passes here (removals only) and
+        // queues the teardowns for the agent's safe point.
         self.beginWalk();
         defer self.endWalk();
         var iter = self.cache.valueIterator();

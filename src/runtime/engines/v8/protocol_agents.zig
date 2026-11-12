@@ -625,7 +625,7 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     // [external_memory]: the host's native memory the agent's objects keep
     // alive, reported to V8 at the same safe points (external_memory.zig).
     @import("external_memory.zig").install(isolate, options.external_memory, deferred_teardown);
-    // The finalizers of the agent's collected wrappers: V8's second pass
+    // The finalizers of the agent's collected wrappers: V8's first pass
     // owes them to the queue, whose next binding exit into script runs them
     // (finalizer_safe_point.zig) - the safe point inside a task.
     @import("finalizer_safe_point.zig").install(isolate, deferred_teardown);
@@ -765,7 +765,7 @@ pub fn endAgent(agent: *Agent) void {
         // No binding entry counts on it from here on.
         @import("dom_algorithm.zig").install(entered.isolate, null);
     }
-    // Nor does a second pass owe it finalizers: what the collections below
+    // Nor does a collection owe it finalizers: what the collections below
     // find dead runs when each returns (finalizer_safe_point.zig).
     @import("finalizer_safe_point.zig").uninstall(entered.isolate, deferred_teardown);
     // [external_memory]: V8's count goes back to where it was before the
@@ -781,7 +781,7 @@ pub fn endAgent(agent: *Agent) void {
     isolate_lifecycle.cleanupAll(isolate, allocator);
     // The realms' ends drained what they left garbage (context_manager.
     // endRealms): the queue is empty, and closed from here on - what the
-    // collections below find is torn down in the second pass, as before.
+    // collections below find is torn down as each returns, as before.
     if (deferred_teardown) |queue| {
         queue.drainAll();
         std.debug.assert(queue.isEmpty());

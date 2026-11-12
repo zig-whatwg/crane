@@ -1035,7 +1035,7 @@ pub fn platformObjectDestroyed(instance: *Instance) void {
     context_manager.markInstanceCleanedUp(instance);
 }
 
-/// engine.deferTeardowns: the agent's second passes flag their entries
+/// engine.deferTeardowns: the agent's finalizers flag their entries
 /// instead of tearing them down (wrapper_cache.TeardownHolds).
 pub fn deferTeardowns(realm: Context) void {
     @import("wrapper_cache.zig").deferTeardowns(realm);

@@ -4784,7 +4784,7 @@ pub fn instanceToV8Checked(isolate: *v8.Isolate, instance: *runtime.Instance) er
 /// or null when it has none to answer with:
 /// - its teardown ran (a realm's end frees its state, the binding with it);
 /// - its realm has no engine left: the collector took a detached realm's
-///   context and its global with it, in the collection whose second pass
+///   context and its global with it, in the collection whose finalizers
 ///   disposed the cached handle the binding names, before the realm's end -
 ///   a queued task - has run (lane winslot1, E4;
 ///   tests/v8/window_collected_realm_conversion_test.zig). realmCollected

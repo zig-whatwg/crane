@@ -2749,21 +2749,20 @@ pub extern fn v8_Global_SetWeak(
 /// `unlink(data)` (optional) runs in V8's first pass, under the same rule as
 /// v8_Global_SetWeak's callback - no V8 API - so that nothing can reach what
 /// is being finalized: the wrapper cache drops its entry there. `finalize(data)`
-/// NEVER runs inside the collector, V8's second pass included: that pass runs
+/// NEVER runs inside the collector, V8's second pass included: both passes run
 /// under DisallowJSObjectModification on V8 15.7 (a write to a JS object there
-/// is a fatal CHECK) and only queues the finalizer on its agent, which runs it
-/// at the agent's safe point - `v8_Platform_PumpMessageLoop`, after the task
-/// that carried the second pass and before the event loop's microtask
-/// checkpoint; `v8_Isolate_RequestGarbageCollection` /
+/// is a fatal CHECK). The first pass queues the finalizer on its agent, which
+/// runs it at the agent's next safe point - `v8_Platform_PumpMessageLoop`,
+/// after the task it ran and before the event loop's microtask checkpoint;
+/// `v8_Isolate_RequestGarbageCollection` /
 /// `v8_Isolate_MemoryPressureNotification`, before a forced collection
 /// returns; or, inside a task, a binding's return into script at
 /// DOM-algorithm depth zero (`v8_Isolate_RunQueuedFinalizers`) - where it
-/// may do any engine work, in the order V8's second pass
-/// handed the finalizers over (the order they ran in when that pass ran them
-/// itself: the reverse of the first pass's). Disposing the handle before then cancels
-/// `finalize`; an agent's end runs what is queued in its last forced
-/// collections, and v8_Isolate_Dispose drops the rest uncalled
-/// (v8_wrapper.cpp `runQueuedFinalizers`).
+/// may do any engine work, in the order V8's first pass found the objects
+/// dead. Disposing the handle before then cancels `finalize`; an agent's end
+/// runs what is queued in its last forced collections, and v8_Isolate_Dispose
+/// drops the rest uncalled (v8_wrapper.cpp `runQueuedFinalizers`, "Why the
+/// first pass queues").
 pub extern fn v8_Global_SetWeakFinalizer(
     handle: *anyopaque,
     data: ?*anyopaque,
@@ -2775,16 +2774,16 @@ pub extern fn v8_Global_SetWeakFinalizer(
 /// that a finalizer runs after the collection, never inside it.
 pub extern fn v8_Debug_InFirstPassWeakCallback() bool;
 
-/// Finalizers a collection's second pass has queued on `isolate`'s agent and
+/// Finalizers a collection's first pass has queued on `isolate`'s agent and
 /// its safe point has not run yet, not counting cancelled ones (tests).
 pub extern fn v8_Debug_QueuedFinalizers(isolate: *Isolate) usize;
 
-/// Where `isolate`'s second passes say that finalizers wait: `word`, a byte
+/// Where `isolate`'s collections say that finalizers wait: `word`, a byte
 /// of the agent's - what its deferred teardown queue owes
 /// (runtime.gc.DeferredTeardown.owedWord) - that stays valid until this is
 /// called again, and two bits of it: `mask`, "finalizers wait", and
 /// `fresh_mask`, "some have not been looked at by a callback's exit". The
-/// pass stores the bits and calls nothing; a drain that leaves none waiting
+/// first pass stores the bits and calls nothing; a drain that leaves none waiting
 /// clears them. Null withdraws it: the agent's end, before its queue can go.
 /// On the isolate's thread.
 pub extern fn v8_Isolate_SetFinalizersOwed(isolate: *Isolate, word: ?*u8, mask: u8, fresh_mask: u8) void;
@@ -2815,8 +2814,8 @@ pub extern fn v8_Isolate_RunFreshFinalizers(isolate: *Isolate, innermost: u32, o
 /// work would clear. On the isolate's thread, the isolate entered.
 pub extern fn v8_Isolate_RunQueuedFinalizers(isolate: *Isolate) bool;
 
-/// One platform task WITHOUT the agent's safe point: what its second pass
-/// queued stays queued. For tests of the finalizer queue only; the engine
+/// One platform task WITHOUT the agent's safe point: what a collection it
+/// finished queued stays queued. For tests of the finalizer queue only; the engine
 /// pumps with `v8_Platform_PumpMessageLoop`.
 pub extern fn v8_Debug_PumpMessageLoopHoldingFinalizers(isolate: *Isolate) bool;
 

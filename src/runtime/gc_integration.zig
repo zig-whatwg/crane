@@ -627,8 +627,8 @@ pub const DeferredTeardown = struct {
     /// The safe point for the finalizers of the wrappers the engine's
     /// collector found dead (`Owed.finalizers`, `finalizer_steps`): a script
     /// that makes and drops objects in one task reaches no other - the
-    /// engine's own second pass may not run them (V8 15.7 runs it under
-    /// DisallowJSObjectModification), and the event loop's pump is a task
+    /// engine's collector may not run them (V8 15.7 runs its weak callbacks
+    /// under DisallowJSObjectModification), and the event loop's pump is a task
     /// away, each dead wrapper keeping its native state until then. Blink
     /// releases a dead wrappable's native state the same way, inside the
     /// running script: a wrappable is a cppgc object (blink ScriptWrappable :

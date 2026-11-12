@@ -239,7 +239,7 @@ test "disposing an isolate leaves another isolate's detached records alone" {
 }
 
 // ---------------------------------------------------------------------------
-// Finalizers: V8's second pass (v8_Global_SetWeakFinalizer)
+// Finalizers: after the collection (v8_Global_SetWeakFinalizer)
 // ---------------------------------------------------------------------------
 
 const PassProbe = struct {
@@ -266,7 +266,7 @@ fn probeFinalize(_: ?*anyopaque, _: usize) callconv(.c) void {
     pass_probe.finalize_in_first_pass = ffi.v8_Debug_InFirstPassWeakCallback();
 }
 
-test "a finalizer runs in V8's second pass, after its first-pass unlink, and its record goes with it" {
+test "a finalizer runs after the collection that unlinked it in its first pass, and its record goes with it" {
     defer test_agent.close();
     const e = try env();
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -279,7 +279,8 @@ test "a finalizer runs in V8's second pass, after its first-pass unlink, and its
     ffi.v8_Global_SetWeakFinalizer(@ptrCast(obj), @ptrCast(&user_data), probeUnlink, probeFinalize);
     try testing.expectEqual(baseline + 1, ffi.v8_Debug_LiveWeakCallbackData());
 
-    // A forced collection runs its second pass before it returns.
+    // A forced collection's return is a safe point: the finalizer its first
+    // pass queued has run.
     ffi.v8_Isolate_RequestGarbageCollection(e.isolate);
     try testing.expectEqual(@as(u32, 1), pass_probe.unlinks);
     try testing.expect(pass_probe.unlink_in_first_pass);
@@ -291,7 +292,7 @@ test "a finalizer runs in V8's second pass, after its first-pass unlink, and its
     try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
 }
 
-test "disposing a handle before its second pass cancels the finalizer and frees its record" {
+test "disposing a handle before its finalizer runs cancels the finalizer and frees its record" {
     defer test_agent.close();
     const e = try env();
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -301,7 +302,7 @@ test "disposing a handle before its second pass cancels the finalizer and frees 
     const obj = ffi.v8_Object_New(e.isolate) orelse return error.ObjectCreationFailed;
     if (scope) |s| ffi.v8_HandleScope_Dispose(s);
     var user_data: u32 = 0xC0FFEE;
-    // Its owner ends it between the passes - here, from the unlink itself.
+    // Its owner ends it before the finalizer - here, from the unlink itself.
     pass_probe.dispose_in_unlink = obj;
     ffi.v8_Global_SetWeakFinalizer(@ptrCast(obj), @ptrCast(&user_data), probeUnlink, probeFinalize);
 
@@ -312,19 +313,21 @@ test "disposing a handle before its second pass cancels the finalizer and frees 
 }
 
 // ---------------------------------------------------------------------------
-// Finalizers leave V8's second pass: the agent's queue and its safe point
+// Finalizers leave V8's collector: the agent's queue and its safe point
 // ---------------------------------------------------------------------------
 //
-// V8 15.7 runs a collection's second pass under DisallowJavascriptExecution
-// and DisallowJSObjectModification - at the end of a forced collection and in
-// the task it posts for every other one (src/heap/heap.cc:1470-1477,
-// src/handles/global-handles.cc:890-900) - and a write to a JS object there
-// is fatal: "Check failed: AllowJSObjectModification::IsAllowed(isolate)". A
-// finalizer is an instance's teardown and may write (a dropped Response
-// cancels its open body transfer, which reports a resource-timing entry to
-// its page), so the second pass only queues it on its agent, and it runs at
-// the agent's safe point: the pump, after the task; a forced collection,
-// before it returns (v8_wrapper.cpp `runQueuedFinalizers`).
+// V8 15.7 runs a collection's weak callbacks, both passes, under
+// DisallowJavascriptExecution and DisallowJSObjectModification - the second at
+// the end of a forced collection and in the task it posts for every other one
+// (src/heap/heap.cc:1470-1477, src/handles/global-handles.cc:890-900) - and a
+// write to a JS object there is fatal: "Check failed:
+// AllowJSObjectModification::IsAllowed(isolate)". A finalizer is an
+// instance's teardown and may write (a dropped Response cancels its open body
+// transfer, which reports a resource-timing entry to its page), so the first
+// pass only queues it on its agent - the adapter sets no second pass - and it
+// runs at the agent's safe point: the pump, after the task; a forced
+// collection, before it returns; a binding's return into script (v8_wrapper.cpp
+// `runQueuedFinalizers`, "Why the first pass queues").
 
 const QueueProbe = struct {
     const max = 4;
@@ -403,17 +406,16 @@ fn closeQueueProbe() void {
 /// embedder did not force. The trigger is a moderate memory-pressure notice
 /// (Isolate::MemoryPressureNotification(kModerate)): V8 starts an incremental
 /// collection that its marking job finishes in foreground tasks (15.7
-/// Heap::CheckMemoryPressure), and the second pass of such a collection is a
-/// task V8 posts (GlobalHandles::PostGarbageCollectionProcessing) - nothing
-/// is collected before the notice returns. Pumps WITHOUT the agent's safe
-/// point until `count` finalizers are queued.
+/// Heap::CheckMemoryPressure) - nothing is collected before the notice
+/// returns. Pumps WITHOUT the agent's safe point until `count` finalizers are
+/// queued (by the first pass of the collection a task finished).
 fn collectByTaskHoldingFinalizers(isolate: *ffi.Isolate, count: usize) !void {
     ffi.v8_Isolate_MemoryPressureNotification(isolate, .moderate);
     var turns: usize = 0;
     while (ffi.v8_Debug_QueuedFinalizers(isolate) < count and turns < 2_000_000) : (turns += 1) {
         if (queue_probe.?.finalizes != 0) {
-            std.debug.print("a finalizer ran inside V8's second pass: {d} run, {d} queued\n", .{ queue_probe.?.finalizes, ffi.v8_Debug_QueuedFinalizers(isolate) });
-            return error.FinalizerRanInsideTheSecondPass;
+            std.debug.print("a finalizer ran inside V8's task: {d} run, {d} queued\n", .{ queue_probe.?.finalizes, ffi.v8_Debug_QueuedFinalizers(isolate) });
+            return error.FinalizerRanInsideTheCollection;
         }
         if (!ffi.v8_Debug_PumpMessageLoopHoldingFinalizers(isolate)) std.Thread.yield() catch {};
     }
@@ -423,7 +425,7 @@ fn collectByTaskHoldingFinalizers(isolate: *ffi.Isolate, count: usize) !void {
     }
 }
 
-test "a finalizer that writes a JS object runs when a forced collection returns, outside its second pass" {
+test "a finalizer that writes a JS object runs when a forced collection returns, outside the collection" {
     defer test_agent.close();
     const e = try env();
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -432,7 +434,7 @@ test "a finalizer that writes a JS object runs when a forced collection returns,
 
     var armed: Armed = .{ .index = 0 };
     try armForQueue(e, &armed);
-    // Forced: V8 runs the second pass before it returns, under
+    // Forced: V8 runs its weak callbacks before it returns, under
     // DisallowJSObjectModification. The finalizer's write must come after.
     ffi.v8_Isolate_RequestGarbageCollection(e.isolate);
     try testing.expectEqual(@as(usize, 1), queue_probe.?.finalizes);
@@ -442,7 +444,7 @@ test "a finalizer that writes a JS object runs when a forced collection returns,
     try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
 }
 
-test "finalizers of a collection delivered by task wait for the agent's safe point and run there in the order V8's second pass handed them over" {
+test "finalizers of a collection delivered by task wait for the agent's safe point and run there in the order V8's first pass found them dead" {
     defer test_agent.close();
     const e = try env();
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -453,7 +455,7 @@ test "finalizers of a collection delivered by task wait for the agent's safe poi
     for (&armed) |*a| try armForQueue(e, a);
 
     try collectByTaskHoldingFinalizers(e.isolate, 3);
-    // Both passes have run and nothing of Zig's has: the three wait.
+    // The collection has run and nothing of Zig's has: the three wait.
     try testing.expectEqual(@as(usize, 3), queue_probe.?.unlinks);
     try testing.expectEqual(@as(usize, 0), queue_probe.?.finalizes);
     try testing.expect(!ffi.v8_Object_Has(e.context, queue_probe.?.target, "f0"));
@@ -462,14 +464,9 @@ test "finalizers of a collection delivered by task wait for the agent's safe poi
     // work ran, so the event loop performs its microtask checkpoint.
     try testing.expect(ffi.v8_Platform_PumpMessageLoop(e.isolate));
     try testing.expectEqual(@as(usize, 3), queue_probe.?.finalizes);
-    // The queue keeps the second pass's order, so the finalizers run in the
-    // order they ran in when that pass ran them itself. V8 lists a record
-    // for its second pass as its first pass visits it (15.7 src/handles/
-    // global-handles.cc:850, push_back) and the second pass takes them from
-    // the back (:765-767): the reverse of the first pass's order.
-    var handed_over: [3]u8 = undefined;
-    for (&handed_over, 0..) |*index, i| index.* = queue_probe.?.unlink_order[2 - i];
-    try testing.expectEqualSlices(u8, &handed_over, queue_probe.?.finalize_order[0..3]);
+    // The queue keeps the first pass's order: each record joins it as the
+    // pass finds its object dead (v8_wrapper.cpp `queueFinalizer`).
+    try testing.expectEqualSlices(u8, queue_probe.?.unlink_order[0..3], queue_probe.?.finalize_order[0..3]);
     try testing.expect(!queue_probe.?.write_failed);
     inline for (.{ "f0", "f1", "f2" }) |name| try testing.expect(ffi.v8_Object_Has(e.context, queue_probe.?.target, name));
     try testing.expectEqual(@as(usize, 0), ffi.v8_Debug_QueuedFinalizers(e.isolate));
@@ -537,14 +534,12 @@ test "an agent that ends with finalizers queued runs each once while it is alive
 // A collection the adapter did not force. V8 collects by itself, in the middle
 // of whatever allocated, when an allocation fails: Heap::CollectAllAvailableGarbage
 // (15.7.112.43 src/heap/heap-allocator.cc:201-218 and :528, the last resort
-// before the fatal out-of-memory at :537), and that collection runs its
-// second pass BEFORE it returns (src/handles/global-handles.cc:881-889:
-// kGCCallbackFlagCollectAllAvailableGarbage). The adapter is not on the stack
+// before the fatal out-of-memory at :537). The adapter is not on the stack
 // to run the queue, so the finalizers wait where every by-task collection's
 // do - on their agent - for its next safe point. The queue is bounded by what
 // has died: a record joins it once, when its wrapper dies, and a later
-// collection finds nothing of it to hand over again.
-test "finalizers of a synchronous second pass the adapter did not force wait for the agent's next safe point, each queued once" {
+// collection finds nothing of it to queue again.
+test "finalizers of a collection the adapter did not force wait for the agent's next safe point, each queued once" {
     defer test_agent.close();
     const e = try env();
     const baseline = ffi.v8_Debug_LiveWeakCallbackData();
@@ -554,8 +549,8 @@ test "finalizers of a synchronous second pass the adapter did not force wait for
     var armed: [4]Armed = .{ .{ .index = 0 }, .{ .index = 1 }, .{ .index = 2 }, .{ .index = 3 } };
     for (armed[0..3]) |*a| try armForQueue(e, a);
 
-    // V8's own collection of last resort: both passes run inside it, under
-    // DisallowJavascriptExecution and DisallowJSObjectModification.
+    // V8's own collection of last resort: its weak callbacks run inside it,
+    // under DisallowJavascriptExecution and DisallowJSObjectModification.
     ffi.v8_Debug_CollectHoldingFinalizers(e.isolate);
     try testing.expectEqual(@as(usize, 3), queue_probe.?.unlinks);
     // Nothing of Zig's ran inside the collection - a finalizer's write there
@@ -565,7 +560,7 @@ test "finalizers of a synchronous second pass the adapter did not force wait for
     try testing.expect(!ffi.v8_Object_Has(e.context, queue_probe.?.target, "f0"));
 
     // A second one, with no pump between them (one long task): the three are
-    // not handed over again, and the one that died since joins behind them.
+    // not queued again, and the one that died since joins behind them.
     try armForQueue(e, &armed[3]);
     ffi.v8_Debug_CollectHoldingFinalizers(e.isolate);
     try testing.expectEqual(@as(usize, 4), queue_probe.?.unlinks);
@@ -573,14 +568,11 @@ test "finalizers of a synchronous second pass the adapter did not force wait for
     try testing.expectEqual(@as(usize, 4), ffi.v8_Debug_QueuedFinalizers(e.isolate));
 
     // The next safe point - the pump after the task that was running - runs
-    // each once: the first collection's in the order its second pass handed
-    // them over (the reverse of its first pass's), then the second's.
+    // each once, in the order the two collections' first passes found them
+    // dead.
     try testing.expect(ffi.v8_Platform_PumpMessageLoop(e.isolate));
     try testing.expectEqual(@as(usize, 4), queue_probe.?.finalizes);
-    var handed_over: [4]u8 = undefined;
-    for (handed_over[0..3], 0..) |*index, i| index.* = queue_probe.?.unlink_order[2 - i];
-    handed_over[3] = queue_probe.?.unlink_order[3];
-    try testing.expectEqualSlices(u8, &handed_over, queue_probe.?.finalize_order[0..4]);
+    try testing.expectEqualSlices(u8, queue_probe.?.unlink_order[0..4], queue_probe.?.finalize_order[0..4]);
     try testing.expect(!queue_probe.?.write_failed);
     inline for (.{ "f0", "f1", "f2", "f3" }) |name| try testing.expect(ffi.v8_Object_Has(e.context, queue_probe.?.target, name));
     for (armed) |a| try testing.expect(a.handle == null);
@@ -588,24 +580,19 @@ test "finalizers of a synchronous second pass the adapter did not force wait for
     try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
 }
 
-// One long task. A collection V8 runs by itself posts its second pass as a
-// task (15.7.112.43 src/handles/global-handles.cc:892-901), and when the next
-// collection begins before that task has run, V8 runs the pending pass first,
-// right there (src/heap/heap.cc:1509-1511, Heap::CollectGarbage: "Ensure that
-// all pending phantom callbacks are invoked"), under the same two scopes
-// (heap.cc:1470-1477; global-handles.cc:746-747). A script
-// that makes and drops objects in one loop never reaches the pump, so that is
-// where its dead wrappers' finalizers ran: one collection late, in the middle
-// of an allocation. They may not run there (the pass is under V8's scopes), and
-// the pump is a task away - 300,000 dropped Events in one loop peaked at 392 MB
-// instead of 168 MB while every finalizer waited for it.
+// One long task. A script that makes and drops objects in one loop never
+// reaches the pump, and V8's collector may not run a finalizer (its weak
+// callbacks run under V8's two scopes, 15.7.112.43 src/heap/heap.cc:1470-1477;
+// src/handles/global-handles.cc:746-747) - 300,000 dropped Events in one loop
+// peaked at 392 MB instead of 168 MB while every finalizer waited for the
+// pump.
 //
 // The agent has a safe point inside the task: the host's external-memory
 // report (external_memory.zig - the binding exit back into script at
 // DOM-algorithm depth zero and the microtask checkpoint, Blink's
 // V8GCController::reportDOMMemoryUsageToV8 point; made once the host's figure
 // moved 128 KB), which is where a collection the report starts meets no DOM
-// frame. What V8's second passes queued since the last safe point runs when a
+// frame. What V8's collections queued since the last safe point runs when a
 // report returns.
 test "finalizers a collection of V8's own queued inside one task run at the agent's next external-memory report, without a pump" {
     defer test_agent.close();
@@ -624,10 +611,8 @@ test "finalizers a collection of V8's own queued inside one task run at the agen
     // Native memory the host says its objects hold, 256 MB a report, and
     // never a pump or a forced collection: a report that overshoots V8's
     // limits by a large margin collects before it returns (heap.cc:7021-7038
-    // Heap::UpdateExternalMemory; its first pass unlinks the two), that
-    // collection's second pass is a posted task (CollectGarbageWithRetry
-    // passes no callback flags, heap.cc:2132), and the next collection -
-    // inside a later report - runs it at its start.
+    // Heap::UpdateExternalMemory; its first pass unlinks the two and queues
+    // their finalizers).
     const step: i64 = 256 << 20;
     var reports: usize = 0;
     var collected_at: usize = 0;

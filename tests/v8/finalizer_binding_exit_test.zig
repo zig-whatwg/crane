@@ -1,20 +1,17 @@
 //! The binding exit back into script is the agent's safe point for the
 //! finalizers of its collected wrappers INSIDE a task (lane v8up b6c).
 //!
-//! V8's second pass runs no Zig finalizer: it only queues the record on its
-//! agent (v8_wrapper.cpp `queueFinalizer`; 15.7 runs the pass under
-//! DisallowJSObjectModification), and the agent runs it at a safe point. The
-//! pump and a forced collection's return are safe points BETWEEN tasks. One
-//! long script reaches neither: a collection V8 runs by itself posts its
-//! second pass as a task (15.7.112.43 src/handles/global-handles.cc:892-901),
-//! the next collection runs that pending pass first (src/heap/heap.cc:
-//! 1509-1511), and so every wrapper the script dropped waited, queued, with
-//! its native state, for the task's end - 300,000 dropped Events in one loop
-//! ended at 392 MB instead of 168 MB.
+//! V8's collector runs no Zig finalizer: its first pass only queues the
+//! record on its agent (v8_wrapper.cpp `queueFinalizer`; 15.7 runs its weak
+//! callbacks under DisallowJSObjectModification), and the agent runs it at a
+//! safe point. The pump and a forced collection's return are safe points
+//! BETWEEN tasks. One long script reaches neither, and so every wrapper the
+//! script dropped waited, queued, with its native state, for the task's end
+//! - 300,000 dropped Events in one loop ended at 392 MB instead of 168 MB.
 //!
 //! The safe point such a script does reach is a binding's return into it at
 //! DOM-algorithm depth zero (dom_algorithm.zig leaveToScript ->
-//! runtime.gc.DeferredTeardown.leaveAlgorithmToScript): the second pass sets
+//! runtime.gc.DeferredTeardown.leaveAlgorithmToScript): the first pass sets
 //! one bit of what the agent's queue owes, and the exit that finds it runs
 //! the queued finalizers before anything else it owes. Blink's wrappables
 //! are cppgc objects whose destructors run when an allocation sweeps their
@@ -140,7 +137,7 @@ const Probe = struct {
     /// page's global as a native algorithm invokes a callback.
     callback: ?[]const u8 = null,
     /// The first finalizer to run also lets one more armed object die under
-    /// itself, in a collection V8 runs by itself: its second pass queues
+    /// itself, in a collection V8 runs by itself: its first pass queues
     /// that object's finalizer and owes it, while this one is on the stack.
     collects_under_first: bool = false,
     /// What the first finalizer saw when the binding its script called had
@@ -174,12 +171,11 @@ const Probe = struct {
     }
 
     /// The order the finalizers of the first `count` unlinked objects run
-    /// in: V8's second pass takes the records from the back of the list its
-    /// first pass built (15.7 src/handles/global-handles.cc:850, 765-767),
-    /// and the queue keeps that order.
-    fn handedOver(self: *const Probe, comptime count: usize) [count]u8 {
+    /// in: the order V8's first pass found them dead, which is the order it
+    /// queued them in (v8_wrapper.cpp `queueFinalizer`).
+    fn foundDead(self: *const Probe, comptime count: usize) [count]u8 {
         var order: [count]u8 = undefined;
-        for (&order, 0..) |*index, i| index.* = self.unlink_order[count - 1 - i];
+        for (&order, 0..) |*index, i| index.* = self.unlink_order[i];
         return order;
     }
 
@@ -313,7 +309,7 @@ test "wrappers one collection of V8's own found dead are finalized at the script
     try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
 }
 
-test "queued finalizers run at the next binding exit into script, in the order V8's second pass handed them over, with engine work allowed" {
+test "queued finalizers run at the next binding exit into script, in the order V8's first pass found them dead, with engine work allowed" {
     defer probe = null;
     defer test_agent.close();
     const page = try Page.open();
@@ -329,7 +325,7 @@ test "queued finalizers run at the next binding exit into script, in the order V
     try page.callBinding();
     try testing.expectEqual(@as(usize, 3), self.finalizes);
     try testing.expect(!self.failed);
-    try testing.expectEqualSlices(u8, &self.handedOver(3), self.order[0..3]);
+    try testing.expectEqualSlices(u8, &self.foundDead(3), self.order[0..3]);
     try page.expectEval("String(globalThis.finalized)", "3");
     try testing.expectEqual(@as(usize, 0), page.queued());
     try testing.expectEqual(@as(u8, 0), page.owed());
@@ -399,7 +395,7 @@ test "a finalizer that enters and leaves a binding does not run the queue beneat
     try testing.expectEqual(@as(usize, 1), self.most_running);
     // All four ran, each once, at depth zero, the one queued last last.
     try testing.expectEqual(@as(usize, 4), self.finalizes);
-    try testing.expectEqualSlices(u8, &self.handedOver(3), self.order[0..3]);
+    try testing.expectEqualSlices(u8, &self.foundDead(3), self.order[0..3]);
     try testing.expectEqual(@as(u8, 3), self.order[3]);
     try testing.expectEqualSlices(u32, &.{ 0, 0, 0, 0 }, self.depths[0..4]);
     try testing.expectEqual(@as(usize, 0), page.queued());
@@ -441,7 +437,7 @@ test "a binding that throws keeps its exception: its exit runs no finalizer, the
 
 // The pump stays a safe point, and it settles what the queue owes: a drain
 // there leaves no bit behind for the next binding exit to pay for.
-test "the pump runs what a second pass queued and leaves nothing owed for the next binding exit" {
+test "the pump runs what a collection queued and leaves nothing owed for the next binding exit" {
     defer probe = null;
     defer test_agent.close();
     const page = try Page.open();
@@ -454,10 +450,10 @@ test "the pump runs what a second pass queued and leaves nothing owed for the ne
     try testing.expectEqual(@as(u8, 0), page.owed());
 }
 
-// The agent's end: the pointer V8's second pass writes through is the
+// The agent's end: the pointer V8's first pass writes through is the
 // queue's, and the agent's own queue is freed with it. The agent ends with
 // finalizers queued and owed; its last forced collections run them, and no
-// second pass writes to the queue after it is gone.
+// collection writes to the queue after it is gone.
 test "an agent that ends with finalizers owed runs them once, and its last collections owe nothing to a freed queue" {
     defer probe = null;
     const page = try Page.open();

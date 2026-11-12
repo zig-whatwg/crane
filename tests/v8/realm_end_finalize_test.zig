@@ -373,11 +373,11 @@ test "an asynchronous iterator of an ended realm never calls its steps again" {
 }
 
 // ---------------------------------------------------------------------------
-// A finalizer never runs inside V8's second pass (lane v8up b6)
+// A finalizer never runs inside V8's collector (lane v8up b6)
 // ---------------------------------------------------------------------------
 //
-// V8 15.7 runs the second pass under DisallowJSObjectModification and CHECKs
-// it; the adapter's second pass only queues the finalizer on its agent, which
+// V8 15.7 runs its weak callbacks under DisallowJSObjectModification and
+// CHECKs it; the first pass only queues the finalizer on its agent, which
 // runs it at its safe point - the pump after the task, or a forced
 // collection's return (v8_wrapper.cpp `runQueuedFinalizers`;
 // tests/v8/weak_callback_ownership_test.zig has the queue's own tests).
@@ -434,8 +434,8 @@ test "a collected reaction's dropped step writes to its realm after a collection
         defer promise.release();
         try protocol.reactToPromise(w, promise.value, &WritingReaction.steps, &reaction);
     }
-    // The event loop's own pump: V8's second-pass task runs in it, and the
-    // finalizer at the safe point after that task.
+    // The event loop's own pump: the task that finishes V8's collection runs
+    // in it, and the finalizer at the safe point after that task.
     try collectByTask(ffi.v8_Platform_PumpMessageLoop, &reaction, writingReactionDropped);
     try std.testing.expectEqual(@as(usize, 1), reaction.dropped);
     try std.testing.expect(!reaction.failed);

@@ -502,9 +502,10 @@ struct WeakCallbackData {
     // The isolate the arm belongs to. Disposing an isolate frees only its own
     // detached records: another isolate's may still have a callback queued.
     Isolate* isolate;
-    // Runs in V8's SECOND pass, once every first-pass callback of the
-    // collection has run, where V8 API calls are allowed: the finalizer
-    // proper (v8_Global_SetWeakFinalizer). Null for a first-pass-only arm.
+    // The finalizer proper (v8_Global_SetWeakFinalizer): runs AFTER the
+    // collection, at its agent's safe point (`runQueuedFinalizers`), where
+    // engine work is allowed - V8's first pass only queues it
+    // (`queueFinalizer`). Null for a first-pass-only arm.
     ZigWeakCallbackFn finalize = nullptr;
 };
 
@@ -576,19 +577,19 @@ static std::unordered_set<WeakCallbackData*>& detachedWeakData() {
     return set;
 }
 
-/// Records whose first pass has run and whose finalizer waits for V8's second
-/// pass, by the handle they were armed on. The handle is Reset by then; its
+/// Records whose first pass has run and whose finalizer waits on its agent's
+/// queue, by the handle they were armed on. The handle is Reset by then; its
 /// owner disposes it from the finalizer - or earlier, which cancels the
 /// finalizer (`releaseWeakArm`): the owner is freeing `user_data` in the same
-/// breath. A record whose second pass never runs - its isolate disposed first
-/// - is freed by `v8_Isolate_Dispose`.
+/// breath. A record whose finalizer never runs - its isolate disposed first,
+/// or an isolate with no queue - is freed by `v8_Isolate_Dispose`.
 ///
-/// Per thread: V8 runs an isolate's weak callbacks, first and second pass, on
-/// the thread that holds the isolate, and its owner disposes its handles there
-/// too, so each thread's isolates keep their own (Browsers and workers run on
-/// threads of their own).
+/// Per thread: V8 runs an isolate's weak callbacks on the thread that holds
+/// the isolate, and its owner disposes its handles there too, so each
+/// thread's isolates keep their own (Browsers and workers run on threads of
+/// their own).
 static std::unordered_map<const void*, WeakCallbackData*>& pendingFinalizers() {
-    // per-thread: V8 runs an isolate's weak callbacks, both passes, on the thread that holds the isolate - each thread's isolates' pending finalizers, read and written only on that thread.
+    // per-thread: V8 runs an isolate's weak callbacks on the thread that holds the isolate - each thread's isolates' pending finalizers, read and written only on that thread.
     static thread_local std::unordered_map<const void*, WeakCallbackData*> map;
     return map;
 }
@@ -667,10 +668,10 @@ enum class WeakArmEnd {
 template <typename T>
 static void releaseWeakArm(Global<T>* global, WeakArmEnd end = WeakArmEnd::handle_dying) {
     if (!global) return;
-    // A finalizer waiting for the second pass on this (already Reset) handle:
-    // its owner is ending it now, freeing `user_data` with it, so the second
-    // pass must not run it. The record stays V8's to hand back; that pass
-    // frees it.
+    // A finalizer waiting on its agent's queue for this (already Reset)
+    // handle: its owner is ending it now, freeing `user_data` with it, so it
+    // must not run. The record stays listed on the queue; the drain that
+    // reaches it frees it.
     auto& pending = pendingFinalizers();
     if (!pending.empty()) {
         auto pit = pending.find(static_cast<const void*>(global));
@@ -680,10 +681,9 @@ static void releaseWeakArm(Global<T>* global, WeakArmEnd end = WeakArmEnd::handl
             waiting->user_data = nullptr;
             waiting->handle = nullptr;
             pending.erase(pit);
-            // Queued still - in V8 for its second pass, or on its agent's
-            // queue after it: freed by that pass or by the queue's drain
-            // (`runQueuedFinalizers`), which finds it cancelled, or with its
-            // isolate if neither comes (v8_Isolate_Dispose).
+            // Queued still, on its agent's queue: freed by the queue's
+            // drain (`runQueuedFinalizers`), which finds it cancelled, or
+            // with its isolate if no drain comes (v8_Isolate_Dispose).
             std::lock_guard<std::mutex> guard(weakDataLock());
             detachedWeakData().insert(waiting);
         }
@@ -767,7 +767,6 @@ static void armWeakData(void* handle, WeakCallbackData* data) {
     setHandleFlag(handle, kArmedFlag);
 }
 
-static void WeakCallbackSecondPass(const WeakCallbackInfo<WeakCallbackData>& info);
 static void queueFinalizer(Isolate* isolate, WeakCallbackData* data);
 static bool runQueuedFinalizers(Isolate* isolate);
 
@@ -830,9 +829,9 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
         detachedWeakData().erase(data);
     }
 
-    // A finalizer waits for the second pass from here - registered before the
-    // first-pass callback runs, so that one disposing the handle cancels it
-    // (`releaseWeakArm`) like any other owner.
+    // A finalizer waits for its agent's safe point from here - registered
+    // before the first-pass callback runs, so that one disposing the handle
+    // cancels it (`releaseWeakArm`) like any other owner.
     if (data->finalize) pendingFinalizers()[static_cast<const void*>(data->handle)] = data;
 
     // The first-pass callback: the same header allows no V8 API call here -
@@ -844,14 +843,16 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
         --g_first_pass_depth;
     }
 
-    // "Should additional work be required, the embedder must set a second
-    // pass callback, which will be called after all the initial callbacks are
-    // processed." The second pass - V8's posted task, or the end of a forced
-    // collection (GlobalHandles::PostGarbageCollectionProcessing) - only puts
-    // the record on its agent's queue; the finalizer runs at the agent's safe
-    // point (`runQueuedFinalizers`).
+    // The finalizer is QUEUED HERE, in the first pass, on its agent
+    // (`queueFinalizer`: a list push and one byte stored - nothing of V8's
+    // API, nothing of Zig's), and runs at the agent's next safe point
+    // (`runQueuedFinalizers`). No second pass is set: "Should additional work
+    // be required, the embedder must set a second pass callback"
+    // (v8-weak-callback-info.h) is for work that needs V8 inside the
+    // collection's own processing, and the adapter's work waits for its own
+    // safe point instead. See "Why the first pass queues" below.
     if (data->finalize) {
-        info.SetSecondPassCallback(WeakCallbackSecondPass);
+        queueFinalizer(info.GetIsolate(), data);
         return;
     }
 
@@ -864,54 +865,62 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
     freeWeakData(data);
 }
 
-/// V8's second pass for a record armed with a finalizer: every first-pass
-/// callback of the collection has run. NO ZIG FINALIZER RUNS HERE. The pass
-/// only records that the wrapper died - the record goes on its agent's queue
-/// (`queueFinalizer`) - and the finalizer runs at the agent's safe point
-/// (`runQueuedFinalizers`).
-///
-/// Why: V8 runs this pass inside DisallowJavascriptExecution and
-/// DisallowJSObjectModification - synchronously at the end of a forced
-/// collection (15.7 src/heap/heap.cc:1470-1477: "JS execution and object
-/// modifications are not allowed during GC or in any of the embedder callbacks
-/// triggered below: first-pass weak callbacks ..., second-pass phantom
-/// callbacks (PostGarbageCollectionProcessing) ...") and in the task it posts
-/// for every other collection (src/handles/global-handles.cc:890-900) - and
-/// CHECKs the second scope wherever an object's map changes (src/objects/
-/// map.cc, lookup.cc, transitions.cc). A finalizer is an instance's teardown:
-/// a dropped Response's cancelled its open body transfer, which reported a
-/// resource-timing entry to its page and wrote a JS object ("Check failed:
-/// AllowJSObjectModification::IsAllowed(isolate)", 3 files in lane v8up b5's
-/// sweep). 13.1 had neither scope around this pass.
-///
-/// The browsers' rule is the same: what the collector calls does bookkeeping
-/// and nothing to the JS heap. Blink's wrappables are cppgc objects whose
-/// destructors "must not touch any other on-heap object" (platform/heap/
-/// BlinkGCAPIReference.md, GarbageCollected) and whose pre-finalizers may not
-/// resurrect one (USING_PRE_FINALIZER); V8 puts both under the same two
-/// scopes (heap.cc, above); its pre-Oilpan second pass only dropped the
-/// object's reference (ScriptWrappable.h, Chromium 45). WebKit marks a dead
-/// Weak in WeakBlock::reap and calls WeakHandleOwner::finalize from
-/// WeakBlock::sweep, after the collection (JavaScriptCore/heap/WeakBlock.cpp),
-/// where a DOM wrapper's owner only uncaches it (WebCore/bindings/js/
-/// JSDOMWrapperCache.h uncacheWrapper: clearWrapper or weakRemove).
-static void WeakCallbackSecondPass(const WeakCallbackInfo<WeakCallbackData>& info) {
-    WeakCallbackData* data = info.GetParameter();
-    if (!data) return;
-    // Its owner cancelled it between the passes (`releaseWeakArm` cleared it
-    // and moved it to the detached set): V8 has handed it back, so it goes.
-    if (!data->finalize) {
-        {
-            std::lock_guard<std::mutex> guard(weakDataLock());
-            detachedWeakData().erase(data);
-        }
-        freeWeakData(data);
-        return;
-    }
-    // It stays in pendingFinalizers() under its handle until it runs, so its
-    // owner disposing the handle first still cancels it.
-    queueFinalizer(info.GetIsolate(), data);
-}
+// Why the first pass queues, and V8's second pass is not used.
+//
+// NO ZIG FINALIZER RUNS INSIDE A COLLECTION OR IN V8'S SECOND PASS. V8 15.7
+// runs both under DisallowJavascriptExecution and DisallowJSObjectModification
+// (15.7.112.43 src/heap/heap.cc:1470-1477: "JS execution and object
+// modifications are not allowed during GC or in any of the embedder callbacks
+// triggered below: first-pass weak callbacks ..., second-pass phantom
+// callbacks (PostGarbageCollectionProcessing) ..."; the pass V8 posts as a
+// task, src/handles/global-handles.cc:890-900) and CHECKs the second scope
+// wherever an object's map changes (src/objects/map.cc, lookup.cc,
+// transitions.cc). A finalizer is an instance's teardown: a dropped
+// Response's cancelled its open body transfer, which reported a
+// resource-timing entry to its page and wrote a JS object ("Check failed:
+// AllowJSObjectModification::IsAllowed(isolate)", 3 files in lane v8up b5's
+// sweep). 13.1 had neither scope around its second pass, where the finalizers
+// used to run. So a dead wrapper's finalizer waits on its agent's queue for
+// the agent's safe point - a binding's return into script, the pump, a forced
+// collection's return (`runQueuedFinalizers`).
+//
+// THE RECORD JOINS THAT QUEUE IN THE FIRST PASS (lane v8up b7). Lane b6 had
+// V8's second pass do the queueing, and a second pass is late by a whole
+// collection for a script that does not return to the event loop: V8 posts
+// it as a task (global-handles.cc:892-901) and, when the next collection
+// begins before that task has run, runs it at that collection's start
+// (heap.cc:1509-1511). A wrapper found dead by scavenge k was finalized after
+// scavenge k+1 began, so the native state of two young generations of dead
+// wrappers was alive at once - and V8 15.7 keeps a larger young generation
+// than 13.1 did (a semispace of up to 32 MB, heap.cc:4844-4860; 13.1 capped
+// the scavenger at 8 MB, flag scavenger_max_new_space_capacity_mb). Measured
+// (release consoles, chat.local, dom.event-ctor's end mark, 650,000 dropped
+// Events): 113.5 MB of Event state blocks with the second pass queueing,
+// 66.8 MB with the first.
+//
+// It is what the first pass is for. V8 hands the embedder each dead object's
+// parameter there; the embedder Resets its handle and does its bookkeeping
+// without V8's API (v8-weak-callback-info.h), and the second pass exists for
+// work that needs that API. Node.js frees the native object itself in the
+// first pass (src/base_object.cc:59-71, BaseObject::MakeWeak's callback ->
+// OnGCCollect, base_object-inl.h:112-114 `delete this`; Node main
+// ab11f834fc6 on V8 15.6). Blink has no pass at all: its
+// wrappables are cppgc objects whose destructors "must not touch any other
+// on-heap object" (platform/heap/BlinkGCAPIReference.md, GarbageCollected)
+// and run when the page they are on is swept, inside the running script
+// (cppgc-internal/object-allocator.cc TryRefillLinearAllocationBuffer ->
+// Sweeper::SweepForAllocationIfRunning); its pre-Oilpan second pass only
+// dropped the object's reference (ScriptWrappable.h, Chromium 45). WebKit
+// marks a dead Weak in WeakBlock::reap and calls WeakHandleOwner::finalize
+// from WeakBlock::sweep, after the collection (JavaScriptCore/heap/
+// WeakBlock.cpp), where a DOM wrapper's owner only uncaches it
+// (WebCore/bindings/js/JSDOMWrapperCache.h uncacheWrapper).
+//
+// What it changes and what it does not: WHEN a record joins the queue (in the
+// collection that found its wrapper dead, not after V8's later task or next
+// collection), and the ORDER within one collection (the first pass's own
+// order; V8's second pass handed them over reversed, global-handles.cc:850,
+// 765-767). The safe points and their rules are the same.
 
 // ============================================================================
 // V8 Exception Information Structure
@@ -2608,8 +2617,8 @@ bool v8_Isolate_HasPendingBackgroundTasks(Isolate* isolate) {
 /// above v8_Isolate_HasPendingBackgroundTasks).
 ///
 /// The pump is also the agent's safe point for its collected wrappers'
-/// finalizers (`runQueuedFinalizers`): V8's task has returned - the one it
-/// posts for a collection's second pass only queues them - so they run here,
+/// finalizers (`runQueuedFinalizers`): V8's task has returned - a collection
+/// it finished only queued them, in its first pass - so they run here,
 /// before the caller's microtask checkpoint. Answers whether a task or a
 /// finalizer ran.
 bool v8_Platform_PumpMessageLoop(Isolate* isolate) {
@@ -2826,15 +2835,15 @@ struct IsolateData {
     /// parameter. Zig bookkeeping only (the cell freed, the release
     /// recorded); answers the node's slot, which the caller Resets.
     void* (*node_wrapper_collected)(void* registry, void* cell) = nullptr;
-    /// The agent's safe point (`runQueuedFinalizers`), after a second pass
+    /// The agent's safe point (`runQueuedFinalizers`), after a first pass
     /// set `node_wrappers_collected`: the agent's released references go
     /// (its drain).
     void (*node_wrappers_drain)(void* registry) = nullptr;
-    /// A node wrapper's second pass has run since the last drain: the
+    /// A node wrapper's first pass has run since the last drain: the
     /// registry holds releases for the agent's next safe point.
     bool node_wrappers_collected = false;
-    /// THE AGENT'S FINALIZER QUEUE: the records of collected wrappers whose
-    /// second pass has run (`WeakCallbackSecondPass`), oldest first, each
+    /// THE AGENT'S FINALIZER QUEUE: the records of collected wrappers, queued
+    /// by V8's first pass (`WeakCallbackWrapper`), oldest first, each
     /// waiting for the agent's safe point to run its Zig finalizer
     /// (`runQueuedFinalizers`). BORROWED pointers: a record is owned as it
     /// always was - by pendingFinalizers() under its handle until it runs,
@@ -2846,25 +2855,26 @@ struct IsolateData {
     ///
     /// Two lists, run in this order by every full drain: `queued_finalizers`
     /// holds the records a callback's exit has looked at and found must wait
-    /// for depth zero (`v8_Isolate_RunFreshFinalizers`); a second pass puts
+    /// for depth zero (`v8_Isolate_RunFreshFinalizers`); the first pass puts
     /// a record on `unjudged_finalizers`, where one that waits for an outer
     /// callback also stays. An agent that never looks from inside a callback
-    /// keeps everything on the second list, in the second pass's order.
+    /// keeps everything on the second list, in the first pass's order.
     std::deque<WeakCallbackData*> queued_finalizers;
     std::deque<WeakCallbackData*> unjudged_finalizers;
-    /// WHERE A SECOND PASS SAYS FINALIZERS WAIT: one byte of the agent's own
+    /// WHERE THE FIRST PASS SAYS FINALIZERS WAIT: one byte of the agent's own
     /// - what its deferred teardown queue owes its next safe point
     /// (runtime.gc.DeferredTeardown.owedWord) - and the bit of it that means
     /// "finalizers" (`oweFinalizers`). BORROWED from the adapter's Zig side
     /// (v8_Isolate_SetFinalizersOwed: createAgent to the agent's end); null
     /// for an isolate with no queue, whose finalizers wait for the pump or a
-    /// forced collection. The second pass still calls nothing: it stores.
+    /// forced collection. The first pass calls nothing of Zig's for it: it
+    /// stores.
     /// Read and written on the isolate's thread.
     uint8_t* finalizers_owed = nullptr;
     uint8_t finalizers_owed_mask = 0;
     /// The bit of the same byte that says "some finalizer has not been
     /// looked at by a callback's exit" (DeferredTeardown.Owed.fresh): set
-    /// with the other when a second pass queues a record.
+    /// with the other when the first pass queues a record.
     uint8_t fresh_owed_mask = 0;
     /// `runQueuedFinalizers` is on the stack: a finalizer is running. The
     /// safe points inside a task - a binding's return into script, the
@@ -2965,14 +2975,14 @@ extern "C" void v8_Debug_FullGCPauses(Isolate* isolate, uint64_t* count, uint64_
 // its agent's registry, and the first pass touches no handle but the slot it
 // resets - so the hazard armedWeakData() exists for (a callback disposing a
 // SECOND armed handle whose callback is still queued, releaseWeakArm's note)
-// cannot arise. The node is never freed here: the second pass only releases
-// the wrapper's counted reference, and the counts decide.
+// cannot arise. The node is never freed here: the agent's safe point only
+// releases the wrapper's counted reference, and the counts decide.
 
 static_assert(sizeof(Global<Object>) == sizeof(void*), "a node's wrapper slot holds exactly one Global<Object>");
 
-/// A second pass queued a finalizer, or released node wrappers: the agent's
-/// queue owes them to its next safe point - the binding's return into script
-/// that finds the bit (dom_algorithm.zig leaveToScript ->
+/// The first pass queued a finalizer, or recorded node wrappers' releases:
+/// the agent's queue owes them to its next safe point - the binding's return
+/// into script that finds the bit (dom_algorithm.zig leaveToScript ->
 /// DeferredTeardown.leaveAlgorithmToScript). One store into the agent's own
 /// byte; nothing of Zig's is called from V8's pass.
 static inline void oweFinalizers(IsolateData* record, uint8_t bits) {
@@ -2988,7 +2998,7 @@ static inline void settleFinalizersOwed(IsolateData* record) {
     *record->finalizers_owed &= static_cast<uint8_t>(~(record->finalizers_owed_mask | record->fresh_owed_mask));
 }
 
-/// A record's second pass has run: it waits on its agent's queue from here.
+/// A record's first pass has run: it waits on its agent's queue from here.
 /// An isolate with no record - the snapshot creator's, or one whose disposal
 /// has begun - has no safe point: the record stays where the first pass left
 /// it (pendingFinalizers()), for its owner's end to cancel or
@@ -3031,29 +3041,28 @@ static bool runFinalizerRecord(WeakCallbackData* data) {
 ///
 /// Where it is called, and so where a finalizer runs relative to tasks and
 /// microtasks:
-///   * v8_Platform_PumpMessageLoop, after the platform task it ran - the task
-///     V8 posts for a second pass among them - and before the microtask
-///     checkpoint the event loop performs after each such task
+///   * v8_Platform_PumpMessageLoop, after the platform task it ran - a
+///     collection V8's marking job finished among them - and before the
+///     microtask checkpoint the event loop performs after each such task
 ///     (event_loop.pumpPlatformTasks): between two tasks of the agent, never
-///     inside one or inside a checkpoint. It is where V8 itself ran them
-///     (inside that task), and where the task V8 posts for
+///     inside one or inside a checkpoint. It is where the task V8 posts for
 ///     FinalizationRegistry cleanup runs (HTML's
 ///     HostEnqueueFinalizationRegistryCleanupJob queues a task too).
 ///   * v8_Isolate_RequestGarbageCollection and
-///     v8_Isolate_MemoryPressureNotification, after V8 returns: a forced
-///     collection ran its second pass before returning, and the operations
-///     built on them promise what was found dead is finalized when they
-///     return (engine.requestGarbageCollection, notifyMemoryPressure) - as a
-///     browser's test-only gc() finalizes before it returns.
+///     v8_Isolate_MemoryPressureNotification, after V8 returns: the
+///     operations built on them promise what the collection found dead is
+///     finalized when they return (engine.requestGarbageCollection,
+///     notifyMemoryPressure) - as a browser's test-only gc() finalizes
+///     before it returns.
 ///   * INSIDE A TASK (`runQueuedFinalizersInTask`): a binding's return into
-///     script at DOM-algorithm depth zero, when a second pass has owed them
+///     script at DOM-algorithm depth zero, when a first pass has owed them
 ///     to the agent's queue (v8_Isolate_RunQueuedFinalizers, the queue's
 ///     finalizer steps), and the host's external-memory report made at that
 ///     same exit or at a microtask checkpoint outside a DOM algorithm
-///     (v8_ExternalMemoryAccounter_Update, after V8 returns). Finalizers
-///     queued by a second pass V8 ran by itself - a pending pass run at the
-///     start of the next collection, an allocation's last resort - run
-///     there, not a task later at the pump.
+///     (v8_ExternalMemoryAccounter_Update, after V8 returns). Finalizers of
+///     what a collection V8 ran by itself found dead - a scavenge an
+///     allocation started, an allocation's last resort, the report's own -
+///     run there, not a task later at the pump.
 ///   * INSIDE A CALLBACK (`v8_Isolate_RunFreshFinalizers`, not this
 ///     function): a binding's return into the script of the innermost
 ///     callback invocation runs the FRESH ones alone - objects a
@@ -3112,7 +3121,8 @@ static bool runQueuedFinalizers(Isolate* isolate) {
 ///     that allocates - "Bail out for recursive sweeping calls. This can
 ///     happen when finalizers allocate new memory." (15.7.112.43 src/heap/
 ///     cppgc-internal/sweeper.cc:1197-1211, SweepForAllocationIfRunning,
-///     `is_sweeping_on_mutator_thread_`) - and so has V8's own second pass
+///     `is_sweeping_on_mutator_thread_`) - and so has V8's own second pass,
+///     which the adapter does not use
 ///     (src/handles/global-handles.cc:752-756, "Newly added callbacks will
 ///     always be run by the outermost GC run only");
 ///   * the returning binding left an exception pending (Isolate::
@@ -3170,8 +3180,8 @@ extern "C" bool v8_Isolate_RunFreshFinalizers(Isolate* isolate, uint32_t innermo
     }
     HandleScope handle_scope(isolate);
     record->finalizers_running = true;
-    // Taken whole: a finalizer may collect, and what its second pass queues
-    // joins the (now empty) list behind the records kept here.
+    // Taken whole: a finalizer may collect, and what that collection's first
+    // pass queues joins the (now empty) list behind the records kept here.
     std::deque<WeakCallbackData*> looking;
     looking.swap(record->unjudged_finalizers);
     std::deque<WeakCallbackData*> kept;
@@ -3210,7 +3220,7 @@ extern "C" bool v8_Isolate_RunQueuedFinalizers(Isolate* isolate) {
     return runQueuedFinalizersInTask(isolate);
 }
 
-/// Where `isolate`'s second passes say that finalizers wait
+/// Where `isolate`'s first passes say that finalizers wait
 /// (IsolateData::finalizers_owed): `word`, a byte of the agent's that stays
 /// valid until this is called again, and the bit `mask` of it; null
 /// withdraws it (the agent's end, before its queue can go). What already
@@ -3226,7 +3236,7 @@ extern "C" void v8_Isolate_SetFinalizersOwed(Isolate* isolate, uint8_t* word, ui
 }
 
 /// Finalizers on `isolate`'s queue that their owners have not cancelled: a
-/// collection's second pass has run and the agent's safe point has not
+/// collection's first pass has run and the agent's safe point has not
 /// (tests). 0 for an isolate with no record.
 extern "C" size_t v8_Debug_QueuedFinalizers(Isolate* isolate) {
     IsolateData* record = isolateData(isolate);
@@ -3241,21 +3251,13 @@ extern "C" size_t v8_Debug_QueuedFinalizers(Isolate* isolate) {
     return waiting;
 }
 
-/// V8's second pass for a collected node wrapper: it only says so. The
-/// releases the first pass recorded go at the agent's safe point
-/// (`runQueuedFinalizers`), with the other finalizers.
-static void nodeWrapperSecondPass(const WeakCallbackInfo<void>& info) {
-    IsolateData* record = isolateData(info.GetIsolate());
-    // The parameter is the cell the first pass freed: not read.
-    if (!record) return;
-    record->node_wrappers_collected = true;
-    oweFinalizers(record, record->finalizers_owed_mask);
-}
-
 /// V8's first pass for a collected node wrapper. "When first called, the
 /// embedder MUST Reset() the Global which triggered the callback"
 /// (v8-weak-callback-info.h): the node's slot, which the registry answers for
-/// the cell. No other V8 call; the release waits for the second pass.
+/// the cell. No other V8 call. The release the registry recorded goes at the
+/// agent's safe point (`runQueuedFinalizers`), with the other finalizers:
+/// the pass says so here - one flag, one byte owed - and sets no second pass
+/// ("Why the first pass queues", above).
 static void nodeWrapperFirstPass(const WeakCallbackInfo<void>& info) {
     IsolateData* record = isolateData(info.GetIsolate());
     // A cell exists only while its registry does, and the registry outlives
@@ -3271,7 +3273,8 @@ static void nodeWrapperFirstPass(const WeakCallbackInfo<void>& info) {
     Global<Object>* wrapper = static_cast<Global<Object>*>(slot);
     forgetCountedHandle(wrapper);
     wrapper->Reset();
-    info.SetSecondPassCallback(nodeWrapperSecondPass);
+    record->node_wrappers_collected = true;
+    oweFinalizers(record, record->finalizers_owed_mask);
 }
 
 /// The isolate's node wrapper registry (IsolateData::node_wrappers), or null
@@ -3761,7 +3764,7 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             // the detached set and the rest with pendingFinalizers().
             record->queued_finalizers.clear();
             record->unjudged_finalizers.clear();
-            // No second pass stores into the agent's queue from here on (the
+            // No first pass stores into the agent's queue from here on (the
             // agent's end withdrew the byte already; a test's own isolate
             // never registered one).
             record->finalizers_owed = nullptr;
@@ -3802,11 +3805,11 @@ void v8_Isolate_Dispose(Isolate* isolate) {
         // Dispose the isolate first
         isolate->Dispose();
 
-        // Finalizers whose second pass this isolate never ran: V8 dropped its
-        // pending second-pass list with it. Their owners finalized what they
-        // hold before ending the realm (WrapperCache.deinit), so only the
-        // records are left. After Dispose, so a second pass V8 did run during
-        // it found its record intact.
+        // Finalizers this isolate's safe points never ran: the queue's list
+        // went above, uncalled, and an isolate with no record never had one.
+        // Their owners finalized what they hold before ending the realm
+        // (WrapperCache.deinit), so only the records are left. After Dispose,
+        // so a first pass V8 did run during it found its record intact.
         {
             auto& pending = pendingFinalizers();
             for (auto it = pending.begin(); it != pending.end();) {
@@ -4418,24 +4421,19 @@ void v8_ExternalMemoryAccounter_Update(ExternalMemoryAccounter* accounter, Isola
     // is made only where a collection it starts meets no DOM frame below
     // (external_memory.zig: the binding exit to script at DOM-algorithm depth
     // zero, the microtask checkpoint), and V8's collector is off the stack
-    // once it returns. What runs here: the finalizers V8's second passes
-    // queued since the last safe point. In one long task those are the
-    // passes V8 runs by itself: a collection's second pass is a posted task
-    // (15.7.112.43 src/handles/global-handles.cc:892-901) - the collections
-    // this very report runs included, Heap::UpdateExternalMemory's
-    // CollectGarbageWithRetry passes no callback flags (src/heap/heap.cc:
-    // 7021-7038, 2132) - and the next collection runs the pending pass first
-    // when that task has not run (heap.cc:1509-1511, "Ensure that all
-    // pending phantom callbacks are invoked"), in the middle of an
-    // allocation. That is where the finalizers of a script that makes and
-    // drops objects in one loop used to run. Without this they all waited
-    // for the pump, a task away, and each kept its native state until then
-    // (300,000 dropped Events in one loop: 392 MB at the loop's end instead
-    // of 168 MB, lane v8up b6). The binding exit itself is that safe point
-    // now, for every script (v8_Isolate_RunQueuedFinalizers); this one adds
-    // the passes the report's own collection ran, under the same two rules -
-    // not beneath a running finalizer, not while the returning binding's
-    // exception is pending (`runQueuedFinalizersInTask`).
+    // once it returns. What runs here: the finalizers V8's first passes
+    // queued since the last safe point - above all those of the collection
+    // this very report ran (Heap::UpdateExternalMemory's
+    // CollectGarbageWithRetry, 15.7.112.43 src/heap/heap.cc:7021-7038): the
+    // trees and objects it found dead give their native memory back before
+    // the next report measures it. Without a safe point inside the task
+    // they all waited for the pump, and each kept its native state until
+    // then (300,000 dropped Events in one loop: 392 MB at the loop's end
+    // instead of 168 MB, lane v8up b6). The binding exit itself is that safe
+    // point now, for every script (v8_Isolate_RunQueuedFinalizers); this one
+    // runs under the same two rules - not beneath a running finalizer, not
+    // while the returning binding's exception is pending
+    // (`runQueuedFinalizersInTask`).
     runQueuedFinalizersInTask(isolate);
 }
 
@@ -4740,8 +4738,8 @@ void v8_Isolate_MemoryPressureNotification(Isolate* isolate, int level) {
     isolate->MemoryPressureNotification(level >= 2 ? MemoryPressureLevel::kCritical
                                         : level == 1 ? MemoryPressureLevel::kModerate
                                                      : MemoryPressureLevel::kNone);
-    // A critical notice collected with its second pass before returning: the
-    // finalizers it queued run now, V8's collector off the stack
+    // A critical notice collected before returning: the finalizers its
+    // first pass queued run now, V8's collector off the stack
     // (`runQueuedFinalizers`).
     runQueuedFinalizers(isolate);
 }
@@ -10478,9 +10476,10 @@ void v8_Global_SetWeak(void* handle, void* user_data, ZigWeakCallbackFn callback
 
 /// Make a Global handle weak with a finalizer that runs after the collection:
 /// `unlink` (may be null) in V8's first pass - bookkeeping, no V8 API - and
-/// `finalize` in the second pass, where V8 API calls are allowed. Disposing
-/// the handle before the second pass cancels `finalize` (`releaseWeakArm`).
-/// Owned by the arm, as v8_Global_SetWeak's record is.
+/// `finalize` at the agent's next safe point after it, where engine work is
+/// allowed (`runQueuedFinalizers`; the first pass queues it). Disposing the
+/// handle before then cancels `finalize` (`releaseWeakArm`). Owned by the
+/// arm, as v8_Global_SetWeak's record is.
 void v8_Global_SetWeakFinalizer(void* handle, void* user_data, ZigWeakCallbackFn unlink, ZigWeakCallbackFn finalize) {
     if (!handle || !finalize) return;
     Global<Value>* global = reinterpret_cast<Global<Value>*>(handle);
@@ -10721,10 +10720,9 @@ void v8_Isolate_RequestGarbageCollection(Isolate* isolate) {
     // as aggressively as possible. Per V8 docs, this is a synchronous
     // call that attempts to reclaim as much memory as possible.
     isolate->LowMemoryNotification();
-    // The collection ran its second pass before returning, which queued the
-    // finalizers of what it found dead: they run now, V8's collector off the
-    // stack, so that the caller finds them run as it always did
-    // (`runQueuedFinalizers`).
+    // The collection's first pass queued the finalizers of what it found
+    // dead: they run now, V8's collector off the stack, so that the caller
+    // finds them run as it always did (`runQueuedFinalizers`).
     runQueuedFinalizers(isolate);
 }
 
