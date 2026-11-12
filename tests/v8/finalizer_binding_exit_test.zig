@@ -284,28 +284,29 @@ test "queued finalizers run at the next binding exit into script, in the order V
     try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
 }
 
-// Re-entrancy, first half: never under a DOM algorithm. A binding that
-// returns into script a native algorithm called (a listener, a timer or
-// observer callback: the adapter counts the invocation on the queue's depth)
-// returns at depth one, and a callback's return into its native caller runs
-// nothing. The finalizers wait for the outermost exit, and every one of them
-// runs at depth zero.
-test "finalizers never run at a non-zero DOM-algorithm depth: they wait for the outermost binding exit" {
+// Re-entrancy, first half: not under a DOM algorithm. A binding that returns
+// into script while another DOM algorithm is on the stack below it - here
+// one the test enters, as a binding does whose conversion runs script -
+// returns at depth one, and that algorithm's own return runs nothing. These
+// finalizers wait for the outermost exit, and every one of them runs at
+// depth zero. (The one thing that may run at a non-zero depth is the
+// finalizer of an object made since the innermost CALLBACK began - "Inside
+// a callback", below; an object armed by the test is never that.)
+test "a finalizer that is not fresh never runs at a non-zero DOM-algorithm depth: it waits for the outermost binding exit" {
     defer probe = null;
     defer test_agent.close();
     const page = try Page.open();
     try page.callBinding();
     const self = try queueFinalizers(page, 3);
 
-    // A native algorithm is on the stack and calls script (what
-    // invokeCallbackFunction counts); the script's bindings return at depth
-    // one.
+    // A DOM algorithm is on the stack and script runs under it; the
+    // script's bindings return at depth one.
     page.queue.enterAlgorithm();
     try page.callBinding();
     try page.callBinding();
     try testing.expectEqual(@as(usize, 0), self.finalizes);
     try testing.expectEqual(@as(usize, 3), page.queued());
-    // The callback returns into the native algorithm: nothing runs.
+    // That algorithm returns: nothing runs.
     page.queue.leaveAlgorithmToNative();
     try testing.expectEqual(@as(usize, 0), self.finalizes);
     try testing.expectEqual(@as(usize, 3), page.queued());
