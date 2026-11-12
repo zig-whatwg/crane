@@ -54,6 +54,7 @@ pub const style_values = @import("style_values.zig");
 pub const insert_text = @import("insert_text.zig");
 pub const insert_content = @import("insert_content.zig");
 pub const blocks = @import("blocks.zig");
+pub const select_all = @import("select_all.zig");
 
 const Instance = runtime.Instance;
 const Edit = common.Edit;
@@ -96,6 +97,8 @@ pub const Command = enum {
     justify_full,
     justify_left,
     justify_right,
+    // The miscellaneous commands this module answers (select_all.zig).
+    select_all,
 
     const Row = struct { []const u8, Command };
 
@@ -122,6 +125,7 @@ pub const Command = enum {
         .{ "insertText", .insert_text },
         .{ "insertHTML", .insert_html },
         .{ "insertImage", .insert_image },
+        .{ "selectAll", .select_all },
     } ++ blockRows();
 
     /// Lane editing4: the block formatting commands' rows, from blocks.zig.
@@ -167,7 +171,7 @@ pub const Command = enum {
             .underline => "formatUnderline",
             .unlink => "",
             .insert_text => "insertText",
-            .insert_html, .insert_image => "",
+            .insert_html, .insert_image, .select_all => "",
             .format_block, .indent, .outdent, .insert_ordered_list, .insert_unordered_list, .insert_paragraph, .insert_line_break, .insert_horizontal_rule, .justify_center, .justify_full, .justify_left, .justify_right => self.block().?.inputType(),
         };
     }
@@ -177,7 +181,7 @@ pub const Command = enum {
     /// be enabled if the editing host is in the plaintext-only state".
     pub fn enabledInPlaintextOnly(self: Command) bool {
         return switch (self) {
-            .delete, .forward_delete, .insert_text, .insert_html => true,
+            .delete, .forward_delete, .insert_text, .insert_html, .select_all => true,
             .insert_image => false,
             .back_color, .bold, .create_link, .font_name, .font_size, .fore_color, .hilite_color, .italic, .remove_format, .strikethrough, .subscript, .superscript, .underline, .unlink => false,
             .format_block, .indent, .outdent, .insert_ordered_list, .insert_unordered_list, .insert_paragraph, .insert_line_break, .insert_horizontal_rule, .justify_center, .justify_full, .justify_left, .justify_right => self.block().?.enabledInPlaintextOnly(),
@@ -201,7 +205,7 @@ pub const Command = enum {
             .superscript => .superscript,
             .underline => .underline,
             .unlink => .unlink,
-            .delete, .forward_delete, .insert_text, .insert_html, .insert_image => null,
+            .delete, .forward_delete, .insert_text, .insert_html, .insert_image, .select_all => null,
             .format_block, .indent, .outdent, .insert_ordered_list, .insert_unordered_list, .insert_paragraph, .insert_line_break, .insert_horizontal_rule, .justify_center, .justify_full, .justify_left, .justify_right => null,
         };
     }
@@ -231,6 +235,10 @@ fn beginEdit(document: *Instance, scratch: std.mem.Allocator) !?Edit {
 /// that must not be enabled in a plaintext-only editing host, that host is
 /// not one.
 fn isEnabledIn(edit: *Edit, command: Command) !bool {
+    // "Among commands defined in this specification, those listed in
+    // Miscellaneous commands are always enabled, except for the cut command
+    // and the paste command."
+    if (command == .select_all) return true;
     const start = (try edit.rangeStart()) orelse return false;
     const end = (try edit.rangeEnd()) orelse return false;
     if (!try common.isEditableOrEditingHost(start.node)) return false;
@@ -300,6 +308,7 @@ fn runAction(edit: *Edit, command: Command, value: []const u8) !bool {
         .insert_html => try insert_content.insertHtml(edit, value),
         .insert_image => try insert_content.insertImage(edit, value),
         .format_block, .indent, .outdent, .insert_ordered_list, .insert_unordered_list, .insert_paragraph, .insert_line_break, .insert_horizontal_rule, .justify_center, .justify_full, .justify_left, .justify_right => try blocks.action(edit, command.block().?, value),
+        .select_all => try select_all.action(edit),
     };
 }
 
@@ -327,6 +336,12 @@ pub fn execCommand(document: *Instance, command: Command, value: []const u8) boo
         if (@import("../user_input.zig").execInsertIntoTextControl(document, text, command.inputType())) |ran| return ran;
     }
     var edit = (beginEdit(document, arena.allocator()) catch return false) orelse return false;
+    // selectAll changes no node: no editing host, no input event (steps
+    // 5-8 alone).
+    if (command == .select_all) return runAction(&edit, command, value) catch |err| {
+        log.debug("selectAll: {}", .{err});
+        return false;
+    };
     // Step 3: not enabled -> false.
     if (!(isEnabledIn(&edit, command) catch false)) return false;
     // Step 4.5: the host the input event goes to, computed beforehand.
@@ -489,6 +504,46 @@ fn enterMakesLineBreak(target: *Instance) bool {
     defer arena.deinit();
     var edit = (beginEdit(document, arena.allocator()) catch return false) orelse return false;
     return activeHostIsPlaintextOnly(&edit) catch false;
+}
+
+/// The select-all shortcut (user_input.zig): the selectAll command's action.
+/// It edits nothing, so no beforeinput or input (Input Events has no
+/// inputType for it; Blink runs its "SelectAll" editor command directly).
+/// A user action, so the Selection API's selectstart comes first: fired at
+/// the new range's start node - the node whose children are selected -
+/// when the selection was empty or collapsed, and a cancelled one leaves
+/// the selection alone (specs/w3c/selection.md, "selectstart event";
+/// Blink FrameSelection::SelectAll dispatches it at its select-start target
+/// and returns when cancelled). selection/onselectstart-on-key-in-
+/// contenteditable.html "Select All when 789[]<br></div>".
+pub fn selectAllByKey(target: *Instance) void {
+    const document = nodeDocument(target) orelse return;
+    var arena = std.heap.ArenaAllocator.init(document.ctx.allocator);
+    defer arena.deinit();
+    var edit = (beginEdit(document, arena.allocator()) catch return) orelse return;
+    const node = (select_all.target(&edit) catch return) orelse {
+        _ = select_all.action(&edit) catch {};
+        return;
+    };
+    if (edit.rangeCollapsed() catch true) {
+        if (!fireSelectStart(node)) return;
+        // A listener may have changed the selection or the tree: the
+        // action decides again.
+    }
+    _ = select_all.action(&edit) catch |err| log.debug("selectAll by key: {}", .{err});
+}
+
+/// Fire a selectstart Event (bubbles, cancelable) at `target`; whether it
+/// was not cancelled.
+fn fireSelectStart(target: *Instance) bool {
+    const init: dictionaries.EventInit = .{ .bubbles = true, .cancelable = true };
+    const event = interfaces.Event.call_constructor(target.ctx, runtime.DOMString.initInterned("selectstart"), webidl.Opt(dictionaries.EventInit).passed(init)) catch |err| {
+        log.debug("selectstart not fired: {}", .{err});
+        return true;
+    };
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
+    return dom.fire_event.dispatchTrusted(target, event) catch true;
 }
 
 /// A command the user asked for with a key: beforeinput, re-check, the

@@ -474,6 +474,47 @@ pub const Longhand = enum(u16) {
     // SVG 2 §13.10.2: a rendering hint for text, inherited.
     text_rendering,
 
+    // Keyword longhands (lane cssprop1, cluster C01a), appended so existing
+    // rare-group members stay put: Compositing 1/2 §§3.2-3.4, Page Floats 3
+    // (clear), Color Adjustment 1 §§3.1, 4, Masking 1 §6.2, Overscroll 1
+    // §§2-3, Position 4 §3.4, Ruby 1 §§3.1, 4.1, 5.1, Scroll Anchoring 1
+    // §2.2, Overflow 3 §5, Filter Effects 1 §17.7, Sizing 4 §5 and Writing
+    // Modes 4 §9.1.
+    isolation,
+    mix_blend_mode,
+    background_blend_mode,
+    clear,
+    print_color_adjust,
+    forced_color_adjust,
+    clip_rule,
+    overscroll_behavior_x,
+    overscroll_behavior_y,
+    overscroll_behavior_inline,
+    overscroll_behavior_block,
+    overlay,
+    ruby_position,
+    ruby_align,
+    ruby_overhang,
+    overflow_anchor,
+    scroll_behavior,
+    color_interpolation_filters,
+    frame_sizing,
+    text_combine_upright,
+
+    // Grammar longhands (lane cssprop1, cluster C01b): Filter Effects 1
+    // §§15.7, 15.10 and 2 §3, Compat §3.4.6, Text Size Adjust 1 §2, View
+    // Transitions 2 §§3.1, 4.1 and Viewport 1 §3.1.
+    flood_color,
+    lighting_color,
+    backdrop_filter,
+    _webkit_text_stroke_width,
+    _webkit_text_stroke_color,
+    _webkit_text_fill_color,
+    text_size_adjust,
+    view_transition_name,
+    view_transition_class,
+    zoom,
+
     pub const count = @typeInfo(Longhand).@"enum".field_names.len;
 
     /// The property name.
@@ -530,7 +571,7 @@ pub const Logical = struct {
     group: Group,
     side: Side,
 
-    pub const Group = enum { margin, padding, inset, border_width, border_style, border_color, size, min_size, max_size, scroll_margin, scroll_padding, overflow };
+    pub const Group = enum { margin, padding, inset, border_width, border_style, border_color, size, min_size, max_size, scroll_margin, scroll_padding, overflow, overscroll };
     pub const Side = enum { block_start, block_end, inline_start, inline_end };
 };
 
@@ -574,6 +615,11 @@ pub fn physicalLonghand(group: Logical.Group, side: PhysicalSide) Longhand {
         .overflow => switch (side) {
             .top, .bottom => .overflow_y,
             .left, .right => .overflow_x,
+        },
+        // Overscroll 1 §3: the inline and block axes' flow-relative longhands.
+        .overscroll => switch (side) {
+            .top, .bottom => .overscroll_behavior_y,
+            .left, .right => .overscroll_behavior_x,
         },
         .scroll_margin => switch (side) {
             .top => .scroll_margin_top,
@@ -740,6 +786,18 @@ pub const Grammar = enum {
     /// Gaps 1 §3.3: <length-percentage> | overlap-join.
     gap_inset,
     page_name,
+    /// Compositing 2 §3.4: <'mix-blend-mode'>#.
+    blend_mode_list,
+    /// Ruby 1 §§3.1, 5.1: ruby-position's pair and ruby-overhang's alias.
+    ruby,
+    /// Text Size Adjust 1 §2: auto | none | <percentage [0,∞]>.
+    text_size_adjust,
+    /// View Transitions 2 §3.1: none | auto | match-element | <custom-ident>.
+    view_transition_name,
+    /// View Transitions 2 §4.1: none | <custom-ident>+.
+    view_transition_class,
+    /// Viewport 1 §3.1: normal | <number [0,∞]> | <percentage [0,∞]>.
+    zoom,
 };
 
 pub const Info = struct {
@@ -756,6 +814,16 @@ pub const Info = struct {
 };
 
 const border_styles = [_]Keyword{ .none, .hidden, .dotted, .dashed, .solid, .double, .groove, .ridge, .inset, .outset };
+
+/// Compositing 2 §3.2: mix-blend-mode is <blend-mode> | plus-lighter.
+pub const blend_modes = [_]Keyword{
+    .normal,      .multiply,   .screen,     .overlay,    .darken,       .lighten,
+    .color_dodge, .color_burn, .hard_light, .soft_light, .difference,   .exclusion,
+    .hue,         .saturation, .color,      .luminosity, .plus_lighter,
+};
+
+/// Overscroll 1 §2: contain | none | auto | chain.
+const overscroll_behaviors = [_]Keyword{ .contain, .none, .auto, .chain };
 
 const infos: [Longhand.count]Info = blk: {
     @setEvalBranchQuota(100_000);
@@ -1185,6 +1253,56 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .font_variant_position, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_variant },
         .{ .longhand = .font_size_adjust, .inherited = true, .initial = Value.kw(.none), .grammar = .font_size_adjust },
         .{ .longhand = .font_variation_settings, .inherited = true, .initial = Value.kw(.normal), .grammar = .font_settings },
+        // Compositing 1 §3.3 isolation; Compositing 2 §3.2 mix-blend-mode is
+        // <blend-mode> | plus-lighter (all three browsers ship plus-lighter:
+        // css/compositing/mix-blend-mode/mix-blend-mode-parsing.html 17/17;
+        // Safari's plus-darker is in no spec and no other browser).
+        .{ .longhand = .isolation, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .isolate } },
+        .{ .longhand = .mix_blend_mode, .inherited = false, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &blend_modes },
+        .{ .longhand = .background_blend_mode, .inherited = false, .initial = Value.kw(.normal), .grammar = .blend_mode_list },
+        // Page Floats 3 lists block-start, block-end, top, bottom,
+        // both-inline and both-block too; no browser ships them (wpt.fyi
+        // css/css-box/parsing/clear-valid.html tests the six all three ship),
+        // and Page Floats has no implementer commitment: golden rule 2, the
+        // browsers' grammar (CSS 2.1 §9.5.2 plus CSS Logical 1 §3.2).
+        .{ .longhand = .clear, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .left, .right, .both, .inline_start, .inline_end } },
+        .{ .longhand = .print_color_adjust, .inherited = true, .initial = Value.kw(.economy), .grammar = .keywords, .keywords = &.{ .economy, .exact } },
+        .{ .longhand = .forced_color_adjust, .inherited = true, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .none, .preserve_parent_color } },
+        .{ .longhand = .clip_rule, .inherited = true, .initial = Value.kw(.nonzero), .grammar = .keywords, .keywords = &.{ .nonzero, .evenodd } },
+        .{ .longhand = .overscroll_behavior_x, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &overscroll_behaviors },
+        .{ .longhand = .overscroll_behavior_y, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &overscroll_behaviors },
+        .{ .longhand = .overscroll_behavior_inline, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &overscroll_behaviors, .logical = .{ .group = .overscroll, .side = .inline_start } },
+        .{ .longhand = .overscroll_behavior_block, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &overscroll_behaviors, .logical = .{ .group = .overscroll, .side = .block_start } },
+        // Position 4 §3.4: only the UA sets it (cascade.zig collectCandidates).
+        .{ .longhand = .overlay, .inherited = false, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .auto } },
+        .{ .longhand = .ruby_position, .inherited = true, .initial = Value.kw(.alternate), .grammar = .ruby },
+        .{ .longhand = .ruby_align, .inherited = true, .initial = Value.kw(.space_around), .grammar = .keywords, .keywords = &.{ .start, .center, .space_between, .space_around } },
+        .{ .longhand = .ruby_overhang, .inherited = true, .initial = Value.kw(.auto), .grammar = .ruby },
+        .{ .longhand = .overflow_anchor, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .none } },
+        .{ .longhand = .scroll_behavior, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .smooth } },
+        .{ .longhand = .color_interpolation_filters, .inherited = true, .initial = Value.kw(.linearrgb), .grammar = .keywords, .keywords = &.{ .auto, .srgb, .linearrgb } },
+        .{ .longhand = .frame_sizing, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .content_width, .content_height, .content_block_size, .content_inline_size } },
+        // Writing Modes 4 §9.1 adds `digits <integer [2,4]>?`; all three
+        // browsers reject it (text-combine-upright-parsing-digits-001/-002
+        // 0/10 and 0/12, -invalid-002 11/11 rejecting digits calc(): wpt.fyi
+        // 2026-11-11), so golden rule 2 takes the browsers' none | all.
+        .{ .longhand = .text_combine_upright, .inherited = true, .initial = Value.kw(.none), .grammar = .keywords, .keywords = &.{ .none, .all } },
+        // Filter Effects 1 §§15.7, 15.10: <color>, not inherited.
+        .{ .longhand = .flood_color, .inherited = false, .initial = .{ .color = Color.black }, .grammar = .color },
+        .{ .longhand = .lighting_color, .inherited = false, .initial = .{ .color = .{ .rgba = values.RgbaColor.white } }, .grammar = .color },
+        // Filter Effects 2 §3: none | <filter-value-list>, filter's grammar.
+        .{ .longhand = .backdrop_filter, .inherited = false, .initial = Value.kw(.none), .grammar = .filter },
+        // Compat §3.4.6: all three inherited; the width computes to an
+        // absolute length (cascade.zig), the colors to colors.
+        .{ .longhand = ._webkit_text_stroke_width, .inherited = true, .initial = zero, .grammar = .line_width },
+        .{ .longhand = ._webkit_text_stroke_color, .inherited = true, .initial = .{ .color = .current }, .grammar = .color },
+        .{ .longhand = ._webkit_text_fill_color, .inherited = true, .initial = .{ .color = .current }, .grammar = .color },
+        .{ .longhand = .text_size_adjust, .inherited = true, .initial = Value.kw(.auto), .grammar = .text_size_adjust },
+        .{ .longhand = .view_transition_name, .inherited = false, .initial = Value.kw(.none), .grammar = .view_transition_name },
+        .{ .longhand = .view_transition_class, .inherited = false, .initial = Value.kw(.none), .grammar = .view_transition_class },
+        // Viewport 1 §3.1: not inherited (the effective zoom multiplies
+        // down the tree; the property's computed value does not).
+        .{ .longhand = .zoom, .inherited = false, .initial = .{ .number = 1 }, .grammar = .zoom },
     };
     for (defs) |def| {
         const i = @backingInt(def.longhand);
@@ -1308,6 +1426,13 @@ pub const Shorthand = enum(u8) {
     page_break_before,
     page_break_after,
     page_break_inside,
+    // Overscroll 1 §2: [ contain | none | auto | chain ]{1,2}, x then y.
+    overscroll_behavior,
+    // Color Adjustment 1 §3.1: <'print-color-adjust'>, a shorthand (not a
+    // legacy name alias) by the spec's definition table.
+    color_adjust,
+    // Compat §3.4.6.4: <line-width> || <color>.
+    _webkit_text_stroke,
 
     /// Cascade 5 §3.1 / Break 3 §3.4: omitted only from cssText selection.
     /// Everywhere else these behave exactly as regular shorthands.
@@ -1374,6 +1499,9 @@ pub const Shorthand = enum(u8) {
             .margin_block => &.{ .margin_block_start, .margin_block_end },
             .margin_inline => &.{ .margin_inline_start, .margin_inline_end },
             .overflow => &.{ .overflow_x, .overflow_y },
+            .overscroll_behavior => &.{ .overscroll_behavior_x, .overscroll_behavior_y },
+            .color_adjust => &.{.print_color_adjust},
+            ._webkit_text_stroke => &.{ ._webkit_text_stroke_width, ._webkit_text_stroke_color },
             .padding => &.{ .padding_top, .padding_right, .padding_bottom, .padding_left },
             .padding_block => &.{ .padding_block_start, .padding_block_end },
             .padding_inline => &.{ .padding_inline_start, .padding_inline_end },
@@ -2131,7 +2259,76 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
         .gap_rule => return @import("gap_decorations.zig").consume(options, l, stream),
         .gap_inset => return @import("gap_decorations.zig").consumeInset(options, stream),
         .page_name => return pageName(options, stream),
+        // Compositing 2 §3.4: each item is a mix-blend-mode value; a list
+        // keeps its own length when computed (image_layers.zig).
+        .blend_mode_list => return @import("image_layers.zig").parse(options, l, stream, blendModeItem),
+        .ruby => return @import("ruby_values.zig").parse(l, stream),
+        .text_size_adjust => {
+            if (takeKeyword(stream, &.{ .auto, .none })) |k| return Value.kw(k);
+            const t = stream.peek();
+            if (math_values.isFunction(t)) return mathValue(options, stream, .{ .kind = .percentage, .minimum = 0, .minimum_kind = .computation });
+            if (t.token_type != .percentage) return null;
+            const n = t.numeric_value orelse return null;
+            if (n < 0) return null;
+            _ = stream.next();
+            return .{ .length = Length.percent(n) };
+        },
+        .view_transition_name => {
+            // View Transitions 2 §3.1: "The values none, auto, and
+            // match-element are excluded from <custom-ident> here."
+            if (takeKeyword(stream, &.{ .none, .auto, .match_element })) |k| return Value.kw(k);
+            return customIdents(options, stream, false);
+        },
+        .view_transition_class => {
+            if (takeKeyword(stream, &.{.none})) |k| return Value.kw(k);
+            return customIdents(options, stream, true);
+        },
+        .zoom => {
+            // Viewport 1 §3.1 lists <number [0,∞]> | <percentage [0,∞]>;
+            // all three browsers also take normal (zoom-valid.html and
+            // zoom-computed.html: 16/16 and 13/13 in Chrome, Firefox and
+            // Safari, wpt.fyi 2026-11-11), so golden rule 2 keeps it.
+            if (takeKeyword(stream, &.{.normal})) |k| return Value.kw(k);
+            const t = stream.peek();
+            if (math_values.isFunction(t)) return mathValue(options, stream, .{ .kind = .number_percentage, .minimum = 0, .minimum_kind = .computation });
+            const n = t.numeric_value orelse return null;
+            if (n < 0) return null;
+            const v: Value = switch (t.token_type) {
+                .number => .{ .number = n },
+                .percentage => .{ .length = Length.percent(n) },
+                else => return null,
+            };
+            _ = stream.next();
+            return v;
+        },
     }
+}
+
+/// One <custom-ident>, or with `list` one or more (View Transitions 2
+/// §§3.1, 4.1), kept as their serialization. Values 4 §4.2 excludes the
+/// CSS-wide keywords and `default`; the grammar's own keywords are taken
+/// before this is called, and `none` is excluded from a list too.
+fn customIdents(options: ParseOptions, stream: *Stream, list: bool) Allocator.Error!?Value {
+    const allocator = options.allocator;
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    while (stream.peek().token_type == .ident) {
+        const decoded = try tokenizer_mod.decode(allocator, stream.peek().value);
+        defer allocator.free(decoded);
+        if (values.CssWide.parse(decoded) != null or std.ascii.eqlIgnoreCase(decoded, "default") or std.ascii.eqlIgnoreCase(decoded, "none")) return null;
+        const escaped = try serialize_mod.serializeIdentifier(allocator, decoded);
+        defer allocator.free(escaped);
+        if (out.items.len != 0) try out.append(allocator, ' ');
+        try out.appendSlice(allocator, escaped);
+        _ = stream.next();
+        if (!list) break;
+    }
+    if (out.items.len == 0) return null;
+    return .{ .text = try SharedText.create(allocator, out.items) };
+}
+
+fn blendModeItem(options: ParseOptions, _: Longhand, stream: *Stream) Allocator.Error!?Value {
+    return parseLonghand(options, .mix_blend_mode, stream);
 }
 
 /// CSS Will Change 1 section 2: auto | <animateable-feature>#. Unknown
@@ -2824,7 +3021,41 @@ fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *st
         // `all` takes only the CSS-wide keywords, handled by the caller.
         .all => return false,
         .margin, .padding, .scroll_margin, .scroll_padding, .inset, .border_width, .border_style, .border_color => return fourSides(options, s.longhands(), stream, out),
-        .margin_block, .margin_inline, .padding_block, .padding_inline, .scroll_margin_block, .scroll_margin_inline, .scroll_padding_block, .scroll_padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .gap => return twoSides(options, s.longhands(), stream, out),
+        .margin_block, .margin_inline, .padding_block, .padding_inline, .scroll_margin_block, .scroll_margin_inline, .scroll_padding_block, .scroll_padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .gap, .overscroll_behavior => return twoSides(options, s.longhands(), stream, out),
+        .color_adjust => {
+            const value = (try parseLonghand(options, .print_color_adjust, stream)) orelse return false;
+            if (!stream.atEnd()) return false;
+            try append(options, out, .print_color_adjust, value);
+            return true;
+        },
+        ._webkit_text_stroke => {
+            // Compat §3.4.6.4: <line-width> || <color>, an omitted one its
+            // initial value.
+            var width: ?Value = null;
+            var color: ?Value = null;
+            errdefer {
+                if (width) |v| v.release();
+                if (color) |v| v.release();
+            }
+            while (!stream.atEnd()) {
+                if (width == null) if (try parseLonghand(options, ._webkit_text_stroke_width, stream)) |v| {
+                    width = v;
+                    continue;
+                };
+                if (color == null) if (try parseLonghand(options, ._webkit_text_stroke_color, stream)) |v| {
+                    color = v;
+                    continue;
+                };
+                if (width) |v| v.release();
+                if (color) |v| v.release();
+                return false;
+            }
+            if (width == null and color == null) return false;
+            try out.ensureUnusedCapacity(options.allocator, 2);
+            out.appendAssumeCapacity(.{ .longhand = ._webkit_text_stroke_width, .value = .{ .value = width orelse Longhand._webkit_text_stroke_width.info().initial } });
+            out.appendAssumeCapacity(.{ .longhand = ._webkit_text_stroke_color, .value = .{ .value = color orelse Longhand._webkit_text_stroke_color.info().initial } });
+            return true;
+        },
         .border_top, .border_right, .border_bottom, .border_left, .border_block_start, .border_block_end, .border_inline_start, .border_inline_end => {
             const ls = s.longhands();
             return borderSide(options, ls[0], ls[1], ls[2], &.{ls[0]}, &.{ls[1]}, &.{ls[2]}, stream, out);
@@ -3307,7 +3538,20 @@ pub fn serializeShorthand(s: Shorthand, vs: []const Assigned, mode: ShorthandMod
             }
             return true;
         },
-        .margin_block, .margin_inline, .padding_block, .padding_inline, .scroll_margin_block, .scroll_margin_inline, .scroll_padding_block, .scroll_padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .overflow, .place_content, .place_items, .place_self, .gap => {
+        .color_adjust => {
+            try serializeValue(.print_color_adjust, vs[0].value, out, allocator);
+            return true;
+        },
+        ._webkit_text_stroke => {
+            // Blink serializes both components, initial ones included
+            // (getComputedStyle: "0px rgb(0, 128, 0)",
+            // webkit-text-stroke-computed.html, all three 3/3).
+            try serializeValue(ls[0], vs[0].value, out, allocator);
+            try out.append(allocator, ' ');
+            try serializeValue(ls[1], vs[1].value, out, allocator);
+            return true;
+        },
+        .margin_block, .margin_inline, .padding_block, .padding_inline, .scroll_margin_block, .scroll_margin_inline, .scroll_padding_block, .scroll_padding_inline, .inset_block, .inset_inline, .border_block_width, .border_block_style, .border_block_color, .border_inline_width, .border_inline_style, .border_inline_color, .overflow, .overscroll_behavior, .place_content, .place_items, .place_self, .gap => {
             try serializeValue(ls[0], vs[0].value, out, allocator);
             if (!vs[1].value.eql(vs[0].value)) {
                 try out.append(allocator, ' ');
@@ -3719,7 +3963,8 @@ test "CSSOM enumeration sorts names independently of property blocks" {
             try testing.expect(std.mem.lessThan(u8, lexicographic[i - 1].name(), l.name()));
     }
     for (seen) |present| try testing.expect(present);
-    try testing.expectEqual(Longhand.z_index, last_standard.?);
+    // zoom (Viewport 1 §3.1) sorts after z-index.
+    try testing.expectEqual(Longhand.zoom, last_standard.?);
 }
 
 test "cursor sorts between content and direction" {

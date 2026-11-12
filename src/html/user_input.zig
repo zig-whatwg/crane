@@ -863,6 +863,18 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
         }
         return;
     }
+    // The editing shortcuts outside text controls: Ctrl+A - Meta+A where
+    // navigator.platform names a Mac, as WPT's EditorTestUtils and every
+    // browser's key bindings choose (Blink editing_behavior.cc's
+    // kKeyboardCodeKeyA with the command modifier, "SelectAll") - runs the
+    // selectAll command: the editing host's contents, or the document's
+    // (execcommand/select_all.zig).
+    if (editingShortcut(target, key, modifiers)) |shortcut| switch (shortcut) {
+        .select_all => {
+            @import("execcommand/root.zig").selectAllByKey(target);
+            return;
+        },
+    };
     // Backspace and Delete in an editing host (Editing spec, "Additional
     // requirements": the key runs the delete / forwardDelete command). The
     // modified forms - a word or a line - are not routed yet.
@@ -1072,6 +1084,40 @@ fn graphemeBoundary(text: []const u8, offset: u32, forward: bool) u32 {
         at = after;
     }
     return if (forward) at else @min(offset, at);
+}
+
+const EditingShortcut = enum { select_all };
+
+/// The editing shortcut `key` with `modifiers` is, or null: the platform's
+/// command modifier (Meta on a Mac, else Ctrl; navigator.platform decides,
+/// see isCommandModifier) alone with the letter.
+fn editingShortcut(target: *Instance, key: Key, modifiers: Modifiers) ?EditingShortcut {
+    if (!modifiers.ctrl and !modifiers.meta) return null;
+    if (key.key.len != 1 or std.ascii.toLower(key.key[0]) != 'a') return null;
+    const window = viewOf(target) orelse return null;
+    const navigator = interfaces.Window.get_navigator(window) catch return null;
+    var platform = interfaces.Navigator.get_platform(navigator) catch return null;
+    defer platform.deinit(target.ctx.allocator);
+    if (!isCommandModifier(platform.asSlice(), modifiers)) return null;
+    return .select_all;
+}
+
+/// Whether `modifiers` is exactly the platform's command modifier: Meta
+/// where navigator.platform names a Mac, Ctrl elsewhere (no Alt, no Shift,
+/// not both).
+fn isCommandModifier(platform: []const u8, modifiers: Modifiers) bool {
+    if (modifiers.alt or modifiers.shift or (modifiers.ctrl and modifiers.meta)) return false;
+    return if (std.mem.indexOf(u8, platform, "Mac") != null) modifiers.meta else modifiers.ctrl;
+}
+
+test "the command modifier follows navigator platform" {
+    try std.testing.expect(isCommandModifier("MacIntel", .{ .meta = true }));
+    try std.testing.expect(!isCommandModifier("MacIntel", .{ .ctrl = true }));
+    try std.testing.expect(isCommandModifier("Linux x86_64", .{ .ctrl = true }));
+    try std.testing.expect(!isCommandModifier("Linux x86_64", .{ .meta = true }));
+    try std.testing.expect(!isCommandModifier("Linux x86_64", .{ .ctrl = true, .shift = true }));
+    try std.testing.expect(!isCommandModifier("Win32", .{ .ctrl = true, .alt = true }));
+    try std.testing.expect(!isCommandModifier("MacIntel", .{ .ctrl = true, .meta = true }));
 }
 
 fn isWordModifier(platform: []const u8, modifiers: Modifiers) bool {
