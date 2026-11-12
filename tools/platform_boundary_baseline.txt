@@ -387,10 +387,6 @@ src/html/editing/executor.zig clock.@import 1
 src/html/editing/executor.zig clock.wallSeconds 3
 src/html/editing/history.zig clock.@import 1
 src/html/editing/history.zig clock.wallSeconds 2
-src/html/editing/selection_ops.zig platform.ClipboardBackend 4
-src/html/editing/selection_ops.zig platform.ClipboardFormat 1
-src/html/editing/selection_ops.zig platform.ClipboardItem 1
-src/html/editing/selection_ops.zig platform.ClipboardResult 1
 src/html/event_loop/event_loop.zig platform.timer_backend 4
 src/html/event_loop/timers.zig platform.timer_backend 4
 src/html/external_script_loader.zig host.@import 1
