@@ -1511,21 +1511,27 @@ fn navigableOf(instance: *runtime.Instance, internal: *InternalState) ?*Browsing
     if (bc.getActiveWindow()) |active| {
         if (active != @as(*anyopaque, @ptrCast(instance))) return null;
     }
-    // A Window whose associated Document was destroyed has no navigable:
-    // "destroy a document" step 6 sets the document's browsing context to
-    // null. So a frame inside a removed frame - its navigable still listed,
-    // detached from the removed one - answers parent null at once
+    // A removed frame is detached at once, with its whole subtree: a
+    // navigable whose container left its document, or whose container's
+    // node document was destroyed ("destroy a child navigable" destroys the
+    // removed frame's documents and their descendants'), has no Window
+    // answering through it, so a frame inside a removed frame answers parent
+    // null at once although the discard of its navigable comes later
     // (html/semantics/embedded-content/the-iframe-element/iframe-
     // synchronously-discard.html: Chrome 157, Firefox 160 and Safari 27.2
     // pass; Blink's Frame::Detach detaches the whole subtree synchronously).
-    // Only a DESTROYED document: a document still being made is not yet its
-    // navigable's active document, yet its Window is that navigable's - a
-    // service worker client made then reads its frame type through parent
-    // and opener (service-workers/service-worker/clients-get.https.html:
-    // "nested"), so document_activity's "gone", which counts a document no
-    // browsing context shows yet, is not this test.
-    if (internal.document) |document| {
-        if (@import("dom").document_lifecycle.isDestroyed(document)) return null;
+    // The container's side, never this Window's own Document: a Window kept
+    // for the document that replaces its initial about:blank one still has
+    // that (destroyed) document while the new one is made, and a service
+    // worker client made then reads its frame type through parent and opener
+    // (service-workers/service-worker/clients-get.https.html: "nested";
+    // navigate-window.https.html: "auxiliary").
+    if (bc.container) |container_any| {
+        const container: *runtime.Instance = @ptrCast(@alignCast(container_any));
+        if (!(interfaces.Node.get_isConnected(container) catch true)) return null;
+        if (interfaces.Node.get_ownerDocument(container) catch null) |node_document| {
+            if (@import("dom").document_lifecycle.isDestroyed(node_document)) return null;
+        }
     }
     return bc;
 }
