@@ -1511,26 +1511,37 @@ fn navigableOf(instance: *runtime.Instance, internal: *InternalState) ?*Browsing
     if (bc.getActiveWindow()) |active| {
         if (active != @as(*anyopaque, @ptrCast(instance))) return null;
     }
-    // A removed frame is detached at once, with its whole subtree: a
-    // navigable whose container left its document, or whose container's
-    // node document was destroyed ("destroy a child navigable" destroys the
-    // removed frame's documents and their descendants'), has no Window
-    // answering through it, so a frame inside a removed frame answers parent
-    // null at once although the discard of its navigable comes later
-    // (html/semantics/embedded-content/the-iframe-element/iframe-
-    // synchronously-discard.html: Chrome 157, Firefox 160 and Safari 27.2
-    // pass; Blink's Frame::Detach detaches the whole subtree synchronously).
-    // The container's side, never this Window's own Document: a Window kept
-    // for the document that replaces its initial about:blank one still has
-    // that (destroyed) document while the new one is made, and a service
-    // worker client made then reads its frame type through parent and opener
+    // A removed frame is detached at once, with its whole subtree, once its
+    // documents are destroyed ("destroy a child navigable" unloads, then
+    // destroys, the removed frame's documents and their descendants'), so a
+    // frame inside a removed frame answers parent null at once although the
+    // discard of its navigable comes later (html/semantics/embedded-content/
+    // the-iframe-element/iframe-synchronously-discard.html: Chrome 157,
+    // Firefox 160 and Safari 27.2 pass; Blink's Frame::Detach detaches the
+    // whole subtree synchronously). Read on the container's side:
+    // - the container's node document was destroyed: a frame inside a
+    //   removed frame;
+    // - the container left its document AND this Window's Document was
+    //   destroyed: the removed frame itself, after its unload. Its unload
+    //   handlers still see their parent (Blink dispatches unload before the
+    //   frame detaches): fetch/api/cors/cors-keepalive.any.js posts to
+    //   window.parent from an unload handler of a frame being removed.
+    // Never this Window's Document alone: a Window kept for the document that
+    // replaces its initial about:blank one still has that (destroyed)
+    // document while the new one is made, and a service worker client made
+    // then reads its frame type through parent and opener
     // (service-workers/service-worker/clients-get.https.html: "nested";
     // navigate-window.https.html: "auxiliary").
     if (bc.container) |container_any| {
+        const dom_lifecycle = @import("dom").document_lifecycle;
         const container: *runtime.Instance = @ptrCast(@alignCast(container_any));
-        if (!(interfaces.Node.get_isConnected(container) catch true)) return null;
         if (interfaces.Node.get_ownerDocument(container) catch null) |node_document| {
-            if (@import("dom").document_lifecycle.isDestroyed(node_document)) return null;
+            if (dom_lifecycle.isDestroyed(node_document)) return null;
+        }
+        if (!(interfaces.Node.get_isConnected(container) catch true)) {
+            if (internal.document) |document| {
+                if (dom_lifecycle.isDestroyed(document)) return null;
+            }
         }
     }
     return bc;
