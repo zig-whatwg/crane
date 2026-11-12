@@ -2833,16 +2833,29 @@ pub fn call_alert(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: focus
 /// Per spec: Focuses the window.
+/// HTML 6.6.7 "The Window focus() method steps". The focusing steps fire
+/// 'focus' at the navigable's active document's Window (the focus update
+/// steps), which clients-matchall-order.https.html waits for; Blink
+/// LocalDOMWindow::focus, Gecko nsGlobalWindowOuter::FocusOuter and WebKit
+/// LocalDOMWindow::focus all focus the frame for script.
 pub fn call_focus(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if window is closed
-    if (internal.closed) {
-        return; // No-op if window is closed
-    }
-
-    // TODO: Implement actual focus behavior
-    // This would notify the platform to bring the window to front
+    // 1. "Let current be this's navigable." 2. "If current is null, then
+    // return."
+    const current = navigableOf(instance, internal) orelse return;
+    const document: *runtime.Instance = internal.document orelse blk: {
+        const raw = current.getActiveDocument() orelse return;
+        break :blk @ptrCast(@alignCast(raw));
+    };
+    const focus = @import("html").focus;
+    // 3. "If the allow focus steps given current's active document return
+    // false, then return."
+    if (!focus.allowFocusSteps(document)) return;
+    // 4. "Run the focusing steps with current": a navigable's focus target
+    // is its active document (the focusing steps' step 2).
+    focus.focusingSteps(document, null, .other);
+    // 5. A top-level traversable's notification to the user: Crane draws
+    // nothing.
 }
 
 /// Operation: requestIdleCallback
