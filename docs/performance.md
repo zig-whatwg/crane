@@ -36,6 +36,15 @@ These are the user's (2026-11-02 and 2026-11-04) and the runner enforces what it
   build host's: every Crane build a published round times - ReleaseSafe, ReleaseFast, a base -
   is compiled with `-Dcpu=apple_m1`, the CPU every Apple Silicon Mac runs, as the browsers ship
   one build for all of them. See "The CPU target" below.
+- **Crane is timed with its default young generation, 8 MB semispaces** (the user, 2026-11-12):
+  V8's young generation is a build option, `-Dv8-young-generation-mb=<n>` - megabytes of the
+  WHOLE young generation of each isolate, three semispaces' worth (docs/engine-protocol.md, 7b,
+  has the unit table). A published round's Crane builds pass nothing, which is the default, 24 =
+  8 MB semispaces: less memory held between collections, slower on allocation-heavy pages than
+  V8's own 32 MB semispaces (`-Dv8-young-generation-mb=0`, a desktop host's choice - and what
+  Chrome runs on desktop, so the trade is visible in Crane's rows beside Chrome's). A console
+  built with the option is a measurement of that option, never the `crane` row; its pin's
+  `build=` line names the value.
 - **Browsers launch headless, in the background, never taking focus.** Safari has no headless
   mode: it runs through `safaridriver` in chat.local's console session, one session at a time.
   Lightpanda runs through its CDP server.

@@ -27,7 +27,8 @@
 //!   | 0                        | V8's own     | no constraint: V8 15.7 sizes it  |
 //!   |                          |              | (32 MB semispaces; Chrome 157 on |
 //!   |                          |              | desktop)                         |
-//!   | not given                | `default_mb` | this file's one default          |
+//!   | not given                | 8 MB         | `default_mb`, this file's one    |
+//!   |                          |              | default: 24                      |
 //!
 //! It is a build option of this adapter and not an option of the engine
 //! protocol (the user, 2026-11-12: "will this be necessary for javascript
@@ -69,13 +70,17 @@ const std = @import("std");
 const build_options = @import("build_options");
 
 /// THE DEFAULT, for a build that does not say: megabytes of the whole young
-/// generation, in `-Dv8-young-generation-mb`'s unit; null is V8's own sizing
-/// (15.7: 32 MB semispaces - Chrome 157's desktop configuration). ONE
-/// constant, so the choice is one line: `24` is 8 MB semispaces (V8 13.1's
-/// ceiling), `48` is 16 MB. docs/engine-protocol.md, "The young generation's
-/// size is a V8 build option", has what each costs and buys on the perf
-/// suite.
-pub const default_mb: ?u32 = null;
+/// generation, in `-Dv8-young-generation-mb`'s unit; null is V8's own sizing.
+/// ONE constant, so the choice is one line.
+///
+/// 24 - 8 MB semispaces - is the user's ruling (2026-11-12): what Crane
+/// shipped on V8 13.1 (that version's ceiling), and Chrome's configuration
+/// for an Android phone below its high-end threshold. A host that builds for
+/// desktop passes the larger value: `-Dv8-young-generation-mb=0` is V8
+/// 15.7's own sizing, 32 MB semispaces, which Chrome 157 ships on desktop.
+/// docs/engine-protocol.md, "The young generation's size is a V8 build
+/// option", has what each costs and buys on the perf suite.
+pub const default_mb: ?u32 = 24;
 
 /// What this build was given: `-Dv8-young-generation-mb` (null: not given).
 pub const requested_mb: ?u32 = build_options.v8_young_generation_mb;

@@ -586,7 +586,7 @@ three semispace-sized parts (two semispaces and its new large object space:
 | `48` | 16 MB | |
 | `96` | 32 MB | V8 15.7's own ceiling, given as a number |
 | `0` | V8's own | no constraint: V8 sizes it - 32 MB semispaces in 15.7, which Chrome 157 ships on desktop (gin/isolate_holder.cc ConfigureDefaults) |
-| not given | the default | `default_mb` in src/runtime/engines/v8/young_generation.zig: ONE constant, null (V8's own) today |
+| not given | 8 MB | THE DEFAULT, `default_mb` in src/runtime/engines/v8/young_generation.zig: ONE constant, 24 (the user, 2026-11-12: what Crane shipped on V8 13.1) |
 
 A value that is not three times a power of two rounds DOWN, never up, so the
 value is a promise: V8 gets the largest power-of-two semispace three of which
@@ -598,11 +598,11 @@ pages above its ceiling while a full collection is marking, so as not to end
 that collection early, and gives them back when it ends (heap.cc:5552-5580);
 the ceiling is what it returns to.
 
-A release console whose isolates keep 8 MB semispaces is built with
-`-Dwpt-runner-release -Dv8-young-generation-mb=24`; `=0` asks for V8's own
-sizing whatever the default is. The option goes on every artifact's build
-line alike (`repl-exe`, `wpt-runner`, `crane`): it is the adapter's, not one
-binary's.
+Every build that does not say keeps 8 MB semispaces: the WPT runners, the
+published perf consoles, the tests. A host that builds for desktop passes
+`-Dv8-young-generation-mb=0` (V8's own sizing, as Chrome on desktop) on its
+build line - the option goes on every artifact's alike (`repl-exe`,
+`wpt-runner`, `crane`): it is the adapter's, not one binary's.
 
 How it is applied: the adapter sets the isolate's ResourceConstraints
 (`set_max_young_generation_size_in_bytes`, include/v8-isolate.h) on its
