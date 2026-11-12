@@ -61,3 +61,39 @@ test "a custom media name keeps its case, and outside a boolean context is gener
     try mediaText("(--Foo > 3px)", "(--Foo > 3px)");
     try mediaText("(WIDTH: 10PX)", "(width: 10px)");
 }
+
+fn listStyleType(scope: u64) !*css.computed_style.ComputedStyle {
+    var block = css.declarations.DeclarationBlock.init(testing.allocator);
+    defer block.deinit();
+    try testing.expect(try block.setProperty(.{ .allocator = testing.allocator }, "list-style-type", "custom", ""));
+    return css.cascade.cascade(.{ .allocator = testing.allocator, .parent = null }, &.{.{ .block = &block, .source = .{ .origin = .author, .tree_scope = .{ .serial = scope } } }});
+}
+
+test "a counter-style name computes with the tree scope that named it" {
+    // Lists 3 §3 with Scoping 1's tree-scoped names: `custom` from the
+    // document and `custom` from a shadow tree are different computed values
+    // that serialize alike (css/css-lists/list-style-type-transition-tree-
+    // scope-custom-ident.html: the change starts a transition, Chrome 1/1).
+    const document = try listStyleType(0);
+    defer document.destroy();
+    const shadow = try listStyleType(7);
+    defer shadow.destroy();
+    const again = try listStyleType(7);
+    defer again.destroy();
+    const l = (try lookup("list-style-type")).longhand;
+    try testing.expect(!document.get(l).eql(shadow.get(l)));
+    try testing.expect(shadow.get(l).eql(again.get(l)));
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(testing.allocator);
+    try shadow.serializeResolved(l, &out, testing.allocator);
+    try testing.expectEqualStrings("custom", out.items);
+    // A string or symbols() names no counter style: no scope.
+    var block = css.declarations.DeclarationBlock.init(testing.allocator);
+    defer block.deinit();
+    _ = try block.setProperty(.{ .allocator = testing.allocator }, "list-style-type", "\"*\"", "");
+    const a = try css.cascade.cascade(.{ .allocator = testing.allocator, .parent = null }, &.{.{ .block = &block, .source = .{ .origin = .author, .tree_scope = .{ .serial = 3 } } }});
+    defer a.destroy();
+    const b = try css.cascade.cascade(.{ .allocator = testing.allocator, .parent = null }, &.{.{ .block = &block, .source = .{ .origin = .author } }});
+    defer b.destroy();
+    try testing.expect(a.get(l).eql(b.get(l)));
+}

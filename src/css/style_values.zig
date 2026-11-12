@@ -1101,6 +1101,8 @@ pub const Value = union(enum) {
     gap_list: *@import("gap_decorations.zig").List,
     /// Color HDR 1 §3.2: a dynamic-range-limit-mix(), specified or computed.
     dynamic_range: *@import("dynamic_range_values.zig").Mix,
+    /// Lists 3 §3.3: a computed <counter-style-name> with its tree scope.
+    scoped_name: *@import("list_values.zig").ScopedName,
 
     /// Borrowed URL candidates in serialization order, valid while this
     /// value is retained. No sheet or document lookup is needed to use them.
@@ -1130,6 +1132,7 @@ pub const Value = union(enum) {
         if (self == .text_shadow) return self.text_shadow.ref();
         if (self == .gap_list) return self.gap_list.ref();
         if (self == .dynamic_range) return self.dynamic_range.ref();
+        if (self == .scoped_name) return self.scoped_name.ref();
         if (self == .box_numeric) return self.box_numeric.ref();
         if (self == .color) return self.color.retain();
         if (self == .content) return self.content.ref();
@@ -1176,6 +1179,7 @@ pub const Value = union(enum) {
         if (self == .text_shadow) return self.text_shadow.unref();
         if (self == .gap_list) return self.gap_list.unref();
         if (self == .dynamic_range) return self.dynamic_range.unref();
+        if (self == .scoped_name) return self.scoped_name.unref();
         if (self == .box_numeric) return self.box_numeric.unref();
         if (self == .color) return self.color.release();
         if (self == .content) return self.content.unref();
@@ -1289,6 +1293,7 @@ pub const Value = union(enum) {
             .text_shadow => |v| v.eql(b.text_shadow),
             .gap_list => |v| v.eql(b.gap_list),
             .dynamic_range => |v| v.eql(b.dynamic_range),
+            .scoped_name => |v| v.eql(b.scoped_name),
         };
     }
 
@@ -1356,6 +1361,7 @@ pub const Value = union(enum) {
             .text_shadow => |v| v.needsUnavailableMetrics(geometry_length),
             .gap_list => |v| v.needsUnavailableMetrics(geometry_length),
             .dynamic_range => |v| v.needsUnavailableMetrics(geometry_length),
+            .scoped_name => false,
             .decoration_keywords => false,
         };
     }
@@ -1420,6 +1426,7 @@ pub const Value = union(enum) {
             .text_shadow => |v| v.needsTreeCounts(),
             .gap_list => |v| v.needsTreeCounts(),
             .dynamic_range => |v| v.needsTreeCounts(),
+            .scoped_name => false,
             .decoration_keywords => false,
         };
     }
@@ -1482,6 +1489,7 @@ pub const Value = union(enum) {
             .text_shadow => |v| v.needsRandomBase(),
             .gap_list => |v| v.needsRandomBase(),
             .dynamic_range => |v| v.needsRandomBase(),
+            .scoped_name => false,
             .decoration_keywords => false,
         };
     }

@@ -2017,6 +2017,12 @@ const Builder = struct {
             },
             .fill, .stroke => return @import("svg_paint.zig").compute(v, self.ctx.allocator, .{ .scheme = self.used_scheme, .math = self.computationContext(l, v, source) }),
             .stroke_width => if (v == .number) return Value.px(v.number),
+            // Lists 3 §3.3: a counter-style name keeps the tree scope that
+            // named it (list_values.ScopedName). The document's scope (0)
+            // stays the plain name: no allocation for the common case, and
+            // a plain name never equals a scoped one.
+            .list_style_type => if (v == .text and source.tree_scope.serial != 0 and @import("list_values.zig").namesCounterStyle(v.text.bytes))
+                return .{ .scoped_name = try @import("list_values.zig").ScopedName.create(self.ctx.allocator, v.text, source.tree_scope) },
             // SVG 2 §13.5.6: "numbers converted to absolute lengths first".
             .stroke_dasharray => if (v == .number) return Value.px(v.number),
             // Borders 4 §3.7: "the corresponding superellipse() value".

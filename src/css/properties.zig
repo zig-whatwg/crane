@@ -3587,6 +3587,7 @@ pub fn serializeValue(l: Longhand, value: Value, out: *std.ArrayList(u8), alloca
         .font_system => {}, // Pending specified system longhand (Q28).
         .gap_list => |list| try list.serialize(l, out, allocator),
         .dynamic_range => |mix| try mix.serialize(out, allocator),
+        .scoped_name => |n| try out.appendSlice(allocator, n.name.bytes),
     }
 }
 
