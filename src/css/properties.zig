@@ -3050,7 +3050,21 @@ fn append(options: ParseOptions, out: *std.ArrayList(Assignment), l: Longhand, v
     try out.append(options.allocator, .{ .longhand = l, .value = .{ .value = v } });
 }
 
-fn parseShorthand(options: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
+fn parseShorthand(given: ParseOptions, s: Shorthand, stream: *Stream, out: *std.ArrayList(Assignment)) Allocator.Error!bool {
+    // Values 4 Appendix C and Color 4 Appendix B: a <quirky-length> or
+    // <quirky-color> is valid only in the properties they list, "not in
+    // properties that include or reference these properties, such as the
+    // background shorthand". The listed shorthands: background-position,
+    // border-width, margin and padding (lengths), border-color (colors),
+    // and vertical-align, a shorthand here of Inline 3's longhands. All
+    // three browsers reject the rest (quirks/unitless-length/
+    // excluded-properties-003.html: inset, and quirks.html's "Excluded
+    // property" cases: border-*, background, font).
+    var options = given;
+    if (options.quirks) switch (s) {
+        .background_position, .border_width, .margin, .padding, .border_color, .vertical_align => {},
+        else => options.quirks = false,
+    };
     switch (s) {
         .page_break_before, .page_break_after, .page_break_inside => return @import("fragmentation_values.zig").consume(options, s, stream, out),
         .container => return @import("container_values.zig").consumeShorthand(options, stream, out),
