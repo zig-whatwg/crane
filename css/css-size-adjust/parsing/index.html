@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../css/"><code>css/</code></a></li><li><a href="../../../css/css-size-adjust/"><code>css-<wbr>size-<wbr>adjust/</code></a></li><li aria-current="page"><code>parsing/</code></li></ol></nav>
 <h1 class="page-title"><code>css/<wbr>css-<wbr>size-<wbr>adjust/<wbr>parsing/</code></h1>
 <div class="figures" role="group" aria-label="css/css-size-adjust/parsing/">
-<p class="figures-main"><span class="fg-pass">4</span><span class="fg-of"> / 17</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>13</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>3</dd></div><div class="blk"><dt>Blocking files</dt><dd>2</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">17</span><span class="fg-of"> / 17</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>3</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>17</b> / 17 WPT subtests passing on the same files, <span class="quiet">none blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of css/css-size-adjust/parsing/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">3 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="1 clean, 0 with failures, 2 blocking, 0 with no subtests, 0 not run, of 3 files"><span class="m-clean" style="width:33.333%"></span><span class="m-blocking" style="width:66.667%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>1</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>2</dd></div><p class="kinds"><b>2</b> NONE-PASSED</p></dl>
+<div class="meter" role="img" aria-label="3 clean, 0 with failures, 0 blocking, 0 with no subtests, 0 not run, of 3 files"><span class="m-clean" style="width:100.000%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>3</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -39,22 +39,15 @@
 <div class="tf-list has-ref">
 <p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
 <div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
-<details class="tf" id="text-size-adjust-computed.html" data-gate="none-passed" data-pass="0" data-of="6" data-failed="6" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>text-<wbr>size-<wbr>adjust-<wbr>computed.<wbr>html</code></span><span class="tf-n"><b>0</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="fail">6</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="text-size-adjust-computed.html" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>text-<wbr>size-<wbr>adjust-<wbr>computed.<wbr>html</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-size-adjust/parsing/text-size-adjust-computed.html"><code>css/<wbr>css-<wbr>size-<wbr>adjust/<wbr>parsing/<wbr>text-<wbr>size-<wbr>adjust-<wbr>computed.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-0c4602d9c44d"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property text-size-adjust value &#39;auto&#39;</span></summary><pre class="msg">assert_true: text-size-adjust doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-0c4602d9c44d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-cfddf765bf74"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property text-size-adjust value &#39;none&#39;</span></summary><pre class="msg">assert_true: text-size-adjust doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-cfddf765bf74" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-927e90847436"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property text-size-adjust value &#39;200%&#39;</span></summary><pre class="msg">assert_true: text-size-adjust doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-927e90847436" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-82533c10ec28"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property text-size-adjust value &#39;100%&#39;</span></summary><pre class="msg">assert_true: text-size-adjust doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-82533c10ec28" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-0a7c173bc036"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property text-size-adjust value &#39;0%&#39;</span></summary><pre class="msg">assert_true: text-size-adjust doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-0a7c173bc036" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-71f15dd88272"><details><summary><span class="mark">FAIL</span><span class="sub-name">Property text-size-adjust value &#39;calc(10% * sibling-index())&#39;</span></summary><pre class="msg">assert_true: text-size-adjust doesn&#39;t seem to be supported in the computed style expected true got false</pre></details><a class="self" href="#s-71f15dd88272" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>Property text-size-adjust value &#39;auto&#39;</li><li>Property text-size-adjust value &#39;none&#39;</li><li>Property text-size-adjust value &#39;200%&#39;</li><li>Property text-size-adjust value &#39;100%&#39;</li><li>Property text-size-adjust value &#39;0%&#39;</li><li>Property text-size-adjust value &#39;calc(10% * sibling-index())&#39;</li></ol></details>
 </div>
 </div>
 </details>
@@ -70,23 +63,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="text-size-adjust-valid.html" data-gate="none-passed" data-pass="0" data-of="7" data-failed="7" data-ref-pass="7" data-ref-of="7"><summary><span class="tf-name"><code>text-<wbr>size-<wbr>adjust-<wbr>valid.<wbr>html</code></span><span class="tf-n"><b>0</b> / 7<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>7</b> / 7</span><span class="tf-fail"><span class="fail">7</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="text-size-adjust-valid.html" data-gate="clean" data-pass="7" data-of="7" data-failed="0" data-ref-pass="7" data-ref-of="7"><summary><span class="tf-name"><code>text-<wbr>size-<wbr>adjust-<wbr>valid.<wbr>html</code></span><span class="tf-n"><b>7</b> / 7<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>7</b> / 7</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>7</b> / 7 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-size-adjust/parsing/text-size-adjust-valid.html"><code>css/<wbr>css-<wbr>size-<wbr>adjust/<wbr>parsing/<wbr>text-<wbr>size-<wbr>adjust-<wbr>valid.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-d3bc456c8fdb"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;text-size-adjust&#39;] = &quot;auto&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-d3bc456c8fdb" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-122dfef5a958"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;text-size-adjust&#39;] = &quot;none&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-122dfef5a958" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d35c751940a4"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;text-size-adjust&#39;] = &quot;200%&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-d35c751940a4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5fe21589aa01"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;text-size-adjust&#39;] = &quot;100%&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-5fe21589aa01" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-34cb5cc48d24"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;text-size-adjust&#39;] = &quot;0%&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-34cb5cc48d24" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9ee602cccaf1"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;text-size-adjust&#39;] = &quot;calc(10% + 5%)&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-9ee602cccaf1" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5f2067d815ad"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;text-size-adjust&#39;] = &quot;calc(10% * sibling-index())&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-5f2067d815ad" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>7 passing subtests</summary><ol class="pass-list"><li>e.style[&#39;text-size-adjust&#39;] = &quot;auto&quot; should set the property value</li><li>e.style[&#39;text-size-adjust&#39;] = &quot;none&quot; should set the property value</li><li>e.style[&#39;text-size-adjust&#39;] = &quot;200%&quot; should set the property value</li><li>e.style[&#39;text-size-adjust&#39;] = &quot;100%&quot; should set the property value</li><li>e.style[&#39;text-size-adjust&#39;] = &quot;0%&quot; should set the property value</li><li>e.style[&#39;text-size-adjust&#39;] = &quot;calc(10% + 5%)&quot; should set the property value</li><li>e.style[&#39;text-size-adjust&#39;] = &quot;calc(10% * sibling-index())&quot; should set the property value</li></ol></details>
 </div>
 </div>
 </details>
@@ -104,7 +89,7 @@
 <li class="toc-front"><a href="../../../#status"><span class="secno"></span><span class="toc-name">Status of this document</span></a></li>
 <li class="toc-front"><a href="../../../chrome.html"><span class="secno"></span><span class="toc-name">Crane and Chrome</span></a></li>
 <li class="toc-suite"><a href="../../../FileAPI/"><span class="secno">1</span><span class="toc-name">FileAPI/</span><span class="toc-count" title="72 test files">72</span></a></li>
-<li class="toc-suite"><a href="../../../IndexedDB/"><span class="secno">2</span><span class="toc-name">IndexedDB/</span><span class="toc-count" title="229 test files">229</span></a></li>
+<li class="toc-suite"><a href="../../../IndexedDB/"><span class="secno">2</span><span class="toc-name">IndexedDB/</span><span class="toc-count" title="228 test files">228</span></a></li>
 <li class="toc-suite"><a href="../../../WebCryptoAPI/"><span class="secno">3</span><span class="toc-name">WebCryptoAPI/</span><span class="toc-count" title="78 test files">78</span></a></li>
 <li class="toc-suite"><a href="../../../accname/"><span class="secno">4</span><span class="toc-name">accname/</span><span class="toc-count" title="14 test files">14</span></a></li>
 <li class="toc-suite"><a href="../../../beacon/"><span class="secno">5</span><span class="toc-name">beacon/</span><span class="toc-count" title="16 test files">16</span></a></li>
@@ -114,7 +99,7 @@
 <li class="toc-suite"><a href="../../../cookies/"><span class="secno">9</span><span class="toc-name">cookies/</span><span class="toc-count" title="76 test files">76</span></a></li>
 <li class="toc-suite"><a href="../../../cookiestore/"><span class="secno">10</span><span class="toc-name">cookiestore/</span><span class="toc-count" title="55 test files">55</span></a></li>
 <li class="toc-suite"><a href="../../../cors/"><span class="secno">11</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
-<li class="toc-suite"><a href="../../../css/" aria-current="page"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,297 test files">2,297</span></a></li>
+<li class="toc-suite"><a href="../../../css/" aria-current="page"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,279 test files">2,279</span></a></li>
 <li class="toc-suite"><a href="../../../custom-elements/"><span class="secno">13</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="180 test files">180</span></a></li>
 <li class="toc-suite"><a href="../../../dom/"><span class="secno">14</span><span class="toc-name">dom/</span><span class="toc-count" title="525 test files">525</span></a></li>
 <li class="toc-suite"><a href="../../../domparsing/"><span class="secno">15</span><span class="toc-name">domparsing/</span><span class="toc-count" title="38 test files">38</span></a></li>
@@ -125,8 +110,8 @@
 <li class="toc-suite"><a href="../../../fetch/"><span class="secno">20</span><span class="toc-name">fetch/</span><span class="toc-count" title="310 test files">310</span></a></li>
 <li class="toc-suite"><a href="../../../hr-time/"><span class="secno">21</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
 <li class="toc-suite"><a href="../../../html-aam/"><span class="secno">22</span><span class="toc-name">html-aam/</span><span class="toc-count" title="25 test files">25</span></a></li>
-<li class="toc-suite"><a href="../../../html/"><span class="secno">23</span><span class="toc-name">html/</span><span class="toc-count" title="2,804 test files">2,804</span></a></li>
-<li class="toc-suite"><a href="../../../mathml/"><span class="secno">24</span><span class="toc-name">mathml/</span><span class="toc-count" title="36 test files">36</span></a></li>
+<li class="toc-suite"><a href="../../../html/"><span class="secno">23</span><span class="toc-name">html/</span><span class="toc-count" title="2,803 test files">2,803</span></a></li>
+<li class="toc-suite"><a href="../../../mathml/"><span class="secno">24</span><span class="toc-name">mathml/</span><span class="toc-count" title="35 test files">35</span></a></li>
 <li class="toc-suite"><a href="../../../mimesniff/"><span class="secno">25</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
 <li class="toc-suite"><a href="../../../mixed-content/"><span class="secno">26</span><span class="toc-name">mixed-content/</span><span class="toc-count" title="384 test files">384</span></a></li>
 <li class="toc-suite"><a href="../../../navigation-api/"><span class="secno">27</span><span class="toc-name">navigation-api/</span><span class="toc-count" title="417 test files">417</span></a></li>
@@ -138,7 +123,7 @@
 <li class="toc-suite"><a href="../../../resource-timing/"><span class="secno">33</span><span class="toc-name">resource-timing/</span><span class="toc-count" title="117 test files">117</span></a></li>
 <li class="toc-suite"><a href="../../../sanitizer-api/"><span class="secno">34</span><span class="toc-name">sanitizer-api/</span><span class="toc-count" title="23 test files">23</span></a></li>
 <li class="toc-suite"><a href="../../../selection/"><span class="secno">35</span><span class="toc-name">selection/</span><span class="toc-count" title="72 test files">72</span></a></li>
-<li class="toc-suite"><a href="../../../service-workers/"><span class="secno">36</span><span class="toc-name">service-workers/</span><span class="toc-count" title="282 test files">282</span></a></li>
+<li class="toc-suite"><a href="../../../service-workers/"><span class="secno">36</span><span class="toc-name">service-workers/</span><span class="toc-count" title="280 test files">280</span></a></li>
 <li class="toc-suite"><a href="../../../shadow-dom/"><span class="secno">37</span><span class="toc-name">shadow-dom/</span><span class="toc-count" title="183 test files">183</span></a></li>
 <li class="toc-suite"><a href="../../../streams/"><span class="secno">38</span><span class="toc-name">streams/</span><span class="toc-count" title="84 test files">84</span></a></li>
 <li class="toc-suite"><a href="../../../subresource-integrity/"><span class="secno">39</span><span class="toc-name">subresource-integrity/</span><span class="toc-count" title="5 test files">5</span></a></li>

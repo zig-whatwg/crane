@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../dom/"><code>dom/</code></a></li><li aria-current="page"><code>events/</code></li></ol></nav>
 <h1 class="page-title"><span class="secno">14.3</span><code>dom/<wbr>events/</code></h1>
 <div class="figures" role="group" aria-label="dom/events/">
-<p class="figures-main"><span class="fg-pass">741</span><span class="fg-of"> / 771</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>30</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>100</dd></div><div class="blk"><dt>Blocking files</dt><dd>3</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">758</span><span class="fg-of"> / 771</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>13</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>100</dd></div><div class="blk"><dt>Blocking files</dt><dd>2</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>751</b> / 771 WPT subtests passing on the same files, <span class="blk">1 blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of dom/events/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">100 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="93 clean, 4 with failures, 3 blocking, 0 with no subtests, 0 not run, of 100 files"><span class="m-clean" style="width:93.000%"></span><span class="m-partial" style="width:4.000%"></span><span class="m-blocking" style="width:3.000%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>93</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>4</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>3</dd></div><p class="kinds"><b>3</b> NONE-PASSED</p></dl>
+<div class="meter" role="img" aria-label="96 clean, 2 with failures, 2 blocking, 0 with no subtests, 0 not run, of 100 files"><span class="m-clean" style="width:96.000%"></span><span class="m-partial" style="width:2.000%"></span><span class="m-blocking" style="width:2.000%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>96</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>2</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>2</dd></div><p class="kinds"><b>2</b> NONE-PASSED</p></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -1008,19 +1008,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="event-listener-not-fully-active-adopted-node.html" data-gate="partial" data-pass="3" data-of="5" data-failed="2" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>event-<wbr>listener-<wbr>not-<wbr>fully-<wbr>active-<wbr>adopted-<wbr>node.<wbr>html</code></span><span class="tf-n"><b>3</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="event-listener-not-fully-active-adopted-node.html" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>event-<wbr>listener-<wbr>not-<wbr>fully-<wbr>active-<wbr>adopted-<wbr>node.<wbr>html</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/events/event-listener-not-fully-active-adopted-node.html"><code>dom/<wbr>events/<wbr>event-<wbr>listener-<wbr>not-<wbr>fully-<wbr>active-<wbr>adopted-<wbr>node.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-9728cdfe4487"><details><summary><span class="mark">FAIL</span><span class="sub-name">Node created in this realm and adopted into an iframe&#39;s document, iframe removed</span></summary><pre class="msg">assert_equals: listeners do not run once the iframe is removed expected 2 but got 4</pre></details><a class="self" href="#s-9728cdfe4487" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b8613e0f66f3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Adopting the target into a removed iframe&#39;s document during dispatch</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [&quot;first&quot;] length 1, got [&quot;first&quot;, &quot;second&quot;] length 2</pre></details><a class="self" href="#s-b8613e0f66f3" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>Node created in an iframe&#39;s realm and adopted into this document, iframe removed</li><li>Adopting the target into a fully active iframe&#39;s document during dispatch</li><li>Event from a node created in a removed iframe&#39;s realm still reaches listeners in this document</li></ol></details>
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>Node created in an iframe&#39;s realm and adopted into this document, iframe removed</li><li>Node created in this realm and adopted into an iframe&#39;s document, iframe removed</li><li>Adopting the target into a fully active iframe&#39;s document during dispatch</li><li>Adopting the target into a removed iframe&#39;s document during dispatch</li><li>Event from a node created in a removed iframe&#39;s realm still reaches listeners in this document</li></ol></details>
 </div>
 </div>
 </details>
@@ -1036,45 +1032,27 @@
 </div>
 </div>
 </details>
-<details class="tf" id="event-listener-not-fully-active-navigated.html" data-gate="none-passed" data-pass="0" data-of="3" data-failed="3" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>event-<wbr>listener-<wbr>not-<wbr>fully-<wbr>active-<wbr>navigated.<wbr>html</code></span><span class="tf-n"><b>0</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="fail">3</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="event-listener-not-fully-active-navigated.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="3" data-ref-of="3"><summary><span class="tf-name"><code>event-<wbr>listener-<wbr>not-<wbr>fully-<wbr>active-<wbr>navigated.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>3</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>3</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/events/event-listener-not-fully-active-navigated.html"><code>dom/<wbr>events/<wbr>event-<wbr>listener-<wbr>not-<wbr>fully-<wbr>active-<wbr>navigated.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-9d255cdb645f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Targets in a document that its iframe has navigated away from</span></summary><pre class="msg">assert_equals: listeners do not run after the navigation expected 4 but got 8</pre></details><a class="self" href="#s-9d255cdb645f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-dbc626ee3949"><details><summary><span class="mark">FAIL</span><span class="sub-name">Targets in a nested iframe whose parent document is no longer fully active</span></summary><pre class="msg">assert_equals: listeners do not run once the outer iframe navigated expected 3 but got 6</pre></details><a class="self" href="#s-dbc626ee3949" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c3e04f08982c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Targets in a nested iframe whose parent iframe was removed</span></summary><pre class="msg">assert_equals: expected 0 but got 3</pre></details><a class="self" href="#s-c3e04f08982c" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>Targets in a document that its iframe has navigated away from</li><li>Targets in a nested iframe whose parent document is no longer fully active</li><li>Targets in a nested iframe whose parent iframe was removed</li></ol></details>
 </div>
 </div>
 </details>
-<details class="tf" id="event-listener-not-fully-active-target.html" data-gate="partial" data-pass="4" data-of="16" data-failed="12" data-ref-pass="14" data-ref-of="16"><summary><span class="tf-name"><code>event-<wbr>listener-<wbr>not-<wbr>fully-<wbr>active-<wbr>target.<wbr>html</code></span><span class="tf-n"><b>4</b> / 16<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>14</b> / 16</span><span class="tf-fail"><span class="fail">12</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="event-listener-not-fully-active-target.html" data-gate="clean" data-pass="16" data-of="16" data-failed="0" data-ref-pass="14" data-ref-of="16"><summary><span class="tf-name"><code>event-<wbr>listener-<wbr>not-<wbr>fully-<wbr>active-<wbr>target.<wbr>html</code></span><span class="tf-n"><b>16</b> / 16<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>14</b> / 16</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>14</b> / 16 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/events/event-listener-not-fully-active-target.html"><code>dom/<wbr>events/<wbr>event-<wbr>listener-<wbr>not-<wbr>fully-<wbr>active-<wbr>target.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-8bdc01bf6ed0"><details><summary><span class="mark">FAIL</span><span class="sub-name">EventTarget created in a removed iframe</span></summary><pre class="msg">assert_equals: listener does not run once the iframe is removed expected 1 but got 2</pre></details><a class="self" href="#s-8bdc01bf6ed0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1d3e2d326807"><details><summary><span class="mark">FAIL</span><span class="sub-name">EventTarget created in a removed iframe, with an event from that iframe</span></summary><pre class="msg">assert_equals: expected 0 but got 1</pre></details><a class="self" href="#s-1d3e2d326807" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-30a00a1f160d"><details><summary><span class="mark">FAIL</span><span class="sub-name">EventTarget created in a removed iframe, with a listener added after removal</span></summary><pre class="msg">assert_equals: expected 0 but got 1</pre></details><a class="self" href="#s-30a00a1f160d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1891e895d588"><details><summary><span class="mark">FAIL</span><span class="sub-name">Dispatch still happens for an EventTarget in a removed iframe, only the listeners are skipped</span></summary><pre class="msg">assert_false: defaultPrevented expected false got true</pre></details><a class="self" href="#s-1891e895d588" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1ccaffd3f904"><details><summary><span class="mark">FAIL</span><span class="sub-name">handleEvent is not looked up for an EventTarget in a removed iframe</span></summary><pre class="msg">assert_false: expected false got true</pre></details><a class="self" href="#s-1ccaffd3f904" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-eb6107194e42"><details><summary><span class="mark">FAIL</span><span class="sub-name">Removing the iframe from within a listener skips the remaining listeners on the same target</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [&quot;first&quot;] length 1, got [&quot;first&quot;, &quot;second&quot;] length 2</pre></details><a class="self" href="#s-eb6107194e42" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c8d8f0d713f9"><details><summary><span class="mark">FAIL</span><span class="sub-name">Removing the iframe during the capture phase skips the remaining objects in the event path</span></summary><pre class="msg">assert_array_equals: lengths differ, expected array [&quot;capture&quot;] length 1, got [&quot;capture&quot;, &quot;target&quot;, &quot;bubble&quot;] length 3</pre></details><a class="self" href="#s-c8d8f0d713f9" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-433998eda645"><details><summary><span class="mark">FAIL</span><span class="sub-name">Window of a removed iframe</span></summary><pre class="msg">assert_equals: expected 0 but got 1</pre></details><a class="self" href="#s-433998eda645" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ba2f8127d774"><details><summary><span class="mark">FAIL</span><span class="sub-name">Document of a removed iframe</span></summary><pre class="msg">assert_equals: expected 0 but got 1</pre></details><a class="self" href="#s-ba2f8127d774" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-885ee9c67d1c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Element of a removed iframe</span></summary><pre class="msg">assert_equals: expected 0 but got 2</pre></details><a class="self" href="#s-885ee9c67d1c" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ca5a5c0910f2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Event handler IDL attribute on an element in a removed iframe</span></summary><pre class="msg">assert_equals: expected 0 but got 1</pre></details><a class="self" href="#s-ca5a5c0910f2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-1cf5326384bf"><details><summary><span class="mark">FAIL</span><span class="sub-name">Abort listeners on an AbortSignal from a removed iframe do not run</span></summary><pre class="msg">assert_equals: expected 0 but got 2</pre></details><a class="self" href="#s-1cf5326384bf" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>dispatchEvent() on an EventTarget in a removed iframe returns true</li><li>Compiled event handler content attribute on an element in a removed iframe</li><li>AbortSignal from a removed iframe is still aborted</li><li>It is the target&#39;s global that matters, not the event&#39;s</li></ol></details>
+<details class="passing"><summary>16 passing subtests</summary><ol class="pass-list"><li>EventTarget created in a removed iframe</li><li>EventTarget created in a removed iframe, with an event from that iframe</li><li>EventTarget created in a removed iframe, with a listener added after removal</li><li>dispatchEvent() on an EventTarget in a removed iframe returns true</li><li>Dispatch still happens for an EventTarget in a removed iframe, only the listeners are skipped</li><li>handleEvent is not looked up for an EventTarget in a removed iframe</li><li>Removing the iframe from within a listener skips the remaining listeners on the same target</li><li>Removing the iframe during the capture phase skips the remaining objects in the event path</li><li>Window of a removed iframe</li><li>Document of a removed iframe</li><li>Element of a removed iframe</li><li>Event handler IDL attribute on an element in a removed iframe</li><li>Compiled event handler content attribute on an element in a removed iframe</li><li>AbortSignal from a removed iframe is still aborted</li><li>Abort listeners on an AbortSignal from a removed iframe do not run</li><li>It is the target&#39;s global that matters, not the event&#39;s</li></ol></details>
 </div>
 </div>
 </details>
@@ -1348,7 +1326,7 @@
 <li class="toc-front"><a href="../../#status"><span class="secno"></span><span class="toc-name">Status of this document</span></a></li>
 <li class="toc-front"><a href="../../chrome.html"><span class="secno"></span><span class="toc-name">Crane and Chrome</span></a></li>
 <li class="toc-suite"><a href="../../FileAPI/"><span class="secno">1</span><span class="toc-name">FileAPI/</span><span class="toc-count" title="72 test files">72</span></a></li>
-<li class="toc-suite"><a href="../../IndexedDB/"><span class="secno">2</span><span class="toc-name">IndexedDB/</span><span class="toc-count" title="229 test files">229</span></a></li>
+<li class="toc-suite"><a href="../../IndexedDB/"><span class="secno">2</span><span class="toc-name">IndexedDB/</span><span class="toc-count" title="228 test files">228</span></a></li>
 <li class="toc-suite"><a href="../../WebCryptoAPI/"><span class="secno">3</span><span class="toc-name">WebCryptoAPI/</span><span class="toc-count" title="78 test files">78</span></a></li>
 <li class="toc-suite"><a href="../../accname/"><span class="secno">4</span><span class="toc-name">accname/</span><span class="toc-count" title="14 test files">14</span></a></li>
 <li class="toc-suite"><a href="../../beacon/"><span class="secno">5</span><span class="toc-name">beacon/</span><span class="toc-count" title="16 test files">16</span></a></li>
@@ -1358,7 +1336,7 @@
 <li class="toc-suite"><a href="../../cookies/"><span class="secno">9</span><span class="toc-name">cookies/</span><span class="toc-count" title="76 test files">76</span></a></li>
 <li class="toc-suite"><a href="../../cookiestore/"><span class="secno">10</span><span class="toc-name">cookiestore/</span><span class="toc-count" title="55 test files">55</span></a></li>
 <li class="toc-suite"><a href="../../cors/"><span class="secno">11</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
-<li class="toc-suite"><a href="../../css/"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,297 test files">2,297</span></a></li>
+<li class="toc-suite"><a href="../../css/"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,279 test files">2,279</span></a></li>
 <li class="toc-suite"><a href="../../custom-elements/"><span class="secno">13</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="180 test files">180</span></a></li>
 <li class="toc-suite"><a href="../../dom/" aria-current="page"><span class="secno">14</span><span class="toc-name">dom/</span><span class="toc-count" title="525 test files">525</span></a></li>
 <li class="toc-suite"><a href="../../domparsing/"><span class="secno">15</span><span class="toc-name">domparsing/</span><span class="toc-count" title="38 test files">38</span></a></li>
@@ -1369,8 +1347,8 @@
 <li class="toc-suite"><a href="../../fetch/"><span class="secno">20</span><span class="toc-name">fetch/</span><span class="toc-count" title="310 test files">310</span></a></li>
 <li class="toc-suite"><a href="../../hr-time/"><span class="secno">21</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
 <li class="toc-suite"><a href="../../html-aam/"><span class="secno">22</span><span class="toc-name">html-aam/</span><span class="toc-count" title="25 test files">25</span></a></li>
-<li class="toc-suite"><a href="../../html/"><span class="secno">23</span><span class="toc-name">html/</span><span class="toc-count" title="2,804 test files">2,804</span></a></li>
-<li class="toc-suite"><a href="../../mathml/"><span class="secno">24</span><span class="toc-name">mathml/</span><span class="toc-count" title="36 test files">36</span></a></li>
+<li class="toc-suite"><a href="../../html/"><span class="secno">23</span><span class="toc-name">html/</span><span class="toc-count" title="2,803 test files">2,803</span></a></li>
+<li class="toc-suite"><a href="../../mathml/"><span class="secno">24</span><span class="toc-name">mathml/</span><span class="toc-count" title="35 test files">35</span></a></li>
 <li class="toc-suite"><a href="../../mimesniff/"><span class="secno">25</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
 <li class="toc-suite"><a href="../../mixed-content/"><span class="secno">26</span><span class="toc-name">mixed-content/</span><span class="toc-count" title="384 test files">384</span></a></li>
 <li class="toc-suite"><a href="../../navigation-api/"><span class="secno">27</span><span class="toc-name">navigation-api/</span><span class="toc-count" title="417 test files">417</span></a></li>
@@ -1382,7 +1360,7 @@
 <li class="toc-suite"><a href="../../resource-timing/"><span class="secno">33</span><span class="toc-name">resource-timing/</span><span class="toc-count" title="117 test files">117</span></a></li>
 <li class="toc-suite"><a href="../../sanitizer-api/"><span class="secno">34</span><span class="toc-name">sanitizer-api/</span><span class="toc-count" title="23 test files">23</span></a></li>
 <li class="toc-suite"><a href="../../selection/"><span class="secno">35</span><span class="toc-name">selection/</span><span class="toc-count" title="72 test files">72</span></a></li>
-<li class="toc-suite"><a href="../../service-workers/"><span class="secno">36</span><span class="toc-name">service-workers/</span><span class="toc-count" title="282 test files">282</span></a></li>
+<li class="toc-suite"><a href="../../service-workers/"><span class="secno">36</span><span class="toc-name">service-workers/</span><span class="toc-count" title="280 test files">280</span></a></li>
 <li class="toc-suite"><a href="../../shadow-dom/"><span class="secno">37</span><span class="toc-name">shadow-dom/</span><span class="toc-count" title="183 test files">183</span></a></li>
 <li class="toc-suite"><a href="../../streams/"><span class="secno">38</span><span class="toc-name">streams/</span><span class="toc-count" title="84 test files">84</span></a></li>
 <li class="toc-suite"><a href="../../subresource-integrity/"><span class="secno">39</span><span class="toc-name">subresource-integrity/</span><span class="toc-count" title="5 test files">5</span></a></li>

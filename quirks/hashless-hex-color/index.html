@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../quirks/"><code>quirks/</code></a></li><li aria-current="page"><code>hashless-<wbr>hex-<wbr>color/</code></li></ol></nav>
 <h1 class="page-title"><span class="secno">31.1</span><code>quirks/<wbr>hashless-<wbr>hex-<wbr>color/</code></h1>
 <div class="figures" role="group" aria-label="quirks/hashless-hex-color/">
-<p class="figures-main"><span class="fg-pass">2,013</span><span class="fg-of"> / 2,060</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>47</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>3</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">2,018</span><span class="fg-of"> / 2,060</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>42</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>3</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>2,060</b> / 2,060 WPT subtests passing on the same files, <span class="quiet">none blocking</span></p>
 </header>
@@ -63,7 +63,7 @@
 </div>
 </div>
 </details>
-<details class="tf" id="quirks.html" data-gate="partial" data-pass="645" data-of="692" data-failed="47" data-ref-pass="692" data-ref-of="692"><summary><span class="tf-name"><code>quirks.<wbr>html</code></span><span class="tf-n"><b>645</b> / 692<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>692</b> / 692</span><span class="tf-fail"><span class="fail">47</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="quirks.html" data-gate="partial" data-pass="650" data-of="692" data-failed="42" data-ref-pass="692" data-ref-of="692"><summary><span class="tf-name"><code>quirks.<wbr>html</code></span><span class="tf-n"><b>650</b> / 692<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>692</b> / 692</span><span class="tf-fail"><span class="fail">42</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
@@ -114,13 +114,8 @@
 <li class="sub s-fail" id="s-a5a4e0928241"><details><summary><span class="mark">FAIL</span><span class="sub-name">#123 123 abc 12a</span></summary><pre class="msg">assert_equals: border-color expected &quot;rgb(17, 34, 51)&quot; but got &quot;rgb(0, 0, 0)&quot;</pre></details><a class="self" href="#s-a5a4e0928241" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-130c20dacc21"><details><summary><span class="mark">FAIL</span><span class="sub-name">rgb(119, 255, 255) 123</span></summary><pre class="msg">assert_equals: border-color expected &quot;rgb(119, 255, 255)&quot; but got &quot;rgb(0, 0, 0)&quot;</pre></details><a class="self" href="#s-130c20dacc21" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-243be1870712"><details><summary><span class="mark">FAIL</span><span class="sub-name">123 rgb(119, 255, 255)</span></summary><pre class="msg">assert_equals: border-color expected &quot;rgb(0, 1, 35)&quot; but got &quot;rgb(0, 0, 0)&quot;</pre></details><a class="self" href="#s-243be1870712" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9de9fc969a86"><details><summary><span class="mark">FAIL</span><span class="sub-name">The hashless hex color quirk (quirks), excluded property border-top:1px solid abc</span></summary><pre class="msg">assert_equals: quirk was supported expected &quot;rgb(0, 0, 0)&quot; but got &quot;rgb(170, 187, 204)&quot;</pre></details><a class="self" href="#s-9de9fc969a86" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-bb2efca84c95"><details><summary><span class="mark">FAIL</span><span class="sub-name">The hashless hex color quirk (quirks), excluded property border-right:1px solid abc</span></summary><pre class="msg">assert_equals: quirk was supported expected &quot;rgb(0, 0, 0)&quot; but got &quot;rgb(170, 187, 204)&quot;</pre></details><a class="self" href="#s-bb2efca84c95" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-86c8ca53cd15"><details><summary><span class="mark">FAIL</span><span class="sub-name">The hashless hex color quirk (quirks), excluded property border-bottom:1px solid abc</span></summary><pre class="msg">assert_equals: quirk was supported expected &quot;rgb(0, 0, 0)&quot; but got &quot;rgb(170, 187, 204)&quot;</pre></details><a class="self" href="#s-86c8ca53cd15" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7d46509206ca"><details><summary><span class="mark">FAIL</span><span class="sub-name">The hashless hex color quirk (quirks), excluded property border-left:1px solid abc</span></summary><pre class="msg">assert_equals: quirk was supported expected &quot;rgb(0, 0, 0)&quot; but got &quot;rgb(170, 187, 204)&quot;</pre></details><a class="self" href="#s-7d46509206ca" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-96f8c367701f"><details><summary><span class="mark">FAIL</span><span class="sub-name">The hashless hex color quirk (quirks), excluded property border:1px solid abc</span></summary><pre class="msg">assert_equals: quirk was supported expected &quot;rgb(0, 0, 0)&quot; but got &quot;rgb(170, 187, 204)&quot;</pre></details><a class="self" href="#s-96f8c367701f" aria-label="Link to this subtest">&para;</a></li>
 </ol>
-<p class="omitted">645 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
+<p class="omitted">650 passing subtests are not listed: this file has more than 500 subtests, so only those that did not pass are kept.</p>
 </div>
 </div>
 </details>
@@ -138,7 +133,7 @@
 <li class="toc-front"><a href="../../#status"><span class="secno"></span><span class="toc-name">Status of this document</span></a></li>
 <li class="toc-front"><a href="../../chrome.html"><span class="secno"></span><span class="toc-name">Crane and Chrome</span></a></li>
 <li class="toc-suite"><a href="../../FileAPI/"><span class="secno">1</span><span class="toc-name">FileAPI/</span><span class="toc-count" title="72 test files">72</span></a></li>
-<li class="toc-suite"><a href="../../IndexedDB/"><span class="secno">2</span><span class="toc-name">IndexedDB/</span><span class="toc-count" title="229 test files">229</span></a></li>
+<li class="toc-suite"><a href="../../IndexedDB/"><span class="secno">2</span><span class="toc-name">IndexedDB/</span><span class="toc-count" title="228 test files">228</span></a></li>
 <li class="toc-suite"><a href="../../WebCryptoAPI/"><span class="secno">3</span><span class="toc-name">WebCryptoAPI/</span><span class="toc-count" title="78 test files">78</span></a></li>
 <li class="toc-suite"><a href="../../accname/"><span class="secno">4</span><span class="toc-name">accname/</span><span class="toc-count" title="14 test files">14</span></a></li>
 <li class="toc-suite"><a href="../../beacon/"><span class="secno">5</span><span class="toc-name">beacon/</span><span class="toc-count" title="16 test files">16</span></a></li>
@@ -148,7 +143,7 @@
 <li class="toc-suite"><a href="../../cookies/"><span class="secno">9</span><span class="toc-name">cookies/</span><span class="toc-count" title="76 test files">76</span></a></li>
 <li class="toc-suite"><a href="../../cookiestore/"><span class="secno">10</span><span class="toc-name">cookiestore/</span><span class="toc-count" title="55 test files">55</span></a></li>
 <li class="toc-suite"><a href="../../cors/"><span class="secno">11</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
-<li class="toc-suite"><a href="../../css/"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,297 test files">2,297</span></a></li>
+<li class="toc-suite"><a href="../../css/"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,279 test files">2,279</span></a></li>
 <li class="toc-suite"><a href="../../custom-elements/"><span class="secno">13</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="180 test files">180</span></a></li>
 <li class="toc-suite"><a href="../../dom/"><span class="secno">14</span><span class="toc-name">dom/</span><span class="toc-count" title="525 test files">525</span></a></li>
 <li class="toc-suite"><a href="../../domparsing/"><span class="secno">15</span><span class="toc-name">domparsing/</span><span class="toc-count" title="38 test files">38</span></a></li>
@@ -159,8 +154,8 @@
 <li class="toc-suite"><a href="../../fetch/"><span class="secno">20</span><span class="toc-name">fetch/</span><span class="toc-count" title="310 test files">310</span></a></li>
 <li class="toc-suite"><a href="../../hr-time/"><span class="secno">21</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
 <li class="toc-suite"><a href="../../html-aam/"><span class="secno">22</span><span class="toc-name">html-aam/</span><span class="toc-count" title="25 test files">25</span></a></li>
-<li class="toc-suite"><a href="../../html/"><span class="secno">23</span><span class="toc-name">html/</span><span class="toc-count" title="2,804 test files">2,804</span></a></li>
-<li class="toc-suite"><a href="../../mathml/"><span class="secno">24</span><span class="toc-name">mathml/</span><span class="toc-count" title="36 test files">36</span></a></li>
+<li class="toc-suite"><a href="../../html/"><span class="secno">23</span><span class="toc-name">html/</span><span class="toc-count" title="2,803 test files">2,803</span></a></li>
+<li class="toc-suite"><a href="../../mathml/"><span class="secno">24</span><span class="toc-name">mathml/</span><span class="toc-count" title="35 test files">35</span></a></li>
 <li class="toc-suite"><a href="../../mimesniff/"><span class="secno">25</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
 <li class="toc-suite"><a href="../../mixed-content/"><span class="secno">26</span><span class="toc-name">mixed-content/</span><span class="toc-count" title="384 test files">384</span></a></li>
 <li class="toc-suite"><a href="../../navigation-api/"><span class="secno">27</span><span class="toc-name">navigation-api/</span><span class="toc-count" title="417 test files">417</span></a></li>
@@ -172,7 +167,7 @@
 <li class="toc-suite"><a href="../../resource-timing/"><span class="secno">33</span><span class="toc-name">resource-timing/</span><span class="toc-count" title="117 test files">117</span></a></li>
 <li class="toc-suite"><a href="../../sanitizer-api/"><span class="secno">34</span><span class="toc-name">sanitizer-api/</span><span class="toc-count" title="23 test files">23</span></a></li>
 <li class="toc-suite"><a href="../../selection/"><span class="secno">35</span><span class="toc-name">selection/</span><span class="toc-count" title="72 test files">72</span></a></li>
-<li class="toc-suite"><a href="../../service-workers/"><span class="secno">36</span><span class="toc-name">service-workers/</span><span class="toc-count" title="282 test files">282</span></a></li>
+<li class="toc-suite"><a href="../../service-workers/"><span class="secno">36</span><span class="toc-name">service-workers/</span><span class="toc-count" title="280 test files">280</span></a></li>
 <li class="toc-suite"><a href="../../shadow-dom/"><span class="secno">37</span><span class="toc-name">shadow-dom/</span><span class="toc-count" title="183 test files">183</span></a></li>
 <li class="toc-suite"><a href="../../streams/"><span class="secno">38</span><span class="toc-name">streams/</span><span class="toc-count" title="84 test files">84</span></a></li>
 <li class="toc-suite"><a href="../../subresource-integrity/"><span class="secno">39</span><span class="toc-name">subresource-integrity/</span><span class="toc-count" title="5 test files">5</span></a></li>

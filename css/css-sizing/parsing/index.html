@@ -21,21 +21,21 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../css/"><code>css/</code></a></li><li><a href="../../../css/css-sizing/"><code>css-<wbr>sizing/</code></a></li><li aria-current="page"><code>parsing/</code></li></ol></nav>
 <h1 class="page-title"><code>css/<wbr>css-<wbr>sizing/<wbr>parsing/</code></h1>
 <div class="figures" role="group" aria-label="css/css-sizing/parsing/">
-<p class="figures-main"><span class="fg-pass">161</span><span class="fg-of"> / 183</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>22</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>22</dd></div><div class="blk"><dt>Blocking files</dt><dd>2</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">161</span><span class="fg-of"> / 161</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>20</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
 </div>
-<p class="figures-ref"><span class="ref-name">Chrome</span> <b>131</b> / 183 WPT subtests passing on the same files, <span class="blk">1 blocking</span></p>
+<p class="figures-ref"><span class="ref-name">Chrome</span> <b>122</b> / 161 WPT subtests passing on the same files, <span class="quiet">none blocking</span></p>
 </header>
 <div class="boxes">
 <aside class="box conf" aria-label="Conformance of css/css-sizing/parsing/">
-<div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">22 files</span></div>
+<div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">20 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="20 clean, 0 with failures, 2 blocking, 0 with no subtests, 0 not run, of 22 files"><span class="m-clean" style="width:90.909%"></span><span class="m-blocking" style="width:9.091%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>20</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>2</dd></div><p class="kinds"><b>2</b> NONE-PASSED</p></dl>
+<div class="meter" role="img" aria-label="20 clean, 0 with failures, 0 blocking, 0 with no subtests, 0 not run, of 20 files"><span class="m-clean" style="width:100.000%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>20</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
 </div>
 </aside>
 <div class="box tests">
-<div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">22 test files here</span></div>
+<div class="box-head"><h2 class="box-title">Tests</h2><span class="box-sub">20 test files here</span></div>
 <div class="tf-list has-ref">
 <p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
 <div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
@@ -255,54 +255,6 @@
 </div>
 </div>
 </details>
-<details class="tf" id="size-shorthand.html" data-gate="none-passed" data-pass="0" data-of="12" data-failed="12" data-ref-pass="0" data-ref-of="12"><summary><span class="tf-name"><code>size-<wbr>shorthand.<wbr>html</code></span><span class="tf-n"><b>0</b> / 12<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>0</b> / 12</span><span class="tf-fail"><span class="fail">12</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
-<div class="tf-body">
-<dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Chrome</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <b>0</b> / 12 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-sizing/parsing/size-shorthand.html"><code>css/<wbr>css-<wbr>sizing/<wbr>parsing/<wbr>size-<wbr>shorthand.<wbr>html</code></a></dd></div>
-</dl>
-<div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-4ae916013461"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;100px&quot; should set height</span></summary><pre class="msg">assert_equals: height should be canonical expected &quot;100px&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-4ae916013461" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-235489cfd596"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;100px&quot; should set width</span></summary><pre class="msg">assert_equals: width should be canonical expected &quot;100px&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-235489cfd596" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2b2f53d3b70f"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;100px&quot; should not set unrelated longhands</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-2b2f53d3b70f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-69591e3205da"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;100px 100px&quot; should set height</span></summary><pre class="msg">assert_equals: height should be canonical expected &quot;100px&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-69591e3205da" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c421abf54311"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;100px 100px&quot; should set width</span></summary><pre class="msg">assert_equals: width should be canonical expected &quot;100px&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-c421abf54311" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-10c768cd48da"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;100px 100px&quot; should not set unrelated longhands</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-10c768cd48da" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-59dc84553ba6"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;100px 200px&quot; should set height</span></summary><pre class="msg">assert_equals: height should be canonical expected &quot;200px&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-59dc84553ba6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-692d98c701e5"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;100px 200px&quot; should set width</span></summary><pre class="msg">assert_equals: width should be canonical expected &quot;100px&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-692d98c701e5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-39f75bd6af39"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;100px 200px&quot; should not set unrelated longhands</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-39f75bd6af39" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6e6881531e1f"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;auto&quot; should set height</span></summary><pre class="msg">assert_equals: height should be canonical expected &quot;auto&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-6e6881531e1f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7fc5b6afbb61"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;auto&quot; should set width</span></summary><pre class="msg">assert_equals: width should be canonical expected &quot;auto&quot; but got &quot;&quot;</pre></details><a class="self" href="#s-7fc5b6afbb61" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4dbc013ae537"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;auto&quot; should not set unrelated longhands</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-4dbc013ae537" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-</div>
-</div>
-</details>
-<details class="tf" id="size-valid.html" data-gate="none-passed" data-pass="0" data-of="10" data-failed="10" data-ref-pass="9" data-ref-of="10"><summary><span class="tf-name"><code>size-<wbr>valid.<wbr>html</code></span><span class="tf-n"><b>0</b> / 10<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>9</b> / 10</span><span class="tf-fail"><span class="fail">10</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
-<div class="tf-body">
-<dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>9</b> / 10 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/css-sizing/parsing/size-valid.html"><code>css/<wbr>css-<wbr>sizing/<wbr>parsing/<wbr>size-<wbr>valid.<wbr>html</code></a></dd></div>
-</dl>
-<div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-0ece12364c3a"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;initial&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-0ece12364c3a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-543e44a5de12"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;inherit&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-543e44a5de12" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-a8202cd0bd5d"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;revert&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-a8202cd0bd5d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d379aa5a27d9"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;revert-layer&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-d379aa5a27d9" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d827d2b3273e"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;unset&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-d827d2b3273e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-39297718e23a"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;640px 480px&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-39297718e23a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-432724ae609a"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;8.5in 11in&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-432724ae609a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2ba87d3701be"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;3in 10in&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-2ba87d3701be" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-8921d8e9c36e"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;auto&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-8921d8e9c36e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d4bf8a3f7a87"><details><summary><span class="mark">FAIL</span><span class="sub-name">e.style[&#39;size&#39;] = &quot;100px 100px&quot; should set the property value</span></summary><pre class="msg">assert_not_equals: property should be set got disallowed value &quot;&quot;</pre></details><a class="self" href="#s-d4bf8a3f7a87" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-</div>
-</div>
-</details>
 <details class="tf" id="width-invalid.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>width-<wbr>invalid.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
@@ -341,7 +293,7 @@
 <li class="toc-front"><a href="../../../#status"><span class="secno"></span><span class="toc-name">Status of this document</span></a></li>
 <li class="toc-front"><a href="../../../chrome.html"><span class="secno"></span><span class="toc-name">Crane and Chrome</span></a></li>
 <li class="toc-suite"><a href="../../../FileAPI/"><span class="secno">1</span><span class="toc-name">FileAPI/</span><span class="toc-count" title="72 test files">72</span></a></li>
-<li class="toc-suite"><a href="../../../IndexedDB/"><span class="secno">2</span><span class="toc-name">IndexedDB/</span><span class="toc-count" title="229 test files">229</span></a></li>
+<li class="toc-suite"><a href="../../../IndexedDB/"><span class="secno">2</span><span class="toc-name">IndexedDB/</span><span class="toc-count" title="228 test files">228</span></a></li>
 <li class="toc-suite"><a href="../../../WebCryptoAPI/"><span class="secno">3</span><span class="toc-name">WebCryptoAPI/</span><span class="toc-count" title="78 test files">78</span></a></li>
 <li class="toc-suite"><a href="../../../accname/"><span class="secno">4</span><span class="toc-name">accname/</span><span class="toc-count" title="14 test files">14</span></a></li>
 <li class="toc-suite"><a href="../../../beacon/"><span class="secno">5</span><span class="toc-name">beacon/</span><span class="toc-count" title="16 test files">16</span></a></li>
@@ -351,7 +303,7 @@
 <li class="toc-suite"><a href="../../../cookies/"><span class="secno">9</span><span class="toc-name">cookies/</span><span class="toc-count" title="76 test files">76</span></a></li>
 <li class="toc-suite"><a href="../../../cookiestore/"><span class="secno">10</span><span class="toc-name">cookiestore/</span><span class="toc-count" title="55 test files">55</span></a></li>
 <li class="toc-suite"><a href="../../../cors/"><span class="secno">11</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
-<li class="toc-suite"><a href="../../../css/" aria-current="page"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,297 test files">2,297</span></a></li>
+<li class="toc-suite"><a href="../../../css/" aria-current="page"><span class="secno">12</span><span class="toc-name">css/</span><span class="toc-count" title="2,279 test files">2,279</span></a></li>
 <li class="toc-suite"><a href="../../../custom-elements/"><span class="secno">13</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="180 test files">180</span></a></li>
 <li class="toc-suite"><a href="../../../dom/"><span class="secno">14</span><span class="toc-name">dom/</span><span class="toc-count" title="525 test files">525</span></a></li>
 <li class="toc-suite"><a href="../../../domparsing/"><span class="secno">15</span><span class="toc-name">domparsing/</span><span class="toc-count" title="38 test files">38</span></a></li>
@@ -362,8 +314,8 @@
 <li class="toc-suite"><a href="../../../fetch/"><span class="secno">20</span><span class="toc-name">fetch/</span><span class="toc-count" title="310 test files">310</span></a></li>
 <li class="toc-suite"><a href="../../../hr-time/"><span class="secno">21</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
 <li class="toc-suite"><a href="../../../html-aam/"><span class="secno">22</span><span class="toc-name">html-aam/</span><span class="toc-count" title="25 test files">25</span></a></li>
-<li class="toc-suite"><a href="../../../html/"><span class="secno">23</span><span class="toc-name">html/</span><span class="toc-count" title="2,804 test files">2,804</span></a></li>
-<li class="toc-suite"><a href="../../../mathml/"><span class="secno">24</span><span class="toc-name">mathml/</span><span class="toc-count" title="36 test files">36</span></a></li>
+<li class="toc-suite"><a href="../../../html/"><span class="secno">23</span><span class="toc-name">html/</span><span class="toc-count" title="2,803 test files">2,803</span></a></li>
+<li class="toc-suite"><a href="../../../mathml/"><span class="secno">24</span><span class="toc-name">mathml/</span><span class="toc-count" title="35 test files">35</span></a></li>
 <li class="toc-suite"><a href="../../../mimesniff/"><span class="secno">25</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
 <li class="toc-suite"><a href="../../../mixed-content/"><span class="secno">26</span><span class="toc-name">mixed-content/</span><span class="toc-count" title="384 test files">384</span></a></li>
 <li class="toc-suite"><a href="../../../navigation-api/"><span class="secno">27</span><span class="toc-name">navigation-api/</span><span class="toc-count" title="417 test files">417</span></a></li>
@@ -375,7 +327,7 @@
 <li class="toc-suite"><a href="../../../resource-timing/"><span class="secno">33</span><span class="toc-name">resource-timing/</span><span class="toc-count" title="117 test files">117</span></a></li>
 <li class="toc-suite"><a href="../../../sanitizer-api/"><span class="secno">34</span><span class="toc-name">sanitizer-api/</span><span class="toc-count" title="23 test files">23</span></a></li>
 <li class="toc-suite"><a href="../../../selection/"><span class="secno">35</span><span class="toc-name">selection/</span><span class="toc-count" title="72 test files">72</span></a></li>
-<li class="toc-suite"><a href="../../../service-workers/"><span class="secno">36</span><span class="toc-name">service-workers/</span><span class="toc-count" title="282 test files">282</span></a></li>
+<li class="toc-suite"><a href="../../../service-workers/"><span class="secno">36</span><span class="toc-name">service-workers/</span><span class="toc-count" title="280 test files">280</span></a></li>
 <li class="toc-suite"><a href="../../../shadow-dom/"><span class="secno">37</span><span class="toc-name">shadow-dom/</span><span class="toc-count" title="183 test files">183</span></a></li>
 <li class="toc-suite"><a href="../../../streams/"><span class="secno">38</span><span class="toc-name">streams/</span><span class="toc-count" title="84 test files">84</span></a></li>
 <li class="toc-suite"><a href="../../../subresource-integrity/"><span class="secno">39</span><span class="toc-name">subresource-integrity/</span><span class="toc-count" title="5 test files">5</span></a></li>
