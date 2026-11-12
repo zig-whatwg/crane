@@ -303,8 +303,10 @@ test "matchAll gathers each window client's data on its loop, then answers the w
     try manager.matchAll(sw_environment, worker_id, false, .window, 1);
     try drainUntil(sink, &worker_realm, "clients 0:", 10_000);
 
-    // Every client: the focused window first, then the other windows in
-    // creation order, then the worker client.
+    // Every client: the focused window first (its focus update reported a
+    // focus time), then the other windows in creation order, then the
+    // worker client.
+    manager.environmentFocused(frame_environment, 1);
     try manager.matchAll(sw_environment, worker_id, true, .all, 2);
     try drainUntil(sink, &worker_realm, "clients 3: window(focused) window dedicated_worker", 10_000);
 

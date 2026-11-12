@@ -259,6 +259,12 @@ pub const Environment = struct {
     /// the next window client of the same one is what a navigation of this
     /// one made (WindowClient.navigate()).
     navigable: usize = 0,
+    /// When its browsing context was last focused, on the platform's
+    /// monotonic clock in nanoseconds; 0: never. matchAll()'s "most recently
+    /// focused" order (4.3.4 step 2.6.4) reads it; `setFocusTime` sets it,
+    /// and the next window client of the same navigable starts with it
+    /// (`inheritFocusTime`): the time is the browsing context's.
+    last_focus_ns: u64 = 0,
     /// The owner's handle on the realm (its sink, its objects). Opaque. Null
     /// for a reserved client (a navigation's or a worker's, HTML "reserved
     /// client"), whose realm does not exist yet: nothing is posted to it until
@@ -690,8 +696,40 @@ pub const Registry = struct {
             .endpoint = init_values.endpoint,
         };
         self.makeUuid(&environment.client_id);
+        self.inheritFocusTime(environment);
         try self.environments.append(self.allocator, environment);
         return environment;
+    }
+
+    /// matchAll() step 2.6.4 sorts window clients by when their BROWSING
+    /// CONTEXT was last focused, so a window client of a navigable that an
+    /// earlier client of it was focused in starts with that time (the spec's
+    /// browsing context; Chromium keeps it on the FrameTreeNode,
+    /// content/browser/renderer_host/frame_tree_node.cc DidFocus - Gecko on
+    /// each Document, dom/base/Document.h mLastFocusTime: no majority, so the
+    /// spec's reading, the integrator's ruling of 2026-11-12). Called as an
+    /// environment gets its navigable (`addEnvironment`, and a reserved
+    /// environment's adoption), before it is listed.
+    pub fn inheritFocusTime(self: *const Registry, environment: *Environment) void {
+        if (environment.navigable == 0) return;
+        for (self.environments.items) |other| {
+            if (other == environment or other.navigable != environment.navigable) continue;
+            environment.last_focus_ns = @max(environment.last_focus_ns, other.last_focus_ns);
+        }
+    }
+
+    /// The window client `id`'s browsing context was focused at `at_ns`
+    /// (monotonic, nanoseconds): it, and every other client of the same
+    /// navigable still listed, have that as their last focus time. A time
+    /// older than the one kept is ignored (a report that crossed a newer
+    /// one).
+    pub fn setFocusTime(self: *Registry, id: u64, at_ns: u64) void {
+        const environment = self.findEnvironment(id) orelse return;
+        environment.last_focus_ns = @max(environment.last_focus_ns, at_ns);
+        if (environment.navigable == 0) return;
+        for (self.environments.items) |other| {
+            if (other.navigable == environment.navigable) other.last_focus_ns = @max(other.last_focus_ns, at_ns);
+        }
     }
 
     /// What a reserved client is made with: an environment whose realm does
